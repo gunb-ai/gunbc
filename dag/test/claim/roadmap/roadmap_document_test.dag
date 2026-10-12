@@ -19,7 +19,7 @@ fn audit_node() -> RoadmapNode {
     identity: "rnfx_J19302B1RYEQZVMM6TG9" as RoadmapNodeIdentity,
     node: audit_id,
     line: AuthoredLine { done: true, content: "**fail-open audit**" },
-    carriers: [Pointer { label: "plan", path: "docs/plans/fail-closed-lockdown.md" }],
+    carriers: [Pointer { label: "plan", path: "docs/plans/scaffold-admission-doctrine.md" }],
     dispatch: NotDispatchable,
     execution: ExecutionContractUnspecified,
     owner: "",
@@ -105,7 +105,7 @@ test fn witness_both_sections() -> Bool {
 test fn witness_authored_evidence_awaiting_signoff() -> Bool {
   let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **fail-open audit**")
-    && string_contains(s: out, pattern: "[plan](docs/plans/fail-closed-lockdown.md)")
+    && string_contains(s: out, pattern: "[plan](docs/plans/scaffold-admission-doctrine.md)")
     && string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
 
@@ -130,7 +130,7 @@ fn expected_roadmap() -> String {
     "\n",
     "## 0. Fail-closed lock-down\n",
     "\n",
-    "- [ ] **fail-open audit** [plan](docs/plans/fail-closed-lockdown.md) — ⏳ awaiting sign-off\n",
+    "- [ ] **fail-open audit** [plan](docs/plans/scaffold-admission-doctrine.md) — ⏳ awaiting sign-off\n",
     "\n",
     "## 6. Expansion\n",
     "\n",

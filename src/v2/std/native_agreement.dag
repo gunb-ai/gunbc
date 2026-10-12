@@ -10,7 +10,8 @@ import std.optional {
   Present,
   Absent
 }
-import v2.std.integer { integer_int_to_decimal_string, integer_u8_from_byte }
+import v2.std.integer { integer_u8_from_byte }
+import std.integer { int_to_decimal_string }
 import v2.std.runtime { RuntimePrimitive, RuntimePrimitiveValue, RuntimeValue }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
@@ -31,7 +32,7 @@ type NativeAgreementDivergence {
 // std cannot import compiler back).
 
 fn octet_display(octet: Int) -> String {
-  integer_int_to_decimal_string(value: octet)
+  int_to_decimal_string(value: octet)
 }
 
 // THE OCTET IS AN Int AND THE LIST HOLDS Byte. `list_at_optional` over a `List<Byte>` yields

@@ -1,5 +1,6 @@
 module gunbc.bmc_fan_projection
 
+import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.bmc.capability { BmcFirmwareVersion }
 import extdeps.bmc.types {
   BmcFanAggregatedControllerTopology,
@@ -8,7 +9,6 @@ import extdeps.bmc.types {
   BmcFanPolicyObservation,
   bmc_fan_controller_shape_aggregated_topology,
 }
-import extdeps.boards.types { BaseboardModel }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import std.measure {
   celsius,
@@ -112,7 +112,7 @@ type BmcFanDurabilityEvidence =
   StateDurabilityEvidence<HostIdentity, BmcFanConfigReadbackSubject>
 
 type BmcFanPolicyProjectionCapability {
-  board: BaseboardModel
+  board: BoardAuthorityRef
   firmware: BmcFirmwareVersion
   projected_curve: BmcFanCurve
   projected_config_digest: Digest
@@ -255,7 +255,7 @@ fn bmc_fan_admitted_config_digest(
 }
 
 fn bmc_fan_policy_projection_capability(
-  board: BaseboardModel,
+  board: BoardAuthorityRef,
   firmware: BmcFirmwareVersion,
   projected_curve: BmcFanCurve,
   projected_config_digest: Digest,
@@ -306,7 +306,7 @@ fn bmc_fan_policy_projection_capability(
 // program from passing as suitable.
 fn bmc_fan_policy_projection_apply_suitability(
   capability: BmcFanPolicyProjectionCapability,
-  board: BaseboardModel,
+  board: BoardAuthorityRef,
   desired_curve: BmcFanCurve,
   observation: BmcFanPolicyObservation,
   host: HostIdentity,

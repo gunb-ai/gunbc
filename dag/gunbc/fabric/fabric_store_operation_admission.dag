@@ -13,7 +13,6 @@ import gunbc.spark.pair_serving_authority_log {
   pair_authority_event_decode, pair_authority_partition_prefix, host_placement_partition,
 }
 import gunbc.spark.host_effect_quiescence { ClaimantTerminal, RecoveryAuthorized }
-import gunbc.spark.pair_serving_d0 { d0_required_scope, d0_filing_key_scope }
 import gunbc.durable_cas_fabric_storage { cas_slot_head_prefix }
 import gunbc.auth.approval_capability { ApprovalCapability, CapabilityRefusal }
 import gunbc.auth.approval_decision_store { ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused }
@@ -45,6 +44,10 @@ import gunbc.auth.approval_store_receipt { verify_store_receipt, StoreReceiptAut
 // store receipt (gunbc.auth.approval_store_receipt) whose approved intent -- presented beside it and
 // bound to it by digest -- states a scope admissible for the operation.
 
+// THE FILING HEADS D0 WROTE KEEP THEIR PREFIX: the heads already in the store were written under it, and
+// classifying them is a fact about stored data that outlives the lifecycle that wrote them.
+data consent_filing_key_scope: String = "pair-serving-d0-filing-"
+
 // Which protected head an advance names; Absent is an unprotected head this wall does not govern.
 type ProtectedHead
   = AuthorityPartitionHead
@@ -56,7 +59,7 @@ fn protected_head_of(name: String) -> ProtectedHead? {
   if starts_with(s: name, prefix: pair_authority_partition_prefix) { Present { value: AuthorityPartitionHead } }
   else if name == (host_placement_partition as String) { Present { value: HostPlacementHead } }
   else if starts_with(s: name, prefix: join([cas_slot_head_prefix, authorization_claim_key_scope], "")) { Present { value: ConsentClaimSlotHead } }
-  else if starts_with(s: name, prefix: join([cas_slot_head_prefix, d0_filing_key_scope], "")) { Present { value: ConsentFilingSlotHead } }
+  else if starts_with(s: name, prefix: join([cas_slot_head_prefix, consent_filing_key_scope], "")) { Present { value: ConsentFilingSlotHead } }
   else { none }
 }
 
@@ -126,10 +129,12 @@ type OperationRequirement
   = WorkloadGrantRequired { target: NamespacePosition }
   | ApprovedScopeRequired { admissible: List<AuthorizationScope> }
 
-// THE ADMISSIBLE SCOPES ARE THE APPROVED OPERATIONS THAT PERFORM EACH WRITE. Today one approval flow
-// exists, D0's (d0_required_scope), and it performs the suspension transaction end to end: the
-// consent claim and filing, the authority transitions and entry-state record, and the placement saga
-// it prepares, claims, finalizes, aborts or cancels. EstablishAuthority and RecoverHostEffect have
+// THE ADMISSIBLE SCOPES ARE THE APPROVED OPERATIONS THAT PERFORM EACH WRITE. TODAY NO APPROVAL FLOW EXISTS.
+// The one there was, D0's (gunbc.spark.pair_serving_d0, which performed the suspension transaction end to
+// end: the consent claim and filing, the authority transitions and entry-state record, and the placement
+// saga), had exactly one subject, Group A, and was deleted with Group A's decommissioning (operator,
+// 2026-10-07; the units were sold). So every operation it approved now refuses as
+// NoApprovalFlowForOperation until a flow for another group is ruled and lands. EstablishAuthority and RecoverHostEffect have
 // NO admissible scope yet: the operator entries that perform them (pair_serving_authority_establish_wet,
 // host_effect_recover_wet) select operator approval (gunbc.auth.privileged_effect_census). The
 // recover, finalize and abort flows are d0_store_operation_wall PR 5b, which the flip depends on, so
@@ -144,15 +149,15 @@ fn operation_requirement(operation: StoreOperation) -> OperationRequirement {
     ReleaseHostEffect => WorkloadGrantRequired { target: host_effect_position }
     EstablishAuthority => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
     RecoverHostEffect => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
-    TransitionAuthority => ApprovedScopeRequired { admissible: [d0_required_scope()] }
-    RecordEntryState => ApprovedScopeRequired { admissible: [d0_required_scope()] }
-    CancelAppend => ApprovedScopeRequired { admissible: [d0_required_scope()] }
-    PreparePlacement => ApprovedScopeRequired { admissible: [d0_required_scope()] }
-    ClaimPlacementAppend => ApprovedScopeRequired { admissible: [d0_required_scope()] }
-    FinalizePlacement => ApprovedScopeRequired { admissible: [d0_required_scope()] }
-    AbortPlacement => ApprovedScopeRequired { admissible: [d0_required_scope()] }
-    ClaimConsent => ApprovedScopeRequired { admissible: [d0_required_scope()] }
-    FreezeConsentFiling => ApprovedScopeRequired { admissible: [d0_required_scope()] }
+    TransitionAuthority => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
+    RecordEntryState => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
+    CancelAppend => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
+    PreparePlacement => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
+    ClaimPlacementAppend => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
+    FinalizePlacement => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
+    AbortPlacement => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
+    ClaimConsent => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
+    FreezeConsentFiling => ApprovedScopeRequired { admissible: [] as List<AuthorizationScope> }
   }
 }
 

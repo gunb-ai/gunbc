@@ -9,7 +9,7 @@ import std.measure {
   allocator_block_count_value,
   byte_size_count,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import extdeps.vllm.server { vllm_source_revision_read }
@@ -71,8 +71,8 @@ fn w_digest(hex: String) -> ContentHash {
 
 fn w_launch() -> VllmServingLaunch {
   vllm_serving_launch(
-    group: FabricGroupA,
-    head: spark_pair_serving_head(group: FabricGroupA),
+    group: FabricGroupB {},
+    head: spark_pair_serving_head(group: FabricGroupB {}),
     systemd_invocation: "glm-plan-fixture-launch" as NonEmptyStr,
     container_id: "glm-native-tp4" as NonEmptyStr,
     executable_digest: w_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111"),
@@ -538,8 +538,8 @@ fn w_real_reported(hundredths: Nat) -> VllmReportedCapacity? {
 
 fn w_real_launch() -> VllmServingLaunch {
   vllm_serving_launch(
-    group: FabricGroupB,
-    head: spark_pair_serving_head(group: FabricGroupB),
+    group: FabricGroupB {},
+    head: spark_pair_serving_head(group: FabricGroupB {}),
     systemd_invocation: "glm-bounded-experiment-262k-fixture-launch" as NonEmptyStr,
     container_id: "glm-native-tp4" as NonEmptyStr,
     executable_digest: w_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111"),

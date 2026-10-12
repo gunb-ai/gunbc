@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
+import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.publication { SpecificationDocumentDate }
@@ -97,6 +98,16 @@ data mt_jade_reference_platform: MtJadeReferencePlatform = MtJadeReferencePlatfo
   specification_license: mt_jade_specification_license,
   contribution_license: mt_jade_contribution_license,
   excluded_appendices: mt_jade_excluded_non_normative_appendices,
+}
+
+// THE BOARD-AUTHORITY REFERENCE to this subject, exported so a binding row names the subject by
+// importing it rather than spelling a module path.
+data mt_jade_board_authority: BoardAuthorityRef = BoardAuthorityRef {
+  subject: DeclarationRef {
+    module_path: "extdeps.ocp.mt_jade.subject",
+    decl_name: "mt_jade_reference_platform",
+    field: WholeDeclaration
+  }
 }
 
 data mt_jade_model_scope: ExternalModelScope = ExternalModelScope {

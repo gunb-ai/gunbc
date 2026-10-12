@@ -6,7 +6,7 @@ import v2.std.arrow_signature { ArrowParameterOrderMalformed, arrow_declared_par
 import v2.std.compilers.target_model { ProducedDeclSignatureSubject, arrow_domain_binder_names, produced_decl_subject_from_name_and_arrow }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node_query { binder_edge }
+import v2.std.node_query { binder_edge, declared_field_from_edge }
 import v2.std.node {
   Arrow,
   Atom,
@@ -97,20 +97,22 @@ fn ipo_without_order(arrow: Node) -> Node {
   }
 }
 
-// Each parameter as its label then its type atom, so the claim reads order AND the binding of each
-// label to its own type.
+// Each parameter as its label then its declared type atom, so the claim reads order AND the binding
+// of each label to its own type. The renderer’s param edges are binders (v2.std.node_query
+// binder_edge): the type lives on the binder, not as the edge target’s connective. Reading the
+// target as an Atom is the pre-XL-2 shape and would accept a renderer that dropped the type into
+// the edge target while refusing the production encoding.
 fn ipo_param_symbols(params: List<Edge>) -> List<Symbol> {
   fold(params, init: [], f: fn(acc, e) {
-    let name = match e.label {
-      StructuralLabel { label: _ } => ^ipo_structural
-      Authored { name: n } => n
-      Positional => ^ipo_positional
+    match declared_field_from_edge(e: e) {
+      Present { value: field } =>
+        let ty = match field.type_node.kind {
+          TypeNode { connective: Atom { identity: t } } => t
+          _ => ^ipo_not_an_atom
+        }
+        concat(acc, [field.name, ty])
+      Absent => concat(acc, [^ipo_not_a_binder, ^ipo_not_an_atom])
     }
-    let ty = match e.target.kind {
-      TypeNode { connective: Atom { identity: t } } => t
-      _ => ^ipo_not_an_atom
-    }
-    concat(acc, [name, ty])
   })
 }
 

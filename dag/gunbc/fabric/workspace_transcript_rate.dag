@@ -1,0 +1,581 @@
+module gunbc.fabric.workspace_transcript_rate
+
+import std.types { String, NonEmptyStr, Int, Bool, List, Map }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.optional { Present, Absent }
+import std.algebra { Cons, Empty }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { ByteSize, byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count, Second, second, second_count, Bandwidth, bandwidth, bandwidth_count, bits_per_byte, ObservationInstant, ProcessMonotonic, WallClock, InstantOrder, InstantAfter, InstantIncomparable, InstantBefore, InstantSame }
+import std.checkpointed_workspace { WorkspaceAgeOf, WorkspaceAgeUndefined, workspace_age_between }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.tools.findutils { find_regular_file_size_mtime_command }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import gunbc.floor_cost_distribution { permille_percentile }
+import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.host_effect { LocalShell }
+import gunbc.fabric.workspace_source {
+  WorkspaceSourceRoot, workspace_source_fixed_roots, workspace_source_pack_host,
+  WorkspaceAgentStateSlot, AgentStateSlotAdmitted, AgentStateSlotAbsent, AgentStateSlotUnknown,
+  workspace_agent_state_slot_observe, workspace_agent_state_slot_words, workspace_root_member,
+  workspace_exclusions, workspace_path_exclusion, workspace_exclusion_spellings, workspace_transcript_exclusions,
+  CredentialExclusion, TranscriptExclusion,
+}
+
+// HOW FAST THE OPERATOR'S AGENT TRANSCRIPTS ACTUALLY GROW, OBSERVED ON THE HOST THAT HOLDS THEM, FROM
+// SIZES AND MODIFICATION TIMES ALONE (step 3 of the workspace stage-0 sequence, operator decision
+// via warm-badger-442, 2026-10-05). The stage-0 pack (gunbc.fabric.workspace_source) carries every
+// transcript as a same-size synthetic placeholder of a static tree, so its checkpoint-lag figures
+// say nothing about a tree being written to; the 10 s / 60 s verdicts stay withheld until a churn
+// phase appends to those placeholders at a realistic rate. This module produces that rate. On srv1
+// it samples, once per declared interval over a declared window, the byte size and mtime of every
+// file the pack's own TranscriptExclusion rows match under the pinned agent-state roots, and
+// records per interval what grew, what appeared, what shrank and how many bytes were appended.
+//
+// CONTENT IS NEVER READ. The only reader is extdeps.tools.findutils
+// find_regular_file_size_mtime_command, whose -printf directives are answered from the inode and
+// whose expression runs no other program; the witness checks the second fact on the command value.
+// Transcript content is exactly what the operator ruled is not carried, and a rate instrument has no
+// need of it.
+//
+// WHAT ONE RUN IS: one window, on one host, during whatever agent activity happened to be live. It
+// is ONE SAMPLE OF THE WORKLOAD, NOT THE WORKLOAD, and every receipt says so (DESIGN 4d: the figure
+// is a typed reading of one occasion, and a consumer that quotes it as the operator's rate is the
+// defect).
+
+// ── WHAT IS OBSERVED, AND FOR HOW LONG ─────────────────────────────────────────────────────────
+
+// THE ROOTS ARE THE PACK'S OWN: the Claude agent-state root is the one the pack's slot admission
+// (gunbc.fabric.workspace_source workspace_agent_state_slot_observe) admits from the same
+// agent_state_slot input -- the active slot moves with the operator's credential swaps, so it is a
+// declared input with no default, never a pinned path -- and the Codex home is the pack's fixed row,
+// selected by its label. The gunbc clone is not observed: no transcript lives in it, and walking a
+// build tree each interval would cost the window its resolution.
+data workspace_transcript_rate_fixed_root_labels: List<NonEmptyStr> = ["codex-state"]
+
+// TEN MINUTES AT TEN SECONDS, declared and printed in every receipt. The interval matches the
+// stage-0 checkpoint-lag target, so one row is one target-length of appends; the window spans
+// sixty of them, which is the smallest population whose 95th percentile is not its maximum.
+data workspace_transcript_rate_window: Second = second(count: 600)
+data workspace_transcript_rate_sample_interval: Second = second(count: 10)
+
+data workspace_transcript_rate_receipt_path: String = "target/workspace-transcript-rate-receipt.txt"
+
+data workspace_transcript_rate_caveat: NonEmptyStr = "ONE SAMPLE OF WORKLOAD, NOT THE WORKLOAD: one window on one host during whatever agent activity was live; bytes_appended is a LOWER BOUND (stat sees net size change per interval, never writes undone or overwritten within it)"
+
+type TranscriptRateRootSelection
+  = TranscriptRateRootsSelected { roots: List<WorkspaceSourceRoot> }
+  | TranscriptRateRootUndeclared { label: NonEmptyStr }
+  | TranscriptRateSlotRefused { slot: WorkspaceAgentStateSlot }
+
+// The admitted slot's root first, then the fixed rows; a refused slot refuses the selection, carrying
+// the admission so the receipt prints the pack's own words for it.
+fn workspace_transcript_rate_roots(slot: WorkspaceAgentStateSlot, fixed: TranscriptRateRootSelection) -> TranscriptRateRootSelection {
+  match slot {
+    AgentStateSlotAbsent { observed: _ } => TranscriptRateSlotRefused { slot: slot }
+    AgentStateSlotUnknown { requested: _, observed: _ } => TranscriptRateSlotRefused { slot: slot }
+    AgentStateSlotAdmitted { slot: _, root: agent } =>
+      match fixed {
+        TranscriptRateRootsSelected { roots: rs } => TranscriptRateRootsSelected { roots: Cons { head: agent, tail: rs } }
+        TranscriptRateRootUndeclared { label: l } => TranscriptRateRootUndeclared { label: l }
+        TranscriptRateSlotRefused { slot: s2 } => TranscriptRateSlotRefused { slot: s2 }
+      }
+  }
+}
+
+fn workspace_transcript_rate_select_roots(labels: List<NonEmptyStr>, declared: List<WorkspaceSourceRoot>) -> TranscriptRateRootSelection {
+  match labels {
+    Empty => TranscriptRateRootsSelected { roots: [] }
+    Cons { head: l, tail: rest } =>
+      match filter(declared, r => (r.label as String) == (l as String)) {
+        Empty => TranscriptRateRootUndeclared { label: l }
+        Cons { head: r, tail: _ } =>
+          match workspace_transcript_rate_select_roots(labels: rest, declared: declared) {
+            TranscriptRateRootUndeclared { label: u } => TranscriptRateRootUndeclared { label: u }
+            TranscriptRateSlotRefused { slot: s } => TranscriptRateSlotRefused { slot: s }
+            TranscriptRateRootsSelected { roots: rs } => TranscriptRateRootsSelected { roots: Cons { head: r, tail: rs } }
+          }
+      }
+  }
+}
+
+// ── ONE READING OF ONE ROOT: SIZE AND MTIME, NEVER CONTENT ─────────────────────────────────────
+
+// A FILE'S MODIFICATION TIME IS THE FILESYSTEM'S CLOCK, NOT THIS PROCESS'S: st_mtime counted from
+// the epoch, as find's %T@ prints it. It has its own carrier so it can never stand where a sample
+// instant (an ObservationInstant on this process's monotonic clock) is expected, and the two are
+// never subtracted from each other; an mtime is only ever compared with another mtime.
+type TranscriptFileMtime {
+  since_epoch: Nanosecond
+}
+
+type TranscriptFileStat {
+  member: NonEmptyStr
+  size: ByteSize
+  mtime: TranscriptFileMtime
+}
+
+// A ROOT THAT COULD NOT BE READ REFUSES, and so does a line that is not a record: a partial listing
+// is not a smaller transcript population, it is a reading that did not happen, and an interval
+// computed against it would report every unlisted file as removed.
+type TranscriptRootReading
+  = TranscriptRootRead { files: List<TranscriptFileStat> }
+  | TranscriptRootRefused { root: WorkspaceSourceRoot, detail: String }
+
+fn workspace_transcript_rate_root_command(root: WorkspaceSourceRoot) -> ArgvCommand {
+  find_regular_file_size_mtime_command(root: root.path as String)
+}
+
+fn workspace_transcript_rate_root_reading(root: WorkspaceSourceRoot, run: ProcessRunOutcome) -> TranscriptRootReading {
+  match run {
+    ProcessNotSpawned { program: p, cause: c } => TranscriptRootRefused { root: root, detail: join([p as String, " did not run: ", c as String], "") }
+    ProcessRan { observation: o } =>
+      if o.exit_code != 0 {
+        TranscriptRootRefused { root: root, detail: join(["find exited ", to_string(o.exit_code), " reading ", root.path as String, ": ", o.stderr], "") }
+      } else {
+        workspace_transcript_rate_lines(root: root, lines: filter(split(o.stdout, separator: "\n"), l => l != ""), files: [])
+      }
+  }
+}
+
+// Each line is classified by the pack's own matcher over its member path, so this module restates
+// no rule: a path the pack excludes as a transcript is observed, a credential-class match (counted
+// first, as the pack counts it) or an unmatched path is not. Kept files accumulate in reverse and
+// the order is irrelevant to every consumer, which keys them by member.
+fn workspace_transcript_rate_lines(root: WorkspaceSourceRoot, lines: List<String>, files: List<TranscriptFileStat>) -> TranscriptRootReading {
+  match lines {
+    Empty => TranscriptRootRead { files: files }
+    Cons { head: l, tail: rest } =>
+      match workspace_transcript_rate_line(root: root, line: l) {
+        TranscriptLineUnparsed { line: bad } => TranscriptRootRefused { root: root, detail: concat("find printed a line that is not a size, mtime and path record: ", bad) }
+        TranscriptLineOther => workspace_transcript_rate_lines(root: root, lines: rest, files: files)
+        TranscriptLineFile { stat: s } => workspace_transcript_rate_lines(root: root, lines: rest, files: Cons { head: s, tail: files })
+      }
+  }
+}
+
+type TranscriptLine
+  = TranscriptLineFile { stat: TranscriptFileStat }
+  | TranscriptLineOther
+  | TranscriptLineUnparsed { line: String }
+
+fn workspace_transcript_rate_line(root: WorkspaceSourceRoot, line: String) -> TranscriptLine {
+  match split(line, separator: "\t") {
+    Cons { head: size_text, tail: Cons { head: mtime_text, tail: Cons { head: first, tail: more } } } => {
+      let relative = join(Cons { head: first, tail: more }, "\t")
+      match parse_int(s: size_text) {
+        Absent => TranscriptLineUnparsed { line: line }
+        Present { value: n } =>
+          match workspace_transcript_rate_mtime(text: mtime_text) {
+            Absent => TranscriptLineUnparsed { line: line }
+            Present { value: t } =>
+              if n < 0 || relative == "" {
+                TranscriptLineUnparsed { line: line }
+              } else {
+                workspace_transcript_rate_classify(stat: TranscriptFileStat { member: workspace_root_member(root: root, relative: relative) as NonEmptyStr, size: byte_size(count: n), mtime: t })
+              }
+          }
+      }
+    }
+    Cons { head: _, tail: Cons { head: _, tail: Empty } } => TranscriptLineUnparsed { line: line }
+    Cons { head: _, tail: Empty } => TranscriptLineUnparsed { line: line }
+    Empty => TranscriptLineUnparsed { line: line }
+  }
+}
+
+fn workspace_transcript_rate_classify(stat: TranscriptFileStat) -> TranscriptLine {
+  match workspace_path_exclusion(exclusions: workspace_exclusions(), path: stat.member as String) {
+    Absent => TranscriptLineOther
+    Present { value: x } =>
+      match x.class {
+        TranscriptExclusion => TranscriptLineFile { stat: stat }
+        CredentialExclusion => TranscriptLineOther
+      }
+  }
+}
+
+// %T@ PRINTS SECONDS, A POINT AND A FRACTION (GNU find prints ten fractional digits; a filesystem
+// with coarser timestamps prints zeros there). Nanoseconds are the first nine fractional digits,
+// right-padded, so a shorter fraction reads as the value it spells rather than a smaller one.
+fn workspace_transcript_rate_mtime(text: String) -> TranscriptFileMtime? {
+  match split(text, separator: ".") {
+    Cons { head: whole, tail: Empty } =>
+      match parse_int(s: whole) {
+        Absent => none
+        Present { value: s } => if s < 0 { none } else { Present { value: TranscriptFileMtime { since_epoch: nanosecond(count: s * 1000000000) } } }
+      }
+    Cons { head: whole, tail: Cons { head: frac, tail: Empty } } => {
+      let padded = substring(s: concat(frac, "000000000"), start: 0, end: 9)
+      match parse_int(s: whole) {
+        Absent => none
+        Present { value: s } =>
+          match parse_int(s: padded) {
+            Absent => none
+            Present { value: f } => if s < 0 || f < 0 || frac == "" { none } else { Present { value: TranscriptFileMtime { since_epoch: nanosecond(count: s * 1000000000 + f) } } }
+          }
+      }
+    }
+    Cons { head: _, tail: Cons { head: _, tail: Cons { head: _, tail: _ } } } => none
+    Empty => none
+  }
+}
+
+// ── ONE SAMPLE: EVERY ROOT, AT ONE INSTANT ─────────────────────────────────────────────────────
+//
+// The instant is read on this process's monotonic clock immediately before the first root is
+// walked, so an interval's span is the time between the starts of two walks; a walk's own duration
+// is inside the span it opens, never subtracted from it.
+type TranscriptRateSample
+  = TranscriptRateSampled { at: ObservationInstant, files: List<TranscriptFileStat> }
+  | TranscriptRateSampleRefused { refusals: List<String> }
+
+fn workspace_transcript_rate_sample_of(at: ObservationInstant, readings: List<TranscriptRootReading>) -> TranscriptRateSample {
+  let refusals = flat_map(readings, r => match r {
+    TranscriptRootRefused { root: root, detail: d } => [join([root.label as String, " (", root.path as String, "): ", d], "")]
+    TranscriptRootRead { files: _ } => []
+  })
+  match refusals {
+    Cons { head: _, tail: _ } => TranscriptRateSampleRefused { refusals: refusals }
+    Empty => TranscriptRateSampled { at: at, files: flat_map(readings, r => match r {
+      TranscriptRootRead { files: fs } => fs
+      TranscriptRootRefused { root: _, detail: _ } => []
+    }) }
+  }
+}
+
+// ONE CLOCK DOMAIN FOR EVERY SAMPLE OF A WINDOW: this process's monotonic clock, wall basis -- the
+// shape gunbc.fabric.workspace_source workspace_source_instant gives the pack's spans.
+fn workspace_transcript_rate_instant(label: String) -> ObservationInstant {
+  ObservationInstant { domain: ProcessMonotonic { process: "workspace-transcript-rate" }, basis: WallClock, since_origin: nanosecond(count: observed_monotonic_nanos(label)) }
+}
+
+fn workspace_transcript_rate_sample_wet(roots: List<WorkspaceSourceRoot>, label: String) -> TranscriptRateSample {
+  let at = workspace_transcript_rate_instant(label: label)
+  workspace_transcript_rate_sample_of(at: at, readings: map(roots, r => workspace_transcript_rate_root_reading(root: r, run: run_shell_command_observe_outcome(command: workspace_transcript_rate_root_command(root: r), transport: LocalExec))))
+}
+
+// ── ONE INTERVAL: THE DIFFERENCE OF TWO SAMPLES ────────────────────────────────────────────────
+//
+// A FILE THAT SHRANK IS A TRUNCATION, REPORTED AS ONE, never a negative append: its delta is not
+// subtracted from the bytes appended, because a rewrite that shortens a file appends nothing and
+// would otherwise cancel real appends elsewhere in the interval. A CREATED file contributes its
+// whole size, all of it written since the previous sample. A file whose mtime advanced at the same
+// size was rewritten in place and appended nothing. The ACTIVE-WRITER COUNT is the number of
+// distinct files written in the interval -- created, grown, shrunk or mtime-advanced. It counts
+// FILES, not processes: one agent session appends to its own transcript and a subagent to its own,
+// so it tracks live writers without being a process count, and stat cannot see the processes.
+type TranscriptTruncation {
+  member: NonEmptyStr
+  from: ByteSize
+  to: ByteSize
+}
+
+type TranscriptAppendInterval {
+  span: Nanosecond
+  files_grown: Int
+  files_created: Int
+  files_removed: Int
+  files_rewritten_same_size: Int
+  truncations: List<TranscriptTruncation>
+  bytes_appended: ByteSize
+  active_writers: Int
+}
+
+type TranscriptFileChange
+  = TranscriptFileCreated { size: ByteSize }
+  | TranscriptFileGrown { by: ByteSize }
+  | TranscriptFileShrank { truncation: TranscriptTruncation }
+  | TranscriptFileRewritten
+  | TranscriptFileUnchanged
+
+fn workspace_transcript_file_change(before: TranscriptFileStat?, after: TranscriptFileStat) -> TranscriptFileChange {
+  match before {
+    Absent => TranscriptFileCreated { size: after.size }
+    Present { value: b } => {
+      let delta = measure_count(m: after.size) - measure_count(m: b.size)
+      if delta > 0 {
+        TranscriptFileGrown { by: byte_size(count: delta) }
+      } else if delta < 0 {
+        TranscriptFileShrank { truncation: TranscriptTruncation { member: after.member, from: b.size, to: after.size } }
+      } else if nanosecond_count(n: after.mtime.since_epoch) != nanosecond_count(n: b.mtime.since_epoch) {
+        TranscriptFileRewritten
+      } else {
+        TranscriptFileUnchanged
+      }
+    }
+  }
+}
+
+fn workspace_transcript_rate_index(files: List<TranscriptFileStat>) -> Map<String, TranscriptFileStat> {
+  fold(files, init: empty_map(), f: (m, s) => map_insert(m: m, key: s.member as String, value: s))
+}
+
+// Every file of the later sample is looked up once in the earlier one, so an interval costs one
+// pass over each sample; a removed file is counted as the earlier files the later one did not keep.
+fn workspace_transcript_rate_interval(before: List<TranscriptFileStat>, after: List<TranscriptFileStat>, span: Nanosecond) -> TranscriptAppendInterval {
+  let index = workspace_transcript_rate_index(files: before)
+  let changes = map(after, s => workspace_transcript_file_change(before: map_lookup(m: index, key: s.member as String), after: s))
+  let created = length(filter(changes, c => match c {
+    TranscriptFileCreated { size: _ } => true
+    TranscriptFileGrown { by: _ } => false
+    TranscriptFileShrank { truncation: _ } => false
+    TranscriptFileRewritten => false
+    TranscriptFileUnchanged => false
+  }))
+  let grown = length(filter(changes, c => match c {
+    TranscriptFileCreated { size: _ } => false
+    TranscriptFileGrown { by: _ } => true
+    TranscriptFileShrank { truncation: _ } => false
+    TranscriptFileRewritten => false
+    TranscriptFileUnchanged => false
+  }))
+  let rewritten = length(filter(changes, c => match c {
+    TranscriptFileCreated { size: _ } => false
+    TranscriptFileGrown { by: _ } => false
+    TranscriptFileShrank { truncation: _ } => false
+    TranscriptFileRewritten => true
+    TranscriptFileUnchanged => false
+  }))
+  let truncations = flat_map(changes, c => match c {
+    TranscriptFileCreated { size: _ } => []
+    TranscriptFileGrown { by: _ } => []
+    TranscriptFileShrank { truncation: t } => [t]
+    TranscriptFileRewritten => []
+    TranscriptFileUnchanged => []
+  })
+  let appended = fold(changes, init: 0, f: (acc, c) => match c {
+    TranscriptFileCreated { size: s } => acc + measure_count(m: s)
+    TranscriptFileGrown { by: d } => acc + measure_count(m: d)
+    TranscriptFileShrank { truncation: _ } => acc
+    TranscriptFileRewritten => acc
+    TranscriptFileUnchanged => acc
+  })
+  TranscriptAppendInterval {
+    span: span,
+    files_grown: grown,
+    files_created: created,
+    files_removed: length(before) - (length(after) - created),
+    files_rewritten_same_size: rewritten,
+    truncations: truncations,
+    bytes_appended: byte_size(count: appended),
+    active_writers: created + grown + length(truncations) + rewritten,
+  }
+}
+
+// ── THE OBSERVED RATE: THE CARRIER THE CHURN PHASE CONSUMES ────────────────────────────────────
+//
+// THE RATE IS CARRIED AS ITS EXACT QUOTIENT PAIR -- bytes appended over a measured span, per
+// interval -- because std.measure has no bytes-per-time type to carry it as one figure: its only
+// rate of information is Bandwidth (DataRate, bits per second, a Nat count at One scale), which
+// would floor every interval to whole bits per second and lose a quiet interval to zero. That gap
+// is stated, not filled here: the receipt's rates are DERIVED from these pairs as Bandwidth (see
+// workspace_transcript_rate_bandwidth), and a consumer derives what it needs from the pairs.
+//
+// THE CONSUMER IS A DECLARED FRONTIER (DESIGN 3c): the stage-0 churn phase (step 2 of the
+// workspace stage-0 sequence, a later change under still-dove-673) appends to the synthetic
+// transcript placeholders of gunbc.fabric.workspace_source at this observed rate, and the 10 s /
+// 60 s checkpoint-lag verdicts are quotable only over a run that carries that churn. Its trigger is
+// that change landing; until it does, the receipt renderer below is this carrier's executing
+// consumer, and the receipt is the dispatch input the churn phase is parameterized from.
+type TranscriptAppendRate {
+  host: NonEmptyStr
+  window: Second
+  interval: Second
+  rows: List<TranscriptAppendInterval>
+  caveat: NonEmptyStr
+}
+
+// A WINDOW EITHER COMPLETES OR REFUSES. A root that becomes unreadable mid-window, or a sleep that
+// fails, ends the observation; the rows already taken are printed in the receipt beside the
+// refusal, never summarized as if the window had finished.
+type TranscriptRateObservation
+  = TranscriptRateObserved { rate: TranscriptAppendRate }
+  | TranscriptRateRefused { reason: String, rows: List<TranscriptAppendInterval> }
+  | TranscriptRateClockUndefined { from: ObservationInstant, to: ObservationInstant, order: InstantOrder, rows: List<TranscriptAppendInterval> }
+
+// THE SPAN IS DERIVED, NEVER SUBTRACTED: std.checkpointed_workspace workspace_age_between orders two
+// consecutive sample instants first, so a later sample that does not follow the earlier one
+// (InstantAfter) or one on another clock (InstantIncomparable) ends the window as its own typed
+// refusal, TranscriptRateClockUndefined, instead of standing in a span.
+//
+// THE PURE WINDOW: a baseline sample and one sample per interval, each interval the difference of
+// consecutive samples. The sampler and the pause are supplied, so the wet entry passes the real
+// walk and the real sleep and a witness passes recorded samples; the fold itself is one function.
+fn workspace_transcript_rate_window_of(baseline: TranscriptRateSample, remaining: Int, next: fn(Int) -> TranscriptRateSample, pause: fn(Int) -> Bool, rows: List<TranscriptAppendInterval>) -> TranscriptRateObservation {
+  match baseline {
+    TranscriptRateSampleRefused { refusals: rs } => TranscriptRateRefused { reason: concat("a transcript root could not be read; no permission is widened here: ", join(rs, "; ")), rows: reverse(rows) }
+    TranscriptRateSampled { at: at, files: files } =>
+      if remaining <= 0 {
+        TranscriptRateObserved { rate: TranscriptAppendRate { host: workspace_source_pack_host, window: workspace_transcript_rate_window, interval: workspace_transcript_rate_sample_interval, rows: reverse(rows), caveat: workspace_transcript_rate_caveat } }
+      } else if pause(remaining) == false {
+        TranscriptRateRefused { reason: "the pause between samples failed; the interval is not what the window declares", rows: reverse(rows) }
+      } else {
+        match next(remaining) {
+          TranscriptRateSampleRefused { refusals: rs } => TranscriptRateRefused { reason: concat("a transcript root became unreadable mid-window: ", join(rs, "; ")), rows: reverse(rows) }
+          TranscriptRateSampled { at: at2, files: files2 } =>
+            match workspace_age_between(from: at, to: at2) {
+              WorkspaceAgeUndefined { order: o } => TranscriptRateClockUndefined { from: at, to: at2, order: o, rows: reverse(rows) }
+              WorkspaceAgeOf { age: span } =>
+                workspace_transcript_rate_window_of(
+                  baseline: TranscriptRateSampled { at: at2, files: files2 },
+                  remaining: remaining - 1,
+                  next: next,
+                  pause: pause,
+                  rows: Cons { head: workspace_transcript_rate_interval(before: files, after: files2, span: span), tail: rows },
+                )
+            }
+        }
+      }
+  }
+}
+
+fn workspace_transcript_rate_interval_count() -> Int {
+  second_count(s: workspace_transcript_rate_window) / second_count(s: workspace_transcript_rate_sample_interval)
+}
+
+// ── THE SUMMARY, DERIVED FOR THE RECEIPT ───────────────────────────────────────────────────────
+
+// A RATE IS A std.measure Bandwidth -- DataRate, bits per second -- derived from the exact quotient
+// pair, never a bare number. Bits rather than bytes because Bandwidth is the one information-rate
+// carrier std.measure has; eight bits to the octet (bits_per_byte) makes the conversion exact, and the
+// floor is taken once, on bits. The receipt prints the carrier's own bits/s beside the bytes/s it
+// implies (bits / 8, floored), which is the figure the churn phase is quoted in.
+fn workspace_transcript_rate_bandwidth(bytes: ByteSize, span: Nanosecond) -> Bandwidth? {
+  let ns = nanosecond_count(n: span)
+  if ns <= 0 { none } else { Present { value: bandwidth(count: (measure_count(m: bytes) * bits_per_byte() * 1000000000) / ns) } }
+}
+
+fn workspace_transcript_rate_row_rates(rows: List<TranscriptAppendInterval>) -> List<Bandwidth> {
+  flat_map(rows, r => match workspace_transcript_rate_bandwidth(bytes: r.bytes_appended, span: r.span) {
+    Absent => []
+    Present { value: v } => [v]
+  })
+}
+
+fn workspace_transcript_rate_percentile(rates: List<Bandwidth>, percent: Int) -> Bandwidth? {
+  match permille_percentile(values: map(rates, b => bandwidth_count(b: b)), percent: percent) {
+    Absent => none
+    Present { value: v } => Present { value: bandwidth(count: v) }
+  }
+}
+
+fn workspace_transcript_rate_rate_words(name: String, rate: Bandwidth?, absent: String) -> String {
+  match rate {
+    Absent => join([" ", name, "_bits_per_s=", absent, " ", name, "_bytes_per_s=", absent], "")
+    Present { value: b } => join([" ", name, "_bits_per_s=", to_string(bandwidth_count(b: b)), " ", name, "_bytes_per_s=", to_string(bandwidth_count(b: b) / bits_per_byte())], "")
+  }
+}
+
+fn workspace_transcript_rate_row_line(index: Int, r: TranscriptAppendInterval) -> String {
+  join([
+    "interval ", to_string(index),
+    " span_ms=", to_string(nanosecond_count(n: r.span) / 1000000),
+    " bytes_appended=", to_string(measure_count(m: r.bytes_appended)),
+    " files_grown=", to_string(r.files_grown),
+    " files_created=", to_string(r.files_created),
+    " files_removed=", to_string(r.files_removed),
+    " files_rewritten_same_size=", to_string(r.files_rewritten_same_size),
+    " truncations=", to_string(length(r.truncations)),
+    join(map(r.truncations, t => join([" truncated=", t.member as String, ":", to_string(measure_count(m: t.from)), "->", to_string(measure_count(m: t.to))], "")), ""),
+    " active_writers=", to_string(r.active_writers),
+  ], "")
+}
+
+fn workspace_transcript_rate_rows_text(rows: List<TranscriptAppendInterval>, index: Int, acc: List<String>) -> String {
+  match rows {
+    Empty => join(reverse(acc), "")
+    Cons { head: r, tail: rest } => workspace_transcript_rate_rows_text(rows: rest, index: index + 1, acc: Cons { head: concat(workspace_transcript_rate_row_line(index: index, r: r), "\n"), tail: acc })
+  }
+}
+
+fn workspace_transcript_rate_summary(rate: TranscriptAppendRate) -> String {
+  let total_bytes = byte_size(count: fold(rate.rows, init: 0, f: (acc, r) => acc + measure_count(m: r.bytes_appended)))
+  let total_span = nanosecond(count: fold(rate.rows, init: 0, f: (acc, r) => acc + nanosecond_count(n: r.span)))
+  let touched = fold(rate.rows, init: 0, f: (acc, r) => acc + r.active_writers)
+  let n = length(rate.rows)
+  let rates = workspace_transcript_rate_row_rates(rows: rate.rows)
+  join([
+    "summary intervals=", to_string(n),
+    " measured_window_ms=", to_string(nanosecond_count(n: total_span) / 1000000),
+    " bytes_appended_total=", to_string(measure_count(m: total_bytes)),
+    workspace_transcript_rate_rate_words(name: "mean", rate: workspace_transcript_rate_bandwidth(bytes: total_bytes, span: total_span), absent: "unmeasured(no-span)"),
+    workspace_transcript_rate_rate_words(name: "p95", rate: workspace_transcript_rate_percentile(rates: rates, percent: 95), absent: "unmeasured(no-interval)"),
+    workspace_transcript_rate_rate_words(name: "max", rate: workspace_transcript_rate_percentile(rates: rates, percent: 100), absent: "unmeasured(no-interval)"),
+    " files_touched_per_interval_mean=", if n == 0 { "unmeasured(no interval)" } else { join([to_string(touched / n), " (", to_string(touched), "/", to_string(n), ")"], "") },
+    " truncations_total=", to_string(fold(rate.rows, init: 0, f: (acc, r) => acc + length(r.truncations))),
+    "\n",
+  ], "")
+}
+
+fn workspace_transcript_rate_receipt_head(roots: List<WorkspaceSourceRoot>) -> String {
+  join([
+    "workspace_transcript_rate_observe host=", workspace_source_pack_host as String, "\n",
+    "window_s=", to_string(second_count(s: workspace_transcript_rate_window)), " interval_s=", to_string(second_count(s: workspace_transcript_rate_sample_interval)), "\n",
+    "observed=", workspace_exclusion_spellings(exclusions: workspace_transcript_exclusions), " (the pack's TranscriptExclusion rows; size and mtime only, content never read)\n",
+    join(map(roots, r => join(["root ", r.label as String, " path=", r.path as String], "")), "\n"), "\n",
+    workspace_transcript_rate_caveat as String, "\n",
+  ], "")
+}
+
+fn workspace_transcript_rate_order_words(order: InstantOrder) -> String {
+  match order {
+    InstantAfter => "a later sample instant did not follow the earlier one on the same clock; no span is derived"
+    InstantIncomparable { left: _, right: _ } => "two sample instants are on different clock domains or bases; no span is derived"
+    InstantBefore => "the instants ordered, yet no span was derived"
+    InstantSame => "the instants were the same, yet no span was derived"
+  }
+}
+
+fn workspace_transcript_rate_receipt(head: String, observation: TranscriptRateObservation) -> String {
+  match observation {
+    TranscriptRateObserved { rate: r } => join([head, workspace_transcript_rate_rows_text(rows: r.rows, index: 1, acc: []), workspace_transcript_rate_summary(rate: r), "verdict=observed\n"], "")
+    TranscriptRateRefused { reason: why, rows: rows } => join([head, workspace_transcript_rate_rows_text(rows: rows, index: 1, acc: []), "refused=", why, "\nverdict=refused\n"], "")
+    TranscriptRateClockUndefined { from: _, to: _, order: o, rows: rows } => join([head, workspace_transcript_rate_rows_text(rows: rows, index: 1, acc: []), "refused=", workspace_transcript_rate_order_words(order: o), "\nverdict=refused-clock\n"], "")
+  }
+}
+
+// ── THE OBSERVATION, ON THE HOST THAT HOLDS THE TRANSCRIPTS ────────────────────────────────────
+
+fn workspace_transcript_rate_finish(receipt: String, outcome: ProcessExit) -> ProcessExit {
+  let w = Filesystem.Write(path: workspace_transcript_rate_receipt_path, content: receipt)
+  if w.success == false {
+    exit_failure(reason: join(["workspace_transcript_rate_observe: receipt write failed: ", w.error, "\n", receipt], ""))
+  } else {
+    outcome
+  }
+}
+
+fn workspace_transcript_rate_observe_wet() -> ProcessExit {
+  let host = match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptured { value: v } => v
+    HostnameShortCaptureRefused { reason: _ } => ""
+  }
+  if host != (workspace_source_pack_host as String) {
+    exit_failure(reason: join(["workspace_transcript_rate_observe: the transcripts live on ", workspace_source_pack_host as String, " but this job runs on '", host, "'; dispatch it with host=", workspace_source_pack_host as String], ""))
+  } else {
+    let slot = workspace_agent_state_slot_observe()
+    let slot_line = concat(workspace_agent_state_slot_words(admission: slot), "\n")
+    match workspace_transcript_rate_roots(slot: slot, fixed: workspace_transcript_rate_select_roots(labels: workspace_transcript_rate_fixed_root_labels, declared: workspace_source_fixed_roots)) {
+      TranscriptRateRootUndeclared { label: l } => exit_failure(reason: join(["workspace_transcript_rate_observe: no fixed workspace source root is labelled '", l as String, "'"], ""))
+      TranscriptRateSlotRefused { slot: _ } => workspace_transcript_rate_finish(receipt: join(["workspace_transcript_rate_observe host=", host, "\n", slot_line, "verdict=refused-agent-state-slot\n"], ""), outcome: exit_failure(reason: concat("workspace_transcript_rate_observe: ", slot_line)))
+      TranscriptRateRootsSelected { roots: roots } => {
+        let head = concat(workspace_transcript_rate_receipt_head(roots: roots), slot_line)
+        let observation = workspace_transcript_rate_window_of(
+          baseline: workspace_transcript_rate_sample_wet(roots: roots, label: "workspace-transcript-rate-baseline"),
+          remaining: workspace_transcript_rate_interval_count(),
+          next: k => workspace_transcript_rate_sample_wet(roots: roots, label: concat("workspace-transcript-rate-sample-", to_string(k))),
+          pause: _ => sleep_delay_seconds_second_carrier_projection(duration: workspace_transcript_rate_sample_interval),
+          rows: [],
+        )
+        let receipt = workspace_transcript_rate_receipt(head: head, observation: observation)
+        match observation {
+          TranscriptRateObserved { rate: _ } => workspace_transcript_rate_finish(receipt: receipt, outcome: ExitSuccess)
+          TranscriptRateRefused { reason: why, rows: _ } => workspace_transcript_rate_finish(receipt: receipt, outcome: exit_failure(reason: concat("workspace_transcript_rate_observe: ", why)))
+          TranscriptRateClockUndefined { from: _, to: _, order: o, rows: _ } => workspace_transcript_rate_finish(receipt: receipt, outcome: exit_failure(reason: concat("workspace_transcript_rate_observe: ", workspace_transcript_rate_order_words(order: o))))
+        }
+      }
+    }
+  }
+}

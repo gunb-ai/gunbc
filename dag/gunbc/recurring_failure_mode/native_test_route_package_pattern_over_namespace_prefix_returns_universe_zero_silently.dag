@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.native_test_route_package_pattern_over_namespace_prefix_returns_universe_zero_silently
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data native_test_route_package_pattern_over_namespace_prefix_returns_universe_zero_silently: RecurringFailureMode = RecurringFailureMode {
+  identity: "native_test_route_package_pattern_over_namespace_prefix_returns_universe_zero_silently" as NonEmptyStr,
+
+  receipts: [
+    "**a package pattern over a namespace prefix (`//v2/test/claim/match_binder:all`) silently returns an empty universe -- universe=0, population=0, refused universe_underived -- where the correct behavior is a typed refusal naming the operand mismatch; the package half of a target pattern matches by exact package equality, and no module's package equals the prefix, so nothing can match (INVALID STATE: the lane reports success-shaped silence -- an empty selection -- instead of the typed operand refusal a mis-targeted pattern deserves, so a caller cannot distinguish 'wrong operand' from 'the lane is dead').**",
+    "CORRECTION OF THIS ROW'S PREDECESSOR (native_test_route_set_form_refuses_universe_underived_on_pristine_main, merged in #13236, deleted here): its observed state was real (the set-form invocation refuses with universe_underived on every head tried) but its diagnosis -- a break in the universe derivation entering main in a window -- is WITHDRAWN, unverified under the corrected instrument. The one-dispatch A/B below at a single head, same build, same seed emit, separates the operand from the lane.",
+    "RECEIPT (2026-10-04, clever-bat-68, remote BuildBuddy job ja878eb10, one dispatch, pristine main ed68b5573b336eb64fc1d2aa52d1c9fa29e4b247): the recursive form `gunbc test '//v2/test/claim/match_binder/...'` derives universe=13 population=13 (file_refusals=3, unrelated -- body_lowering_reason_service_realization_unreachable, parse_g0_tokens_remain); the set-form `gunbc test '//v2/test/claim/match_binder:all'` in the SAME build derives universe=0 population=0 and refuses universe_underived. Both tallies are re-derivable with the recorded invocation at the named sha.",
+    "RECORDED, NOT CHASED HERE (same receipt, the recursive run): the lane's qualification refuses on main with required_native_pass_regressed, unattributed_exclusions_present, and positive_population_empty -- the qualification gates beside the pattern operand; a separate row owns them if they recur.",
+    "RUNG FOUND AT: loud-but-blind -- the empty universe is typed (exit 2, terminal row, [native-occurrence-census] universe=0 observed=0) yet success-shaped to exit-only consumers, and it names universe_underived (a derivation failure) when the failure is the pattern operand; no floor lane observes the difference.",
+    "CEILING: structurally decidable. The pattern matcher can compare the pattern's package against the enumerated modules' packages and refuse with the mismatch named (which packages were in the universe, which the pattern's package half asked for), so the silent zero is a finite diff in the lane's refusal path.",
+    "NEXT-RUNG TRIGGER, naming the capability: a package pattern over a namespace prefix on main refuses with a typed operand refusal naming the mismatch (the pattern's package half and the enumerated packages), and an exact-package pattern and the recursive form keep deriving their universes as they do today.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.witness_v2_native_route", decl_name: "native_route_universe_derived", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.compile", decl_name: "native_lane_source_facts", field: WholeDeclaration },
+  ],
+}

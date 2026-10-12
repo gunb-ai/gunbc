@@ -48,7 +48,7 @@ fn planned_lines_for(profile: ServingLaunchProfile, f: fn(List<ArmNodeLaunch>) -
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
-    group: FabricGroupB,
+    group: FabricGroupB {},
     profile: profile,
     deployment_env: [] as List<DockerEnvAssignment>,
     container: glm_native_arm_container,
@@ -181,7 +181,7 @@ fn plan_unrun_subject(intent: ArmIntent) -> ArmLaunchPlan {
     checkpoint: Glm53NativeFp8,
     runtime: GunbcSparkrunVllmDs4Gb10,
     topology: FourSparkTp4,
-    group: FabricGroupB,
+    group: FabricGroupB {},
     intent: intent,
     profile: glm_native_initial_profile,
     deployment_env: [] as List<DockerEnvAssignment>,
@@ -220,7 +220,7 @@ fn plan_measured_subject(intent: ArmIntent) -> ArmLaunchPlan {
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
-    group: FabricGroupB,
+    group: FabricGroupB {},
     intent: intent,
     profile: glm_native_initial_profile,
     deployment_env: [] as List<DockerEnvAssignment>,
@@ -245,7 +245,7 @@ test fn w_the_measured_arm_refuses_normal_serving_at_the_memory_wall() -> Bool {
       checkpoint: Glm53NativeFp8,
       runtime: GunbcGlm53NopeDerivedGb10,
       topology: FourSparkTp4,
-      group: FabricGroupB,
+      group: FabricGroupB {},
       intent: ArmNormalServing,
       profile: glm_native_initial_profile,
       deployment_env: [] as List<DockerEnvAssignment>,
@@ -359,7 +359,7 @@ fn planned_experiment_lines(profile: ServingLaunchProfile, f: fn(List<ArmNodeLau
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
-    group: FabricGroupB,
+    group: FabricGroupB {},
     intent: ArmBoundedExperiment,
     profile: profile,
     deployment_env: [] as List<DockerEnvAssignment>,
@@ -377,7 +377,7 @@ fn planned_experiment_lines(profile: ServingLaunchProfile, f: fn(List<ArmNodeLau
 // plans; with the join deleted both would plan and this row goes red.
 fn w_plan_with_checkpoint_for_glm_profile(c: ServingCheckpoint) -> ArmLaunchPlan {
   plan_arm_launch_for(
-    checkpoint: c, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, group: FabricGroupB,
+    checkpoint: c, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, group: FabricGroupB {},
     intent: ArmBoundedExperiment, profile: glm_native_initial_profile,
     deployment_env: [] as List<DockerEnvAssignment>, container: glm_native_arm_container,
   )

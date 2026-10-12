@@ -28,6 +28,7 @@ import v2.std.diagnostic {
   None,
   Rejected,
   Unavailable,
+  diagnostics_fatal_reason,
   node_locus
 }
 import v2.std.node { Node }
@@ -58,7 +59,8 @@ test fn rust_logic_complement_emit_accepts() -> Bool {
   ) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_logic_complement_source_text) && (d == None)
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      diagnostics_fatal_reason(d: ds) == ^rust_logic_complement_emit_accepts
   }
 }
 
@@ -71,7 +73,8 @@ test fn rust_logic_complement_emit_swapped_discriminates() -> Bool {
       (source.carried == rust_logic_complement_swapped_arms_source_text) &&
       (source.carried != rust_logic_complement_source_text) &&
       (d == None)
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      diagnostics_fatal_reason(d: ds) == ^rust_logic_complement_emit_swapped_discriminates
   }
 }
 

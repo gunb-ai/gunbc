@@ -104,8 +104,8 @@ data host_converge_slice1_tasks_knob_name: String = "per_slot_tasks_max"
 // guard -> apply -> independent read-back -> reapply-noop), a pids-controller count instead of
 // a byte size. The guard refuses when live TasksCurrent meets or exceeds the target cap (>=:
 // equality means zero headroom, so the next clone() would EAGAIN) — lowering TasksMax below
-// live usage would not kill tasks but would starve every new clone(), the
-// compute_envelope_model failure class — typed and retryable, never applied past it.
+// live usage would not kill tasks but would starve every new clone()
+// — typed and retryable, never applied past it.
 type HostConvergeSlice1TasksMaxReceipt {
   host: HostIdentity
   unit: NonEmptyStr

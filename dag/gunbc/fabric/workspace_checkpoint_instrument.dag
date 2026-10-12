@@ -62,7 +62,7 @@ import gunbc.fabric.fabric_object_r2 {
   put_fabric_object_r2, get_fabric_object_r2,
   FabricObjectR2PutVerdict, FabricObjectR2Stored, FabricObjectR2PresentVerified, FabricObjectR2OccupiedByOther, FabricObjectR2Refused, FabricObjectR2OutcomeUnknown,
 }
-import gunbc.fabric.workspace_source { fabric_workspace_source_key, workspace_put_words, workspace_put_landed }
+import gunbc.fabric.workspace_source { fabric_workspace_source_key, workspace_put_words, workspace_put_landed, workspace_transcript_caveat }
 import gunbc.fabric_storage_r2_head {
   R2HeadBinding, R2HeadCredential, r2_head_binding, r2_head_read, r2_head_advance, r2_head_fabric_advance,
   R2HeadAdvanceResult, R2HeadAdvanceKnown, R2HeadAdvanceOutcomeUnknown, R2HeadStagingCustody, r2_head_staging_of,
@@ -204,19 +204,39 @@ fn workspace_part_words(p: WorkspaceMeasuredPart) -> String {
   }
 }
 
-fn workspace_bound_words(name: String, parts: List<WorkspaceMeasuredPart>, v: WorkspaceBoundVerdict) -> String {
-  let inputs = join(map(parts, p => workspace_part_words(p: p)), " + ")
-  match v {
-    BoundHolds { total: t, bound: b } => join([name, "=holds total=", workspace_ms_words(n: t), " bound=", workspace_ms_words(n: b), " inputs: ", inputs], "")
-    BoundExceeded { at_least: t, bound: b, complete: c } => join([name, "=exceeded at_least=", workspace_ms_words(n: t), " bound=", workspace_ms_words(n: b), if c { " complete" } else { " by-measured-parts-alone" }, " inputs: ", inputs], "")
-    BoundUndecided { measured: t, bound: b, missing: m } => join([name, "=undecided measured=", workspace_ms_words(n: t), " bound=", workspace_ms_words(n: b), " missing: ", join(m, "; "), " inputs: ", inputs], "")
-  }
+// THE BOUND VERDICTS ARE WITHHELD WHILE THE SUBJECT IS A STATIC TREE WITH SYNTHETIC TRANSCRIPTS.
+// The source pack (gunbc.fabric.workspace_source) carries transcript content as same-size
+// placeholders and the tree does not change while it is measured, so a time over it says nothing
+// about checkpointing a workspace whose transcripts are being appended: the 10 s target and the 60 s
+// window are not decided by this run, holding or exceeded, and each line says so beside its measured
+// inputs. The quota is a size, and the placeholders preserve size, so the 10 GB quota is decided --
+// over the static tree, and labelled static. workspace_bound_verdict above is the fold these lines
+// will print once a churn phase measures appends (the later churn child of this lane); until then
+// it is exercised by its witness and by nothing that prints.
+fn workspace_withheld_bound_words(name: String, parts: List<WorkspaceMeasuredPart>, bound: Nanosecond) -> String {
+  join([name, "=withheld: churn not measured static_measured=", workspace_ms_words(n: workspace_parts_measured(parts: parts)), " bound=", workspace_ms_words(n: bound), " inputs: ", join(map(parts, p => workspace_part_words(p: p)), " + ")], "")
+}
+
+// THE DRAFT-NUMBER BLOCK OF THE MEASURE RECEIPT: the caveat, the four withheld bound lines, and the
+// static quota line (or why it is undecided).
+fn workspace_draft_verdict_lines(snapshot_parts: List<WorkspaceMeasuredPart>, scan_parts: List<WorkspaceMeasuredPart>, static_size: ByteSize?, n: WorkspaceDraftNumbers) -> String {
+  join([
+    workspace_transcript_caveat as String, "\n",
+    workspace_withheld_bound_words(name: "snapshot_path_vs_target", parts: snapshot_parts, bound: n.checkpoint_target), "\n",
+    workspace_withheld_bound_words(name: "snapshot_path_vs_window", parts: snapshot_parts, bound: n.window), "\n",
+    workspace_withheld_bound_words(name: "scan_path_vs_target", parts: scan_parts, bound: n.checkpoint_target), "\n",
+    workspace_withheld_bound_words(name: "scan_path_vs_window", parts: scan_parts, bound: n.window), "\n",
+    match static_size {
+      Present { value: b } => workspace_quota_words(v: workspace_quota_verdict(size: b, quota: n.quota))
+      Absent => "quota_static=undecided (the upload refused, so no byte total was established)"
+    }, "\n",
+  ], "")
 }
 
 fn workspace_quota_words(v: WorkspaceQuotaVerdict) -> String {
   match v {
-    QuotaHolds { size: n, quota: q } => join(["quota=holds bytes=", to_string(measure_count(m: n)), " quota_bytes=", to_string(measure_count(m: q))], "")
-    QuotaExceeded { size: n, quota: q } => join(["quota=exceeded bytes=", to_string(measure_count(m: n)), " quota_bytes=", to_string(measure_count(m: q))], "")
+    QuotaHolds { size: n, quota: q } => join(["quota_static=holds bytes=", to_string(measure_count(m: n)), " quota_bytes=", to_string(measure_count(m: q))], "")
+    QuotaExceeded { size: n, quota: q } => join(["quota_static=exceeded bytes=", to_string(measure_count(m: n)), " quota_bytes=", to_string(measure_count(m: q))], "")
   }
 }
 
@@ -1008,9 +1028,9 @@ fn workspace_measure_report(workspace: NonEmptyStr, snapshot: NonEmptyStr, scrat
       join(["files=", to_string(length(es)), " bytes=", to_string(measure_count(m: b)), " chunks_uploaded=", to_string(st), " chunks_already_present=", to_string(oc), " symlinks_not_carried=", to_string(sl), " ", workspace_part_words(p: upload_timed)], "")
     WorkspaceUploadRefused { detail: d, custody: _ } => join(["upload=refused ", d], "")
   }
-  let quota_line = match upload {
-    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: b, symlinks: _, custody: _ } => workspace_quota_words(v: workspace_quota_verdict(size: b, quota: n.quota))
-    WorkspaceUploadRefused { detail: _, custody: _ } => "quota=undecided (the upload refused, so no byte total was established)"
+  let static_size = match upload {
+    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: b, symlinks: _, custody: _ } => Present { value: b }
+    WorkspaceUploadRefused { detail: _, custody: _ } => none
   }
   let cleanup = join([
     "cleanup snapshot=", if process_ok(run: workspace_run_local(command: btrfs_subvolume_delete_command(path: snapshot as String))) { "deleted" } else { "retained" },
@@ -1023,11 +1043,7 @@ fn workspace_measure_report(workspace: NonEmptyStr, snapshot: NonEmptyStr, scrat
     kopia_scan_words(scan: scan), "\n",
     upload_words, "\n",
     "commit=", match timed_commit.commit { Present { value: c } => workspace_commit_words(c: c)  Absent => "not-attempted" }, " ", workspace_part_words(p: timed_commit.part), "\n",
-    workspace_bound_words(name: "snapshot_path_vs_target", parts: snapshot_parts, v: workspace_bound_verdict(parts: snapshot_parts, bound: n.checkpoint_target)), "\n",
-    workspace_bound_words(name: "snapshot_path_vs_window", parts: snapshot_parts, v: workspace_bound_verdict(parts: snapshot_parts, bound: n.window)), "\n",
-    workspace_bound_words(name: "scan_path_vs_target", parts: scan_parts, v: workspace_bound_verdict(parts: scan_parts, bound: n.checkpoint_target)), "\n",
-    workspace_bound_words(name: "scan_path_vs_window", parts: scan_parts, v: workspace_bound_verdict(parts: scan_parts, bound: n.window)), "\n",
-    quota_line, "\n",
+    workspace_draft_verdict_lines(snapshot_parts: snapshot_parts, scan_parts: scan_parts, static_size: static_size, n: n),
     cleanup, "\n",
     workspace_custody_words(c: run_custody), "\n",
   ], "")

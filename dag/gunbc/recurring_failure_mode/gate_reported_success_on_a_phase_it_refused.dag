@@ -37,7 +37,6 @@ data gate_reported_success_on_a_phase_it_refused: RecurringFailureMode = Recurri
     DeclarationRef { module_path: "v2.workflow.required_ci_measurement", decl_name: "required_ci_measurement_admitted", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_ci_measurement", decl_name: "adjudicate_required_ci_measurement", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_ci_measurement", decl_name: "adjudicate_required_ci_measurement_receipt_file", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_floor_run_step", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_ci_measurement_adjudicate_step", field: WholeDeclaration },
   ],
 }

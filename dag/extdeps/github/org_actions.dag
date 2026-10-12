@@ -130,6 +130,16 @@ type OrgRunnerGroupListWire {
 
 data org_runner_groups_max_per_page: Int = 100
 
+// UpdateOrganizationRunnerGroupWorkflows:
+// update a self-hosted runner group for an organization (docs.github.com/en/rest/actions/
+// self-hosted-runner-groups#update-a-self-hosted-runner-group-for-an-organization, REST
+// 2022-11-28, read 2026-10-04): PATCH sets restricted_to_workflows and selected_workflows and
+// answers 200 with the group. Each selected entry is `<owner>/<repo>/<workflow path>@<ref>`; per
+// docs.github.com/en/enterprise-cloud@latest/actions/how-tos/manage-runners/self-hosted-runners/
+// manage-access (read 2026-10-04), "Pin non-reusable workflows to a branch. Pin reusable
+// workflows to a branch, tag, or full SHA" -- a dispatched (non-reusable) workflow is selectable
+// only at a branch, which is why a qualification pin is a branch and not a SHA. Its consumer is
+// gunbc.runner.runner_qualification_ref_pin, which writes only the dedicated qualification group.
 service github.OrgRunnerGroupsRest {
   config {
     endpoint: default_api_base
@@ -158,6 +168,32 @@ service github.OrgRunnerGroupsRest {
       401 => GitHubErrorShape
       403 => GitHubErrorShape
       404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation UpdateOrganizationRunnerGroupWorkflows {
+    requires Network
+    input {
+      installation_token: Secret
+      org: NonEmptyStr
+      runner_group_id: Int
+      selected_workflows: List<String>
+    }
+    output {
+      result: OrgRunnerGroupWire
+    }
+    transport rest {
+      method: PATCH,
+      path: "/orgs/\{org\}/actions/runner-groups/\{runner_group_id\}",
+      body: { restricted_to_workflows: true, selected_workflows: selected_workflows }
+    }
+    response {
+      200 => OrgRunnerGroupWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
       5xx => GitHubErrorShape
     }
   }

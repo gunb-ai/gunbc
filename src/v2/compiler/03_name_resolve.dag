@@ -2,9 +2,15 @@ module v2.compiler.name_resolve
 
 import std.types { List }
 import v2.std.language_model { LanguageModel }
+import v2.std.member_declaration_kind { MemberKindChannel, no_member_declaration_kinds }
 
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_fill_module_roots }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources }
+import v2.compiler.normalized_tree {
+  NormalizedTree,
+  normalized_tree_record_declarations,
+  normalized_tree_resource_declarations,
+  normalized_tree_roots_to_binding_sources
+}
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
@@ -16,6 +22,7 @@ import v2.compiler.resolve {
   ResolveNodeWalk,
   ResolveWalkRefused,
   ClosureProviderRefusal,
+  member_kind_channel_of_tree,
   ResolvedTree,
   resolved_tree_outcome,
   resolve_walk_prefix_pending,
@@ -38,7 +45,7 @@ import v2.compiler.namespace_graft {
 import v2.compiler.parse { parse_tree_projection_edge }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, Map, Present, PointwisePower, empty_map, map_get, map_lookup, map_insert, optional_absent, optional_present }
+import v2.std.collection { Absent, Map, Present, PointwisePower, empty_map, map_get_checked, map_lookup, map_insert, optional_absent, optional_present }
 import std.optional { Optional }
 import v2.std.diagnostic {
   Accepted,
@@ -288,7 +295,7 @@ fn admit_export_symbol(
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: b, origins: os } =>
 
-      match v2.std.collection.map_get(os, sym) {
+      match v2.std.collection.map_get_checked(os, sym) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
             AdmissionRejected {
@@ -508,7 +515,7 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
           TypeNode { connective: Atom { identity: _ } } => false
           TypeNode { connective: Disj } => false
           TypeNode { connective: Arrow } => false
-          TypeNode { connective: Cardinality } => false
+          TypeNode { connective: Occupancy } => false
           TypeNode { connective: Instantiation } => false
           ComputationNode { behavior: _ } => false
         },
@@ -561,7 +568,7 @@ fn admit_named_exports(
     TypeNode { connective: Atom { identity: _ } } => state
     TypeNode { connective: Disj } => state
     TypeNode { connective: Arrow } => state
-    TypeNode { connective: Cardinality } => state
+    TypeNode { connective: Occupancy } => state
     TypeNode { connective: Instantiation } => state
     ComputationNode { behavior: _ } => state
   }
@@ -692,6 +699,16 @@ fn subject_module_root_for_name(
   match map_lookup(m: roots.by_name, key: name) {
     Present { value: root } => Accepted { value: root, diagnostics: v2.std.diagnostic.None }
     Absent => Rejected { diagnostics: resolve_module_not_found_diagnostic_from_missing(requested: name) }
+  }
+}
+
+// The subject root's member-kind channel, read from the validated roots by the subject's own name. A subject
+// with no root there has no provenance to give, which is Unavailable and not a refusal here: the module-not-found
+// refusal already belongs to admission.
+fn subject_member_kind_channel(roots: ValidatedModuleRoots, name: QualifiedName) -> Outcome<MemberKindChannel> {
+  match map_lookup(m: roots.by_name, key: name) {
+    Present { value: root } => member_kind_channel_of_tree(tree: root)
+    Absent => Accepted { value: no_member_declaration_kinds(), diagnostics: v2.std.diagnostic.None }
   }
 }
 
@@ -936,12 +953,17 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
     Accepted { value: shared, diagnostics: d } =>
       let closure = closure_declarations_demand(shared: shared)
       ContextResolved {
-        resolved: resolved_tree_outcome(
-          w: walked.walk,
-          symbol_index: shared.symbol_index,
-          closure_declarations: closure.declarations,
-          unavailable_providers: closure.refused
-        ),
+        resolved: match subject_member_kind_channel(roots: shared.roots, name: admission.subject.name) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: channel, diagnostics: _ } =>
+            resolved_tree_outcome(
+              w: walked.walk,
+              symbol_index: shared.symbol_index,
+              closure_declarations: closure.declarations,
+              unavailable_providers: closure.refused,
+              member_kinds: channel
+            )
+        },
         context: Accepted { value: closure.context, diagnostics: d }
       }
   }
@@ -976,11 +998,6 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
 // Resolve(module) AND Resolve(each provider it consumes); here that is discharged by resolving the whole
 // SELECTED closure, which is broader than the import closure. Narrowing it to the exact provider set changes
 // WHICH roots are folded and not the inference rule.
-//
-// RECORD AND RESOURCE PAYLOAD MARKS ARE NOT CARRIED HERE, AND THAT IS INHERITED RATHER THAN CHOSEN: a resolved
-// Node does not carry the normalize-time record roster, so each root is filled with Empty carriers, and
-// v2.std.symbol_index symbol_index_declared_payload_at answers Absent for a RECORD in this index. The
-// projection path reads through symbol_index_lookup and is unaffected.
 type ClosureDeclarations {
   declarations: SymbolIndex
   refused: List<ClosureProviderRefusal>
@@ -993,6 +1010,9 @@ type ClosureDeclarationsFold {
   context: ResolutionContext
 }
 
+// THE DECLARED-PAYLOAD KIND RIDES THE CARRIER CAPTURED AT NORMALIZE (symbol_index_fill_module_declarations): a
+// fill handed Empty marks no record, so symbol_index_declared_payload_at answered Absent for every
+// record in resolved_declarations and v2.compiler.infer read each construct as not a record.
 fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations {
   match shared.closure_declarations {
     Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, refused: closure.refused, context: shared }
@@ -1015,7 +1035,12 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
               match walked.walk {
                 ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
                   ClosureDeclarationsFold {
-                    index: symbol_index_fill_module_declarations(index: acc.index, root: resolved, record_declarations: Empty, resource_declarations: Empty),
+                    index: symbol_index_fill_module_declarations(
+                      index: acc.index,
+                      root: resolved,
+                      record_declarations: normalized_tree_record_declarations(t: nt),
+                      resource_declarations: normalized_tree_resource_declarations(t: nt)
+                    ),
                     refused: acc.refused,
                     context: next_context
                   }

@@ -69,6 +69,7 @@ data edited_bin_witness_wet_rows_not_executed_by_ci_population: List<String> = [
   "repo_local_git_config_real_execution_witness_test.dag",
   "transport_script_stdin_byte_fidelity_witness_test.dag",
   "push_event_witness_wet_test.dag",
+  "materialization_store_local_immutable_pin_wet_witness_test.dag",
 ]
 
 data edited_bin_witness_wet_rows_not_executed_by_ci: RungDrop = RungDrop {

@@ -350,13 +350,8 @@ brief said "PXE netboot" and I took it literally.
 
 ## 8. Controller-side observations
 
-**The decoded status enum and the readiness rule that were here have been removed.** They
-reconstructed the complete MegaRAC state machine from `source.min.js` as served by this
-controller — and that file **is not a committed artifact**. This document opens by claiming
-every number is artifact-backed or re-derived, so a table whose source was never preserved
-was the one thing in here that could not honour that claim. It was also reusable protocol
-policy, which belongs to `extdeps.bmc.megarac` keyed to a firmware identity, not to a probe
-record.
+**No decoded status enum or readiness rule is carried here.** Protocol policy belongs to
+`extdeps.bmc.megarac` keyed to a firmware identity, not to a probe record.
 
 What survives is what was measured against the live controller and is backed by this
 session's own observations:
@@ -384,8 +379,8 @@ difference I could find. I could not explain the variation and did not invent a 
 **The readback comparator is the entire verdict**; the HTTP status is diagnostic only.
 
 Also observed: `start-media` requests without the undocumented key `image_redirection: 1`
-were refused with errors 13410/13460; the requests carrying it were accepted. How far that
-generalizes is the status/API catalog's to say, not this record's.
+were refused; the requests carrying it were accepted. How far that generalizes is not this
+record's to say.
 
 ### BMC controller reset timings (3 resets, consistent)
 

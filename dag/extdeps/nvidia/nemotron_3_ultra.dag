@@ -1,0 +1,46 @@
+module extdeps.nvidia.nemotron_3_ultra
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA NEMOTRON 3 ULTRA, as its own extdeps authority for the reason extdeps.deepseek.deepseek_v4 and
+// extdeps.zhipu.glm_5_3_flash are: an independently versioned upstream model is not a property of
+// whatever serves it. What a HOSTED endpoint of this model admits -- its window, its output ceiling, the
+// reasoning efforts its router accepts -- is the endpoint's fact and lives with the router
+// (extdeps.openrouter.openrouter); what the endpoint's operator requires of its users lives with those
+// terms (extdeps.nvidia.api_trial_terms). This module carries only what the model card says about the
+// model.
+//
+// READ 2026-10-05 from the model card at the anchor: 550B total / 55B active parameters, a hybrid
+// Transformer-Mamba mixture-of-experts, text in and text out, weights under OpenMDW-1.1.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.nemotron_3_ultra",
+      decl_name: "nemotron_ultra_thinking_end_token",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// THE CARD'S REASONING MODES ARE NOT MODELLED HERE, AND THE ABSENCE IS DELIBERATE. The card names three --
+// off and full via chat_template_kwargs enable_thinking, and "Medium-effort reasoning" via medium_effort,
+// which "uses significantly fewer reasoning tokens than full thinking mode" -- but those keys address a
+// chat template, and the only route this repository has to the model is a router that takes its own
+// reasoning parameter and translates it unseen. Nothing here can send them, so a type for them would be
+// a declaration with no consumer. A self-hosted Nemotron unit is the consumer that would add it.
+
+// THE END-OF-THINKING CLOSER. The card's budget client splits a completion on "</think>" and appends it
+// when a capped trace never produced one, so it is the model's own delimiter.
+data nemotron_ultra_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr

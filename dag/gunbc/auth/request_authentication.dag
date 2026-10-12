@@ -324,6 +324,7 @@ fn tailnet_route_readback_observed(acl_revision: ContentHash, serve_route: Tails
 // comment, approve.
 type ServeRouteAction
   = ServeActionAssignIssue
+  | ServeActionCreateIssue
   | ServeActionCommentIssue
   | ServeActionSaveOwnView
   | ServeActionApproveDecision
@@ -333,6 +334,7 @@ type ServeRouteAction
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
     ServeActionAssignIssue => "assign-issue" as NonEmptyStr
+    ServeActionCreateIssue => "create-issue" as NonEmptyStr
     ServeActionCommentIssue => "comment-issue" as NonEmptyStr
     ServeActionSaveOwnView => "save-own-issue-view" as NonEmptyStr
     ServeActionApproveDecision => "approve-decision" as NonEmptyStr
@@ -441,6 +443,7 @@ fn human_action_authorization_decision(
     GoogleOidcSession { session } =>
       match action {
         ServeActionAssignIssue => Permit
+        ServeActionCreateIssue => Permit
         ServeActionCommentIssue => Permit
         ServeActionSaveOwnView => Permit
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })

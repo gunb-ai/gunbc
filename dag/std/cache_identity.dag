@@ -22,8 +22,6 @@ fn execution_receipt_digest_of_value(value: NonEmptyStr) -> ExecutionReceiptDige
 
 data resolved_graph_artifact_kind: ArtifactKindId = "resolved_graph"
 
-data parse_table_artifact_kind: ArtifactKindId = "parse_table"
-
 data parse_source_artifact_kind: ArtifactKindId = "parse_source"
 
 data typed_module_artifact_kind: ArtifactKindId = "typed_module"
@@ -35,6 +33,8 @@ data native_compiler_artifact_kind: ArtifactKindId = "native_compiler"
 data native_test_universe_artifact_kind: ArtifactKindId = "native_test_universe"
 
 data native_module_verdict_bundle_artifact_kind: ArtifactKindId = "native_module_verdict_bundle"
+
+data compute_work_artifact_kind: ArtifactKindId = "compute_work"
 
 data native_module_resolve_artifact_kind: ArtifactKindId = "native_module_resolve"
 

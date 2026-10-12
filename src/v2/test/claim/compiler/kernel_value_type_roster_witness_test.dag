@@ -200,7 +200,7 @@ test fn kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds() -> Bool {
       match rcf_member_arrow(root: tree.root, name: ^kvr_g) {
         Absent => false
         Present { value: arrow } =>
-          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings, unavailable_providers: tree.unavailable_providers }) {
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings, unavailable_providers: tree.unavailable_providers, member_kinds: tree.member_kinds }) {
             Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit
             Accepted { value: _, diagnostics: _ } => false
           }

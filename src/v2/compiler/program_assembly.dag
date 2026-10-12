@@ -19,11 +19,7 @@ import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize, tok
 import v2.compiler.parse {
   ParseArtifact,
   parse_module_prepared_seeded,
-  parse_module_prepared_measured_seeded,
-  ParseProductionMeasured,
   PreparedGrammar,
-  parse_memo_stats_empty,
-  parse_module_prepared_measured,
   prepare_grammar
 }
 import v2.std.compilers.lexing { TokenStream, token_stream_remaining_count }
@@ -189,7 +185,7 @@ fn program_assembly_phase_tokenize(
   }
 }
 
-// THE SEEDED MEASURED PHASE, AND THE MARK READ BACK OUT AS A SCALAR. These two exist for the
+// THE SEEDED PARSE PHASE, AND THE MARK READ BACK OUT AS A SCALAR. These two exist for the
 // emitted `SourceRootEvalDriver`, which does not call the composed per-file fold: it open-codes the
 // sequence so a clock can sit between the phases, which is admitted debt filed at
 // `gunbc.recurring_failure_mode` `realization_respells_a_modeled_folds_sequencing_to_instrument_it`.
@@ -198,9 +194,8 @@ fn program_assembly_phase_tokenize(
 // driver silently keeps the per-file reset while the modeled fold no longer has it.
 //
 // THE REJECTED-INPUT ARM REPRODUCES bind_outcome EXACTLY, and is spelled out rather than reused
-// because bind_outcome cannot carry a second value out of the bound function: a Rejected token
-// stream passes its diagnostics through untouched and reports empty accounting, because no parse
-// ran -- an answer, not a missing measurement. The Accepted arm merges the incoming diagnostics
+// as the phase body the driver times: a Rejected token stream passes its diagnostics through
+// untouched, because no parse ran. The Accepted arm merges the incoming diagnostics
 // through bind_outcome_accepted, which is what bind_outcome itself calls. (That reasoning arrived
 // here with the unseeded twin this phase replaced; the twin is deleted, so the reasoning moves to
 // the survivor rather than being deleted with it.)
@@ -218,67 +213,41 @@ fn program_assembly_phase_tokenize(
 // exactly while nothing retains a refused parse's node loci; the precondition and the carrier that
 // would break it are named on `v2.compiler.compile` `native_test_context_absorb`, which is where
 // the reuse actually happens.
-fn program_assembly_phase_parse_measured_seeded(
+fn program_assembly_phase_parse_seeded(
   tokens: Outcome<TokenStream>,
   prepared: PreparedGrammar,
-  residue: Diagnostics,
   seed: OccurrenceIdAllocator
-) -> ParseProductionMeasured {
+) -> Outcome<ParseArtifact> {
   match tokens {
-    Rejected { diagnostics: d } =>
-      ParseProductionMeasured {
-        outcome: Rejected { diagnostics: d },
-        memo: parse_memo_stats_empty()
-      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: token_stream, diagnostics: od } =>
-      let measured = parse_module_prepared_measured_seeded(
-        tokens: token_stream,
-        prepared: prepared,
-        validation_residue: residue,
-        seed: seed
+      bind_outcome_accepted(
+        od: od,
+        inner: parse_module_prepared_seeded(
+          tokens: token_stream,
+          prepared: prepared,
+          seed: seed
+        )
       )
-      ParseProductionMeasured {
-        outcome: bind_outcome_accepted(od: od, inner: measured.outcome),
-        memo: measured.memo
-      }
   }
 }
 
-// THE MARK AS A SCALAR, for the same reason the three memo counters above are read out one at a
-// time: the driver prints scalars, and a record does not cross that boundary as one. This is what
-// makes the emitted loop's threading OBSERVABLE from outside the binary -- the per-file line carries
-// the mark it was handed and the mark it reached, so a run over several files shows one sequence
-// continuing rather than a claim that it does.
+// THE MARK AS A SCALAR: the driver prints scalars, and a record does not cross that boundary as
+// one. This is what makes the emitted loop's threading OBSERVABLE from outside the binary -- the
+// per-file line carries the mark it was handed and the mark it reached, so a run over several
+// files shows one sequence continuing rather than a claim that it does.
 fn program_assembly_allocator_next(alloc: OccurrenceIdAllocator) -> Int {
   alloc.next_id
 }
 
-fn program_assembly_measured_alloc(
-  measured: ParseProductionMeasured,
+fn program_assembly_parsed_alloc(
+  parsed: Outcome<ParseArtifact>,
   seed: OccurrenceIdAllocator
 ) -> OccurrenceIdAllocator {
-  match measured.outcome {
+  match parsed {
     Rejected { diagnostics: _ } => seed
     Accepted { value: artifact, diagnostics: _ } => artifact.alloc
   }
-}
-
-// The three counters, read out one at a time because the driver prints scalars and a record does
-// not cross that boundary as one.
-fn program_assembly_memo_hits(measured: ParseProductionMeasured) -> Int {
-  measured.memo.hits
-}
-
-fn program_assembly_memo_misses(measured: ParseProductionMeasured) -> Int {
-  measured.memo.misses
-}
-
-fn program_assembly_memo_lookup_calls(measured: ParseProductionMeasured) -> Int {
-  measured.memo.lookup_calls
-}
-
-fn program_assembly_measured_outcome(measured: ParseProductionMeasured) -> Outcome<ParseArtifact> {
-  measured.outcome
 }
 
 // THE NORMALIZE PHASE ADVANCES THE INGEST'S ALLOCATOR, and returns it beside the outcome so a loop
@@ -380,7 +349,6 @@ fn program_assembly_read_to_normalized_root_seeded(
   read: DagSourceReadWitness,
   lex: PreparedLexRules,
   prepared: PreparedGrammar,
-  residue: Diagnostics,
   seed: OccurrenceIdAllocator,
   scope: Fnv1a64Structural
 ) -> ProgramAssemblySeededReadResult {
@@ -390,7 +358,6 @@ fn program_assembly_read_to_normalized_root_seeded(
       parse_module_prepared_seeded(
         tokens: token_stream,
         prepared: prepared,
-        validation_residue: residue,
         seed: seed
       )
     }
@@ -485,7 +452,6 @@ fn program_assembly_fold_step(
   read: DagSourceReadWitness,
   lex: PreparedLexRules,
   prepared: PreparedGrammar,
-  residue: Diagnostics,
   scope: Fnv1a64Structural
 ) -> ProgramAssemblyLocatedFoldState {
   match state {
@@ -496,7 +462,6 @@ fn program_assembly_fold_step(
         read: read,
         lex: lex,
         prepared: prepared,
-        residue: residue,
         seed: seed,
         scope: scope
       )
@@ -574,7 +539,7 @@ fn program_assembly_ingest_scope(ingest: SourceRootIngest) -> SourceRefListDiges
   source_ref_list_digest_build(refs: fold_list(
     xs: ingest,
     empty: Empty,
-    cons: fn(acc, read) { list_snoc_item(xs: acc, item: source_ref_for_storage_path(path: read.artifact.file_path)) }
+    cons: fn(acc, read) { list_snoc_item(xs: acc, item: source_ref_for_storage_path(path: read.artifact.file_path, source_root: read.source_root)) }
   ))
 }
 
@@ -595,7 +560,7 @@ fn program_assembly_fold_ingest_located(
       match prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
           ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: span_index_empty() }
-        Accepted { value: prepared, diagnostics: residue } =>
+        Accepted { value: prepared, diagnostics: _ } =>
           let lex = prepare_lex_rules(rules: lm.lex)
           match program_assembly_ingest_scope(ingest: ingest) {
             SourceRefListDigestNonStructuralRefused { path: _ } =>
@@ -614,7 +579,7 @@ fn program_assembly_fold_ingest_located(
                   advisories: None
                 },
                 cons: fn(state, read) {
-                  program_assembly_fold_step(state: state, read: read, lex: lex, prepared: prepared, residue: residue, scope: scope)
+                  program_assembly_fold_step(state: state, read: read, lex: lex, prepared: prepared, scope: scope)
                 }
               )
           }
@@ -698,8 +663,7 @@ fn assemble_program_from_module_roots(
 // its file exactly when the program did NOT assemble, and `Outcome`'s Rejected arm carries no value
 // -- so an index returned as part of the accepted program is an index that has evaporated precisely
 // where it was wanted. This carrier holds both arms' worth: the span index the fold recorded before
-// it stopped, and the outcome itself. It is the same stance `ParseProductionMeasured` already takes
-// for memo counters one layer down, for the same reason.
+// it stopped, and the outcome itself.
 //
 // A REFUSED ASSEMBLY STILL CARRIES THE SPANS OF EVERY FILE IT GOT THROUGH, which is the honest
 // answer rather than a convenient one: the fold is fail-closed and stops at the first refusing read,

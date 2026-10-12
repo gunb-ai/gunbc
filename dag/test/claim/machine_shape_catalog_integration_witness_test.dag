@@ -48,23 +48,20 @@ test fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
     Present { value: domain } => {
       let memory = domain.memory
       list_length(items: memory) == 3
-        && memory.first().id == ampere_l1_level
         && match memory.first() {
-          Present { value: level } => byte_size_count(b: level.capacity) == ampere_l1_bytes_per_core
+          Present { value: level } => level.id == ampere_l1_level && byte_size_count(b: level.capacity) == ampere_l1_bytes_per_core
           Absent => false
         }
         && match memory.first().transfer_grain {
           Present { value: grain } => byte_size_count(b: grain) == ampere_cache_line_bytes
           Absent => false
         }
-        && memory.skip(n: 1).first().id == ampere_l2_level
         && match memory.skip(n: 1).first() {
-          Present { value: level } => byte_size_count(b: level.capacity) == ampere_l2_bytes_per_core
+          Present { value: level } => level.id == ampere_l2_level && byte_size_count(b: level.capacity) == ampere_l2_bytes_per_core
           Absent => false
         }
-        && memory.skip(n: 2).first().id == ampere_l3_level
         && match memory.skip(n: 2).first() {
-          Present { value: level } => byte_size_count(b: level.capacity) == ampere_l3_bytes
+          Present { value: level } => level.id == ampere_l3_level && byte_size_count(b: level.capacity) == ampere_l3_bytes
           Absent => false
         }
     }

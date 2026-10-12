@@ -238,6 +238,15 @@ data fleet_cp_binary_path: NonEmptyStr = "/usr/bin/cp"
 
 data fleet_mv_binary_path: NonEmptyStr = "/usr/bin/mv"
 
+// THE TWO READ-ONLY METADATA BINARIES THE DEPLOY PLAN OBSERVES DIRECTORIES THROUGH. They are NOT rows
+// of ci_runner_sudo_binaries (no path-unrestricted grant): each is granted only as a pinned-argv
+// ExecutorPrivilegedOperation over one named directory (gunbc.executor_privileged_operation
+// ReadDirectoryIdentity, ListDirectoryEntries), rendered into the runner host's sudoers by
+// gunbc.runner_host_grants. A managed directory whose mode admits only its owner cannot be traversed by
+// the job user, and its standing must still be observable before and after the apply.
+data fleet_stat_binary_path: NonEmptyStr = "/usr/bin/stat"
+data fleet_ls_binary_path: NonEmptyStr = "/usr/bin/ls"
+
 // nft LIVES IN sbin AND IS PRIVILEGED EVEN TO READ: listing a table needs CAP_NET_ADMIN, so a
 // readback of the installed ruleset is a granted command like any mutation.
 data fleet_nft_binary_path: NonEmptyStr = nft_installed_path() as NonEmptyStr
@@ -289,6 +298,8 @@ type CiRunnerSudoBinary
   | SudoNfct
   | SudoCp
   | SudoMv
+  | SudoStat
+  | SudoLs
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -306,6 +317,8 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoNfct => fleet_nfct_binary_path
     SudoCp => fleet_cp_binary_path
     SudoMv => fleet_mv_binary_path
+    SudoStat => fleet_stat_binary_path
+    SudoLs => fleet_ls_binary_path
   }
 }
 
@@ -325,6 +338,8 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoNfct => NopasswdExecuteCheck { check_argv: "--version" }
     SudoCp => NopasswdExecuteCheck { check_argv: "--version" }
     SudoMv => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoStat => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoLs => NopasswdExecuteCheck { check_argv: "--version" }
   }
 }
 

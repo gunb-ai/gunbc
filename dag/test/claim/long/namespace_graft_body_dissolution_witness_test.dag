@@ -24,8 +24,8 @@ fn artifact_tree(artifact: ParseArtifact) -> ParseTree {
 }
 
 // The graft rejection flows through rejected_with_pending, which PREPENDS the pending
-// accepted-carrier diagnostics (wrapper-retained bodies) to the rejection — the head-masking shape
-// the sweep's first_located_cause already skips. The assertion is therefore containment: the
+// accepted-carrier diagnostics (wrapper-retained bodies) to the rejection, so the head can be a
+// carrier rather than the cause. The assertion is therefore containment: the
 // refusal CARRIES the guard's typed reason, wherever the pending carriers put it.
 fn rejection_reasons(source: String) -> List<Symbol> {
   match lex_walk_artifact(source: chars(s: source), file: ^graft_guard_probe, rules: dag_lex_rules()) {

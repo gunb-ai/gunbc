@@ -1,0 +1,22 @@
+module gunbc.roadmap_runtime_plan
+
+import std.types { String }
+import std.optional { Present, Absent }
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.roadmap_authority { RoadmapAuthorityProjection, RoadmapAuthorityProjectionRefused, roadmap_authority_projection_with, roadmap_acceptance_event_history_load }
+import gunbc.roadmap_task_store { roadmap_task_roster, roadmap_tasks_listed }
+
+// THE ONE PLAN: declared rows + closing-contract pairs (gunbc.roadmap_authority) + the runtime task
+// records of the fabric state namespace (gunbc.roadmap_task_store), folded into the one
+// RoadmapDocument every consumer reads -- the belt tick, spawn_frontier, launch lookup, issue
+// detail, /issues/query, the ghost wall and the site surface. The runtime tasks are read ONCE per
+// call and handed to the authority as a VALUE. A roster that cannot be read is a refused
+// projection with the reason, never an empty list: a plan silently missing its runtime tasks would
+// launch, answer and render as if they did not exist. The static ROADMAP.md projection
+// (roadmap_authority_projection, no runtime value) stays union-free by construction.
+fn roadmap_plan_projection() -> RoadmapAuthorityProjection {
+  match roadmap_tasks_listed(roster: roadmap_task_roster(store: fabric_state_storage_binding())) {
+    Absent => RoadmapAuthorityProjectionRefused { detail: "runtime task roster is unreadable; the plan is refused rather than shown without its runtime tasks" }
+    Present { value: runtime } => roadmap_authority_projection_with(history: roadmap_acceptance_event_history_load(), runtime: runtime)
+  }
+}

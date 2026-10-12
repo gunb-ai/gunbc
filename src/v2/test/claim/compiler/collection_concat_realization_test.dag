@@ -1,6 +1,6 @@
 module v2.test.claim.compiler.collection_concat_realization
 
-import v2.compiler.fold_lowering { collection_roster_primitive_call_signature_in, CollectionRosterRow, NotARosterPrimitiveCallRow, RosterFreeMonoidPrimitiveCall, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_row_optional, collection_roster_primitive_call_signature_at, collection_roster_signature_arrow }
+import v2.compiler.fold_lowering { collection_roster_carrier_type, collection_roster_primitive_call_signature_in, CollectionRosterRow, NotARosterPrimitiveCallRow, RosterFreeMonoidPrimitiveCall, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_row_optional, collection_roster_primitive_call_signature_at, collection_roster_signature_arrow }
 import v2.compiler.infer { infer_roster_reference_facts, InferFormalMatched, InferFormalShapeMismatch, infer_formals_from_domain, infer_match_generic_formal, infer_type_instantiated }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
 import std.types { Bool, List }
@@ -123,42 +123,21 @@ fn cca_list_of(element: Node) -> Node {
   )
 }
 
-fn cca_is_instantiation(t: Node) -> Bool {
-  match t.kind {
-    TypeNode { connective: Instantiation } => true
-    TypeNode { connective: _ } => false
-    _ => false
-  }
-}
-
-// SUPPLIED: the signature has two formals, both the one free monoid over the row's element binder.
-test fn cca_signature_is_two_free_monoid_formals() -> Bool {
+// SUPPLIED: the signature has two formals, both the one bounded carrier M.
+test fn cca_signature_is_two_formals_over_one_carrier() -> Bool {
   match cca_formals() {
-    Cons { head: a, tail: Cons { head: b, tail: Empty } } => cca_is_instantiation(t: a) && a == b
+    Cons { head: a, tail: Cons { head: b, tail: Empty } } => a == collection_roster_carrier_type() && a == b
     _ => false
   }
 }
 
-// SUPPLIED, RED: an Int operand at the row's free-monoid formal is a shape mismatch to the production matcher -- the
-// carrier refusal (`Int concat Int`).
-test fn cca_int_operand_is_a_shape_mismatch_at_the_row_formal() -> Bool {
-  match list_at_optional(xs: cca_formals(), index: 0) {
-    Absent => false
-    Present { value: formal } =>
-      match infer_match_generic_formal(formal: formal, produced: cca_int_type(), type_params: [^collection_roster_element], instances: Empty, declarations: empty_symbol_index()) {
-        InferFormalShapeMismatch => true
-        InferFormalMatched { instances: _ } => false
-      }
-  }
-}
-
-// SUPPLIED, RED: once the first operand binds the element to Pair, the formal instantiates to List<Pair>, which is not
+// SUPPLIED: once the first operand binds M to List<Pair>, the formal instantiates to List<Pair>, which is not
 // a List<Int> -- the mismatched-element refusal the judge then makes.
 test fn cca_mismatched_element_instantiates_to_a_different_list() -> Bool {
   match list_at_optional(xs: cca_formals(), index: 0) {
     Absent => false
     Present { value: formal } =>
-      match infer_match_generic_formal(formal: formal, produced: cca_list_of(element: cca_pair_type()), type_params: [^collection_roster_element], instances: Empty, declarations: empty_symbol_index()) {
+      match infer_match_generic_formal(formal: formal, produced: cca_list_of(element: cca_pair_type()), type_params: [^collection_roster_carrier], instances: Empty, declarations: empty_symbol_index()) {
         InferFormalShapeMismatch => false
         InferFormalMatched { instances: bound } =>
           infer_type_instantiated(t: formal, instances: bound) == cca_list_of(element: cca_pair_type())

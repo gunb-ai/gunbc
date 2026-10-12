@@ -1,0 +1,27 @@
+module gunbc.auth.mtjade1_arrival_federation_provision
+
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
+import gunbc.auth.mtjade1_arrival_pair {
+  mtjade1_arrival_pool_id, mtjade1_arrival_pool_display_name, mtjade1_arrival_provider_id,
+  mtjade1_arrival_wif_attribute_mapping, mtjade1_arrival_claim_pins, mtjade1_arrival_principal_set,
+  mtjade1_arrival_service_account, mtjade1_arrival_service_account_id, mtjade1_arrival_principal_member,
+  mtjade1_arrival_secret_grants,
+}
+import gunbc.auth.oidc_claim_pins { claim_pins_attribute_condition }
+
+fn mtjade1_arrival_dedicated_federation() -> DedicatedFederation {
+  DedicatedFederation {
+    label: "mtjade1 arrival federation",
+    pool_id: mtjade1_arrival_pool_id,
+    pool_display_name: mtjade1_arrival_pool_display_name,
+    provider_id: mtjade1_arrival_provider_id,
+    attribute_mapping: mtjade1_arrival_wif_attribute_mapping,
+    attribute_condition: claim_pins_attribute_condition(pins: mtjade1_arrival_claim_pins()),
+    impersonation: StandingPoolImpersonation { principal_set: mtjade1_arrival_principal_set() },
+    service_account: mtjade1_arrival_service_account,
+    service_account_id: mtjade1_arrival_service_account_id,
+    service_account_display_name: "Mt. Jade arrival (one job)",
+    service_account_member: mtjade1_arrival_principal_member(),
+    secret_grants: mtjade1_arrival_secret_grants(),
+  }
+}

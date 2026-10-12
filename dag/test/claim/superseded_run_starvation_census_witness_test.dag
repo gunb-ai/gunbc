@@ -83,7 +83,7 @@ test fn absent_job_rosters_remain_a_coverage_obligation() -> Bool {
 // dead_run_attempt is exactly the row that would then read wrong.
 // actor and triggering_actor: none. They are optional in the projection, no census fold reads
 // them, and inventing a login would be a fabricated observation rather than an absent one.
-data run_with_pull_request: WorkflowRun = WorkflowRun {
+data run_with_pull_request: WorkflowRun = WorkflowRun { display_title: none,
   id: 1,
   name: none,
   path: none,
@@ -103,7 +103,7 @@ data run_with_pull_request: WorkflowRun = WorkflowRun {
   pull_requests: [WorkflowRunPullRequest { number: 42 }],
 }
 
-data run_without_pull_request: WorkflowRun = WorkflowRun {
+data run_without_pull_request: WorkflowRun = WorkflowRun { display_title: none,
   id: 2,
   name: none,
   path: none,
@@ -137,7 +137,7 @@ test fn pr_number_for_run_without_pr_returns_none() -> Bool {
   }
 }
 
-data run_sha_abc: WorkflowRun = WorkflowRun {
+data run_sha_abc: WorkflowRun = WorkflowRun { display_title: none,
   id: 3,
   name: none,
   path: none,
@@ -157,7 +157,7 @@ data run_sha_abc: WorkflowRun = WorkflowRun {
   pull_requests: [WorkflowRunPullRequest { number: 42 }],
 }
 
-data run_sha_def: WorkflowRun = WorkflowRun {
+data run_sha_def: WorkflowRun = WorkflowRun { display_title: none,
   id: 4,
   name: none,
   path: none,
@@ -213,6 +213,8 @@ data job_cancelled: WorkflowJobRun = WorkflowJobRun {
   status: Completed,
   conclusion: Present { value: Cancelled },
   labels: [],
+  runner_id: none,
+  runner_name: none,
   created_at: Present { value: "2026-09-01T00:01:00Z" },
   started_at: Present { value: "2026-09-01T00:10:00Z" },
   completed_at: Present { value: "2026-09-01T00:20:00Z" },
@@ -226,6 +228,8 @@ data job_failed: WorkflowJobRun = WorkflowJobRun {
   status: Completed,
   conclusion: Present { value: Failure },
   labels: [],
+  runner_id: none,
+  runner_name: none,
   created_at: Present { value: "2026-09-01T00:00:00Z" },
   started_at: Present { value: "2026-09-01T00:00:00Z" },
   completed_at: Present { value: "2026-09-01T00:15:00Z" },
@@ -239,6 +243,8 @@ data job_success: WorkflowJobRun = WorkflowJobRun {
   status: Completed,
   conclusion: Present { value: Success },
   labels: [],
+  runner_id: none,
+  runner_name: none,
   created_at: Present { value: "2026-09-01T00:02:00Z" },
   started_at: Present { value: "2026-09-01T00:05:00Z" },
   completed_at: Present { value: "2026-09-01T00:10:00Z" },
@@ -252,6 +258,8 @@ data job_queued: WorkflowJobRun = WorkflowJobRun {
   status: Queued,
   conclusion: none,
   labels: [],
+  runner_id: none,
+  runner_name: none,
   created_at: Present { value: "2026-09-01T00:03:00Z" },
   started_at: none,
   completed_at: none,
@@ -265,6 +273,8 @@ data job_in_progress: WorkflowJobRun = WorkflowJobRun {
   status: InProgress,
   conclusion: none,
   labels: [],
+  runner_id: none,
+  runner_name: none,
   created_at: Present { value: "2026-09-01T00:04:00Z" },
   started_at: Present { value: "2026-09-01T00:30:00Z" },
   completed_at: none,
@@ -339,6 +349,8 @@ test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
     status: InProgress,
     conclusion: none,
     labels: [],
+    runner_id: none,
+    runner_name: none,
     created_at: none,
     started_at: none,
     completed_at: none,

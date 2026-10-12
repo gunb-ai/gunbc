@@ -15,6 +15,7 @@ import v2.std.node {
   Authored,
   ArrowEffectClaimsEdge,
   ArrowExecutionModeClaimEdge,
+  ArrowResourceRequirementsEdge,
   Node,
   Positional,
   Symbol,
@@ -127,4 +128,26 @@ test fn contract_edge_identity_is_order_independent() -> Bool {
   (content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_readonly(), ace_idempotent()])])) == content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_idempotent(), ace_readonly()])])))
     && (content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_readonly()]), ace_mode(mode: ace_hermetic())])) == content_hash(n: ace_arrow(extra: [ace_mode(mode: ace_hermetic()), ace_claims(names: [ace_readonly()])])))
     && (content_hash(n: ace_arrow(extra: [ace_claims(names: [ace_readonly()])])) != content_hash(n: ace_arrow(extra: [])))
+}
+
+// A requirements edge whose target is a nonempty Conj of resource references -- the wall only reads
+// its shape; whether members name declared resources is resolution's fact (D13 ruling B).
+fn ace_requirements(children: List<Edge>) -> Edge {
+  core_edge(marker: ArrowResourceRequirementsEdge, target: ace_conj(children: children))
+}
+
+// THE AMBIGUOUS EDGE DOES NOT READ, at the vocabulary wall ALONE. Each red below duplicates one
+// contract edge; the vocabulary wall runs without the structural wall
+// (arrow_signature_edges_conform) that refuses the same arrow at cardinality, so the wall's own
+// answer for an ambiguous lookup is unmasked: with no single target to read it refuses rather than
+// grant conformance, matching arrow_body_target_conforms's Ambiguous arm in v2.std.node. Before the
+// three walls named Ambiguous, each answered true here.
+fn ace_vocabulary_wall(extra: List<Edge>) -> Bool {
+  type_binder_node_conforms(n: ace_arrow(extra: extra))
+}
+
+test fn an_ambiguous_contract_edge_does_not_read_at_the_vocabulary_wall() -> Bool {
+  !ace_vocabulary_wall(extra: [ace_claims(names: [ace_readonly()]), ace_claims(names: [ace_idempotent()])])
+    && !ace_vocabulary_wall(extra: [ace_mode(mode: ace_hermetic()), ace_mode(mode: ace_hermetic())])
+    && !ace_vocabulary_wall(extra: [ace_requirements(children: [ace_named(name: ace_readonly(), target: ace_atom(identity: ace_readonly()))]), ace_requirements(children: [ace_named(name: ace_readonly(), target: ace_atom(identity: ace_readonly()))])])
 }

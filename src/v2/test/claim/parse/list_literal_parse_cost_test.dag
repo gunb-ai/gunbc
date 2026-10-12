@@ -100,8 +100,8 @@ fn lpc_text(n: Int) -> String {
 fn lpc_parses(n: Int) -> Bool {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => false
-    Accepted { value: prepared, diagnostics: residue } =>
-      match parse_module_prepared(tokens: lpc_stream(n: n), prepared: prepared, validation_residue: residue) {
+    Accepted { value: prepared, diagnostics: _ } =>
+      match parse_module_prepared(tokens: lpc_stream(n: n), prepared: prepared) {
         Rejected { diagnostics: _ } => false
         Accepted { value: _, diagnostics: _ } => true
       }

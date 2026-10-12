@@ -204,13 +204,13 @@ test fn r2_object_read_create_request_cites_the_documented_permission_group_id()
     bucket_name: "my-bucket"
   )
   (policy.permission_groups |> count) == 1
-    && (policy.resources |> get(
+    && (match policy.resources |> get(
       r2_bucket_resource_name(
         account_id: "4793d734c0b8e484dfc37ec392b5fa8a",
         jurisdiction: R2JurisdictionDefault,
         bucket_name: "my-bucket"
       )
-    )) == "*"
+    ) { Present { value: v } => v == "*"  Absent => false })
     && all(
       policy.permission_groups,
       g => g.id == workers_r2_storage_bucket_item_read_permission_group_id

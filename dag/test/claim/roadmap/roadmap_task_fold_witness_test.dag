@@ -1,0 +1,56 @@
+module test.claim.roadmap_task_fold_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import gunbc.fabric_event_log { event_log_read_budget }
+import gunbc.roadmap_model { RoadmapNode }
+import gunbc.roadmap_task_store { RuntimeTaskEvent, TaskCreated, TaskDefinitionRevised, TaskSuperseded, RuntimeTasksFolded, RuntimeTasksInconsistent, RuntimeTaskState, TaskLive, TaskRetired, roadmap_task_fold, roadmap_task_capacity, roadmap_task_snapshot_matches, roadmap_task_definition_digest, roadmap_task_minted, CapacityWithin, CapacityCompactionDue, CapacityFull }
+import test.claim.roadmap_task_record_witness_test { sample_task }
+
+fn made(k: String) -> RoadmapNode { roadmap_task_minted(operation_key: k as NonEmptyStr, draft: sample_task()) }
+
+fn live_count(events: List<RuntimeTaskEvent>) -> Nat {
+  match roadmap_task_fold(events: events) {
+    RuntimeTasksFolded { states: ss } => count(filter(ss, s => match s { TaskLive { task: _ } => true TaskRetired { task: _, successor: _ } => false }))
+    RuntimeTasksInconsistent { reason: _ } => 999999
+  }
+}
+
+// The fold: creates accumulate, a supersession retires, and each contradiction is a typed refusal.
+test fn task_fold_creates_retires_and_refuses_contradictions() -> Bool {
+  let a = made(k: "a")
+  let b = made(k: "b")
+  let ca = TaskCreated { operation_key: "a" as NonEmptyStr, task: a }
+  let cb = TaskCreated { operation_key: "b" as NonEmptyStr, task: b }
+  let sa = TaskSuperseded { operation_key: "s" as NonEmptyStr, task: a.identity as String as NonEmptyStr, replacement: Present { value: b.identity as String as NonEmptyStr } }
+  let dup = match roadmap_task_fold(events: [ca, ca]) { RuntimeTasksInconsistent { reason: _ } => true other => false }
+  let ghost = match roadmap_task_fold(events: [sa]) { RuntimeTasksInconsistent { reason: _ } => true other => false }
+  let twice = match roadmap_task_fold(events: [ca, cb, sa, sa]) { RuntimeTasksInconsistent { reason: _ } => true other => false }
+  let stale = match roadmap_task_fold(events: [ca, TaskDefinitionRevised { operation_key: "r" as NonEmptyStr, task: a.identity as String as NonEmptyStr, expected_definition_digest: "wrong" as NonEmptyStr, replacement: a }]) { RuntimeTasksInconsistent { reason: _ } => true other => false }
+  dup && ghost && twice && stale && live_count(events: [ca, cb]) == 2 && live_count(events: [ca, cb, sa]) == 1
+}
+
+// The bound is the fabric log's read budget, with compaction due at three quarters.
+test fn task_capacity_steps_at_the_read_budget() -> Bool {
+  let bound = event_log_read_budget()
+  let within = match roadmap_task_capacity(events: 0) { CapacityWithin => true other => false }
+  let due = match roadmap_task_capacity(events: bound * 3 / 4) { CapacityCompactionDue => true other => false }
+  let full = match roadmap_task_capacity(events: bound) { CapacityFull => true other => false }
+  within && due && full
+}
+
+// A snapshot at a prefix, extended by the suffix, rebuilds the fold of the whole chain; a snapshot
+// of a different prefix does not.
+test fn task_snapshot_rebuilds_from_chain() -> Bool {
+  let a = made(k: "a")
+  let b = made(k: "b")
+  let c = made(k: "c")
+  let ca = TaskCreated { operation_key: "a" as NonEmptyStr, task: a }
+  let cb = TaskCreated { operation_key: "b" as NonEmptyStr, task: b }
+  let cc = TaskCreated { operation_key: "c" as NonEmptyStr, task: c }
+  let whole = [ca, cb, cc]
+  match roadmap_task_fold(events: [ca, cb]) {
+    RuntimeTasksInconsistent { reason: _ } => false
+    RuntimeTasksFolded { states: snap } => roadmap_task_snapshot_matches(snapshot: snap, after: [cc], whole: whole) && !roadmap_task_snapshot_matches(snapshot: snap, after: [], whole: whole)
+  }
+}

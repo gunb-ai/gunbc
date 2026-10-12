@@ -520,7 +520,7 @@ fn census_supplied_file_refusal(path: Symbol, fatal: Symbol) -> NativeTestFileRe
     path: path,
     module: optional_absent(),
     chain: FreeSemigroup {
-      head: FileRefusalLink { reason: ^parse_grammar_choice_overlap_residue, at: FileRefusalAtWholeFile },
+      head: FileRefusalLink { reason: ^tokenize_lex_e1_unrecognized_char, at: FileRefusalAtWholeFile },
       tail: [FileRefusalLink { reason: fatal, at: FileRefusalAtWholeFile }]
     }
   }
@@ -541,6 +541,6 @@ test fn census_file_refusals_group_under_fatal_not_shared_head_holds() -> Bool {
   length(xs: listed) == 2
     && census_cause_group_of(groups: listed, reason: ^tokenize_lex_e0_source_not_exhausted) == 2
     && census_cause_group_of(groups: listed, reason: ^parse_unexpected_token) == 1
-    && census_cause_group_of(groups: listed, reason: ^parse_grammar_choice_overlap_residue) == 0
+    && census_cause_group_of(groups: listed, reason: ^tokenize_lex_e1_unrecognized_char) == 0
     && census_first_group_reason(groups: listed) == ^tokenize_lex_e0_source_not_exhausted
 }

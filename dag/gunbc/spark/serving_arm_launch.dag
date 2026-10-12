@@ -7,12 +7,7 @@ import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
 import extdeps.vllm.usage_stats { vllm_usage_stats_no_usage_stats_term }
 import gunbc.spark.fabric_switch_observed {
-  FabricGroup,
-  FabricGroupA,
-  FabricGroupB,
-  fabric_group_hosts,
-  FabricLaneObserved,
-  fabric_lane_for_host,
+  FabricGroup, FabricGroupB, fabric_group_hosts, FabricLaneObserved, fabric_lane_for_host,
 }
 import extdeps.docker.cli {
   DockerCreateSpec,
@@ -292,7 +287,6 @@ data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 
 data glm53_staircase_container_name: NonEmptyStr = "gunbc-glm53-stair-tp4" as NonEmptyStr
 
-data glm53_staircase_head_log_path: NonEmptyStr = "/var/log/gunbc/glm53-stair-head.log" as NonEmptyStr
 data glm_native_master_port: Port = 29501
 
 data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
@@ -594,8 +588,7 @@ fn plan_arm_launch(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topol
 // here instead of a receipt that quietly claims the wrong silicon.
 fn fabric_group_accelerator(g: FabricGroup) -> NonEmptyStr {
   match g {
-    FabricGroupA => spark_gb10_accelerator
-    FabricGroupB => spark_gb10_accelerator
+    FabricGroupB {} => spark_gb10_accelerator
   }
 }
 

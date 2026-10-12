@@ -13,7 +13,8 @@ import extdeps.systemd.unit_file {
   slice_cpu_quota_unbounded,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired_for }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired_for, identity_is_workspace_execution_member }
+import gunbc.change_realization { address_continuity, classify_change, HostResourceSubject, ChangeRealized, InPlaceUpdate }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.membership_reconcile {
   MemberAction,
@@ -35,6 +36,8 @@ import gunbc.fabric_cell_converge {
   fabric_cell_attempt_root_path,
   fabric_cell_slice_name,
   fabric_cell_resource_address_wire,
+  fabric_cell_member_key, fabric_cell_desired_state_digest,
+  fabric_cell_boundary_address_digest_of, fabric_cell_resource_boundary_state_digest_with_quota,
 }
 
 data fabric_cell_effect_authority_disposition: ConstructionMechanism = SingleAuthority
@@ -95,7 +98,7 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // DESIGN 4b forbids.
 //
 // FIVE BASE DIRECTIVES PLUS THE CPU QUOTA LINE, ALWAYS SIX. Every magnitude comes from
-// gunbc_runner_slot_desired -- the same row fabric_cell_resource_boundary_state_digest renders
+// gunbc_runner_slot_desired_for -- the same row fabric_cell_resource_boundary_state_digest renders
 // into the desired member digest -- so the directives this effect applies and the digest reconcile
 // compares are two projections of one authority and cannot disagree by drift.
 //
@@ -110,9 +113,8 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // arms nothing can produce.
 //
 // WHAT THIS DOES NOT DO, STATED SO THE RESET IS NOT READ AS A REPAIR (review F-R1, 2026-09-19).
-// The six directives are rendered only for MemberAdded. An EXISTING boundary that differs from the
-// desired row only by a finite CPU quota reconciles as MemberChanged, and every MemberChanged at
-// this address is refused as CellChangeNotYetRealizable by fabric_cell_address_realization below --
+// The six directives are rendered for MemberAdded. An EXISTING boundary that differs from the
+// desired unbounded row by a finite CPU quota reconciles as MemberChanged and is still refused --
 // so a previously installed finite quota is DETECTED (the digest compares "infinity" against the
 // host's CPUQuotaPerSecUSec identity and reports drift) and is NOT cleared by this module. That is
 // the inherited change-realization boundary, not a new one: gunbc.change_realization has not
@@ -124,6 +126,9 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // reported srv4 runner-unit census found unlimited quotas; the fabric boundary
 // (fabric-cell-srv3-06.slice) requires its own readback, and this row does not establish
 // fleet-wide quota conformity -- a cell found carrying a finite quota sits behind this block.
+// The separately admitted reverse direction repairs an enrolled workspace cell from unlimited
+// CPU to its declared finite quota, with every other resource field already exact. Its runtime
+// address is preserved, classified as InPlaceUpdate, and only the quota directive is emitted.
 //
 // WHY DIRECTIVES AND NOT A SystemdUnitFile: the effect's production realization is
 // `systemctl set-property <slice> <Property>=<value>...` -- systemd renders and owns the persisted
@@ -196,7 +201,8 @@ type FabricCellAddressRealization
 // decides WHETHER there is one. Neither axis is collapsed into the other, so a new address and a
 // new action each fail to compile here rather than inheriting an arm that happened to fit.
 //
-// TEARDOWN AND CHANGE REFUSE RATHER THAN BEING REALIZED. ADDITION always realizes: directories
+// TEARDOWN AND GENERAL CHANGE REFUSE. The CPU-only narrowing below is the sole admitted change.
+// ADDITION always realizes: directories
 // by path, the slice by the six directives of fabric_cell_slice_desired_directives_for.
 // Teardown of a cell root is a DESTRUCTIVE effect on a directory that may hold live
 // attempt state, and change realization is gunbc.change_realization's question -- it classifies a
@@ -225,17 +231,9 @@ fn fabric_cell_address_realization(
             ),
           }
         FabricCellResourceBoundaryAddress =>
-          fabric_cell_boundary_add_realization(
-            slot: m.slot,
-            quota: gunbc_runner_slot_desired().cpu_quota,
-          )
+          fabric_cell_boundary_add_realization(slot: m.slot)
       }
-    MemberChanged { at: _, from: _, to: m } =>
-      AddressRefused {
-        refusal: CellChangeNotYetRealizable {
-          address_wire: fabric_cell_resource_address_wire(address: m.address),
-        },
-      }
+    MemberChanged { at, from, to } => fabric_cell_workspace_quota_repair(at: at, from: from, to: to)
     MemberRemoved { at: _, from: m } =>
       AddressRefused {
         refusal: CellTeardownNotYetRealizable {
@@ -260,14 +258,43 @@ fn fabric_cell_address_realization(
 
 fn fabric_cell_boundary_add_realization(
   slot: RunnerSlotIdentity,
-  quota: RunnerSlotCpuQuota,
 ) -> FabricCellAddressRealization {
   AddressRealizable {
     effect: FabricCellSliceEnsure {
       slice_unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
-      directives: fabric_cell_slice_desired_directives_for_slot(slot: slot, quota: quota),
+      directives: fabric_cell_slice_desired_directives_of_slot(slot: slot),
     },
   }
+}
+
+// A finite CPU quota limits scheduling rate; it neither deletes storage nor lowers memory.
+// Fleet apply reobserves the exact baseline under its mutation lock. This recognizes only the
+// erroneous unlimited predecessor with all other limits already exact, on the same enrolled
+// workspace address. It does not admit quota removal, other resource drift or replacement.
+fn fabric_cell_workspace_quota_repair(at: String, from: FabricCellMember, to: FabricCellMember) -> FabricCellAddressRealization {
+  let refused = AddressRefused { refusal: CellChangeNotYetRealizable {
+    address_wire: fabric_cell_resource_address_wire(address: to.address),
+  } }
+  if from.address != FabricCellResourceBoundaryAddress || to.address != FabricCellResourceBoundaryAddress
+    || from.slot != to.slot || at != fabric_cell_member_key(member: from) || at != fabric_cell_member_key(member: to)
+    || !identity_is_workspace_execution_member(identity: to.slot)
+    || to.state_digest != fabric_cell_desired_state_digest(slot: to.slot, address: to.address)
+    || from.state_digest != fabric_cell_boundary_address_digest_of(slice_name: fabric_cell_slice_name(slot: to.slot),
+      state: fabric_cell_resource_boundary_state_digest_with_quota(slot: to.slot, quota: SlotCpuQuotaUnbounded)) {
+    refused
+  } else { match gunbc_runner_slot_desired_for(slot: to.slot).cpu_quota {
+    SlotCpuQuotaUnbounded => refused
+    CpuQuotaResolved { threads } => match classify_change(subject: HostResourceSubject,
+      subject_label: fabric_cell_slice_name(slot: to.slot) as NonEmptyStr,
+      continuity: address_continuity(from: from, to: to, address_eq: (a, b) => fabric_cell_member_key(member: a) == fabric_cell_member_key(member: b)),
+      declared_intermediates: none) {
+      ChangeRealized { realization: InPlaceUpdate } => AddressRealizable { effect: FabricCellSliceEnsure {
+        slice_unit: fabric_cell_slice_name(slot: to.slot) as NonEmptyStr,
+        directives: [slice_cpu_quota(threads: threads)],
+      } }
+      other => refused
+    }
+  } }
 }
 
 // THE ALL-OR-NOTHING FOLD, AND IT IS THE POINT OF THE MODULE RATHER THAN A GUARD ON IT.

@@ -1,0 +1,63 @@
+12V              | 01h | ns  | 19.0 | No Reading
+5V               | 02h | ns  | 19.0 | No Reading
+3V3              | 03h | ok  | 19.0 | 3.26 Volts
+5VSB             | 04h | ok  | 19.0 | 4.95 Volts
+0V8_VDDC_SOC     | 05h | ns  | 19.0 | No Reading
+BAT              | 06h | ok  | 19.0 | 3.12 Volts
+0V75_PCP_CPU     | 07h | ns  | 19.0 | No Reading
+1V8_PCP          | 08h | ns  | 19.0 | No Reading
+1V2_VDDQ0123     | 09h | ns  | 19.0 | No Reading
+1V2_VDDQ4567     | 0Ah | ns  | 19.0 | No Reading
+0V6_VTT0123      | 0Bh | ns  | 19.0 | No Reading
+0V6_VTT4567      | 0Ch | ns  | 19.0 | No Reading
+3V3_SOC          | 0Dh | ns  | 19.0 | No Reading
+1V8_VDDH         | 0Eh | ns  | 19.0 | No Reading
+1V5_VDDH         | 0Fh | ns  | 19.0 | No Reading
+0V85_VDDC_RCA    | 10h | ns  | 19.0 | No Reading
+TEMP_SOC         | 30h | ns  |  6.0 | No Reading
+TEMP_SOC_VRD     | 31h | ns  |  6.0 | No Reading
+TEMP_DIMM_VRD    | 32h | ns  |  6.0 | No Reading
+TEMP_Core_VRD    | 33h | ns  |  6.0 | No Reading
+TEMP_DIMM_A1     | 34h | ns  |  6.0 | No Reading
+TEMP_DIMM_B1     | 35h | ns  |  6.0 | No Reading
+TEMP_DIMM_C1     | 36h | ns  |  6.0 | No Reading
+TEMP_DIMM_D1     | 37h | ns  |  6.0 | No Reading
+TEMP_DIMM_E1     | 38h | ns  |  6.0 | No Reading
+TEMP_DIMM_F1     | 39h | ns  |  6.0 | No Reading
+TEMP_DIMM_G1     | 3Ah | ns  |  6.0 | No Reading
+TEMP_DIMM_H1     | 3Bh | ns  |  6.0 | No Reading
+TEMP_RCA_VR      | 3Ch | ns  |  6.0 | No Reading
+TEMP_X550        | 40h | ok  |  6.0 | 39 degrees C
+TEMP_CARD_SIDE   | 41h | ok  |  6.0 | 33 degrees C
+TEMP_VR          | 42h | ok  |  6.0 | 26 degrees C
+TEMP_TR1         | 43h | ok  |  6.0 | 0 degrees C
+TEMP_MB          | 44h | ok  |  6.0 | 29 degrees C
+TEMP_M2_1        | 45h | ns  |  6.0 | No Reading
+TEMP_M2_2        | 46h | ns  |  6.0 | No Reading
+FAN1             | 60h | ns  | 29.0 | No Reading
+FAN2             | 61h | ns  | 29.0 | No Reading
+FAN3             | 62h | ns  | 29.0 | No Reading
+FAN4             | 63h | ns  | 29.0 | No Reading
+FAN5             | 64h | ns  | 29.0 | No Reading
+FAN1_1           | 68h | ns  | 29.0 | No Reading
+FAN2_1           | 69h | ns  | 29.0 | No Reading
+FAN3_1           | 6Ah | ns  | 29.0 | No Reading
+FAN4_1           | 6Bh | ns  | 29.0 | No Reading
+FAN5_1           | 6Ch | ns  | 29.0 | No Reading
+PWR_Core_VRD     | 70h | ns  | 19.39 | No Reading
+PWR_SOC_VRD      | 71h | ns  | 19.39 | No Reading
+PWR_DIMM_VR1     | 72h | ns  | 19.39 | No Reading
+PWR_DIMM_VR2     | 73h | ns  | 19.39 | No Reading
+PWR_RCA_VR       | 74h | ns  | 19.39 | No Reading
+PSU1_VINPUT      | E6h | ns  | 19.74 | Disabled
+PSU2_VINPUT      | E7h | ns  | 19.75 | Disabled
+PSU1_IOUTPUT     | ECh | ns  | 19.80 | Disabled
+PSU2_IOUTPUT     | EDh | ns  | 19.81 | Disabled
+PSU1_PINPUT      | EEh | ns  | 19.82 | Disabled
+PSU2_PINPUT      | EFh | ns  | 19.83 | Disabled
+PSU1_POUTPUT     | F0h | ns  | 19.84 | Disabled
+PSU2_POUTPUT     | F1h | ns  | 19.85 | Disabled
+PSU1_TEMP        | F3h | ns  |  6.58 | Disabled
+PSU2_TEMP        | F4h | ns  |  6.59 | Disabled
+PSU1_FAN         | F5h | ns  | 29.0 | Disabled
+PSU2_FAN         | F6h | ns  | 29.0 | Disabled

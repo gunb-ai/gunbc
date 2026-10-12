@@ -1,9 +1,0 @@
-{
-  "source_revision": "1630eddc7",
-  "mint_attempts": 17,
-  "token_mint": "succeeded",
-  "positive_probe": "refused SERVICE_DISABLED cloudresourcemanager.googleapis.com for project 582015116396",
-  "temporary_grants": "both removed and absence read back",
-  "workflow_trust": "withheld",
-  "credential_file": "removed"
-}

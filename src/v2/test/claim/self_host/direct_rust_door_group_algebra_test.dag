@@ -541,8 +541,8 @@ test fn behavioral_advance_still_reachable_with_a_bound_probe() -> Bool {
 fn residue_headed_diag(fatal: Symbol) -> NonEmptyDiagnostics {
   NonEmptyDiagnostics {
     head: Diagnostic {
-      reason: ^parse_grammar_choice_overlap_residue,
-      at: invariant_port_locus(port: ^direct_rust_door_group_algebra, invariant: ^parse_grammar_choice_overlap_residue),
+      reason: ^tokenize_lex_e1_unrecognized_char,
+      at: invariant_port_locus(port: ^direct_rust_door_group_algebra, invariant: ^tokenize_lex_e1_unrecognized_char),
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
@@ -555,9 +555,9 @@ fn residue_headed_diag(fatal: Symbol) -> NonEmptyDiagnostics {
   }
 }
 
-// THE PROGRAM'S RED CONTROL AT THE DIRECT-RUST DOOR. Two assembly refusals share the overlap
-// residue as their head and differ in their fatal cause; the observation must name each fatal.
-// Reading the head named the residue for both.
+// THE PROGRAM'S RED CONTROL AT THE DIRECT-RUST DOOR. Two assembly refusals share a non-fatal
+// advisory as their head and differ in their fatal cause; the observation must name each fatal.
+// Reading the head named the advisory for both.
 test fn a_shared_residue_head_yields_each_assembly_refusals_own_fatal_holds() -> Bool {
   let a = project_direct_rust_door_observation(group: group_of(emission: AssemblyRejected { diagnostics: residue_headed_diag(fatal: ^normalize_rejected) }))
   let b = project_direct_rust_door_observation(group: group_of(emission: AssemblyRejected { diagnostics: residue_headed_diag(fatal: ^resolve_reason_unbound_symbol) }))

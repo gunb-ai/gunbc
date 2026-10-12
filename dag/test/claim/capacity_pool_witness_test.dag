@@ -130,7 +130,7 @@ test fn an_upstream_remaining_below_the_prediction_shrinks_headroom_and_above_it
   match w_advanced(o: pool_acquire(pool: w_core_pool(), reference: "belt-tick-1" as NonEmptyStr, amount: w_seats(n: 4000), at: 100, term_seconds: 600)) {
     Absent => false
     Present { value: p } =>
-      (match w_advanced(o: observe_upstream_remaining(pool: p, remaining: w_seats(n: 500), at: 300, term_seconds: 3300)) {
+      (match w_advanced(o: observe_upstream_remaining(pool: p, remaining: w_seats(n: 500), at: 300, term_seconds: 3300, reading: "r500" as NonEmptyStr)) {
          Absent => false
          Present { value: shrunk } =>
            w_headroom(p: shrunk, at: 300) == 500
@@ -138,7 +138,7 @@ test fn an_upstream_remaining_below_the_prediction_shrinks_headroom_and_above_it
              && (match w_advanced(o: pool_acquire(pool: shrunk, reference: "belt-tick-2" as NonEmptyStr, amount: w_seats(n: 500), at: 300, term_seconds: 60)) { Present { value: _ } => true  Absent => false })
              && w_headroom(p: shrunk, at: 3600) == 5000
        })
-        && (match w_advanced(o: observe_upstream_remaining(pool: p, remaining: w_seats(n: 4500), at: 300, term_seconds: 3300)) {
+        && (match w_advanced(o: observe_upstream_remaining(pool: p, remaining: w_seats(n: 4500), at: 300, term_seconds: 3300, reading: "r4500" as NonEmptyStr)) {
              Absent => false
              Present { value: same } => w_headroom(p: same, at: 300) == 1000
            })

@@ -1,0 +1,392 @@
+module gunbc.auth.branch_run_grant
+
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String, Timestamp, CommitSha }
+import std.optional { Present, Absent }
+import std.measure { Second, second, second_count }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
+import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
+import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import extdeps.cloud.gcp.iam {
+  GcpIamBindingCell, GcpPolicy, GcpIamOwnedCellUniverse, gcp_cell_in, gcp_policy_cells, reconcile_gcp_policy,
+  GcpPolicyRepresentationLossy, GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired,
+}
+import extdeps.time.rfc3339 { Rfc3339Timestamp, rfc3339_compare, Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.actions_environment { github_output_variable_name }
+import extdeps.github.workflow_runs { WorkflowRun, Completed }
+import extdeps.github.workflow_runs
+import extdeps.transports.rest { RestAnswered, RestRefused }
+import gunbc.repository { gunbc_repository }
+import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
+import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, rest_refusal_text }
+import gunbc.auth.branch_dispatch_federation {
+  branch_run_impersonation_cell, hetzner_cloud_control_federation, branch_run_key_variable, parse_branch_run_key,
+  branch_run_grant_condition_title_prefix, branch_run_expiry_expression_prefix, branch_run_expiry_expression_suffix,
+  branch_run_key, mode_of_run_title, run_scoped_mode_named,
+}
+import gunbc.auth.gcp_iam_converge {
+  PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, ServiceAccountPolicy, PolicyDelta, PolicyDeltaRefused,
+  read_account_policy, policy_subject_reading, policy_subject_write, PolicyWritten, PolicyWriteRefused, cell_preimage,
+}
+import gunbc.auth.gcp_iam_converge_run { observe_token, iam_converge_token_env }
+import gunbc.auth.approval_run_identity { run_attempt }
+import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
+import gunbc.auth.approval_gate {
+  approval_refusal_text, GateAdmitted, GateRefused, approval_gate_from_poll,
+  approval_instant_now, approval_expires_at, approval_poll_ticks, PollObservedAt, PollBudgetExhausted, PollClockUnreadable,
+  approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
+}
+import gunbc.auth.approval_request_client { stored_request_from_authorization }
+
+// ── ONE APPROVED BRANCH RUN MAY ACT AS ONE RUN-SCOPED ACCOUNT ──────────────────────────────────
+// The other half of gunbc.auth.branch_dispatch_federation. A fleet-converge run dispatched from any
+// branch dispatches this mode at main naming its own run id and the account it needs; this job --
+// reviewed code, in the gcp-iam-converge job, which alone may become iam-converge -- reads that run
+// from GitHub, files ONE request saying exactly who is asking for what, and on the operator's tap
+// writes one IAM cell: that run attempt's principal set may impersonate that account until the run's
+// own start time plus the grant window. The run and its attempt arrive from the main-only broker
+// (gunbc.auth.branch_run_grant_broker), which read them from GitHub's workflow_run event; the branch's
+// code supplies neither. Its mode, branch, commit, dispatcher and start time are read here from
+// GitHub, and the account is main's mapping of that mode (run_scoped_modes).
+//
+// THE EXPIRY IS DERIVED FROM THE RUN, NOT FROM THE CLOCK, so the request step and the apply step
+// derive the same cell and the same digest (the apply re-derives and re-admits, as
+// gunbc.auth.gcp_iam_converge_run does): an expiry read off the clock at each step would make the
+// approved request unreproducible.
+data branch_run_grant_window: Second = second(count: 3600)
+
+// THE ACCOUNTS A BRANCH RUN MAY ASK FOR, by account id. A capability that needs branch iteration is
+// added here with its own account (gunbc.auth.branch_dispatch_federation), never by widening one.
+fn run_scoped_federations() -> List<DedicatedFederation> {
+  [hetzner_cloud_control_federation()]
+}
+
+fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {
+  filter(run_scoped_federations(), f => (f.service_account_id as String) == account_id).first()
+}
+
+// ── the branch run, as GitHub records it ─────────────────────────────────────────────────────
+
+type BranchRunFacts {
+  run_id: Int
+  run_attempt: Int
+  mode: String
+  branch: String
+  head_sha: CommitSha
+  dispatched_by: String
+  created_at: Timestamp
+}
+
+type BranchRunReading
+  = BranchRunAdmitted { facts: BranchRunFacts }
+  | BranchRunRefused { reason: NonEmptyStr }
+
+// THE RUN MUST BE A LIVE DISPATCH OF THE FLEET-CONVERGE WORKFLOW, AT THE ATTEMPT ASKED ABOUT: another
+// workflow, another event, a finished run, or a run GitHub has since re-run is refused, so an approval
+// can only ever reach the one attempt of the file this grant is for.
+fn judge_branch_run(run_id: Int, run_attempt: Int, run: WorkflowRun) -> BranchRunReading {
+  let path = match run.path { Present { value: p } => p  Absent => "" }
+  if run.id != run_id {
+    BranchRunRefused { reason: concat("GitHub answered about another run: ", to_string(run.id)) as NonEmptyStr }
+  } else if run.run_attempt != run_attempt {
+    BranchRunRefused { reason: join(["the run is at attempt ", to_string(run.run_attempt), ", not the attempt asked about (", to_string(run_attempt), ")"], "") as NonEmptyStr }
+  } else if path != artifact_path(a: FleetConvergeYamlArtifact) {
+    BranchRunRefused { reason: concat("the run is not a fleet-converge run: ", path) as NonEmptyStr }
+  } else if run.event != workflow_dispatch_event_name {
+    BranchRunRefused { reason: concat("the run was not dispatched: ", run.event) as NonEmptyStr }
+  } else if (run.status == Completed) {
+    BranchRunRefused { reason: "the run has already completed" as NonEmptyStr }
+  } else {
+    BranchRunAdmitted { facts: BranchRunFacts {
+      run_id: run_id,
+      run_attempt: run_attempt,
+      mode: mode_of_run_title(title: match run.display_title { Present { value: t } => t  Absent => "" }),
+      branch: match run.head_branch { Present { value: b } => b  Absent => "(no branch)" },
+      head_sha: run.head_sha,
+      dispatched_by: match run.triggering_actor { Present { value: u } => u.login as String  Absent => "(unknown)" },
+      created_at: run.created_at,
+    } }
+  }
+}
+
+fn read_branch_run(run_id: Int, run_attempt: Int) -> BranchRunReading {
+  match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: to_string(run_id)) {
+    RestRefused { refusal } => BranchRunRefused { reason: concat("the run could not be read: ", rest_refusal_text(o: refusal)) as NonEmptyStr }
+    RestAnswered { answer: got } => judge_branch_run(run_id: run_id, run_attempt: run_attempt, run: got.run)
+  }
+}
+
+// ── the grant, as one approvable subject ─────────────────────────────────────────────────────
+
+type BranchRunGrant {
+  run: BranchRunFacts
+  account: ServiceAccountEmail
+  cell: GcpIamBindingCell
+  pruned: List<GcpIamBindingCell>
+  observed_etag: String
+}
+
+type BranchRunGrantPlan
+  = BranchRunGrantPlanned { grant: BranchRunGrant }
+  | BranchRunGrantHeld { run: BranchRunFacts }
+  | BranchRunGrantRefused { reason: NonEmptyStr }
+
+fn branch_run_expires_at(run: BranchRunFacts) -> Timestamp {
+  approval_expires_at(issued: run.created_at, window: branch_run_grant_window)
+}
+
+// ── the cells a grant owns ──────────────────────────────────────────────────────────────────
+
+fn is_branch_run_cell(c: GcpIamBindingCell) -> Bool {
+  match c.condition { Present { value: k } => k.title.starts_with(branch_run_grant_condition_title_prefix)  Absent => false }
+}
+
+// THE INSTANT AN OWNED CELL LAPSES, read back out of the expression this module wrote. A cell under the
+// prefix whose expression is not that shape is not one this module can judge, so it refuses the plan
+// rather than keep or delete a cell it does not understand.
+fn branch_run_cell_expiry(c: GcpIamBindingCell) -> Rfc3339Timestamp? {
+  match c.condition {
+    Absent => none
+    Present { value: k } =>
+      if k.expression.starts_with(branch_run_expiry_expression_prefix) && k.expression.ends_with(branch_run_expiry_expression_suffix) {
+        let inner = k.expression.substring(start: branch_run_expiry_expression_prefix.length(), end: k.expression.length() - branch_run_expiry_expression_suffix.length())
+        if inner == "" { none } else { Present { value: inner as Rfc3339Timestamp } }
+      } else { none }
+  }
+}
+
+type CellStanding
+  = CellLapsed
+  | CellLive
+  | CellUnjudgeable { reason: String }
+
+// LAPSED AS OF THE NEW RUN'S START, not as of the clock: both steps derive the same set, so the
+// approved request is reproducible at apply, and a cell lapsing between the two only waits a grant.
+fn branch_run_cell_standing(c: GcpIamBindingCell, as_of: Timestamp) -> CellStanding {
+  match branch_run_cell_expiry(c: c) {
+    Absent => CellUnjudgeable { reason: concat("an owned cell's condition does not carry an expiry this module wrote: ", c.member) }
+    Present { value: x } => match rfc3339_compare(left: x, right: as_of as Rfc3339Timestamp) {
+      Rfc3339Precedes => CellLapsed
+      Rfc3339Simultaneous => CellLapsed
+      Rfc3339Follows => CellLive
+      Rfc3339OrderUndecidable { cause: why } => CellUnjudgeable { reason: concat("an owned cell's expiry is not comparable: ", why as String) }
+    }
+  }
+}
+
+// THE CELL AGAINST THE ACCOUNT'S POLICY AS READ. The universe this plan owns is the cells under the
+// branch-run prefix: lapsed ones are removed, live ones (another attempt still inside its window) are
+// kept, and every binding outside the prefix is preserved untouched. The run's cell already present
+// holds (a re-dispatch for an attempt already granted asks nothing); any other reading refuses.
+fn plan_branch_run_grant(f: DedicatedFederation, run: BranchRunFacts, expires_at: Timestamp, reading: PolicyReading) -> BranchRunGrantPlan {
+  let cell = branch_run_impersonation_cell(run_id: run.run_id, run_attempt: run.run_attempt, expires_at: expires_at)
+  match reading {
+    PolicyUnreadable { cause: c } => BranchRunGrantRefused { reason: concat("the account's policy is unreadable: ", c) as NonEmptyStr }
+    PolicyResourceAbsent => BranchRunGrantRefused { reason: "the run-scoped account does not exist; run the gcp_iam_converge mode first" as NonEmptyStr }
+    PolicyObserved { policy: p } => plan_against_policy(f: f, run: run, cell: cell, p: p)
+  }
+}
+
+fn plan_against_policy(f: DedicatedFederation, run: BranchRunFacts, cell: GcpIamBindingCell, p: GcpPolicy) -> BranchRunGrantPlan {
+  let owned = filter(gcp_policy_cells(p: p), c => is_branch_run_cell(c: c))
+  let unjudgeable = filter(map(owned, c => branch_run_cell_standing(c: c, as_of: run.created_at)), st => match st { CellUnjudgeable { reason: _ } => true  CellLapsed => false  CellLive => false })
+  if gcp_cell_in(c: cell, xs: owned) {
+    BranchRunGrantHeld { run: run }
+  } else if unjudgeable.length() > 0 {
+    BranchRunGrantRefused { reason: join(map(unjudgeable, st => match st { CellUnjudgeable { reason: r } => r  CellLapsed => ""  CellLive => "" }), "; ") as NonEmptyStr }
+  } else {
+    let live = filter(owned, c => match branch_run_cell_standing(c: c, as_of: run.created_at) { CellLive => true  CellLapsed => false  CellUnjudgeable { reason: _ } => false })
+    match reconcile_gcp_policy(observed: p, desired_owned: concat(live, [cell]), owned_universe: GcpIamOwnedCellUniverse { cells: concat(owned, [cell]) }) {
+      GcpPolicyRepresentationLossy { conditional_roles: _ } => BranchRunGrantRefused { reason: "the policy was read at a representation that mangles conditional bindings" as NonEmptyStr }
+      GcpPolicyAlreadyConverged { policy: _ } => BranchRunGrantHeld { run: run }
+      GcpPolicyDeltaRequired { policy: _, added: _, removed: r, preserved: _ } =>
+        BranchRunGrantPlanned { grant: BranchRunGrant { run: run, account: f.service_account, cell: cell, pruned: r, observed_etag: p.etag } }
+    }
+  }
+}
+
+// THE WRITE THE APPROVAL ADMITS, re-derived from a fresh read at the approved etag: add the cell,
+// remove exactly the approved lapsed cells, preserve everything else.
+fn approved_grant_policy(g: BranchRunGrant, reading: PolicyReading) -> GcpPolicy? {
+  match reading {
+    PolicyObserved { policy: p } =>
+      if p.etag != g.observed_etag { none } else {
+        let owned = filter(gcp_policy_cells(p: p), c => is_branch_run_cell(c: c))
+        let kept = filter(owned, c => !gcp_cell_in(c: c, xs: g.pruned))
+        match reconcile_gcp_policy(observed: p, desired_owned: concat(kept, [g.cell]), owned_universe: GcpIamOwnedCellUniverse { cells: concat(owned, [g.cell]) }) {
+          GcpPolicyDeltaRequired { policy: next, added: _, removed: _, preserved: _ } => Present { value: next }
+          GcpPolicyAlreadyConverged { policy: _ } => none
+          GcpPolicyRepresentationLossy { conditional_roles: _ } => none
+        }
+      }
+    PolicyResourceAbsent => none
+    PolicyUnreadable { cause: _ } => none
+  }
+}
+
+fn branch_run_grant_preimage(g: BranchRunGrant) -> String {
+  join([
+    "run=", branch_run_key(run_id: g.run.run_id, run_attempt: g.run.run_attempt), "\nbranch=", g.run.branch, "\nsha=", g.run.head_sha as String,
+    "\nmode=", g.run.mode, "\nby=", g.run.dispatched_by, "\naccount=", g.account as String, "\netag=", g.observed_etag,
+    "\ncell=", cell_preimage(c: g.cell),
+    "\npruned=", join(map(g.pruned, c => cell_preimage(c: c)), "\n"),
+  ], "")
+}
+
+data branch_run_grant_escalation_prefix: NonEmptyStr = "branch-run-grant-"
+
+data branch_run_grant_scope: AuthorizationScope = AuthorizationScope {
+  verb: Write,
+  resource: NamespacePosition { tree: ServiceOpTree { service: "iam.googleapis.com" }, path: ["projects", fleet_secrets_project_id as String] },
+  action: "gunbc.branch-run-grant.apply" as AuthorizedAction,
+}
+
+// THE PURPOSE IS WHAT THE OPERATOR READS: who dispatched which commit of which branch in which mode,
+// and what the attempt may do if approved. The mode is the branch's claim (its workflow file renders
+// the title); what bounds the approval is the account main maps it to and what that account holds.
+fn branch_run_grant_purpose(g: BranchRunGrant) -> NonEmptyStr {
+  join([
+    "Branch run ", to_string(g.run.run_id), " attempt ", to_string(g.run.run_attempt), " of fleet-converge (mode ", g.run.mode, ") on ", g.run.branch,
+    " at ", g.run.head_sha as String, " (dispatched by ", g.run.dispatched_by, ") asks to act as ",
+    g.account as String, " for ", to_string(second_count(s: branch_run_grant_window)), "s from its start.",
+    " Approving lets that attempt, and only that attempt, read what that account holds; it runs the branch's code.",
+  ], "") as NonEmptyStr
+}
+
+fn branch_run_grant_request(g: BranchRunGrant, attempt: AttemptIdentity) -> AuthorizationRequest<BranchRunGrant>? {
+  match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: branch_run_grant_preimage(g: g))))) {
+    Absent => none
+    Present { value: d } => Present { value: AuthorizationRequest {
+      escalation_id: join([branch_run_grant_escalation_prefix as String, d.hex as String, "-", attempt as String], "") as NonEmptyStr,
+      scopes: [branch_run_grant_scope],
+      subject: g,
+      purpose: branch_run_grant_purpose(g: g),
+      attempt: attempt,
+      intent_hash: as_content_hash_cryptographic(digest: d),
+      destructive: false,
+    } }
+  }
+}
+
+// ── the two entries (the gcp-iam-converge job's branch_run_grant mode) ───────────────────────
+
+data branch_run_grant_approved_output: String = "approved"
+
+data branch_run_grant_file_window: Second = second(count: 1800)
+
+data branch_run_grant_poll_cadence: Second = second(count: 15)
+
+type BranchRunGrantStanding
+  = BranchRunGrantRequestable { request: AuthorizationRequest<BranchRunGrant> }
+  | BranchRunGrantAlreadyHeld
+  | BranchRunGrantUnplannable { reason: NonEmptyStr }
+
+// THE SAME DERIVATION FOR BOTH STEPS: the inputs, the run as GitHub reads it, the account's policy as
+// iam-observe reads it, and the request over them for this run attempt.
+fn derive_branch_run_grant(observe: Secret, attempt: AttemptIdentity) -> BranchRunGrantStanding {
+  match parse_branch_run_key(key: actions_variable_trimmed(name: branch_run_key_variable)) {
+    Absent => BranchRunGrantUnplannable { reason: "BRANCH_RUN_KEY is not <run id>-<run attempt>" as NonEmptyStr }
+    Present { value: k } => match read_branch_run(run_id: k.run_id, run_attempt: k.run_attempt) {
+      BranchRunRefused { reason: r } => BranchRunGrantUnplannable { reason: r }
+      BranchRunAdmitted { facts: run } => match account_for_mode(mode: run.mode) {
+        Absent => BranchRunGrantUnplannable { reason: concat("the run's mode needs no run-scoped account: ", run.mode) as NonEmptyStr }
+        Present { value: f } => match plan_branch_run_grant(f: f, run: run, expires_at: branch_run_expires_at(run: run), reading: read_account_policy(f: f, token: observe)) {
+          BranchRunGrantRefused { reason: r } => BranchRunGrantUnplannable { reason: r }
+          BranchRunGrantHeld { run: _ } => BranchRunGrantAlreadyHeld
+          BranchRunGrantPlanned { grant: g } => match branch_run_grant_request(g: g, attempt: attempt) {
+            Absent => BranchRunGrantUnplannable { reason: "the grant's SHA-256 did not admit as a digest" as NonEmptyStr }
+            Present { value: q } => BranchRunGrantRequestable { request: q }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn account_for_mode(mode: String) -> DedicatedFederation? {
+  match run_scoped_mode_named(mode: mode) {
+    Absent => none
+    Present { value: m } => run_scoped_federation_named(account_id: m.account_id as String)
+  }
+}
+
+fn mark_branch_run_grant_approved() -> ProcessExit {
+  let path = actions_variable_trimmed(name: github_output_variable_name as NonEmptyStr)
+  if path == "" { exit_failure(reason: "branch run grant: approved, but GITHUB_OUTPUT is unset; nothing granted") }
+  else {
+    let w = Filesystem.Write(path: path, content: join([branch_run_grant_approved_output, "=true\n"], ""))
+    if w.success { ExitSuccess } else { exit_failure(reason: concat("branch run grant: could not write the approval output; nothing granted: ", w.error)) }
+  }
+}
+
+fn branch_run_grant_request_wet() -> ProcessExit {
+  match run_attempt() {
+    Absent => exit_failure(reason: "branch run grant: GITHUB_RUN_ID is unset; this entry runs only as the fleet-converge gcp-iam job")
+    Present { value: attempt } => match observe_token() {
+      Absent => exit_failure(reason: "branch run grant: no workload identity token for iam-observe")
+      Present { value: observe } => match derive_branch_run_grant(observe: observe, attempt: attempt) {
+        BranchRunGrantUnplannable { reason: r } => exit_failure(reason: concat("branch run grant: refused, nothing requested: ", r as String))
+        BranchRunGrantAlreadyHeld => ExitSuccess
+        BranchRunGrantRequestable { request: q } => match approval_instant_now() {
+          Absent => exit_failure(reason: "branch run grant: clock unreadable; the request cannot be filed")
+          Present { value: issued } => {
+            let expires = approval_expires_at(issued: issued, window: branch_run_grant_file_window)
+            match approval_file_stored_request(stored: stored_request_from_authorization(request: q, issued_at: issued, expires_at: expires), body_file_name: "branch-run-grant-submit.json", submit_timeout: second(count: 30)) {
+              ApprovalFilingRefused { reason: r } => exit_failure(reason: concat("branch run grant: filing refused: ", r))
+              ApprovalFiled => match approval_poll_ticks(remaining: second_count(s: branch_run_grant_file_window) / second_count(s: branch_run_grant_poll_cadence), cadence: branch_run_grant_poll_cadence, escalation_id: q.escalation_id, expires_at: expires) {
+                PollClockUnreadable => exit_failure(reason: "branch run grant: clock unreadable while waiting for the decision")
+                PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "branch run grant: no decision within the window; nothing granted")
+                PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: q, observed_at: at) {
+                  GateRefused { cause: c } => exit_failure(reason: concat("branch run grant: not admitted, nothing granted: ", approval_refusal_text(cause: c)))
+                  GateAdmitted { authorization: _ } => mark_branch_run_grant_approved()
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// RE-DERIVES THE REQUEST, RE-ADMITS THE APPROVAL, WRITES EXACTLY THE APPROVED POLICY AT THE APPROVED
+// ETAG as iam-converge, then reads the policy back as iam-observe: the cell present, the pruned absent.
+fn branch_run_grant_apply_wet() -> ProcessExit {
+  match run_attempt() {
+    Absent => exit_failure(reason: "branch run grant: GITHUB_RUN_ID is unset")
+    Present { value: attempt } => match observe_token() {
+      Absent => exit_failure(reason: "branch run grant: no workload identity token for iam-observe")
+      Present { value: observe } => match derive_branch_run_grant(observe: observe, attempt: attempt) {
+        BranchRunGrantUnplannable { reason: r } => exit_failure(reason: concat("branch run grant: refused at apply, nothing granted: ", r as String))
+        BranchRunGrantAlreadyHeld => exit_failure(reason: "branch run grant: the cell appeared between the tap and the apply; the iam-converge token is unused")
+        BranchRunGrantRequestable { request: q } => match approved_gcp_access_for_request(request: q, token_variable: iam_converge_token_env) {
+          ApprovedGcpAccessRefused { reason } => exit_failure(reason: concat("branch run grant: ", reason))
+          ApprovedGcpAccessReady { authorization: _, token } => {
+            let g = q.subject
+            let subject = ServiceAccountPolicy { email: g.account }
+            match approved_grant_policy(g: g, reading: policy_subject_reading(s: subject, token: token)) {
+              Absent => exit_failure(reason: "branch run grant: the policy moved since the approval or no longer admits the approved write; nothing granted")
+              Present { value: next } => match policy_subject_write(s: subject, policy: next, token: token) {
+                PolicyWriteRefused { cause: c } => exit_failure(reason: concat("branch run grant: the fenced write was refused: ", c))
+                PolicyWritten { returned: _ } => match policy_subject_reading(s: subject, token: observe) {
+                  PolicyObserved { policy: p } =>
+                    if gcp_cell_in(c: g.cell, xs: gcp_policy_cells(p: p)) && !any(g.pruned, c => gcp_cell_in(c: c, xs: gcp_policy_cells(p: p))) { ExitSuccess }
+                    else { exit_failure(reason: "branch run grant: the write returned, but the readback does not hold the cell, or still holds a lapsed one") }
+                  PolicyResourceAbsent => exit_failure(reason: "branch run grant: the account is absent on readback")
+                  PolicyUnreadable { cause: c } => exit_failure(reason: concat("branch run grant: readback unreadable: ", c))
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

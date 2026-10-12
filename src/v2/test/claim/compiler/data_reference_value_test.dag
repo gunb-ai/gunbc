@@ -1,0 +1,182 @@
+module v2.test.claim.compiler.data_reference_value
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer, infer_reference_value_type }
+import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.test.claim.callexec.declaration_reference_eval { CrefReading, cref_assemble, cref_call_carries_declaration, cref_executes_to, cref_reading_of_outcome, cref_the_call_to }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Arrow, Atom, Symbol, Authored, ConstantMemberEdge, Conj, Edge, Node, Positional, TypeNode, core_edge, edge_is_core, node_subtree_nodes }
+import v2.std.node_query { arrow_constant_member_codomain }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Present }
+import std.algebra { list_append }
+import std.types { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a reference to a module-level `data` row USES ITS VALUE. Body lowering realizes `data x: T = e`
+// as the nullary Arrow a `fn x() -> T` lowers to, and marks it (v2.std.node ConstantMemberEdge, written by
+// v2.compiler.body_lowering_fold body_lower_constant_member_arrow); v2.compiler.infer types a reference to a
+// marked Arrow at its declared codomain (infer_reference_value_type) and v2.compiler.eval applies it
+// (eval_constant_member_body), both through the one reader v2.std.node_query arrow_constant_member_codomain.
+// BOUNDARY: source text in, through the production assembly route, then infer (and eval for the
+// execution row) -- except the marker-reader rows, whose input is supplied (see their header).
+//
+// RED ON THE BASE: before the marker, a bare `k` over `data k: Int` was typed as the function () -> Int, so
+// `data j: Int = k` refused arrow_body_does_not_inhabit_declared_return, `fn consumer() -> Int { k }` refused
+// the same way, and eval refused the reference with eval_rejected_runtime_binding_lookup_miss.
+
+// THE REAL PATH, ONCE: one source carrying every accepted case, assembled once and read whole by the rows
+// below, so the floor fills it once (v2.workflow.floor_pure_producer_share). The smallest source that holds
+// the subject: one constant, a fn whose body is a reference to it, and a call to that fn.
+data drv_source: String = "module p\n\ndata k: Int = 7\n\nfn callee() -> Int {\n  k\n}\n\nfn consumer() -> Int {\n  callee()\n}\n"
+
+// ONE ASSEMBLY, read whole by every real-path row below (the infer rows, the marker row and the eval row),
+// so the floor fills it once. The call-execution route's assembly is used because the eval row needs
+// exactly the tree that route evaluates, and this source needs no peer modules.
+fn drv_assembled() -> Outcome<ResolvedTree> {
+  cref_assemble(src: drv_source)
+}
+
+// THE ONE INFERENCE of that assembly, read by row (1) only: an inferred tree is not a portable served value,
+// so a second reader would pay it again rather than share it.
+fn drv_inferred() -> Outcome<InferredTree> {
+  match drv_assembled() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => infer(tree: tree)
+  }
+}
+
+fn drv_reason(o: Outcome<InferredTree>) -> Symbol {
+  match o {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: _, diagnostics: _ } => ^accepted
+  }
+}
+
+// The call to `callee`, evaluated over the shared inference: the call-execution route's own locator and
+// reader (cref_the_call_to, cref_reading_of_outcome), so this row reads the same vocabulary those rows do.
+fn drv_eval_reading(o: Outcome<InferredTree>) -> CrefReading {
+  let unfound = CrefReading { call_found: false, declaration_carried: false, executed: false, int_result: Absent, result_bytes: Absent }
+  match o {
+    Rejected { diagnostics: _ } => unfound
+    Accepted { value: inferred, diagnostics: _ } =>
+      match cref_the_call_to(root: inferred.root, name: ^callee) {
+        Absent => unfound
+        Present { value: call } =>
+          cref_reading_of_outcome(
+            declaration_carried: cref_call_carries_declaration(inferred: inferred, call: call),
+            outcome: eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call))
+          )
+      }
+  }
+}
+
+// (1) THE ONE REAL-PATH ROW: infer accepts a data reference at its declared position (a constant as a fn
+// body, at the fn's declared return), AND eval agrees -- the call to `callee` evaluates its body `k` to the
+// constant's VALUE 7, not a closure and not the binding-miss refusal it took before. ONE ROW BECAUSE BOTH
+// ASSERTIONS READ ONE INFERENCE and an inferred tree is not a portable served value
+// (ServeCacheValueNotPortable), so two rows would pay the inference twice for no coverage the one row lacks.
+test fn drv_a_data_reference_is_typed_at_its_declared_type_and_evaluates_to_its_value() -> Bool {
+  let o = drv_inferred()
+  drv_reason(o: o) == ^accepted && cref_executes_to(r: drv_eval_reading(o: o), n: 7)
+}
+
+// (2) THE MARKER IS PRODUCED, NOT ONLY SUPPLIED: lowering the real source yields exactly the data Arrow
+// marked (k) and leaves the nullary fn Arrows (callee, consumer) unmarked -- so a nullary fn is not
+// mistaken for a constant, which is the meaning fork a marker-free "type every nullary Arrow by its
+// codomain" rule would have been.
+fn drv_marked_arrow_count(o: Outcome<ResolvedTree>) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: 0, f: fn(acc, n) {
+        match arrow_constant_member_codomain(arrow: n) {
+          Present { value: _ } => acc + 1
+          Absent => acc
+        }
+      })
+  }
+}
+
+fn drv_unmarked_arrow_count(o: Outcome<ResolvedTree>) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: 0, f: fn(acc, n) {
+        match n.kind {
+          TypeNode { connective: Arrow } =>
+            match arrow_constant_member_codomain(arrow: n) {
+              Present { value: _ } => acc
+              Absent => acc + 1
+            }
+          _ => acc
+        }
+      })
+  }
+}
+
+test fn drv_lowering_marks_the_data_arrow_and_not_the_two_fn_arrows() -> Bool {
+  let o = drv_assembled()
+  drv_marked_arrow_count(o: o) == 1 && drv_unmarked_arrow_count(o: o) == 2
+}
+
+// (4) TYPING THE REFERENCE AT T IS NOT ADMITTING IT ANYWHERE: a reference to a marked Arrow is typed at
+// EXACTLY its declared codomain (v2.compiler.infer infer_reference_value_type), so an Int constant presents
+// Int to the judge and an Int-at-String position refuses there by the judge's own existing rule. The input
+// is supplied (DESIGN section 3: one interface); the real path that types references through it is row (1).
+test fn drv_a_marked_reference_is_typed_at_exactly_its_codomain() -> Bool {
+  infer_reference_value_type(callable: drv_nullary_arrow(extra: [drv_marker()])) == drv_int()
+}
+
+test fn drv_an_unmarked_callable_is_typed_as_itself() -> Bool {
+  let f = drv_nullary_arrow(extra: [])
+  infer_reference_value_type(callable: f) == f
+}
+
+// THE MARKER READER, SUPPLIED (DESIGN section 3: a witness discriminates at one interface). Its subject is
+// v2.std.node_query arrow_constant_member_codomain alone: a marked nullary Arrow answers its codomain, the
+// SAME Arrow unmarked answers Absent, and a non-Arrow carrying the marker answers Absent. The real path
+// that produces the marker is row (2).
+fn drv_int() -> Node { Node { kind: TypeNode { connective: Atom { identity: ^Int } }, children: [], occurrence_id: OccurrenceSynthetic } }
+fn drv_empty() -> Node { Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } }
+fn drv_marker() -> Edge { core_edge(marker: ConstantMemberEdge, target: drv_empty()) }
+
+fn drv_nullary_arrow(extra: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: list_append(
+      left: [
+        Edge { label: Positional, target: drv_empty() },
+        Edge { label: Positional, target: drv_int() },
+        Edge { label: Positional, target: drv_int() }
+      ],
+      right: extra
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn drv_a_marked_nullary_arrow_answers_its_codomain() -> Bool {
+  match arrow_constant_member_codomain(arrow: drv_nullary_arrow(extra: [drv_marker()])) {
+    Present { value: t } => t == drv_int()
+    Absent => false
+  }
+}
+
+test fn drv_an_unmarked_nullary_arrow_denotes_its_function() -> Bool {
+  match arrow_constant_member_codomain(arrow: drv_nullary_arrow(extra: [])) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn drv_a_marked_non_arrow_is_not_a_constant() -> Bool {
+  match arrow_constant_member_codomain(arrow: Node { kind: TypeNode { connective: Conj }, children: [drv_marker()], occurrence_id: OccurrenceSynthetic }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}

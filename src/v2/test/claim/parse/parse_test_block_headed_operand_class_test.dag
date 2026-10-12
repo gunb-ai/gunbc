@@ -1,6 +1,6 @@
 module test.claim.parse_test_block_headed_operand_class
 
-import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared_measured_seeded }
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared_seeded }
 import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
@@ -41,16 +41,15 @@ fn bc_parse_at(text: String, production: Symbol) -> Outcome<Node> {
       match dag_prepared_grammar() {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: PreparedVoidGrammar, diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: PreparedModeled { modeled: modeled, materialization: materialization }, diagnostics: _ } =>
-          match parse_production_prepared_measured_seeded(
+        Accepted { value: PreparedModeled { modeled: modeled }, diagnostics: _ } =>
+          match parse_production_prepared_seeded(
             tokens: token_stream_remaining(stream: ts),
             validated: modeled.validated,
             analysis: modeled.analysis,
             production_name: production,
             seed: occurrence_id_allocator_initial(),
-            layout: token_stream_layout(stream: ts),
-            materialization: materialization
-          ).outcome {
+            layout: token_stream_layout(stream: ts)
+          ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
           }

@@ -1,6 +1,6 @@
 module gunbc.namecheap.federation_provision
 
-import gunbc.auth.heal_publisher_provision { DedicatedFederation }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
 import gunbc.auth.gcp_secret_access { secret_accessor_grant }
 import gunbc.auth.github_gcp_federation { federated_service_account_member }
 import gunbc.namecheap.credential { namecheap_api_key_secret_ref }
@@ -19,7 +19,7 @@ fn namecheap_dedicated_federation() -> DedicatedFederation {
     provider_id: namecheap_wif_provider_id,
     attribute_mapping: namecheap_attribute_mapping,
     attribute_condition: namecheap_attribute_condition(),
-    principal_set: namecheap_principal_set(),
+    impersonation: StandingPoolImpersonation { principal_set: namecheap_principal_set() },
     service_account: namecheap_service_account,
     service_account_id: "namecheap-dns",
     service_account_display_name: "Namecheap DNS credential reader",

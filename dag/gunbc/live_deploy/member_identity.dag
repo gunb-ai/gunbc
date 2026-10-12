@@ -1,6 +1,7 @@
 module gunbc.live_deploy.member_identity
 
 import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha }
+import std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest, HashAlgorithm, Sha256, Sha512 }
 import std.content_hash {
   Fnv1a64Structural,
@@ -35,8 +36,8 @@ import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Activating, D
 // executable fixture in member_identity_witness_test is exactly that control.
 // A MEMBER CARRIES ITS OWN KEY WHERE IT HAS ONE. The release members are singular -- there is one
 // executable, one published tree, one serve unit -- so they are nullary. A directory root is not:
-// the deployment owns several, they differ only by path, and minting DispatchWorktreeRoot /
-// AttemptStateRoot / ComputeRoot as nullary variants would be several names
+// the deployment owns several, they differ only by path, and minting a nullary variant per root
+// (one per dispatch, compute or store directory) would be several names
 // for one concept (DESIGN section 2, one concept at every breadth). The path is the key, so it
 // lives on the variant and converged_member_label renders it -- which is also what keeps
 // converged_member_eq correct for a payload-carrying member, since that equality is defined
@@ -48,6 +49,7 @@ type ConvergedMember
   | UnitManager
   | ServiceProcess
   | DirectoryRoot { path: NonEmptyStr }
+  | OidcConfigFile
 
 fn converged_member_label(m: ConvergedMember) -> String {
   match m {
@@ -57,6 +59,7 @@ fn converged_member_label(m: ConvergedMember) -> String {
     UnitManager => "unit-manager"
     ServiceProcess => "service-process"
     DirectoryRoot { path } => join(["directory-root:", path as String], "")
+    OidcConfigFile => "oidc-config-file"
   }
 }
 
@@ -94,15 +97,26 @@ type ServiceProcessIdentity
   = ProcessRunningRelease { revision: CommitSha }
   | ProcessNotRunning { active: SystemdUnitActiveState }
 
-// A ROOT'S IDENTITY IS ITS OWNING PRINCIPAL, not its presence. Presence is already carried by
-// ObservedMember (an established absence is MemberAbsentOnHost and derives a Create), so an identity
-// that repeated it would be the same fact in two carriers. What presence CANNOT say is whether the
-// directory that is there belongs to the principal that must write it -- a root owned by root:root
-// is present, and the service user still cannot use it, which is the failure a fresh host and a
-// hand-repaired host both produce. So the identity is the owner, and a wrong owner is a Replace.
+// A ROOT'S IDENTITY IS THE OWNED-DIRECTORY PROVIDER'S STANDING FOR IT, not a second judgement of owner
+// and mode made here. Presence is already carried by ObservedMember (an established absence is
+// MemberAbsentOnHost and derives a Create), and gunbc.owned_directory owned_directory_decide is the one
+// authority on what a present directory's owner, group and mode mean: converged, a mode the provider
+// will re-apply on a directory the demanded principal already owns, or a refusal. The refusal is not an
+// identity at all -- a directory under another principal is never re-owned -- so it arrives as
+// MemberRefusedOnHost and refuses the whole derivation. The owner used to be this identity, and a wrong
+// owner derived a Replace that re-owned the directory: adoption from an observation, now deleted.
+type DirectoryRootStanding
+  = RootConverged
+  | RootModeRepairable { observed_mode: NonEmptyStr }
+
 type DirectoryRootIdentity {
   path: NonEmptyStr
-  owner: NonEmptyStr
+  standing: DirectoryRootStanding
+}
+
+type OidcConfigFileIdentity {
+  path: NonEmptyStr
+  document: Fnv1a64Structural
 }
 
 type MemberIdentity
@@ -112,6 +126,7 @@ type MemberIdentity
   | UnitManagerAt { standing: UnitManagerStanding }
   | ProcessAt { process: ServiceProcessIdentity }
   | RootAt { root: DirectoryRootIdentity }
+  | OidcConfigAt { file: OidcConfigFileIdentity }
 
 fn member_identity_member(i: MemberIdentity) -> ConvergedMember {
   match i {
@@ -121,6 +136,7 @@ fn member_identity_member(i: MemberIdentity) -> ConvergedMember {
     UnitManagerAt { standing: _ } => UnitManager
     ProcessAt { process: _ } => ServiceProcess
     RootAt { root } => DirectoryRoot { path: root.path }
+    OidcConfigAt { file: _ } => OidcConfigFile
   }
 }
 
@@ -132,12 +148,14 @@ type ObservedMember
   = MemberObserved { identity: MemberIdentity }
   | MemberAbsentOnHost { member: ConvergedMember }
   | MemberUnobservable { member: ConvergedMember, cause: String }
+  | MemberRefusedOnHost { member: ConvergedMember, cause: String }
 
 fn observed_member_member(o: ObservedMember) -> ConvergedMember {
   match o {
     MemberObserved { identity } => member_identity_member(i: identity)
     MemberAbsentOnHost { member } => member
     MemberUnobservable { member, cause: _ } => member
+    MemberRefusedOnHost { member, cause: _ } => member
   }
 }
 
@@ -186,12 +204,23 @@ fn service_process_identity_wire(p: ServiceProcessIdentity) -> String {
   }
 }
 
+fn directory_root_standing_wire(s: DirectoryRootStanding) -> String {
+  match s {
+    RootConverged => "converged"
+    RootModeRepairable { observed_mode } => join(["mode-repairable=", observed_mode as String], "")
+  }
+}
+
 fn directory_root_identity_wire(r: DirectoryRootIdentity) -> String {
-  join([r.path as String, ":owner=", r.owner as String], "")
+  join([r.path as String, ":", directory_root_standing_wire(s: r.standing)], "")
 }
 
 // TOTAL: every MemberIdentity arm contributes every field that distinguishes it. A forgotten
 // field here is a forgotten field in the stale-plan fingerprint.
+fn oidc_config_file_identity_wire(f: OidcConfigFileIdentity) -> String {
+  join([f.path as String, ":", structural_digest_wire(h: f.document)], "")
+}
+
 fn member_identity_wire(i: MemberIdentity) -> String {
   match i {
     TreeIdentity { tree } => join(["tree:", tree_publication_identity_wire(t: tree)], "")
@@ -200,6 +229,7 @@ fn member_identity_wire(i: MemberIdentity) -> String {
     UnitManagerAt { standing } => join(["unit-manager:", unit_manager_standing_wire(s: standing)], "")
     ProcessAt { process } => join(["process:", service_process_identity_wire(p: process)], "")
     RootAt { root } => join(["root:", directory_root_identity_wire(r: root)], "")
+    OidcConfigAt { file } => join(["oidc-config:", oidc_config_file_identity_wire(f: file)], "")
   }
 }
 
@@ -209,6 +239,8 @@ fn observed_member_wire(o: ObservedMember) -> String {
     MemberAbsentOnHost { member: m } => join(["member-absent:", converged_member_label(m: m)], "")
     MemberUnobservable { member: m, cause: c } =>
       join(["member-unobservable:", converged_member_label(m: m), ":", c], "")
+    MemberRefusedOnHost { member: m, cause: c } =>
+      join(["member-refused:", converged_member_label(m: m), ":", c], "")
   }
 }
 
@@ -224,18 +256,22 @@ type MemberRefusalCause
   = DesiredIdentityIsForAnotherMember { desired: ConvergedMember }
   | ObservationIsOfAnotherMember { observed: ConvergedMember }
   | HostUnobservable { cause: String }
+  | HostStateRefused { cause: String }
   | DecisionFiledUnderAnotherMember { found: ConvergedMember }
   | DesiredExecutableUnreadable { cause: String }
   | DesiredExecutableAbsent
+  | DesiredIdentityUnavailable
 
 fn member_refusal_text(c: MemberRefusalCause) -> String {
   match c {
     DesiredIdentityIsForAnotherMember { desired } => join(["desired identity is for ", converged_member_label(m: desired)], "")
     ObservationIsOfAnotherMember { observed } => join(["observation is of ", converged_member_label(m: observed)], "")
     HostUnobservable { cause } => join(["could not observe the host: ", cause], "")
+    HostStateRefused { cause } => join(["the host holds a state this deploy refuses to change: ", cause], "")
     DecisionFiledUnderAnotherMember { found } => join(["decision slot holds a decision about ", converged_member_label(m: found)], "")
     DesiredExecutableUnreadable { cause } => join(["the release executable could not be read in the deploying checkout: ", cause], "")
     DesiredExecutableAbsent => "the release executable target/release/gunbc is absent from the deploying checkout; build before deploying"
+    DesiredIdentityUnavailable => "this member has no desired identity in the current placement; fabricating a placeholder identity is refused"
   }
 }
 
@@ -291,6 +327,7 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       UnitManagerAt { standing: _ } => false
       ProcessAt { process: _ } => false
       RootAt { root: _ } => false
+      OidcConfigAt { file: _ } => false
     }
     ExecutableIdentity { digest: da } => match b {
       ExecutableIdentity { digest: db } => digest_eq(a: da, b: db)
@@ -299,6 +336,7 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       UnitManagerAt { standing: _ } => false
       ProcessAt { process: _ } => false
       RootAt { root: _ } => false
+      OidcConfigAt { file: _ } => false
     }
     UnitFileAt { file: fa } => match b {
       UnitFileAt { file: fb } => (fa.unit as String) == (fb.unit as String) && content_hash_eq_structural(left: fa.document, right: fb.document)
@@ -307,6 +345,7 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       UnitManagerAt { standing: _ } => false
       ProcessAt { process: _ } => false
       RootAt { root: _ } => false
+      OidcConfigAt { file: _ } => false
     }
     UnitManagerAt { standing: sa } => match b {
       UnitManagerAt { standing: sb } => manager_standing_eq(a: sa, b: sb)
@@ -315,6 +354,7 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       UnitFileAt { file: _ } => false
       ProcessAt { process: _ } => false
       RootAt { root: _ } => false
+      OidcConfigAt { file: _ } => false
     }
     ProcessAt { process: pa } => match b {
       ProcessAt { process: pb } => process_identity_eq(a: pa, b: pb)
@@ -323,14 +363,25 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
       UnitFileAt { file: _ } => false
       UnitManagerAt { standing: _ } => false
       RootAt { root: _ } => false
+      OidcConfigAt { file: _ } => false
     }
     RootAt { root: ra } => match b {
-      RootAt { root: rb } => (ra.path as String) == (rb.path as String) && (ra.owner as String) == (rb.owner as String)
+      RootAt { root: rb } => (ra.path as String) == (rb.path as String) && directory_root_standing_wire(s: ra.standing) == directory_root_standing_wire(s: rb.standing)
       TreeIdentity { tree: _ } => false
       ExecutableIdentity { digest: _ } => false
       UnitFileAt { file: _ } => false
       UnitManagerAt { standing: _ } => false
       ProcessAt { process: _ } => false
+      OidcConfigAt { file: _ } => false
+    }
+    OidcConfigAt { file: fa } => match b {
+      OidcConfigAt { file: fb } => (fa.path as String) == (fb.path as String) && content_hash_eq_structural(left: fa.document, right: fb.document)
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
     }
   }
 }
@@ -351,6 +402,7 @@ fn decide_member(member: ConvergedMember, desired: MemberIdentity, observed: Obs
   } else {
     match observed {
       MemberUnobservable { member: _, cause } => MemberRefused { member: member, cause: HostUnobservable { cause: cause } }
+      MemberRefusedOnHost { member: _, cause } => MemberRefused { member: member, cause: HostStateRefused { cause: cause } }
       MemberAbsentOnHost { member: _ } => Create { member: member, to: desired }
       MemberObserved { identity } =>
         if member_identity_eq(a: identity, b: desired) { AlreadyConverged { member: member } }
@@ -444,10 +496,13 @@ fn member_decision_review_line(d: MemberDecision) -> String {
 // about the member it was mapped from, by construction.
 fn decide_release_members(
   roster: List<ConvergedMember>,
-  desired: fn(ConvergedMember) -> MemberIdentity,
+  desired: fn(ConvergedMember) -> MemberIdentity?,
   observed: fn(ConvergedMember) -> ObservedMember,
 ) -> List<MemberDecision> {
-  map(roster, m => decide_member(member: m, desired: desired(m), observed: observed(m)))
+  map(roster, m => match desired(m) {
+    Present { value: d } => decide_member(member: m, desired: d, observed: observed(m))
+    Absent => MemberRefused { member: m, cause: DesiredIdentityUnavailable }
+  })
 }
 
 // THE RELEASE A PLAN INSTALLS, CARRIED ONCE. The plan's effects used to each carry their own operand
@@ -472,10 +527,11 @@ type MemberMutation
   | InstallExecutable
   | PublishTree
   | WriteUnit
+  | WriteOidcConfig
   | DaemonReload
   | RestartService
   | CreateRoot
-  | ReownRoot
+  | RepairRootMode
 
 fn member_mutation_label(e: MemberMutation) -> String {
   match e {
@@ -483,10 +539,11 @@ fn member_mutation_label(e: MemberMutation) -> String {
     InstallExecutable => "install-executable"
     PublishTree => "publish-tree"
     WriteUnit => "write-unit"
+    WriteOidcConfig => "write-oidc-config"
     DaemonReload => "daemon-reload"
     RestartService => "restart-service"
     CreateRoot => "create-root"
-    ReownRoot => "reown-root"
+    RepairRootMode => "repair-root-mode"
   }
 }
 
@@ -524,7 +581,7 @@ type EffectDerivation
 //   unit file changed    -> WriteUnit
 //   manager stale OR the unit file changed -> DaemonReload
 //   any release member changed, or the process itself is stale or down -> RestartService
-//   a root is absent     -> CreateRoot;  a root is owned by the wrong principal -> ReownRoot
+//   a root is absent     -> CreateRoot;  a root the demanded principal owns at another mode -> RepairRootMode (a root under another principal refuses, never re-owned)
 //   nothing changed      -> KeepMember
 //
 // A ROOT DOES NOT RESTART THE SERVE PROCESS, and that is a claim rather than an omission. Roots are
@@ -541,6 +598,7 @@ fn release_member_changed(d: MemberDecision) -> Bool {
     UnitFile => decision_changes(d: d)
     UnitManager => decision_changes(d: d)
     ServiceProcess => decision_changes(d: d)
+    OidcConfigFile => decision_changes(d: d)
   }
 }
 
@@ -553,9 +611,10 @@ fn member_mutation_for(d: MemberDecision, decisions: List<MemberDecision>) -> Me
     UnitFile => if file_changed { WriteUnit } else { KeepMember }
     UnitManager => if file_changed || decision_changes(d: d) { DaemonReload } else { KeepMember }
     ServiceProcess => if release_changed || decision_changes(d: d) { RestartService } else { KeepMember }
+    OidcConfigFile => if decision_changes(d: d) { WriteOidcConfig } else { KeepMember }
     DirectoryRoot { path: _ } => match d {
       Create { member: _, to: _ } => CreateRoot
-      Replace { member: _, from: _, to: _ } => ReownRoot
+      Replace { member: _, from: _, to: _ } => RepairRootMode
       AlreadyConverged { member: _ } => KeepMember
       MemberRefused { member: _, cause: _ } => KeepMember
     }
@@ -578,7 +637,7 @@ fn member_mutation_for(d: MemberDecision, decisions: List<MemberDecision>) -> Me
 // interface.
 fn derive_member_plan(
   roster: List<ConvergedMember>,
-  desired: fn(ConvergedMember) -> MemberIdentity,
+  desired: fn(ConvergedMember) -> MemberIdentity?,
   observed: fn(ConvergedMember) -> ObservedMember,
   target: ReleaseTarget,
 ) -> EffectDerivation {
@@ -645,10 +704,11 @@ fn mutation_is_keep(e: MemberMutation) -> Bool {
     InstallExecutable => false
     PublishTree => false
     WriteUnit => false
+    WriteOidcConfig => false
     DaemonReload => false
     RestartService => false
     CreateRoot => false
-    ReownRoot => false
+    RepairRootMode => false
   }
 }
 
@@ -662,6 +722,10 @@ fn plan_publishes_tree(plan: ReleaseEffectPlan) -> Bool {
 
 fn plan_writes_unit(plan: ReleaseEffectPlan) -> Bool {
   plan_mutation_is(plan: plan, member: UnitFile, expected: WriteUnit)
+}
+
+fn plan_writes_oidc_config(plan: ReleaseEffectPlan) -> Bool {
+  plan_mutation_is(plan: plan, member: OidcConfigFile, expected: WriteOidcConfig)
 }
 
 fn plan_reloads_manager(plan: ReleaseEffectPlan) -> Bool {
@@ -681,10 +745,11 @@ fn member_row_label(r: MemberEffectRow, target: ReleaseTarget) -> List<String> {
     InstallExecutable => [join(["install-executable sha256:", target.executable.hex as String], "")]
     PublishTree => [join(["publish-tree ", target.revision as String], "")]
     WriteUnit => [join(["write-unit ", target.unit as String], "")]
+    WriteOidcConfig => ["write-oidc-config"]
     DaemonReload => ["daemon-reload"]
     RestartService => [join(["restart ", target.unit as String], "")]
     CreateRoot => [join(["create-root ", converged_member_label(m: r.member)], "")]
-    ReownRoot => [join(["reown-root ", converged_member_label(m: r.member)], "")]
+    RepairRootMode => [join(["repair-root-mode ", converged_member_label(m: r.member)], "")]
   }
 }
 
@@ -738,5 +803,6 @@ fn full_install_plan(roster: List<ConvergedMember>, target: ReleaseTarget) -> Re
     UnitManager => DaemonReload
     ServiceProcess => RestartService
     DirectoryRoot { path: _ } => CreateRoot
+    OidcConfigFile => WriteOidcConfig
   })
 }

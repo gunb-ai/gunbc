@@ -30,7 +30,7 @@
 | Regen oracle & self-host scope | `v2.workflow.required_regen` / `v1_compiler.required_regen_host` (NOTE: the `regen_stage0` binary this row named was DELETED at the root by the regen cut; the fixed point is now answered by `claim_executor --required-regen-fixed-point` and by nothing else, which is itself on the deletion path) | delete-with-v1 | Wave 4 real-fixpoint cutover (`5-real-fixpoint`) |
 | Host builtin bridge (interpreter seam) | `v1_interpreter` builtins · per-lens `*_live` projections | seed-kernel-retained | Node-tree readers dissolve seams (#5364 class); kernel keeps physics |
 | Lens census / hygiene host feeds | `v2.lens.*` tables · `non_fold_residue` · `fact_cardinality` | emit-when | Each lens lands node-tree reader or explicit host row retires |
-| Floor observability & width | `gunbc.floor_materialization` · `dag/std/realization_width.dag` · [realization-measurement-loop.md](realization-measurement-loop.md) | partial | Scheduler emits receipts; HAND timing deletes with floor native routing |
+| Floor observability & width | `gunbc.floor_materialization` · `dag/std/realization_width.dag` | partial | Scheduler emits receipts; HAND timing deletes with floor native routing |
 | Test-migration debt builtins | `v2.lens.test_migration_debt` | delete-with-v1 | v1 `src/v1/tests` deleted at collapse (census §5) |
 
 ## 2. Functional areas (plain language)

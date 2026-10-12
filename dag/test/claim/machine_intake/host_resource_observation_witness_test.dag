@@ -12,7 +12,7 @@ import product.fabric.work { Shape, HardRequirements }
 import product.fabric.supply { ThreadsNotCovered }
 import gunbc.machine_intake_mtcollins1_topology_goal { mtcollins1_topology_goal }
 import gunbc.machine_intake_host_resource_observation {
-  HostResourceObservation, HostWorkloadEligibility, SectionUnparsed, SectionInconsistent, SectionAbsent, ReserveExceedsAvailable,
+  HostResourceObservation, HostWorkloadEligibility, SectionUnparsed, SectionInconsistent, ResourceSectionAbsent, ReserveExceedsAvailable,
   ThreadsBelowIntent, PopulatedNodesBelowIntent, TopologyFieldUnread,
   WorkloadEligible, WorkloadNotCovered, WorkloadCapacityUnknown, WorkloadHealthWithheld,
   host_resource_observation, host_topology_assessment, topology_health_admission,
@@ -112,7 +112,7 @@ test fn a_malformed_count_stays_unknown_and_is_never_read_as_zero() -> Bool {
 // A section the capture never carried is ABSENT, a different cause from one that printed garbage.
 test fn an_absent_section_is_distinct_from_an_unparsed_one() -> Bool {
   let o = host_resource_observation(nproc: Absent, numa: Absent, meminfo: Absent)
-  match o.threads { ObservationRefused { cause: SectionAbsent { section: _ } } => true  _ => false }
+  match o.threads { ObservationRefused { cause: ResourceSectionAbsent { section: _ } } => true  _ => false }
 }
 
 // Health withholding does not erase capacity: the offer is still built from the reading, and a

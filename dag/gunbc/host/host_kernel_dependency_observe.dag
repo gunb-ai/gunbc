@@ -1,0 +1,125 @@
+module gunbc.host_kernel_dependency_observe
+
+import std.types { String, NonEmptyStr, CommitSha, Bool }
+import std.algebra { trim }
+import std.upsert_decision { Noop, Apply, Refuse }
+import extdeps.linux.kernel { LinuxKernelRelease }
+import extdeps.linux.tun_fdinfo { TunAttachedQueueRequirement, tun_attached_queue_requirement_observe }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.tools.uname { uname_release_command, uname_machine_command }
+import extdeps.dpkg { dpkg_query_status_command, dpkg_record_field }
+import extdeps.apt
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import product.host_identity { HostIdentity }
+import gunbc.host_kernel_dependency {
+  UbuntuTunKernelProvider, tun_kernel_provider_for_host, kernel_provider_package_names, kernel_provider_selection,
+  KernelPackageReading, KernelPackageExact, KernelPackageNeedsInstall, KernelPackageReadRefused,
+  kernel_package_reading, kernel_package_readings_join, tun_kernel_capability_decision, host_kernel_dependency_plan,
+  HostKernelDependencyResolution, HostKernelCapabilitySatisfied, HostKernelDependencyPlanned, HostKernelDependencyRefused,
+}
+
+fn kernel_read_command(command: ArgvCommand) -> String? {
+  match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+    ProcessRan { observation } => if observation.exit_code == 0 && trim(s: observation.stdout) != "" {
+      Present { value: trim(s: observation.stdout) }
+    } else { none }
+    ProcessNotSpawned { program: _, cause: _ } => none
+  }
+}
+
+fn kernel_provider_package_observe(package: NonEmptyStr, provider: UbuntuTunKernelProvider) -> KernelPackageReading {
+  match run_shell_command_observe_outcome(command: dpkg_query_status_command(package: package), transport: LocalExec) {
+    ProcessRan { observation } => kernel_package_reading(package: package, provider: provider, reading: observation)
+    ProcessNotSpawned { program: _, cause } => KernelPackageReadRefused { reason: cause as String }
+  }
+}
+
+fn kernel_provider_platform_admits(os_release: String, machine: String, provider: UbuntuTunKernelProvider) -> Bool {
+  let lines = split(s: os_release, delimiter: "\n")
+  filter(lines, line => starts_with(s: line, prefix: "ID=")).count() == 1
+    && filter(lines, line => starts_with(s: line, prefix: "VERSION_ID=")).count() == 1
+    && any(lines, line => line == "ID=ubuntu" || line == "ID=\"ubuntu\"")
+    && any(lines, line => line == "VERSION_ID=24.04" || line == "VERSION_ID=\"24.04\"")
+    && machine == "aarch64" && provider.architecture == "arm64"
+}
+
+fn kernel_provider_candidate_admits(provider: UbuntuTunKernelProvider, record: String) -> Bool {
+  dpkg_record_field(record: record, field: "Package") == Present { value: provider.package as String }
+    && dpkg_record_field(record: record, field: "Version") == Present { value: provider.version as String }
+    && dpkg_record_field(record: record, field: "Architecture") == Present { value: provider.architecture as String }
+}
+
+// The ordinary capability dependency is evaluated before provider lookup or any package read.
+// This makes an already-capable host a no-op even when it uses a different package or a backport.
+fn host_tun_kernel_dependency_observe(host: HostIdentity, revision: CommitSha,
+  requirement: TunAttachedQueueRequirement) -> HostKernelDependencyResolution {
+  if kernel_read_command(command: hostname_short_read_command()) != Present { value: host as String } {
+    HostKernelDependencyRefused { reason: "kernel dependency must be observed on its bound host" }
+  } else { match tun_kernel_capability_decision(requirement: requirement, reading: tun_attached_queue_requirement_observe(requirement: requirement)) {
+    Noop => HostKernelCapabilitySatisfied
+    Refuse { reason } => HostKernelDependencyRefused { reason: reason as String }
+    Apply { plan: demanded } => match tun_kernel_provider_for_host(host: host) {
+      Absent => HostKernelDependencyRefused { reason: "the selected TUN census requires kernel channel support but this host has no admitted provider" }
+      Present { value: provider } => host_tun_kernel_provider_observe(host: host, revision: revision,
+        requirement: demanded, provider: provider)
+    }
+  } }
+}
+
+fn host_tun_kernel_provider_observe(host: HostIdentity, revision: CommitSha,
+  requirement: TunAttachedQueueRequirement, provider: UbuntuTunKernelProvider) -> HostKernelDependencyResolution {
+  let os = Filesystem.Read(path: "/etc/os-release")
+  let boot = Filesystem.Read(path: "/proc/sys/kernel/random/boot_id")
+  let machine = kernel_read_command(command: uname_machine_command())
+  let running = kernel_read_command(command: uname_release_command())
+  if !os.success || !boot.success || trim(s: boot.content) == "" || machine == none || running == none {
+    HostKernelDependencyRefused { reason: "kernel provider platform or running boot identity is unreadable" }
+  } else { match machine {
+    Absent => HostKernelDependencyRefused { reason: "kernel provider machine architecture is unreadable" }
+    Present { value: arch } => if !kernel_provider_platform_admits(os_release: os.content, machine: arch, provider: provider) {
+      HostKernelDependencyRefused { reason: "kernel provider is not admitted for the observed distribution and architecture" }
+    } else { match running {
+      Absent => HostKernelDependencyRefused { reason: "running kernel release is unreadable" }
+      Present { value: kernel } => {
+        let packages = kernel_package_readings_join(provider: provider,
+          readings: map(kernel_provider_package_names(provider: provider), name => kernel_provider_package_observe(package: name, provider: provider)))
+        let decision = match packages {
+          KernelPackageReadRefused { reason } => HostKernelDependencyRefused { reason: reason }
+          KernelPackageNeedsInstall => {
+            let candidate = apt.PackageManager.ShowExact(selection: kernel_provider_selection(provider: provider))
+            if !candidate.success || !kernel_provider_candidate_admits(provider: provider, record: candidate.stdout) {
+              HostKernelDependencyRefused { reason: "the approved kernel package version is unavailable or has different metadata" }
+            } else {
+              let simulation = apt.PackageManager.SimulateInstall(selection: kernel_provider_selection(provider: provider))
+              if !simulation.success || trim(s: simulation.stdout) == "" {
+                HostKernelDependencyRefused { reason: "the selected kernel package has no successful non-removing installation plan" }
+              } else { host_kernel_dependency_plan(host: host, revision: revision, requirement: requirement,
+                running_release: kernel as LinuxKernelRelease, boot_id: trim(s: boot.content) as NonEmptyStr,
+                provider: provider, packages: packages, simulation: simulation.stdout) }
+            }
+          }
+          KernelPackageExact => {
+            let entries = Filesystem.List(path: "/boot")
+            let symbols = Filesystem.Read(path: concat("/boot/System.map-", provider.kernel_release as String))
+            let names = split(s: entries.entries, delimiter: "\n")
+            if !entries.success || !symbols.success
+              || !any(names, name => name == concat("vmlinuz-", provider.kernel_release as String))
+              || !any(names, name => name == concat("initrd.img-", provider.kernel_release as String))
+              || !any(split(s: symbols.content, delimiter: "\n"), line => line.ends_with(suffix: " tun_get_channels")) {
+              HostKernelDependencyRefused { reason: "installed kernel package lacks a verified boot image, initramfs or TUN channel implementation" }
+            } else { host_kernel_dependency_plan(host: host, revision: revision, requirement: requirement,
+              running_release: kernel as LinuxKernelRelease, boot_id: trim(s: boot.content) as NonEmptyStr,
+              provider: provider, packages: packages, simulation: "") }
+          }
+        }
+        let after = Filesystem.Read(path: "/proc/sys/kernel/random/boot_id")
+        if !after.success || after.content != boot.content {
+          HostKernelDependencyRefused { reason: "host boot changed while observing the kernel dependency" }
+        } else { decision }
+      }
+    } }
+  } }
+}

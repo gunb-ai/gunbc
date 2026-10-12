@@ -3,7 +3,7 @@ module test.claim.workspace_network_observation_witness_test
 import std.types { Bool, String }
 import std.optional { Present, Absent }
 import extdeps.linux.procfs { procfs_status_effective_uid }
-import extdeps.ethtool { ethtool_combined_channels, EthtoolCombinedChannelsCurrent, EthtoolCombinedChannelsUnreadable }
+import extdeps.linux.ethtool_ioctl { linux_ethtool_channels_decode, LinuxEthtoolChannelsRead, LinuxEthtoolChannelsUnsupported, LinuxEthtoolChannelsUnreadable }
 import extdeps.linux.tun_fdinfo {
   TunDescriptorCount, TunDescriptorUnreadable,
   TunCensusMultiQueue, TunCensusFlagsUnreadable, TunCensusProcUnreadable,
@@ -17,12 +17,6 @@ import extdeps.linux.tun_fdinfo {
 // readings the census folds over, because the subject is the fold and a real tap cannot exist on the
 // floor. The real reader runs in
 // test.claim.workspace_network_real_reader_witness_test on the local-repo wet lane.
-
-data channels_one: String = "Channel parameters for tap0:\nPre-set maximums:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\t1\nCurrent hardware settings:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\t1\n"
-
-data channels_current_na: String = "Channel parameters for tap0:\nPre-set maximums:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\t1\nCurrent hardware settings:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\tn/a\n"
-
-data channels_maximums_only: String = "Channel parameters for tap0:\nPre-set maximums:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\t1\n"
 
 // Positive control: no holder descriptor, no attached queue, two clean sweeps.
 test fn zero_holders_requires_every_observation_to_affirm_zero() -> Bool {
@@ -74,17 +68,22 @@ test fn multi_queue_and_malformed_flags_refuse() -> Bool {
     && (match tun_queue_mode(flags: "0x1102\n") { TunMultiQueue => true other => false })
     && (match tun_queue_mode(flags: "1002") { TunFlagsMalformed => true other => false })
     && (match tun_queue_mode(flags: "0xzz") { TunFlagsMalformed => true other => false })
-    && (match tun_queue_reading(mode: TunMultiQueue, channels: EthtoolCombinedChannelsCurrent { count: 0 }) { TunQueuesRefused { cause: TunCensusMultiQueue } => true other => false })
-    && (match tun_queue_reading(mode: TunFlagsMalformed, channels: EthtoolCombinedChannelsCurrent { count: 0 }) { TunQueuesRefused { cause: TunCensusFlagsUnreadable } => true other => false })
+    && (match tun_queue_reading(mode: TunMultiQueue, channels: LinuxEthtoolChannelsRead { combined: 0 }) { TunQueuesRefused { cause: TunCensusMultiQueue } => true other => false })
+    && (match tun_queue_reading(mode: TunFlagsMalformed, channels: LinuxEthtoolChannelsRead { combined: 0 }) { TunQueuesRefused { cause: TunCensusFlagsUnreadable } => true other => false })
 }
 
 test fn channel_count_reads_only_the_current_combined_count() -> Bool {
-  (match ethtool_combined_channels(device: "tap0", success: true, value: channels_one) { EthtoolCombinedChannelsCurrent { count: n } => n == 1 other => false })
-    && (match ethtool_combined_channels(device: "tap0", success: true, value: channels_current_na) { EthtoolCombinedChannelsUnreadable { cause: _ } => true other => false })
-    && (match ethtool_combined_channels(device: "tap0", success: true, value: channels_maximums_only) { EthtoolCombinedChannelsUnreadable { cause: _ } => true other => false })
-    && (match ethtool_combined_channels(device: "tap0", success: false, value: channels_one) { EthtoolCombinedChannelsUnreadable { cause: _ } => true other => false })
-    && (match ethtool_combined_channels(device: "tap1", success: true, value: channels_one) { EthtoolCombinedChannelsUnreadable { cause: _ } => true other => false })
-    && (match ethtool_combined_channels(device: "tap0", success: true, value: "") { EthtoolCombinedChannelsUnreadable { cause: _ } => true other => false })
+  (match linux_ethtool_channels_decode(device: "tap0", text: "channels:tap0:60:8:8:8:16:2:2:2:1") { LinuxEthtoolChannelsRead { combined: n } => n == 1 other => false })
+    && (match linux_ethtool_channels_decode(device: "tap0", text: "channels:tap0:60:8:8:8:16:2:2:2") { LinuxEthtoolChannelsUnreadable { cause: _ } => true other => false })
+    && (match linux_ethtool_channels_decode(device: "tap0", text: "channels:tap0:60:8:8:8:16:2:2:2:-1") { LinuxEthtoolChannelsUnreadable { cause: _ } => true other => false })
+    && (match linux_ethtool_channels_decode(device: "tap0", text: "channels:tap1:60:8:8:8:16:2:2:2:0") { LinuxEthtoolChannelsUnreadable { cause: _ } => true other => false })
+    && (match linux_ethtool_channels_decode(device: "tap0", text: "channels:tap0:61:8:8:8:16:2:2:2:0") { LinuxEthtoolChannelsUnreadable { cause: _ } => true other => false })
+}
+
+test fn only_the_kernel_unsupported_errno_establishes_absent_capability() -> Bool {
+  (match linux_ethtool_channels_decode(device: "tap0", text: "errno:tap0:95") { LinuxEthtoolChannelsUnsupported => true other => false })
+    && all(["errno:tap0:1", "errno:tap0:13", "errno:tap0:19", "errno:tap1:95", "netlink error: Operation not supported", "", "errno:tap0:95\nerrno:tap0:1"], text =>
+      match linux_ethtool_channels_decode(device: "tap0", text: text) { LinuxEthtoolChannelsUnreadable { cause: _ } => true other => false })
 }
 
 test fn fdinfo_names_exactly_this_interface() -> Bool {

@@ -16,7 +16,8 @@ import gunbc.runner_microvm { gunbc_runner_microvm_declared_realization_allowanc
 import gunbc.workspace_tool_observer { WorkspaceToolsObserved, workspace_tools_refusal }
 import gunbc.workspace_allocation { WorkspaceRequest, workspace_execution_requirements, workspace_profile_vcpus, workspace_profile_memory }
 import gunbc.workspace_allocation_supply { WorkspaceHostSupplyObservation, workspace_slot_observation_refusal }
-import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_refusal }
+import gunbc.workspace_ssh_access { WorkspaceAccessEvidence, workspace_access_refusal, workspace_access_receipt }
+import gunbc.workspace_allocation_policy { workspace_enrolled_ssh_access }
 import gunbc.fabric_control_plane { fabric_cell_allocation_key }
 import product.placement_supply { HostIdentity }
 import std.algebra { trim }
@@ -48,7 +49,7 @@ type WorkspaceHostOfferAdmission sole_constructor {
   slot: RunnerSlotIdentity
   observed_at: Timestamp
   commissioning_plan_hash: NonEmptyStr
-  gateway_receipt: NonEmptyStr
+  access_receipt: NonEmptyStr
   image: NonEmptyStr
   request_key: NonEmptyStr
 }
@@ -59,26 +60,31 @@ type WorkspaceHostOfferRead
 fn workspace_host_offer_admit(root: NonEmptyStr, request: WorkspaceRequest,
   commissioned: WorkspaceCommittedCommissioning, image: VerifiedWorkspaceImage,
   host: WorkspaceHostSupplyObservation, tools: WorkspaceToolsObserved,
-  gateway: WorkspaceGatewayEvidence, now: Timestamp) -> WorkspaceHostOfferRead {
-  let guest_bytes = byte_size_count(b: workspace_profile_memory(profile: request.profile))
-  let realization_bytes = byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))
-  if image.identity != request.image { WorkspaceHostOfferUnmet { host: host.host, reason: "installed image does not match admitted request" } }
-  else if hardware_thread_count_value(t: commissioned.admitted.cpu_budget) < workspace_profile_vcpus(profile: request.profile)
-    || byte_size_count(b: commissioned.admitted.attempt_envelope) < guest_bytes + realization_bytes {
-    WorkspaceHostOfferUnmet { host: host.host, reason: "commissioned exclusive slot budget cannot contain the selected guest and realization reserve" }
-  } else if (match workspace_tools_refusal(observation: tools, slot: commissioned.admitted.slot, now: now) { Present { value: _ } => true Absent => false }) {
-    WorkspaceHostOfferUnmet { host: host.host, reason: "controller tools are stale, unobserved, or belong to another host" }
-  } else { match workspace_slot_observation_refusal(root: root, slot: commissioned.admitted.slot, observation: host, now: now) {
-    Present { value: detail } => WorkspaceHostOfferUnmet { host: host.host, reason: detail }
-    Absent => match workspace_gateway_refusal(slot: commissioned.admitted.slot, evidence: gateway, now: now) {
-      Present { value: detail } => WorkspaceHostOfferUnmet { host: host.host, reason: detail }
-      Absent => WorkspaceHostOfferAdmitted { admission: WorkspaceHostOfferAdmission {
-        host: host.host, slot: commissioned.admitted.slot, observed_at: host.observed_at,
-        commissioning_plan_hash: commissioned.admitted.commissioning_plan_hash as NonEmptyStr,
-        gateway_receipt: gateway.receipt, image: image.identity, request_key: request.idempotency_key,
+  access: WorkspaceAccessEvidence, now: Timestamp) -> WorkspaceHostOfferRead {
+  match workspace_enrolled_ssh_access(owner: request.owner) {
+    Absent => WorkspaceHostOfferUnmet { host: host.host, reason: "workspace owner has no admitted SSH access policy" }
+    Present { value: required_access } => {
+      let guest_bytes = byte_size_count(b: workspace_profile_memory(profile: request.profile))
+      let realization_bytes = byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))
+      if image.identity != request.image { WorkspaceHostOfferUnmet { host: host.host, reason: "installed image does not match admitted request" } }
+      else if hardware_thread_count_value(t: commissioned.admitted.cpu_budget) < workspace_profile_vcpus(profile: request.profile)
+        || byte_size_count(b: commissioned.admitted.attempt_envelope) < guest_bytes + realization_bytes {
+        WorkspaceHostOfferUnmet { host: host.host, reason: "commissioned exclusive slot budget cannot contain the selected guest and realization reserve" }
+      } else if (match workspace_tools_refusal(observation: tools, slot: commissioned.admitted.slot, now: now) { Present { value: _ } => true Absent => false }) {
+        WorkspaceHostOfferUnmet { host: host.host, reason: "controller tools are stale, unobserved, or belong to another host" }
+      } else { match workspace_slot_observation_refusal(root: root, slot: commissioned.admitted.slot, observation: host, now: now) {
+        Present { value: detail } => WorkspaceHostOfferUnmet { host: host.host, reason: detail }
+        Absent => match workspace_access_refusal(access: required_access, slot: commissioned.admitted.slot, evidence: access, now: now) {
+          Present { value: detail } => WorkspaceHostOfferUnmet { host: host.host, reason: detail }
+          Absent => WorkspaceHostOfferAdmitted { admission: WorkspaceHostOfferAdmission {
+            host: host.host, slot: commissioned.admitted.slot, observed_at: host.observed_at,
+            commissioning_plan_hash: commissioned.admitted.commissioning_plan_hash as NonEmptyStr,
+            access_receipt: workspace_access_receipt(evidence: access), image: image.identity, request_key: request.idempotency_key,
+          } }
+        }
       } }
     }
-  } }
+  }
 }
 
 fn workspace_host_offer_json(read: WorkspaceHostOfferRead) -> JsonValue {
@@ -89,7 +95,7 @@ fn workspace_host_offer_json(read: WorkspaceHostOfferRead) -> JsonValue {
       json_kv(key: "slot_index", value: json_int(n: a.slot.slot_index)),
       json_kv(key: "observed_at", value: json_string(s: a.observed_at)),
       json_kv(key: "commissioning_plan_hash", value: json_string(s: a.commissioning_plan_hash as String)),
-      json_kv(key: "gateway_receipt", value: json_string(s: a.gateway_receipt as String)),
+      json_kv(key: "access_receipt", value: json_string(s: a.access_receipt as String)),
       json_kv(key: "image", value: json_string(s: a.image as String)),
       json_kv(key: "request_key", value: json_string(s: a.request_key as String)),
     ])
@@ -101,7 +107,7 @@ fn workspace_host_offer_json(read: WorkspaceHostOfferRead) -> JsonValue {
   }
 }
 
-data workspace_host_offer_schema: String = "workspace-host-offer/v1"
+data workspace_host_offer_schema: String = "workspace-host-offer/v2"
 
 fn workspace_host_offer_text(read: WorkspaceHostOfferRead) -> String { serialize_json(v: workspace_host_offer_json(read: read)) }
 
@@ -132,14 +138,14 @@ fn workspace_host_offer_decode(text: String, expected_host: HostIdentity) -> Wor
         let slot = RunnerSlotIdentity { host: expected_host, slot_index: index }
         if !identity_is_workspace_execution_member(identity: slot) { WorkspaceHostOfferUndecodable { host: expected_host, reason: "host offer names a slot outside the workspace roster" } }
         else if workspace_host_offer_field(doc: doc, field: "observed_at") == "" || workspace_host_offer_field(doc: doc, field: "commissioning_plan_hash") == ""
-          || workspace_host_offer_field(doc: doc, field: "gateway_receipt") == "" || workspace_host_offer_field(doc: doc, field: "image") == ""
+          || workspace_host_offer_field(doc: doc, field: "access_receipt") == "" || workspace_host_offer_field(doc: doc, field: "image") == ""
           || workspace_host_offer_field(doc: doc, field: "request_key") == "" {
           WorkspaceHostOfferUndecodable { host: expected_host, reason: "host offer is missing a required field" }
         } else {
           let candidate = WorkspaceHostOfferAdmitted { admission: WorkspaceHostOfferAdmission {
             host: expected_host, slot: slot, observed_at: workspace_host_offer_field(doc: doc, field: "observed_at"),
             commissioning_plan_hash: workspace_host_offer_field(doc: doc, field: "commissioning_plan_hash") as NonEmptyStr,
-            gateway_receipt: workspace_host_offer_field(doc: doc, field: "gateway_receipt") as NonEmptyStr,
+            access_receipt: workspace_host_offer_field(doc: doc, field: "access_receipt") as NonEmptyStr,
             image: workspace_host_offer_field(doc: doc, field: "image") as NonEmptyStr,
             request_key: workspace_host_offer_field(doc: doc, field: "request_key") as NonEmptyStr,
           } }
@@ -185,5 +191,5 @@ fn workspace_observed_offer_identity(admission: WorkspaceHostOfferAdmission, req
   supplier: NonEmptyStr) -> FabricIdentity<NonEmptyStr, OfferKey> {
   FabricIdentity { principal: supplier, key: serialize_content_hash(hash: content_hash_of_value(value: concat(
     admission.commissioning_plan_hash as String, fabric_cell_allocation_key(slot: admission.slot) as String,
-    request.image as String, to_string(request.profile), admission.gateway_receipt as String, admission.observed_at))) as OfferKey }
+    request.image as String, to_string(request.profile), admission.access_receipt as String, admission.observed_at))) as OfferKey }
 }

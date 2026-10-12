@@ -282,6 +282,14 @@ data srv4_baseboard: ServerBaseboard = ServerBaseboard {
   catalog: asrock_altrad8ud_1l2t_catalog,
   bmc: BmcEndpoint { host: "192.168.1.195", protocol: Redfish },
 }
+// srv13's board and BMC endpoint as first contact observed them (2026-10-07): Redfish
+// Systems/system reported Model ALTRAD8UD-1L2T, and the controller answered at the router's
+// bmc-altrad8ud-1l2t-5 reservation, MAC 9c:6b:00:e7:c9:83. No host row yet: CPU, memory and
+// storage are not observed.
+data srv13_baseboard: ServerBaseboard = ServerBaseboard {
+  catalog: asrock_altrad8ud_1l2t_catalog,
+  bmc: BmcEndpoint { host: "192.168.1.247", protocol: Redfish },
+}
 
 data srv1_nvme0: StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,

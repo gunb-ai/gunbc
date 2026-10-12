@@ -38,12 +38,14 @@ import gunbc.auth.netrc_binding {
   NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
   place_netrc_binding,
 }
+import extdeps.bmc.redfish { redfish_password_change_verdict, RedfishPasswordChangeRequired, RedfishPasswordChangeNotIndicated }
 import gunbc.bmc_onboarding {
   BmcOnboardingPlan,
   srv1_onboarding_plan,
   srv2_onboarding_plan,
   srv3_onboarding_plan,
   srv4_onboarding_plan,
+  srv13_onboarding_plan,
   BmcCredentialProbeResult,
   FactoryCredentialActive,
   RotatedCredentialActive,
@@ -441,7 +443,7 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
     bmc_host: host,
     netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
-  if acq.success == false {
+  if factory_login_accepted(succeeded: acq.success, body: acq.body) == false {
     return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
   }
 
@@ -456,6 +458,18 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
 
 
 
+// THE PUBLISHED CREDENTIAL IS ACTIVE WHEN THE BMC ACCEPTS IT, including when the firmware
+// accepts it only to demand a password change (Redfish Base PasswordChangeRequired, OpenBMC
+// 3.22.00 on the ALTRAD8UD-1L2T). That state admits exactly the PATCH bmc_rotate_credential
+// performs, so it is the factory phase, not an unknown one: reading it as a failure stopped
+// onboarding at its first step on a freshly flashed BMC.
+fn factory_login_accepted(succeeded: Bool, body: String) -> Bool {
+  succeeded || (match redfish_password_change_verdict(body: body) {
+    RedfishPasswordChangeRequired => true
+    RedfishPasswordChangeNotIndicated => false
+  })
+}
+
 fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> BmcCredentialProbeResult
 {
   let host = plan.bmc.host
@@ -469,7 +483,7 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
     bmc_host: host,
     netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
-  if factory_check.success {
+  if factory_login_accepted(succeeded: factory_check.success, body: factory_check.body) {
     return FactoryCredentialActive
   }
 
@@ -539,6 +553,13 @@ fn srv3_converge_credential() -> ProcessExit
 fn srv4_converge_credential() -> ProcessExit
 {
   bmc_converge_credential(plan: srv4_onboarding_plan, token_source: GcloudPrintToken)
+}
+
+// srv13 arrives on OpenBMC 3.22.00, whose published credential is accepted only to demand a
+// password change; the factory probe reads that as the factory phase and rotates from it.
+fn srv13_converge_credential() -> ProcessExit
+{
+  bmc_converge_credential_selected(plan: srv13_onboarding_plan)
 }
 
 // srv1 AND srv2 TAKE WHATEVER CREDENTIAL THE RUN HAS -- the Workload Identity token in a federated

@@ -1,0 +1,231 @@
+module v2.test.claim.compiler.literal_elaboration
+
+import std.literal_elaboration { KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, kernel_grounding_admits, kernel_grounding_for }
+import gunbc.structural_realization_bindings { kernel_grounding_rows }
+import std.decl_ref { decl_ref }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { InferLiteralElaborationRefused, InferLiteralElaboratesTo, InferLiteralNotElaborated, infer, infer_application_callee_use, infer_literal_elaborates_at }
+import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.extdeps.runtimes.v2_evaluator { v2_eval_bool_runtime_value, v2_evaluator_interpretation }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_binding_denotation, dag_int_literal_node_from_lexeme, dag_language_model, dag_string_literal_node }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, list_append }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Atom, Edge, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_synthetic }
+import v2.std.compilers.body_lowering { lower_unary_prefix }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.runtime { RuntimeValue }
+import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2 infer elaborates an integer literal at an expected type through the declared tables
+// (v2.compiler.infer infer_literal_elaborates_at) at a declared position. std.nat Nat is KERNEL-GROUNDED
+// (gunbc.structural_realization_bindings kernel_grounding_rows, declared range min 0): a literal at Nat is its own
+// value when std.literal_elaboration kernel_grounding_admits says so, and `-1` refuses from that range
+// (calm-boar-904, ruling A on review 77219). Nat has no literal homomorphism row.
+//
+// SHAPE, PER DESIGN SECTION 3's WITNESS RULE (sharp-raven-357): exactly ONE claim runs the real route
+// (lel_route_runs_on_the_real_path: one module, assembled with a std.nat peer, inferred, and two calls evaluated on
+// the v2 eval route). Every other claim supplies a literal node and an expected type to infer_literal_elaborates_at,
+// the one interface under test. DELETING THE ROUTE REDS THE REAL-PATH CLAIM: remove std.nat Nat's row from
+// kernel_grounding_rows and `g(n: 0)` at Nat is refused.
+
+data lel_artifact: Artifact = Artifact { kind: SourceFile, id: ^literal_elaboration_p_artifact, file_path: "src/v2/pilot/literal_elaboration_p.dag" }
+data lel_nat_artifact: Artifact = Artifact { kind: SourceFile, id: ^literal_elaboration_nat_artifact, file_path: "src/v2/pilot/literal_elaboration_nat.dag" }
+
+data lel_nat_peer: String = "module std.nat\n\ntype Nat\n  = Zero\n  | Succ { prev: Nat }\n"
+
+fn lel_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness { source: Medium { carried: src, fidelity: Lossless }, artifact: artifact, compilation_unit: cu, source_root: V2Tree }
+}
+
+fn lel_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: lel_source(src: src, artifact: lel_artifact, cu: ^literal_elaboration_p_cu),
+      tail: Cons { head: lel_source(src: lel_nat_peer, artifact: lel_nat_artifact, cu: ^literal_elaboration_nat_cu), tail: Empty }
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn lel_inferred(src: String) -> Outcome<InferredTree> {
+  match lel_assemble(src: src) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: resolved, diagnostics: _ } => infer(tree: resolved)
+  }
+}
+
+fn lel_reason(src: String) -> Symbol {
+  match lel_inferred(src: src) {
+    Accepted { value: _, diagnostics: _ } => ^accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+// THE ONE REAL-PATH FIXTURE: literals at a declared Nat (0, 3), a literal at Int, an Int expression, and two calls
+// whose comparison the v2 eval route is asked to run.
+data lel_route_source: String = "module p\n\nimport std.nat { Nat, Zero, Succ }\n\nfn g(n: Nat) -> Bool {\n  true\n}\n\nfn gi(n: Int) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  g(n: 0) && g(n: 3) && gi(n: 3)\n}\n\nfn sum() -> Int {\n  0 + 1\n}\n\nfn zz(n: Nat) -> Bool {\n  n == 0\n}\n\nfn zo(n: Nat) -> Bool {\n  n == 0\n}\n\nfn k0() -> Bool {\n  zz(n: Zero)\n}\n\nfn k1() -> Bool {\n  zo(n: Succ { prev: Zero })\n}\n"
+
+fn lel_callee_path_is(callee: Node, name: Symbol) -> Bool {
+  match declaration_reference_path_optional(node: callee) {
+    Absent => false
+    Present { value: path } => path == Cons { head: ^p, tail: Cons { head: name, tail: Empty } }
+  }
+}
+
+fn lel_calls_to(root: Node, name: Symbol) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match infer_application_callee_use(node: n0) {
+          Absent => []
+          Present { value: callee } => if lel_callee_path_is(callee: callee, name: name) { [n0] } else { [] }
+        }
+      },
+      step: fn(acc, _e, child) { list_append(left: acc, right: child) }
+    }
+  )
+}
+
+fn lel_eval_call_bool(inferred: InferredTree, name: Symbol) -> Optional<Bool> {
+  match lel_calls_to(root: inferred.root, name: name) {
+    Cons { head: call, tail: Empty } =>
+      match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call)) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: v, diagnostics: _ } =>
+          if v == v2_eval_bool_runtime_value(is_true: true) {
+            optional_present(value: true)
+          } else if v == v2_eval_bool_runtime_value(is_true: false) {
+            optional_present(value: false)
+          } else {
+            optional_absent()
+          }
+      }
+    Cons { head: _, tail: _ } => optional_absent()
+    Empty => optional_absent()
+  }
+}
+
+type LelRouteReading {
+  infer_accepted: Bool
+  zero_answer: Optional<Bool>
+  one_answer: Optional<Bool>
+}
+
+fn lel_route_reading() -> LelRouteReading {
+  match lel_inferred(src: lel_route_source) {
+    Rejected { diagnostics: _ } => LelRouteReading { infer_accepted: false, zero_answer: optional_absent(), one_answer: optional_absent() }
+    Accepted { value: inferred, diagnostics: _ } =>
+      LelRouteReading { infer_accepted: true, zero_answer: lel_eval_call_bool(inferred: inferred, name: ^zz), one_answer: lel_eval_call_bool(inferred: inferred, name: ^zo) }
+  }
+}
+
+// THE REAL PATH: the module is accepted (0 and 3 at a declared Nat, 3 at Int, 0 + 1 an Int), and on the v2 eval
+// route a Nat compared with 0 NEVER ANSWERS WRONGLY. Today eval refuses both calls -- `==` is not judged in v2 infer
+// (gunbc.recurring_failure_mode comparison_operands_never_judged_in_v2_infer), so the comparison is underived, and a
+// Nat constructor argument is refused too; refusing is not answering wrongly. When comparisons are judged, Zero must
+// answer true and Succ { prev: Zero } false; a one-sided answer or a wrong Bool -- the constructor-versus-literal
+// representation mismatch -- turns this red.
+test fn lel_route_runs_on_the_real_path() -> Bool {
+  let r = lel_route_reading()
+  r.infer_accepted
+    && ((r.zero_answer == optional_absent() && r.one_answer == optional_absent())
+      || (r.zero_answer == optional_present(value: true) && r.one_answer == optional_present(value: false)))
+}
+
+// SUPPLIED INPUTS: a literal node and an expected type, handed to infer_literal_elaborates_at.
+fn lel_literal(lexeme: String) -> Node {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: n, diagnostics: _ } => n
+    Rejected { diagnostics: _ } => node_synthetic(kind: TypeNode { connective: Atom { identity: ^lel_literal_unbuilt } }, children: [])
+  }
+}
+
+fn lel_nat_type() -> Node { declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.nat.Nat"), occurrence_id: OccurrenceSynthetic) }
+fn lel_pair_type() -> Node { declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "p.Pair"), occurrence_id: OccurrenceSynthetic) }
+fn lel_int_type() -> Node {
+  match dag_binding_denotation(sym: ^dag_binding_type_int) {
+    Present { value: t } => t
+    Absent => node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } }, children: [])
+  }
+}
+
+fn lel_elaborates(literal: Node, expected: Node) -> Bool {
+  match infer_literal_elaborates_at(literal_node: literal, expected: expected, declarations: empty_symbol_index()) {
+    InferLiteralElaboratesTo { destination_type: _ } => true
+    InferLiteralNotElaborated => false
+    InferLiteralElaborationRefused { cause: _ } => false
+  }
+}
+
+fn lel_not_elaborated(literal: Node, expected: Node) -> Bool {
+  match infer_literal_elaborates_at(literal_node: literal, expected: expected, declarations: empty_symbol_index()) {
+    InferLiteralElaboratesTo { destination_type: _ } => false
+    InferLiteralNotElaborated => true
+    InferLiteralElaborationRefused { cause: _ } => false
+  }
+}
+
+// SUPPLIED: 0 and 3 elaborate at std.nat Nat through its kernel grounding (inside its declared range).
+test fn lel_literals_elaborate_at_nat() -> Bool {
+  lel_elaborates(literal: lel_literal(lexeme: "0"), expected: lel_nat_type()) && lel_elaborates(literal: lel_literal(lexeme: "3"), expected: lel_nat_type())
+}
+
+// SUPPLIED: a literal at the kernel Int is not elaborated (it is already an Int).
+test fn lel_literal_at_int_is_not_elaborated() -> Bool {
+  lel_not_elaborated(literal: lel_literal(lexeme: "3"), expected: lel_int_type())
+}
+
+// SUPPLIED, RED: a literal at a type with no row is not elaborated, so the judge refuses it with its own cause
+// (application_argument_does_not_inhabit; v2.test.claim.compiler.generic_formal_instantiation is that judge's subject).
+test fn lel_literal_at_a_type_without_a_row_is_not_elaborated() -> Bool {
+  lel_not_elaborated(literal: lel_literal(lexeme: "0"), expected: lel_pair_type())
+}
+
+// SUPPLIED, RED: `-1` -- a unary Transform over the literal 1, not a literal node -- refuses at Nat, typed, pinned to the
+// RANGE's reason so a later parse change (a signed literal token) cannot make it silent and so the refusal is the
+// grounding row's, not a check of infer's own. Before #13320 it was admitted at Nat.
+test fn lel_negative_literal_at_nat_refuses() -> Bool {
+  match infer_literal_elaborates_at(literal_node: lower_unary_prefix(operator: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_minus } }, children: []), operand: lel_literal(lexeme: "1")), expected: lel_nat_type(), declarations: empty_symbol_index()) {
+    InferLiteralElaborationRefused { cause: c } => c == ^infer_reason_literal_outside_kernel_grounding_range
+    InferLiteralElaboratesTo { destination_type: _ } => false
+    InferLiteralNotElaborated => false
+  }
+}
+
+// SUPPLIED, RED: a string literal has no row into Nat and is not elaborated (never a row picked for another kind).
+test fn lel_literal_of_another_kind_is_not_elaborated_at_nat() -> Bool {
+  lel_not_elaborated(literal: dag_string_literal_node(value: "a", occurrence_id: OccurrenceSynthetic), expected: lel_nat_type())
+}
+
+// THE SEED ROUTE EXECUTES THE SAME COMPARISON (the claim body runs on the seed interpreter).
+test fn lel_count_compared_with_a_literal_executes_on_the_seed() -> Bool {
+  count([]) == 0 && !(count([1]) == 0)
+}
+
+// SUPPLIED: THE RANGE IS THE ROW'S. Nat's grounding row, read from the production table, admits 0 and 3 and not -1 --
+// so the RED above is derived from the declared range (std.literal_elaboration kernel_grounding_admits over the
+// std.types range bounds the row carries), and changing the row's min is what would move it.
+test fn lel_nat_grounding_row_declares_the_range() -> Bool {
+  match kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat")) {
+    KernelGroundingFound { row: row } =>
+      kernel_grounding_admits(row: row, value: 0) && kernel_grounding_admits(row: row, value: 3) && !kernel_grounding_admits(row: row, value: 0 - 1)
+    KernelGroundingAbsent => false
+    KernelGroundingAmbiguous { row_count: _ } => false
+  }
+}

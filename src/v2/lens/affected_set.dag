@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
-import v2.std.collection { Absent, Map, Present, list_at_optional, map_get, map_insert }
+import v2.std.collection { Absent, Map, Present, list_at_optional, map_get_checked, map_insert }
 import v2.std.algebra { TailAbsent, TailFound, contains, length, list_tail }
 import std.algebra { list_append, list_snoc_item }
 import v2.compiler.infer { InferredTree }
@@ -44,7 +44,7 @@ import v2.std.node {
   Behavior,
   Bind,
   Branch,
-  Cardinality,
+  Occupancy,
   ComputationNode,
   Conj,
   Connective,
@@ -590,7 +590,7 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
 
-      match map_get(decisions, key) {
+      match map_get_checked(decisions, key) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: decision } =>
             match decision {
@@ -1052,7 +1052,7 @@ fn connective_to_dimension_family(connective: Connective) -> AffectedDimension {
     Conj => ^canonical_tag_conj
     Disj => ^canonical_tag_disj
     Arrow => ^canonical_tag_arrow
-    Cardinality => ^canonical_tag_cardinality
+    Occupancy => ^canonical_tag_cardinality
     Instantiation => ^canonical_tag_instantiation
   }
 }

@@ -1,0 +1,289 @@
+module gunbc.provider_guest_adoption
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef }
+import std.measure { ByteSize, HardwareThreadCount, Kibibyte, byte_size_count, hardware_thread_count_value, kibibyte_count }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+import extdeps.tools.uname { uname_machine_command, uname_nodename_command, uname_linux_machine_architecture }
+import extdeps.posix.getconf { getconf_online_processors_command }
+import extdeps.posix.test_utility { test_exists_command }
+import extdeps.tools.gnu_coreutils { cat_command }
+import extdeps.tools.curl { curl_bounded_get_command }
+import std.measure { second }
+import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
+import extdeps.virtualization.firecracker { firecracker_requires_kvm_device }
+import product.host_identity { HostIdentity }
+import gunbc.host_command_binding {
+  CommandHost,
+  LocalCommandHost,
+  HostCommandOutcome,
+  HostCommandDone,
+  HostCommandFailed,
+  HostCommandUnconfirmed,
+  HostCommandNotDispatched,
+  host_command,
+  host_command_outcome_text,
+}
+import gunbc.fleet_host_backing {
+  GuestEntitlement,
+  HostBacking,
+  OwnedMachine,
+  ProviderGuest,
+  ProviderResourceAwaited,
+  ProviderResourceAcquired,
+  backing_microvm_forbidding_offer,
+}
+import gunbc.fleet_enrollment { HostEnrollmentIntent }
+
+// ADOPTING A RENTED GUEST INTO THE FLEET. An owned machine arrives through its own provisioning --
+// BMC credential convergence and a virtual-media OS install -- and a provider guest arrives already
+// installed from the provider's image, so it owes none of that and owes this instead: the exact
+// provider resource is bound, the guest is reached, and what it actually exposes is observed and
+// checked against what the provider's offer entitles. The adoption is the guest's PREFIX in the
+// standup spine (gunbc.host_standup ProviderGuestAdopted); everything after it -- identity, reach,
+// service roles -- is the same shared path every host walks.
+//
+// Two answers come out and they are kept apart. Whether the guest is ADOPTED (it is the host we
+// enrolled, and it is what we are paying for) is one; whether it can RUN the fleet's microVM
+// execution path is another, and a guest can be fully adopted while that path is refused. Folding
+// the second into the first would either refuse a perfectly good machine or admit an execution path
+// that cannot boot -- so the execution standing rides beside the adoption, with its own cause.
+
+// What a running guest reports about itself, read once over the admitted transport.
+type GuestObservation {
+  provider_resource_id: String
+  kernel_hostname: String
+  architecture: Architecture
+  online_cpus: Int
+  mem_total: Kibibyte
+  kvm_device_present: Bool
+}
+
+type GuestObservationRead
+  = GuestObserved { observation: GuestObservation }
+  | GuestObservationRefused { reading: NonEmptyStr, cause: String }
+
+type MicroVmExecutionRefusal
+  = ProviderForbidsNestedVirtualization { offer: DeclarationRef }
+  | KvmDeviceAbsentOnGuest { device: String }
+
+type MicroVmExecutionStanding
+  = MicroVmExecutionAdmissible
+  | MicroVmExecutionRefused { cause: MicroVmExecutionRefusal }
+
+type GuestAdoptionRefusal
+  = HostIsNotAProviderGuest
+  | ProviderResourceUnread { read_obligation: NonEmptyStr }
+  | GuestIsAnotherResource { enrolled: NonEmptyStr, observed: String }
+  | GuestUnobserved { reading: NonEmptyStr, cause: String }
+  | GuestArchitectureDiverges { entitled: Architecture, observed: Architecture }
+  | GuestCpusExceedEntitlement { entitled: Int, observed: Int }
+  | GuestMemoryExceedsEntitlement { entitled_bytes: Int, observed_bytes: Int }
+
+type ProviderGuestAdoption
+  = GuestAdopted { host: HostIdentity, resource_id: NonEmptyStr, observation: GuestObservation, execution: MicroVmExecutionStanding }
+  | GuestAdoptionRefused { host: HostIdentity, cause: GuestAdoptionRefusal }
+
+// THE MICROVM PATH NEEDS A KVM DEVICE INSIDE THE GUEST, and the provider decides first. When the
+// provider's offer says nested virtualization is unavailable, the path is refused on that cited
+// product fact whatever the observation says -- a device node appearing on such a guest would be
+// the anomaly, not a licence. Otherwise the observation decides.
+fn microvm_execution_standing(entitlement: GuestEntitlement, observation: GuestObservation) -> MicroVmExecutionStanding {
+  if !entitlement.nested_virtualization {
+    MicroVmExecutionRefused { cause: ProviderForbidsNestedVirtualization { offer: entitlement.offer } }
+  } else if !observation.kvm_device_present {
+    MicroVmExecutionRefused { cause: KvmDeviceAbsentOnGuest { device: firecracker_requires_kvm_device as String } }
+  } else {
+    MicroVmExecutionAdmissible
+  }
+}
+
+// THE ENTITLEMENT BOUNDS THE OBSERVATION FROM ABOVE. A guest presenting more vCPUs or memory than its
+// offer entitles is not a bonus: it is a guest of a different type than the one enrolled -- the
+// provider resource is not what we think it is -- and admitting it would let capacity planning
+// promise what the bill does not cover. Fewer is ordinary (the kernel reserves memory, and MemTotal
+// is below the offer's figure on every real guest), and the observed figure is what capacity uses.
+fn entitlement_divergence(entitlement: GuestEntitlement, observation: GuestObservation) -> GuestAdoptionRefusal? {
+  let entitled_cpus = hardware_thread_count_value(t: entitlement.vcpus)
+  let entitled_bytes = byte_size_count(entitlement.memory)
+  let observed_bytes = kibibyte_count(observation.mem_total) * 1024
+  if (architecture_diagnostic_name(arch: entitlement.architecture) as String) != (architecture_diagnostic_name(arch: observation.architecture) as String) {
+    Present { value: GuestArchitectureDiverges { entitled: entitlement.architecture, observed: observation.architecture } }
+  } else if observation.online_cpus > entitled_cpus {
+    Present { value: GuestCpusExceedEntitlement { entitled: entitled_cpus, observed: observation.online_cpus } }
+  } else if observed_bytes > entitled_bytes {
+    Present { value: GuestMemoryExceedsEntitlement { entitled_bytes: entitled_bytes, observed_bytes: observed_bytes } }
+  } else {
+    none
+  }
+}
+
+// THE PROVIDER'S ANSWER ALONE, for a consumer that must refuse before anything is observed -- the
+// fabric supply path refuses a guest's microVM supply on this, before it probes a single cell.
+// Absent means the provider does not forbid it (or the host is not a provider guest); the
+// observation, where one is taken, still decides that case.
+fn provider_microvm_refusal(backing: HostBacking) -> MicroVmExecutionRefusal? {
+  match backing_microvm_forbidding_offer(backing: backing) {
+    Present { value: offer } => Present { value: ProviderForbidsNestedVirtualization { offer: offer } }
+    Absent => none
+  }
+}
+
+fn adopt_observed_guest(
+  host: HostIdentity,
+  resource_id: NonEmptyStr,
+  entitlement: GuestEntitlement,
+  read: GuestObservationRead,
+) -> ProviderGuestAdoption {
+  match read {
+    GuestObservationRefused { reading: r, cause: c } =>
+      GuestAdoptionRefused { host: host, cause: GuestUnobserved { reading: r, cause: c } }
+    GuestObserved { observation: o } => if trim(o.provider_resource_id) != (resource_id as String) {
+      GuestAdoptionRefused { host: host, cause: GuestIsAnotherResource { enrolled: resource_id, observed: trim(o.provider_resource_id) } }
+    } else { match entitlement_divergence(entitlement: entitlement, observation: o) {
+      Present { value: refusal } => GuestAdoptionRefused { host: host, cause: refusal }
+      Absent => GuestAdopted {
+        host: host,
+        resource_id: resource_id,
+        observation: o,
+        execution: microvm_execution_standing(entitlement: entitlement, observation: o),
+      }
+    } }
+  }
+}
+
+// The pure decision. The provider resource must be BOUND before anything is observed: an unread
+// resource refuses with its own read obligation, so an observation can never be attributed to a
+// resource nobody identified.
+fn adopt_provider_guest(intent: HostEnrollmentIntent, read: GuestObservationRead) -> ProviderGuestAdoption {
+  match intent.backing {
+    OwnedMachine { provisioning: _ } => GuestAdoptionRefused { host: intent.host, cause: HostIsNotAProviderGuest }
+    ProviderGuest { route: _, entitlement: e, resource: r } => match r {
+      ProviderResourceAwaited { read_obligation: o } =>
+        GuestAdoptionRefused { host: intent.host, cause: ProviderResourceUnread { read_obligation: o } }
+      ProviderResourceAcquired { acquisition: acquired } =>
+        adopt_observed_guest(host: intent.host, resource_id: acquired.resource_id, entitlement: e, read: read)
+    }
+  }
+}
+
+// ── THE OBSERVATION: five reads over the admitted transport ───────────────────────────────────
+
+fn guest_read_stdout(reading: NonEmptyStr, outcome: HostCommandOutcome) -> String? {
+  match outcome {
+    HostCommandDone { stdout: s } => Present { value: trim(s: s) }
+    HostCommandFailed { exit_code: _, stderr: _ } => Absent
+    HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => Absent
+    HostCommandNotDispatched { reason: _ } => Absent
+  }
+}
+
+fn guest_read_refusal(reading: NonEmptyStr, outcome: HostCommandOutcome) -> GuestObservationRead {
+  GuestObservationRefused { reading: reading, cause: host_command_outcome_text(e: outcome) }
+}
+
+// `test -e` answers presence by EXIT STATUS: 0 present, 1 absent. Any other termination -- the
+// command not dispatched, the reply lost, an unexpected status -- is not an answer, and is refused
+// rather than read as absence.
+fn kvm_presence_of(outcome: HostCommandOutcome) -> Bool? {
+  match outcome {
+    HostCommandDone { stdout: _ } => Present { value: true }
+    HostCommandFailed { exit_code: c, stderr: _ } => if c == 1 { Present { value: false } } else { none }
+    HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => Absent
+    HostCommandNotDispatched { reason: _ } => Absent
+  }
+}
+
+// THE GUEST'S OWN ANSWER TO "WHICH RESOURCE AM I", read from its provider's metadata service. Shape
+// alone cannot tell two guests of one offer apart, so this is what joins the observation to the
+// enrolled resource; the remaining readings describe the resource that answered here.
+fn observe_provider_guest(host: CommandHost, entitlement: GuestEntitlement) -> GuestObservationRead {
+  let identity_out = host_command(host: host, command: curl_bounded_get_command(url: entitlement.self_identity_url, connect_timeout: second(count: 2), max_time: second(count: 5)))
+  match guest_read_stdout(reading: entitlement.self_identity_url, outcome: identity_out) {
+    Absent => guest_read_refusal(reading: entitlement.self_identity_url, outcome: identity_out)
+    Present { value: id } => observe_provider_guest_shape(host: host, provider_resource_id: id)
+  }
+}
+
+fn observe_provider_guest_shape(host: CommandHost, provider_resource_id: String) -> GuestObservationRead {
+  let machine_out = host_command(host: host, command: uname_machine_command())
+  let nodename_out = host_command(host: host, command: uname_nodename_command())
+  let cpus_out = host_command(host: host, command: getconf_online_processors_command())
+  let meminfo_out = host_command(host: host, command: cat_command(path: "/proc/meminfo"))
+  let kvm_out = host_command(host: host, command: test_exists_command(path: firecracker_requires_kvm_device as String))
+  match guest_read_stdout(reading: "uname -m", outcome: machine_out) {
+    Absent => guest_read_refusal(reading: "uname -m", outcome: machine_out)
+    Present { value: machine } => match uname_linux_machine_architecture(spelling: machine) {
+      Absent => GuestObservationRefused { reading: "uname -m", cause: join(["unread machine name '", machine, "'"], "") }
+      Present { value: arch } => match guest_read_stdout(reading: "uname -n", outcome: nodename_out) {
+        Absent => guest_read_refusal(reading: "uname -n", outcome: nodename_out)
+        Present { value: nodename } => match guest_read_stdout(reading: "getconf _NPROCESSORS_ONLN", outcome: cpus_out) {
+          Absent => guest_read_refusal(reading: "getconf _NPROCESSORS_ONLN", outcome: cpus_out)
+          Present { value: cpus_text } => match parse_int(s: cpus_text) {
+            Absent => GuestObservationRefused { reading: "getconf _NPROCESSORS_ONLN", cause: join(["not an integer: '", cpus_text, "'"], "") }
+            Present { value: cpus } => match guest_read_stdout(reading: "cat /proc/meminfo", outcome: meminfo_out) {
+              Absent => guest_read_refusal(reading: "cat /proc/meminfo", outcome: meminfo_out)
+              Present { value: meminfo_text } => match parse_proc_meminfo(text: meminfo_text) {
+                MeminfoFieldAbsent { field: f } => GuestObservationRefused { reading: "cat /proc/meminfo", cause: join(["field absent: ", f as String], "") }
+                MeminfoParsed { meminfo: m } => match kvm_presence_of(outcome: kvm_out) {
+                  Absent => guest_read_refusal(reading: "test -e /dev/kvm", outcome: kvm_out)
+                  Present { value: kvm } => GuestObserved {
+                    observation: GuestObservation {
+                      provider_resource_id: provider_resource_id,
+                      kernel_hostname: nodename,
+                      architecture: arch,
+                      online_cpus: cpus,
+                      mem_total: m.mem_total,
+                      kvm_device_present: kvm,
+                    },
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── RENDERING AND THE LOCAL ROUTE ─────────────────────────────────────────────────────────────
+
+fn guest_adoption_refusal_text(cause: GuestAdoptionRefusal) -> String {
+  match cause {
+    HostIsNotAProviderGuest => "the host is an owned machine, not a provider guest; it arrives through its own provisioning"
+    ProviderResourceUnread { read_obligation: o } => join(["the provider resource is not bound: ", o as String], "")
+    GuestIsAnotherResource { enrolled: e, observed: o } =>
+      join(["the machine observed reports provider resource '", o, "', not the enrolled ", e as String, "; it is another guest, or the observation ran somewhere other than the named host"], "")
+    GuestUnobserved { reading: r, cause: c } => join(["the guest could not be observed at '", r as String, "': ", c], "")
+    GuestArchitectureDiverges { entitled: e, observed: o } =>
+      join(["the guest reports ", architecture_diagnostic_name(arch: o) as String, " but its offer entitles ", architecture_diagnostic_name(arch: e) as String], "")
+    GuestCpusExceedEntitlement { entitled: e, observed: o } =>
+      join(["the guest presents ", to_string(o), " vCPUs, more than the ", to_string(e), " its offer entitles -- a different resource than the one enrolled"], "")
+    GuestMemoryExceedsEntitlement { entitled_bytes: e, observed_bytes: o } =>
+      join(["the guest presents ", to_string(o), " bytes of memory, more than the ", to_string(e), " its offer entitles"], "")
+  }
+}
+
+fn microvm_execution_refusal_text(cause: MicroVmExecutionRefusal) -> String {
+  match cause {
+    ProviderForbidsNestedVirtualization { offer: o } =>
+      join(["microVM execution refused: the provider offer ", o.module_path as String, ".", o.decl_name as String, " forbids nested virtualization, so no KVM device exists inside the guest"], "")
+    KvmDeviceAbsentOnGuest { device: d } => join(["microVM execution refused: ", d, " is absent on the guest"], "")
+  }
+}
+
+// THE NAMED GUEST, OBSERVED WHERE THIS PROCESS RUNS. The observation is local, and that is safe only
+// because the first reading is the provider's answer to which resource this machine is: run against
+// any machine but the named guest -- another guest, the controller, an operator's laptop -- and the
+// metadata id differs from the enrolled resource (or the service is not there at all), and adoption
+// refuses with that cause. A remote route over the fleet's SSH anchor is a different transport for
+// the same readings, and lands when a consumer needs to adopt a guest from outside it.
+fn adopt_local_provider_guest(intent: HostEnrollmentIntent) -> ProviderGuestAdoption {
+  match intent.backing {
+    OwnedMachine { provisioning: _ } => GuestAdoptionRefused { host: intent.host, cause: HostIsNotAProviderGuest }
+    ProviderGuest { route: _, entitlement: e, resource: _ } =>
+      adopt_provider_guest(intent: intent, read: observe_provider_guest(host: LocalCommandHost, entitlement: e))
+  }
+}

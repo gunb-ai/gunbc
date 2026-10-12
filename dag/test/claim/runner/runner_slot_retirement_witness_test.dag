@@ -1085,6 +1085,27 @@ test fn a_derived_target_width_yields_the_prior_minus_target_obligation() -> Boo
   }
 }
 
+// THE OBLIGATION IS PRIOR MINUS THE COMMITTED IDENTITIES, NOT `target + 1 .. prior`. On srv1 the
+// committed population at width 11 is srv1-01..10 plus the shakedown slot srv1-13 (#12339), so the
+// obligation must name srv1-11 and srv1-12 -- the fleet slots the width stopped charging for -- and
+// must NOT name srv1-13. The index-range derivation got both wrong with the same count (39), which
+// is why this asserts membership rather than length alone.
+test fn the_obligation_excludes_a_committed_member_above_the_fleet_range() -> Bool {
+  match transition_row_for_host(host: operator_host_srv1).first() {
+    Absent => false
+    Present { value: t } =>
+      match transition_required_retirees_at(t: t, target_width: RunnerWidthDerived { slots: 11 }) {
+        RetireesKnown { units: units } =>
+          list_length(items: units) == 39
+            && any(units, u => (u as String) == "actions-runner@srv1-11.service")
+            && any(units, u => (u as String) == "actions-runner@srv1-12.service")
+            && !any(units, u => (u as String) == "actions-runner@srv1-13.service")
+            && !any(units, u => (u as String) == "actions-runner@srv1-10.service")
+        RetireesUnresolved { host: _, cause: _ } => false
+      }
+  }
+}
+
 // AND THE WRAPPER REACHES THE DECISION ON THE REAL PATH, which is what keeps the two supplied-input
 // rows above from being claims about a function nothing calls: srv4's width resolves today, so the
 // production read yields the same derived obligation the decision produces for that width.

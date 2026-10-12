@@ -1,0 +1,85 @@
+module gunbc.machine_intake_arrival_subject
+
+import std.types { List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.auth.standing_operator_grant {
+  mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost,
+  StandingJadeArrivalArchive, StandingJadeFirmwareQualification,
+}
+import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
+
+// ── ARRIVAL-CONVERGE SUBJECT POPULATION ───────────────────────────────────────────────────────
+// J2/J4 cannot read gunbc.managed_host managed_hosts(): mtjade1 is not a member until J4's
+// ManagedHostAdmission. The dispatch input for those effects is this population, distinct from the
+// executor `host` input and from `managed_host`. Options are derived from the rows, never a second
+// hand list in fleet-converge.yml.
+//
+// A row is a unit that has an arrival-prefix producer (today: converge_mtjade1_arrival_prefix). It
+// is not a HostIdentity enrollment and not a managed-host row.
+
+// This cut's population is one row, mtjade1. Dispatch options project from the
+// rows. admit_arrival_subject then joins that singleton to mtjade1_live_standing_grant
+// on operator_host_mtjade1; the grant is not a field of the row. A second row
+// would appear in the options and still refuse ArrivalSubjectOutsideGrant until
+// the admit fold joins each row to its own standing grant and host.
+type ArrivalConvergePopulationRow {
+  wire: NonEmptyStr
+  producer: DeclarationRef
+}
+
+data arrival_converge_population: List<ArrivalConvergePopulationRow> = [
+  ArrivalConvergePopulationRow {
+    wire: "mtjade1" as NonEmptyStr,
+    producer: decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_mtjade1_arrival_prefix"),
+  },
+]
+
+fn arrival_converge_subject_options() -> List<String> {
+  map(arrival_converge_population, r => r.wire as String)
+}
+
+type ArrivalSubjectAdmitted sole_constructor {
+  wire: NonEmptyStr
+  producer: DeclarationRef
+}
+
+type ArrivalSubjectAdmission
+  = ArrivalSubjectInPopulation { subject: ArrivalSubjectAdmitted }
+  | ArrivalSubjectUnknown { wire: String }
+  | ArrivalSubjectIsManagedHostExecutorConfusion { wire: String }
+  | ArrivalSubjectOutsideGrant { wire: String }
+
+fn arrival_population_row(wire: String) -> ArrivalConvergePopulationRow? {
+  filter(arrival_converge_population, r => (r.wire as String) == wire).first()
+}
+
+// THE ADMIT FOLD THE ARRIVAL JOB RUNS BEFORE WIF. mtcollins1 is not a member. A spelling that is
+// not in arrival_converge_population refuses. Grant coverage for this singleton is
+// mtjade1_live_standing_grant on operator_host_mtjade1 (archive and firmware arms).
+fn admit_arrival_subject(wire: String) -> ArrivalSubjectAdmission {
+  if wire == (operator_host_mtcollins1 as String) {
+    ArrivalSubjectIsManagedHostExecutorConfusion { wire: wire }
+  } else {
+    match arrival_population_row(wire: wire) {
+      Absent => ArrivalSubjectUnknown { wire: wire }
+      Present { value: row } =>
+        if standing_grant_covers(
+          g: mtjade1_live_standing_grant,
+          scope: StandingGrantHost { host: operator_host_mtjade1 },
+          effect: StandingJadeArrivalArchive,
+        ) && standing_grant_covers(
+          g: mtjade1_live_standing_grant,
+          scope: StandingGrantHost { host: operator_host_mtjade1 },
+          effect: StandingJadeFirmwareQualification,
+        ) && (row.wire as String) == (operator_host_mtjade1 as String) {
+          ArrivalSubjectInPopulation {
+            subject: ArrivalSubjectAdmitted { wire: row.wire, producer: row.producer },
+          }
+        } else {
+          ArrivalSubjectOutsideGrant { wire: wire }
+        }
+    }
+  }
+}
+

@@ -38,6 +38,8 @@ type GitRefObjectWire {
   sha: String
 }
 
+type GitRefDeletedBody {}
+
 type GitRefWire {
   ref: String
   object: GitRefObjectWire
@@ -111,10 +113,21 @@ data git_blob_encoding_base64: NonEmptyStr = "base64"
 // so no caller of UpdateRefFastForward can express a forced update; a moved branch answers 422
 // "Update is not a fast forward" and that refusal IS the compare-and-swap. A forced variant would be
 // a different operation with its own name and its own consumer.
+// CreateRef AND DeleteRef (docs.github.com/en/rest/git/refs#create-a-reference and
+// #delete-a-reference, read 2026-10-04). CreateRef takes the FULL ref name (`refs/tags/<name>`) in its
+// body and answers 201 with the reference; an existing ref answers 422 "Reference already exists",
+// so creation never moves a ref and that 422 is the create-once refusal. DeleteRef takes the
+// `tags/<name>` form in its path and answers 204 with no body; a ref already gone answers 422
+// "Reference does not exist". Their consumer is gunbc.runner.runner_qualification_ref_pin (a create-once branch per qualification attempt and its removal).
+//
+// THE BEARER IS AN INPUT WHEN ONE IS GIVEN. Every operation already took `auth_token`; the service read
+// only GITHUB_TOKEN. Declaring both lets a caller that holds an installation token present it, and a
+// caller passing "" (gunbc.heal_publication) falls through to GITHUB_TOKEN exactly as before.
 service github.GitDatabase {
   config {
     endpoint: default_api_base
     auth: Bearer
+    auth_input: auth_token
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
@@ -298,6 +311,60 @@ service github.GitDatabase {
     }
     response {
       200 => GitRefWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      409 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation CreateRef {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      full_ref: String
+      sha: String
+    }
+    output {
+      reference: GitRefWire
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/git/refs",
+      body: { ref: full_ref, sha: sha }
+    }
+    response {
+      201 => GitRefWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      409 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation DeleteRef {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      ref: String
+    }
+    output {
+      result: GitRefDeletedBody
+    }
+    transport rest {
+      method: DELETE,
+      path: "/repos/\{owner\}/\{repo\}/git/refs/\{ref\}"
+    }
+    response {
+      204 => GitRefDeletedBody
       401 => GitHubErrorShape
       403 => GitHubErrorShape
       404 => GitHubErrorShape

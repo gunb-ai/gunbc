@@ -2,10 +2,13 @@ module v2.test.claim.emitted_closure_crate_partition
 
 import std.types { Bool, Int, List, String }
 import v2.lens.module_graph { dependency_resolution_facts_live, module_declaration_facts_live }
-import v2.std.collection { map_get }
+import v2.std.collection { map_get_checked }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, Present }
-import v2.std.compilers.compilation_unit {
+import gunbc.crate_partition {
+  PartitionPolicy,
+  ResolvePartitionOk,
+  ResolvePartitionRefused,
   CompilationUnitId,
   HandExplicit,
   ModuleId,
@@ -19,11 +22,6 @@ import v2.workflow.emitted_closure_crate_partition {
   EmittedClosureResolved,
   derived_policy_partition,
   module_dag_from_dependency_facts
-}
-import v2.workflow.rust_crate_partition {
-  PartitionPolicy,
-  ResolvePartitionOk,
-  ResolvePartitionRefused
 }
 
 // THE INHABITANCE CLAIM FOR THE DERIVED CRATE PARTITION: the real fact producers, the real DAG
@@ -59,7 +57,7 @@ fn fixture_partition_at(root: String, entry: String) -> EmittedClosurePartitionO
 }
 
 fn owner_of(assignment: Map<ModuleId, CompilationUnitId>, module_id: String) -> String {
-  match map_get(assignment, module_id as ModuleId) {
+  match map_get_checked(assignment, module_id as ModuleId) {
     Accepted { value: Present { value: unit }, diagnostics: _ } => unit as String
     Accepted { value: Absent, diagnostics: _ } => "unowned"
     Rejected { diagnostics: _ } => "unowned"

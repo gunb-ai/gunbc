@@ -47,7 +47,8 @@ import gunbc.auth.session {
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthSessions }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 
 data session_store_file_suffix: String = ".json"
 
@@ -59,11 +60,16 @@ type SessionStoreLayout {
   root: FilePath
 }
 
-// BUILT FROM THE INSTANCE the way the event carrier builds its worktree: the instance root the
-// process already owns, plus the one directory segment this store adds.
+// THE DIRECTORY THIS STORE DEMANDS, declared here because the store is what writes into it: an
+// owned-directory target (gunbc.owned_directory) under the instance root, ensured by both deployment
+// routes through gunbc.roadmap.dashboard_instance_directories, and the layout's root is read off it.
+fn session_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  dashboard_instance_private_directory(instance: instance, member: "auth-sessions" as NonEmptyStr, child: "auth-sessions")
+}
+
 fn session_store_layout_for_instance(instance: HostDashboardInstance) -> SessionStoreLayout {
   SessionStoreLayout {
-    root: dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthSessions),
+    root: owned_directory_path(t: session_store_directory(instance: instance)),
   }
 }
 

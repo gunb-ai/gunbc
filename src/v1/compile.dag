@@ -31,7 +31,7 @@ import v1.std.core {
   MatchBoundBinding, ServiceValueBinding
 }
 
-import v1.compiler.annotation_bind { admit_source_annotations }
+import v1.compiler.annotation_bind { bind_annotations }
 import std.source_annotation {
   SourceAnnotationGraph,
   UnboundAnnotationCapture,
@@ -73,6 +73,7 @@ import v1.compiler.infer { reconcile, reconcile_with_census_extra }
 import v1.compiler.infer_types { algebra_field_kind_name }
 
 import v1.compiler.emit_core_support { EmitResult, escape_json_string }
+import gunbc.rust_emitted_crate { EmittedRustCrate }
 import gunbc.rust_emitted_edge { EmittedEdge }
 import v1.compiler.emit { unmodeled_file_transport_diagnostics, unmodeled_shell_transport_diagnostics, unmodeled_rest_transport_diagnostics }
 
@@ -123,6 +124,7 @@ type PipelineResult {
   artifact_plan: ArtifactPlan
   newline_indices: List<NewlineIndex>
   emitted_edges: List<EmittedEdge>
+  rust_crates: List<EmittedRustCrate>
 }
 
 // The authored source annotation graph rides beside the semantic result rather than inside it.
@@ -151,17 +153,15 @@ type FrontendAccum {
   intern_table: InternTable
   occurrence_allocator: OccurrenceIdAllocator
   annotations: SourceAnnotationGraph
-  annotation_diagnostics: List<ErrorNode>
 }
 
-data frontend_prepared_authored_note: String = "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass, and `source_length` is what the binder needs to bound the last module item's extent.
+data frontend_prepared_authored_note: String = "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass.
 
 Threading the captures through this record rather than re-tokenizing later is what keeps the two halves of one lexical pass from drifting: a second pass could observe a different source, and placement in particular is unrecoverable once whitespace is gone."
 
 type FrontendPrepared {
   tokens: List<Token>
   annotations: List<UnboundAnnotationCapture>
-  source_length: Int
   newline_index: NewlineIndex
 }
 
@@ -642,7 +642,7 @@ fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
     unmodeled_shell_transport_diagnostics(typed: typed, target: artifact.target),
     unmodeled_rest_transport_diagnostics(typed: typed, target: artifact.target))
   if unmodeled_transports |> count > 0 {
-    return EmitResult { files: [], diagnostics: unmodeled_transports, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: unmodeled_transports, emitted_edges: [], rust_crates: [] }
   }
   match artifact.target {
     Rust => emit_rust_selected(typed: typed, selection: artifact.module_selection)
@@ -1356,13 +1356,13 @@ fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   let collected = collect_dag_nodes(typed: typed)
   let _ = trace_mark("compile.emit.dag.collect.done")
   if collected.collision_errors |> count > 0 {
-    return EmitResult { files: [], diagnostics: collected.collision_errors, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: collected.collision_errors, emitted_edges: [], rust_crates: [] }
   }
   let order = collected.order
   let key_to_id = build_dag_key_to_id(order: order)
   let ref_errors = dag_emit_ref_errors(order: order, key_to_id: key_to_id)
   if ref_errors |> count > 0 {
-    return EmitResult { files: [], diagnostics: ref_errors, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: ref_errors, emitted_edges: [], rust_crates: [] }
   }
   let source_indices = dag_graph_source_indices(typed: typed)
   let nodes_json = serialize_dag_nodes_table(order: order, source_indices: source_indices, key_to_id: key_to_id)
@@ -1380,7 +1380,8 @@ fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   EmitResult {
     files: [TextFile { path: "dag-artifact.json", content: json }],
     diagnostics: [],
-    emitted_edges: []
+    emitted_edges: [],
+    rust_crates: []
   }
 }
 
@@ -1425,17 +1426,18 @@ fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPla
     return EmitResult {
       files: [],
       diagnostics: [compile_bundle_error(message: "compile_sources planned no artifacts")],
-      emitted_edges: []
+      emitted_edges: [],
+      rust_crates: []
     }
   }
   let boundary_diags = validate_boundaries(plan: artifact_plan)
   if boundary_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: boundary_diags, emitted_edges: [] }
+    return EmitResult { files: [], diagnostics: boundary_diags, emitted_edges: [], rust_crates: [] }
   }
   let results = artifact_plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact))
   let all_files = results |> flat_map(r => r.files)
   let all_diags = results |> flat_map(r => r.diagnostics)
-  EmitResult { files: all_files, diagnostics: all_diags, emitted_edges: results |> flat_map(r => r.emitted_edges) }
+  EmitResult { files: all_files, diagnostics: all_diags, emitted_edges: results |> flat_map(r => r.emitted_edges), rust_crates: results |> flat_map(r => r.rust_crates) }
 }
 
 fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
@@ -1483,7 +1485,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     FrontendPrepared {
       tokens: artifact.tokens,
       annotations: artifact.annotations,
-      source_length: string_length(s: s.content),
       newline_index: si,
     }
   )
@@ -1495,7 +1496,6 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     intern_table: intern_table,
     occurrence_allocator: occurrence_id_allocator_initial(),
     annotations: source_annotation_graph_empty(),
-    annotation_diagnostics: [],
   }, f: (acc, p) =>
     let parsed = parse_with_table_in_occurrence_scope(
       tokens: p.tokens,
@@ -1508,10 +1508,10 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       occurrence_allocator: acc.occurrence_allocator,
       env: dag_parse_environment
     )
-    let bound = admit_source_annotations(
+    let bound = bind_annotations(
       transport: parsed.occurrence_transport,
-      captures: p.annotations,
-      source_length: p.source_length
+      extents: parsed.source_extents,
+      captures: p.annotations
     )
     FrontendAccum {
       parse_results: list_push(acc.parse_results, parsed.result),
@@ -1526,11 +1526,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound.graph),
-      annotation_diagnostics: concat(
-        acc.annotation_diagnostics,
-        bound.diagnostics |> map(d => make_error_node(diagnostic: d, module_name: p.newline_index.file))
-      ),
+      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound),
     }
   )
   let parse_results = parsed.parse_results
@@ -1550,7 +1546,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   )
   FrontendResult {
     graph: resolution.graph,
-    diagnostics: concat(concat(parse_diagnostics, resolution.diagnostics), parsed.annotation_diagnostics),
+    diagnostics: concat(parse_diagnostics, resolution.diagnostics),
     newline_indices: newline_indices,
     intern_table: parsed.intern_table,
     occurrence_transport: occurrence_transport,
@@ -1694,13 +1690,11 @@ fn parse_census_fill_sources_with(
     intern_table: empty_intern_table(),
     occurrence_allocator: occurrence_id_allocator_initial(),
     annotations: source_annotation_graph_empty(),
-    annotation_diagnostics: [],
   }, f: (acc, s) =>
     let artifact = tokenize_artifact(source: s.content, file: s.path, env: environment)
     let p = FrontendPrepared {
       tokens: artifact.tokens,
       annotations: artifact.annotations,
-      source_length: string_length(s: s.content),
       newline_index: build_newline_index(file: s.path, source: s.content),
     }
     let parsed = parse_with_table_in_occurrence_scope(
@@ -1714,10 +1708,10 @@ fn parse_census_fill_sources_with(
       occurrence_allocator: acc.occurrence_allocator,
       env: environment
     )
-    let bound = admit_source_annotations(
+    let bound = bind_annotations(
       transport: parsed.occurrence_transport,
-      captures: p.annotations,
-      source_length: p.source_length
+      extents: parsed.source_extents,
+      captures: p.annotations
     )
     let retained_result = census_retain_parse_result(result: parsed.result, retention: retention)
     FrontendAccum {
@@ -1733,11 +1727,7 @@ fn parse_census_fill_sources_with(
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound.graph),
-      annotation_diagnostics: concat(
-        acc.annotation_diagnostics,
-        bound.diagnostics |> map(d => make_error_node(diagnostic: d, module_name: p.newline_index.file))
-      ),
+      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound),
     }
   )
   let parse_results = parsed.parse_results
@@ -1747,7 +1737,7 @@ fn parse_census_fill_sources_with(
       module_occurrence_input_node(input: input)
     ),
     newline_indices: parsed.newline_indices,
-    diagnostics: concat(collect_diagnostics(parse_results: parse_results), parsed.annotation_diagnostics),
+    diagnostics: collect_diagnostics(parse_results: parse_results),
     occurrence_transport: merge_occurrence_transports(
       transports: module_inputs |> map(input =>
         module_occurrence_input_transport(input: input)
@@ -1966,7 +1956,8 @@ fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: R
         ownership: resolved.ownership,
         artifact_plan: empty_artifact_plan(),
         newline_indices: resolved.newline_indices,
-        emitted_edges: []
+        emitted_edges: [],
+        rust_crates: []
       }
     Present { value: emittable } => {
       let typed = emittable.graph
@@ -1989,7 +1980,8 @@ fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: R
         ownership: resolved.ownership,
         artifact_plan: artifact_plan,
         newline_indices: resolved.newline_indices,
-        emitted_edges: if emit_errors |> count > 0 { [] } else { emit_result.emitted_edges }
+        emitted_edges: if emit_errors |> count > 0 { [] } else { emit_result.emitted_edges },
+        rust_crates: if emit_errors |> count > 0 { [] } else { emit_result.rust_crates }
       }
     }
   }

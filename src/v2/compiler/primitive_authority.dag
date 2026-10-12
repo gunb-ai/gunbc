@@ -1,0 +1,69 @@
+module v2.compiler.primitive_authority
+
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.node { Node, Symbol, symbol_lexeme }
+import v2.std.data_initializer_identity { projection_named_child_optional }
+import v2.extdeps.languages.dag { dag_string_literal_value_optional }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.grammar { node_atom_identity_optional }
+
+// WHERE A KERNEL PRIMITIVE IS DECLARED. A std.primitives PrimitiveContract row carries `name: "<primitive>"`, and THAT
+// field is the primitive's identity. The row is FOUND by the declaration path std.primitives.<name>_contract (the
+// authority's declaration naming), then JOINED on its own name field: a call head binds only to a row whose declared name
+// equals the head (primitive_authority_row_names_head). A row whose declaration name and name field disagree is refused
+// by v2.compiler.resolve with resolve_reason_primitive_row_name_disagrees, never bound by the spelling alone.
+// v2.compiler.infer refuses a call head whose declaration carries the admission mark: the primitive's TYPE SIGNATURE
+// has no .dag authority yet (it lives in the seed's builtin_function_registry) and an untyped acceptance would be
+// silent wrongness.
+fn primitive_authority_path(head: Symbol) -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: concat("std.primitives.", symbol_lexeme(sym: head), "_contract"))
+}
+
+// The contract row's OWN `name` field. The lowered row is a nullary arrow whose body edge is the initializer record;
+// that record's own `name` field is read from it, with no deeper search. A nested record carrying a `name` (a decoy
+// under another field) is never reached; a missing, non-literal or unreadable own name is Absent.
+fn primitive_authority_row_name_optional(row: Node) -> Optional<String> {
+  match projection_named_child_optional(node: row, label: "arrow_body_edge") {
+    Absent => optional_absent()
+    Present { value: initializer } =>
+      match projection_named_child_optional(node: initializer, label: "name") {
+        Absent => optional_absent()
+        Present { value: v } => dag_string_literal_value_optional(node: v)
+      }
+  }
+}
+
+// THE ADMISSION OF A PRIMITIVE CONTRACT ROW, decided ONCE by v2.compiler.symbol_index_fill (the arm that knows the
+// declaring module and the row) and recorded as v2.std.symbol_index symbol_index_declares_primitive_contract_at; resolve and
+// infer read that mark and never recompute it. A declaration is admitted when its declared type -- the row's codomain atom,
+// joined to the DECLARING MODULE's path -- is exactly std.primitives.PrimitiveContract. The path spelling of the row itself
+// admits nothing: an ordinary declaration at std.primitives.helper_contract declares some other type and stays ordinary.
+fn primitive_contract_type_path() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "std.primitives.PrimitiveContract")
+}
+
+fn primitive_authority_row_declared_type_path_optional(module_qn: QualifiedName, row: Node) -> Optional<QualifiedName> {
+  match fold(node_positional_child_targets(node: row), init: optional_absent(), f: fn(acc, t) { optional_present(value: t) }) {
+    Absent => optional_absent()
+    Present { value: codomain } =>
+      match node_atom_identity_optional(node: codomain) {
+        Absent => optional_absent()
+        Present { value: sym } => optional_present(value: qualified_name_snoc(qn: module_qn, segment: sym))
+      }
+  }
+}
+
+fn primitive_authority_row_is_contract_declaration(module_qn: QualifiedName, row: Node) -> Bool {
+  match primitive_authority_row_declared_type_path_optional(module_qn: module_qn, row: row) {
+    Absent => false
+    Present { value: declared } => qualified_name_to_dotted_string(qn: declared) == qualified_name_to_dotted_string(qn: primitive_contract_type_path())
+  }
+}
+
+fn primitive_authority_row_names_head(row: Node, head: Symbol) -> Bool {
+  match primitive_authority_row_name_optional(row: row) {
+    Present { value: declared } => declared == symbol_lexeme(sym: head)
+    Absent => false
+  }
+}

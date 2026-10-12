@@ -14,7 +14,31 @@ module gunbc.live_deploy.repository_convergence
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import extdeps.git { git_local_fetch_source_grant, git_local_fetch_upload_pack_command }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_delete,
+  FilesystemDeleted,
+  FilesystemDeleteTargetAbsent,
+  FilesystemDeleteRefused,
+  FilesystemDeleteKindUnrecognized,
+  filesystem_exact_read,
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized,
+}
+import gunbc.repo_workspace { repo_workspace_footprints }
+import std.workspace_artifact {
+  WorkspaceArtifact,
+  RegenerableFromSource,
+  LocalCacheState,
+  PerDeveloperState,
+  HostOsMetadata,
+  SessionRuntimeState,
+  MayContainSecrets,
+  OutsideSubstrate,
+  SupersededAuthority,
+}
 import gunbc.repository { gunbc_repository }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -156,6 +180,7 @@ type RepositoryConvergenceOutcome
   | ConvergenceHeadNotAtCandidate { candidate: String, observed: String }
   | ConvergenceHeadMovedWithoutReflog { candidate: String }
   | ConvergenceUntrackedResidue { first_path: String }
+  | ConvergenceSupersededFileNotRetired { path: String, detail: String }
   | ConvergenceResidueUnreadable { exit_code: Int, stderr: String }
   | ConvergencePrimaryBranchNotAtCandidate { branch: String, observed: String }
   | ConvergenceIndexNotAtCandidateTree { candidate_tree: String, observed_tree: String }
@@ -738,6 +763,7 @@ fn repository_convergence_converged(outcome: RepositoryConvergenceOutcome) -> Bo
     ConvergenceHeadNotAtCandidate { candidate: _, observed: _ } => false
     ConvergenceHeadMovedWithoutReflog { candidate: _ } => false
     ConvergenceUntrackedResidue { first_path: _ } => false
+    ConvergenceSupersededFileNotRetired { path: _, detail: _ } => false
     ConvergenceResidueUnreadable { exit_code: _, stderr: _ } => false
     ConvergencePrimaryBranchNotAtCandidate { branch: _, observed: _ } => false
     ConvergenceIndexNotAtCandidateTree { candidate_tree: _, observed_tree: _ } => false
@@ -822,6 +848,11 @@ fn repository_convergence_detail(outcome: RepositoryConvergenceOutcome) -> Strin
       join([
         "the tree carries untracked files after the transition, starting at ", p,
         " -- `reset --hard` moves tracked bytes only, so this tree is the candidate plus residue and not the candidate",
+      ], "")
+    ConvergenceSupersededFileNotRetired { path: p, detail: d } =>
+      join([
+        "the superseded workspace file ", p, " could not be retired: ", d,
+        " -- the current loader refuses a physical file at a derived roster identity, so a tree that keeps it cannot serve",
       ], "")
     ConvergenceResidueUnreadable { exit_code: x, stderr: e } =>
       join([
@@ -1143,6 +1174,92 @@ fn convergence_fetch_upload_pack(remote: String) -> String {
   git_local_fetch_upload_pack_command(grant: git_local_fetch_source_grant(source: remote as NonEmptyStr))
 }
 
+// RETIRING SUPERSEDED FILES IS PART OF CONVERGING THE TREE, AND ITS POPULATION IS DERIVED, NOT LISTED.
+// Older gunbc binaries wrote each ledger roster into the checkout they read, so a deployed tree that
+// ran one carries `roster.dag` files nothing tracks. The current loader derives those modules in
+// memory and REFUSES a physical file at a reserved roster identity (it never deletes one: source
+// loading performs no cleanup), so a converged tree must not carry one. The files are ignored, so
+// the untracked-residue arm (`--exclude-standard`) cannot see them, which is why retirement is its
+// own explicit step rather than an assumption about what reset leaves behind.
+//
+// The population is every FILE-GRAIN, root-anchored workspace artifact whose declared reason is
+// `SupersededAuthority` in gunbc.repo_workspace -- the one existing descriptor that already says
+// "this path is dead, its facts live elsewhere". Directory and glob patterns are not file grain and
+// are never retired here. Bounded by construction: the rows name their own paths, so adding a row is
+// the only way to widen it.
+fn artifact_is_superseded_file(a: WorkspaceArtifact) -> Bool {
+  match a.reason {
+    SupersededAuthority { canonical: _ } =>
+      starts_with(s: a.pattern, prefix: "/")
+        && !ends_with(s: a.pattern, suffix: "/")
+        && !string_contains(s: a.pattern, pattern: "*")
+    RegenerableFromSource => false
+    LocalCacheState => false
+    PerDeveloperState => false
+    HostOsMetadata => false
+    SessionRuntimeState => false
+    MayContainSecrets => false
+    OutsideSubstrate => false
+  }
+}
+
+fn superseded_workspace_file_paths() -> List<String> {
+  fold(
+    repo_workspace_footprints(),
+    init: [],
+    f: (acc, footprint) => concat(
+      acc,
+      footprint.artifacts
+        |> filter(a => artifact_is_superseded_file(a: a))
+        |> map(a => substring(s: a.pattern, start: 1, end: string_length(s: a.pattern))),
+    ),
+  )
+}
+
+type SupersededFileRetirement
+  = SupersededFilesAbsent
+  | SupersededFileRetirementRefused { path: String, detail: String }
+
+// ONE PATH: delete, then READ BACK ABSENCE through the exact-read authority. An absent target is
+// already retired; any other delete refusal, or a read-back that is not `FilesystemExactPathAbsent`,
+// is a located refusal -- a file that may still be on disk is never reported as retired.
+fn retire_superseded_file(repo: String, rel: String) -> SupersededFileRetirement {
+  let path = join([repo, "/", rel], "")
+  let d = Filesystem.Delete(path: path)
+  match filesystem_delete(path: path, success: d.success, error: d.error, error_kind: d.error_kind) {
+    FilesystemDeleteRefused { path: p, kind: _, error: e } =>
+      SupersededFileRetirementRefused { path: p, detail: join(["delete refused: ", e], "") }
+    FilesystemDeleteKindUnrecognized { path: p, observed: o, error: e } =>
+      SupersededFileRetirementRefused { path: p, detail: join(["delete failed with unrecognized kind ", o, ": ", e], "") }
+    FilesystemDeleted { path: _ } => superseded_file_read_back(path: path)
+    FilesystemDeleteTargetAbsent { path: _ } => superseded_file_read_back(path: path)
+  }
+}
+
+fn superseded_file_read_back(path: String) -> SupersededFileRetirement {
+  let r = Filesystem.Read(path: path)
+  match filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind) {
+    FilesystemExactPathAbsent { path: _ } => SupersededFilesAbsent
+    FilesystemExactPathRead { path: p, content: _ } =>
+      SupersededFileRetirementRefused { path: p, detail: "the file is still readable after its delete" }
+    FilesystemExactPathUnreadable { path: p, kind: _, error: e } =>
+      SupersededFileRetirementRefused { path: p, detail: join(["absence could not be read back: ", e], "") }
+    FilesystemExactPathKindUnrecognized { path: p, observed: o, error: e } =>
+      SupersededFileRetirementRefused { path: p, detail: join(["absence read-back failed with unrecognized kind ", o, ": ", e], "") }
+  }
+}
+
+fn retire_superseded_workspace_files(repo: String) -> SupersededFileRetirement {
+  fold(
+    superseded_workspace_file_paths(),
+    init: SupersededFilesAbsent,
+    f: (acc, rel) => match acc {
+      SupersededFilesAbsent => retire_superseded_file(repo: repo, rel: rel)
+      SupersededFileRetirementRefused { path: _, detail: _ } => acc
+    },
+  )
+}
+
 fn repository_converge_wet(
   repo: String,
   remote: String,
@@ -1203,12 +1320,16 @@ fn repository_converge_wet(
               observed_head: git_text_or_empty(observation: observe_repository_state(repo: repo, candidate: candidate).head),
             })
           } else {
-            convergence_exit(outcome: repository_convergence_verdict(
-              before: before,
-              after: observe_repository_state(repo: repo, candidate: candidate),
-              candidate: candidate,
-              base_ref: base_ref,
-            ))
+            match retire_superseded_workspace_files(repo: repo) {
+              SupersededFileRetirementRefused { path: p, detail: d } =>
+                convergence_exit(outcome: ConvergenceSupersededFileNotRetired { path: p, detail: d })
+              SupersededFilesAbsent => convergence_exit(outcome: repository_convergence_verdict(
+                before: before,
+                after: observe_repository_state(repo: repo, candidate: candidate),
+                candidate: candidate,
+                base_ref: base_ref,
+              ))
+            }
           }
         }
       }

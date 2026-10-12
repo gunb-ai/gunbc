@@ -136,7 +136,7 @@ type SparkServingReservation {
 
 data glm_group_b_serving_reservation: SparkServingReservation = SparkServingReservation {
   subject: glm_group_b_serving_subject,
-  hosts: fabric_group_hosts(g: FabricGroupB),
+  hosts: fabric_group_hosts(g: FabricGroupB {}),
   basis: serving_ruling_2026_09_12_group_b_is_glm,
 }
 

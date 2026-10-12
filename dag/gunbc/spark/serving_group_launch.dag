@@ -3,7 +3,7 @@ module gunbc.spark.serving_group_launch
 import std.types { String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.pair_serving_realization {
   spark_pair_head_unit_name, spark_pair_container_name, spark_pair_model_path_in_container,
   spark_pair_desired_snapshot,
@@ -39,13 +39,7 @@ type ServingGroupLaunch {
 
 fn serving_group_launch(group: FabricGroup) -> ServingGroupLaunch {
   match group {
-    FabricGroupA => ServingGroupLaunch {
-      head_unit_name: spark_pair_head_unit_name,
-      container_name: spark_pair_container_name,
-      engine_binary: sparkrun_vllm_ds4_gb10_vllm_binary,
-      declared_model_path: spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot),
-    }
-    FabricGroupB => ServingGroupLaunch {
+    FabricGroupB {} => ServingGroupLaunch {
       head_unit_name: glm_native_head_unit_name,
       container_name: glm_native_container_name,
       engine_binary: glm_native_engine_binary,
@@ -67,8 +61,7 @@ type GroupRendezvous sole_constructor {
 
 fn serving_group_rendezvous(group: FabricGroup) -> GroupRendezvous? {
   match group {
-    FabricGroupA => none
-    FabricGroupB =>
+    FabricGroupB {} =>
       match glm_native_master_endpoint() {
         Absent => none
         Present { value: endpoint } =>

@@ -114,6 +114,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 files: Rc::new(vec![]),
                 diagnostics: filename_collisions.clone(),
                 emitted_edges: Rc::new(vec![]),
+                rust_crates: Rc::new(vec![]),
             });
         }
         let symbol_collisions =
@@ -125,6 +126,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 files: Rc::new(vec![]),
                 diagnostics: symbol_collisions.clone(),
                 emitted_edges: Rc::new(vec![]),
+                rust_crates: Rc::new(vec![]),
             });
         }
         let registry = typed.item_registry.clone();
@@ -188,6 +190,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             files: files.clone(),
             diagnostics: Rc::new(vec![]),
             emitted_edges: Rc::new(vec![]),
+            rust_crates: Rc::new(vec![]),
         })
     }
 }

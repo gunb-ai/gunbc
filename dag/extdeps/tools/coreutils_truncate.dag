@@ -1,0 +1,29 @@
+module extdeps.tools.coreutils_truncate
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Bool, NonEmptyStr, Unit }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/truncate-invocation.html"
+  }
+}
+
+// `truncate -s N FILE` creates FILE if it is absent and sets its size to EXACTLY N bytes; bytes it
+// adds read as zero (coreutils "truncate invocation"). -s takes a bare decimal byte count here, never
+// a suffixed one, so the size is the caller's integer and nothing the tool reinterprets. -- ends the
+// options, so a path beginning with '-' is a path.
+service coreutils.Truncate {
+  operation ToSize {
+    requires none
+    input { size_bytes: NonEmptyStr, path: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["truncate", "-s", "{size_bytes}", "--", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "truncate could not size the path"
+    }
+  }
+}

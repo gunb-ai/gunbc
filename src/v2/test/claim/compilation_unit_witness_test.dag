@@ -1,29 +1,34 @@
 module v2.test.claim.compilation_unit_witness
 
+import gunbc.crate_partition {
+  CompilationUnitId,
+  HandExplicit,
+  ModuleDagEdge,
+  ModuleId,
+  InterfaceClosureUnreachedFixpoint,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  PartitionR4ValidityVerdict,
+  PolicyDerived,
+  partition_provenance_hand_explicit,
+  partition_provenance_policy_derived
+}
+
 import std.algebra { Empty }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.compilers.compilation_unit {
   CompilationUnit,
-  CompilationUnitId,
-  HandExplicit,
   ModuleDag,
-  ModuleDagEdge,
-  ModuleId,
   MembersResolveOk,
   MembersResolveRefused,
   ModuleTypeDefinitionRow,
-  InterfaceClosureUnreachedFixpoint,
   PartitionFoldOk,
   PartitionFoldOutcome,
   PartitionFoldRefused,
   PartitionInterfaceClosed,
   PartitionInterfaceTruncated,
-  PartitionR4Refused,
-  PartitionR4Valid,
-  PartitionR4ValidityVerdict,
-  PolicyDerived,
   partition_r4_witness_refused_scc_split,
   partition_fold_deps_match_boundary_edges,
   partition_fold_outcome,
@@ -31,10 +36,8 @@ import v2.std.compilers.compilation_unit {
   partition_interface_closure_saturate_result,
   partition_interface_contains_node,
   partition_provenance_eq,
-  partition_provenance_hand_explicit,
-  partition_provenance_policy_derived,
   partition_unit_by_id,
-  resolve_member_interfaces,
+  resolve_member_interfaces
 }
 import v2.std.collection { empty_map, map_insert }
 import std.optional { Absent, Optional, Present }

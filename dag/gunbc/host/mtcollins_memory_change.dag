@@ -1,12 +1,12 @@
 module gunbc.mtcollins_memory_change
 
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.integer { UInt8 }
 import extdeps.numeric.base16 { byte_hex_lower }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import extdeps.boards.types { AmpereMtCollins }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelPopulationRole, MtCollinsPopulationRoleRefusal,
   PopulationRolesResolved, PopulationRolesRefused, mt_collins_channel_population_roles,
@@ -74,8 +74,8 @@ fn mtcollins_memory_module(position: MemoryPosition, ads: Bool) -> PositionedMem
 // Board identity cites the existing intake observation, not a fabricated vendor catalog.
 fn mtcollins_witnessed_configuration(roles: List<MtCollinsChannelPopulationRole>) -> MemoryConfiguration {
   MemoryConfiguration {
-    platform: MemoryPlatform { host: "mtcollins1" as HostIdentity, board: AmpereMtCollins,
-      board_part: decl_field_ref(module_path: "gunbc.machine_intake_mtcollins1_access_observation", decl_name: "mtcollins1_identity", field_name: "baseboard"),
+    platform: MemoryPlatform { host: "mtcollins1" as HostIdentity, board: mt_collins_board_authority,
+      board_part: decl_field_ref(module_path: "gunbc.machine_intake_mtcollins1_access_observation", decl_name: "mtcollins1_identity", field_name: "board"),
       processor: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q8030_catalog"),
       firmware: "210525", settings: [MemoryFirmwareSetting { name: "ecc_en", value: "00000002" }],
     },

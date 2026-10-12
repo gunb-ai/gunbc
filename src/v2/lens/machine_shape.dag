@@ -45,7 +45,7 @@ import std.algebra { Cons, Empty }
 import v2.std.qualified_name { QualifiedName, qualified_name_last_segment, qualified_name_to_dotted_string }
 import v2.std.witness { Holds, Witness }
 
-// Single-constructor discipline (machine-shape-orthogonal-scheduling.md §2 ruling 9 / operator
+// Single-constructor discipline (operator
 // redirect 2026-07-16): MachineShape may be MATERIALIZED only inside std.machine_shape,
 // extdeps.*.machine_shape (shape_from_catalog fills beside cited catalog rows), or in test/claim
 // RED controls. Every other direct MachineShape { .. } record literal is an unsanctioned

@@ -5,6 +5,7 @@ import extdeps.git
 import std.types { GitRef, FilePath, Seconds }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, render_cron_schedule }
+import std.integer { int_to_decimal_string }
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 
@@ -84,7 +85,7 @@ fn build_user_message(
   base_ref: String,
   diff: String
 ) -> String {
-  "PR #{pr_number}: {pr_title}\nBranch: {branch} -> {base_ref}\n\n--- Diff ---\n{diff}"
+  "PR #{int_to_decimal_string(value: pr_number)}: {pr_title}\nBranch: {branch} -> {base_ref}\n\n--- Diff ---\n{diff}"
 }
 
 // A REST REFUSAL TAKES THE SAME EXIT AS A REFUSED CONTEXT READ: reviewed is false and comment_url
@@ -221,15 +222,16 @@ fn review_cycle(
     RestRefused { refusal } =>
       return ReviewAgentCycleRefused { refusal: refusal }
     RestAnswered { answer: open_prs } => {
-      results = for pr in open_prs.pulls {
-        review_pr(
+      let reviewed_count = fold(open_prs.pulls, init: 0, f: fn(acc, pr) {
+        let reviewed = review_pr(
           owner: owner,
           repo: repo,
           pr_number: pr.number
         )
-      }
+        acc + 1
+      })
 
-      return ReviewAgentCycleCompleted { reviewed_count: count(results) }
+      return ReviewAgentCycleCompleted { reviewed_count: reviewed_count }
     }
   }
 }

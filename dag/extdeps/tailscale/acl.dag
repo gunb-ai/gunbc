@@ -38,6 +38,12 @@ data tag_dashboard: NonEmptyStr = "tag:dashboard"
 data dashboard_tcp_port: NonEmptyStr = "tcp:3737"
 data ssh_tcp_port: NonEmptyStr = "tcp:22"
 
+// dusk-1 is the operator's desktop (WSL) serving an OpenAI-compatible inference API while the
+// Sparks are sold. It is an untagged member device, so no tag grant reaches it; this admits only
+// the dashboard plane to its API port. tag:ci stays quarantined to the dashboard port.
+data dusk_serving_ip: NonEmptyStr = "100.127.39.77"
+data dusk_serving_api_tcp_port: NonEmptyStr = "tcp:8080"
+
 type TailscaleAclSelector
   = AclTag { label: NonEmptyStr }
   | AclAutogroup { group: NonEmptyStr }
@@ -158,12 +164,21 @@ fn tag_dashboard_to_ci_ssh_grant() -> TailscaleGrant {
   }
 }
 
+fn tag_dashboard_to_dusk_serving_api_grant() -> TailscaleGrant {
+  TailscaleGrant {
+    src: [sel_tag_dashboard()],
+    dst: [sel_ipv4(address: dusk_serving_ip)],
+    ip: [sel_proto_port(spec: dusk_serving_api_tcp_port)],
+  }
+}
+
 fn operator_tailscale_acl_grants() -> List<TailscaleGrant> {
   [
     member_baseline_grant(),
     tag_ci_quarantine_grant(),
     tag_dashboard_self_grant(),
     tag_dashboard_to_ci_ssh_grant(),
+    tag_dashboard_to_dusk_serving_api_grant(),
   ]
 }
 
@@ -304,10 +319,27 @@ fn ssh_dashboard_reaches_ci_root_and_nonroot(policy: TailscaleAclPolicy) -> Bool
   )
 }
 
+fn grant_reaches_dusk_serving(g: TailscaleGrant) -> Bool {
+  selector_list_contains(items: g.dst, needle: sel_ipv4(address: dusk_serving_ip))
+}
+
+fn dusk_serving_reached_by_dashboard_api_only(policy: TailscaleAclPolicy) -> Bool {
+  let tagged = policy.grants |> filter(g => grant_reaches_dusk_serving(g: g))
+  match first(tagged) {
+    Present { value: g } =>
+      (length(tagged) == 1)
+        && (g.src == [sel_tag_dashboard()])
+        && (length(g.dst) == 1)
+        && (g.ip == [sel_proto_port(spec: dusk_serving_api_tcp_port)])
+    Absent => false
+  }
+}
+
 fn operator_acl_security_spine_holds(policy: TailscaleAclPolicy) -> Bool {
   tag_ci_quarantine_holds(policy: policy)
     && tag_dashboard_admin_plane_holds(policy: policy)
     && dashboard_cutover_ip_is_transient_in_tag_ci_grant(policy: policy)
     && ssh_members_reach_ci_nonroot_only(policy: policy)
     && ssh_dashboard_reaches_ci_root_and_nonroot(policy: policy)
+    && dusk_serving_reached_by_dashboard_api_only(policy: policy)
 }

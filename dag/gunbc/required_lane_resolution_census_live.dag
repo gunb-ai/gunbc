@@ -8,9 +8,8 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.github.actions { Workflow, Job }
 import gunbc.compiler_gate_workflow {
   compiler_gate_workflow, compiler_gate_merge_path_job_ids,
-  compiler_gate_emit_build_job_id, compiler_gate_floor_job_id, compiler_gate_generated_job_id, compiler_gate_aggregate_job_id,
+  compiler_gate_required_job_id,
 }
-import gunbc.ci_spec { gunbc_ci_heal_verify_target }
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.required_lane_resolution_census {
@@ -28,11 +27,17 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // sources to is a fact about the step scripts, and reading it out of a rendered `run:` line
 // would be a second parser of a string this repository already generates from typed rows -- but
 // its COVERAGE is checked against the emitted job list: a job the workflow carries and this
-// roster does not is a refusal, never a job read as resolving nothing. The subject rows cite the
-// same declarations the step scripts render from (gunbc.ci.ci_spec gunbc_ci_heal_verify_target
-// for the drift gate's entry; the floor's nominal seeds through the compiler query).
+// roster does not is a refusal, never a job read as resolving nothing.
 //
-// emit-build became required on 2026-10-02. Its two steps run `gunbc test` over
+// THE `floor` AND `generated` ROWS LEFT WITH THEIR JOBS (operator ruling 2026-10-09, the v1
+// withdrawal). They were the two lanes that resolved the corpus beyond the native closures, so from
+// that ruling this census DOES NOT HOLD by design: every admitted module outside the two entry
+// closures below is resolved by no required lane, and the receipt lists that population by identity.
+// The loss is the declared drop gunbc.rung_drop v1_required_lanes_withdrawn; this instrument is the
+// producer that re-derives its population.
+//
+// emit-build became required on 2026-10-02 and became THE required job, `witnesses`, with the
+// 2026-10-09 ruling. Its two subject steps run `gunbc test` over
 // //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, whose producers
 // (v1_compiler.cli_run.native_lane_runner NATIVE_COMPILE_ENTRY and V2_NATIVE_CLI_ENTRY) ingest
 // and resolve the import closure of these two entries before emitting it. The entries are the
@@ -42,23 +47,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 fn lane_resolution_roster() -> List<LaneResolutionRow> {
   [
     LaneResolutionRow {
-      job_id: compiler_gate_emit_build_job_id,
+      job_id: compiler_gate_required_job_id,
       subjects: [
         RunEntryClosure { entry_path: self_host_entry() },
         RunEntryClosure { entry_path: v2_native_cli_entry() },
       ]
-    },
-    LaneResolutionRow {
-      job_id: compiler_gate_floor_job_id,
-      subjects: [FloorNominalPreparedSubject {}]
-    },
-    LaneResolutionRow {
-      job_id: compiler_gate_generated_job_id,
-      subjects: [RunEntryClosure { entry_path: gunbc_ci_heal_verify_target.entry }]
-    },
-    LaneResolutionRow {
-      job_id: compiler_gate_aggregate_job_id,
-      subjects: [ResolvesNoDagModule { reason: "reads the other lanes' conclusions; runs no compiler" }]
     }
   ]
 }
@@ -84,7 +77,7 @@ fn count_of(xs: List<String>, x: String) -> Int {
 
 // COVERAGE IS OVER THE REQUIRED JOBS, WHICH IS WHAT THIS ROSTER'S ROWS ARE (gunbc.required_lane_resolution_census
 // LaneResolutionRow: one required job and the subjects its steps resolve). The required jobs are the
-// workflow's merge path -- the lanes the aggregate reads, and the aggregate -- read from
+// workflow's merge path -- since 2026-10-09 the one required job -- read from
 // gunbc.compiler_gate_workflow compiler_gate_merge_path_job_ids rather than restated. A lane announced
 // as not blocking is read by no required context, so a module only it resolves is resolved by no
 // required lane, and a row for it would be the inflation this census exists to refuse. Checking

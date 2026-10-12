@@ -418,16 +418,9 @@ pub fn ihc_template_holes(ctx: Rc<HoleWalkContext>, template: Rc<Node>) -> Rc<Ve
             .cloned()
             {
                 __result.extend(
-                    (*Rc::new(
-                        p.children
-                            .clone()
-                            .iter()
-                            .cloned()
-                            .take(1 as usize)
-                            .collect::<Vec<_>>(),
-                    ))
-                    .iter()
-                    .cloned(),
+                    (*Rc::new(v1_rt::list_take(&p.children.clone(), 1)))
+                        .iter()
+                        .cloned(),
                 );
             }
             __result

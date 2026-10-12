@@ -225,8 +225,14 @@ fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: 
   ]
 }
 
+// `systemctl revert UNIT...` takes UNIT NAMES ONLY and removes every drop-in of each named unit
+// (systemctl(1), systemd 255). Property names are not arguments: an earlier argv appended
+// "MemoryMax" "MemoryHigh", which systemctl read as two more units (MemoryMax.service,
+// MemoryHigh.service) and reverted silently with exit 0 -- so the argv claimed a property-scoped
+// revert it never performed. What this reverts is the unit's whole drop-in set, including the
+// control shadows set-property wrote, and that is what the caller is relying on.
 fn systemctl_revert_memory_caps_argv(unit: NonEmptyStr) -> List<String> {
-  ["systemctl", "revert", unit as String, "MemoryMax", "MemoryHigh"]
+  ["systemctl", "revert", unit as String]
 }
 
 // THE USER MANAGER IS A DIFFERENT MANAGER, NOT A FLAG ON THE SAME QUERY. `systemctl show` without
@@ -442,6 +448,8 @@ type UnitFileState
 // actually executes. The trigger that closes it again is argv element evaluation in the
 // materializer, which `std.operation_argv` already carries as declared residue.
 //
+// MaskRuntime follows systemctl(1), v255: --runtime places a mask under /run and
+// without --now the active incarnation continues. It does not stop a workload.
 service systemd.Systemctl {
   operation Enable {
     requires Network
@@ -573,6 +581,21 @@ service systemd.Systemctl {
     }
   }
 
+  operation MaskRuntime {
+    input { unit: NonEmptyStr }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    transport shell { argv: ["systemctl", "mask", "--runtime", "{unit}"] }
+    exit { 0 => Unit nonzero => String "runtime mask refused" }
+    mock_response { 1 => { success: false, stdout: "", stderr: "no mask supplied" } "no fabricated inhibition" }
+  }
+
+  operation Reboot {
+    output { success: Bool from "exit_success", stderr: String from "stderr" }
+    transport shell { argv: ["systemctl", "reboot"] }
+    exit { 0 => Unit nonzero => String "normal reboot request refused" }
+    mock_response { 1 => { success: false, stderr: "no reboot supplied" } "no fabricated activation" }
+  }
+
   operation SetProperty {
     requires Network
     input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
@@ -597,10 +620,10 @@ service systemd.Systemctl {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["systemctl", "revert", "{unit}", "MemoryMax", "MemoryHigh"] }
+    transport shell { argv: ["systemctl", "revert", "{unit}"] }
     exit {
       0 => Unit
-      nonzero => String "systemctl revert MemoryMax MemoryHigh failed"
+      nonzero => String "systemctl revert failed"
     }
     mock_response {
       0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.RevertMemoryCaps"

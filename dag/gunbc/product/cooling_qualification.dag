@@ -1,12 +1,12 @@
 module product.cooling_qualification
 
+import extdeps.board_authority { BoardAuthorityRef }
 import std.types { Bool, List, String, Int }
 import std.measure { Watt, measure_le }
 import product.placement_supply { PhysicalAssetIdentity }
 import product.host_identity { HostIdentity }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
 import extdeps.cpu.types { CpuModelCatalogRow, ProcessorCoolingMount, cooling_mount_eq }
-import extdeps.boards.types { BaseboardModel }
 
 // A CPU cooler is the heat-pickup realization of an installed processor. WHICH cooler is
 // installed on which host is a fleet fact (gunbc.fleet_physical_inventory); whether that
@@ -31,7 +31,7 @@ type InstalledCoolingRealization {
   cooler_asset: PhysicalAssetIdentity
   cooler: CpuCoolerCatalogRow
   processor: CpuModelCatalogRow
-  baseboard_model: BaseboardModel
+  baseboard_model: BoardAuthorityRef
 }
 
 type CoolingCatalogRefusalCause
@@ -40,7 +40,7 @@ type CoolingCatalogRefusalCause
       processor_mount: ProcessorCoolingMount
     }
   | BaseboardNotInCoolerSupportedPopulation {
-      baseboard_model: BaseboardModel
+      baseboard_model: BoardAuthorityRef
     }
   | CoolerDesignPowerBelowProcessorTdp {
       cooler_max_design_power: Watt
@@ -65,8 +65,8 @@ type CoolingCatalogVerdict
     }
 
 fn cooler_supports_baseboard(
-  supported: List<BaseboardModel>,
-  baseboard_model: BaseboardModel,
+  supported: List<BoardAuthorityRef>,
+  baseboard_model: BoardAuthorityRef,
 ) -> Bool {
   if supported.length() == 0 {
     false

@@ -117,6 +117,7 @@ fn cascade_census(ingest: SourceRootIngest) -> CascadeCensus {
           cons: fn(acc, entry) {
             native_census_cause_groups_add_module(
               groups: acc,
+              closure: closure,
               entry: entry,
               step: native_census_module_resolution(context: context, refusal_index: refusal_index, entry: entry)
             )

@@ -39,3 +39,8 @@ data systemd_log_target_env_name: NonEmptyStr = "SYSTEMD_LOG_TARGET"
 data systemd_log_target_kmsg: NonEmptyStr = "kmsg"
 
 data systemd_log_level_debug: NonEmptyStr = "debug"
+
+// THE LABEL INDEX udev MAINTAINS: 60-persistent-storage.rules links each filesystem label under
+// /dev/disk/by-label (systemd udev rules, v255), so listing the directory reads the labels the
+// booted host's block devices carry.
+data udev_disk_by_label_dir: String = "/dev/disk/by-label"

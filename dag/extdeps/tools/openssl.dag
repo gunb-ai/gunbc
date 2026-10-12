@@ -113,3 +113,28 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps.tools.openssl.extdeps_external_authority_anchor,
   further_citations: []
 }
+
+// `openssl enc -aes-256-ctr` ENCRYPTS ONE FILE INTO ANOTHER UNDER AES-256 IN COUNTER MODE (openssl-enc,
+// docs.openssl.org/3.0/man1/openssl-enc/). CTR is a stream mode, so the output is exactly as long as
+// the input -- no padding, and -nosalt drops the "Salted__" header -- and is the input XOR the AES
+// keystream. -pass pass:<p> derives the key and IV from the passphrase; -md sha256 pins that
+// derivation's digest, which is the default from OpenSSL 1.1.0 on, so 1.1 and 3.x hosts agree. The
+// passphrase is in argv and is therefore NOT a secret: this operation is for keyed, reproducible
+// streams whose key anyone may know (extdeps.crypto.seeded_filler), never for confidentiality.
+service openssl.Enc {
+  operation Aes256CtrPassphrase {
+    requires none
+    input { passphrase: NonEmptyStr, input_path: NonEmptyStr, output_path: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [openssl_program().invocation, "enc", "-aes-256-ctr", "-nosalt", "-md", "sha256", "-pass", "pass:{passphrase}", "-in", "{input_path}", "-out", "{output_path}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "openssl enc refused"
+    }
+  }
+}

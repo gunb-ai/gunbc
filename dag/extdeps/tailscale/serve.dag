@@ -4,7 +4,7 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { NonEmptyStr, Port, List, Bool, Unit }
 import std.algebra { Less, Equal, Greater }
-import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label }
+import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label, semver_version_parse }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -295,13 +295,11 @@ fn tailscale_serve_status_route_proxy_targets(status_json: String, key: Tailscal
 // guards is a teardown that silently removes nothing and reports success.\n\nThe boundary is stated
 // as the version the upstream itself names, not as a version this repo picked.
 
-data tailscale_scoped_serve_off_minimum: SemVerVersion = SemVerVersion {
-  major: 1,
-  minor: 52,
-  patch: 0,
-  pre_release: [],
-  build: [],
-}
+// THE BOUNDARY IS THE PARSE RESULT, never a hand-built record: the fields of a SemVerVersion
+// are confined code-point runs (semver_numeric_field is the only admission), so the boundary
+// arrives through the parser and an unadmitted label is carried as a refusal to every
+// consumer, not a fabricated version (review 77150).
+data tailscale_scoped_serve_off_minimum: SemVerVersion? = semver_version_parse(cps: chars(s: "1.52.0" as String))
 
 type TailscaleServeCapability
   = ScopedRemovalSupported { observed: SemVerVersion }
@@ -310,10 +308,14 @@ type TailscaleServeCapability
 
 // THE VERDICT CARRIES WHAT IT WAS COMPUTED FROM. A Bool capability cannot be re-derived when the boundary moves or the host is upgraded, and cannot say WHICH client it is describing — so the observed version rides on both decided arms and only the undecided arm carries prose.\n\nIt is a SemVerVersion rather than the version string tailscale prints, grounded on extdeps.version.semver, because an earlier draft of this row held both a display string and a parsed major/minor pair — two representations of one fact, free to disagree, which is the exact defect class this module is being repaired for. The label is a projection (semver_version_label), so there is nothing to keep in sync.\n\nComparison is semver_compare rather than a hand-written major/minor ladder, for the same reason: the ordering is already modeled, and a second ladder would be a second answer.
 fn tailscale_scoped_removal_capability(observed: SemVerVersion) -> TailscaleServeCapability {
-  match semver_compare(a: observed, b: tailscale_scoped_serve_off_minimum) {
-    Less => ScopedRemovalUnsupported { observed: observed }
-    Equal => ScopedRemovalSupported { observed: observed }
-    Greater => ScopedRemovalSupported { observed: observed }
+  match tailscale_scoped_serve_off_minimum {
+    Absent => ScopedRemovalUnobserved { reason: "the serve-off boundary label failed to parse — a defect in the boundary row, not an observation gap" }
+    Present { value: minimum } =>
+      match semver_compare(a: observed, b: minimum) {
+        Less => ScopedRemovalUnsupported { observed: observed }
+        Equal => ScopedRemovalSupported { observed: observed }
+        Greater => ScopedRemovalSupported { observed: observed }
+      }
   }
 }
 

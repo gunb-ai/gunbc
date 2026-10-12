@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import std.optional { Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
-import gunbc.managed_host { ManagedHost, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch, managed_host_binding, managed_hosts }
+import gunbc.managed_host { ManagedHost, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_binding, managed_host_memberships }
 import gunbc.managed_host_unit_hold { UnitHoldProof, unit_hold_proof_refusal }
 import gunbc.managed_host_boot { AdmittedBootSubject, boot_subject_host }
 import gunbc.managed_host_boot_phase_timing { BootStart, BootStartUnobserved, boot_start_of }
@@ -206,7 +206,14 @@ fn boot_handoff_admission_probe_of(host: ManagedHost) -> String? {
 }
 
 fn boot_handoff_admission_probe() -> ProcessExit {
-  let hosts = managed_hosts()
+  let hosts = fold(
+    managed_host_memberships(),
+    init: [],
+    f: (acc, m) => match m {
+      OrdinaryMember { host: h } => concat(acc, [h])
+      MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } => concat(acc, [h])
+    },
+  )
   let refusals = flat_map(hosts, h => match boot_handoff_admission_probe_of(host: h) { Present { value: why } => [why]  Absent => [] })
   if count(hosts) == 0 {
     exit_failure(reason: "boot handoff admission probe: no managed host to probe")

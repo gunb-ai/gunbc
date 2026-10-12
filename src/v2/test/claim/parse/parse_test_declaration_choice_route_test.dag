@@ -1,0 +1,215 @@
+module test.claim.parse_test_declaration_choice_route
+
+import v2.compiler.body_lowering_fold {
+  BodyLowerTypedParam,
+  body_lower_collect_typed_params,
+  body_lower_deep_unwrap_optional,
+  body_lower_field_pattern_edge,
+  body_lower_find_captured,
+  body_lower_param_list_comma_spine_optional
+}
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional
+}
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.integer { Int }
+import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, Symbol, is_empty_conj_root, symbol_lexeme }
+import std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+import std.algebra { list_snoc_item }
+import std.types { List }
+import v2.std.algebra { length, list_map }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DECLARATION-LEVEL CHOICES ARE DISJOINT BY CONSTRUCTION, AND EACH INPUT TAKES ONE ROUTE
+// (operator zero_ambiguity_ruling 2026-10-02). A typed parameter, a field pattern and a status pattern
+// used to be choices whose alternatives started on the same token. A typed parameter and a field pattern
+// are now LEFT-FACTORED, one shared prefix and an optional suffix (v2.extdeps.languages.dag
+// dag_grammar_typed_param_expr, dag_grammar_field_pattern_expr); the status code arm is guarded off
+// the class's two tokens (dag_grammar_status_pattern_expr), and the `requires` type list off the two
+// clause words (dag_grammar_op_requires_expr). Each
+// claim parses SUPPLIED FRAGMENTS at the one production it is about -- not a whole module, whose
+// header and items are not this claim's subject (DESIGN section 3, a witness discriminates at one
+// interface) -- and asserts the ROUTE each former alternative took, read by the real reader where one
+// exists. The real module path still parses every one of these forms in the corpus. The `test`
+// marker's half of the family is held in test.claim.parse_test_marker_channel.
+
+// One fragment parsed at one production of the real prepared grammar.
+fn route_parse_at(text: String, production: Symbol) -> Outcome<Node> {
+  match tokenize_prepared(text: text, file: ^declaration_choice_route_probe, prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: PreparedVoidGrammar, diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: PreparedModeled { modeled: modeled }, diagnostics: _ } =>
+          match parse_production_prepared(
+            tokens: token_stream_remaining(stream: ts),
+            validated: modeled.validated,
+            analysis: modeled.analysis,
+            production_name: production
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+      }
+  }
+}
+
+fn route_joined(xs: List<String>) -> String {
+  fold(xs, init: "", f: fn(acc, x) { if acc == "" { x } else { acc + "," + x } })
+}
+
+// Every shell emitted as `emitted`, in source order.
+fn route_shells(n: Node, emitted: Symbol, acc: List<Node>) -> List<Node> {
+  let here = match parse_production_emitted_identity_optional(node: n) {
+    Present { value: e } => if e == emitted { list_snoc_item(xs: acc, item: n) } else { acc }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) { route_shells(n: e.target, emitted: emitted, acc: a) })
+}
+
+// THE SUFFIX ROUTE: a shell whose capture is a pair with an empty right took the bare route; a
+// non-empty right took the suffixed one; a capture that is no pair took neither (the status name arm).
+fn route_of(shell: Node) -> String {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => "unread"
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => "unpaired"
+        Present { value: pair } =>
+          if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) { "bare" } else { "suffixed" }
+      }
+  }
+}
+
+// The route of one fragment at one production, or "refused".
+fn route_at(text: String, production: Symbol, emitted: Symbol) -> String {
+  match route_parse_at(text: text, production: production) {
+    Rejected { diagnostics: _ } => "refused"
+    Accepted { value: tree, diagnostics: _ } => route_joined(xs: list_map(xs: route_shells(n: tree, emitted: emitted, acc: []), f: fn(s) { route_of(shell: s) }))
+  }
+}
+
+// Which of the three status productions a fragment reached: "class", "code", "name", or "none".
+fn status_route(text: String) -> String {
+  match route_parse_at(text: text, production: ^dag_production_status_pattern) {
+    Rejected { diagnostics: _ } => "refused"
+    Accepted { value: tree, diagnostics: _ } =>
+      if length(xs: route_shells(n: tree, emitted: ^dag_surface_status_pattern_class, acc: [])) > 0 {
+        "class"
+      } else if length(xs: route_shells(n: tree, emitted: ^dag_surface_status_pattern_code, acc: [])) > 0 {
+        "code"
+      } else if length(xs: route_shells(n: tree, emitted: ^dag_surface_status_pattern_name, acc: [])) > 0 {
+        "name"
+      } else {
+        "none"
+      }
+  }
+}
+
+// `5xx` reaches the class production, `404` the guarded code production, `nonzero` the name.
+test fn status_patterns_take_class_code_and_name_routes_holds() -> Bool {
+  (status_route(text: "5xx") == "class")
+    && (status_route(text: "404") == "code")
+    && (status_route(text: "nonzero") == "name")
+}
+
+// The edge the real field-pattern reader lowers one field to: the label and the bound name.
+fn field_edge_reading(text: String) -> String {
+  match route_parse_at(text: text, production: ^dag_production_field_pattern) {
+    Rejected { diagnostics: _ } => "refused"
+    Accepted { value: shell, diagnostics: _ } =>
+      route_of(shell: shell) + ":" + match body_lower_field_pattern_edge(item: shell) {
+        Rejected { diagnostics: _ } => "unlowered"
+        Accepted { value: edge, diagnostics: _ } =>
+          match edge.label {
+            Authored { name: label } =>
+              match node_atom_identity_optional(node: edge.target) {
+                Present { value: bound } => symbol_lexeme(sym: label) + "->" + symbol_lexeme(sym: bound)
+                Absent => "unbound"
+              }
+            StructuralLabel { label: _ } => "structural"
+            Positional => "positional"
+          }
+      }
+  }
+}
+
+// `v` is the pun (bare route, bound to `v` itself); `w: y` the suffixed route, bound to `y`.
+test fn field_patterns_take_pun_and_suffix_routes_holds() -> Bool {
+  (field_edge_reading(text: "v") == "bare:v->v") && (field_edge_reading(text: "w: y") == "suffixed:w->y")
+}
+
+fn param_has_default(p: BodyLowerTypedParam) -> String {
+  match p.default {
+    Present { value: _ } => symbol_lexeme(sym: p.name) + "=default"
+    Absent => symbol_lexeme(sym: p.name)
+  }
+}
+
+// The parameters of one supplied list, each read by the real slot reader: its name, and `=default`
+// where it took the tail route.
+fn param_routes(text: String) -> String {
+  match route_parse_at(text: text, production: ^dag_production_param_list) {
+    Rejected { diagnostics: _ } => "refused"
+    Accepted { value: tree, diagnostics: _ } =>
+      match body_lower_find_captured(root: tree, emitted: ^dag_surface_param_list) {
+        ParseSubtreeAbsent => "unfound"
+        ParseSubtreeFound { captured: param_list } =>
+          match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
+            Absent => "unspined"
+            Present { value: spine } =>
+              match body_lower_collect_typed_params(sequence_capture: spine) {
+                Rejected { diagnostics: _ } => "unread"
+                Accepted { value: params, diagnostics: _ } =>
+                  route_joined(xs: list_map(xs: params, f: fn(p) { param_has_default(p: p) }))
+              }
+          }
+      }
+  }
+}
+
+// `a: Int` takes the bare route: no tail, no default.
+test fn a_plain_typed_param_takes_the_bare_route_holds() -> Bool {
+  param_routes(text: "(a: Int)") == "a"
+}
+
+// The TAIL route (`b: Int = 1`) is not re-claimed here: v2.test.claim.parse.default_value
+// a_parameter_default_lowers_onto_its_binder_holds already drives a defaulted parameter through this
+// grammar and the real slot reader onto its binder, which it can reach only by the tail route, and a
+// second parse of a default here costs over the new-witness budget for no new subject.
+
+// Which word production a `requires` clause reached: "none", "opaque", or "list" for neither.
+fn requires_route(text: String) -> String {
+  match route_parse_at(text: text, production: ^dag_production_op_requires) {
+    Rejected { diagnostics: _ } => "refused"
+    Accepted { value: tree, diagnostics: _ } =>
+      if length(xs: route_shells(n: tree, emitted: ^dag_surface_op_requires_none, acc: [])) > 0 {
+        "none"
+      } else if length(xs: route_shells(n: tree, emitted: ^dag_surface_op_requires_opaque, acc: [])) > 0 {
+        "opaque"
+      } else {
+        "list"
+      }
+  }
+}
+
+// `requires none` and `requires opaque` take their word arms; `requires Filesystem` takes the guarded
+// type list, and no word is read as a type.
+test fn op_requires_take_word_and_type_list_routes_holds() -> Bool {
+  (requires_route(text: "requires none") == "none")
+    && (requires_route(text: "requires opaque") == "opaque")
+    && (requires_route(text: "requires Filesystem") == "list")
+}

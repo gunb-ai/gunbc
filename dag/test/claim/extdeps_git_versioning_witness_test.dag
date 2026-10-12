@@ -2,52 +2,80 @@ module test.claim.extdeps_git_versioning_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// THE ANCHOR IS PINNED AGAINST ITS PARSED FORM, so the code-point representation is proved,
+// not assumed: a field holding control characters instead of digits fails here. The anchor is
+// an Optional (review 77150: the parse result itself, no fabricated fallback), so every
+// consumer unwraps it and a refused label shows up as a failed witness, not a wrong version.
 test fn w_git_2_0_anchor() -> Bool {
-  git_2_0_release.major == 2
-    && git_2_0_release.minor == 0
-    && git_2_0_release.patch == 0
+  match git_2_0_release {
+    Absent => false
+    Present { value: anchor } =>
+      git_release_version_label(v: anchor) == "2.0.0"
+        && git_release_version_compare(a: anchor, b: anchor) == Equal
+  }
 }
 
 test fn w_release_version_compare_major_minor_patch() -> Bool {
-  let older = GitReleaseVersion { major: 2, minor: 43, patch: 0 }
-  let newer = GitReleaseVersion { major: 2, minor: 44, patch: 0 }
-  let same = GitReleaseVersion { major: 2, minor: 43, patch: 1 }
-  match git_release_version_compare(a: older, b: newer) {
-    Less =>
-      match git_release_version_compare(a: newer, b: older) {
-        Greater =>
-          match git_release_version_compare(a: older, b: same) {
+  match git_release_version_from_text(text: "2.43.0") {
+    Present { value: older } => match git_release_version_from_text(text: "2.44.0") {
+      Present { value: newer } => match git_release_version_from_text(text: "2.43.1") {
+        Present { value: same } =>
+          match git_release_version_compare(a: older, b: newer) {
             Less =>
-              match git_release_version_compare(a: older, b: older) {
-                Equal => true
+              match git_release_version_compare(a: newer, b: older) {
+                Greater =>
+                  match git_release_version_compare(a: older, b: same) {
+                    Less =>
+                      match git_release_version_compare(a: older, b: older) {
+                        Equal => true
+                        _ => false
+                      }
+                    _ => false
+                  }
                 _ => false
               }
             _ => false
           }
         _ => false
       }
+      _ => false
+    }
     _ => false
   }
 }
 
 test fn w_major_breaking_release_orders_above_prior_minor_series() -> Bool {
-  let git_1_9 = GitReleaseVersion { major: 1, minor: 9, patch: 5 }
-  match git_release_version_compare(a: git_1_9, b: git_2_0_release) {
-    Less => true
+  match git_release_version_from_text(text: "1.9.5") {
+    Present { value: git_1_9 } =>
+      match git_2_0_release {
+        Present { value: anchor } =>
+          match git_release_version_compare(a: git_1_9, b: anchor) {
+            Less => true
+            _ => false
+          }
+        Absent => false
+      }
     _ => false
   }
 }
 
-test fn w_platform_suffix_is_structural_not_stringly() -> Bool {
+fn suffix_pair_differ(anchor: GitReleaseVersion) -> Bool {
   let plain = GitCliReportedVersion {
-    git_release: git_2_0_release,
+    git_release: anchor,
     suffix: GitVersionPlain
   }
   let windows = GitCliReportedVersion {
-    git_release: git_2_0_release,
+    git_release: anchor,
     suffix: GitVersionWindows { build: 1 }
   }
   plain.suffix != windows.suffix
+}
+
+test fn w_platform_suffix_is_structural_not_stringly() -> Bool {
+  match git_2_0_release {
+    Absent => false
+    Present { value: anchor } => suffix_pair_differ(anchor)
+  }
 }
 
 test fn w_spec_citation_points_at_breaking_changes_doc() -> Bool {
@@ -55,16 +83,23 @@ test fn w_spec_citation_points_at_breaking_changes_doc() -> Bool {
 }
 
 test fn w_git_release_to_version_identity() -> Bool {
-  git_release_to_version_identity(v: git_2_0_release) == "2.0.0"
+  match git_2_0_release {
+    Absent => false
+    Present { value: anchor } => git_release_to_version_identity(v: anchor) == "2.0.0"
+  }
 }
 
 test fn w_git_release_version_scheme_equal() -> Bool {
-  match git_release_version_scheme.compare(
-    a: git_release_to_version_identity(v: git_2_0_release),
-    b: "2.0.0"
-  ) {
-    Equal => true
-    _ => false
+  match git_2_0_release {
+    Absent => false
+    Present { value: anchor } =>
+      match git_release_version_scheme.compare(
+        a: git_release_to_version_identity(v: anchor),
+        b: "2.0.0"
+      ) {
+        VersionCompared { ordering: v } => v == std.algebra.Equal
+        VersionComparisonRefused { side: _, identity: _, cause: _ } => false
+      }
   }
 }
 
@@ -72,3 +107,22 @@ test fn w_min_git_version_grounded() -> Bool {
   min_git_version == ">= 2.0.0"
 }
 
+
+// The scheme routes identity comparison through git_release_version_compare — the ONE
+// implementation of the cited numeric rule — so unequal labels get the real numeric order,
+// not a placeholder answer.
+test fn w_git_release_version_scheme_orders_minor_numerically() -> Bool {
+  match git_release_version_scheme.compare(a: "2.0.0", b: "2.1.0") {
+    VersionCompared { ordering: v } => v == std.algebra.Less
+    VersionComparisonRefused { side: _, identity: _, cause: _ } => false
+  }
+}
+
+// A label outside the bare MAJOR.MINOR.PATCH grammar is a located refusal: the carrier names
+// the failing side, the label, and the cause — never a fabricated order.
+test fn w_git_release_version_scheme_refuses_out_of_grammar_label() -> Bool {
+  match git_release_version_scheme.compare(a: "not-a-version", b: "2.0.0") {
+    VersionComparisonRefused { side: side, identity: i, cause: _ } => side == LeftOperand && i == "not-a-version"
+    VersionCompared { ordering: _ } => false
+  }
+}

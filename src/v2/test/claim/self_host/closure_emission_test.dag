@@ -30,6 +30,7 @@ import v2.std.algebra { contains, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text_in_spans }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, node_synthetic }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
@@ -322,9 +323,19 @@ test fn the_emission_renders_through_its_codec_and_reads_back_the_same_identitie
 // A MODULE IDENTITY DECLARED BY TWO FILES REFUSES THE EMISSION AT THE CENSUS, even when the two
 // files' declarations are independent and neither is a closure member.
 test fn two_files_declaring_one_module_refuse_the_emission_at_the_census_holds() -> Bool {
-  match ce_emission_duplicate_module().outcome {
+  let located = ce_emission_duplicate_module()
+  match located.outcome {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^closure_census_duplicate_module
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^closure_census_duplicate_module
+        && string_contains(
+          s: lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans),
+          pattern: "ce_duplicate_a_read"
+        )
+        && string_contains(
+          s: lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: located.spans),
+          pattern: "ce_duplicate_b_read"
+        )
   }
 }
 

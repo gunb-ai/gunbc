@@ -1,11 +1,11 @@
 module gunbc.machine_intake_pre_os_observation_capabilities
 
+import extdeps.board_authority { BoardAuthorityRef }
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.content_hash { ContentHash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
-import extdeps.boards.types { BaseboardModel }
 
 // WHAT A PLATFORM LETS AN OBSERVER SEE BEFORE AN OPERATING SYSTEM EXISTS, one profile per
 // (baseboard, controller firmware release). Every field is a MEASURED capability standing, not a
@@ -130,7 +130,7 @@ type HostCallbackCapability
   | HostCallbackAbsent
 
 type PreOsObservationCapabilities {
-  baseboard: BaseboardModel
+  baseboard: BoardAuthorityRef
   controller_firmware: BmcFirmwareReleaseIdentity
   console: ConsoleObservationCapability
   sel: SelReadCapability

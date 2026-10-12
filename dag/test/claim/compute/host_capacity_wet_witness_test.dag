@@ -5,10 +5,10 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.algebra { trim }
 import product.capacity.event_chain { PartitionId }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance, dashboard_instance_compute_root }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
-  compute_capacity_subject, compute_capacity_root, compute_memory_partition, compute_memory_ceiling,
+  compute_capacity_subject, compute_capacity_root, compute_root, compute_memory_partition, compute_memory_ceiling,
   HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   compute_reserve_on, compute_reserve_against, compute_release, ComputeRelease, ComputeNothingToRelease, ComputeReleased, ComputeReleaseRefused,
@@ -211,7 +211,7 @@ test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
             && (a.root as String) == (b.root as String)
             && string_contains(s: a.partition as String, pattern: live.host_identity as String)
             && !string_contains(s: a.partition as String, pattern: lab.instance_id as String)
-            && (a.root as String) == join([dashboard_instance_compute_root(instance: live) as String, "/capacity"], "")
+            && (a.root as String) == join([compute_root(instance: live) as String, "/capacity"], "")
             && kibibyte_count(k: a.appropriation) == kibibyte_count(k: a.request) * 2
             && kibibyte_count(k: a.request) > 0
       }

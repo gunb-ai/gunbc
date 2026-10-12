@@ -10,8 +10,8 @@ import v2.std.node { Authored, ComputationNode, Edge, MapLiteralEntriesEdge, Nod
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, construct_node, core_child_lookup }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 
-// THE MAP-LITERAL INTRODUCTION, ONE AUTHORITY FOR ITS PATHS, ITS CONSTRUCTOR AND ITS KEY LAW
-// (docs/plans/map-literal-introduction-design.md). A map literal `{ "k": v, .. }` under an authored
+// THE MAP-LITERAL INTRODUCTION, ONE AUTHORITY FOR ITS PATHS, ITS CONSTRUCTOR AND ITS KEY LAW.
+// A map literal `{ "k": v, .. }` under an authored
 // `Map<K, V>` is elaborated by v2.compiler.resolve's map arm into ONE ordinary call,
 //
 //   std.algebra.map_from_entries(entries: [std.algebra.MapIntroductionEntry { key: "k", value: v }, ..])

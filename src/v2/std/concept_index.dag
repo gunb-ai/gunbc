@@ -2,7 +2,7 @@ module v2.std.concept_index
 
 import std.types { List }
 import std.algebra { Empty, list_snoc_item }
-import v2.std.algebra { filter, list_map }
+import v2.std.algebra { list_map }
 import v2.std.node {
   Conj,
   CoproductArm,
@@ -77,7 +77,7 @@ fn field_refs_from_node(node: Node) -> List<FieldRef> {
       })
     TypeNode { connective: Atom { identity: _ } } => Empty
     TypeNode { connective: Arrow } => Empty
-    TypeNode { connective: Cardinality } => Empty
+    TypeNode { connective: Occupancy } => Empty
     TypeNode { connective: Instantiation } => Empty
     ComputationNode { behavior: _ } => Empty
   }

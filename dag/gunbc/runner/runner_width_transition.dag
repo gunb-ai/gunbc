@@ -3,7 +3,7 @@ module gunbc.runner_width_transition
 import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
-import gunbc.runner_slot_population_census { desired_unit_names_range, unit_is_owned_by_host }
+import gunbc.runner_slot_population_census { desired_unit_names_range, unit_is_owned_by_host, committed_unit_names_at }
 import gunbc.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
@@ -121,13 +121,20 @@ fn transition_required_retirees_at(t: RunnerWidthTransition, target_width: Runne
       RetireesUnresolved { host: t.host, cause: runner_width_unresolved_cause_text(cause: c) }
     RunnerWidthDerived { slots: target } =>
       RetireesKnown {
-        units: desired_unit_names_range(
-          host: t.host,
-          slot: target + 1,
-          limit: t.prior_width,
+        units: prior_minus_committed(
+          prior: desired_unit_names_range(host: t.host, slot: 1, limit: t.prior_width),
+          committed: committed_unit_names_at(host: t.host, committed: target),
         ) |> map(u => u as NonEmptyStr),
       }
   }
+}
+
+// PRIOR MINUS COMMITTED IS A SET DIFFERENCE OVER IDENTITIES, NOT `target + 1 .. prior`. The index
+// range was exact only while the committed population was 1..width; since #12339 srv1's committed
+// population is 1..(width - 1) plus the shakedown slot srv1-13, so the range both required srv1-13 --
+// a committed fabric member -- and left out the fleet slot the width stopped charging for.
+fn prior_minus_committed(prior: List<String>, committed: List<String>) -> List<String> {
+  prior |> filter(u => !any(committed, c => c == u))
 }
 
 fn transition_required_retirees(t: RunnerWidthTransition) -> RequiredRetirees {

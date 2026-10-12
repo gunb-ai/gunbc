@@ -1,0 +1,59 @@
+module gunbc.workspace_image_delivery
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import gunbc.command_runner { run_shell_commands, LocalExec }
+import gunbc.microvm_guest_artifacts {
+  runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact, runner_guest_base_dir,
+  runner_guest_base_artifact_path, guest_artifact_verdict, ArtifactMatchesPin,
+  ArtifactUnpinnedFirstContact, ArtifactBuildReceipt, ArtifactContradictsPin, ArtifactNotMeasured,
+}
+import gunbc.workspace_guest_image { workspace_image_build, workspace_image_path }
+
+// Transport is not admission. The administrator installs these exact files, then checks the
+// installed kernel and rootfs against the reviewed pins before commissioning can expose supply.
+data workspace_image_staging_root: String = "target/workspace-image-artifact"
+data workspace_image_artifact_name: String = "workspace-guest-image"
+data workspace_image_build_receipt: String = "target/workspace-image-artifact/build-receipt.txt"
+
+fn workspace_image_artifact_paths() -> String {
+  join([workspace_image_path(root: workspace_image_staging_root),
+    runner_guest_base_artifact_path(root: workspace_image_staging_root, artifact: runner_guest_kernel_artifact),
+    workspace_image_build_receipt], "\n")
+}
+
+// Run the whole entry under fakeroot, so ownership survives extraction and mke2fs -d.
+// The digest is a receipt of one build, never a promise that mke2fs output is reproducible.
+fn workspace_image_build_wet() -> ProcessExit {
+  let root = workspace_image_staging_root
+  match run_shell_commands(commands: [
+    mkdir_parents_command(path: runner_guest_base_dir(root: root)),
+    curl_download_command(url: runner_guest_kernel_artifact.url as String,
+      destination: runner_guest_base_artifact_path(root: root, artifact: runner_guest_kernel_artifact)),
+    curl_download_command(url: runner_guest_base_rootfs_artifact.url as String,
+      destination: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact)),
+  ], transport: LocalExec) {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess => match guest_artifact_verdict(artifact: runner_guest_kernel_artifact,
+      observed: sha256sum_file_digest_via_shell(path: runner_guest_base_artifact_path(root: root, artifact: runner_guest_kernel_artifact) as NonEmptyStr)) {
+      ArtifactMatchesPin => if !workspace_image_build(root: root) {
+        exit_failure(reason: "WorkspaceImageBuildRefused: pinned base, SSH tools, ownership or image assembly failed")
+      } else { match sha256sum_file_digest_via_shell(path: workspace_image_path(root: root) as NonEmptyStr) {
+        Sha256FileDigestUnavailable { path: _, reason } => exit_failure(reason: reason)
+        Sha256FileDigest { digest } => {
+          let receipt = Filesystem.Write(path: workspace_image_build_receipt,
+            content: join(["workspace-image-sha256=", digest.hex as String, "\n"], ""))
+          if receipt.success { ExitSuccess } else { exit_failure(reason: receipt.error) }
+        }
+      } }
+      ArtifactUnpinnedFirstContact { digest_hex: _ } => exit_failure(reason: "WorkspaceImageBuildRefused: kernel is unpinned")
+      ArtifactBuildReceipt { digest_hex: _ } => exit_failure(reason: "WorkspaceImageBuildRefused: kernel is not a pinned input")
+      ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => exit_failure(reason: "WorkspaceImageBuildRefused: kernel contradicts pin")
+      ArtifactNotMeasured { reason } => exit_failure(reason: reason)
+    }
+  }
+}

@@ -7,9 +7,8 @@
 
 use v1_compiler::v1_interpreter_dispatch_generated::{
     lookup_eval_algebra_method_inner, lookup_eval_builtin_inner, lookup_eval_call_bridge_std_node,
-    lookup_eval_call_native_intercept, lookup_try_parse_table_memo_dispatch,
-    lookup_try_v2_std_collection_map_primitive_grounding, EvalAlgebraMethodArm, EvalBuiltinArm,
-    EvalCallBridgeStdNodeArm, EvalCallNativeInterceptArm, TryParseTableMemoDispatchArm,
+    lookup_eval_call_native_intercept, lookup_try_v2_std_collection_map_primitive_grounding,
+    EvalAlgebraMethodArm, EvalBuiltinArm, EvalCallBridgeStdNodeArm, EvalCallNativeInterceptArm,
     TryV2StdCollectionMapPrimitiveGroundingArm,
 };
 
@@ -56,7 +55,6 @@ fn generated_lookup_covers_representative_spellings_per_site() {
             .is_some()
     );
     assert!(lookup_eval_call_native_intercept("fold_list").is_some());
-    assert!(lookup_try_parse_table_memo_dispatch("parse_table_lookup").is_some());
 }
 
 #[test]
@@ -80,9 +78,5 @@ fn generated_enums_are_copy_and_distinct() {
     assert_ne!(
         EvalCallNativeInterceptArm::NativeInterceptFoldList,
         EvalCallNativeInterceptArm::NativeInterceptFoldListRight
-    );
-    assert_ne!(
-        TryParseTableMemoDispatchArm::ParseTableMemoParseTableInsert,
-        TryParseTableMemoDispatchArm::ParseTableMemoParseTableLookup
     );
 }

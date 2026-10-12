@@ -1,5 +1,6 @@
 module gunbc.roadmap_serve
-import gunbc.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
+
+import gunbc.roadmap_runtime_plan { roadmap_plan_projection }import gunbc.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
 import gunbc.roadmap_served_observation { IssueQueryRows, served_observation_body_digest }
 import gunbc.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
 import gunbc.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
@@ -47,6 +48,11 @@ import gunbc.auth.tailnet_serve_readback {
 import gunbc.live_deploy.desired {
   desired_deployment_for_instance_id, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
 }
+import gunbc.live_deploy.role_singleton_convergence {
+  role_singleton_self_report_member,
+  role_singleton_self_report_json,
+  role_singleton_self_report_of,
+}
 import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, roadmap_serve_authentication_evidence }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import gunbc.auth.request_authentication {
@@ -63,6 +69,7 @@ import gunbc.auth.request_authentication {
   tracker_write_authorization_policy,
   roadmap_deployment_access_policy,
   ServeActionAssignIssue,
+  ServeActionCreateIssue,
   ServeActionCommentIssue,
   RequestAccessPath,
 }
@@ -74,6 +81,11 @@ import gunbc.principal_projection {
 }
 import std.access { access_refusal_reason, Permit, Deny }
 import gunbc.clock_read { clock_now_probed_at }
+import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read, epoch_secs_of_millis }
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.roadmap_task_form { roadmap_task_draft_from_form, roadmap_task_form_missing }
+import gunbc.roadmap_task_record { roadmap_task_encode }
+import gunbc.roadmap_task_store { RuntimeTaskWrite, roadmap_task_create, RuntimeTaskCommitted, RuntimeTaskReplayed, RuntimeTaskConflict, RuntimeTaskStale, RuntimeTaskChainFull, RuntimeTaskRefused, roadmap_task_capacity, CapacityWithin, CapacityCompactionDue, CapacityFull }
 import std.algebra { trim }
 import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
@@ -117,18 +129,18 @@ import extdeps.languages.json.emit {
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
-  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionNotLanded,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
   launch_refusal_label, launch_refusal_reason,
 }
-import gunbc.roadmap_page { issue_detail_not_found_page,
+import gunbc.roadmap_page { issue_detail_not_found_page, issue_create_page,
   roadmap_fleet_page,
   issue_detail_page_for, issue_detail_node_exists,
 }
 import gunbc.roadmap_authority {
-  roadmap_acceptance_event_history_load, RoadmapAuthorityProjection, roadmap_authority_projection,
+  RoadmapAuthorityProjection,
   RoadmapAuthorityProjectionRefused,
 }
 import gunbc.roadmap_component {
@@ -178,12 +190,22 @@ import gunbc.roadmap_belt_actuate {
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
   WorkflowAttemptsObserved, WorkflowAttemptsRefused,
-  BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
+  BeltStopResult, StopProcessStopped, StopRetainedSessionCleared, StopDisabled,
+  StopRefusedResult, StopObserveRefused, StopTeardownFailed,
+  belt_stop_node, belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
   BeltPublishOutcome,
+  PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable, PublishWriteFailed,
+  PublishDeferred, PublishRequested,
   belt_publish_node_for_instance,
   belt_publish_outcome_http_status,
   belt_publish_outcome_json_value,
+  belt_enqueue_operator_follow_ups,
+  belt_obligation_enqueue_pass, BeltPassRecorded, BeltPassFailed, BeltPassDeferred, BeltPassRefused,
+  BeltObligationEnqueue,
+}
+import gunbc.roadmap.roadmap_belt_obligation {
+  BeltOperatorAction, OperatorDispatch, OperatorStop, OperatorPublish, OperatorIssueWrite,
 }
 import gunbc.dashboard_provider_readiness { dashboard_provider_readiness_json }
 import gunbc.roadmap_dashboard_instance {
@@ -204,7 +226,7 @@ import gunbc.roadmap_dashboard_instance {
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 
-// The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B,
+// The gunbc-served dashboard instantiation (belt B,
 // parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler
 // calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the
 // artifact table and this serve table are two projections of one authority set, never two copies of
@@ -308,6 +330,8 @@ type RoadmapServeHandler
   | IssueViewPreferencesReadHandler
   | IssueViewPreferencesSaveHandler
   | IssueCommentHandler
+  | IssueCreateHandler
+  | IssueCreatePageHandler
   | AuthSessionHandler
   | AuthLoginHandler
   | AuthGoogleCallbackHandler
@@ -384,6 +408,8 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
     ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
     ServedRouteSpec { method: POST, raw: "/issues/query", handler: IssueQueryHandler },
+    ServedRouteSpec { method: POST, raw: "/issues", handler: IssueCreateHandler },
+    ServedRouteSpec { method: GET, raw: "/issues/new", handler: IssueCreatePageHandler },
     ServedRouteSpec { method: GET, raw: "/preferences/issues", handler: IssueViewPreferencesReadHandler },
     ServedRouteSpec { method: POST, raw: "/preferences/issues", handler: IssueViewPreferencesSaveHandler },
     ServedRouteSpec { method: GET, raw: auth_login_route_path, handler: AuthLoginHandler },
@@ -482,6 +508,7 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchSessionsUnobservable { reason: _ } => 503
     LaunchAuthorityUnobserved { detail: _ } => 503
     LaunchRevisionUnobserved { cause: _ } => 503
+    LaunchRevisionNotLanded { local: _, admitted: _ } => 403
     LaunchLivenessUnobserved { session_name: _, reason: _ } => 503
     LaunchGateNotEvaluated { gate: _ } => 503
     LaunchNoPlacementGrant { detail: _ } => 503
@@ -503,6 +530,96 @@ fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
     content_type: application_json_utf8,
     body: serialize_json(v: belt_spawn_outcome_json(o: r)),
   )
+}
+
+fn serve_attaching_follow_ups(response: ServeHttpResponse, enqueues: List<BeltObligationEnqueue>) -> ServeHttpResponse {
+  match belt_obligation_enqueue_pass(enqueues: enqueues) {
+    BeltPassRecorded => response
+    BeltPassFailed { reason } =>
+      ServeHttpResponse {
+        status: response.status,
+        content_type: response.content_type,
+        body: join([response.body, "\nfollow-up enqueue refused: ", reason, " — the write stands\n"], ""),
+        headers: response.headers,
+      }
+    BeltPassDeferred { reason } =>
+      ServeHttpResponse {
+        status: response.status,
+        content_type: response.content_type,
+        body: join([response.body, "\nfollow-up enqueue deferred: ", reason, " — the write stands\n"], ""),
+        headers: response.headers,
+      }
+    BeltPassRefused { reason } =>
+      ServeHttpResponse {
+        status: response.status,
+        content_type: response.content_type,
+        body: join([response.body, "\nfollow-up enqueue refused: ", reason, " — the write stands\n"], ""),
+        headers: response.headers,
+      }
+  }
+}
+
+fn serve_with_operator_follow_ups(
+  instance: HostDashboardInstance,
+  action: BeltOperatorAction,
+  response: ServeHttpResponse,
+) -> ServeHttpResponse {
+  serve_attaching_follow_ups(
+    response: response,
+    enqueues: belt_enqueue_operator_follow_ups(instance: instance, action: action),
+  )
+}
+
+fn serve_dispatch_with_follow_ups(instance: HostDashboardInstance, r: BeltSpawnOutcome) -> ServeHttpResponse {
+  let response = belt_dispatch_response(r: r)
+  match r {
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
+    SpawnNotAdmitted { node_id: _, refusal: _ } => response
+  }
+}
+
+fn serve_stop_with_follow_ups(instance: HostDashboardInstance, r: BeltStopResult) -> ServeHttpResponse {
+  let response = serve_text_response(
+    status: belt_stop_http_status(r: r),
+    content_type: application_json_utf8,
+    body: serialize_json(v: belt_stop_result_json_value(r: r)),
+  )
+  match r {
+    StopProcessStopped { node_id: _, session_name: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorStop, response: response)
+    StopRetainedSessionCleared { node_id: _, session_name: _, exit_code: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorStop, response: response)
+    StopTeardownFailed { node_id: _, session_name: _, detail: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorStop, response: response)
+    StopDisabled { node_id: _, instance_id: _, reason: _ } => response
+    StopRefusedResult { node_id: _, reason: _ } => response
+    StopObserveRefused { node_id: _, reason: _ } => response
+  }
+}
+
+fn serve_publish_with_follow_ups(instance: HostDashboardInstance, outcome: BeltPublishOutcome) -> ServeHttpResponse {
+  let response = serve_text_response(
+    status: belt_publish_outcome_http_status(o: outcome),
+    content_type: application_json_utf8,
+    body: serialize_json(v: belt_publish_outcome_json_value(o: outcome)),
+  )
+  match outcome {
+    PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorPublish, response: response)
+    PublishAlreadyRecorded { node_id: _, head_sha: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorPublish, response: response)
+    PublishRequested { node_id: _, head_sha: _, request_path: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorPublish, response: response)
+    PublishWriteFailed { node_id: _, detail: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorPublish, response: response)
+    PublishEvidenceUnreadable { node_id: _, detail: _ } => response
+    PublishDeferred { node_id: _, reason: _ } => response
+  }
 }
 
 // The node_id param is bound by the route template, so an empty value is unreachable by
@@ -537,7 +654,8 @@ fn serve_dispatch_handler_response_over(
           body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
         )
       DispatchExecutorRequestDecoded { request: executor } =>
-        belt_dispatch_response(
+        serve_dispatch_with_follow_ups(
+          instance: instance,
           r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
         )
     }
@@ -550,7 +668,7 @@ fn serve_dispatch_handler_response_for_instance(
 ) -> ServeHttpResponse {
   serve_dispatch_handler_response_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: roadmap_plan_projection(),
     params: params,
     executor_word: "",
   )
@@ -579,11 +697,9 @@ fn serve_publish_handler_response_for_instance(
       body: "publish requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
-    let outcome = belt_publish_node_for_instance(instance: instance, node_id: node_id)
-    serve_text_response(
-      status: belt_publish_outcome_http_status(o: outcome),
-      content_type: application_json_utf8,
-      body: serialize_json(v: belt_publish_outcome_json_value(o: outcome)),
+    serve_publish_with_follow_ups(
+      instance: instance,
+      outcome: belt_publish_node_for_instance(instance: instance, node_id: node_id),
     )
   }
 }
@@ -880,33 +996,87 @@ fn serve_issue_assign_response_over(
     action: ServeActionAssignIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
-    Permit => if !issue_command_form_valid(body: request.body) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "assignment refused: a valid operation key and explicit expected_revision are required") }
+    Permit => serve_issue_assign_permitted(instance: instance, plan: plan, request: request, node_id: node_id, observed_at: observed_at)
+  } }
+}
+
+fn serve_issue_assign_permitted(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  node_id: String,
+  observed_at: String,
+) -> ServeHttpResponse {
+  if !issue_command_form_valid(body: request.body) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "assignment refused: a valid operation key and explicit expected_revision are required") }
+  else { match authenticated_write_author_principal(security: request.security) {
+    Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
+    Present { value: author } => match assignee_principal_of(raw: issue_form_field(body: request.body, name: "assignee")) {
+      Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "assignee has no admitted principal")
+      Present { value: assignee } => {
+        let target = issue_form_field(body: request.body, name: "return_to")
+        match (if target == "" { Present { value: author } } else { assignee_principal_of(raw: target) }) {
+          Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "return_to has no admitted principal")
+          Present { value: return_to } => {
+            let expected = issue_form_field(body: request.body, name: "expected_revision")
+            let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+              command: AssignIssue { subject: IssueCommandSubject { node: node_id as NonEmptyStr as RoadmapNodeId,
+                author: EventPrincipalAuthenticated { ref: author }, operation: issue_form_field(body: request.body, name: "key") as NonEmptyStr,
+                expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
+                assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to } }, recorded_at: observed_at))
+            match outcome {
+              EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String))
+              EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], "")))
+              EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
+            }
+          }
+        }
+      }
+    }
+  } }
+}
+
+// THE CREATE ROUTE. POST /issues creates a runtime task in the fabric state namespace
+// (gunbc.roadmap_task_store). The write law is the assign route's: the tailnet deployment policy,
+// the authenticated human, session CSRF. The operation key is the idempotency key AND the source of
+// the minted identity, so a retry answers the committed record and a reused key with different
+// fields is a 409. The chain event carries the authenticated principal as its actor -- that IS the
+// authorship authority; the record has no author field and `owner` stays the work owner. A task
+// missing any required field is refused naming the fields, never created half-shaped.
+fn serve_issue_create_response_over(
+  instance: HostDashboardInstance,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+) -> ServeHttpResponse {
+  let observed_at = human_write_observed_at(security: request.security)
+  match human_write_admission(route_path: "/issues" as NonEmptyStr,
+    action: ServeActionCreateIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => if !roadmap_operation_identity_valid(operation: issue_form_field(body: request.body, name: "key")) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "create refused: a valid operation key is required") }
       else { match authenticated_write_author_principal(security: request.security) {
         Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
-        Present { value: author } => match assignee_principal_of(raw: issue_form_field(body: request.body, name: "assignee")) {
-          Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "assignee has no admitted principal")
-          Present { value: assignee } => {
-            let target = issue_form_field(body: request.body, name: "return_to")
-            match (if target == "" { Present { value: author } } else { assignee_principal_of(raw: target) }) {
-              Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "return_to has no admitted principal")
-              Present { value: return_to } => {
-                let expected = issue_form_field(body: request.body, name: "expected_revision")
-                let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: roadmap_event_carrier_layout_for_instance(instance: instance),
-                  command: AssignIssue { subject: IssueCommandSubject { node: node_id as NonEmptyStr as RoadmapNodeId,
-                    author: EventPrincipalAuthenticated { ref: author }, operation: issue_form_field(body: request.body, name: "key") as NonEmptyStr,
-                    expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
-                    assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to } }, recorded_at: observed_at))
-                match outcome {
-                  EventAppended { id } => serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String)
-                  EventAlreadyPresent { id } => serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], ""))
-                  EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
-                }
-              }
+        Present { value: author } => {
+          let get = fn(name) { issue_form_field(body: request.body, name: name) }
+          match roadmap_task_draft_from_form(get: get) {
+            Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["create refused: required fields missing or empty: ", join(roadmap_task_form_missing(get: get), ", "), "\n"], ""))
+            Present { value: draft } => match clock_unix_millis_read() {
+              ClockUnixMillisRefused { detail: d } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["create refused: clock unread: ", d, "\n"], ""))
+              ClockUnixMillisObserved { millis: ms } => serve_issue_create_answer(instance: instance, write: roadmap_task_create(store: fabric_state_storage_binding(), actor: principal_ref_label(p: author) as NonEmptyStr, at: epoch_secs_of_millis(millis: ms), operation_key: issue_form_field(body: request.body, name: "key") as NonEmptyStr, draft: draft))
             }
           }
         }
       } }
-  } }
+  }
+}
+
+fn serve_issue_create_answer(instance: HostDashboardInstance, write: RuntimeTaskWrite) -> ServeHttpResponse {
+  match write {
+    RuntimeTaskCommitted { task: t, events: n } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_text_response(status: 201, content_type: application_json_utf8, body: join([match roadmap_task_encode(node: t) { Present { value: x } => x Absent => "" }, match roadmap_task_capacity(events: n) { CapacityWithin => "" CapacityCompactionDue => "\ncompaction due: the task roster is past three quarters of its read bound" CapacityFull => "\nroster full" }], "")))
+    RuntimeTaskReplayed { task: t } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_text_response(status: 200, content_type: application_json_utf8, body: match roadmap_task_encode(node: t) { Present { value: x } => x Absent => "" }))
+    RuntimeTaskConflict => serve_text_response(status: 409, content_type: text_plain_utf8, body: "create refused: the roster head moved; retry with the same key\n")
+    RuntimeTaskStale { reason: r } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["create refused: ", r, "\n"], ""))
+    RuntimeTaskChainFull { events: n } => serve_text_response(status: 507, content_type: text_plain_utf8, body: "create refused: the task roster is at its read bound; compaction is required before more tasks\n")
+    RuntimeTaskRefused { reason: r } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["create refused: ", r, "\n"], ""))
+  }
 }
 
 fn issue_command_form_valid(body: String) -> Bool {
@@ -1076,32 +1246,41 @@ fn serve_issue_comment_response_over(
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   let observed_at = human_write_observed_at(security: request.security)
-  if !issue_detail_node_exists(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+  if !issue_detail_node_exists(proj: roadmap_plan_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
   else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/comment")) as NonEmptyStr,
     action: ServeActionCommentIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
-    Permit => if !issue_command_form_valid(body: request.body) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: a valid operation key and explicit expected_revision are required") }
-      else { match authenticated_write_author_principal(security: request.security) {
-        Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
-        Present { value: author } => {
-          let body = issue_comment_body_of(wire: request.body)
-          if body == "" { serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: empty body") }
-          else {
-            let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-            let expected = issue_form_field(body: request.body, name: "expected_revision")
-            let operation = issue_form_field(body: request.body, name: "key")
-            let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject {
-              node: node_id as NonEmptyStr as RoadmapNodeId, author: EventPrincipalAuthenticated { ref: author }, operation: operation as NonEmptyStr,
-              expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at))
-            match outcome {
-              EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
-              EventAppended { id } => issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false)
-              EventAlreadyPresent { id } => issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: true)
-            }
-          }
+    Permit => serve_issue_comment_permitted(instance: instance, request: request, node_id: node_id, observed_at: observed_at)
+  } }
+}
+
+fn serve_issue_comment_permitted(
+  instance: HostDashboardInstance,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  node_id: String,
+  observed_at: String,
+) -> ServeHttpResponse {
+  if !issue_command_form_valid(body: request.body) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: a valid operation key and explicit expected_revision are required") }
+  else { match authenticated_write_author_principal(security: request.security) {
+    Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
+    Present { value: author } => {
+      let body = issue_comment_body_of(wire: request.body)
+      if body == "" { serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: empty body") }
+      else {
+        let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+        let expected = issue_form_field(body: request.body, name: "expected_revision")
+        let operation = issue_form_field(body: request.body, name: "key")
+        let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject {
+          node: node_id as NonEmptyStr as RoadmapNodeId, author: EventPrincipalAuthenticated { ref: author }, operation: operation as NonEmptyStr,
+          expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at))
+        match outcome {
+          EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
+          EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false))
+          EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: true))
         }
-      } }
+      }
+    }
   } }
 }
 
@@ -1153,8 +1332,19 @@ fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpR
 }
 
 fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
+  serialize_json(v: json_object(members: dashboard_instance_json_members(instance: instance)))
+}
+
+fn dashboard_instance_served_json(instance: HostDashboardInstance) -> String {
+  serialize_json(v: json_object(members: concat(
+    dashboard_instance_json_members(instance: instance),
+    [json_kv(key: role_singleton_self_report_member, value: role_singleton_self_report_json(report: role_singleton_self_report_of(instance: instance)))],
+  )))
+}
+
+fn dashboard_instance_json_members(instance: HostDashboardInstance) -> List<JsonKeyValue> {
   let plan = dashboard_instance_provision_plan_rows(instance: instance)
-  serialize_json(v: json_object(members: [
+  [
     json_kv(key: "schema", value: json_string(s: dashboard_instance_health_schema)),
     json_kv(key: "instance_id", value: json_string(s: instance.instance_id as String)),
     json_kv(key: "host_identity", value: json_string(s: instance.host_identity as String)),
@@ -1188,7 +1378,7 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
         json_kv(key: "detail", value: json_string(s: row.detail)),
       ]))),
     ),
-  ]))
+  ]
 }
 
 // Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was
@@ -1271,7 +1461,7 @@ fn roadmap_serve_invoke_over(
       serve_text_response(
         status: 200,
         content_type: application_json_utf8,
-        body: dashboard_instance_json(instance: instance),
+        body: dashboard_instance_served_json(instance: instance),
       )
     ProviderReadinessHandler =>
       serve_text_response(
@@ -1286,6 +1476,13 @@ fn roadmap_serve_invoke_over(
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
+    IssueCreateHandler => serve_issue_create_response_over(instance: instance, request: request)
+    IssueCreatePageHandler => serve_page_response(page: issue_create_page(command_context: match request.security.authentication {
+      GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
+      FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
+      SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
+      AuthAbsent => IssueFormContext { operation: "", csrf: "" }
+    }))
     IssueQueryHandler => serve_issue_query(instance: instance, request: request)
     IssueViewPreferencesReadHandler => serve_issue_view_preferences_over(instance: instance, request: request, saving: false)
     IssueViewPreferencesSaveHandler => serve_issue_view_preferences_over(instance: instance, request: request, saving: true)
@@ -1310,7 +1507,7 @@ fn roadmap_serve_invoke_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_over(
     instance: instance,
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     handler: handler,
     params: params,
@@ -1346,11 +1543,10 @@ fn serve_stop_handler_response_for_instance(
       body: "cleanup requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
-    let r = belt_stop_node_for_instance(instance: instance, node_id: node_id)
-    serve_text_response(
-      status: belt_stop_http_status(r: r),
-      content_type: application_json_utf8,
-      body: serialize_json(v: belt_stop_result_json_value(r: r)))
+    serve_stop_with_follow_ups(
+      instance: instance,
+      r: belt_stop_node_for_instance(instance: instance, node_id: node_id),
+    )
   }
 }
 
@@ -1499,7 +1695,7 @@ fn roadmap_serve_selection_response_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_over(
     instance: instance,
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     sel: sel,
     request: request,
@@ -1703,7 +1899,7 @@ fn roadmap_serve_respond_for_instance(
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
     instance: instance,
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method_label: method_label,
     path: path,
@@ -1812,7 +2008,7 @@ fn roadmap_serve_handle(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_live_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1846,7 +2042,7 @@ fn roadmap_serve_handle_door(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_live_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1868,7 +2064,7 @@ fn roadmap_serve_handle_macbook_local(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: macbook_local_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1890,7 +2086,7 @@ fn roadmap_serve_handle_srv1_lab(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_lab_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1912,7 +2108,7 @@ fn roadmap_serve_handle_srv2_preview(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_preview_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1937,7 +2133,7 @@ fn roadmap_serve_handle_srv2_deploy(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_deploy_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
@@ -1959,7 +2155,7 @@ fn roadmap_serve_handle_srv2_lab(
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_lab_dashboard_instance(),
-    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,

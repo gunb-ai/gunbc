@@ -21,8 +21,7 @@ import v2.compiler.eval {
   eval_context_interpretation,
   inputs_for_emit_host,
   inputs_root_only,
-  run_test_claim,
-  test_claim_cache_receipt_node
+  run_test_claim
 }
 import extdeps.communication.medium { Medium }
 import std.algebra { Cons, Empty }
@@ -825,7 +824,7 @@ fn run_test_claim_emit_vs_eval_run(
   verdict: Verdict<TestClaimEvalSubject<Node>, RuntimeValue>
 ) -> TestClaimRun<Node, RuntimeValue> {
   TestClaimRun {
-    cache: test_claim_cache_receipt_node(subject: subject),
+    claim: subject.claim,
     verdict: verdict
   }
 }

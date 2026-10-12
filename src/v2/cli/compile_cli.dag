@@ -11,7 +11,12 @@ import v2.compiler.self_host.closure_emission {
   closure_emission_refused_count,
   emit_closure_from_ingest_located
 }
-import v2.compiler.source_authority { SourceRootIngest, source_root_ingest_from_files }
+import v2.compiler.source_authority {
+  SourceRootIngest,
+  SourceRootIngestFromFilesBuilt,
+  SourceRootIngestFromFilesUnrecognizedRoot,
+  source_root_ingest_from_files
+}
 import v2.cli.if_arm_reader_differential {
   IardCensus,
   IardCensusTaken,
@@ -373,9 +378,8 @@ type CliRunOutcome
 // boundary. Measured on the built binary at gunbc#11507's head -- three different entries
 // (`v2.std.text`, this module, `v2.compiler.compile`) all refused with the same nine words.
 //
-// THE WHOLE ORDERED CHAIN, BECAUSE THE HEAD IS NOT THE CAUSE. Rendering only the head answers
-// `parse_grammar_choice_overlap_residue` for every entry tried; that is a grammar-global ADVISORY
-// and never the fatal. The fatal diagnostic is the last one, and `parse_g0_tokens_remain_diagnostic`
+// THE WHOLE ORDERED CHAIN, BECAUSE THE HEAD IS NOT THE CAUSE. A head can be a non-fatal advisory
+// that rejected_with_pending prepended; it is never by itself the fatal. The fatal diagnostic is the last one, and `parse_g0_tokens_remain_diagnostic`
 // builds its locus from the first remaining token. The fatal pick is `v2.std.diagnostic`
 // `diagnostics_fatal`, the chain is `lens_verdict_diagnostics_located_chain_text_in_spans` (every
 // link with its locus, so thirty-five advisories in front of the fatal each say where they are),
@@ -543,7 +547,21 @@ fn v2_cli_main(argv: FreeMonoid<String>) -> CliRunOutcome {
     CliPlanRefused { reason: reason, detail: detail } => CliUsageRefused { reason: reason, detail: detail }
     CliPlanParsed { verb: _ } => match source_root_read(roots: v2_cli_plan_source_roots(plan: plan)) {
       SourceRootFilesRead { files: files } =>
-        v2_cli_run(plan: plan, ingest: source_root_ingest_from_files(files: files))
+        match source_root_ingest_from_files(files: files) {
+          SourceRootIngestFromFilesBuilt { ingest: ingest } =>
+            v2_cli_run(plan: plan, ingest: ingest)
+          SourceRootIngestFromFilesUnrecognizedRoot { argument: argument, path: path } =>
+            CliUsageRefused {
+              reason: ^cli_source_root_unrecognized,
+              detail: concat(
+                "source root is not a dag or src/v2 tree: ",
+                argument,
+                " (file ",
+                path,
+                ")"
+              )
+            }
+        }
       SourceRootFilesRefused { path: path, kind: kind, cause: cause } =>
         CliUsageRefused { reason: ^cli_source_root_read_refused,
           detail: concat("could not read source root at ", path, " [", kind, "]: ", cause) }

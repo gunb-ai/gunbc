@@ -13,7 +13,7 @@ import v2.compiler.self_host.native_routing_frontier {
   family_subject
 }
 import v2.lens.module_graph { ModuleDeclarationFact }
-import v2.std.algebra { length, any }
+import v2.std.algebra { length }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 

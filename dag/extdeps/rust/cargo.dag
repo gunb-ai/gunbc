@@ -1,7 +1,7 @@
 module extdeps.cargo
 
 import extdeps.cargo_version { CargoPackageVersion, CargoVersionRequirement, CargoToolVersionFloor }
-import std.types { FilePathParts, NonEmptyStr, String, List }
+import std.types { Bool, FilePathParts, NonEmptyStr, String, List }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, FootprintProvenance, CitedUpstream, RegenerableFromSource, LocalCacheState }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -40,8 +40,11 @@ type CargoPackage {
   path: String
 }
 
+// `default_features` is Cargo's `default-features` key on a registry dependency
+// (doc.rust-lang.org/cargo/reference/specifying-dependencies.html, "Dependency features"): false
+// opts the dependency out of its own default feature set.
 type CargoDepSource
-  = RegistryDep  { version: CargoVersionRequirement, features: List<String> }
+  = RegistryDep  { version: CargoVersionRequirement, default_features: Bool, features: List<String> }
   | LocalPathDep { path: String }
 
 type CargoDependency {

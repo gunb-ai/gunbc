@@ -19,8 +19,9 @@ import gunbc.fabric_event_log {
   PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
 }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import gunbc.roadmap_dashboard_instance {
-  HostDashboardInstance, dashboard_instance_compute_root,
+  HostDashboardInstance, dashboard_instance_shared_directory,
   DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host,
 }
 
@@ -96,8 +97,23 @@ type ComputeSubjectResolution
   = ComputeSubjectResolved { subject: ComputeCapacitySubject }
   | ComputeSubjectHostUnresolved { host: NonEmptyStr }
 
+// THE COMPUTE ROOT THE WORK PROVIDER AND THIS POOL DEMAND: leases, checkouts, the shared per-host
+// target directory, the content store and the capacity partition all live under it
+// (gunbc.compute.work_provider_local reads it from here). Declared at this, the lower of the two
+// modules, as an owned-directory target both deployment routes ensure
+// (gunbc.roadmap.dashboard_instance_directories); under a root-owned /opt/gunbc a worker's first
+// request would otherwise refuse StoreUnavailable at `install -d`. The subdirectories are the
+// provider's own and it creates them under this root.
+fn compute_root_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  dashboard_instance_shared_directory(instance: instance, member: "compute-root" as NonEmptyStr, child: "compute")
+}
+
+fn compute_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  owned_directory_path(t: compute_root_directory(instance: instance)) as String as NonEmptyStr
+}
+
 fn compute_capacity_root(host_instance: HostDashboardInstance) -> NonEmptyStr {
-  join([dashboard_instance_compute_root(instance: host_instance) as String, "/capacity"], "") as NonEmptyStr
+  join([compute_root(instance: host_instance) as String, "/capacity"], "") as NonEmptyStr
 }
 
 fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {

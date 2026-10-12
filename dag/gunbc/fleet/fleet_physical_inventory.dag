@@ -28,8 +28,8 @@ import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
 import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.fleet_asset_identity { dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, chassis_srv5_placeholder, chassis_srv6_placeholder, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_asset_identity { dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
@@ -226,22 +226,6 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
     wireless: WirelessAdapterUnobserved,
     relay: RelayUnprovisioned,
     bootstrap_need: BootstrapNotNeeded,
-  },
-  HostSpatialFacts {
-    host: operator_host_srv5,
-    asset: chassis_srv5_placeholder,
-    residence: rack_01_unobserved_residence,
-    wireless: WirelessAdapterUnobserved,
-    relay: RelayUnprovisioned,
-    bootstrap_need: BootstrapNeeded,
-  },
-  HostSpatialFacts {
-    host: operator_host_srv6,
-    asset: chassis_srv6_placeholder,
-    residence: rack_01_unobserved_residence,
-    wireless: WirelessAdapterUnobserved,
-    relay: RelayUnprovisioned,
-    bootstrap_need: BootstrapNeeded,
   },
 ]
 
@@ -666,6 +650,9 @@ data dgx_spark_procurement_ledgers: List<InventoryLotEvidence> = [
   InventoryLotEvidence { lot: dgx_spark_ebay_pair_lot, events: dgx_spark_ebay_pair_lot_ledger },
 ]
 
+// THE EIGHT DGX SPARK ASSETS PROCURED AND RECEIVED, not the units held today: four were sold on 2026-10-07,
+// recorded as typed dispositions at gunbc.spark.dgx_procurement dgx_spark_disposed_units. Which four serials
+// they were is not observed (these labels do not claim host-slot order), so no sale is booked against a lot.
 data dgx_spark_asset_identities: List<PhysicalAssetIdentity> = [
   dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04,
   dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08,

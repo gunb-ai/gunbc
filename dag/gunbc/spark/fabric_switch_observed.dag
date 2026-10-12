@@ -17,7 +17,7 @@ import product.cable_plant_assessment {
   CablePlant, cable_plant, CableLegReading, LegReadingTaken, LegNeverRead, CablePlantInspection,
   inspect_cable_plant,
 }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 
 // THE SWITCHED FABRIC AS OBSERVED FROM BOTH ENDS ON 2026-09-05. Every Spark carries ONE leg of an FS
 // QDD-400G-4QPC015 breakout in its bottom cage; the switch's LLDP neighbour table names each Spark
@@ -249,10 +249,6 @@ data spark_fabric_leg_netdev: NonEmptyStr = "enp1s0f1np1" as NonEmptyStr
 data spark_fabric_leg_netdev_twin: NonEmptyStr = "enP2p1s0f1np1" as NonEmptyStr
 
 data fabric_lane_observations: List<FabricLaneObserved> = [
-  FabricLaneObserved { cage: 1, lane: 1, host: operator_host_srv5, spark_hostname: "spark-a3ee" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 1, lane: 3, host: operator_host_srv8, spark_hostname: "spark-ac79" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 1, lane: 5, host: operator_host_srv7, spark_hostname: "spark-c2b1" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 1, lane: 7, host: operator_host_srv6, spark_hostname: "spark-3bd5" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
   FabricLaneObserved { cage: 2, lane: 1, host: operator_host_srv10, spark_hostname: "spark-3336" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
   FabricLaneObserved { cage: 2, lane: 3, host: operator_host_srv12, spark_hostname: "spark-2196" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
   FabricLaneObserved { cage: 2, lane: 5, host: operator_host_srv9, spark_hostname: "spark-0c75" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
@@ -268,27 +264,27 @@ fn fabric_lane_for_host(host: HostIdentity) -> FabricLaneObserved? {
 }
 
 // A GROUP IS THE SET OF HOSTS ON ONE 400G CAGE: four legs of one breakout share the cage, so the
-// four hosts are one fabric-natural tensor-parallel group. Group A is cage 1, group B is cage 2.
-type FabricGroup = FabricGroupA | FabricGroupB
+// four hosts are one fabric-natural tensor-parallel group. Group B is cage 2. Group A (cage 1: srv5-srv8)
+// was decommissioned on 2026-10-07 -- the units were sold -- so cage 1 carries no lane and no group.
+type FabricGroupB {}
+
+type FabricGroup = FabricGroupB
 
 fn fabric_group_cage(g: FabricGroup) -> Nat {
   match g {
-    FabricGroupA => 1
-    FabricGroupB => 2
+    FabricGroupB {} => 2
   }
 }
 
 fn fabric_group_wire(g: FabricGroup) -> NonEmptyStr {
   match g {
-    FabricGroupA => "group-a" as NonEmptyStr
-    FabricGroupB => "group-b" as NonEmptyStr
+    FabricGroupB {} => "group-b" as NonEmptyStr
   }
 }
 
 // The exact inverse of fabric_group_wire; a word naming no group is no group.
 fn parse_fabric_group(wire: String) -> FabricGroup? {
-  if wire == "group-a" { Present { value: FabricGroupA } }
-  else if wire == "group-b" { Present { value: FabricGroupB } }
+  if wire == "group-b" { Present { value: FabricGroupB {} } }
   else { none }
 }
 
@@ -299,7 +295,7 @@ fn fabric_group_hosts(g: FabricGroup) -> List<HostIdentity> {
 fn fabric_group_of_host(host: HostIdentity) -> FabricGroup? {
   match fabric_lane_for_host(host: host) {
     Absent => none
-    Present { value: o } => if o.cage == 1 { Present { value: FabricGroupA } } else { Present { value: FabricGroupB } }
+    Present { value: o } => if o.cage == fabric_group_cage(g: FabricGroupB {}) { Present { value: FabricGroupB {} } } else { none }
   }
 }
 

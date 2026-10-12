@@ -25,12 +25,12 @@ fn request() -> WorkspaceRequest {
 
 fn offer_line_with(host: String, slot_index: Int, extra: Bool) -> String {
   let members = [
-    json_kv(key: "schema", value: json_string(s: "workspace-host-offer/v1")),
+    json_kv(key: "schema", value: json_string(s: "workspace-host-offer/v2")),
     json_kv(key: "host", value: json_string(s: host)),
     json_kv(key: "slot_index", value: json_int(n: slot_index)),
     json_kv(key: "observed_at", value: json_string(s: "2026-10-04T12:00:00Z")),
     json_kv(key: "commissioning_plan_hash", value: json_string(s: "plan-hash")),
-    json_kv(key: "gateway_receipt", value: json_string(s: "gateway-receipt")),
+    json_kv(key: "access_receipt", value: json_string(s: "access-receipt")),
     json_kv(key: "image", value: json_string(s: workspace_demo_image_identity() as String)),
     json_kv(key: "request_key", value: json_string(s: "reconcile-test")),
   ]

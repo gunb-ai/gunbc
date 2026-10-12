@@ -148,9 +148,7 @@ fn subject_probes(s: NamespaceCutSubjectIdentity) -> NamespaceCutSubjectProbes {
     }
     ImportDerivedUseLineInputs => NamespaceCutSubjectProbes {
       first: DagDeclarationProbe { module_path: "v1.compiler.emit_rust", decl_name: "emit_imports" },
-      rest: [
-        DagDeclarationProbe { module_path: "v1.compiler.emit_rust", decl_name: "emit_extract_import_paths_fn" },
-      ],
+      rest: [],
     }
     LegacyImportRepairApparatus => NamespaceCutSubjectProbes {
       first: HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "classify_unlisted_import_binding_source" },

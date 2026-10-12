@@ -51,6 +51,7 @@ fn srv3_seeded_install_media_input_for(user_data_body: NonEmptyStr) -> UbuntuSee
     nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
     user_data_body: user_data_body,
     seed_files: [],
+    seed_artifacts: [],
     grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
     volume_id: "UBUNTU_SEEDED",
     pinned_dates: seeded_install_media_pinned_dates,

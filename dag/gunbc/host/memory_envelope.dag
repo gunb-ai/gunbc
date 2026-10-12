@@ -1,0 +1,148 @@
+module gunbc.memory_envelope
+
+import std.types { Bool, Int, String }
+import std.optional { Present, Absent }
+import gunbc.memory_cgroup_binding {
+  CgroupBindDecision,
+  BindNotRequested,
+  BindUnnecessaryLimitAlreadyBinds,
+  BindApplicable,
+  BindRefused,
+}
+
+// WHAT BOUNDS A `gunbc test` RUN'S MEMORY, DECIDED BEFORE ANY PRODUCER, AS A FOLD OVER SUPPLIED
+// INPUTS -- the sibling of gunbc.memory_cgroup_binding cgroup_bind_decision, and for the same
+// reason: every discriminating case is reachable from a claim on any machine, and the seed
+// (v1_compiler.target_invocation_host) mirrors this module rather than authoring the decision
+// inline over the live environment, where no claim could reach it (review of gunbc#13658, option
+// B: the first version decided inline and admitted a cgroup with no numeric memory.max as a bound,
+// because it located the cgroup by the presence of memory.peak).
+//
+// THE THREE INPUTS. The bind decision the governor already took (gunbc.memory_cgroup_binding); the
+// requirement the invocation carried (gunbc.emitted_subject_build_gate
+// native_step_memory_envelope_env_name, whose one value is the projection below); and whether a
+// NUMERIC memory.max binds this process -- the governor's leaf-to-root walk
+// (memory_governor binding_cap_cgroup_dir), which reads `max` as unset
+// (extdeps.linux.cgroup_v2_memory: the sentinel is a third state, not a large number). Nothing
+// here reads a file; the host reads them and supplies the answers.
+//
+// THE ONE VALUE THE REQUIREMENT CARRIES is `slot`: the step must already sit under a cgroup
+// memory.max -- the fleet slot's (gunbc.runner_slot_desired) -- and its OOM kills and swap are
+// receipted at that grain. A bind the governor applied or found unnecessary bounds the step at a
+// finer grain and satisfies the requirement too.
+type MemoryEnvelopeRequirement
+  = EnvelopeNotRequested
+  | EnvelopeSlotRequired
+  | EnvelopeRequirementUnreadable { raw: String }
+
+fn memory_envelope_slot_requirement_value() -> String {
+  "slot"
+}
+
+// ABSENT AND UNREADABLE ARE DIFFERENT ANSWERS (the same rule as CgroupBindRequest): an unset input
+// is a question nobody asked, a value the binary does not know is a question asked badly, and the
+// second refuses rather than quietly proceeding unrequired.
+fn memory_envelope_requirement_from_text(raw: String?) -> MemoryEnvelopeRequirement {
+  match raw {
+    Absent => EnvelopeNotRequested
+    Present { value: v } =>
+      if v == memory_envelope_slot_requirement_value() { EnvelopeSlotRequired } else { EnvelopeRequirementUnreadable { raw: v } }
+  }
+}
+
+// THE GRAIN A BOUNDED RUN IS RECEIPTED AT: the leaf the bind created (a per-step cgroup), a limit
+// the governor observed already binding the process when a bind was asked, or the slot the gate
+// required. The receipt names it so a reader knows which cgroup's counters it is reading; whether
+// peak_bytes is this step's is decided by the readings (did memory.peak rise during the step), never
+// by the grain, because even the bind's leaf is reused across runs.
+type MemoryEnvelopeGrain
+  = EnvelopeLeaf
+  | EnvelopeExisting
+  | EnvelopeSlot
+
+fn memory_envelope_grain_label(g: MemoryEnvelopeGrain) -> String {
+  match g {
+    EnvelopeLeaf => "leaf"
+    EnvelopeExisting => "existing"
+    EnvelopeSlot => "slot"
+  }
+}
+
+type MemoryEnvelopeRefusalCause
+  = EnvelopeGrainUnknown { raw: String }
+  | EnvelopeAbsent { grain: MemoryEnvelopeGrain }
+
+type MemoryEnvelopeDecision
+  = EnvelopeNotRequired
+  | EnvelopeBounded { grain: MemoryEnvelopeGrain }
+  | EnvelopeRefused { cause: MemoryEnvelopeRefusalCause }
+
+fn envelope_bounded_or_absent(grain: MemoryEnvelopeGrain, numeric_max_binds: Bool) -> MemoryEnvelopeDecision {
+  if numeric_max_binds { EnvelopeBounded { grain: grain } } else { EnvelopeRefused { cause: EnvelopeAbsent { grain: grain } } }
+}
+
+// THE ARM ORDER IS THE POLICY. An unreadable requirement refuses before anything else is consulted.
+// With no requirement, a run is bounded only by a bind the governor applied or found unnecessary,
+// and is otherwise unrequired (an operator-local run measures nothing); with the slot requirement,
+// a run with no bind is bounded by the slot -- but ONLY IF A NUMERIC memory.max BINDS IT, which is
+// the input the first version never asked for. A refused bind reaches no envelope: the line already
+// stopped, and this decision says so rather than inventing one.
+fn memory_envelope_decision(
+  bind: CgroupBindDecision,
+  requirement: MemoryEnvelopeRequirement,
+  numeric_max_binds: Bool
+) -> MemoryEnvelopeDecision {
+  match requirement {
+    EnvelopeRequirementUnreadable { raw: raw } => EnvelopeRefused { cause: EnvelopeGrainUnknown { raw: raw } }
+    EnvelopeNotRequested =>
+      match bind {
+        BindApplicable { bound: _ } => envelope_bounded_or_absent(grain: EnvelopeLeaf, numeric_max_binds: numeric_max_binds)
+        BindUnnecessaryLimitAlreadyBinds { source: _ } => envelope_bounded_or_absent(grain: EnvelopeExisting, numeric_max_binds: numeric_max_binds)
+        BindNotRequested => EnvelopeNotRequired
+        BindRefused { cause: _ } => EnvelopeRefused { cause: EnvelopeAbsent { grain: EnvelopeLeaf } }
+      }
+    EnvelopeSlotRequired =>
+      match bind {
+        BindApplicable { bound: _ } => envelope_bounded_or_absent(grain: EnvelopeLeaf, numeric_max_binds: numeric_max_binds)
+        BindUnnecessaryLimitAlreadyBinds { source: _ } => envelope_bounded_or_absent(grain: EnvelopeExisting, numeric_max_binds: numeric_max_binds)
+        BindNotRequested => envelope_bounded_or_absent(grain: EnvelopeSlot, numeric_max_binds: numeric_max_binds)
+        BindRefused { cause: _ } => EnvelopeRefused { cause: EnvelopeAbsent { grain: EnvelopeLeaf } }
+      }
+  }
+}
+
+// THE VERDICT OVER TWO READINGS OF THE BOUNDING CGROUP, before the producer and at exit. The
+// counters are DIFFERENCES because a slot's cgroup outlives the step: an OOM kill an earlier job
+// suffered is not this step's. Swap is judged three ways. memory.swap.current is a gauge -- swap
+// resident at exit -- and an unreadable gauge is a violation, never a zero. memory.swap.peak is a
+// lifetime maximum, so a rise during the step means swap was charged even if it was freed before
+// exit; on a kernel without that file the rise is UNOBSERVABLE (Absent), which is not "did not
+// rise": it is a violation unless the cgroup's memory.swap.max is zero, because under a zero swap
+// limit no swap can have been charged and the missing counter has nothing to tell, while under any
+// other limit a run that could have swapped and cannot say so is not the envelope the gate names.
+type MemoryEnvelopeVerdict
+  = EnvelopeHeld
+  | EnvelopeViolated { oom_kills_delta: Int, swap_current: Int?, swap_peak_rose: Bool?, swap_max_zero: Bool }
+
+fn memory_envelope_verdict(oom_kills_delta: Int, swap_current: Int?, swap_peak_rose: Bool?, swap_max_zero: Bool) -> MemoryEnvelopeVerdict {
+  let swap_resident = match swap_current {
+    Absent => true
+    Present { value: v } => v > 0
+  }
+  let swap_rose_or_unobservable = match swap_peak_rose {
+    Absent => swap_max_zero == false
+    Present { value: rose } => rose
+  }
+  if oom_kills_delta > 0 || swap_resident || swap_rose_or_unobservable {
+    EnvelopeViolated { oom_kills_delta: oom_kills_delta, swap_current: swap_current, swap_peak_rose: swap_peak_rose, swap_max_zero: swap_max_zero }
+  } else {
+    EnvelopeHeld
+  }
+}
+
+fn memory_envelope_verdict_violates(v: MemoryEnvelopeVerdict) -> Bool {
+  match v {
+    EnvelopeHeld => false
+    EnvelopeViolated { oom_kills_delta: _, swap_current: _, swap_peak_rose: _, swap_max_zero: _ } => true
+  }
+}

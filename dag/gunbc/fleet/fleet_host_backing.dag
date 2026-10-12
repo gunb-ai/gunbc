@@ -1,0 +1,68 @@
+module gunbc.fleet_host_backing
+
+import std.types { Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import std.measure { ByteSize, HardwareThreadCount }
+import extdeps.toolchain.types { Architecture }
+import product.fabric.provider_route { ProviderRoute }
+import gunbc.provider_acquisition { ProviderResourceAcquisition }
+
+// WHAT SUPPLIES A FLEET HOST, as a fact separate from what the host is FOR. Backing, provisioning and
+// service intent were one fact in practice -- a CI host was assumed to be an owned machine with a BMC
+// to converge and an OS to install -- and the assumption made a rented guest owe operations it has no
+// subject for. Backing answers only "what physical or provider resource is this host", and the
+// facts a rented guest is entitled to travel WITH it, because they are the provider's offer rather
+// than anything this repository observes: an Altra package's thread count is not a CAX guest's vCPU
+// allocation, and nested virtualization is a property of the provider's product, not of the silicon
+// underneath it. What the running guest actually exposes is an observation, carried downstream of
+// adoption, never authored here.
+//
+// This module enumerates no provider. A provider's adapter (gunbc.hetzner_cloud_guest) builds a
+// GuestEntitlement from that provider's cited catalog row, so adding a provider is a new adapter
+// beside the others and never a new arm here.
+
+type GuestEntitlement {
+  offer: DeclarationRef
+  architecture: Architecture
+  vcpus: HardwareThreadCount
+  memory: ByteSize
+  disk: ByteSize
+  nested_virtualization: Bool
+  self_identity_url: String
+}
+
+// THE EXACT PROVIDER RESOURCE. An operation is bound to a provider's resource identifier, never to
+// the display name the provider shows, because a display name can be edited, reused or duplicated.
+// The binding IS the acquisition (gunbc.provider_acquisition): the identifier, the account it is held
+// under and the credential that drives it arrive together, so no consumer pairs one server's id
+// with another account's credential. A host enrolled before its acquisition is recorded carries that
+// as a typed obligation naming what would ground it (DESIGN section 4d), so adoption refuses on it
+// instead of guessing.
+type ProviderResourceBinding
+  = ProviderResourceAwaited { read_obligation: NonEmptyStr }
+  | ProviderResourceAcquired { acquisition: ProviderResourceAcquisition }
+
+// HOW AN OWNED MACHINE'S OPERATING SYSTEM ARRIVES. This is not implied by ownership: an Ampere
+// Altra server is installed over its BMC's virtual media, while an appliance such as a DGX Spark has
+// no BMC to converge and provisions itself through its own first boot. A provider guest has no arm
+// here because its OS always arrives as the provider's image -- that is what ProviderGuest means --
+// so a rented guest owing a BMC operation has no constructor.
+type OwnedProvisioning
+  = BmcVirtualMediaInstall
+  | ApplianceFirstBoot
+
+type HostBacking
+  = OwnedMachine { provisioning: OwnedProvisioning }
+  | ProviderGuest { route: ProviderRoute, entitlement: GuestEntitlement, resource: ProviderResourceBinding }
+
+// THE ONE RULE FOR WHETHER A BACKING CAN HOST THE FLEET'S MICROVM EXECUTION PATH, before anything is
+// observed: an owned machine can (its readiness is then observed), and a provider guest can only when
+// its offer permits nested virtualization. Present names the cited offer that forbids it. Adoption,
+// fabric supply and the runner-executor population all read this, so no consumer restates it.
+fn backing_microvm_forbidding_offer(backing: HostBacking) -> DeclarationRef? {
+  match backing {
+    OwnedMachine { provisioning: _ } => none
+    ProviderGuest { route: _, entitlement: e, resource: _ } =>
+      if e.nested_virtualization { none } else { Present { value: e.offer } }
+  }
+}

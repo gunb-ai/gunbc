@@ -65,7 +65,7 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
-import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, stock_installer_boot_medium }
+import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, stock_installer_boot_medium }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
 import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
@@ -608,6 +608,7 @@ test fn the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() -
       match medium.terminal {
         BootMediumNoTerminal { reason: _ } => false
         BootMediumVolumeLabel { label: label } => (label as String) == "GUNBC_MTC1_CENSUS_2404_3"
+        BootMediumRunnerHostUp { label: _ } => false
       }
   }
 }
@@ -717,8 +718,8 @@ test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -
   fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
     && !string_contains(s: inputs, pattern: "expected_revision")
     && string_contains(s: inputs, pattern: "${{ github.sha }}")
-    && starts_with(s: fleet_converge_checkout_ref_expr, prefix: "${{ (github.event.inputs.mode == 'mtcollins1_boot' ")
-    && string_contains(s: fleet_converge_checkout_ref_expr, pattern: "') && github.sha || github.event.inputs.expected_revision || github.sha }}")
+    && fleet_converge_checkout_ref_expr == "${{ github.sha }}"
+    && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "expected_revision")
 }
 
 fn runner_labels(r: RunnerSpec) -> List<String> {

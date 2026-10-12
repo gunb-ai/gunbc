@@ -85,8 +85,12 @@ fn pair_declared_names(names: List<String>, templates: List<AlgebraTypeTemplate>
     })
 }
 
-// THE RETURN IS DERIVED TOO, where std.algebra names it by a plain type name. count and length
-// return std.nat.Nat there, and the free-call surface must not restate it: a restated return is a
+// THE RETURN IS DERIVED TOO, where std.algebra names it by a plain type name. count and length do
+// NOT share one return there: the free monoid's count (collection_count_shape) states Int, a declared
+// departure (gunbc.rung_drop collection_count_result_stated_int_until_declared_results_are_judged),
+// while the other count/length rows state std.nat.Nat. Free-call typing here still takes
+// FinitePowerSet's row first, so a free count call is typed Nat. Either way the free-call surface must
+// not restate the return: a restated return is a
 // second authority that one row can drift from while the other stays green -- which is what a
 // mutation of the restated count row showed, with every claim still passing. A template whose
 // return is not a named type has no row here that reads it, and answers error_type so a future
@@ -184,8 +188,8 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
 // typed not-runnable, the top-as-answer/top-as-ignorance split), following
 // shell_materialize_operation_argv's argv_materialization_result precedent;
 // filesystem_read_result_type's make_kernel_record_type idiom is the right one only for a product.
-// DISSOLUTION, answering the compile_clean_forcecheck objection in place: this registry is itself a
-// flat global map that plan argues is a section-3 fork awaiting the PrimitiveDefinition identity
+// DISSOLUTION: this registry is itself a
+// flat global map, a section-3 fork awaiting the PrimitiveDefinition identity
 // join, and this row inherits that trigger EXACTLY as its sibling does - when the join dissolves
 // the registry, the two migrate together. One additive row is linear cost against that dissolution;
 // the alternative was a schema no v1 probe could inhabit.

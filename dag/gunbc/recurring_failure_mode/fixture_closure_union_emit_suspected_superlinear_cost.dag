@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.fixture_closure_union_emit_suspected_superlinear_cost
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fixture_closure_union_emit_suspected_superlinear_cost: RecurringFailureMode = RecurringFailureMode {
+  identity: "fixture_closure_union_emit_suspected_superlinear_cost" as NonEmptyStr,
+
+  receipts: [
+    "fixture-closure-union-emit suspected superlinear cost: the required floor's fixture-closure-union-emit phase (added by gunbc#13195) emits one union over the closures of the fixture-compiling members. THIS ROW RECORDS A SUSPICION, NOT A MEASUREMENT: the two data points below come from DIFFERENT INSTRUMENTS and one of them is censored, so neither establishes a scaling shape and the cost model is unknown. If the phase grows faster than its union size, a change that touches a few members can move the required floor from minutes to the job cap with no refusal naming the phase.",
+
+    "DATA POINT 1, a held line (gunbc#13575 floor run 37860278343): phase=fixture-closure-union-emit state=held members=105 fixture_compiles=247 wall_ms=100613. This is the only observation that prints members, compiles and wall time together, and it is a single size, so it fixes one point and no slope.",
+
+    "DATA POINT 2, a censored run (gunbc#13605 control run 37869158145, carrying gunbc#13211 plus gunbc#13575): the phase started at 02:27:44Z and was still running when the 90-minute job cancel fired at 02:58Z, CPU-bound with memory flat. The member count was NEVER PRINTED, so this point has no x-coordinate; it is a lower bound on wall time (at least 30 minutes against roughly 100 seconds at the first point) at an unknown union size. Flat memory with a saturated CPU is consistent with repeated work rather than a growing structure, and is not evidence of which.",
+
+    "THE ONLY STRUCTURAL FACT KNOWN ABOUT THE LARGER UNION: the 4 probes gunbc#13211 touched each close over roughly 715 modules, via gunbc.runner.runner_jit_perform. That says the touched members are wide; it does not say the union is large, nor that the phase's cost is a function of closure width rather than member count or fixture_compiles. Do not infer the dependence from it. The 2261 figure that circulated beside this incident was a pre-cut refusal count, a different quantity, and is not a size of this phase.",
+
+    "THE FAILURE SHAPE IF THE SUSPICION HOLDS, which is what makes it worth a row before it is a measurement: the phase has no budget of its own, so an overrun surfaces only as the job's wall cap cancelling the whole lane. That is a silent overrun (DESIGN section 5: a failure arm must refuse and be typed and located) -- the line does not stop at the phase, it stops at the job, and the cancellation names no cause. It also consumes a 90-minute runner slot per attempt.",
+
+    "ATTAINABLE CEILING: structurally guaranteed for the budget arm -- a phase budget is decidable and fully modeled, so exceeding it can be a typed refusal on the real acceptance path. The cost shape itself is not yet classifiable: it is a mitigatable cost until the scaling shape is known, and only then can it be derived by chain re-derivation (DESIGN section 6b) from what the union emit demands per member. Until measured, this row claims no rung above mitigatable.",
+
+    "NEXT-RUNG TRIGGER, at capability grain, in two parts that are both required. (a) TWO OR MORE UNION SIZES MEASURED ON THE SAME INSTRUMENT: the held line (phase, state, members, fixture_compiles, wall_ms) emitted at two or more distinct member counts, so the scaling shape (linear, n log n, quadratic, or worse) is read from one instrument rather than inferred across two. A censored run contributes nothing until the instrument prints members at start. (b) A BUDGET ON THE PHASE ITSELF so that exceeding it refuses with a typed cause naming fixture-closure-union-emit, members and elapsed time, instead of running silently to the job cap. This row does not change the gate; the budget and the extra measurement are the follow-up, and the budget's number must be grounded by (a), not copied from data point 1.",
+
+    "RECOGNITION RULE: a required-floor run cancelled at its job cap whose last announced phase is fixture-closure-union-emit, with CPU pegged and memory flat. The cheap discriminator is whether a held line for the phase was ever printed; if not, the phase did not finish, and the member count must be recovered before any scaling claim is made.",
+  ],
+
+  evidence: [],
+}

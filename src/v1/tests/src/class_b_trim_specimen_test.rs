@@ -8,8 +8,8 @@
 //! as discovered `dag/test/claim/*_test.dag` rows while the Class B gate observes only
 //! `item_registry` symbols (`run_class_b_import_closure_gate` / `rust_selection_policy_node`)
 //! and `trim` has no such registry row. Lane: import-strip witness-discovery cascade
-//! (#6985 Class B pool-membership coincidence; `import-strip-witness-discovery-cascade-diagnosis.md`
-//! §9, §12). Sole dissolution: migrate `fixtures/class_b_trim/*.dag` into enrolled
+//! (#6985 Class B pool-membership coincidence).
+//! Sole dissolution: migrate `fixtures/class_b_trim/*.dag` into enrolled
 //! `dag/test/claim/class_b_trim_*` witness rows on the floor roster and delete this
 //! Rust module when trim is enrolled on the Class B observation surface.
 
@@ -296,7 +296,7 @@ fn wire_projection_pool_roots() -> Vec<String> {
 
 /// REGRESSION CONTROL for the service-op wire-projection class.
 ///
-/// THE CLASS AS REGISTERED (`gunbc.plans.model_realization_fork` §5):
+/// THE CLASS:
 /// a service-op output field declared `T from "wire_key"` inferred as a FaithfulFreeMonoid/Coproduct
 /// carrier when the closure lacked v1-seed sources (`rust_corpus_repr`), so the METHOD form refused
 /// although the extdeps contract names String.

@@ -8,7 +8,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
 
 fn fsmg_intro() -> List<MarkdownBlock> {
   [
-    p(text: "Home: fleet subsumption (compute fabric). This doc is the receipt of the MANUAL steps taken to install and subsume srv4 (2026-07-22) that the modeling workflow did NOT cover. Each is a modeling gap: a step done by hand is a step the fleet cannot yet reproduce, verify, or retract through the model. The bar (per fleet_acceptance_criteria): a host must be install-able and subsume-able through the model with a read-back receipt, with zero hand-run shell. Until every item here dissolves, subsuming the next host (srv5) repeats the manual toil."),
+    p(text: "Home: fleet subsumption (compute fabric). This doc is the receipt of the MANUAL steps taken to install and subsume srv4 (2026-07-22) that the modeling workflow did NOT cover. Each is a modeling gap: a step done by hand is a step the fleet cannot yet reproduce, verify, or retract through the model. The bar: a host must be install-able and subsume-able through the model with a read-back receipt, with zero hand-run shell. Until every item here dissolves, subsuming the next host (srv5) repeats the manual toil."),
     quote(blocks: [p(text: "A step performed by hand is not modeled. It is not that the model is wrong; it is that the model is SILENT, and silence is the §5 fail-open of a workflow: the operator performs the missing step and the gap never surfaces as a diagnostic.")]),
     p(text: "Two families: (A) credential handling — every temp credential file materialized on disk maps to a missing modeled secret-lifecycle effect; and (B) provisioning steps the model does not yet drive. Priority order at the end."),
   ]

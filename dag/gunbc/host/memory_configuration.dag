@@ -1,10 +1,10 @@
 module gunbc.memory_configuration
 
+import extdeps.board_authority { BoardAuthorityRef }
 import std.types { List, NonEmptyStr }
 import std.measure { ByteSize }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
-import extdeps.boards.types { BaseboardModel }
 import extdeps.memory.types { DramModuleCatalogRow }
 import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
 import product.host_identity { HostIdentity }
@@ -82,7 +82,7 @@ type MemoryFirmwareSetting {
 
 type MemoryPlatform {
   host: HostIdentity
-  board: BaseboardModel
+  board: BoardAuthorityRef
   board_part: DeclarationRef
   processor: DeclarationRef
   firmware: NonEmptyStr

@@ -34,10 +34,10 @@ import gunbc.fabric_event_log {
 }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, serving_co_tenancy_class_wire }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
 import gunbc.harness.harness_seat {
   HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_reference_wire,
-  release_retry, HarnessSeatReleased, HarnessSeatReleaseRefused,
+  release_retry, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseRefused,
 }
 
 // ── THE SECOND DOOR, AND WHY AUTHENTICATION ALONE DOES NOT CLOSE IT ──────────────────────────
@@ -712,6 +712,7 @@ type FrontDoorStreamEnd
 fn front_door_release_after_end(store: FabricStorageBinding, pool: HarnessSeatPoolIdentity, reference: NonEmptyStr, now: EpochSecs) -> FrontDoorStreamEnd {
   match release_retry(store: store, partition: pool.partition, ceiling: pool.ceiling, reference: reference, reason: "the front door's proxied stream ended" as NonEmptyStr, now: now) {
     HarnessSeatReleased { partition: _ } => StreamEndedSeatReleased
+    HarnessHostedCredentialRemoved => StreamEndedReleaseRefused { detail: "a seat-pool release answered as a hosted credential removal; the seat may still be held" }
     HarnessSeatReleaseRefused { detail: d } => StreamEndedReleaseRefused { detail: d }
   }
 }

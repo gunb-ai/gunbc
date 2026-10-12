@@ -88,7 +88,7 @@ fn nfbcp_parsed(text: String) -> Optional<Node> {
       match dag_prepared_grammar() {
         Rejected { diagnostics: _ } => Absent
         Accepted { value: prepared, diagnostics: _ } =>
-          match parse_module_prepared(tokens: ts, prepared: prepared, validation_residue: None) {
+          match parse_module_prepared(tokens: ts, prepared: prepared) {
             Rejected { diagnostics: _ } => Absent
             Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
           }

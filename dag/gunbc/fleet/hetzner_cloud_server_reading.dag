@@ -1,0 +1,62 @@
+module gunbc.hetzner_cloud_server_reading
+
+import std.types { Bool, Int, String }
+import std.optional { Present, Absent }
+import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.cloud.hetzner_cloud_api { HetznerServerResponse, HetznerServerRead, HetznerServerObserved, HetznerServerReadRefused }
+import gunbc.provider_acquisition { ProviderResourceAcquisition }
+
+// ONE ACQUIRED SERVER AS THE CLOUD API ANSWERED ABOUT IT, judged against its acquisition row. Pure:
+// the exchange is gunbc.hetzner_cloud_server_control's, and this is what both it and the control
+// route (gunbc.host_control_route) read, so the route does not import the transport.
+
+// THE SERVER THE API ANSWERED ABOUT MUST BE THE ONE ACQUIRED. A resource id that does not parse, or an
+// answer about another id, refuses: the acquisition row is the only authority for which server a
+// host is, and a read that cannot be joined to it establishes nothing about that host.
+type AcquiredServerRead
+  = AcquiredServerObserved { acquisition: ProviderResourceAcquisition, server: HetznerServerResponse }
+  | AcquiredServerIdUnparsed { acquisition: ProviderResourceAcquisition }
+  | AcquiredServerAnsweredForAnother { acquisition: ProviderResourceAcquisition, observed: Int }
+  | AcquiredServerReadRefused { acquisition: ProviderResourceAcquisition, refusal: RestRefusal }
+
+fn acquired_server_id(acquisition: ProviderResourceAcquisition) -> Int? {
+  parse_int(s: acquisition.resource_id as String)
+}
+
+fn judge_acquired_server_read(acquisition: ProviderResourceAcquisition, id: Int, read: HetznerServerRead) -> AcquiredServerRead {
+  match read {
+    HetznerServerReadRefused { refusal: r } => AcquiredServerReadRefused { acquisition: acquisition, refusal: r }
+    HetznerServerObserved { server: s } =>
+      if s.id == id { AcquiredServerObserved { acquisition: acquisition, server: s } }
+      else { AcquiredServerAnsweredForAnother { acquisition: acquisition, observed: s.id } }
+  }
+}
+
+fn rest_refusal_line(r: RestRefusal) -> String {
+  match r {
+    RestStatusRefused { status, body } => join(["status ", to_string(status as Int), ": ", body], "")
+    RestTransportRefused { cause } => concat("no response: ", cause as String)
+    RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " undecodable: ", cause as String], "")
+  }
+}
+
+fn acquired_server_read_line(read: AcquiredServerRead) -> String {
+  match read {
+    AcquiredServerObserved { acquisition: a, server: s } =>
+      join(["observed ", a.resource_id as String, " name=", s.name, " status=", s.status], "")
+    AcquiredServerIdUnparsed { acquisition: a } => join(["refused ", a.resource_id as String, ": the acquisition's resource id is not a Hetzner server id"], "")
+    AcquiredServerAnsweredForAnother { acquisition: a, observed: o } =>
+      join(["refused ", a.resource_id as String, ": the API answered about server ", to_string(o)], "")
+    AcquiredServerReadRefused { acquisition: a, refusal: r } => join(["refused ", a.resource_id as String, ": ", rest_refusal_line(r: r)], "")
+  }
+}
+
+fn acquired_server_observed(read: AcquiredServerRead) -> Bool {
+  match read {
+    AcquiredServerObserved { acquisition: _, server: _ } => true
+    AcquiredServerIdUnparsed { acquisition: _ } => false
+    AcquiredServerAnsweredForAnother { acquisition: _, observed: _ } => false
+    AcquiredServerReadRefused { acquisition: _, refusal: _ } => false
+  }
+}
+

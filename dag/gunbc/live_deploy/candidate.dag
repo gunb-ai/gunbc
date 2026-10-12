@@ -14,22 +14,20 @@ import gunbc.running_release_identity {
   running_release_surface_equals,
 }
 
-// A REVISION NAMES A COMMIT; THE DEPLOY SHIPS A WORKING TREE. Those are the same bytes only when the
-// checkout is clean, and nothing above established that. The sync's working-tree leg rsyncs the runner
-// checkout wholesale except gunbc.live_deploy.deployed_tree_scope deployed_tree_excluded_prefixes, so an edit
-// or an untracked file is DEPLOYED while HEAD does not name it — and the resulting candidate
-// { revision: A, surface: B } is self-consistent all the way down: the emitter writes A into ExecStart, the
-// process reports A, readiness compares A against A and greens, and the ancestry decision downstream
-// orders the deployment as A. Nothing in the chain can see that the bytes were never A's, because every
-// party is reading the same wrong answer. This is the one class the identity channel cannot catch by
-// construction, which is why it is refused at admission instead.
+// A REVISION NAMES A COMMIT, AND ADMISSION ESTABLISHES THAT THE CHECKOUT IS THAT COMMIT. The deployed
+// tree is now converged git-natively (gunbc.live_deploy.repository_convergence repository_converge_wet
+// installs the candidate COMMIT, never the runner's working tree), but the deploying process still
+// builds and renders from this checkout: an edit or an untracked file here would make the candidate
+// { revision: A, surface: B } self-consistent all the way down -- the emitter writes A into ExecStart,
+// the process reports A, readiness compares A against A and greens -- while B was rendered from bytes A
+// does not name. That class cannot be caught by the identity channel by construction, which is why it is
+// refused at admission instead. Historically the working-tree leg was an rsync of the checkout with
+// `--delete`, which made a stray file load-bearing on the host; that transport is gone, and the refusal
+// stays because the render-from-checkout half of the hazard did not go with it.
 //
-// THE UNTRACKED ARM IS NOT A COURTESY. `--delete` on the working-tree leg means a stray file in the
-// checkout is copied to the host and then persists there; the deployment's own source sync is the transport
-// that makes an untracked path load-bearing. It is scoped to DEPLOYED paths for the same reason: a file
-// under target/ or .git/ is excluded by the sync, so refusing on it would be refusing on bytes that never
-// leave the runner — a fail-closed arm that fires on a state which is not the invalid one is just noise,
-// and noise is what gets suppressed later.
+// Paths under gunbc.live_deploy.deployed_tree_scope deployed_tree_excluded_prefixes (target/, .git/,
+// host session and cache state) are out of scope: refusing on them would fire on a state that is not
+// the invalid one, and noise is what gets suppressed later.
 //
 // FOUR SEPARATE PATH LISTS, NOT A COUNT OR A BOOL. Staged, unstaged-tracked, untracked-deployed and
 // ignored-deployed have different remedies — commit the index, commit or discard the edit, add or clean the
@@ -43,14 +41,12 @@ import gunbc.running_release_identity {
 // a path that .gitignore exists to keep out of the index.
 //
 // It closes a hole the first version of this admission had. `git status --porcelain=v1 -z
-// --untracked-files=all` does not report ignored files at all, while the source sync excludes only the
-// prefixes deployed_tree_scope names — so an ignored path outside them (the residue is now the .env family,
-// which stays refused because `.env.*.local` is a wildcard no prefix can spell, and, inside a source root the
-// graph actually reads, src/v2/test/claim/manual/sg2_scratch_probe.dag) was copied by rsync while the
-// admission reported the tree clean. The resulting state is self-consistent and therefore invisible to every later comparison: HEAD names
-// revision A, rsync installs bytes B, the candidate's expected surface is rendered from B, the process reports
-// A and B, and readiness compares A against A and B against B and greens. That is exactly the false identity
-// this admission exists to make unrepresentable, surviving inside it.
+// --untracked-files=all` does not report ignored files at all, so an ignored path outside the excluded
+// prefixes (the .env family, which stays refused because `.env.*.local` is a wildcard no prefix can
+// spell; inside a source root the graph actually reads, src/v2/test/claim/manual/sg2_scratch_probe.dag;
+// and a legacy ledger roster.dag an older gunbc wrote) was invisible while the admission reported the
+// tree clean -- and an ignored file under a source root changes what this checkout compiles. That is
+// exactly the false identity this admission exists to make unrepresentable, surviving inside it.
 type CandidateCheckoutObservation
   = CandidateCheckoutClean
   | CandidateCheckoutDirty {

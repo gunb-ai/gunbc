@@ -105,7 +105,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Every witness here runs against CONSTRUCTED fixtures, never the live roadmap population — a live
 // count or row is a moving target that turns a semantic claim into a snapshot transcription (the A1
 // lesson, and the standing fixtures-not-live-counts rule). The specimen fixture is the operator's
-// falsifier row (docs/plans/roadmap-presentation-seam-design.md section 1): seven obligations with
+// falsifier row: seven obligations with
 // Environment/Workspace/Agent complete, four pending, worker process exited, session container
 // present.
 
@@ -1363,7 +1363,7 @@ test fn witness_family_member_never_nests() -> Bool {
 // kinds, the decided activity arm and attention — never from the rendered text. Every class has a
 // discriminating fixture below, plus one unclassifiable-stays-neutral control; exec is the
 // declared vocabulary member with no on-page producer today (its trigger is named in the authority
-// comment: ProviderRunning carrying the typed CodexItemActivity).
+// comment: ProviderRunning carrying the typed ProviderItemActivity).
 
 fn fx_refused_activity() -> ActivityView {
   activity_view_from_parts(

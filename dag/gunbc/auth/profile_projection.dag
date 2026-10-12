@@ -22,7 +22,8 @@ import extdeps.languages.json.parse {
 import extdeps.uri { Uri, Https, Http, uri_wire }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthProfiles }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import gunbc.auth.session { AuthenticatedSession }
 
 // THE PROFILE PROJECTION (Cut 4 plan, docs/plans/google-workspace-identity-convergence.md
@@ -55,9 +56,14 @@ type ProfileStoreLayout {
   root: FilePath
 }
 
+// THE DIRECTORY THIS STORE DEMANDS; the layout's root is read off it (gunbc.owned_directory).
+fn profile_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  dashboard_instance_private_directory(instance: instance, member: "auth-profiles" as NonEmptyStr, child: "auth-profiles")
+}
+
 fn profile_store_layout_for_instance(instance: HostDashboardInstance) -> ProfileStoreLayout {
   ProfileStoreLayout {
-    root: dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthProfiles),
+    root: owned_directory_path(t: profile_store_directory(instance: instance)),
   }
 }
 

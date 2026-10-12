@@ -16,7 +16,7 @@ import gunbc.host_phase_status {
   host_phase_cells_for_enrollment,
   host_phase_cell_verdict,
 }
-import gunbc.host_assimilation_program { HostEnrollmentIntent }
+import gunbc.fleet_enrollment { HostEnrollmentIntent }
 import gunbc.fleet_converge_cli { ConvergeCliReceipt, converge_cli_receipt_converged }
 
 // THE fleet-atomic-convergence-verdict fold (operator directive 2026-08-08): ONE verdict

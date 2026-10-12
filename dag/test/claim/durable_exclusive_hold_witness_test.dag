@@ -30,7 +30,11 @@ import std.durable_exclusive_hold {
 import gunbc.durable_exclusive_hold_file_store {
   HoldPayloadDecode, HoldPayloadDecoded, HoldPayloadUndecodable,
   hold_slot_payload, decode_hold_slot_payload, hold_observation_of_cas,
+  windowed_hold_release_from_verify, windowed_hold_recovery_from_verify,
+  WindowedHoldReleaseNamedHeadMoved, WindowedHoldReleaseProtocol,
+  WindowedHoldRecoveryNamedHeadMoved, WindowedHoldRecoveryProtocol,
 }
+import gunbc.durable_cas_file_store { NamedWindowHeadMoved }
 
 // THE PURE HALF OF THE HOLD PROTOCOL AND ITS CODEC. Every row here decides
 // from a supplied observation over the PURE assessments; nothing reaches a
@@ -366,4 +370,27 @@ test fn a_dead_verdict_recovers_only_the_hold_it_was_taken_of() -> Bool {
       HoldRecoveryRefused { refusal: HoldRecoveryNothingHeld } => true
       _ => false
     })
+}
+
+test fn named_window_head_moved_release_does_not_claim_an_observed_current_generation() -> Bool {
+  match windowed_hold_release_from_verify(
+    verify: NamedWindowHeadMoved { named_generation: 3 },
+    owner: eh_owner(text: "demand-7|offer-1"),
+    acquired_generation: 3,
+  ) {
+    WindowedHoldReleaseNamedHeadMoved { named: n } =>
+      cas_generation_count(g: n) == 3
+    WindowedHoldReleaseProtocol { assessment: _ } => false
+    _ => false
+  }
+}
+
+test fn named_window_head_moved_recovery_does_not_claim_an_observed_current_generation() -> Bool {
+  let dead = eh_report(holder: "mtcollins1-boot:4242", generation: 3, dead: 1)
+  match windowed_hold_recovery_from_verify(verify: NamedWindowHeadMoved { named_generation: 3 }, report: dead) {
+    WindowedHoldRecoveryNamedHeadMoved { named: n } =>
+      cas_generation_count(g: n) == 3
+    WindowedHoldRecoveryProtocol { assessment: _ } => false
+    _ => false
+  }
 }

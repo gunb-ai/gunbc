@@ -743,24 +743,3 @@ macro_rules! eval_call_native_intercept_arm {
     ("native_intercept.fold_list") => { $crate::v1_interpreter_dispatch_generated::EvalCallNativeInterceptArm::NativeInterceptFoldList };
     ("native_intercept.fold_list_right") => { $crate::v1_interpreter_dispatch_generated::EvalCallNativeInterceptArm::NativeInterceptFoldListRight };
 }
-#[rustfmt::skip]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum TryParseTableMemoDispatchArm {
-    ParseTableMemoParseTableLookup,
-    ParseTableMemoParseTableInsert,
-}
-
-#[rustfmt::skip]
-pub fn lookup_try_parse_table_memo_dispatch(spelling: &str) -> Option<TryParseTableMemoDispatchArm> {
-    match spelling {
-        "parse_table_lookup" => Some(TryParseTableMemoDispatchArm::ParseTableMemoParseTableLookup),
-        "parse_table_insert" => Some(TryParseTableMemoDispatchArm::ParseTableMemoParseTableInsert),
-        _ => None,
-    }
-}
-
-#[rustfmt::skip]
-macro_rules! try_parse_table_memo_dispatch_arm {
-    ("parse_table_memo.parse_table_lookup") => { $crate::v1_interpreter_dispatch_generated::TryParseTableMemoDispatchArm::ParseTableMemoParseTableLookup };
-    ("parse_table_memo.parse_table_insert") => { $crate::v1_interpreter_dispatch_generated::TryParseTableMemoDispatchArm::ParseTableMemoParseTableInsert };
-}

@@ -6,7 +6,7 @@ import gunbc.fleet_intent_network { srv9_host_lan_endpoint }
 import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.serving_rank_observe { container_incarnation_id, ObservedRankIncarnation }
 import gunbc.spark.model_snapshot_materialize { RemoteRan }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import gunbc.harness.harness_backend { harness_launch_from_body }
 import extdeps.vllm.bench_serve { VllmBenchServeRequest }
 import extdeps.vllm.kv_layout { AdmissionCostUnestablished }
@@ -60,8 +60,8 @@ fn pre_runner_glm_step_text(standing: ServingPerformanceSubjectStanding) -> Stri
     subject: standing,
     window: window_from_drain(drain: DrainObservedIdle),
     continuity: counter_continuity(
-      before: harness_launch_from_body(group: FabricGroupB, address: srv9_host_lan_endpoint.address, body: fx_before),
-      after: harness_launch_from_body(group: FabricGroupB, address: srv9_host_lan_endpoint.address, body: fx_after),
+      before: harness_launch_from_body(group: FabricGroupB {}, address: srv9_host_lan_endpoint.address, body: fx_before),
+      after: harness_launch_from_body(group: FabricGroupB {}, address: srv9_host_lan_endpoint.address, body: fx_after),
     ),
     occupancy: occupancy_trace_from_endpoint_scrapes(before_body: fx_before, after_body: fx_after),
     before_body: fx_before,

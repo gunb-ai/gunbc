@@ -79,7 +79,14 @@ import gunbc.host_reset_return {
   select_reset_observer,
   subject_for_observer,
 }
-import gunbc.host_reset_subject_roster { AdmittedResetSubject, reset_observer_peer_roster, reset_subject_for, reset_subject_roster }
+import gunbc.host_reset_subject_roster {
+  AdmittedResetSubject,
+  reset_lookup_subject,
+  reset_observer_peer_roster,
+  reset_roster_hosts,
+  reset_subject_for,
+  reset_subject_roster,
+}
 import gunbc.machine_intake_oob_boot_handoff {
   oob_boot_handoff,
   BootControlIssued,
@@ -417,7 +424,7 @@ fn host_reset_return_attempt(
 {
   let subject = candidate.binding.host.host as NonEmptyStr
   let selection = select_reset_observer(
-    subject_roster: reset_subject_roster(),
+    subject_roster: reset_roster_hosts(entries: reset_subject_roster()),
     peer_roster: reset_observer_peer_roster(),
     subject: subject,
     observer: observer,
@@ -670,7 +677,7 @@ fn host_reset_return_wet() -> ProcessExit
     RouteEstablished { route: r } => r
   }
   let assignment = reset_dispatch_pairings(
-    subject_roster: reset_subject_roster(),
+    subject_roster: reset_roster_hosts(entries: reset_subject_roster()),
     peer_roster: reset_observer_peer_roster(),
   )
   return match subject_for_observer(assignment: assignment, observer: observer) {
@@ -680,7 +687,7 @@ fn host_reset_return_wet() -> ProcessExit
         remedy: "this runner is not an assigned observer, so it has no subject to watch",
       )
     Present { value: subject } =>
-      match reset_subject_for(host: subject) {
+      match reset_lookup_subject(lookup: reset_subject_for(host: subject)) {
         Absent =>
           host_reset_return_preflight_exit(
             refusal: SubjectHasNoRosterRow { subject: subject },

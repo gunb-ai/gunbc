@@ -1,0 +1,65 @@
+module gunbc.workspace_ssh_access
+
+import std.types { String, NonEmptyStr, Timestamp }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import product.host_identity { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.workspace_gateway { WorkspaceGateway }
+import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_refusal }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+
+// Administrator-owned enrollment chooses where the SSH client runs. A host-local client needs
+// no forwarding permission or agent on a relay. Its identity file is local to that selected host;
+// only the matching PUBLIC key is carried by the guest enrollment.
+type WorkspaceSshAccess
+  = WorkspaceSshFromHost { identity_file: NonEmptyStr }
+  | WorkspaceSshThroughGateway
+
+type WorkspaceAccessEvidence
+  = WorkspaceHostAccessObserved { host: HostIdentity, observed_at: Timestamp }
+  | WorkspaceGatewayAccessObserved { evidence: WorkspaceGatewayEvidence }
+
+fn workspace_access_refusal(access: WorkspaceSshAccess, slot: RunnerSlotIdentity,
+  evidence: WorkspaceAccessEvidence, now: Timestamp) -> NonEmptyStr? {
+  match access {
+    WorkspaceSshFromHost { identity_file: _ } => match evidence {
+      WorkspaceGatewayAccessObserved { evidence: _ } => Present { value: "host-local access requires an observation on the selected host" }
+      WorkspaceHostAccessObserved { host, observed_at } =>
+        if host != slot.host { Present { value: "host-local access was observed on another host" } }
+        else if !utc_instant_is_canonical(t: now) || !utc_instant_is_canonical(t: observed_at)
+          || utc_instant_seconds_after(later: now, earlier: observed_at) < 0
+          || utc_instant_seconds_after(later: now, earlier: observed_at) > 60 {
+          Present { value: "host-local access observation is stale or in the future" }
+        } else { none }
+    }
+    WorkspaceSshThroughGateway => match evidence {
+      WorkspaceHostAccessObserved { host: _, observed_at: _ } => Present { value: "host-local access cannot prove SSH forwarding" }
+      WorkspaceGatewayAccessObserved { evidence: gateway } => workspace_gateway_refusal(slot: slot, evidence: gateway, now: now)
+    }
+  }
+}
+
+fn workspace_access_receipt(evidence: WorkspaceAccessEvidence) -> NonEmptyStr {
+  serialize_content_hash(hash: content_hash_of_value(value: to_string(evidence) as NonEmptyStr)) as NonEmptyStr
+}
+
+// The connection carries the route it actually verified, so a host-local observation cannot
+// accidentally be rendered as a ProxyJump instruction.
+type WorkspaceConnectionRoute
+  = WorkspaceDirectSsh { slot: RunnerSlotIdentity, identity_file: NonEmptyStr }
+  | WorkspaceGatewaySsh { gateway: WorkspaceGateway, known_host: NonEmptyStr }
+
+fn workspace_connection_route_refusal(slot: RunnerSlotIdentity, route: WorkspaceConnectionRoute) -> NonEmptyStr? {
+  match route {
+    WorkspaceDirectSsh { slot: selected, identity_file: _ } =>
+      if runner_slot_identity_equal(a: slot, b: selected) { none }
+      else { Present { value: "direct SSH route names another host or slot" } }
+    WorkspaceGatewaySsh { gateway, known_host } =>
+      if !runner_slot_identity_equal(a: slot, b: gateway.slot) {
+        Present { value: "gateway does not name this allocation's selected host and slot" }
+      } else if !starts_with(s: known_host as String, prefix: concat(gateway.tailnet_name as String, " "))
+        || string_contains(s: known_host as String, pattern: "\n") || string_contains(s: known_host as String, pattern: "\r") {
+        Present { value: "enrolled gateway key does not name this selected host" }
+      } else { none }
+  }
+}

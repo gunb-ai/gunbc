@@ -10,10 +10,11 @@ use self::LiteralElaborationRefusal::*;
 use self::LiteralHomomorphismLookup::*;
 use self::LiteralSourceKind::*;
 use self::LiteralUnfolding::*;
+pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
+pub use crate::std_types::range;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -266,6 +267,12 @@ pub fn elaborate_literal_at(
 pub struct KernelGrounding {
     pub source_kind: LiteralSourceKind,
     pub carrier: Rc<DeclarationRef>,
+    pub min: Option<i64>,
+    pub max: Option<i64>,
+}
+
+pub fn kernel_grounding_admits(row: Rc<KernelGrounding>, value: i64) -> bool {
+    crate::std_types::range(value.clone(), row.min.clone(), row.max.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

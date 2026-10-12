@@ -3,7 +3,7 @@ module gunbc.fleet_capacity_control
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import product.host_identity { HostIdentity }
 import extdeps.llm.cli_lifecycle { ProviderKind, ClaudeCliProvider, CodexCliProvider, CursorCliProvider, provider_kind_label }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_enrollment { InteractiveSessionParticipation, hosts_enrolled_for }
 
 // THE OPERATOR'S CONTROL OVER ACTIVE FLEET CAPACITY, ON TWO AXES THAT ARE NOT THE SAME FACT.
 //
@@ -209,7 +209,7 @@ fn fleet_capacity_admission_line(admission: CapacityAdmission) -> String {
 // THE FLEET THIS CONTROL SPANS. Four hosts, taken from the fleet identity authority rather than
 // respelled, so a host added there is a host this control can reach without an edit here.
 fn capacity_controlled_hosts() -> List<HostIdentity> {
-  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+  hosts_enrolled_for(wanted: InteractiveSessionParticipation)
 }
 
 fn capacity_controlled_providers() -> List<ProviderKind> {

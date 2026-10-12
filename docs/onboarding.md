@@ -60,7 +60,7 @@ Done when: git config core.hooksPath reads back .githooks. THAT IS THE WHOLE CHE
 
 ### 5. run-witnesses
 
-Run the corpus lane the merge gate runs: the parse sweep and the witness floor. EXPECT TENS OF MINUTES, NOT SECONDS -- this and the emission lane are the two long steps on this page, and a reader who assumes a hang and kills it has thrown away the run rather than the wait.
+Run the corpus lane that WAS the merge gate's floor until the v1 withdrawal of 2026-10-09 (gunbc.rung_drop v1_required_lanes_withdrawn): the parse sweep and the witness floor. Nothing on the required path executes a witness now, so this run is the only place the enrolled population is folded, and a red here reaches main unless you act on it. EXPECT TENS OF MINUTES, NOT SECONDS -- this and the emission lane are the two long steps on this page, and a reader who assumes a hang and kills it has thrown away the run rather than the wait.
 
 `target/release/claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses`
 
@@ -166,6 +166,13 @@ Obstacles whose only honest disposition is that somebody else must act:
 
 - propose: OPERATOR GATED. whoever administers repository access; provisioning is a separate item and is deliberately not specified here
 - land: OPERATOR GATED. the operator, who performs the merge; this is the single irreducible operator dependency remaining in the path and it is a policy choice rather than a gap
+
+## Reference: CLIs, local checks and regeneration
+
+- **Two CLIs.** `gunbc` is the seed's CLI (`std.compiler_entry` `RetainedHostCliKernel`, host Rust in `v1_compiler.cli_run`), unreachable from a self-emitted binary. The v2 door is `v2.cli.compile_cli` (`std.compiler_entry` `NativeCliDriver`): `.dag` decides parsing, refusals, output and exit, and its rendered main only performs the host reads and writes (`gunbc.source_root_read`).
+- **Local checks.** `cargo fmt --all --check` runs in the generated pre-commit hook (`gunbc.githooks_pre_commit_emit`). `cargo clippy --all-targets -- -D warnings` (`gunbc.repo_self_build` `repo_self_clippy_command`, the only command compiling the integration-test and example targets) and `cargo test --release -p v1-compiler --lib` (`repo_self_test_command`) are local only and block nothing.
+- **Hooks.** `git config core.hooksPath .githooks`; the generated hooks converge the rest from `gunbc.repo_local_git_config`, including a merge driver that refuses a both-sides change to a generated path and prints the regeneration recipe.
+- **Regenerating projections.** `tools.generated_artifact_gate` `main_wet` rewrites the committed generated artifacts from their authorities, `main` verifies them; `tools.docs_projection_gate` `regen` renders the on-demand ledger views.
 
 ## The other commands worth knowing
 

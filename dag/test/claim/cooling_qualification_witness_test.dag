@@ -1,5 +1,7 @@
 module test.claim.cooling_qualification_witness
 
+import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.vendor.amd { amd }
 import std.types { Bool, List, String }
@@ -21,7 +23,6 @@ import extdeps.cpu.types {
   cooling_mount_eq,
   cpu_socket_eq,
 }
-import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
 import gunbc.fleet_physical_inventory {
   cooler_srv3,
   installed_cooling_realizations,
@@ -49,7 +50,7 @@ data srv3_installed_cooling: InstalledCoolingRealization = InstalledCoolingReali
   cooler_asset: cooler_srv3,
   cooler: dynatron_w1_catalog,
   processor: altra_max_m12830_catalog,
-  baseboard_model: AsrockRackAltrad8ud1l2t,
+  baseboard_model: asrock_altrad8ud_board_authority,
 }
 
 // GREEN: the fleet's actual srv3 pairing is catalog-compatible. W1 socket LGA4926 matches the
@@ -108,7 +109,7 @@ test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool 
 
 // Control 3: emptying the supported-board population refuses. This is the control that would
 // have passed vacuously while supported_motherboards was a bare string list compared against a
-// differently-spelled label — grounding it on BaseboardModel is what makes the check real.
+// differently-spelled label — grounding it on BoardAuthorityRef is what makes the check real.
 test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
   let unsupported_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
@@ -280,7 +281,7 @@ data duplicate_cooling_ab: List<InstalledCoolingRealization> = [
     cooler_asset: cooler_srv3,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
-    baseboard_model: AsrockRackAltrad8ud1l2t,
+    baseboard_model: asrock_altrad8ud_board_authority,
   },
 ]
 
@@ -290,7 +291,7 @@ data duplicate_cooling_ba: List<InstalledCoolingRealization> = [
     cooler_asset: cooler_srv3,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
-    baseboard_model: AsrockRackAltrad8ud1l2t,
+    baseboard_model: asrock_altrad8ud_board_authority,
   },
   srv3_installed_cooling,
 ]

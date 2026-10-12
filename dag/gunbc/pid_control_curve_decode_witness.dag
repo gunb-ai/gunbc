@@ -124,7 +124,7 @@ data reordered_reading_curve_text: String = "\{\"reading\": \{\"2\": 62, \"0\": 
 fn member_order_does_not_change_the_semantic_curve() -> Bool {
   let points = decoded_points(text: reordered_reading_curve_text)
   points.length() == 3
-    && points.first().index == 0
+    && (match points.first() { Present { value: __v } => __v.index == 0  Absent => false })
     && exact_decimal_wire(d: measure_count(m: points.first().reading)) == "40"
     && exact_decimal_wire(d: measure_count(m: points.skip(n: 2).first().reading)) == "62"
 }

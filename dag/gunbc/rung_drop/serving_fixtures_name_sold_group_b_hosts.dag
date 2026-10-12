@@ -1,0 +1,42 @@
+module gunbc.rung_drop.serving_fixtures_name_sold_group_b_hosts
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
+
+// OPERATOR-RULED (2026-10-10): every one of the eight procured DGX Sparks is sold, Group B (srv9-srv12)
+// included. The scoped cut removed srv9-srv12 from everything that can reach real hardware: the
+// operator host roster, the host-key enrolment roster, the endpoint list of gunbc.fleet_intent_network, the
+// router bindings and observed reservations of gunbc.spark.dgx_procurement (so no reserved identity
+// remains), the wireless-link desired rows, and the administrator credential roster that
+// spark_converge_target_selection resolves against. gunbc.spark.dgx_procurement dgx_spark_disposed_units
+// records all eight units as sold.
+//
+// WHAT FALLS. The witnesses that use FabricGroupB or the srv9-srv12 identity symbols (and the
+// srv9 endpoint literal) purely as TEST DATA were not re-fixtured: they still name sold hosts. The
+// identity and endpoint data symbols are retained for exactly that population and for
+// gunbc.spark.glm_serving_load; nothing rostered reaches them.
+//
+// WHAT DOES NOT FALL. No fleet-converge target, host roster, enrolment, binding, reservation or LAN
+// endpoint list names a sold unit, so no mode can dispatch to one.
+data serving_fixtures_name_sold_group_b_hosts: RungDrop = RungDrop {
+  identity: "serving_fixtures_name_sold_group_b_hosts" as NonEmptyStr,
+
+  subject: "serving, harness and fabric witnesses whose fixtures name FabricGroupB and the sold hosts srv9-srv12 as test data rather than a live host population",
+
+  declared: "2026-10-10",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "the live Group B host population (srv9-srv12) that the serving and fabric witnesses' fixtures were authored against" },
+    population: [
+      "witness fixtures under dag/test/claim that name FabricGroupB or operator_host_srv9 through operator_host_srv12 as inputs",
+      "gunbc.spark.glm_serving_load, which still addresses srv9_host_lan_endpoint",
+      "no rostered fleet target, enrolment, binding, reservation or endpoint list: those are removed, not dropped",
+    ],
+    restoration_trigger: "serving re-fixtured onto a live host population: the serving, harness and fabric witnesses and gunbc.spark.glm_serving_load take their hosts from a live roster (hosts that exist and are reachable) instead of the sold srv9-srv12 symbols, SUFFICIENT FOR the srv9-srv12 identity and endpoint data symbols to be deleted without a witness or serving module resolving them",
+  },
+}

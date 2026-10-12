@@ -1,0 +1,24 @@
+{
+  "@odata.id": "/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors",
+  "@odata.type": "#SensorCollection.SensorCollection",
+  "Description": "Collection of Sensors for this Chassis",
+  "Members": [
+    {
+      "@odata.id": "/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors/power_total_power"
+    },
+    {
+      "@odata.id": "/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors/utilization_PSU1_AC_LOST"
+    },
+    {
+      "@odata.id": "/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors/utilization_PSU2_AC_LOST"
+    },
+    {
+      "@odata.id": "/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors/utilization_PSU3_AC_LOST"
+    },
+    {
+      "@odata.id": "/redfish/v1/Chassis/ALTRAD8UD_1L2T/Sensors/utilization_PSU4_AC_LOST"
+    }
+  ],
+  "Members@odata.count": 5,
+  "Name": "Sensors"
+}

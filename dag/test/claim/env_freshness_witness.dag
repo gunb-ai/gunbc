@@ -5,7 +5,10 @@ data path_env_name: NonEmptyStr = "PATH"
 
 fn witness_env_get_path() -> Bool {
   let r = shell.Env.Get(name: path_env_name)
-  return r.value != null && (r.value != "")
+  return match r.value {
+    Present { value: v } => v != ""
+    Absent => false
+  }
 }
 
 fn env_freshness_keystone_holds() -> Bool {

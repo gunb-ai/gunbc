@@ -23,6 +23,7 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
   dag_lex,
+  dag_surface_identity_is_top_level_item,
   dag_surface_kw_then_ident_from_captured,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
@@ -30,7 +31,7 @@ import v2.extdeps.languages.dag {
 import v2.std.algebra { fold_list, list_reverse }
 import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, Rejected, Textual, NodeLocus, SourcePortLocus, InvariantPortLocus, DeclarationLocus, ByteRange, WholeFile, bind_outcome, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 import v2.std.node { Node, Symbol, is_empty_conj_root, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
@@ -280,13 +281,7 @@ fn iard_declaration_name(shell: Node, emitted: Symbol) -> String {
 }
 
 fn iard_is_declaration(id: Symbol) -> Bool {
-  (id == ^dag_surface_fn_decl)
-    || (id == ^dag_surface_test_fn_decl)
-    || (id == ^dag_surface_data_decl)
-    || (id == ^dag_surface_type_decl)
-    || (id == ^dag_surface_alias_decl)
-    || (id == ^dag_surface_service_decl)
-    || (id == ^dag_surface_resource_decl)
+  dag_surface_identity_is_top_level_item(id: id)
 }
 
 // EVERY if_expr IN THE TREE, IN PRE-ORDER, WITH ITS ENCLOSING DECLARATION. Nested ifs are visited:
@@ -344,7 +339,7 @@ fn iard_location(node: Node, spans: SpanIndex) -> String {
             Textual { file: _, extent: e } =>
               match e {
                 ByteRange { start: s, end: en } =>
-                  concat("bytes=", concat(integer_int_to_decimal_string(value: s), concat("..", integer_int_to_decimal_string(value: en))))
+                  concat("bytes=", concat(int_to_decimal_string(value: s), concat("..", int_to_decimal_string(value: en))))
                 WholeFile => "<whole file>"
               }
             NodeLocus { anchor: _ } => "<non-textual locus>"
@@ -362,10 +357,10 @@ type IardFileOutcome
   = IardFileRead { path: String, spans: SpanIndex, sites: FreeMonoid<IardSite> }
   | IardFileRefused { path: String, reason: Symbol }
 
-fn iard_file(prepared: PreparedGrammar, residue: Diagnostics, read: DagSourceReadWitness) -> IardFileOutcome {
+fn iard_file(prepared: PreparedGrammar, read: DagSourceReadWitness) -> IardFileOutcome {
   let parsed = bind_outcome(
     o: tokenize(text: read.source.carried, file: read.compilation_unit, rules: dag_lex()),
-    f: fn(stream) { parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue) }
+    f: fn(stream) { parse_module_prepared(tokens: stream, prepared: prepared) }
   )
   match parsed {
     Rejected { diagnostics: d } => IardFileRefused { path: read.artifact.file_path, reason: diagnostics_fatal_reason(d: d) }
@@ -493,12 +488,12 @@ type IardCensus
 fn if_arm_reader_differential(ingest: SourceRootIngest) -> IardCensus {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => IardGrammarUnprepared { reason: diagnostics_fatal_reason(d: d) }
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       IardCensusTaken {
         tally: fold_list(
           xs: ingest,
           empty: IardTally { text: "", files_read: 0, files_refused: 0, sites: 0, else_differs: 0, then_differs: 0, sites_differing: 0 },
-          cons: fn(acc, read) { iard_tally_file(t: acc, outcome: iard_file(prepared: prepared, residue: residue, read: read)) }
+          cons: fn(acc, read) { iard_tally_file(t: acc, outcome: iard_file(prepared: prepared, read: read)) }
         )
       }
   }
@@ -508,16 +503,16 @@ fn if_arm_reader_differential(ingest: SourceRootIngest) -> IardCensus {
 // sites can be read against how many sites and files were actually observed.
 fn if_arm_reader_differential_summary(t: IardTally) -> String {
   concat(
-    concat("if_arm_reader_differential files_read=", integer_int_to_decimal_string(value: t.files_read)),
+    concat("if_arm_reader_differential files_read=", int_to_decimal_string(value: t.files_read)),
     concat(
-      concat(" files_refused=", integer_int_to_decimal_string(value: t.files_refused)),
+      concat(" files_refused=", int_to_decimal_string(value: t.files_refused)),
       concat(
-        concat(" if_sites=", integer_int_to_decimal_string(value: t.sites)),
+        concat(" if_sites=", int_to_decimal_string(value: t.sites)),
         concat(
-          concat(" sites_differing=", integer_int_to_decimal_string(value: t.sites_differing)),
+          concat(" sites_differing=", int_to_decimal_string(value: t.sites_differing)),
           concat(
-            concat(" else_differs=", integer_int_to_decimal_string(value: t.else_differs)),
-            concat(concat(" then_differs=", integer_int_to_decimal_string(value: t.then_differs)), "\n")
+            concat(" else_differs=", int_to_decimal_string(value: t.else_differs)),
+            concat(concat(" then_differs=", int_to_decimal_string(value: t.then_differs)), "\n")
           )
         )
       )

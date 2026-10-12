@@ -288,7 +288,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // and this note cites it. What this note carries is what belongs to the STAGE and to executing
 // its cut, which the label does not own:
 //
-//   THE STRIP HALF EXISTS AND IS TYPED: std.import strip_import_statements, applied per source by
+//   THE STRIP HALF EXISTS AND IS TYPED: std.import_statement strip_import_statements, applied per source by
 //   gunbc.namespace_step0_strip_producer. The census half is the v2 production route over the
 //   stripped tree; the instrument is the strip fold composed with a route that carries the
 //   prerequisites the label names and answers its completeness obligation, and its FIRST

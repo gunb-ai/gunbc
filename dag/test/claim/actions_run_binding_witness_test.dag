@@ -1,0 +1,58 @@
+module test.claim.actions_run_binding_witness
+
+import std.types { Bool, String }
+import gunbc.actions_run_binding {
+  ActionsRunBinding,
+  ExpectedRevisionPresent,
+  ExpectedRevisionAbsent,
+  ExpectedRevisionMalformed,
+  RunRevisionAdmitted,
+  RunRevisionRefused,
+  admit_optional_expected_revision_given,
+}
+
+data expected_revision_fixture_sha: String = "0123456789abcdef0123456789abcdef01234567"
+data expected_revision_other_sha: String = "89abcdef0123456789abcdef0123456789abcdef"
+
+fn expected_revision_fixture_binding() -> ActionsRunBinding {
+  ActionsRunBinding {
+    repository: "gunb-ai/gunbc",
+    workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+    run_id: "1",
+    run_revision: expected_revision_fixture_sha,
+  }
+}
+
+test fn optional_expected_revision_has_three_arms() -> Bool {
+  let b = expected_revision_fixture_binding()
+  (match admit_optional_expected_revision_given(
+    read: ExpectedRevisionAbsent { variable: "RLM_EXPECTED_REVISION", detail: "unset" },
+    binding: b,
+  ) {
+    RunRevisionAdmitted { revision: r } => r == expected_revision_fixture_sha
+    RunRevisionRefused { expected: _, observed: _ } => false
+  })
+    && (match admit_optional_expected_revision_given(
+      read: ExpectedRevisionPresent { revision: expected_revision_fixture_sha },
+      binding: b,
+    ) {
+      RunRevisionAdmitted { revision: r } => r == expected_revision_fixture_sha
+      RunRevisionRefused { expected: _, observed: _ } => false
+    })
+    && (match admit_optional_expected_revision_given(
+      read: ExpectedRevisionPresent { revision: expected_revision_other_sha },
+      binding: b,
+    ) {
+      RunRevisionAdmitted { revision: _ } => false
+      RunRevisionRefused { expected: e, observed: o } =>
+        e == expected_revision_other_sha && o == expected_revision_fixture_sha
+    })
+    && (match admit_optional_expected_revision_given(
+      read: ExpectedRevisionMalformed { variable: "RLM_EXPECTED_REVISION", value: "not-a-sha" },
+      binding: b,
+    ) {
+      RunRevisionAdmitted { revision: _ } => false
+      RunRevisionRefused { expected: e, observed: o } =>
+        e == "not-a-sha" && o == expected_revision_fixture_sha
+    })
+}

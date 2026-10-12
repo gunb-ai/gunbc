@@ -348,7 +348,7 @@ fn repoint_pending_verdict(pending: List<String>) -> ProcessExit {
 }
 
 fn repoint_root_tasks() -> List<SourceRootWalkTask> {
-  source_reference_repoint_roots |> map(path => SourceRootWalkTask { path: path, root: true })
+  source_reference_repoint_roots |> map(path => SourceRootWalkTask { path: path, root: true, origin: path })
 }
 
 // The wet entry: rewrite every file under the roots that still references a moved module.
@@ -357,10 +357,10 @@ fn repoint() -> ProcessExit {
     SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
       exit_failure(reason: join(["source reference repoint: cannot walk ", path, " (", kind, "): ", cause], ""))
     SourceRootPathsRead { paths: paths } =>
-      fold(paths, init: ExitSuccess, f: fn(acc, path) {
+      fold(paths, init: ExitSuccess, f: fn(acc, walked) {
         match acc {
           ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
-          ExitSuccess => repoint_one_path(path: path)
+          ExitSuccess => repoint_one_path(path: walked.path)
         }
       })
   }
@@ -372,6 +372,10 @@ fn repoint_pending() -> ProcessExit {
     SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
       exit_failure(reason: join(["source reference repoint: cannot walk ", path, " (", kind, "): ", cause], ""))
     SourceRootPathsRead { paths: paths } =>
-      repoint_pending_verdict(pending: paths |> filter(path => repoint_path_is_pending(path: path)))
+      repoint_pending_verdict(
+        pending: paths
+          |> filter(walked => repoint_path_is_pending(path: walked.path))
+          |> map(walked => walked.path)
+      )
   }
 }

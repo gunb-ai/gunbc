@@ -15,7 +15,7 @@ import v2.std.algebra {
 import v2.std.collection {
   Map,
   empty_map,
-  map_get,
+  map_get_checked,
   map_insert,
   map_contains_key,
   map_lookup
@@ -91,6 +91,7 @@ type SymbolIndex {
   declared_resources: Map<QualifiedName, ResourceDeclared>
   namespace_bodies: Map<QualifiedName, NamespaceBodyDeclared>
   module_roots: Map<QualifiedName, ModuleRootDeclared>
+  primitive_contracts: Map<QualifiedName, PrimitiveContractDeclared>
 }
 
 // WHICH KIND OF DECLARED PAYLOAD A PATH DENOTES, stored as the map's value so the map cannot hold a
@@ -136,6 +137,12 @@ type NamespaceBodyDeclared {}
 // docs/plans/native-resolve-frontier-root-causes.md.
 type ModuleRootDeclared {}
 
+// A PATH THAT IS AN ADMITTED PRIMITIVE CONTRACT ROW: a nullary declaration whose declared type is, by path join in its declaring module, std.primitives.PrimitiveContract
+// (v2.compiler.primitive_authority primitive_authority_row_is_contract_declaration). Stored as the map's value for the reason ResourceDeclared is. Written ONCE by
+// v2.compiler.symbol_index_fill, the arm that knows the declaring module and the row; read by v2.compiler.resolve (the bind tier) and v2.compiler.infer
+// (the refusal), neither of which recomputes it.
+type PrimitiveContractDeclared {}
+
 fn empty_symbol_index() -> SymbolIndex {
   SymbolIndex {
     entries: empty_map(),
@@ -146,7 +153,8 @@ fn empty_symbol_index() -> SymbolIndex {
     declared_type_params: empty_map(),
     declared_resources: empty_map(),
     namespace_bodies: empty_map(),
-    module_roots: empty_map()
+    module_roots: empty_map(),
+    primitive_contracts: empty_map()
   }
 }
 
@@ -170,7 +178,7 @@ fn empty_symbol_index() -> SymbolIndex {
 // a two-binder refusal back to one binder the first time this split was written. `entries` is where
 // a declaration is stored; `symbol_index_lookup` is what a reference is entitled to be told.
 fn symbol_index_entry_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
-  match v2.std.collection.map_get(index.entries, qualified_path) {
+  match v2.std.collection.map_get_checked(index.entries, qualified_path) {
     Accepted { value: opt, diagnostics: _ } => opt
     Rejected { diagnostics: _ } => optional_absent()
   }
@@ -210,7 +218,7 @@ fn symbol_index_track_global_bare(
   match qualified_name_last_segment(qn: qualified_path) {
     Absent => index
     Present { value: leaf } =>
-      match v2.std.collection.map_get(index.global_bare, leaf) {
+      match v2.std.collection.map_get_checked(index.global_bare, leaf) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: GlobalBareAmbiguous { paths: paths } } =>
             SymbolIndex {
@@ -226,7 +234,8 @@ fn symbol_index_track_global_bare(
               declared_type_params: index.declared_type_params,
               declared_resources: index.declared_resources,
               namespace_bodies: index.namespace_bodies,
-              module_roots: index.module_roots
+              module_roots: index.module_roots,
+              primitive_contracts: index.primitive_contracts
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && existing == resolved {
@@ -247,7 +256,8 @@ fn symbol_index_track_global_bare(
                 declared_type_params: index.declared_type_params,
                 declared_resources: index.declared_resources,
                 namespace_bodies: index.namespace_bodies,
-                module_roots: index.module_roots
+                module_roots: index.module_roots,
+                primitive_contracts: index.primitive_contracts
               }
             }
           Absent =>
@@ -264,7 +274,8 @@ fn symbol_index_track_global_bare(
               declared_type_params: index.declared_type_params,
               declared_resources: index.declared_resources,
               namespace_bodies: index.namespace_bodies,
-              module_roots: index.module_roots
+              module_roots: index.module_roots,
+              primitive_contracts: index.primitive_contracts
             }
         }
         Rejected { diagnostics: _ } => index
@@ -296,7 +307,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
-    module_roots: index.module_roots
+    module_roots: index.module_roots,
+    primitive_contracts: index.primitive_contracts
   }
   symbol_index_track_global_bare(
     index: with_entry,
@@ -327,14 +339,15 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
-    module_roots: index.module_roots
+    module_roots: index.module_roots,
+    primitive_contracts: index.primitive_contracts
   }
 }
 
 // WHAT THE PATH DENOTES, WITH NO FAILURE ARM TO WIDEN (review 70226). The first cut read this
-// through map_get, whose Outcome carries a Rejected arm, and answered binder there -- which matches
+// through map_get_checked, whose Outcome carries a Rejected arm, and answered binder there -- which matches
 // every value, so a lookup that could not answer would have widened the arm silently, the fail-open
-// shape DESIGN section 5 forbids. map_lookup is the total read underneath map_get (which is
+// shape DESIGN section 5 forbids. map_lookup is the total read underneath map_get_checked (which is
 // `outcome_accepted(map_lookup(..))`, so its refusal arm is unreachable by construction): the kind,
 // or Absent for a path that denotes no declared payload. The caller matches on it.
 fn symbol_index_declared_payload_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<DeclaredPayloadKind> {
@@ -359,7 +372,8 @@ fn symbol_index_mark_declared_resource(index: SymbolIndex, qualified_path: Quali
     declared_type_params: index.declared_type_params,
     declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared {}),
     namespace_bodies: index.namespace_bodies,
-    module_roots: index.module_roots
+    module_roots: index.module_roots,
+    primitive_contracts: index.primitive_contracts
   }
 }
 
@@ -373,7 +387,8 @@ fn symbol_index_mark_namespace_body(index: SymbolIndex, qualified_path: Qualifie
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: map_insert(m: index.namespace_bodies, key: qualified_path, value: NamespaceBodyDeclared {}),
-    module_roots: index.module_roots
+    module_roots: index.module_roots,
+    primitive_contracts: index.primitive_contracts
   }
 }
 
@@ -387,7 +402,8 @@ fn symbol_index_mark_module_root(index: SymbolIndex, qualified_path: QualifiedNa
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
-    module_roots: map_insert(m: index.module_roots, key: qualified_path, value: ModuleRootDeclared {})
+    module_roots: map_insert(m: index.module_roots, key: qualified_path, value: ModuleRootDeclared {}),
+    primitive_contracts: index.primitive_contracts
   }
 }
 
@@ -413,7 +429,8 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
     declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params),
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
-    module_roots: index.module_roots
+    module_roots: index.module_roots,
+    primitive_contracts: index.primitive_contracts
   }
 }
 
@@ -431,7 +448,7 @@ fn symbol_index_declared_binders_at(index: SymbolIndex, qualified_path: Qualifie
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
-  match v2.std.collection.map_get(index.global_bare, name) {
+  match v2.std.collection.map_get_checked(index.global_bare, name) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: GlobalBareUnique { node: n, path: p } } => GlobalBareHit { node: n, path: p }
       Present { value: GlobalBareAmbiguous { paths: paths } } => GlobalBareLookupAmbiguous { paths: paths }
@@ -540,7 +557,8 @@ fn symbol_index_bind_at(
       declared_type_params: index.declared_type_params,
       declared_resources: index.declared_resources,
       namespace_bodies: index.namespace_bodies,
-      module_roots: index.module_roots
+      module_roots: index.module_roots,
+      primitive_contracts: index.primitive_contracts
     }
     if is_empty(xs: prior) {
       SymbolIndex {
@@ -552,7 +570,8 @@ fn symbol_index_bind_at(
         declared_type_params: recorded.declared_type_params,
         declared_resources: recorded.declared_resources,
         namespace_bodies: recorded.namespace_bodies,
-        module_roots: recorded.module_roots
+        module_roots: recorded.module_roots,
+        primitive_contracts: recorded.primitive_contracts
       }
     } else {
       recorded
@@ -564,7 +583,7 @@ fn symbol_index_bound_declarings(
   index: SymbolIndex,
   binding_path: QualifiedName
 ) -> FreeMonoid<QualifiedName> {
-  match v2.std.collection.map_get(index.bound_declarings, binding_path) {
+  match v2.std.collection.map_get_checked(index.bound_declarings, binding_path) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: declarings } => declarings
       Absent => Empty
@@ -694,4 +713,23 @@ fn symbol_index_lexical_lookup(
       acc: Empty
     )
   )
+}
+
+fn symbol_index_mark_primitive_contract(index: SymbolIndex, qualified_path: QualifiedName) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies,
+    module_roots: index.module_roots,
+    primitive_contracts: map_insert(m: index.primitive_contracts, key: qualified_path, value: PrimitiveContractDeclared {})
+  }
+}
+
+fn symbol_index_declares_primitive_contract_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
+  map_contains_key(m: index.primitive_contracts, key: qualified_path)
 }

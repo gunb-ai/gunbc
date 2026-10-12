@@ -55,11 +55,11 @@ import gunbc.spark.runtime_architecture_registry_reading {
   gunbc_vllm_dsv41_gb10_registry_reading,
 }
 import extdeps.deepseek.deepspec { SpeculativeDraftAlgorithm, DSpark, speculative_draft_algorithm_wire }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import gunbc.spark.pair_serving_observed {
   GroupRankFreeMemoryObserved, group_rank_free_memory, group_rank_free_memory_region,
   group_rank_free_memory_upper,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.fabric.engram_materialization {
   ComponentRouteStanding, ComponentRouteNotThisSubject, ComponentRouteSubjectHasNoAuthority, ComponentRouteDecided,
   ComponentResidentShare, ComponentResidentObserved, ComponentResidentBoundedAbove,
@@ -816,8 +816,8 @@ fn v4_1_selection_frontier_fact(decl_name: NonEmptyStr) -> DeclarationRef {
 data v4_1_selection_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "candidate_component_budget" as NonEmptyStr),
-    reason: "the idle-free reading was taken on a Group A rank and this closure has no candidate-to-fabric-group binding to key it by",
-    dissolution: unbound_dissolution(description: "The per-rank budget consumes one observed idle-free figure for every candidate, because nothing in this closure says which fabric group a candidate lands on. THE FALSIFICATION CONDITION, which is what makes this limit checkable rather than merely regrettable: this screen produces a WRONG answer as soon as the candidates it screens span hosts whose free-memory figures differ -- a second fabric group, a co-tenanted rank, or one host of the same group in a different state. The comparison that used to defend the limit is gone: spark_fleet_snapshot applied one single-host reading fleet-wide, and #11308 replaced it with spark_fleet_snapshot_for, whose snapshot carries the subject's admissible host IDENTITIES, so this reading is now the only place a single host's figure is generalised and the limit is WIDER than when it was admitted. AND THE IDENTITIES DO NOT CLOSE IT, for a reason that is not cost: gunbc.spark.pair_serving_observed group_rank_free_memory_observed is ONE row keyed by FabricGroup, read on one idle Group A rank, and GroupRankFreeMemoryObserved carries no host field at all -- so the identities the snapshot now supplies are keys with nothing to look up, and the generalisation lives in the OBSERVATION population rather than in this fold. NOR IS THE READING KNOWN TO BE RIGHT IN FACT: whether the other admissible hosts carry the same figure is UNOBSERVED rather than established, because one rank was read, and a uniform group is an inference about the world and not a reading of it. TRIGGER, AND IT HAS TWO PARTS BECAUSE THE GAP DOES: (1) a free-memory observation population keyed at HOST grain rather than at FabricGroup grain, so a figure exists per admissible identity; and (2) a candidate carrying the hosts it lands on, so the lookup has a key. Part 1 is an observation obligation on separately admitted resources and part 2 is a modelling one, and satisfying either alone leaves the screen generalising. SUFFICIENT FOR: candidate_component_budget selects the reading for the hosts that candidate actually runs on and reports an obligation when no reading exists for one of them, rather than reaching for a single Group A rank's figure." as NonEmptyStr),
+    reason: "no idle-engine free-memory reading exists: the one there was (a Group A rank) went with Group A on 2026-10-07, so the budget answers ComponentBudgetUnestablished; and this closure has no candidate-to-fabric-group binding to key a future reading by",
+    dissolution: unbound_dissolution(description: "The per-rank budget consumes one observed idle-free figure for every candidate, and today that population is EMPTY (the Group A reading was removed with Group A on 2026-10-07), so every candidate's budget is unestablished. Dissolves when an idle-engine free-memory reading is taken on a rank of the group a candidate is bound to, keyed by a candidate-to-fabric-group binding this closure carries" as NonEmptyStr),
   ),
   frontier_row_decl(
     ref: v4_1_selection_frontier_fact(decl_name: "fleet_admitted_topologies" as NonEmptyStr),
@@ -1268,7 +1268,7 @@ fn candidate_component_budget(
   p: ServingDecisionParameters,
 ) -> ComponentMemoryBudget {
   let ctx = candidate_route_context(c: c, p: p)
-  match group_rank_free_memory(group: FabricGroupA) {
+  match group_rank_free_memory(group: FabricGroupB {}) {
     Absent => ComponentBudgetUnestablished {
       subject: ctx,
       obligation: "no idle free-memory reading exists for a rank of this fleet, so the bytes available to a routed component are unknown; total device memory is a hardware property and the requested utilisation fraction is a launch parameter, and neither is a reading of what a rank actually has free" as NonEmptyStr,
@@ -3103,58 +3103,6 @@ data deepseek_quality_requirement: QualityRequirement = quality_requirement(
   rationale: "the deployed checkpoint is the subject, and a requantisation is a different artifact rather than a cheaper way to serve this one. gunbc.spark.tensor_parallel_comparison measured 2238 millinats between tensor-parallel degrees on these weights against a bit-identical within-topology envelope, so a per-topology assessment is required and no degree inherits another's standing" as NonEmptyStr,
 )
 
-// ── ONE SERVING SUBJECT, TWO ARTIFACT VERSIONS, ONE DATED TRANSITION ──────────────────────────
-//
-// THE QUESTION THIS SETTLES: does "V4.1 takes over group A" need a successor EDGE between two
-// subjects, or is it ONE subject with versioned incarnations across a declared transition? The
-// evidence decided for the latter, and the shapes checked are named so the check is repeatable:
-//   - product.training.attempt_graph `lineage_predecessor<P>` relates execution ATTEMPTS of one
-//     training run (retry, escalation) by a prior-attempt identity and a cause receipt -- the wrong
-//     grain for a deployment changing what it serves, and its payload is a FabricIdentity of an
-//     attempt key this subject does not have;
-//   - gunbc.deploy_transition_bootstrap `transition_step_successor` is a closed protocol step order
-//     (lease held, quiesced, release installed ...), not a relation between two subjects;
-//   - the only modelled rollback, gunbc.spark.glm_canary_converge `CanaryCutover`, records the
-//     replaced launch line of the SAME arm -- a prior incarnation of one subject, which is this shape.
-// Neither of the first two is inhabitable, no ServingIncarnationProvenance exists anywhere, and an
-// incarnation identity would therefore be AUTHORED rather than inhabited. The pair deployment on
-// group A has no identity distinct from its group (gunbc.spark.serving_subject), so the subject is
-// `PairServingUnitOn { group: FabricGroupA }` before and after, and DESIGN section 3 sanctions the
-// same spelling across a declared version transition as legitimate reuse.
-//
-// WHAT KEEPS THE ROLLBACK TARGET ADDRESSABLE WITHOUT AN EDGE. The V4 Flash incarnation is intact on
-// the hosts -- image f869281d in gunbc.spark.runtime_architecture_registry_reading, weight snapshot
-// 60d8d707 in gunbc.spark.pair_serving_observed -- and it stays addressable as the FROM side of this
-// row: `deepseek_decision_input` still describes it over the same subject's admissible set, so a
-// rollback is the same subject's prior version, not a second subject. No-redundancy (operator,
-// 2026-09-11) means V4 Flash is not served BESIDE V4.1: the two fields share one subject and one set
-// precisely because at most one of them is running on it.
-//
-// THE ROW IS CONSUMED, NOT DECORATIVE: both DeepSeek domains take their artifact from it and both
-// take their fleet from its subject, so the transition is the only route by which the V4.1 field
-// reaches group A's hosts.
-type ServedArtifactTransition {
-  subject: ServingSubject
-  from: ModelArtifact
-  to: ModelArtifact
-  ruling: ServingRulingCitation
-}
-
-data group_a_served_artifact_transition: ServedArtifactTransition = ServedArtifactTransition {
-  subject: PairServingUnitOn { group: FabricGroupA },
-  from: artifact_deepseek_v4_flash_native,
-  to: artifact_deepseek_v4_1_flash_native,
-  ruling: serving_ruling_2026_09_12_v4_1_takes_over_the_deepseek_deployment,
-}
-
-// ── THE FLEET, PER SUBJECT, DERIVED FROM THE COMMITMENT CENSUS ───────────────────────────────
-//
-// Two production snapshots, one per serving subject the corpus carries. The pair unit on group A is
-// admitted its own four hosts and nothing else; group B's subject -- whatever arm is assigned to group
-// B -- is admitted group B, which the operator's ruling reserves for GLM. Each is the identity set a fit is read against and a domain is
-// enumerated over, and each carries its subject so the evidence identity moves with it.
-data pair_unit_a_fleet_snapshot: FleetSnapshot = spark_fleet_snapshot_for(subject: group_a_served_artifact_transition.subject)
-
 data glm_group_b_fleet_snapshot: FleetSnapshot = spark_fleet_snapshot_for(subject: glm_group_b_serving_subject)
 
 // NO QUALITY ASSESSMENTS AND NO RUNTIME RECEIPTS. The empty lists are the honest state, and they are
@@ -3169,11 +3117,6 @@ fn serving_evidence_over(fleet: FleetSnapshot, fleet_receipt: DeclarationRef) ->
     fleet_receipt: fleet_receipt,
   )
 }
-
-data pair_unit_a_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evidence_over(
-  fleet: pair_unit_a_fleet_snapshot,
-  fleet_receipt: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "pair_unit_a_fleet_snapshot"),
-)
 
 data glm_group_b_evidence_current: ServingDeploymentEvidenceSnapshot = serving_evidence_over(
   fleet: glm_group_b_fleet_snapshot,
@@ -3227,101 +3170,3 @@ data glm_decision_input: ServingDeploymentDecisionInput = serving_decision_input
   axes: serving_selection_axes,
 )
 
-
-// ── THE DEEPSEEK ARM ──────────────────────────────────────────────────────────────────────────
-//
-// The convergence serving today authors its replica shape as literals: 82 percent, a context ceiling
-// equal to the model's own limit, and a tensor-parallel degree taken from `length(hosts)` -- which is
-// not a choice at all but an accident of how many hosts landed in a group.
-//
-// AN EARLIER VERSION OF THIS MODULE ANSWERED THIS QUESTION AND THE ANSWER WAS NOT EARNED. It selected
-// four two-rank replicas over the deployed two four-rank replicas, on a field whose only
-// discriminating axes were replica count and the capacity share one replica loss removes -- so the
-// shape with the most replicas won both, by construction. It could not have concluded otherwise.
-// Worse, it admitted quality on weight identity alone while this repository's own measurement shows
-// the same weights at TP=2 and TP=4 are 2238 millinats apart on a deterministic forward pass.
-// Recommending a topology change on a quality gate blind to topology is exactly backwards, and the
-// recommendation is withdrawn rather than restated more carefully.
-data deepseek_domain: ServingDeploymentChoiceDomain = serving_deployment_domain(
-  artifacts: [group_a_served_artifact_transition.from],
-  topologies: covering_topologies_over(fleet: pair_unit_a_fleet_snapshot),
-  parameters: serving_parameters_current,
-)
-
-data deepseek_candidate_field: ServingDeploymentCandidateField = serving_candidate_field(
-  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_candidate_field"),
-  domain: deepseek_domain,
-  candidates: derived_candidates_for(stem: "deepseek", domain: deepseek_domain),
-)
-
-data deepseek_decision_input: ServingDeploymentDecisionInput = serving_decision_input(
-  field: deepseek_candidate_field,
-  evidence: pair_unit_a_evidence_current,
-  quality_requirement: deepseek_quality_requirement,
-  selection_policy: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_flash_selection_policy"),
-  constraints: serving_selection_constraints,
-  constraint_authority: id_constraint_authority,
-  axes: serving_selection_axes,
-)
-
-// ── V4.1 FLASH: NATIVE CANDIDATES, CONSTRAINTS AGAINST FACTS, WIDTH DERIVED ────────────────
-//
-// Operator 2026-09-11: native quality always; no redundancy right now; four Sparks are a function
-// of the modeling decisions; those two are constraints against the fact. Production serving stays
-// deepseek-v4-flash:iq3s-split; cutover is a later operator decision. Host binding (srv7/srv8
-// llama.cpp RPC reservation) is fabric work downstream of a selected shape -- named, not done here.
-//
-// THE FIELD IS EVERY SHAPE THE SUBJECT'S ADMISSIBLE SET ADMITS, CROSSED WITH THE DECLARED RUNTIME
-// DOMAIN. The subject is the pair unit on group A, reached through group_a_served_artifact_transition
-// -- the ruling's second half -- so the set is srv5-srv8 and a five-to-eight-rank shape is never
-// enumerated; planted, it is refused by the host fit by name.
-// Completeness is an identity join over artifact × topology × profile. Narrowing to the existing
-// fleet image would drop the GB10 vLLM lead; llama.cpp is conversion-only and is not a candidate;
-// SGLang preview images target larger accelerators only. Engram offload is zero pool gain on GB10.
-// DSV41-0's payload total_size is FootprintReportedExternally until a fleet read; this module does
-// not author a TP width.
-data deepseek_v4_1_quality_requirement: QualityRequirement = quality_requirement(
-  identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_quality_requirement"),
-  required_artifact: DeclarationRef { module_path: "gunbc.spark.serving_deployment_selection", decl_name: "artifact_deepseek_v4_1_flash_native", field: WholeDeclaration },
-  max_divergence_millinats: 0,
-  min_task_score_delta_hundredths: 0,
-  rationale: "operator policy 2026-09-11: native quality always. Only the published V4.1 Flash checkpoint is admissible; a requantised or quality-degrading substitute is other weights and is excluded by constraint_native_quality before dominance, not ranked" as NonEmptyStr,
-)
-
-fn v4_1_candidate_field_from_sm12(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingDeploymentCandidateField {
-  let standings = v4_1_profile_standings_from(standing: sm12_kv_layout_standing(wire: wire, admitted: admitted))
-  let domain = serving_deployment_domain_over_standings(
-    artifacts: [group_a_served_artifact_transition.to],
-    topologies: fleet_admitted_topologies(fleet: pair_unit_a_fleet_snapshot),
-    standings: standings,
-  )
-  serving_candidate_field(
-    identity: decl_ref(module_path: "gunbc.spark.serving_deployment_selection", decl_name: "deepseek_v4_1_candidate_field"),
-    domain: domain,
-    candidates: derived_candidates_for(stem: "deepseek_v4_1", domain: domain),
-  )
-}
-
-fn v4_1_decision_input_from_sm12(wire: NonEmptyStr, admitted: List<NonEmptyStr>) -> ServingDeploymentDecisionInput {
-  serving_decision_input(
-    field: v4_1_candidate_field_from_sm12(wire: wire, admitted: admitted),
-    evidence: pair_unit_a_evidence_current,
-    quality_requirement: deepseek_v4_1_quality_requirement,
-    selection_policy: deepseek_v4_1_selection_policy,
-    constraints: v4_1_selection_constraints,
-    constraint_authority: id_v4_1_constraint_authority,
-    axes: v4_1_selection_axes,
-  )
-}
-
-data deepseek_v4_1_candidate_field: ServingDeploymentCandidateField = v4_1_candidate_field_from_sm12(
-  wire: v41_sm12_kv_layout,
-  admitted: v41_sm12_admitted_kv_cache_dtypes,
-)
-
-data deepseek_v4_1_domain: ServingDeploymentChoiceDomain = deepseek_v4_1_candidate_field.domain
-
-data deepseek_v4_1_decision_input: ServingDeploymentDecisionInput = v4_1_decision_input_from_sm12(
-  wire: v41_sm12_kv_layout,
-  admitted: v41_sm12_admitted_kv_cache_dtypes,
-)

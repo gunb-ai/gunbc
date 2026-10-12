@@ -3,9 +3,8 @@ module v2.test.claim.body_lowering_block_body_call
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text, conserved_normalize, no_explained_drops }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.compilers.body_lowering {
   Application,
@@ -26,18 +25,17 @@ data body_lowering_block_call_source: String = "module wall.same\n\nfn leaf() ->
 fn body_lowering_block_call_parsed() -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       bind_outcome(
-        o: tokenize(
+        o: tokenize_prepared(
           text: body_lowering_block_call_source,
           file: ^body_lowering_block_call_file,
-          rules: dag_lex()
+          prepared: dag_prepared_lex()
         ),
         f: fn(token_stream) {
           match parse_module_prepared(
             tokens: token_stream,
-            prepared: prepared,
-            validation_residue: residue
+            prepared: prepared
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: artifact, diagnostics: d } =>

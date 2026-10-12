@@ -1,16 +1,27 @@
 module v2.test.lens_lifecycle_carrier.raw_prose_field_flagged
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.compile {
+  lifecycle_carrier_lens,
+  run_required_lens_gates_on_subtree
+}
+import v2.compiler.infer { InferredTree }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {
   Atom,
+  Arrow,
   Conj,
   Edge,
   Authored,
   Node,
+  Positional,
   Symbol,
   TypeNode,
+}
+import v2.test.lens_common.infer_fixture {
+  claim_inferred_facts,
+  claim_inferred_tree
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node_query { binder_edge }
@@ -110,5 +121,58 @@ test fn ordinary_string_field_is_accepted() -> Bool {
   match lifecycle_carrier_gate(node: ordinary_string_field_input) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// RED (parameter domain): fn f(dissolve_on: String) -> Int. The domain Conj is a record
+// carrier; fold_node must still reach it under the Arrow (not stop at Arrow).
+data arrow_param_domain: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    binder_edge(name: ^dissolve_on, type_node: string_leaf_target)
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data arrow_param_codomain: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^Int } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data arrow_with_dissolve_on_param: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge { label: Positional, target: arrow_param_domain },
+    Edge { label: Positional, target: arrow_param_codomain }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn arrow_param_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: arrow_with_dissolve_on_param,
+    facts: claim_inferred_facts(
+      type_symbol: ^arrow_param_type_sym,
+      algebra_symbol: ^arrow_param_algebra_sym,
+      descent_symbol: ^arrow_param_descent_sym
+    )
+  )
+}
+
+test fn arrow_parameter_dissolve_on_string_is_rejected_on_the_domain() -> Bool {
+  match lifecycle_carrier_gate(node: arrow_param_domain) {
+    Rejected { diagnostics: r } => r.head.reason == ^lifecycle_carrier_raw_prose_field
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn subtree_walk_reaches_arrow_parameter_dissolve_on() -> Bool {
+  match run_required_lens_gates_on_subtree(
+    inferred: arrow_param_tree(),
+    lenses: [lifecycle_carrier_lens]
+  ) {
+    Rejected { diagnostics: r } => r.head.reason == ^lifecycle_carrier_raw_prose_field
+    Accepted { value: _, diagnostics: _ } => false
   }
 }

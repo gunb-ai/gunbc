@@ -1,13 +1,10 @@
 module extdeps.version.semver
 
-import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
-import std.algebra { Ordering, Less, Equal, Greater }
+import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
+import std.algebra { Ordering, Less, Equal, Greater, trim }
 import std.integer { NonNegativeInt }
-import std.types { List, Int }
-import std.nat { nat_compare }
-import std.types { NonEmptyStr, String }
-import std.algebra { trim }
-import std.checked_arithmetic { checked_int_to_nat }
+import std.types { List }
+import std.types { NonEmptyStr, String, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -22,31 +19,95 @@ type SemVerIdentity = VersionIdentity
 
 type SemVerConstraint = VersionConstraint
 
+// A numeric component carries its code points, not a machine integer: SemVer 2.0.0 puts no
+// size limit on X.Y.Z (§2) or on numeric identifiers (§9), so an Int conversion on the
+// comparison path would invent a grammar failure the spec does not have.
+//
+// CONSTRUCTOR-SEALED: `sole_constructor` makes this record constructible ONLY inside this
+// module, so the one admission is `semver_numeric_field` (refuses an empty sequence, anything
+// outside ASCII digits 48..57, and a leading zero unless the sequence is the single digit 0).
+// An outside module writing `SemVerNumericField { .. }` meets the SoleConstructorViolation
+// refusal at compile time — the witness file holds that probe as an executing negative control
+// plus the via-constructor positive control. The native (stage0) route's modifier-parse gap is
+// a separate known defect, carried by g0_type_decl_modifier_parse_without_sealing_property and
+// cited here, not restated. Comparison and rendering project `.digits`. The emitter lowers this
+// one-field record to a plain alias, so the confinement's rung is BY-SOURCE plus the executing
+// controls — the witness file states the rung honestly.
+type SemVerNumericField sole_constructor {
+  digits: List<Int>
+}
+
+fn semver_numeric_field(cps: List<Int>) -> SemVerNumericField? {
+  if cps.count() == 0 {
+    none
+  } else if !all(cps, cp => cp >= 48 && cp <= 57) {
+    none
+  } else if cps.count() > 1 {
+    match cps.first() {
+      Present { value: 48 } => none
+      Present { value: _ } => Present { value: SemVerNumericField { digits: cps } }
+      Absent => none
+    }
+  } else {
+    Present { value: SemVerNumericField { digits: cps } }
+  }
+}
+
 type SemVerIdentifier
-  = SemVerNumericIdentifier { value: NonNegativeInt }
+  = SemVerNumericIdentifier { digits: SemVerNumericField }
   | SemVerAlphanumericIdentifier { label: NonEmptyStr }
 
 type SemVerVersion {
-  major: NonNegativeInt
-  minor: NonNegativeInt
-  patch: NonNegativeInt
+  major: SemVerNumericField
+  minor: SemVerNumericField
+  patch: SemVerNumericField
   pre_release: List<SemVerIdentifier>
   build: List<SemVerIdentifier>
 }
 
-fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
-  nat_compare(a: a, b: b)
+// §11 decides major, then minor, then patch "as numbers". With admission refusing leading
+// zeroes, a digit run's LENGTH is its magnitude and equal lengths compare digit-wise in ASCII
+// order — section 11's numeric comparison at any width. The comparator takes CONFINED fields
+// and projects .digits itself, so no raw code-point list can reach it (side chat review
+// 5435818773); the run-length helper below stays internal over plain lists.
+fn semver_compare_numeric_digits(a: SemVerNumericField, b: SemVerNumericField) -> Ordering {
+  semver_compare_digit_runs(a: a.digits, b: b.digits)
+}
+
+fn semver_compare_digit_runs(a: List<Int>, b: List<Int>) -> Ordering {
+  if a.count() < b.count() { Less } else if a.count() > b.count() { Greater } else { semver_compare_digits_lexical(a: a, b: b) }
+}
+
+fn semver_compare_digits_lexical(a: List<Int>, b: List<Int>) -> Ordering {
+  if a.count() == 0 {
+    Equal
+  } else {
+    match a.first() {
+      Present { value: ac } => match b.first() {
+        Present { value: bc } =>
+          if ac < bc {
+            Less
+          } else if ac > bc {
+            Greater
+          } else {
+            semver_compare_digits_lexical(a: a.skip(n: 1), b: b.skip(n: 1))
+          }
+        Absent => Greater
+      }
+      Absent => Less
+    }
+  }
 }
 
 fn semver_compare_identifier(a: SemVerIdentifier, b: SemVerIdentifier) -> Ordering {
   match a {
-    SemVerNumericIdentifier { value: av } => match b {
-      SemVerNumericIdentifier { value: bv } =>
-        semver_compare_non_negative_int(a: av, b: bv)
+    SemVerNumericIdentifier { digits: ad } => match b {
+      SemVerNumericIdentifier { digits: bd } =>
+        semver_compare_numeric_digits(a: ad, b: bd)
       SemVerAlphanumericIdentifier { label: _ } => Less
     }
     SemVerAlphanumericIdentifier { label: al } => match b {
-      SemVerNumericIdentifier { value: _ } => Greater
+      SemVerNumericIdentifier { digits: _ } => Greater
       SemVerAlphanumericIdentifier { label: bl } =>
         if al < bl { Less } else { if al > bl { Greater } else { Equal } }
     }
@@ -85,11 +146,11 @@ fn semver_compare_pre_release(a: List<SemVerIdentifier>, b: List<SemVerIdentifie
 }
 
 fn semver_compare(a: SemVerVersion, b: SemVerVersion) -> Ordering {
-  match semver_compare_non_negative_int(a: a.major, b: b.major) {
+  match semver_compare_numeric_digits(a: a.major, b: b.major) {
     Equal =>
-      match semver_compare_non_negative_int(a: a.minor, b: b.minor) {
+      match semver_compare_numeric_digits(a: a.minor, b: b.minor) {
         Equal =>
-          match semver_compare_non_negative_int(a: a.patch, b: b.patch) {
+          match semver_compare_numeric_digits(a: a.patch, b: b.patch) {
             Equal => semver_compare_pre_release(a: a.pre_release, b: b.pre_release)
             other => other
           }
@@ -99,10 +160,13 @@ fn semver_compare(a: SemVerVersion, b: SemVerVersion) -> Ordering {
   }
 }
 
+
 // A NUMERIC RELEASE "M.m" OR "M.m.p" AS A SemVerVersion CORE, the form tools that are not themselves
 // semver-governed (curl, among them) print and pin. A missing patch reads as 0, which is what "M.m"
-// means as a release floor; any other shape -- a fourth part, a non-digit, a negative -- is absent,
-// never coerced.
+// means as a release floor; any other shape -- a fourth part, a non-digit, a leading zero, a negative --
+// is absent, never coerced (the confined constructor is the admission, so an out-of-grammar part
+// refuses exactly as the section 2 grammar refuses it). PORTED to the confined field representation
+// when main's dotted-floor functions merged against this module's retype.
 fn semver_core_of_dotted(text: String) -> SemVerVersion? {
   let parts = split(s: trim(s: text), delimiter: ".")
   if length(parts) < 2 || length(parts) > 3 {
@@ -115,7 +179,11 @@ fn semver_core_of_dotted(text: String) -> SemVerVersion? {
           Absent => none
           Present { value: minor } =>
             if length(parts) == 2 {
-              Present { value: SemVerVersion { major: major, minor: minor, patch: 0, pre_release: [], build: [] } }
+              match semver_numeric_field(cps: chars(s: "0" as String)) {
+                Absent => none
+                Present { value: zero } =>
+                  Present { value: SemVerVersion { major: major, minor: minor, patch: zero, pre_release: [], build: [] } }
+              }
             } else {
               match semver_dotted_part(parts: parts, index: 2) {
                 Absent => none
@@ -127,14 +195,10 @@ fn semver_core_of_dotted(text: String) -> SemVerVersion? {
   }
 }
 
-fn semver_dotted_part(parts: List<String>, index: Int) -> NonNegativeInt? {
+fn semver_dotted_part(parts: List<String>, index: Int) -> SemVerNumericField? {
   match parts.skip(n: index).first() {
     Absent => none
-    Present { value: w } =>
-      match parse_int(s: w) {
-        Absent => none
-        Present { value: n } => checked_int_to_nat(n: n)
-      }
+    Present { value: w } => semver_numeric_field(cps: chars(s: w as String))
   }
 }
 
@@ -151,7 +215,7 @@ fn semver_minimum_of_constraint(constraint: VersionConstraint) -> SemVerVersion?
 
 fn semver_identifier_label(id: SemVerIdentifier) -> String {
   match id {
-    SemVerNumericIdentifier { value: v } => "{v}"
+    SemVerNumericIdentifier { digits: d } => semver_label_from_code_points(cps: d.digits)
     SemVerAlphanumericIdentifier { label: s } => s
   }
 }
@@ -162,8 +226,8 @@ fn semver_identifiers_label(ids: List<SemVerIdentifier>) -> String {
 
 fn semver_version_label(v: SemVerVersion) -> String {
   let core = concat(
-    to_string(v.major),
-    concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))
+    semver_label_from_code_points(cps: v.major.digits),
+    concat(".", concat(semver_label_from_code_points(cps: v.minor.digits), concat(".", semver_label_from_code_points(cps: v.patch.digits))))
   )
   let with_pre = if v.pre_release.count() == 0 {
     core
@@ -181,8 +245,242 @@ fn semver_to_version_identity(v: SemVerVersion) -> VersionIdentity {
   semver_version_label(v: v)
 }
 
-fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> Ordering {
-  if a == b { Equal } else { if a < b { Less } else { Greater } }
+// CITED RULE (SemVer 2.0.0 §11, https://semver.org/#spec-item-11 — the authority this module's
+// extdeps_external_authority_anchor attests): precedence is decided by comparing major, then
+// minor, then patch as NUMBERS; a pre-release version has LOWER precedence than the normal
+// version; pre-release identifiers compare numeric < alphanumeric, numerics numerically,
+// alphanumerics lexically in ASCII sort order, and a larger set of pre-release identifiers ranks
+// higher when all preceding identifiers are equal; build metadata is ignored entirely.
+//
+// The label is a VersionScheme's only handle, so the comparison parses the label back into the
+// typed form and routes through `semver_compare` — the ONE implementation of the cited rule.
+// §11 defines precedence over VALID versions, so a label outside the §2 grammar is a located
+// refusal: the carrier names the failing side, the label, and the cause (pinned by
+// w_semver_scheme_out_of_grammar_label_refuses_precedence), never a fabricated order.
+fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> VersionComparison {
+  match semver_identity_parse(label: a) {
+    Present { value: av } =>
+      match semver_identity_parse(label: b) {
+        Present { value: bv } => VersionCompared { ordering: semver_compare(a: av, b: bv) }
+        Absent => VersionComparisonRefused { side: RightOperand, identity: b as String, cause: "label does not satisfy the SemVer 2.0.0 version grammar, so section 11 precedence is undefined for it" }
+      }
+    Absent => VersionComparisonRefused { side: LeftOperand, identity: a as String, cause: "label does not satisfy the SemVer 2.0.0 version grammar, so section 11 precedence is undefined for it" }
+  }
+}
+
+// ---- label parse (SemVer 2.0.0 §2 grammar) --------------------------------
+
+fn semver_identity_code_points(label: VersionIdentity) -> List<Int> {
+  chars(s: label as String)
+}
+
+fn semver_is_ascii_digit(cp: Int) -> Bool {
+  cp >= 48 && cp <= 57
+}
+
+fn semver_is_ascii_letter(cp: Int) -> Bool {
+  (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)
+}
+
+fn semver_is_identifier_char(cp: Int) -> Bool {
+  semver_is_ascii_digit(cp: cp) || semver_is_ascii_letter(cp: cp) || cp == 45
+}
+
+fn semver_index_of(cp: Int, cps: List<Int>) -> Int? {
+  if cps.count() == 0 {
+    none
+  } else {
+    match cps.first() {
+      Present { value: h } =>
+        if h == cp {
+          Present { value: 0 }
+        } else {
+          match semver_index_of(cp: cp, cps: cps.skip(n: 1)) {
+            Present { value: k } => Present { value: k + 1 }
+            Absent => none
+          }
+        }
+      Absent => none
+    }
+  }
+}
+
+fn semver_split_on(cp: Int, cps: List<Int>, acc: List<List<Int>>) -> List<List<Int>> {
+  match semver_index_of(cp: cp, cps: cps) {
+    Present { value: i } =>
+      semver_split_on(cp: cp, cps: cps.skip(n: i + 1), acc: concat(acc, [cps.take(n: i)]))
+    Absent => concat(acc, [cps])
+  }
+}
+
+fn semver_all_digits(cps: List<Int>) -> Bool {
+  cps.count() > 0 && all(cps, cp => semver_is_ascii_digit(cp: cp))
+}
+
+// §2: a numeric identifier MUST NOT include leading zeroes; "0" alone is fine.
+fn semver_numeric_run_without_leading_zero(cps: List<Int>) -> Bool {
+  if !semver_all_digits(cps: cps) {
+    false
+  } else {
+    match cps.first() {
+      Present { value: h } => cps.count() == 1 || h != 48
+      Absent => false
+    }
+  }
+}
+
+
+
+fn semver_label_from_code_points(cps: List<Int>) -> NonEmptyStr {
+  join(cps |> map(cp => from_code_point(cp: cp)), "") as NonEmptyStr
+}
+
+// ---- core MAJOR.MINOR.PATCH -----------------------------------------------
+
+// THE LAST FIELD CONSUMES THE WHOLE REMAINDER, never a dot-split: a leftover delimiter
+// then fails the numeric run here instead of being split off and silently accepted.
+// SemVer 2.0.0 §2 is X.Y.Z with no trailing delimiter, so "1.2.3." must refuse, not rank.
+fn semver_core_fields_parse(cps: List<Int>, remaining: Int) -> List<SemVerNumericField>? {
+  if remaining == 0 {
+    if cps.count() == 0 { Present { value: [] } } else { none }
+  } else if remaining == 1 {
+    match semver_numeric_field(cps: cps) {
+      Absent => none
+      Present { value: v } => Present { value: [v] }
+    }
+  } else {
+    match semver_index_of(cp: 46, cps: cps) {
+      Present { value: i } =>
+        match semver_numeric_field(cps: cps.take(n: i)) {
+          Absent => none
+          Present { value: v } =>
+            match semver_core_fields_parse(cps: cps.skip(n: i + 1), remaining: remaining - 1) {
+              Absent => none
+              Present { value: rest } => Present { value: concat([v], rest) }
+            }
+        }
+      Absent => none
+    }
+  }
+}
+
+fn semver_core_parse(cps: List<Int>) -> SemVerVersion? {
+  match semver_core_fields_parse(cps: cps, remaining: 3) {
+    Absent => none
+    Present { value: fields } =>
+      if fields.count() != 3 {
+        none
+      } else {
+        match fields.first() {
+          Absent => none
+          Present { value: major } =>
+            match fields.skip(n: 1).first() {
+              Absent => none
+              Present { value: minor } =>
+                match fields.skip(n: 2).first() {
+                  Absent => none
+                  Present { value: patch } =>
+                    Present { value: SemVerVersion { major: major, minor: minor, patch: patch, pre_release: [], build: [] } }
+                }
+            }
+        }
+      }
+  }
+}
+
+// ---- pre-release and build identifiers ------------------------------------
+
+// One identifier parse for both §9 pre-release and §10 build identifiers; the only real
+// difference between the two grammars is carried by strict_numeric. A no-leading-zero digit run
+// is numeric (§9, §10). In strict mode — pre-release — an all-digit run WITH a leading zero is
+// neither numeric ("Numeric identifiers MUST NOT include leading zeroes", §9) nor alphanumeric
+// (the §2 grammar requires an alphanumeric identifier to contain a non-digit), so it refuses.
+// §10 permits leading zeroes in build metadata ("1.0.0+0130"), so permissive mode keeps such a
+// run as an alphanumeric identifier. An admitted numeric identifier carries its digits as code
+// points: section 9 numerics have no size limit, so no machine-integer conversion happens on
+// the comparison path.
+fn semver_identifier_parse(cps: List<Int>, strict_numeric: Bool) -> SemVerIdentifier? {
+  if cps.count() == 0 {
+    none
+  } else if !all(cps, cp => semver_is_identifier_char(cp: cp)) {
+    none
+  } else if semver_numeric_run_without_leading_zero(cps: cps) {
+    match semver_numeric_field(cps: cps) {
+      Present { value: f } => Present { value: SemVerNumericIdentifier { digits: f } }
+      Absent => none
+    }
+  } else if strict_numeric && semver_all_digits(cps: cps) {
+    none
+  } else {
+    Present { value: SemVerAlphanumericIdentifier { label: semver_label_from_code_points(cps: cps) } }
+  }
+}
+
+fn semver_identifier_list_parse(
+  segments: List<List<Int>>,
+  strict_numeric: Bool
+) -> List<SemVerIdentifier>? {
+  segments |> fold(
+    init: Present { value: [] },
+    f: (st, seg) =>
+      match st {
+        Absent => Absent
+        Present { value: acc } =>
+          match semver_identifier_parse(cps: seg, strict_numeric: strict_numeric) {
+            Absent => Absent
+            Present { value: id } => Present { value: concat(acc, [id]) }
+          }
+      }
+  )
+}
+
+fn semver_pre_release_parse(cps: List<Int>) -> List<SemVerIdentifier>? {
+  semver_identifier_list_parse(segments: semver_split_on(cp: 46, cps: cps, acc: []), strict_numeric: true)
+}
+
+fn semver_build_parse(cps: List<Int>) -> List<SemVerIdentifier>? {
+  semver_identifier_list_parse(segments: semver_split_on(cp: 46, cps: cps, acc: []), strict_numeric: false)
+}
+
+// ---- label assembly --------------------------------------------------------
+
+fn semver_identity_head_parse(cps: List<Int>, build: List<SemVerIdentifier>) -> SemVerVersion? {
+  match semver_index_of(cp: 45, cps: cps) {
+    Present { value: pi } =>
+      match semver_core_parse(cps: cps.take(n: pi)) {
+        Absent => none
+        Present { value: core } =>
+          match semver_pre_release_parse(cps: cps.skip(n: pi + 1)) {
+            Absent => none
+            Present { value: pre } =>
+              Present { value: SemVerVersion { major: core.major, minor: core.minor, patch: core.patch, pre_release: pre, build: build } }
+          }
+      }
+    Absent =>
+      match semver_core_parse(cps: cps) {
+        Absent => none
+        Present { value: core } =>
+          Present { value: SemVerVersion { major: core.major, minor: core.minor, patch: core.patch, pre_release: [], build: build } }
+      }
+  }
+}
+
+fn semver_identity_parse(label: VersionIdentity) -> SemVerVersion? {
+  semver_version_parse(cps: semver_identity_code_points(label: label))
+}
+
+// Code-point entry for sibling schemes whose labels carry a scheme-specific prefix (go's "v"):
+// the grammar and the precedence stay HERE — the one implementation — and the sibling keeps only
+// its own prefix and acceptance rules.
+fn semver_version_parse(cps: List<Int>) -> SemVerVersion? {
+  match semver_index_of(cp: 43, cps: cps) {
+    Present { value: bi } =>
+      match semver_build_parse(cps: cps.skip(n: bi + 1)) {
+        Absent => none
+        Present { value: build } => semver_identity_head_parse(cps: cps.take(n: bi), build: build)
+      }
+    Absent => semver_identity_head_parse(cps: cps, build: [])
+  }
 }
 
 data semver_scheme: VersionScheme = VersionScheme {

@@ -21,7 +21,9 @@ import v1.std.core {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import std.types { is_kernel_type }
-import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup }
+import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
+import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
+import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, bare_occurrence_binding }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
   normalize_access_type_node, resolved_type,
@@ -40,6 +42,7 @@ type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 
 type TypeSummary {
   name: String
+  key: String
   repr: TypeRepr
   field_summaries: Map<String, FieldSummary>
   field_type_map: Map<String, String>
@@ -47,6 +50,122 @@ type TypeSummary {
   variant_name_set: Map<String, Bool>
   generic_param_names: List<String>
   has_fn_fields: Bool
+}
+
+// THE TYPE SUMMARIES, KEYED BY DECLARATION. A summary is stored under its declaration's identity
+// (type_decl_identity: owner module and declared name, the key TypeDeclIndex uses), and a
+// variant-payload summary under `<identity>::<Variant>`. The leaf-keyed map this replaces kept ONE
+// summary per leaf -- whichever module was folded last -- so a second `Optional` anywhere in a
+// closure replaced std.optional's summary for every reader in every module
+// (gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer).
+type TypeSummaryIndex {
+  by_key: Map<String, TypeSummary>
+  keys_by_leaf: Map<String, List<String>>
+}
+
+// A NAME HOLDER'S ANSWER HAS THREE ARMS, as TypeDeclResolution's does: a key (an identity, or an
+// identity-qualified variant key) is exact; a bare leaf one declaration owns resolves to it; a bare
+// leaf two declarations own is TypeSummaryLeafAmbiguous and names neither.
+type TypeSummaryLookup
+  = TypeSummaryFound { summary: TypeSummary }
+  | TypeSummaryLeafAmbiguous { leaf: String }
+  | TypeSummaryNotDeclared
+
+fn empty_type_summary_index() -> TypeSummaryIndex {
+  TypeSummaryIndex { by_key: empty_map(), keys_by_leaf: empty_map() }
+}
+
+fn type_summary_index_insert(index: TypeSummaryIndex, key: String, leaf: String, summary: TypeSummary) -> TypeSummaryIndex {
+  TypeSummaryIndex {
+    by_key: map_insert(index.by_key, key, summary),
+    keys_by_leaf: map_insert(index.keys_by_leaf, leaf, type_decl_leaf_identities_with(prior: map_get(index.keys_by_leaf, leaf), identity: key))
+  }
+}
+
+fn type_summary_keys_of_leaf(index: TypeSummaryIndex, leaf: String) -> List<String> {
+  match map_get(index.keys_by_leaf, leaf) {
+    Present { value: keys } => keys
+    Absent => []
+  }
+}
+
+fn type_summary_at_key(index: TypeSummaryIndex, key: String) -> TypeSummaryLookup {
+  match map_get(index.by_key, key) {
+    Present { value: summary } => TypeSummaryFound { summary: summary }
+    Absent => TypeSummaryNotDeclared
+  }
+}
+
+fn type_summary_by_leaf(index: TypeSummaryIndex, leaf: String) -> TypeSummaryLookup {
+  let keys = type_summary_keys_of_leaf(index: index, leaf: leaf)
+  if (keys |> count) == 1 {
+    keys |> fold(init: TypeSummaryNotDeclared, f: (_acc, key) => type_summary_at_key(index: index, key: key))
+  } else if (keys |> count) > 1 {
+    TypeSummaryLeafAmbiguous { leaf: leaf }
+  } else {
+    TypeSummaryNotDeclared
+  }
+}
+
+// A string key, as the readers that hold only a name hand it over: an exact key first (an identity,
+// or `<identity>::<Variant>`), then a leaf-qualified variant key (`Enum::Variant`, whose enum part
+// resolves by its leaf), then a bare leaf. A dotted name that is no key is not resolved by spelling.
+fn type_summary_lookup(index: TypeSummaryIndex, key: String) -> TypeSummaryLookup {
+  match map_get(index.by_key, key) {
+    Present { value: summary } => TypeSummaryFound { summary: summary }
+    Absent =>
+      if contains(key, "::") {
+        let parts = key |> split(delimiter: "::")
+        let enum_part = parts |> take((parts |> count) - 1) |> join(separator: "::")
+        let variant_part = match parts |> last {
+          Present { value: v } => v
+          Absent => ""
+        }
+        match type_summary_lookup(index: index, key: enum_part) {
+          TypeSummaryFound { summary: owner } => type_summary_at_key(index: index, key: variant_summary_key(enum_name: owner.key, variant_name: variant_part))
+          TypeSummaryLeafAmbiguous { leaf: l } => TypeSummaryLeafAmbiguous { leaf: l }
+          TypeSummaryNotDeclared => TypeSummaryNotDeclared
+        }
+      } else if contains(key, ".") {
+        TypeSummaryNotDeclared
+      } else {
+        type_summary_by_leaf(index: index, leaf: key)
+      }
+  }
+}
+
+// A reader holding a type REFERENCE resolves it the way every emitter reader of a declaration does
+// (resolve_type_decl_reference: carried identity, declaring span, the counted interim arms, then the
+// spelling), and reads the summary stored under that identity.
+fn type_summary_of_reference(index: TypeSummaryIndex, decls: TypeDeclIndex, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> TypeSummaryLookup {
+  match resolve_type_decl_reference(index: decls, type_expr: type_expr, source_indices: source_indices) {
+    TypeDeclResolved { identity: identity, decl: _ } => type_summary_at_key(index: index, key: identity)
+    TypeDeclLeafAmbiguous { leaf: l } => TypeSummaryLeafAmbiguous { leaf: l }
+    TypeDeclKernelSpellingUndecided { leaf: l } => TypeSummaryLeafAmbiguous { leaf: l }
+    TypeDeclNotDeclared => TypeSummaryNotDeclared
+  }
+}
+
+// THE OPTIONAL PROJECTION, for readers that hold only a NAME and ask which summary it denotes in order
+// to collect use-surfaces or read a field map. It answers a summary only when the name decides one
+// (an exact key, or a leaf one declaration owns); a leaf two declarations own answers Absent and no
+// summary is picked for it -- the leaf-keyed map this replaces answered with the LAST declarer here.
+// The readers that consume it collect names for import lines or check a repr, so an undecided name
+// contributes nothing and the item it would have served refuses at rustc, located at its use.
+// RESIDUE, declared: these name-holding readers dissolve when the names they hold are keys -- a
+// TypeSummary's field_type_map and field_import_surface_names store the field type's declaration
+// identity rather than its spelling -- on gunbc.recurring_failure_mode
+// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer's trigger.
+fn type_summary_decided(index: TypeSummaryIndex, key: String) -> TypeSummary? {
+  match type_summary_lookup(index: index, key: key) {
+    TypeSummaryFound { summary: summary } => Present { value: summary }
+    TypeSummaryLeafAmbiguous { leaf: _ } => none
+    TypeSummaryNotDeclared => none
+  }
+}
+
+fn type_summary_values(index: TypeSummaryIndex) -> List<TypeSummary> {
+  map_values(index.by_key)
 }
 
 type FieldTypeMapBuild {
@@ -158,6 +277,15 @@ type TypeDeclIndex {
   qualified_names: SymbolIndex
 }
 
+// WHAT A BARE LEAF DENOTES AT ONE OCCURRENCE: v1.compiler.infer_env bare_occurrence_binding (own file,
+// then named import, then kernel -- the typechecker's lookup_binding order), joined here to the
+// declaration identity this index keys on.
+type TypeDeclOccurrenceBinding
+  = OccurrenceDeclaredHere { identity: String }
+  | OccurrenceImported { identity: String }
+  | OccurrenceIsKernelName
+  | OccurrenceUndecided
+
 // TypeDeclKernelSpellingUndecided IS ITS OWN ARM BECAUSE IT IS A DIFFERENT FACT FROM AMBIGUITY.
 // `String` and `Int` are kernel spellings (std.types is_kernel_type), and resolve leaves a
 // kernel-spelled reference unstamped on purpose (v1.compiler.infer_resolve
@@ -263,6 +391,8 @@ type TypeDeclReferenceRoute
   | RouteDeclaringSpan
   | RouteReferencingModuleDeclarer
   | RouteQualifiedSpelling
+  | RouteReferencingModuleImport
+  | RouteKernelMint
   | RouteLeafSpelling
 
 type TypeDeclRoutedResolution {
@@ -292,13 +422,15 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
           let leaf = qualified_last_segment(name: authored)
           let by_spelling = resolve_type_decl_leaf(index: index, leaf: leaf)
           let referencing_module_identity = match by_spelling {
-            TypeDeclLeafAmbiguous { leaf: l } => if authored == l { type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) } else { type_decl_qualifier_declarer(index: index, authored: authored) }
+            TypeDeclLeafAmbiguous { leaf: l } =>
+              if authored == l { type_decl_occurrence_identity(index: index, leaf: l, reference: type_expr) }
+              else { type_decl_qualifier_declarer(index: index, authored: authored) }
             TypeDeclResolved { identity: _, decl: _ } => none
             TypeDeclKernelSpellingUndecided { leaf: _ } => none
             TypeDeclNotDeclared => none
           }
           match referencing_module_identity {
-            Present { value: identity } => TypeDeclRoutedResolution { route: if authored == leaf { RouteReferencingModuleDeclarer } else { RouteQualifiedSpelling }, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
+            Present { value: identity } => TypeDeclRoutedResolution { route: type_decl_spelling_route(index: index, authored: authored, leaf: leaf, reference: type_expr), resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
             Absent => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: by_spelling }
           }
       }
@@ -341,21 +473,83 @@ fn type_decl_qualifier_declarer(index: TypeDeclIndex, authored: String) -> Strin
   }
 }
 
+// THE KERNEL MINT'S DECLARER. Which corpus declaration the kernel type IS is a modeled fact
+// (gunbc.structural_realization_bindings kernel_mint_declaration_rows, the row the pattern side reads
+// through kernel_mint_ownership), but that answers WHICH declaration a mint stands for, not WHETHER an
+// occurrence denotes it. So this arm is reached only from type_decl_occurrence_identity, and only when
+// the occurrence is on the kernel arm of the resolver's order (v1.compiler.infer_env bare_occurrence_binding). A spelling no row mints, or two rows
+// mint, stays LeafAmbiguous and refuses. Counted as kernel_mint; interim under
+// referencing_module_declarer_route_dissolves_on.
+fn type_decl_kernel_mint_declarer(index: TypeDeclIndex, leaf: String) -> String? {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: leaf) {
+    KernelMintDeclarationFound { declaration: d } =>
+      let identity = type_decl_identity(owner_module: d.module_path as String, decl_name: d.decl_name as String)
+      match map_get(index.by_identity, identity) {
+        Present { value: _ } => Present { value: identity }
+        Absent => none
+      }
+    KernelMintDeclarationAbsent => none
+    KernelMintDeclarationAmbiguous { row_count: _ } => none
+  }
+}
+
+fn type_decl_spelling_route(index: TypeDeclIndex, authored: String, leaf: String, reference: Node) -> TypeDeclReferenceRoute {
+  if authored != leaf { RouteQualifiedSpelling }
+  else {
+    match type_decl_occurrence_binding(index: index, leaf: leaf, reference: reference) {
+      OccurrenceDeclaredHere { identity: _ } => RouteReferencingModuleDeclarer
+      OccurrenceIsKernelName => RouteKernelMint
+      OccurrenceImported { identity: _ } => RouteReferencingModuleImport
+      OccurrenceUndecided => RouteLeafSpelling
+    }
+  }
+}
+
+// THE IDENTITY A BARE AMBIGUOUS LEAF DENOTES AT THIS OCCURRENCE, or none (it stays LeafAmbiguous and
+// refuses). The kernel mint is consulted only on the kernel arm of the resolver's order.
+fn type_decl_occurrence_identity(index: TypeDeclIndex, leaf: String, reference: Node) -> String? {
+  match type_decl_occurrence_binding(index: index, leaf: leaf, reference: reference) {
+    OccurrenceDeclaredHere { identity: identity } => Present { value: identity }
+    OccurrenceIsKernelName => type_decl_kernel_mint_declarer(index: index, leaf: leaf)
+    OccurrenceImported { identity: identity } => Present { value: identity }
+    OccurrenceUndecided => none
+  }
+}
+
+fn type_decl_occurrence_binding(index: TypeDeclIndex, leaf: String, reference: Node) -> TypeDeclOccurrenceBinding {
+  match bare_occurrence_binding(index: index.qualified_names, name: leaf, reference: reference) {
+    BareOccurrenceDeclaredInItsFile { declaration: decl } =>
+      match type_decl_identity_of_declaration(index: index, decl: decl) {
+        Present { value: identity } => OccurrenceDeclaredHere { identity: identity }
+        Absent => OccurrenceUndecided
+      }
+    BareOccurrenceImportedByName { module_path: from_module, declaration: decl } =>
+      match type_decl_identity_of_declaration(index: index, decl: decl) {
+        Present { value: identity } => OccurrenceImported { identity: identity }
+        Absent =>
+          let imported = type_decl_identity(owner_module: from_module, decl_name: leaf)
+          match map_get(index.by_identity, imported) {
+            Present { value: _ } => OccurrenceImported { identity: imported }
+            Absent => OccurrenceUndecided
+          }
+      }
+    BareOccurrenceIsKernelName => OccurrenceIsKernelName
+    BareOccurrenceUndecided => OccurrenceUndecided
+  }
+}
+
+fn type_decl_identity_of_declaration(index: TypeDeclIndex, decl: Node) -> String? {
+  match decl.ident_span {
+    Present { value: sp } => map_get(index.identity_by_declaring_span, declaring_span_key(sp: sp))
+    Absent => none
+  }
+}
+
 fn type_decl_index_with_qualified_names(index: TypeDeclIndex, qualified_names: SymbolIndex) -> TypeDeclIndex {
   TypeDeclIndex { by_identity: index.by_identity, identity_by_declaring_span: index.identity_by_declaring_span, leaf_owners: index.leaf_owners, identities_by_leaf: index.identities_by_leaf, qualified_names: qualified_names }
 }
 
-data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer and RouteQualifiedSpelling dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer or qualified_spelling rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.")
-
-fn type_decl_referencing_module_declarer(index: TypeDeclIndex, leaf: String, reference: Node) -> String? {
-  let local = type_decl_identities_of_leaf(index: index, leaf: leaf) |> filter(identity =>
-    match map_get(index.by_identity, identity) {
-      Present { value: decl } => decl.span.file == reference.span.file
-      Absent => false
-    }
-  )
-  if (local |> fold(init: 0, f: (n, _identity) => n + 1)) == 1 { local |> fold(init: none, f: (acc, identity) => Present { value: identity }) } else { none }
-}
+data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer, RouteReferencingModuleImport, RouteQualifiedSpelling and RouteKernelMint dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer, referencing_module_import, qualified_spelling or kernel_mint rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then type_decl_occurrence_binding and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.")
 
 fn resolve_type_decl_reference(index: TypeDeclIndex, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> TypeDeclResolution {
   resolve_type_decl_routed(index: index, type_expr: type_expr, source_indices: source_indices).resolution
@@ -368,6 +562,8 @@ fn type_decl_routed_resolution_label(routed: TypeDeclRoutedResolution) -> String
     RouteDeclaringSpan => "declaring_span"
     RouteReferencingModuleDeclarer => "referencing_module_declarer"
     RouteQualifiedSpelling => "qualified_spelling"
+    RouteReferencingModuleImport => "referencing_module_import"
+    RouteKernelMint => "kernel_mint"
     RouteLeafSpelling => "leaf_spelling"
   }
   match routed.resolution {
@@ -379,7 +575,7 @@ fn type_decl_routed_resolution_label(routed: TypeDeclRoutedResolution) -> String
 }
 
 type EmitGraphInfo {
-  type_summaries: Map<String, TypeSummary>
+  type_summaries: TypeSummaryIndex
   type_decl_items: TypeDeclIndex
   data_variant_wire_spellings: Map<String, DataVariantWireSpelling>
   fn_decl_items: Map<String, Node>
@@ -409,7 +605,7 @@ type EmitGraphInfo {
 }
 
 type EmitInfoBuildState {
-  type_summaries: Map<String, TypeSummary>
+  type_summaries: TypeSummaryIndex
   type_decl_items: TypeDeclIndex
   fn_decl_items: Map<String, Node>
   structural_alias_fn_surface_names: Map<String, List<String>>
@@ -419,7 +615,7 @@ type EmitInfoBuildState {
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     item_leaf_owner_modules: empty_map(),
-    type_summaries: empty_map(),
+    type_summaries: empty_type_summary_index(),
     type_decl_items: empty_type_decl_index(),
     data_variant_wire_spellings: empty_map(),
     fn_decl_items: empty_map(),
@@ -540,7 +736,34 @@ fn variant_summary_key(enum_name: String, variant_name: String) -> String {
 }
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
-  map_get(emit_info.type_summaries, type_name)
+  type_summary_decided(index: emit_info.type_summaries, key: type_name)
+}
+
+// A YES/NO QUESTION ABOUT A NAME. Unanimous answers from every declaration of a leaf are decided.
+// Disagreement is not "no": collapsing it to false made `is this an enum?` emit the non-enum arm
+// for a name two declarations own, which rustc can accept. NotDeclared is a separate arm so a
+// missing name is not an ambiguous one.
+type TypeSummaryQuestion
+  = QuestionDecided { value: Bool }
+  | QuestionNameAmbiguous { leaf: String }
+  | QuestionNotDeclared
+
+fn type_summary_answer(index: TypeSummaryIndex, key: String, question: fn(TypeSummary) -> Bool) -> TypeSummaryQuestion {
+  match type_summary_lookup(index: index, key: key) {
+    TypeSummaryFound { summary: summary } => QuestionDecided { value: question(summary) }
+    TypeSummaryNotDeclared => QuestionNotDeclared
+    TypeSummaryLeafAmbiguous { leaf: leaf } =>
+      let answers = type_summary_keys_of_leaf(index: index, leaf: leaf) |> fold(init: [], f: (acc, k) =>
+        match map_get(index.by_key, k) {
+          Present { value: summary } => list_push(acc, question(summary))
+          Absent => acc
+        }
+      )
+      if (answers |> count) == 0 { QuestionNotDeclared }
+      else if answers |> all(a => a) { QuestionDecided { value: true } }
+      else if answers |> all(a => !a) { QuestionDecided { value: false } }
+      else { QuestionNameAmbiguous { leaf: leaf } }
+  }
 }
 
 fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -565,14 +788,17 @@ fn emit_graph_records_fn_decl(item: Node) -> Bool {
   item.module_item_kind == ModuleItemFunction
 }
 
-fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {
-  map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
+// variant leaf -> the KEY of the enum that declares it, or "" when two enums declare that variant.
+// The value is the owner's identity, not its leaf: two same-leaf enums own different variants, and a
+// leaf value would send every reader back through the ambiguous spelling.
+fn derive_variant_to_enum(type_summaries: TypeSummaryIndex) -> Map<String, String> {
+  type_summary_values(index: type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
     match summary.repr {
       EnumRepr { unit_only: _ } =>
         fold(map_keys(summary.variant_name_set), init: acc, f: (inner, vn) =>
           match map_get(inner, vn) {
             Present { value: _ } => map_insert(inner, vn, "")
-            Absent => map_insert(inner, vn, summary.name)
+            Absent => map_insert(inner, vn, summary.key)
           }
         )
       _ => acc
@@ -580,41 +806,48 @@ fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<Strin
   )
 }
 
-fn is_known_variant(type_summaries: Map<String, TypeSummary>, name: String) -> Bool {
-  map_values(type_summaries) |> any(summary =>
-    match summary.repr {
-      EnumRepr { unit_only: _ } => emit_map_has(m: summary.variant_name_set, key: name)
-      _ => false
-    }
-  )
+fn is_known_variant(variant_to_enum: Map<String, String>, name: String) -> Bool {
+  map_contains_key(variant_to_enum, name)
 }
 
-fn variant_belongs_to_enum(type_summaries: Map<String, TypeSummary>, variant_name: String, enum_name: String) -> Bool {
-  match map_get(type_summaries, enum_name) {
-    Present { value: summary } =>
-      match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          emit_map_has(m: summary.variant_name_set, key: variant_name)
+fn summary_is_enum_with_variant(summary: TypeSummary, variant_name: String) -> Bool {
+  match summary.repr {
+    EnumRepr { unit_only: _ } => emit_map_has(m: summary.variant_name_set, key: variant_name)
+    _ => false
+  }
+}
+
+fn summary_is_enum(summary: TypeSummary) -> Bool {
+  match summary.repr {
+    EnumRepr { unit_only: _ } => true
+    _ => false
+  }
+}
+
+fn variant_belongs_to_enum(type_summaries: TypeSummaryIndex, variant_name: String, enum_name: String) -> TypeSummaryQuestion {
+  type_summary_answer(index: type_summaries, key: enum_name, question: summary => summary_is_enum_with_variant(summary: summary, variant_name: variant_name))
+}
+
+fn is_enum_in_summaries(type_summaries: TypeSummaryIndex, type_name: String) -> TypeSummaryQuestion {
+  type_summary_answer(index: type_summaries, key: type_name, question: summary => summary_is_enum(summary: summary))
+}
+
+fn find_variant_parent(type_summaries: TypeSummaryIndex, variant_name: String, scope_enums: List<String>) -> String? {
+  if scope_enums |> any(en =>
+    match variant_belongs_to_enum(type_summaries: type_summaries, variant_name: variant_name, enum_name: en) {
+      QuestionNameAmbiguous { leaf: _ } => true
+      _ => false
+    }
+  ) {
+    none
+  } else {
+    scope_enums |> filter(en =>
+      match variant_belongs_to_enum(type_summaries: type_summaries, variant_name: variant_name, enum_name: en) {
+        QuestionDecided { value: v } => v
         _ => false
       }
-    Absent => false
+    ) |> first
   }
-}
-
-fn is_enum_in_summaries(type_summaries: Map<String, TypeSummary>, type_name: String) -> Bool {
-  match map_get(type_summaries, type_name) {
-    Present { value: summary } => match summary.repr {
-      EnumRepr { unit_only: _ } => true
-      _ => false
-    }
-    Absent => false
-  }
-}
-
-fn find_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name: String, scope_enums: List<String>) -> String? {
-  scope_enums |> filter(en =>
-    variant_belongs_to_enum(type_summaries: type_summaries, variant_name: variant_name, enum_name: en)
-  ) |> first
 }
 
 fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
@@ -735,6 +968,7 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
     let field_types = build_field_type_map(children: item.children, source_indices: source_indices)
     Present { value: TypeSummary {
       name: authored_name_at(source_indices: source_indices, node: item),
+      key: "",
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(parent: item, source_indices: source_indices),
       field_type_map: field_types.field_types,
@@ -747,6 +981,7 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
     let unit_only = item.children |> all(child => child.children |> count == 0)
     Present { value: TypeSummary {
       name: authored_name_at(source_indices: source_indices, node: item),
+      key: "",
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children, source_indices: source_indices),
       field_type_map: empty_map(),
@@ -805,15 +1040,26 @@ type FnReachRound {
   grew: Bool
 }
 
-fn fn_reach_holds_directly(name: String, summaries: Map<String, TypeSummary>, structural_alias_direct_fn_names: Set<String>) -> Bool {
-  match map_get(summaries, name) {
+// The walk is over summary KEYS. A field names its type by spelling, so a target resolves to the
+// key it names exactly, or to EVERY declarer of that leaf: reachability is then an over-approximation
+// computed as the answer (a type reaching a function value through either same-leaf declaration is
+// marked), and the spelling itself is kept for the structural aliases, which this index does not hold.
+fn fn_reach_target_keys(index: TypeSummaryIndex, target: String) -> List<String> {
+  match map_get(index.by_key, target) {
+    Present { value: _ } => [target]
+    Absent => concat(type_summary_keys_of_leaf(index: index, leaf: target), [target])
+  }
+}
+
+fn fn_reach_holds_directly(name: String, summaries: TypeSummaryIndex, structural_alias_direct_fn_names: Set<String>) -> Bool {
+  match map_get(summaries.by_key, name) {
     Present { value: s } => s.has_fn_fields
     Absent => set_contains(structural_alias_direct_fn_names, name)
   }
 }
 
-fn fn_reach_targets(name: String, summaries: Map<String, TypeSummary>, structural_alias_fn_surface_names: Map<String, List<String>>) -> List<String> {
-  match map_get(summaries, name) {
+fn fn_reach_targets(name: String, summaries: TypeSummaryIndex, structural_alias_fn_surface_names: Map<String, List<String>>) -> List<String> {
+  let spelled = match map_get(summaries.by_key, name) {
     Present { value: s } => concat(map_values(s.field_type_map), s.field_import_surface_names)
     Absent =>
       match map_get(structural_alias_fn_surface_names, name) {
@@ -821,9 +1067,10 @@ fn fn_reach_targets(name: String, summaries: Map<String, TypeSummary>, structura
         Absent => []
       }
   }
+  spelled |> fold(init: [], f: (acc, t) => concat(acc, fn_reach_target_keys(index: summaries, target: t)))
 }
 
-fn fn_reaching_names_fixpoint(candidates: List<String>, summaries: Map<String, TypeSummary>, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>, reached: Set<String>) -> Set<String> {
+fn fn_reaching_names_fixpoint(candidates: List<String>, summaries: TypeSummaryIndex, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>, reached: Set<String>) -> Set<String> {
   let round = fold(candidates, init: FnReachRound { reached: reached, grew: false }, f: (acc, name) =>
     if set_contains(acc.reached, name) { acc }
     else if fn_reach_holds_directly(name: name, summaries: summaries, structural_alias_direct_fn_names: structural_alias_direct_fn_names)
@@ -837,9 +1084,9 @@ fn fn_reaching_names_fixpoint(candidates: List<String>, summaries: Map<String, T
   } else { round.reached }
 }
 
-fn fn_reaching_names(summaries: Map<String, TypeSummary>, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>) -> Set<String> {
+fn fn_reaching_names(summaries: TypeSummaryIndex, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>) -> Set<String> {
   fn_reaching_names_fixpoint(
-    candidates: concat(map_keys(summaries), map_keys(structural_alias_fn_surface_names)),
+    candidates: concat(map_keys(summaries.by_key), map_keys(structural_alias_fn_surface_names)),
     summaries: summaries,
     structural_alias_fn_surface_names: structural_alias_fn_surface_names,
     structural_alias_direct_fn_names: structural_alias_direct_fn_names,
@@ -847,26 +1094,30 @@ fn fn_reaching_names(summaries: Map<String, TypeSummary>, structural_alias_fn_su
   )
 }
 
-fn close_fn_fields(summaries: Map<String, TypeSummary>, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>) -> Map<String, TypeSummary> {
+fn close_fn_fields(summaries: TypeSummaryIndex, structural_alias_fn_surface_names: Map<String, List<String>>, structural_alias_direct_fn_names: Set<String>) -> TypeSummaryIndex {
   let reaching = fn_reaching_names(summaries: summaries, structural_alias_fn_surface_names: structural_alias_fn_surface_names, structural_alias_direct_fn_names: structural_alias_direct_fn_names)
-  fold(map_keys(summaries), init: summaries, f: (acc, name) =>
-    match map_get(summaries, name) {
-      Present { value: s } =>
-        if !s.has_fn_fields && set_contains(reaching, name) {
-          map_insert(acc, name, TypeSummary {
-            name: s.name,
-            repr: s.repr,
-            field_summaries: s.field_summaries,
-            field_type_map: s.field_type_map,
-            field_import_surface_names: s.field_import_surface_names,
-            variant_name_set: s.variant_name_set,
-            generic_param_names: s.generic_param_names,
-            has_fn_fields: true
-          })
-        } else { acc }
-      Absent => acc
-    }
-  )
+  TypeSummaryIndex {
+    by_key: fold(map_keys(summaries.by_key), init: summaries.by_key, f: (acc, key) =>
+      match map_get(summaries.by_key, key) {
+        Present { value: s } =>
+          if !s.has_fn_fields && set_contains(reaching, key) {
+            map_insert(acc, key, TypeSummary {
+              name: s.name,
+              key: s.key,
+              repr: s.repr,
+              field_summaries: s.field_summaries,
+              field_type_map: s.field_type_map,
+              field_import_surface_names: s.field_import_surface_names,
+              variant_name_set: s.variant_name_set,
+              generic_param_names: s.generic_param_names,
+              has_fn_fields: true
+            })
+          } else { acc }
+        Absent => acc
+      }
+    ),
+    keys_by_leaf: summaries.keys_by_leaf
+  }
 }
 
 fn structural_alias_direct_fn_names_with(names: Set<String>, name: String, include: Bool) -> Set<String> {
@@ -912,7 +1163,9 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
     state
   }
   match build_type_summary(item: item, source_indices: source_indices) {
-    Present { value: summary } =>
+    Present { value: built } =>
+      let key = type_decl_identity(owner_module: module_name, decl_name: built.name)
+      let summary = type_summary_with_key(summary: built, key: key)
       let with_variants = match summary.repr {
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
@@ -925,9 +1178,11 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
               )
               let vname = authored_name_at(source_indices: source_indices, node: variant)
               let qualified_vname = variant_summary_key(enum_name: summary.name, variant_name: vname)
+              let variant_key = variant_summary_key(enum_name: key, variant_name: vname)
               let variant_field_types = build_field_type_map(children: variant.children, source_indices: source_indices)
-              map_insert(acc, qualified_vname, TypeSummary {
+              type_summary_index_insert(index: acc, key: variant_key, leaf: qualified_vname, summary: TypeSummary {
                 name: qualified_vname,
+                key: variant_key,
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(parent: variant, source_indices: source_indices),
                 field_type_map: variant_field_types.field_types,
@@ -940,7 +1195,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
           )
         _ => state.type_summaries
       }
-      let next_summaries = map_insert(with_variants, summary.name, summary)
+      let next_summaries = type_summary_index_insert(index: with_variants, key: key, leaf: summary.name, summary: summary)
       EmitInfoBuildState {
         type_summaries: next_summaries,
         type_decl_items: state.type_decl_items,
@@ -949,6 +1204,20 @@ fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: N
         structural_alias_direct_fn_names: state.structural_alias_direct_fn_names
       }
     Absent => state
+  }
+}
+
+fn type_summary_with_key(summary: TypeSummary, key: String) -> TypeSummary {
+  TypeSummary {
+    name: summary.name,
+    key: key,
+    repr: summary.repr,
+    field_summaries: summary.field_summaries,
+    field_type_map: summary.field_type_map,
+    field_import_surface_names: summary.field_import_surface_names,
+    variant_name_set: summary.variant_name_set,
+    generic_param_names: summary.generic_param_names,
+    has_fn_fields: summary.has_fn_fields
   }
 }
 

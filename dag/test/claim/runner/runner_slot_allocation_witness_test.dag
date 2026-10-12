@@ -107,10 +107,15 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // raise it once already: #12328 moved the served slices from 50 to 87 GiB and took this from 12 to
 // 11. It was 15 on main and stale: main derived 14 without the served-slice term, and 14 did not
 // conserve on srv1.
+// MOVED AGAIN 2026-10-09, BY RULING RATHER THAN BY A SLICE: the operator fixed the slot at a 22 GiB
+// hard maximum (gunbc.runner_slot_desired, the v1 withdrawal's memory envelope), and a smaller slot
+// admits more of them -- srv1 11 -> 12, srv3 and srv4 17 -> 21. The numbers below are the
+// derivation's answers under that row (re-derived by the authority's own folds, read once through a
+// probe and then pinned here as the alarm this claim is), not figures chosen for the hosts.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 11
-    && host_memory_admitted_width(host: operator_host_srv3) == 17
-    && host_memory_admitted_width(host: operator_host_srv4) == 17
+  host_memory_admitted_width(host: operator_host_srv1) == 12
+    && host_memory_admitted_width(host: operator_host_srv3) == 21
+    && host_memory_admitted_width(host: operator_host_srv4) == 21
     && match host_memory_denominator(host: operator_host_srv2) {
       MemoryDenominatorEstablished => false
       MemoryDenominatorUnestablished { cause: _ } => true
@@ -190,8 +195,8 @@ fn committed_width_is(host: HostIdentity, expected: Int) -> Bool {
 }
 
 test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
-  committed_width_is(host: operator_host_srv3, expected: 17)
-    && committed_width_is(host: operator_host_srv4, expected: 17)
+  committed_width_is(host: operator_host_srv3, expected: 21)
+    && committed_width_is(host: operator_host_srv4, expected: 21)
     && committed_width_is(host: operator_host_srv1, expected: host_memory_admitted_width(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
@@ -330,20 +335,27 @@ test fn runner_slot_allocation_minimum_viable_armed_budget_is_12_gib() -> Bool {
 // against the CI floor consumer (gunbc_srv2_03_converge_floor_fit_note). No OOM outcome and no
 // floor byte figure are asserted.
 
-// RENAMED AND RE-PINNED 2026-09-12 to the row it now guards. The 16/15 pair it named was the
-// 2026-08-17 ruling's, and every reading behind that ruling was a THROTTLE PIN -- a peak landing
-// on the MemoryHigh line, which that ruling itself called a censored lower bound. The 26/25 pair
-// derives from the first UNCENSORED floor-lane measurement (`high=max`, stall 0 faults/min), so
-// this witness pins a demand rather than the last place a pin happened to land.
-test fn witness_declared_row_pins_26_25_gib_from_floor_demand_ruling() -> Bool {
-  byte_size_count(b: gunbc_runner_slot_desired().memory_max) == byte_size_count(b: byte_size(27917287424))
-    && byte_size_count(b: gunbc_runner_slot_desired().memory_high) == byte_size_count(b: byte_size(26843545600))
+// RE-PINNED 2026-10-09 TO THE RULING THAT MOVED THE ROW, AND THE PROVENANCE IS THE POINT. The
+// 26/25 pair this guarded derived from the floor's first uncensored measurement; the operator's
+// 2026-10-09 ruling withdrew the floor from the required path (gunbc.rung_drop
+// v1_required_lanes_withdrawn) and fixed the slot that the emit-and-build steps run in at a hard
+// 22 GiB maximum, 21 GiB throttle line and NO swap ("no thrashing allowed ever"). The floor's own
+// envelope is no longer this row: it is gunbc.floor_demand gunbc_floor_pinned_memory_max/_high,
+// where the floor's receipts join (test.claim.floor.floor_demand_witness_test). A row that moves
+// again moves by a ruling cited here, never by the last place a pin landed.
+test fn witness_declared_row_pins_22_21_gib_and_no_swap_from_the_2026_10_09_ruling() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_max) == byte_size_count(b: byte_size(23622320128))
+    && byte_size_count(b: gunbc_runner_slot_desired().memory_high) == byte_size_count(b: byte_size(22548578304))
+    && byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max) == 0
 }
 
-test fn witness_declared_high_clears_measured_floor_peak() -> Bool {
-  byte_size_count(b: gunbc_runner_slot_desired().memory_high)
-    >= byte_size_count(b: gunbc_floor_measured_peak_observation)
-}
+// THE CLAIM THAT STOOD HERE -- the slot's high clears the floor's measured peak -- asserted a relation
+// between a dead tenant and the slot it no longer inhabits, and is deleted rather than re-pointed:
+// the floor's peak against the floor's own pinned line is floor_demand_witness_test's claim
+// (the_pin_receipt_was_armed_at_the_declared_throttle_line). What the slot must clear now is the
+// demand of the emit-and-build steps that run in it, which no receipt measures yet; the first cold
+// required run's MEMORY RECEIPT (peak_bytes, gunbc test) is that oracle, and a claim over it enters
+// here when it exists -- a declared frontier, not a number copied from the tree.
 
 test fn witness_floor_peak_input_is_uncensored_not_a_throttle_pin() -> Bool {
   gunbc_floor_measured_peak_is_uncensored()
@@ -549,14 +561,22 @@ test fn slot_purposes_partition_every_host_committed_width() -> Bool {
 // AUTHORS that identity rather than deriving it from a count -- the defence in
 // the_fabric_member_is_an_authored_identity_not_a_top_index_rule, observed working through a real
 // width change rather than only asserted.
+// AND THE 2026-10-09 SLOT MOVE EXERCISED EXACTLY THAT DEFENCE ON srv1: the 22 GiB slot derives a
+// width of 12, so `width + 1` IS srv1-13, the authored microVM member (#12011) -- inside, and
+// fabric. The earlier form of this claim asserted `width + 1` outside and not fabric, which was
+// true only while the width was 11; it was the index arithmetic this claim exists to refuse,
+// one layer up. The authored identity is named by its index here, and "outside" is asked of an
+// index past both the derived width and the authored member.
 test fn an_identity_outside_the_committed_population_is_refused_not_classified() -> Bool {
   derived_width_or_fail(r: gunbc_runner_committed_width(host: operator_host_srv1), k: srv1_w =>
     derived_width_or_fail(r: gunbc_runner_committed_width(host: operator_host_srv3), k: srv3_w =>
-      membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_w + 1))
+      membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: 99))
+        && membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_w + 2))
         && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 99))
         && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: srv3_w + 1))
         && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
-        && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_w + 1))))
+        && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: 13))
+        && membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: 13))))
 }
 
 // THE FABRIC MEMBER IS AN EXACT IDENTITY AND DOES NOT MOVE WITH THE WIDTH. The carve is authored as

@@ -1,0 +1,48 @@
+module test.claim.branch_run_grant_broker_workflow_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import extdeps.github.actions { PermRead, PermWrite }
+import gunbc.branch_run_grant_broker_workflow {
+  BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused,
+  expected_branch_run_grant_broker_workflow_yml, branch_run_grant_broker_job, branch_run_grant_broker_job_condition,
+}
+import gunbc.fleet_converge_workflow { fleet_converge_job }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn broker_yml() -> String {
+  match expected_branch_run_grant_broker_workflow_yml() {
+    BranchRunGrantBrokerWorkflowGenerated { content: c } => c
+    BranchRunGrantBrokerWorkflowGenerationRefused { reason: _ } => ""
+  }
+}
+
+// THE BROKER IS MAIN'S: a workflow_run workflow, triggered when a fleet-converge run is requested, on a
+// GitHub-hosted runner, filtered to dispatched runs of this repository whose title names a run-scoped mode.
+test fn the_broker_is_triggered_by_a_requested_fleet_converge_run() -> Bool {
+  let y = broker_yml()
+  y.contains("workflow_run:")
+    && y.contains("workflows: [fleet-converge]")
+    && y.contains("types: [requested]")
+    && y.contains("runs-on: ubuntu-24.04-arm")
+    && branch_run_grant_broker_job_condition().contains("github.event.workflow_run.event == 'workflow_dispatch'")
+    && branch_run_grant_broker_job_condition().contains("contains(github.event.workflow_run.display_title, ' hetzner_cloud_server_read ')")
+    && y.contains("${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}")
+}
+
+// THE DISPATCH CREDENTIAL IS THE BROKER'S ALONE: its job writes actions and mints no OIDC token, and
+// fleet-converge's shared job -- which runs a branch's code -- only reads actions.
+test fn only_the_broker_holds_actions_write() -> Bool {
+  (match branch_run_grant_broker_job().permissions {
+    Present { value: p } =>
+      match p.actions { Present { value: PermWrite } => true  _ => false }
+        && match p.id_token { Present { value: _ } => false  Absent => true }
+    Absent => false
+  })
+    && match fleet_converge_job().permissions {
+      Present { value: p } => match p.actions { Present { value: PermRead } => true  _ => false }
+      Absent => false
+    }
+}

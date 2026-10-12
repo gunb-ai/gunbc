@@ -1,7 +1,7 @@
 module gunbc.fleet.printer_federation_provision
 
 import std.types { List }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
 import gunbc.auth.gcp_secret_access { secret_accessor_grant }
 import gunbc.auth.github_gcp_federation { federated_service_account_member }
 import gunbc.fleet_printer_access { printer_access_code_loci }
@@ -20,7 +20,7 @@ fn printer_dedicated_federation() -> DedicatedFederation {
     provider_id: printer_wif_provider_id,
     attribute_mapping: printer_attribute_mapping,
     attribute_condition: printer_attribute_condition(),
-    principal_set: printer_principal_set(),
+    impersonation: StandingPoolImpersonation { principal_set: printer_principal_set() },
     service_account: printer_service_account,
     service_account_id: "printer-lan",
     service_account_display_name: "Printer LAN credential reader",

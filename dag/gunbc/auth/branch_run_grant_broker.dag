@@ -1,0 +1,66 @@
+module gunbc.auth.branch_run_grant_broker
+
+import std.types { Map, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.github.workflows
+import extdeps.transports.rest { RestAnswered, RestRefused }
+import gunbc.repository { gunbc_repository }
+import gunbc.generated_artifact { artifact_name, FleetConvergeYamlArtifact }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.heal_publisher_provision { rest_refusal_text }
+import gunbc.auth.branch_dispatch_federation {
+  branch_run_key_variable, parse_branch_run_key, branch_run_key, mode_of_run_title, run_scoped_mode_named,
+}
+
+// ── THE REQUEST FOR A RUN-SCOPED GRANT, MADE BY MAIN ────────────────────────────────────────────
+// A fleet-converge run whose mode needs a run-scoped account (gunbc.auth.branch_dispatch_federation)
+// cannot ask for it itself: asking means dispatching a run, and a token that may dispatch runs may
+// dispatch any workflow of the repository, which branch code must not hold. So this broker asks on
+// its behalf. It is a job of its own workflow (gunbc.branch_run_grant_broker_workflow), triggered by
+// GitHub's workflow_run event when a fleet-converge run is requested; GitHub runs a workflow_run
+// workflow from the default branch only, so this code is main's whatever branch the run is on, and
+// the run id and attempt it forwards are the event's, not anything the branch's run reports.
+//
+// IT DISPATCHES AND DOES NOT WAIT. The grant run (gunbc.auth.branch_run_grant) re-reads the run from
+// GitHub, asks the operator, and writes or refuses; the requesting run finds that grant run by its
+// title and waits on it (gunbc.auth.branch_run_grant_await).
+
+data branch_run_grant_dispatch_ref: String = "main"
+
+data branch_run_grant_executor_host: String = "srv1"
+
+data branch_run_title_variable: NonEmptyStr = "BRANCH_RUN_TITLE"
+
+// THE GRANT RUN'S DISPATCH INPUTS: the mode, the executor that hosts the approval broker, and the run
+// key in the existing transaction_nonce input -- which also puts the key in the grant run's title,
+// where the requesting run finds it.
+fn branch_run_grant_inputs(key: String) -> Map<String, String> {
+  let inputs: Map<String, String> = {
+    "mode": "branch_run_grant",
+    "host": branch_run_grant_executor_host,
+    "transaction_nonce": key
+  }
+  inputs
+}
+
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/auth/branch_run_grant_broker.dag --function broker`
+fn broker() -> ProcessExit {
+  let mode = mode_of_run_title(title: actions_variable_trimmed(name: branch_run_title_variable))
+  match parse_branch_run_key(key: actions_variable_trimmed(name: branch_run_key_variable)) {
+    Absent => exit_failure(reason: "branch run grant broker: BRANCH_RUN_KEY is not <run id>-<run attempt>; this entry runs only in the broker workflow")
+    Present { value: k } => match run_scoped_mode_named(mode: mode) {
+      Absent => ExitSuccess
+      Present { value: _ } => match github.Workflows.CreateDispatch(
+        owner: gunbc_repository.owner,
+        repo: gunbc_repository.name,
+        workflow_id: artifact_name(a: FleetConvergeYamlArtifact),
+        ref: branch_run_grant_dispatch_ref,
+        inputs: branch_run_grant_inputs(key: branch_run_key(run_id: k.run_id, run_attempt: k.run_attempt)),
+      ) {
+        RestRefused { refusal } => exit_failure(reason: concat("branch run grant broker: the grant run could not be dispatched: ", rest_refusal_text(o: refusal)))
+        RestAnswered { answer: _ } => ExitSuccess
+      }
+    }
+  }
+}

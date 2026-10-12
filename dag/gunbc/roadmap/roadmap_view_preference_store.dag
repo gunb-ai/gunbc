@@ -3,7 +3,8 @@ module gunbc.roadmap_view_preference_store
 import std.types { String, List, Int, Bool, NonEmptyStr }
 import gunbc.roadmap_view_preferences { IssueViewPreferences, issue_view_preferences_json, issue_view_preferences_of }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardIssueViewPreferences }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.durable_cas_file_store { observe_cas_slot_state, admit_cas_attempt_for_derived_payload, file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
@@ -19,8 +20,13 @@ fn issue_view_store_key(principal: PrincipalRef) -> NonEmptyStr? {
     Sha256FileDigest { digest } => Present { value: digest.hex as NonEmptyStr }
   }
 }
+// THE DIRECTORY THIS STORE DEMANDS; the store root is read off it (gunbc.owned_directory).
+fn issue_view_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  dashboard_instance_private_directory(instance: instance, member: "issue-view-preferences" as NonEmptyStr, child: "issue-view-preferences")
+}
+
 fn issue_view_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
-  dashboard_instance_auth_store_root(instance: instance, store: DashboardIssueViewPreferences) as NonEmptyStr
+  owned_directory_path(t: issue_view_store_directory(instance: instance)) as String as NonEmptyStr
 }
 fn issue_view_store_read(root: NonEmptyStr, key: NonEmptyStr) -> IssueViewStored {
   match observe_cas_slot_state(root: root, key: key) {

@@ -30,7 +30,7 @@ import v2.lens.module_graph {
   module_declaration_facts_live,
   path_matches_touched
 }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 import v2.std.live_read { LiveReadUnestablished }
 import v2.std.text { string_eq }
 
@@ -547,7 +547,7 @@ fn live_read_selection_of(classification: LiveReadClassification) -> LiveReadSel
       LiveReadSelectionRefused {
         cause: concat(
           "G2 call walk met applications it could not read, so no classification was established: ",
-          integer_int_to_decimal_string(value: length(xs: r))
+          int_to_decimal_string(value: length(xs: r))
         )
       }
     LocalRead => LiveReadSelectionClassified { classification: classification }

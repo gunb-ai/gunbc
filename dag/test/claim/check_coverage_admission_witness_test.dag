@@ -89,9 +89,15 @@ test fn stopped_coverage_preserves_unexecuted_population_and_cause() -> Bool {
       head == required_head
         && roster == required_roster
         && length(completed) == 1
-        && completed.first().gate == gate_a
+        && match completed.first() {
+          Present { value: c } => c.gate == gate_a
+          Absent => false
+        }
         && length(unexecuted) == 1
-        && unexecuted.first() == gate_b
+        && match unexecuted.first() {
+          Present { value: u } => u == gate_b
+          Absent => false
+        }
         && cause == "batch-1 generated-artifact drift stopped dependent witness batches"
     CheckCoverageAdmitted => false
     CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false

@@ -1,0 +1,192 @@
+module test.claim.worker_turn_standing_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String, FilePath }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present, Absent }
+import std.claim_evidence { RecordedFactId }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv2_lab_dashboard_instance }
+import gunbc.codex_app_server_press { parse_account_trip_stdout_for_tests, CodexAccountStandingEvidence }
+import gunbc.provider_standing_probe_bridge { provider_standing_bundle_from_codex_account_evidence }
+import gunbc.provider_standing {
+  ProviderStanding,
+  ProviderStandingUnobserved,
+  ProviderStandingFromFact,
+  InstallationReady,
+  ToolEnvironmentReady,
+  LimitDispatchDrawAutomatic,
+  provider_standing_from_observed_bundle,
+  provider_standing_is_selection_eligible,
+}
+import gunbc.dispatch_selection {
+  ProviderInventory,
+  OfferCodex,
+  OfferClaude,
+  OfferCursor,
+  provider_inventory_for_instance,
+  inventory_with_observed_standing,
+  inventory_with_codex_state_root,
+  resolve_dispatch_selection,
+  provider_selection_request_for_kind,
+  DispatchSelectionResolved,
+  DispatchSelectionRefused,
+  NoDerivedSizingExpectation,
+  dispatch_codex_process_fingerprint_unobserved_selection_refusal,
+}
+import extdeps.llm.cli_lifecycle { CodexCliProvider, ProviderInstance }
+import gunbc.codex_harness_credential { codex_harness_credential_context, codex_worker_turn_codex_home }
+import gunbc.cursor_harness_credential { cursor_status_reading }
+import gunbc.worker_turn_standing { cursor_standing_from_status, cursor_entitlement_trip_pending_reason }
+import gunbc.roadmap_dispatch_actuator {
+  dispatch_actuator_worker_turn_selection_observed,
+  DispatchActuatorSelectionOk,
+  DispatchActuatorSelectionRefused,
+  CodexDispatchProvider,
+  CursorDispatchProvider,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED AT THE TRIP BOUNDARY: the account trip's stdout, in the wire shapes the press witnesses
+// already pin (test.claim.codex_app_server_press). The healthy trip is a chatgpt/pro account with
+// capacity left in the codex bucket; the exhausted one carries the live 2026-08-06 rateLimits
+// capture verbatim (usedPercent 100, rate_limit_reached). The inhabitance of the trip itself -- the
+// app-server run against the custody CODEX_HOME -- is the live exercise once custody lands.
+data initialize_line: String = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"userAgent\":\"x\"}}\n"
+data account_read_line: String = "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\",\"planType\":\"pro\",\"email\":\"REDACTED@example.invalid\"},\"requiresOpenaiAuth\":true}}\n"
+data rate_limits_capacity_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"primary\":{\"usedPercent\":12},\"secondary\":{\"usedPercent\":3},\"spendControlReached\":false}}}\n"
+data rate_limits_exhausted_line: String = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"rateLimits\":{\"limitId\":\"codex\",\"limitName\":null,\"primary\":{\"usedPercent\":100,\"windowDurationMins\":10080,\"resetsAt\":1786159940},\"secondary\":null,\"spendControlReached\":false,\"planType\":\"pro\",\"rateLimitReachedType\":\"rate_limit_reached\"}}}\n"
+
+fn trip_evidence(rate_limits_line: String) -> CodexAccountStandingEvidence {
+  parse_account_trip_stdout_for_tests(stdout: concat(initialize_line, concat(account_read_line, rate_limits_line)))
+}
+
+fn observed_codex_standing(rate_limits_line: String) -> ProviderStanding {
+  match first_codex_instance(inventory: provider_inventory_for_instance(instance: srv2_lab_dashboard_instance())) {
+    Absent => ProviderStandingUnobserved { reason: "no codex offer on srv2 lab" as NonEmptyStr }
+    Present { value: provider } =>
+      provider_standing_from_observed_bundle(
+        fact_id: "witness-codex-harness-trip" as RecordedFactId,
+        provider: provider,
+        bundle: provider_standing_bundle_from_codex_account_evidence(
+          evidence: trip_evidence(rate_limits_line: rate_limits_line),
+          credential: codex_harness_credential_context(),
+          installation: InstallationReady,
+          tool_environment: ToolEnvironmentReady,
+        ),
+      )
+  }
+}
+
+fn first_codex_instance(inventory: ProviderInventory) -> ProviderInstance? {
+  fold(inventory.offers, init: none, f: (acc, offer) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match offer {
+          OfferCodex { offer: o } => Present { value: o.instance }
+          OfferClaude { offer: _ } => acc
+          OfferCursor { offer: _ } => acc
+        }
+    }
+  )
+}
+
+fn codex_selection_reason(standing: ProviderStanding) -> String {
+  match resolve_dispatch_selection(
+    inventory: inventory_with_codex_state_root(
+      inventory: inventory_with_observed_standing(inventory: provider_inventory_for_instance(instance: srv2_lab_dashboard_instance()), kind: CodexCliProvider, standing: standing),
+      account_state_root: codex_worker_turn_codex_home as FilePath,
+    ),
+    request: provider_selection_request_for_kind(kind: CodexCliProvider),
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchSelectionResolved { receipt: _ } => "RESOLVED"
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } => reason as String
+  }
+}
+
+// THE OBSERVED STANDING REACHES SELECTION. A healthy custody trip makes the codex offer eligible, so
+// selection passes eligibility and stops at the next gate, the unobserved process fingerprint (kept by
+// operator ruling D1, 2026-10-05, until the wet tmux observation on srv2 is taken). The exhausted trip
+// is refused at eligibility instead, with a different reason. If the observation were not reaching
+// selection, the two would refuse for the same reason.
+test fn a_healthy_custody_trip_passes_eligibility_and_an_exhausted_one_does_not() -> Bool {
+  let healthy = codex_selection_reason(standing: observed_codex_standing(rate_limits_line: rate_limits_capacity_line))
+  let exhausted = codex_selection_reason(standing: observed_codex_standing(rate_limits_line: rate_limits_exhausted_line))
+  healthy == (dispatch_codex_process_fingerprint_unobserved_selection_refusal as String)
+    && exhausted != healthy
+    && exhausted != "RESOLVED"
+}
+
+test fn the_exhausted_custody_trip_is_not_selection_eligible_and_the_healthy_one_is() -> Bool {
+  provider_standing_is_selection_eligible(
+    standing: observed_codex_standing(rate_limits_line: rate_limits_capacity_line),
+    draw: LimitDispatchDrawAutomatic,
+  )
+    && !provider_standing_is_selection_eligible(
+      standing: observed_codex_standing(rate_limits_line: rate_limits_exhausted_line),
+      draw: LimitDispatchDrawAutomatic,
+    )
+}
+
+// THE CODEX OFFER IS JUDGED ON THE CUSTODY CODEX_HOME, not the instance's ambient account state root,
+// so changing the ambient login cannot change the verdict or the root the spawn binds.
+test fn the_observed_codex_offer_names_the_custody_codex_home() -> Bool {
+  let inventory = inventory_with_codex_state_root(
+    inventory: inventory_with_observed_standing(inventory: provider_inventory_for_instance(instance: srv2_lab_dashboard_instance()), kind: CodexCliProvider, standing: observed_codex_standing(rate_limits_line: rate_limits_capacity_line)),
+    account_state_root: codex_worker_turn_codex_home as FilePath,
+  )
+  any(inventory.offers, offer =>
+    match offer {
+      OfferCodex { offer: o } => (o.account_state_root as String) == (codex_worker_turn_codex_home as String)
+      OfferClaude { offer: _ } => false
+      OfferCursor { offer: _ } => false
+    })
+}
+
+// CURSOR: a rejected key refuses naming the rejection; an accepted key is still not selectable,
+// because entitlement waits on the one-word trip (D2). Neither arm is "available".
+data observed_unauthenticated_status: String = "{\n  \"status\": \"unauthenticated\",\n  \"isAuthenticated\": false,\n  \"hasAccessToken\": false,\n  \"hasRefreshToken\": false,\n  \"message\": \"Not logged in\"\n}"
+data supplied_authenticated_status: String = "{\"status\":\"authenticated\",\"isAuthenticated\":true}"
+
+test fn cursor_status_never_makes_the_offer_selectable_before_the_entitlement_trip() -> Bool {
+  let accepted = cursor_standing_from_status(reading: cursor_status_reading(stdout: supplied_authenticated_status))
+  let rejected = cursor_standing_from_status(reading: cursor_status_reading(stdout: observed_unauthenticated_status))
+  let accepted_pending = match accepted {
+    ProviderStandingUnobserved { reason } => reason == cursor_entitlement_trip_pending_reason
+    ProviderStandingFromFact { fact: _ } => false
+  }
+  let rejected_named = match rejected {
+    ProviderStandingUnobserved { reason } => string_contains(s: reason as String, pattern: "rejects")
+    ProviderStandingFromFact { fact: _ } => false
+  }
+  accepted_pending && rejected_named
+    && !provider_standing_is_selection_eligible(standing: accepted, draw: LimitDispatchDrawAutomatic)
+}
+
+// THE ROUTE, through the production actuator selection: on an instance that does not hold the
+// credentials, both observed draws refuse before any observation runs or any spawn is planned.
+test fn worker_turn_draws_on_a_non_custody_instance_refuse() -> Bool {
+  let codex = match dispatch_actuator_worker_turn_selection_observed(
+    instance: srv1_live_dashboard_instance(),
+    provider: CodexDispatchProvider,
+    node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId,
+    attempt_key: "0123456789abcdef",
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchActuatorSelectionRefused { reason: _ } => true
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
+  }
+  let cursor = match dispatch_actuator_worker_turn_selection_observed(
+    instance: srv1_live_dashboard_instance(),
+    provider: CursorDispatchProvider,
+    node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId,
+    attempt_key: "0123456789abcdef",
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchActuatorSelectionRefused { reason: _ } => true
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
+  }
+  codex && cursor
+}

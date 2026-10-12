@@ -3,7 +3,7 @@ import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
-import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
+import v2.std.algebra_structure_signature { boolean_algebra_node, free_monoid_structure_node, ordered_ring_node }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
@@ -66,6 +66,11 @@ import v2.std.grammar {
   grammar_expr_expect,
   grammar_expr_not_predicate,
   grammar_expr_refuse_on_match,
+  grammar_expr_infix_table,
+  InfixAssociativity,
+  InfixLeft,
+  InfixNonAssociative,
+  InfixOperatorRow,
   derive_grammar_relation_row,
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
@@ -89,9 +94,14 @@ import v2.std.compilers.lexing {
   LexRuleSet,
   LexRules,
   LineCommentTextChar,
+  LexMode,
   LiteralPattern,
   ModeledLexRules,
+  ModeTransitionTokenRule,
+  NotFollowedByPattern,
   OneOrMorePattern,
+  PopLexMode,
+  PushLexMode,
   RepeatPattern,
   SequencePattern,
   StringTextChar,
@@ -125,6 +135,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  Instantiation,
   is_empty_conj_root,
   node_lowered_from,
   symbol_intern_lexeme,
@@ -193,8 +204,8 @@ import v2.std.compilers.target_model {
   TargetRecordConstructShape
 }
 import v2.std.logic { bool_node }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_init, list_map, skip }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
+import v2.std.algebra { fold_list, for_all, is_empty, length, list_init, list_map, skip }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -215,20 +226,8 @@ import v2.std.diagnostic {
 import std.algebra { Empty, list_append, list_snoc_item }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, retires_dissolution }
-import v2.std.integer {
-  decimal_digits_to_magnitude,
-  integer_decimal_magnitude_node,
-  integer_decimal_magnitude_node_to_int,
-  integer_int_to_decimal_string,
-  integer_int_type_node,
-  integer_string_to_decimal_digits_optional,
-  DecimalMagnitude,
-  DecimalNonZero,
-  DecimalNonZeroMagnitude,
-  Int,
-  NonZeroD1,
-  NonZeroD2
-}
+import v2.std.integer { decimal_digits_to_magnitude, integer_decimal_magnitude_node, integer_decimal_magnitude_node_to_int, integer_int_type_node, integer_string_to_decimal_digits_optional, DecimalMagnitude, DecimalNonZero, DecimalNonZeroMagnitude, Int, NonZeroD1, NonZeroD2 }
+import std.integer { int_to_decimal_string }
 import v2.std.text { String }
 import extdeps.numeric.base16 { base16_digit_rows }
 import std.unicode.types { unicode_scalar }
@@ -574,10 +573,28 @@ fn dag_string_escape_char_pattern() -> LexPattern {
   )
 }
 
-fn dag_string_escape_sequence_pattern() -> LexPattern {
+// v1.compiler.tokenize scan_string_body consumes `\u{` as the escape prefix (backslash, u, brace)
+// before the interpolation check, so a Unicode-escape brace is never a hole opener. Digit
+// accumulation stays with decode (dag_string_decode_step). Without this prefix, `\u{E9}` lexes
+// `\` and `u` as StringTextChar and `{E` as dag_string_hole_opener_pattern (E is IdentStartChar) —
+// a documented escape read as a template hole (review 78485).
+fn dag_string_unicode_escape_prefix_pattern() -> LexPattern {
   SequencePattern {
     left: CharPattern { char: 92 },
-    right: dag_string_escape_char_pattern()
+    right: SequencePattern {
+      left: CharPattern { char: 117 },
+      right: CharPattern { char: 123 }
+    }
+  }
+}
+
+fn dag_string_escape_sequence_pattern() -> LexPattern {
+  ChoicePattern {
+    left: dag_string_unicode_escape_prefix_pattern(),
+    right: SequencePattern {
+      left: CharPattern { char: 92 },
+      right: dag_string_escape_char_pattern()
+    }
   }
 }
 
@@ -585,12 +602,32 @@ fn dag_string_escape_sequence_pattern() -> LexPattern {
 // only quote, backslash, and interpolation-start end the body walk. This arm
 // is that admission on the grammar row — StringTextChar still excludes LF so
 // other language models that reuse the class do not grow a second meaning.
+fn dag_string_hole_start_pattern() -> LexPattern {
+  ChoicePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: ChoicePattern {
+      left: CharPattern { char: 40 },
+      right: ChoicePattern { left: CharPattern { char: 33 }, right: CharPattern { char: 45 } }
+    }
+  }
+}
+
+fn dag_string_hole_opener_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharPattern { char: 123 },
+    right: NotFollowedByPattern { element: NotFollowedByPattern { element: dag_string_hole_start_pattern() } }
+  }
+}
+
 fn dag_string_body_element_pattern() -> LexPattern {
   ChoicePattern {
     left: dag_string_escape_sequence_pattern(),
-    right: ChoicePattern {
-      left: CharPattern { char: 10 },
-      right: CharClassPattern { class: StringTextChar }
+    right: SequencePattern {
+      left: NotFollowedByPattern { element: dag_string_hole_opener_pattern() },
+      right: ChoicePattern {
+        left: CharPattern { char: 10 },
+        right: CharClassPattern { class: StringTextChar }
+      }
     }
   }
 }
@@ -604,6 +641,76 @@ fn dag_string_literal_lex_rule() -> LexRule {
       close: CharPattern { char: 34 }
     }
   }
+}
+
+fn dag_string_template_head_lex_rule() -> LexRule {
+  ModeTransitionTokenRule {
+    token_class: ^dag_token_string_template_head,
+    pattern: SequencePattern {
+      left: CharPattern { char: 34 },
+      right: SequencePattern {
+        left: RepeatPattern { element: dag_string_body_element_pattern() },
+        right: dag_string_hole_opener_pattern()
+      }
+    },
+    transition: PushLexMode { mode: ^dag_lex_mode_template_hole }
+  }
+}
+
+fn dag_string_template_middle_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: ^dag_token_string_template_middle,
+    pattern: SequencePattern {
+      left: CharPattern { char: 125 },
+      right: SequencePattern {
+        left: RepeatPattern { element: dag_string_body_element_pattern() },
+        right: dag_string_hole_opener_pattern()
+      }
+    }
+  }
+}
+
+fn dag_string_template_tail_lex_rule() -> LexRule {
+  ModeTransitionTokenRule {
+    token_class: ^dag_token_string_template_tail,
+    pattern: SequencePattern {
+      left: CharPattern { char: 125 },
+      right: SequencePattern {
+        left: RepeatPattern { element: dag_string_body_element_pattern() },
+        right: CharPattern { char: 34 }
+      }
+    },
+    transition: PopLexMode
+  }
+}
+
+fn dag_template_lbrace_push_lex_rule() -> LexRule {
+  ModeTransitionTokenRule {
+    token_class: ^dag_token_lbrace,
+    pattern: LiteralPattern { text: unicode_scalar_unfold(s: "{") },
+    transition: PushLexMode { mode: ^dag_lex_mode_template_brace }
+  }
+}
+
+fn dag_template_hole_mode_lex_rules() -> List<LexRule> {
+  list_append(left: dag_lex_rules_except_braces(), right: [
+    dag_template_lbrace_push_lex_rule(),
+    dag_string_template_middle_lex_rule(),
+    dag_string_template_tail_lex_rule(),
+    dag_string_template_head_lex_rule()
+  ])
+}
+
+fn dag_template_brace_mode_lex_rules() -> List<LexRule> {
+  list_append(left: dag_lex_rules_except_braces(), right: [
+    dag_template_lbrace_push_lex_rule(),
+    ModeTransitionTokenRule {
+      token_class: ^dag_token_rbrace,
+      pattern: LiteralPattern { text: unicode_scalar_unfold(s: "}") },
+      transition: PopLexMode
+    },
+    dag_string_template_head_lex_rule()
+  ])
 }
 
 fn dag_whitespace_trivia_rule() -> LexRule {
@@ -622,10 +729,8 @@ fn dag_line_comment_annotation_rule() -> LexRule {
   }
 }
 
-fn dag_lex_rules() -> LexRuleSet {
-
-  LexRuleSet {
-    rules: [
+fn dag_lex_rules_except_braces() -> List<LexRule> {
+  [
       dag_whitespace_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_line_comment_annotation_rule(),
@@ -673,8 +778,6 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_comma, text: ","),
       dag_literal_lex_rule(token_class: ^dag_token_dot, text: "."),
       dag_literal_lex_rule(token_class: ^dag_token_pipe, text: "|"),
-      dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: "{"),
-      dag_literal_lex_rule(token_class: ^dag_token_rbrace, text: "}"),
       dag_literal_lex_rule(token_class: ^dag_token_lparen, text: "("),
       dag_literal_lex_rule(token_class: ^dag_token_rparen, text: ")"),
       dag_literal_lex_rule(token_class: ^dag_token_lbracket, text: "["),
@@ -683,8 +786,20 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_gt, text: ">"),
       dag_literal_lex_rule(token_class: ^dag_token_question, text: "?"),
       dag_literal_lex_rule(token_class: ^dag_token_match_scrutinee_nop, text: "")
-    ],
-    modes: []
+  ]
+}
+
+fn dag_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(left: dag_lex_rules_except_braces(), right: [
+      dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: "{"),
+      dag_literal_lex_rule(token_class: ^dag_token_rbrace, text: "}"),
+      dag_string_template_head_lex_rule()
+    ]),
+    modes: [
+      LexMode { mode: ^dag_lex_mode_template_hole, rules: dag_template_hole_mode_lex_rules() },
+      LexMode { mode: ^dag_lex_mode_template_brace, rules: dag_template_brace_mode_lex_rules() }
+    ]
   }
 }
 
@@ -842,6 +957,25 @@ fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
         )
       ),
       right: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma))
+    )
+  )
+}
+
+// A COMMA-REQUIRED LIST: `item (',' item)*`, no trailing comma. dag_grammar_comma_list_expr makes every
+// comma optional, which is right where the list is bracketed by a closer but wrong where it ends at
+// an unbracketed entry boundary: `requires Network` then `transport shell { .. }` read `transport`
+// and `shell` as two more members, and the record `{ argv: .. }` as a third that failed. v1's
+// parse_op_requires_members requires the comma and a member after it, so this is that shape. A member
+// can only continue the list across a comma, so the next entry keyword (transport, exit, input, ...)
+// is never a member, and the grammar stays unambiguous with no lookahead predicate.
+fn dag_grammar_required_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
+  dag_grammar_sequence(
+    left: item,
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_comma),
+        right: item
+      )
     )
   )
 }
@@ -1493,11 +1627,11 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
 //
 // THE TRAILING `match_expr`/`if_expr`/`loop_expr` ALTERNATIVES WERE UNREACHABLE, AND ARE REMOVED.
 // They are reachable exactly where `binary_expr` fails and they succeed. But `binary_expr` derives
-// each of them as a complete operand -- pipe -> or -> and -> equality -> comparison -> additive ->
-// multiplicative -> unary -> postfix -> primary -> primary_expr_core -> match_expr / if_expr /
-// loop_expr, with every operator tail a `Repeat` or `Optional` that admits zero -- so wherever one
-// of them matches at a position, `binary_expr` has already matched at least that much there and the
-// ordered choice never tries them. Kept, they read as a second route to block forms that no input
+// each of them as a complete operand -- its operand is unary -> postfix -> primary ->
+// primary_expr_core -> match_expr / if_expr / loop_expr, and an operand with no operator after it is
+// a complete binary_expr (v2.std.grammar InfixTable) -- so wherever one of them matches at a
+// position, `binary_expr` has already matched at least that much there and the ordered choice never
+// tries them. Kept, they read as a second route to block forms that no input
 // can take, and as a second row emit could select backward.
 //
 // Evidence: `v2.test.parse.block_expr_as_binary_operand_parse` -- two arms red before this reorder
@@ -1526,7 +1660,7 @@ fn dag_grammar_arrow_lambda_name_head_expr() -> GrammarExpr {
 
 // A BLOCK IN EXPRESSION POSITION NEVER BEGINS AS A BRACE LITERAL DOES: `{}`, `{ name :` or
 // `{ "key" :`. `{}` in expression position is the empty brace literal, record or map by expected type
-// (operator ruling 2026-10-03, A; docs/plans/map-literal-introduction-design.md reads a headless brace
+// (operator ruling 2026-10-03, A; a headless brace is read
 // by expected type, and the corpus writes `body: { }`, `= {}` and `automatic: {}` as values), and an
 // empty block as a value refuses. Positions with a block production of their own -- a fn body, an
 // if or else arm, a loop, a fn literal's body, a match arm (dag_grammar_empty_block_body_expr) -- do
@@ -1567,71 +1701,51 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_multiplicative_op_choice() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_terminal(token_class: ^dag_token_star),
-    right: dag_grammar_choice(
-      left: dag_grammar_terminal(token_class: ^dag_token_slash),
-      right: dag_grammar_terminal(token_class: ^dag_token_percent)
-    )
-  )
+// THE BINARY OPERATORS, ONE ROW EACH, WITH THE PRECEDENCE AS A BINDING POWER (higher binds tighter):
+// pipe, then `||`, `&&`, equality, comparison, additive, multiplicative. Equality and comparison do
+// not chain -- `a < b < c` refuses with NonAssociativeOperatorChain -- and every other row folds
+// left. `|>` binds LOOSEST: `a + b |> f` is `(a + b) |> f` (sharp-raven-357 ruling 2026-10-05; the
+// seed's tightest `|>`, dag/extdeps/languages/dag/syntax.dag dag_operators, is a seed defect under
+// DESIGN section 7, a declared divergence rather than a reading v2 owes). One row per token class, so
+// selecting a row is a lookup and no ordered alternative exists for the overlap roster to inspect
+// (v2.compiler.parse grammar_infix_tables_well_formed refuses a class named twice).
+fn dag_infix_row(token_class: Symbol, binding_power: Int, associativity: InfixAssociativity) -> InfixOperatorRow {
+  InfixOperatorRow { token_class: token_class, binding_power: binding_power, associativity: associativity }
 }
 
-fn dag_grammar_additive_op_choice() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_terminal(token_class: ^dag_token_plus),
-    right: dag_grammar_terminal(token_class: ^dag_token_minus)
-  )
-}
-
-fn dag_grammar_comparison_op_choice() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_terminal(token_class: ^dag_token_gte),
-    right: dag_grammar_choice(
-      left: dag_grammar_terminal(token_class: ^dag_token_lte),
-      right: dag_grammar_choice(
-        left: dag_grammar_terminal(token_class: ^dag_token_lt),
-        right: dag_grammar_terminal(token_class: ^dag_token_gt)
-      )
-    )
-  )
-}
-
-fn dag_grammar_equality_op_choice() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_terminal(token_class: ^dag_token_eq_eq),
-    right: dag_grammar_terminal(token_class: ^dag_token_neq)
-  )
-}
-
-fn dag_grammar_multiplicative_expr_helper() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_nonterminal(production: ^dag_production_unary_expr),
-    right: dag_grammar_repeat(
-      element: dag_grammar_sequence(
-        left: dag_grammar_multiplicative_op_choice(),
-        right: dag_grammar_nonterminal(production: ^dag_production_unary_expr)
-      )
-    )
-  )
+fn dag_infix_operators() -> List<InfixOperatorRow> {
+  [
+    dag_infix_row(token_class: ^dag_token_pipe_gt, binding_power: 1, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_or_or, binding_power: 2, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_and_and, binding_power: 3, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_eq_eq, binding_power: 4, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_neq, binding_power: 4, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_gte, binding_power: 5, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_lte, binding_power: 5, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_lt, binding_power: 5, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_gt, binding_power: 5, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_plus, binding_power: 6, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_minus, binding_power: 6, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_star, binding_power: 7, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_slash, binding_power: 7, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_percent, binding_power: 7, associativity: InfixLeft)
+  ]
 }
 
 // A `-` THAT BEGINS A LINE AFTER A COMPLETE OPERAND REFUSES. `-` is both infix (subtraction) and
 // prefix (negation), and this grammar carries no statement terminator, so `x` then a line `-1` could
 // be `x - 1` or two statements; neither reading is safe to pick silently. The seed refuses it
 // (v1.compiler.parse is_ambiguous_prefix_infix_newline_boundary, whose dual-role set is exactly
-// `-`), and so does this row: where a `-` preceded by a line break (v2.std.grammar AfterLineBreak,
-// read from the stream's layout) stands at an additive continuation, the parse refuses at the `-`
-// with NewlineBeforeDualRoleOperator. A same-line `-` is subtraction. Every expression reaches this
-// continuation, so the rule holds for every statement form -- including a block-headed statement,
-// which is an operand since block forms are primaries of binary_expr (#12817).
-// THE REFUSAL IS A GUARD, NOT AN ALTERNATIVE. Offered as a choice alternative beside subtraction,
-// both arms began with `-` and only their order kept them apart -- the overlap the zero-ambiguity
-// ruling (2026-10-02) forbids, inlined once per expansion of this helper. As the not-predicate of a
-// refusing match it sits in SEQUENCE before the operator: it consumes nothing, it raises the
-// refusal where the line-break `-` stands (a refusal survives the predicate, v2.compiler.parse
-// parse_expr_not_predicate), and elsewhere it admits, so the continuation is one route and no
-// choice remains here to overlap.
+// `-`), and so does this table: it is the continuation guard of dag_grammar_binary_expr_expr, run at
+// every continuation point after a complete operand, so where a `-` preceded by a line break
+// (v2.std.grammar AfterLineBreak, read from the stream's layout) stands there, the parse refuses at
+// the `-` with NewlineBeforeDualRoleOperator. A same-line `-` is subtraction. Every expression reaches
+// a continuation point, so the rule holds for every statement form -- including a block-headed
+// statement, which is an operand since block forms are primaries of binary_expr (#12817).
+// THE REFUSAL IS A GUARD, NOT AN ALTERNATIVE. As the not-predicate of a refusing match it consumes
+// nothing, it raises the refusal where the line-break `-` stands (a refusal survives the predicate,
+// v2.compiler.parse parse_expr_not_predicate), and elsewhere it admits, so no choice exists here to
+// overlap (zero-ambiguity ruling 2026-10-02).
 fn dag_grammar_additive_newline_minus_guard() -> GrammarExpr {
   grammar_expr_not_predicate(
     element: grammar_expr_refuse_on_match(
@@ -1641,83 +1755,15 @@ fn dag_grammar_additive_newline_minus_guard() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_additive_expr_helper() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_multiplicative_expr_helper(),
-    right: dag_grammar_repeat(
-      element: dag_grammar_sequence(
-        left: dag_grammar_additive_newline_minus_guard(),
-        right: dag_grammar_sequence(
-          left: dag_grammar_additive_op_choice(),
-          right: dag_grammar_multiplicative_expr_helper()
-        )
-      )
-    )
-  )
-}
-
-fn dag_grammar_comparison_expr_helper() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_additive_expr_helper(),
-    right: dag_grammar_optional(
-      element: dag_grammar_sequence(
-        left: dag_grammar_comparison_op_choice(),
-        right: dag_grammar_additive_expr_helper()
-      )
-    )
-  )
-}
-
-fn dag_grammar_equality_expr_helper() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_comparison_expr_helper(),
-    right: dag_grammar_optional(
-      element: dag_grammar_sequence(
-        left: dag_grammar_equality_op_choice(),
-        right: dag_grammar_comparison_expr_helper()
-      )
-    )
-  )
-}
-
-fn dag_grammar_and_expr_helper() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_equality_expr_helper(),
-    right: dag_grammar_repeat(
-      element: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_and_and),
-        right: dag_grammar_equality_expr_helper()
-      )
-    )
-  )
-}
-
-fn dag_grammar_or_expr_helper() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_and_expr_helper(),
-    right: dag_grammar_repeat(
-      element: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_or_or),
-        right: dag_grammar_and_expr_helper()
-      )
-    )
-  )
-}
-
-fn dag_grammar_pipe_expr_helper() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_or_expr_helper(),
-    right: dag_grammar_repeat(
-      element: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_pipe_gt),
-        right: dag_grammar_or_expr_helper()
-      )
-    )
-  )
-}
-
+// ONE TREE NODE PER OPERATOR APPLICATION (v2.std.grammar InfixTable).
+// An operand with no operator after it is captured
+// as itself; `a + b * c` is one application of `+` whose right operand is one application of `*`.
 fn dag_grammar_binary_expr_expr() -> GrammarExpr {
-  dag_grammar_pipe_expr_helper()
+  grammar_expr_infix_table(
+    operand: dag_grammar_nonterminal(production: ^dag_production_unary_expr),
+    continuation_guard: dag_grammar_additive_newline_minus_guard(),
+    operators: dag_infix_operators()
+  )
 }
 
 fn dag_grammar_unary_expr_expr() -> GrammarExpr {
@@ -1893,6 +1939,22 @@ fn dag_contextual_value_name_keywords() -> List<Symbol> {
   [^dag_token_kw_module, ^dag_token_kw_data]
 }
 
+fn dag_grammar_string_template_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_string_template_head),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_expr),
+      right: dag_grammar_sequence(
+        left: dag_grammar_repeat(element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_string_template_middle),
+          right: dag_grammar_nonterminal(production: ^dag_production_expr)
+        )),
+        right: dag_grammar_terminal(token_class: ^dag_token_string_template_tail)
+      )
+    )
+  )
+}
+
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
@@ -1906,6 +1968,8 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
         right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
           right: dag_grammar_choice(
+            left: dag_grammar_nonterminal(production: ^dag_production_string_template),
+            right: dag_grammar_choice(
             left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
             right: dag_grammar_choice(
               left: dag_grammar_terminal(token_class: ^dag_token_kw_false),
@@ -1946,8 +2010,9 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
             )
           )
         )
-        )
+      )
     )
+  )
   )
 }
 
@@ -2481,9 +2546,11 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
 // A trailing comma before `]` is admitted, as dag_grammar_comma_list_expr admits it and as v1 reads
 // the list; without it every multi-line caller list written with one refused its whole module.
 // `admit_callers` is matched as an exact-word terminal and stays an ordinary identifier everywhere
-// else. The clause is consumed and then DISCARDED when the fn lowers to an Arrow: nothing on the
-// native route checks caller admission, and the stage that does adds its Arrow carrier together
-// with that consumer (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
+// else. The clause is consumed when the fn lowers to an Arrow: the lowering mints the authored
+// roster onto the Arrow under the AdmitCallersEdge core marker, and v2.compiler.infer
+// infer_caller_admission_diags judges every call against it (a caller outside the list refuses,
+// never admits). The former drop gunbc.rung_drop.admit_callers_discarded_on_the_native_route is
+// retired by that carrier-plus-consumer restoration.
 // `uses net: Network, fs: Filesystem` after a fn's return clause declares the resources the fn
 // requires, as v1 02_parse parse_uses_clause reads it: one or more comma-separated entries, each a
 // name, a type and an optional parenthesised config. `uses` is matched as an exact-word terminal and
@@ -2796,7 +2863,7 @@ fn dag_grammar_op_requires_expr() -> GrammarExpr {
               right: dag_grammar_keyword_expr(lexeme: "opaque")
             )
           ),
-          right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+          right: dag_grammar_required_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
         )
       )
     )
@@ -3113,28 +3180,67 @@ fn dag_grammar_resource_decl_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_top_level_item_expr() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
-    right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_alias_decl),
-      right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_type_decl),
-        right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_data_decl),
-          right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_fn_decl),
-            right: dag_grammar_choice(
-              left: dag_grammar_nonterminal(production: ^dag_production_test_fn_decl),
-              right: dag_grammar_choice(
-                left: dag_grammar_nonterminal(production: ^dag_production_service_decl),
-                right: dag_grammar_nonterminal(production: ^dag_production_resource_decl)
-              )
-            )
-          )
-        )
-      )
+// THE TOP-LEVEL DECLARATION ROWS: one list is the authority for which productions inhabit a
+// module as items, for the choice the module grammar repeats, and for which emitted identities
+// are declaration members rather than record binders.
+fn dag_grammar_top_level_item_productions() -> List<GrammarProduction> {
+  [
+    dag_grammar_production(
+      name: ^dag_production_import_decl,
+      expression: dag_grammar_import_decl_expr(),
+      emitted: ^dag_surface_import_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_alias_decl,
+      expression: dag_grammar_alias_decl_expr(),
+      emitted: ^dag_surface_alias_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_type_decl,
+      expression: dag_grammar_type_decl_expr(),
+      emitted: ^dag_surface_type_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_data_decl,
+      expression: dag_grammar_data_decl_expr(),
+      emitted: ^dag_surface_data_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_fn_decl,
+      expression: dag_grammar_fn_decl_expr(),
+      emitted: ^dag_surface_fn_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_test_fn_decl,
+      expression: dag_grammar_test_fn_decl_expr(),
+      emitted: ^dag_surface_test_fn_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_service_decl,
+      expression: dag_grammar_service_decl_expr(),
+      emitted: ^dag_surface_service_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_resource_decl,
+      expression: dag_grammar_resource_decl_expr(),
+      emitted: ^dag_surface_resource_decl
     )
+  ]
+}
+
+fn dag_grammar_choice_of_production_names(names: List<Symbol>) -> GrammarExpr {
+  match names {
+    Cons { head: first, tail: rest } =>
+      fold(rest, init: dag_grammar_nonterminal(production: first), f: fn(acc, name) {
+        dag_grammar_choice(left: acc, right: dag_grammar_nonterminal(production: name))
+      })
+    Empty => dag_grammar_nonterminal(production: ^dag_production_top_level_item)
+  }
+}
+
+fn dag_grammar_top_level_item_expr() -> GrammarExpr {
+  dag_grammar_choice_of_production_names(
+    names: list_map(xs: dag_grammar_top_level_item_productions(), f: fn(p) { p.name })
   )
 }
 
@@ -3367,46 +3473,6 @@ fn dag_grammar_root() -> GrammarRoot {
     name: ^dag_production_top_level_item,
     expression: dag_grammar_top_level_item_expr(),
     emitted: ^dag_surface_top_level_item
-  )
-  let import_decl = dag_grammar_production(
-    name: ^dag_production_import_decl,
-    expression: dag_grammar_import_decl_expr(),
-    emitted: ^dag_surface_import_decl
-  )
-  let alias_decl = dag_grammar_production(
-    name: ^dag_production_alias_decl,
-    expression: dag_grammar_alias_decl_expr(),
-    emitted: ^dag_surface_alias_decl
-  )
-  let type_decl = dag_grammar_production(
-    name: ^dag_production_type_decl,
-    expression: dag_grammar_type_decl_expr(),
-    emitted: ^dag_surface_type_decl
-  )
-  let data_decl = dag_grammar_production(
-    name: ^dag_production_data_decl,
-    expression: dag_grammar_data_decl_expr(),
-    emitted: ^dag_surface_data_decl
-  )
-  let fn_decl = dag_grammar_production(
-    name: ^dag_production_fn_decl,
-    expression: dag_grammar_fn_decl_expr(),
-    emitted: ^dag_surface_fn_decl
-  )
-  let test_fn_decl = dag_grammar_production(
-    name: ^dag_production_test_fn_decl,
-    expression: dag_grammar_test_fn_decl_expr(),
-    emitted: ^dag_surface_test_fn_decl
-  )
-  let service_decl = dag_grammar_production(
-    name: ^dag_production_service_decl,
-    expression: dag_grammar_service_decl_expr(),
-    emitted: ^dag_surface_service_decl
-  )
-  let resource_decl = dag_grammar_production(
-    name: ^dag_production_resource_decl,
-    expression: dag_grammar_resource_decl_expr(),
-    emitted: ^dag_surface_resource_decl
   )
   let resource_body_entry = dag_grammar_production(
     name: ^dag_production_resource_body_entry,
@@ -3806,6 +3872,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_if_expr_expr(),
     emitted: ^dag_surface_if_expr
   )
+  let string_template = dag_grammar_production(
+    name: ^dag_production_string_template,
+    expression: dag_grammar_string_template_expr(),
+    emitted: ^dag_string_template
+  )
   let loop_expr = dag_grammar_production(
     name: ^dag_production_loop_expr,
     expression: dag_grammar_loop_expr_expr(),
@@ -3823,19 +3894,12 @@ fn dag_grammar_root() -> GrammarRoot {
   )
   GrammarRoot {
     start: ^dag_production_module,
-    productions: [
-      module_prod,
-      module_header,
-      top_level_item,
-      import_decl,
-      alias_decl,
-      type_decl,
-      data_decl,
-      fn_decl,
-      test_fn_decl,
-      service_decl,
+    productions: list_append(
+      left: [module_prod, module_header, top_level_item],
+      right: list_append(
+        left: dag_grammar_top_level_item_productions(),
+        right: [
       service_body_entry,
-      resource_decl,
       resource_body_entry,
       resource_kind,
       resource_mode,
@@ -3897,6 +3961,7 @@ fn dag_grammar_root() -> GrammarRoot {
       stmt,
       let_expr,
       expr,
+      string_template,
       loop_expr,
       binary_expr,
       unary_expr,
@@ -3917,7 +3982,9 @@ fn dag_grammar_root() -> GrammarRoot {
       if_expr,
       fn_literal,
       arrow_lambda
-    ],
+        ]
+      )
+    ),
     sync_tokens: dag_sync_tokens()
   }
 }
@@ -3940,10 +4007,7 @@ fn dag_grammar_production_emits(production: GrammarProduction, n: Node) -> Bool 
 // occupies, so it shares that declared type.
 fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
   if (n == namespace_graft_module_body_marker_node())
-    || any(
-      xs: dag_grammar_root().productions,
-      predicate: fn(production) { dag_grammar_production_emits(production: production, n: n) }
-    ) {
+    || (dag_grammar_root().productions |> any(fn(production) { dag_grammar_production_emits(production: production, n: n) })) {
     optional_present(value: dag_grammar_surface_production_type_node())
   } else {
     optional_absent()
@@ -4676,8 +4740,41 @@ fn dag_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   }
 }
 
+fn dag_free_monoid_row_element() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^dag_free_monoid_row_element } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn dag_free_monoid_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.FreeMonoid"), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: dag_free_monoid_row_element() }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_structure_node(inhabitant: inhabitant, generator: dag_free_monoid_row_element()),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.list_append"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_host_text_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = host_text_type_node()
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_structure_node(inhabitant: inhabitant, generator: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.types.Char"), occurrence_id: OccurrenceSynthetic)),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.node.host_text_concatenation"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_algebra_inhabitance_row_type_params() -> List<Symbol> {
+  [^dag_free_monoid_row_element]
+}
+
 fn dag_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance()]
+  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance(), dag_free_monoid_free_monoid_inhabitance(), dag_host_text_free_monoid_inhabitance()]
 }
 
 fn dag_kernel_value_type_binding(row: KernelValueType) -> Optional<Symbol> {
@@ -4779,7 +4876,7 @@ fn dag_kernel_string_type_spelling(sym: Symbol) -> Bool {
 fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional<Symbol> {
   dag_kernel_value_type_row_binding(
     found: dag_kernel_value_type_first(select: fn(row, _binding) {
-      any(xs: row.declarations, predicate: fn(declared) { declared == path })
+      row.declarations |> any(fn(declared) { declared == path })
     })
   )
 }
@@ -4930,10 +5027,9 @@ fn dag_node_is_float_literal_atom(node: Node) -> Bool {
 
 // Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects
 // this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding
-// (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals
-// (^dag_complement_lit_*) are logic-ingest tokens used as scrutinee/body literals in complement
-// fixtures. dissolve-on: general body producer lands grammar-owned literal classification and this
-// roster folds into it.
+// (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement/meet/join
+// fixtures use the same true/false atoms as match (dag_token_kw_true/false). dissolve-on: general
+// body producer lands grammar-owned literal classification and this roster folds into it.
 
 fn dag_symbol_is_fixture_pick_literal(id: Symbol) -> Bool {
   (id == ^dag_pick_lit_one)
@@ -4943,7 +5039,7 @@ fn dag_symbol_is_fixture_pick_literal(id: Symbol) -> Bool {
 }
 
 fn dag_symbol_is_complement_bool_literal(id: Symbol) -> Bool {
-  (id == ^dag_complement_lit_true) || (id == ^dag_complement_lit_false)
+  (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false)
 }
 
 fn dag_symbol_is_fixture_record_literal_atom(id: Symbol) -> Bool {
@@ -5169,19 +5265,20 @@ fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
   }
 }
 
-// The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the quote
-// and there are at least two of them.
-fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
+// The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the open
+// and close and there are at least two of them (quotes for a literal; quote/`{` and `}`/quote for
+// a template part).
+fn dag_string_framed_body_optional(lexeme: String, open: Int, close: Int) -> Optional<List<Int>> {
   let cs = unicode_scalar_unfold(s: lexeme)
   let n = length(xs: cs)
   if n < 2 {
     optional_absent()
   } else {
     match list_at_optional(xs: cs, index: 0) {
-      Present { value: open } =>
+      Present { value: first } =>
         match list_at_optional(xs: cs, index: n - 1) {
-          Present { value: close } =>
-            if (open == 34) && (close == 34) {
+          Present { value: last } =>
+            if (first == open) && (last == close) {
               optional_present(value: list_init(xs: skip(xs: cs, n: 1)))
             } else {
               optional_absent()
@@ -5193,13 +5290,17 @@ fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
   }
 }
 
-fn dag_string_literal_refusal(reason: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
+fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
+  dag_string_framed_body_optional(lexeme: lexeme, open: 34, close: 34)
+}
+
+fn dag_string_text_refusal(token_class: Symbol, reason: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
   outcome_rejected(
     d: Diagnostic {
       reason: reason,
       at: node_locus(
         node: Node {
-          kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
+          kind: TypeNode { connective: Atom { identity: token_class } },
           children: [],
           occurrence_id: occurrence_id
         }
@@ -5207,6 +5308,10 @@ fn dag_string_literal_refusal(reason: Symbol, occurrence_id: NodeOccurrenceIdent
       correction: Unavailable { reason: CorrectionNotModeled }
     }
   )
+}
+
+fn dag_string_literal_refusal(reason: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
+  dag_string_text_refusal(token_class: ^dag_token_string_literal, reason: reason, occurrence_id: occurrence_id)
 }
 
 // An escape left open at the closing quote, or one the decode could not complete, is malformed.
@@ -5221,16 +5326,21 @@ fn dag_string_literal_escape_refusal(occurrence_id: NodeOccurrenceIdentity) -> O
 // answered as the value. Every reader of string-literal text decodes here, so the escape
 // vocabulary has one reader.
 fn dag_string_literal_decoded_text(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
-  match dag_string_literal_body_optional(lexeme: lexeme) {
-    Absent => dag_string_literal_refusal(reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
+  dag_string_text_decoded(token_class: ^dag_token_string_literal, body: dag_string_literal_body_optional(lexeme: lexeme), occurrence_id: occurrence_id)
+}
+
+fn dag_string_text_decoded(token_class: Symbol, body: Optional<List<Int>>, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
+  let escape_refusal = dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
+  match body {
+    Absent => dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
     Present { value: body } =>
       match fold(body, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
         DagStringDecodeText { text: value } => outcome_accepted(value: value)
-        DagStringDecodeEscape { text: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
-        DagStringDecodeHex { text: _, digits: _, value: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
-        DagStringDecodeUnicodeOpen { text: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
-        DagStringDecodeUnicode { text: _, digits: _, value: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
-        DagStringDecodeMalformed { spelled: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
+        DagStringDecodeEscape { text: _ } => escape_refusal
+        DagStringDecodeHex { text: _, digits: _, value: _ } => escape_refusal
+        DagStringDecodeUnicodeOpen { text: _ } => escape_refusal
+        DagStringDecodeUnicode { text: _, digits: _, value: _ } => escape_refusal
+        DagStringDecodeMalformed { spelled: _ } => escape_refusal
       }
   }
 }
@@ -5288,19 +5398,56 @@ fn dag_string_literal_encoded(value: String) -> String {
   )
 }
 
-// The string-literal node for a lexeme: its decoded text as the value payload, or the decode's
-// located refusal.
-fn dag_string_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
-  match dag_string_literal_decoded_text(lexeme: lexeme, occurrence_id: occurrence_id) {
+type DagStringTextFrame {
+  open: Int
+  close: Int
+}
+
+fn dag_string_text_frame_optional(token_class: Symbol) -> Optional<DagStringTextFrame> {
+  if token_class == ^dag_token_string_literal {
+    optional_present(value: DagStringTextFrame { open: 34, close: 34 })
+  } else if token_class == ^dag_token_string_template_head {
+    optional_present(value: DagStringTextFrame { open: 34, close: 123 })
+  } else if token_class == ^dag_token_string_template_middle {
+    optional_present(value: DagStringTextFrame { open: 125, close: 123 })
+  } else if token_class == ^dag_token_string_template_tail {
+    optional_present(value: DagStringTextFrame { open: 125, close: 34 })
+  } else {
+    optional_absent()
+  }
+}
+
+fn dag_string_template_part_class(token_class: Symbol) -> Bool {
+  (token_class == ^dag_token_string_template_head)
+    || (token_class == ^dag_token_string_template_middle)
+    || (token_class == ^dag_token_string_template_tail)
+}
+
+fn dag_string_text_encoded(frame: DagStringTextFrame, value: String) -> String {
+  concat(
+    from_code_point(cp: frame.open),
+    concat(
+      fold(unicode_scalar_unfold(s: value), init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
+      from_code_point(cp: frame.close)
+    )
+  )
+}
+
+fn dag_string_template_part_node_from_lexeme(token_class: Symbol, lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
+  let body = match dag_string_text_frame_optional(token_class: token_class) {
+    Present { value: frame } => dag_string_framed_body_optional(lexeme: lexeme, open: frame.open, close: frame.close)
+    Absent => optional_absent()
+  }
+  match dag_string_text_decoded(token_class: token_class, body: body, occurrence_id: occurrence_id) {
     Accepted { value: value, diagnostics: _ } =>
-      outcome_accepted(value: dag_string_literal_node(value: value, occurrence_id: occurrence_id))
+      outcome_accepted(value: dag_string_text_node(token_class: token_class, value: value, occurrence_id: occurrence_id))
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
-fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
+fn dag_string_text_node(token_class: Symbol, value: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
+    kind: TypeNode { connective: Atom { identity: token_class } },
     children: [
       Edge {
         label: Authored { name: ^string_literal_value_field },
@@ -5313,6 +5460,20 @@ fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity)
     ],
     occurrence_id: occurrence_id
   }
+}
+
+// The string-literal node for a lexeme: its decoded text as the value payload, or the decode's
+// located refusal.
+fn dag_string_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
+  match dag_string_literal_decoded_text(lexeme: lexeme, occurrence_id: occurrence_id) {
+    Accepted { value: value, diagnostics: _ } =>
+      outcome_accepted(value: dag_string_literal_node(value: value, occurrence_id: occurrence_id))
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  dag_string_text_node(token_class: ^dag_token_string_literal, value: value, occurrence_id: occurrence_id)
 }
 
 // The decoded value a string-literal node carries: its payload atom's interned identity. Absent for
@@ -5345,6 +5506,164 @@ fn dag_string_literal_value_symbol_optional(node: Node) -> Optional<Symbol> {
   match dag_string_literal_value_payload_optional(node: node) {
     Present { value: payload } => node_atom_identity_optional(node: payload)
     Absent => optional_absent()
+  }
+}
+
+fn dag_string_template_part_value_optional(node: Node) -> Optional<String> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } =>
+      if dag_string_template_part_class(token_class: id) && (length(xs: node.children) == 1) {
+        match list_at_optional(xs: node.children, index: 0) {
+          Present { value: edge } =>
+            match dag_string_literal_value_edge_target_optional(edge: edge) {
+              Present { value: payload } =>
+                match node_atom_identity_optional(node: payload) {
+                  Present { value: v } => optional_present(value: symbol_lexeme(sym: v))
+                  Absent => optional_absent()
+                }
+              Absent => optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+// THE GRAMMAR SHAPE, AS A TYPE: a template is a text, then one or more (hole, text) pairs
+// (dag_grammar_string_template_expr: head, expr, repeat(middle, expr), tail). Adjacent texts, a
+// leading hole, a trailing hole, or a hole-free template have no constructor. segments is
+// std.algebra FreeSemigroup (DESIGN section 2: the nonempty carrier already exists; an empty
+// inhabitant has no representation), not a List with an Empty refusal (DESIGN section 5).
+type StringTemplateText {
+  value: String
+  at: Node
+}
+
+type StringTemplateSegment {
+  hole: Node
+  text: StringTemplateText
+}
+
+type StringTemplate {
+  head: StringTemplateText
+  segments: FreeSemigroup<StringTemplateSegment>
+}
+
+fn string_template_optional(node: Node) -> Optional<StringTemplate> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if emitted == ^dag_string_template {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } =>
+            dag_string_template_from_frontier(
+              nodes: dag_string_template_frontier(acc: Empty, n: captured)
+            )
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn dag_string_template_text_from_node(node: Node) -> Optional<StringTemplateText> {
+  match dag_string_template_part_value_optional(node: node) {
+    Present { value: text } => optional_present(value: StringTemplateText { value: text, at: node })
+    Absent => optional_absent()
+  }
+}
+
+fn dag_string_template_hole_node_optional(node: Node) -> Optional<Node> {
+  if parse_production_emitted_identity_optional(node: node) == optional_present(value: ^dag_surface_expr) {
+    optional_present(value: node)
+  } else {
+    optional_absent()
+  }
+}
+
+fn dag_string_template_rest_segments_optional(nodes: List<Node>) -> Optional<List<StringTemplateSegment>> {
+  match nodes {
+    Empty => optional_present(value: Empty)
+    Cons { head: hole_node, tail: after } =>
+      match dag_string_template_hole_node_optional(node: hole_node) {
+        Absent => optional_absent()
+        Present { value: hole } =>
+          match after {
+            Empty => optional_absent()
+            Cons { head: text_node, tail: more } =>
+              match dag_string_template_text_from_node(node: text_node) {
+                Absent => optional_absent()
+                Present { value: text } =>
+                  match dag_string_template_rest_segments_optional(nodes: more) {
+                    Absent => optional_absent()
+                    Present { value: rest } =>
+                      optional_present(value: Cons {
+                        head: StringTemplateSegment { hole: hole, text: text },
+                        tail: rest
+                      })
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn dag_string_template_segments_optional(nodes: List<Node>) -> Optional<FreeSemigroup<StringTemplateSegment>> {
+  match nodes {
+    Empty => optional_absent()
+    Cons { head: hole_node, tail: after } =>
+      match dag_string_template_hole_node_optional(node: hole_node) {
+        Absent => optional_absent()
+        Present { value: hole } =>
+          match after {
+            Empty => optional_absent()
+            Cons { head: text_node, tail: more } =>
+              match dag_string_template_text_from_node(node: text_node) {
+                Absent => optional_absent()
+                Present { value: text } =>
+                  match dag_string_template_rest_segments_optional(nodes: more) {
+                    Absent => optional_absent()
+                    Present { value: rest } =>
+                      optional_present(value: FreeSemigroup {
+                        head: StringTemplateSegment { hole: hole, text: text },
+                        tail: rest
+                      })
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn dag_string_template_from_frontier(nodes: List<Node>) -> Optional<StringTemplate> {
+  match nodes {
+    Empty => optional_absent()
+    Cons { head: n0, tail: rest } =>
+      match dag_string_template_text_from_node(node: n0) {
+        Absent => optional_absent()
+        Present { value: head } =>
+          match dag_string_template_segments_optional(nodes: rest) {
+            Absent => optional_absent()
+            Present { value: segments } =>
+              optional_present(value: StringTemplate { head: head, segments: segments })
+          }
+      }
+  }
+}
+
+fn dag_string_template_frontier(acc: List<Node>, n: Node) -> List<Node> {
+  match dag_string_template_part_value_optional(node: n) {
+    Present { value: _ } => list_snoc_item(xs: acc, item: n)
+    Absent =>
+      if parse_production_emitted_identity_optional(node: n) == optional_present(value: ^dag_surface_expr) {
+        list_snoc_item(xs: acc, item: n)
+      } else {
+        fold(n.children, init: acc, f: fn(a, e) { dag_string_template_frontier(acc: a, n: e.target) })
+      }
   }
 }
 
@@ -5924,11 +6243,11 @@ fn dag_complement_match_body(
   dag_match_body_from_arms(
     scrutinee: scrutinee,
     true_arm: dag_match_arm_node(
-      pattern_lit: ^dag_complement_lit_true,
+      pattern_lit: ^dag_token_kw_true,
       body_lit: true_body_lit
     ),
     false_arm: dag_match_arm_node(
-      pattern_lit: ^dag_complement_lit_false,
+      pattern_lit: ^dag_token_kw_false,
       body_lit: false_body_lit
     )
   )
@@ -5951,16 +6270,16 @@ fn dag_complement_arrow_domain_node() -> Node {
 fn dag_complement_body_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
-    true_body_lit: ^dag_complement_lit_false,
-    false_body_lit: ^dag_complement_lit_true
+    true_body_lit: ^dag_token_kw_false,
+    false_body_lit: ^dag_token_kw_true
   )
 }
 
 fn dag_complement_body_swapped_arms_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
-    true_body_lit: ^dag_complement_lit_true,
-    false_body_lit: ^dag_complement_lit_false
+    true_body_lit: ^dag_token_kw_true,
+    false_body_lit: ^dag_token_kw_false
   )
 }
 
@@ -5982,9 +6301,9 @@ fn dag_complement_arrow_with_body_swapped_arms_node() -> Node {
 
 fn dag_complement_eval_subgraph_node() -> Node {
   dag_complement_match_body(
-    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
-    true_body_lit: ^dag_complement_lit_false,
-    false_body_lit: ^dag_complement_lit_true
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_body_lit: ^dag_token_kw_false,
+    false_body_lit: ^dag_token_kw_true
   )
 }
 
@@ -6016,14 +6335,14 @@ fn dag_meet_body_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
     true_body_lit: ^dag_binding_param_b,
-    false_body_lit: ^dag_complement_lit_false
+    false_body_lit: ^dag_token_kw_false
   )
 }
 
 fn dag_meet_body_swapped_arms_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
-    true_body_lit: ^dag_complement_lit_false,
+    true_body_lit: ^dag_token_kw_false,
     false_body_lit: ^dag_binding_param_b
   )
 }
@@ -6031,7 +6350,7 @@ fn dag_meet_body_swapped_arms_node() -> Node {
 fn dag_join_body_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
-    true_body_lit: ^dag_complement_lit_true,
+    true_body_lit: ^dag_token_kw_true,
     false_body_lit: ^dag_binding_param_b
   )
 }
@@ -6040,23 +6359,23 @@ fn dag_join_body_swapped_arms_node() -> Node {
   dag_complement_match_body(
     scrutinee: dag_complement_param_scrutinee_node(),
     true_body_lit: ^dag_binding_param_b,
-    false_body_lit: ^dag_complement_lit_true
+    false_body_lit: ^dag_token_kw_true
   )
 }
 
 fn dag_meet_eval_subgraph_node() -> Node {
   dag_complement_match_body(
-    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
-    true_body_lit: ^dag_complement_lit_true,
-    false_body_lit: ^dag_complement_lit_false
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_body_lit: ^dag_token_kw_true,
+    false_body_lit: ^dag_token_kw_false
   )
 }
 
 fn dag_join_eval_subgraph_node() -> Node {
   dag_complement_match_body(
-    scrutinee: dag_type_atom_node(identity: ^dag_complement_lit_true),
-    true_body_lit: ^dag_complement_lit_true,
-    false_body_lit: ^dag_complement_lit_false
+    scrutinee: dag_type_atom_node(identity: ^dag_token_kw_true),
+    true_body_lit: ^dag_token_kw_true,
+    false_body_lit: ^dag_token_kw_false
   )
 }
 
@@ -6774,6 +7093,36 @@ fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
+fn dag_surface_identity_is_top_level_item(id: Symbol) -> Bool {
+  fold_list(
+    xs: dag_grammar_top_level_item_productions(),
+    empty: false,
+    cons: fn(acc, production) {
+      acc || match node_atom_identity_optional(node: production.emitted) {
+        Present { value: emitted } => emitted == id
+        Absent => false
+      }
+    }
+  )
+}
+
+// Parse identities that inhabit a module as Authored members and are not record binders:
+// the module surface and graft-body stamp as the only explicit extras, plus every emitted
+// identity of dag_grammar_top_level_item_productions. Identity only — a missing stamp is
+// false, never a Conj-shape guess (DESIGN §5: refuse the member, never widen to the container).
+fn dag_surface_identity_is_module_member(id: Symbol) -> Bool {
+  (id == ^dag_surface_module)
+    || (id == ^namespace_graft_module_body)
+    || dag_surface_identity_is_top_level_item(id: id)
+}
+
+fn dag_node_is_module_member_surface(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => dag_surface_identity_is_module_member(id: id)
+    Absent => false
+  }
+}
+
 fn dag_node_is_fn_decl(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } => id == ^dag_surface_fn_decl
@@ -7135,18 +7484,17 @@ fn parse_qn_segment_with<T>(sym_node: Node, root: Node, seg: fn(Node, Symbol) ->
   }
 }
 
-fn parse_qn_repeat_suffix_ident_with<T>(sequence_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<T> {
-  match find_named_child(
-    root: sequence_capture,
-    name: ^grammar_sequence_right_node_projection
-  ) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: ident_node, diagnostics: _ } =>
-      parse_qn_segment_with(sym_node: ident_node, root: root, seg: seg)
-  }
-}
-
-fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
+// ONE REPEAT-CAPTURE SPINE, by the rule above: one walker for the encoding, per-item readers on
+// top of it. THE ENCODING: a repeat capture is either an empty conj (no items) or a conj whose
+// left projection is the element sequence and whose right projection is the next capture, and each
+// element sequence's right projection is the item. The spine refuses when a projection the
+// encoding promises is missing -- a malformed spine is not an empty list -- and the item reader
+// owns every refusal about what an item is.
+fn parse_repeat_capture_items_with<T>(
+  repeat_capture: Node,
+  root: Node,
+  item: fn(Node, Node) -> Outcome<T>
+) -> Outcome<List<T>> {
   if is_empty_conj_root(n: repeat_capture) {
     outcome_accepted(value: Empty)
   } else {
@@ -7156,30 +7504,45 @@ fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(No
     ) {
       Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
       Accepted { value: head_sequence, diagnostics: _ } =>
-        match parse_qn_repeat_suffix_ident_with(sequence_capture: head_sequence, root: root, seg: seg) {
+        match find_named_child(
+          root: head_sequence,
+          name: ^grammar_sequence_right_node_projection
+        ) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-          Accepted { value: item, diagnostics: _ } =>
-            match find_named_child(
-              root: repeat_capture,
-              name: ^grammar_sequence_right_node_projection
-            ) {
+          Accepted { value: item_node, diagnostics: _ } =>
+            match item(item_node, root) {
               Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-              Accepted { value: tail, diagnostics: _ } =>
-                match parse_qn_repeat_suffixes_with(repeat_capture: tail, root: root, seg: seg) {
+              Accepted { value: item_value, diagnostics: _ } =>
+                match find_named_child(
+                  root: repeat_capture,
+                  name: ^grammar_sequence_right_node_projection
+                ) {
                   Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-                  Accepted { value: suffixes, diagnostics: tail_diag } =>
-                    outcome_with_diagnostics(
-                      value: list_append(
-                        left: Cons { head: item, tail: Empty },
-                        right: suffixes
-                      ),
-                      diagnostics: tail_diag
-                    )
+                  Accepted { value: tail, diagnostics: _ } =>
+                    match parse_repeat_capture_items_with(repeat_capture: tail, root: root, item: item) {
+                      Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                      Accepted { value: suffixes, diagnostics: tail_diag } =>
+                        outcome_with_diagnostics(
+                          value: list_append(
+                            left: Cons { head: item_value, tail: Empty },
+                            right: suffixes
+                          ),
+                          diagnostics: tail_diag
+                        )
+                    }
                 }
             }
         }
     }
   }
+}
+
+fn parse_qn_repeat_suffixes_with<T>(repeat_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
+  parse_repeat_capture_items_with(
+    repeat_capture: repeat_capture,
+    root: root,
+    item: fn(n, r) { parse_qn_segment_with(sym_node: n, root: r, seg: seg) }
+  )
 }
 
 fn parse_qualified_name_segments_from_capture_with<T>(qn_capture: Node, root: Node, seg: fn(Node, Symbol) -> T) -> Outcome<List<T>> {
@@ -7610,6 +7973,60 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
 
+fn dag_identity_is_module_surface(id: Symbol) -> Bool {
+  (id == ^dag_surface_module) || (id == namespace_graft_module_body_identity)
+}
+
+// A MODULE SURFACE is identified by what the node IS: parse/emit production identity
+// dag_surface_module, the graft body's producer stamp, or a synthetic Atom whose
+// identity is dag_surface_module. A header child edge is not identity (review 77909).
+fn dag_node_is_module_surface(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => dag_identity_is_module_surface(id: id)
+    Absent =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: id } => dag_identity_is_module_surface(id: id)
+        Absent => false
+      }
+  }
+}
+
+// THE RECORD-FIELD CARRIER PREDICATE the unit-modeling and lifecycle-carrier lenses share.
+// A Conj is a record-field carrier unless THIS NODE is a module surface. A sibling that
+// happens to be a module surface does not opt the whole Conj out (DESIGN §5: refuse the
+// member, never widen to the container). Other connectives are not record payloads; Disj
+// arm payloads are Conjs and are judged when those Conjs are visited.
+fn dag_node_is_record_field_carrier(node: Node) -> Bool {
+  namespace_graft_node_is_conj(node: node) && !dag_node_is_module_surface(node: node)
+}
+
+fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
+  (name == ^grammar_production_identity_node_projection) ||
+    (name == ^grammar_production_captured_node_projection)
+}
+
+// Stamp edges on a MODULE SURFACE only. Same spelling on an ordinary record is a user field
+// and must still be judged (DESIGN §5: refuse, never widen).
+fn dag_edge_is_module_surface_parse_projection(carrier: Node, name: Symbol) -> Bool {
+  dag_node_is_module_surface(node: carrier) &&
+    dag_authored_name_is_parse_production_projection(name: name)
+}
+
+// Per-edge skip by identity only (DESIGN §5: refuse, never widen). A non-binder record
+// field that is an Atom or Disj must still be member_not_a_binder. fn-decl is the
+// production identity dag_surface_fn_decl (unchanged meaning for other callers).
+// test-fn identity lives only here, not in dag_node_is_fn_decl.
+fn dag_node_is_namespace_member_target(node: Node) -> Bool {
+  if dag_node_is_module_surface(node: node) || dag_node_is_fn_decl(node: node) {
+    true
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Present { value: id } => id == ^dag_surface_test_fn_decl
+      Absent => false
+    }
+  }
+}
+
 // The one constructor of the marker node: emitted by namespace_graft_build_body_conj.
 // It is a surface identity atom, not a type denotation, so infer grounds it with the
 // grammar authority's surface-production type (dag_grammar_production_member_declared_type)
@@ -7863,12 +8280,21 @@ fn dag_emit_class_terminal_spelling(lex: LexRules, token_class: Symbol, captured
       Present { value: _ } =>
         bind_outcome(
           o: dag_int_literal_magnitude_int_from_node(node: captured),
-          f: fn(v) { outcome_accepted(value: integer_int_to_decimal_string(value: v)) }
+          f: fn(v) { outcome_accepted(value: int_to_decimal_string(value: v)) }
         )
     }
   } else if token_class == ^dag_token_string_literal {
     match dag_string_literal_value_optional(node: captured) {
       Present { value: value } => outcome_accepted(value: dag_string_literal_encoded(value: value))
+      Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
+    }
+  } else if dag_string_template_part_class(token_class: token_class) {
+    match dag_string_template_part_value_optional(node: captured) {
+      Present { value: value } =>
+        match dag_string_text_frame_optional(token_class: token_class) {
+          Present { value: frame } => outcome_accepted(value: dag_string_text_encoded(frame: frame, value: value))
+          Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
+        }
       Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
     }
   } else if token_class == ^dag_token_float_literal {
@@ -7896,28 +8322,70 @@ fn dag_emit_token_spelling(lex: LexRules, terminal: GrammarEmitTerminal) -> Outc
 type DagEmitText {
   text: String
   break_pending: Bool
+  last_class: Optional<Symbol>
+}
+
+fn dag_emit_terminal_class_optional(t: GrammarEmitTerminal) -> Optional<Symbol> {
+  match t {
+    GrammarEmitClassTerminal { token_class: c, captured: _ } => optional_present(value: c)
+    GrammarEmitLexemeTerminal { token_class: c, lexeme: _ } => optional_present(value: c)
+    GrammarEmitLineBreak => optional_absent()
+  }
+}
+
+fn dag_emit_template_part_is_opener(token_class: Symbol) -> Bool {
+  (token_class == ^dag_token_string_template_head) || (token_class == ^dag_token_string_template_middle)
+}
+
+fn dag_emit_template_part_is_closer(token_class: Symbol) -> Bool {
+  (token_class == ^dag_token_string_template_middle) || (token_class == ^dag_token_string_template_tail)
+}
+
+fn dag_emit_skip_space_around_template(prev: Optional<Symbol>, next: Optional<Symbol>) -> Bool {
+  match prev {
+    Absent => false
+    Present { value: p } =>
+      match next {
+        Absent => false
+        Present { value: n } => dag_emit_template_part_is_opener(token_class: p) || dag_emit_template_part_is_closer(token_class: n)
+      }
+  }
+}
+
+fn dag_emit_separator(acc: DagEmitText, next: Optional<Symbol>) -> String {
+  if acc.text == "" {
+    ""
+  } else if acc.break_pending {
+    "\n"
+  } else if dag_emit_skip_space_around_template(prev: acc.last_class, next: next) {
+    ""
+  } else {
+    " "
+  }
 }
 
 // Whitespace is trivia in dag_lex_rules, so one space between tokens cannot change the tree that is
-// read back. A line break is written only where the grammar requires one (GrammarEmitLineBreak).
-// Layout is otherwise a projection over this text, not a fact of the emit.
+// read back except at a template hole: a space after `{` or before `}` turns a hole into literal
+// text. A line break is written only where the grammar requires one (GrammarEmitLineBreak).
 fn dag_emit_text_step(lex: LexRules, acc: DagEmitText, t: GrammarEmitTerminal) -> Outcome<DagEmitText> {
   match t {
-    GrammarEmitLineBreak => outcome_accepted(value: DagEmitText { text: acc.text, break_pending: true })
+    GrammarEmitLineBreak => outcome_accepted(value: DagEmitText { text: acc.text, break_pending: true, last_class: optional_absent() })
     GrammarEmitClassTerminal { token_class: _, captured: _ } =>
       bind_outcome(
         o: dag_emit_token_spelling(lex: lex, terminal: t),
         f: fn(spelled) {
-          let separator = if acc.text == "" { "" } else if acc.break_pending { "\n" } else { " " }
-          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false })
+          let next = dag_emit_terminal_class_optional(t: t)
+          let separator = dag_emit_separator(acc: acc, next: next)
+          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false, last_class: next })
         }
       )
     GrammarEmitLexemeTerminal { token_class: _, lexeme: _ } =>
       bind_outcome(
         o: dag_emit_token_spelling(lex: lex, terminal: t),
         f: fn(spelled) {
-          let separator = if acc.text == "" { "" } else if acc.break_pending { "\n" } else { " " }
-          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false })
+          let next = dag_emit_terminal_class_optional(t: t)
+          let separator = dag_emit_separator(acc: acc, next: next)
+          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false, last_class: next })
         }
       )
   }
@@ -7928,7 +8396,7 @@ fn dag_emit_terminals_text(lex: LexRules, terminals: List<GrammarEmitTerminal>) 
   bind_outcome(
     o: fold(
       terminals,
-      init: outcome_accepted(value: DagEmitText { text: "", break_pending: false }),
+      init: outcome_accepted(value: DagEmitText { text: "", break_pending: false, last_class: optional_absent() }),
       f: fn(acc, t) { bind_outcome(o: acc, f: fn(state) { dag_emit_text_step(lex: lex, acc: state, t: t) }) }
     ),
     f: fn(state) { outcome_accepted(value: state.text) }

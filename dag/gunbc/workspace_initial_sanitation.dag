@@ -20,7 +20,7 @@ import gunbc.runner_microvm_lifecycle {
 }
 import gunbc.runner_microvm_lifecycle_realize { observe_cgroup_subtree, mount_point_is_within }
 import gunbc.runner_microvm_network { SlotNetworkSanitationSubject, SlotNetworkReadback, slot_network_verdict }
-import gunbc.runner_microvm_network_observe { observe_slot_network_readings }
+import gunbc.runner_microvm_network_sanitation_observe { observe_slot_network_readings }
 import product.fabric.sanitation { SanitationObservation, MountsRemoved, WritableLayersDeleted, SecretsRemoved }
 
 // Observation identity is content-addressed; observed_at separately carries freshness. A clean

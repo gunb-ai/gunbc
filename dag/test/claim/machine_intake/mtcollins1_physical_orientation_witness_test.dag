@@ -13,7 +13,7 @@ import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
 }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.managed_host {
-  ManagedHostFound, ManagedHostNotManaged, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
+  ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
   managed_host_binding_for,
 }
 import gunbc.machine_intake_mtcollins1_dimm_connector_observation { mtcollins1_blue_connector_observation }
@@ -62,6 +62,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn mtcollins1_oriented(anchors: List<DimmPlacementAnchor>) -> DimmOrientedHost? {
   match managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr) {
     ManagedHostNotManaged { host: _ } => Absent
+    ManagedHostFoundUnderDeclaredDrop { standing: s, drop: _, standing_subject: _, current_subject: _ } => match s {
+      ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
+        HostDimmOriented { oriented: o } => Present { value: o }
+        HostDimmBoardUnmodeled { host: _, board: _ } => Absent
+      }
+      ManagedHostAccessUnobserved { endpoint: _ } => Absent
+      ManagedHostNotSecured { cause: _ } => Absent
+      ManagedHostEndpointMismatch { observed: _, secured: _ } => Absent
+    }
     ManagedHostFound { standing: s } => match s {
       ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
         HostDimmOriented { oriented: o } => Present { value: o }
@@ -124,7 +133,7 @@ fn resolves_to(anchors: List<DimmPlacementAnchor>, banks: List<MtCollinsDimmFigu
 // socket), and the firmware trained SK0 MC0 S0 and SK0 MC4 S0.
 test fn w_unmirrored_figure_order_contradicts_firmware() -> Bool {
   match anchor_verdict(anchor: mtcollins1_three_stick_anchor, hypothesis: FigureOrder, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
-    AnchorContradicted { predicted: p } => list_length(items: p) == 1 && p.first().socket == 0 && p.first().controller == 0
+    AnchorContradicted { predicted: p } => list_length(items: p) == 1 && (match p.first() { Present { value: b } => b.socket == 0 && b.controller == 0  Absent => false })
     AnchorConsistent => false
     AnchorUnevaluable { unresolved_key: _ } => false
     AnchorFrameUnreported => false

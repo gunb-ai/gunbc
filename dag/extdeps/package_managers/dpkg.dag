@@ -85,6 +85,20 @@ fn dpkg_status_lines_of(record: String) -> List<String> {
     if starts_with(s: line, prefix: "Status:") { concat(acc, [trim(s: line)]) } else { acc })
 }
 
+// A status/cache stanza must name each identity field exactly once. Missing and duplicate
+// fields remain unreadable; the caller checks the expected package, version and architecture.
+fn dpkg_record_field(record: String, field: String) -> String? {
+  let prefix = concat(field, ":")
+  let rows = filter(split(s: record, delimiter: "\n"), line => starts_with(s: line, prefix: prefix))
+  if rows.count() != 1 { none } else { match rows.first() {
+    Present { value: row } => {
+      let value = trim(s: substring(s: row, start: string_length(s: prefix), end: string_length(s: row)))
+      if value == "" { none } else { Present { value: value } }
+    }
+    Absent => none
+  } }
+}
+
 fn dpkg_words_of(text: String) -> List<String> {
   fold(split(text, " "), init: [], f: (acc, w) => if w == "" { acc } else { concat(acc, [w]) })
 }

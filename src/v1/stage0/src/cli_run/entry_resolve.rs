@@ -364,12 +364,14 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
                 let Some(candidates) = index.get(&module_path) else {
                     continue;
                 };
-                for path in candidates {
+                for source in candidates {
+                    let path = source.path();
                     let rel = normalize_repo_path(&module_index_path_key(path));
                     if !seen.insert(rel) {
                         continue;
                     }
-                    let file_content = std::fs::read_to_string(path)
+                    let file_content = source
+                        .read()
                         .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
                     queue.push(file_content);
                 }
@@ -521,12 +523,14 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
                 let Some(candidates) = index.get(&module_path) else {
                     continue;
                 };
-                for path in candidates {
+                for source in candidates {
+                    let path = source.path();
                     let rel = normalize_repo_path(&module_index_path_key(path));
                     if seen.contains_key(&rel) {
                         continue;
                     }
-                    let file_content = std::fs::read_to_string(path)
+                    let file_content = source
+                        .read()
                         .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
                     seen.insert(
                         rel.clone(),
@@ -1008,7 +1012,7 @@ pub fn resolve_entry_graph(
     // wave 1) an entry's dependencies are name-derived, and the old
     // `load_sources_for_entry_with_index` walk only follows import edges — a
     // stripped fixed entry (e.g. the floor runner) failed to resolve at all.
-    let index = process_shared_index(source_roots);
+    let index = try_process_shared_index(source_roots)?;
     resolve_entry_with_index(&index, entry_file)
 }
 
@@ -1499,12 +1503,39 @@ pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String>
     index.resolved_graph_memo.borrow().keys().cloned().collect()
 }
 
+/// Empty caches over an already-indexed `source_files` map. Recorded as
+/// `ScratchCachesOverExistingSet` so the sharing control can count it without treating it as a
+/// second `NameSetIndex` (`MultiEntryIndexBuiltTwiceForOneNameSet` remains two name-set indexes).
+#[track_caller]
+pub(crate) fn new_multi_entry_index_scratch_over(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+) -> MultiEntryIndex {
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::ScratchCachesOverExistingSet,
+    );
+    multi_entry_index_shell_body(source_files, source_roots)
+}
+
 #[track_caller]
 pub(crate) fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
 ) -> MultiEntryIndex {
-    record_multi_entry_index_site(std::panic::Location::caller(), &source_files);
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::NameSetIndex,
+    );
+    multi_entry_index_shell_body(source_files, source_roots)
+}
+
+fn multi_entry_index_shell_body(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+) -> MultiEntryIndex {
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
@@ -1532,6 +1563,7 @@ pub(crate) fn new_multi_entry_index_shell(
         pool_bare_census: RefCell::new(None),
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
+        scratch_underlay: RefCell::new(None),
         closure_name_censuses: RefCell::new(HashMap::new()),
         bare_reference_admission: RefCell::new(HashMap::new()),
         pool_module_names: std::cell::OnceCell::new(),
@@ -1903,72 +1935,17 @@ pub(crate) fn resolve_entry_with_parse_cache_inner(
     .map(|(graph, si, _compile_clean_diags)| (graph, si))
 }
 
-pub(crate) fn via_index_source_annotation_diagnostics(
-    source: &v1_compiler_compile::SourceFile,
-    occurrence_transport: Rc<crate::std_occurrence_identity::OccurrenceTransport>,
-    captures: Rc<im::Vector<Rc<crate::std_source_annotation::UnboundAnnotationCapture>>>,
-) -> im::Vector<Rc<ErrorNode>> {
-    let bound = v1_compiler_compile::admit_source_annotations(
-        occurrence_transport,
-        captures,
-        v1_rt::string_length(&source.content),
-    );
-    bound
-        .diagnostics
-        .iter()
-        .cloned()
-        .map(|d| make_error_node(d, source.path.clone()))
-        .collect()
-}
-
-/// Census-fill admission for a parse_cache hit that never ran `admit_source_annotations`.
-/// Filters to `SourceAnnotationRefused` because that is all `admit_source_annotations`
-/// emits today (both sites in `v1_compiler_annotation_bind`). The miss path keeps
-/// every diagnostic that function returns; the two agree until a third diagnostic
-/// appears — latent coupling, not a live divergence.
-pub(crate) fn via_index_census_fill_annotation_diags(
-    source: &Rc<v1_compiler_compile::SourceFile>,
-) -> im::Vector<Rc<ErrorNode>> {
-    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(vec![source.clone()].into()));
-    fill.diagnostics
-        .iter()
-        .filter(|d| {
-            matches!(
-                d.diagnostic.as_ref(),
-                CompilerDiagnostic::SourceAnnotationRefused { .. }
-            )
-        })
-        .cloned()
-        .collect()
-}
-
-/// Parse one via-index source, admitting annotations into the cache entry so a later
-/// `Memoize` consumer (`handle_serve`) cannot observe a different population than a
-/// cold parse of the same bytes.
+/// Parse one via-index source into the per-file parse memo. Annotation binding cannot
+/// refuse (std.source_annotation attaches every comment to its gap), so a cached entry is
+/// complete whichever path installed it.
 pub(crate) fn via_index_parse_one_source(
     index: &MultiEntryIndex,
     source: &Rc<v1_compiler_compile::SourceFile>,
 ) -> ParseCacheEntry {
     let cached = index.parse_cache.borrow().get(&source.path).cloned();
     if let Some(entry) = cached {
-        if entry.annotation_diags.is_some() {
-            return entry;
-        }
-        let refused = via_index_census_fill_annotation_diags(source);
-        let upgraded = ParseCacheEntry {
-            annotation_diags: Some(Rc::new(refused)),
-            ..entry
-        };
-        index
-            .parse_cache
-            .borrow_mut()
-            .insert(source.path.clone(), upgraded.clone());
-        return upgraded;
+        return entry;
     }
-    // Ordinary frontend (`front_end_sources`) keeps tokenize_artifact
-    // captures and admits them against this file's occurrence transport.
-    // Annotation-erasing `tokenize` here let a touched in-closure file
-    // compile on the floor while missing the class #8204 claims to close.
     // One acquisition, not one per walk -- see `cli_run::pool_acquire`. The pool census already
     // tokenized these bytes under this spelling; the artifact keeps the annotation channel.
     let artifact = super::pool_acquire::artifact_for(&source.path, &source.content);
@@ -1982,15 +1959,9 @@ pub(crate) fn via_index_parse_one_source(
     let parsed =
         v1_compiler_parse::parse_with_table(artifact.tokens.clone(), single_si, current_table);
     *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-    let annotation_diags = via_index_source_annotation_diagnostics(
-        source,
-        parsed.occurrence_transport.clone(),
-        artifact.annotations.clone(),
-    );
     let entry = ParseCacheEntry {
         parse_result: parsed.result.clone(),
         newline_index: nl_index,
-        annotation_diags: Some(Rc::new(annotation_diags)),
     };
     index
         .parse_cache
@@ -2048,15 +2019,11 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut parse_error_msgs: Vec<String> = Vec::new();
-    let mut annotation_diags: im::Vector<Rc<ErrorNode>> = im::Vector::new();
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
         note_source_hash(index, source);
         let entry = via_index_parse_one_source(index, source);
-        if let Some(stored) = &entry.annotation_diags {
-            annotation_diags.extend(stored.iter().cloned());
-        }
         let parse_result = entry.parse_result.clone();
         let nl_index = entry.newline_index.clone();
 
@@ -2078,12 +2045,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         }
     }
     if !parse_error_msgs.is_empty() {
-        let source_indices = Rc::new(si_map);
-        return Err(join_via_index_stage_refusal(
-            &annotation_diags,
-            &source_indices,
-            parse_error_msgs.join("\n"),
-        ));
+        return Err(parse_error_msgs.join("\n"));
     }
 
     let source_indices = Rc::new(si_map);
@@ -2099,11 +2061,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(join_via_index_stage_refusal(
-            &annotation_diags,
-            &source_indices,
-            format_error_nodes(&graph.diagnostics, &source_indices),
-        ));
+        return Err(format_error_nodes(&graph.diagnostics, &source_indices));
     }
     resolve_stage_slot_add(|s| s.resolve += resolve_started.elapsed().as_nanos());
 
@@ -2141,11 +2099,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(join_via_index_stage_refusal(
-            &annotation_diags,
-            &source_indices,
-            format_error_nodes(&norm_diags, &source_indices),
-        ));
+        return Err(format_error_nodes(&norm_diags, &source_indices));
     }
     resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
@@ -2153,8 +2107,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let reconcile_attributed_before = resolve_stage_slot_snapshot().reconcile_attributed_total();
     let reconcile_started = std::time::Instant::now();
     let typed =
-        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)
-            .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
+        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
     // `typed` carries the completed per-module typecheck and its diagnostics. Record the
     // verdict before testing whether it is positive: a blocking diagnostic is stronger
     // evidence of visibility than a green result. Parse/resolve aborts and a reconcile that
@@ -2173,8 +2126,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                 "assembly attribution refused: NestedSpanAttribution {{ before_nanos: \
              {reconcile_attributed_before}, after_nanos: {reconcile_attributed_after} }}"
             )
-        })
-        .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
+        })?;
     let assembly_other = reconcile_total
         .checked_sub(reconcile_attributed)
         .ok_or_else(|| {
@@ -2182,8 +2134,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                 "assembly attribution refused: OverAttributed {{ sum_exclusive_nanos: \
              {reconcile_attributed}, parent_span_nanos: {reconcile_total} }}"
             )
-        })
-        .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
+        })?;
     resolve_stage_slot_add(|s| s.reconcile_assembly += assembly_other);
 
     let has_type_errors = typed
@@ -2197,11 +2148,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
             .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
-        return Err(join_via_index_stage_refusal(
-            &annotation_diags,
-            &source_indices,
-            msgs.join("\n"),
-        ));
+        return Err(msgs.join("\n"));
     }
 
     let ownership_started = std::time::Instant::now();
@@ -2236,22 +2183,15 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(join_via_index_stage_refusal(
-            &annotation_diags,
-            &source_indices,
-            format_error_nodes(&ownership_diags, &source_indices),
-        ));
+        return Err(format_error_nodes(&ownership_diags, &source_indices));
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
-    let compile_clean_diags = prepend_via_index_annotation_diags(
-        annotation_diags,
-        compile_clean_diags_from_resolved_stages(
-            &graph.diagnostics,
-            &norm_diags,
-            &typed,
-            &ownership_diags,
-        ),
+    let compile_clean_diags = compile_clean_diags_from_resolved_stages(
+        &graph.diagnostics,
+        &norm_diags,
+        &typed,
+        &ownership_diags,
     );
 
     // Install into the in-process share so same-subject re-resolves skip assembly —
@@ -2297,7 +2237,6 @@ pub(crate) fn parse_module_node_from_index_source(
             let entry = ParseCacheEntry {
                 parse_result: parsed.result.clone(),
                 newline_index: nl_index.clone(),
-                annotation_diags: None,
             };
             index
                 .parse_cache
@@ -2480,7 +2419,7 @@ pub fn whole_tree_resolved_ctx(
 /// size (`retained`, what is resident if each module's spine were its own allocation) and each
 /// distinct `Rc` spine once (`distinct`, what is actually allocated). `dup = retained/distinct`
 /// is the per-module materialization factor; a factor well above 1 on the ancestry maps is the
-/// quadratic retention the M0 probe (v1-run-stability-throughline) was written to locate, and
+/// quadratic retention the M0 probe was written to locate, and
 /// this is that probe moved onto the graphs the floor really holds instead of a second whole-tree
 /// resolve nobody called.
 ///
@@ -2830,8 +2769,10 @@ pub(crate) fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
         // This minted `^{stem}` after escaping non-identifier characters and a leading digit,
         // and stopped there. A stem that IS a keyword still lexes as a keyword, so `dag/std/
         // import.dag` emitted `^import` and the manifest failed to parse -- measured, at the
-        // caret: "expected identifier or `(` after `^`, found keyword". Two stems in the tree
-        // reach it today, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`.
+        // caret: "expected identifier or `(` after `^`, found keyword". Two stems reached
+        // it when this arm was written, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`;
+        // both were renamed to non-keyword stems (`import_statement`, `go_mod`). The live residual
+        // population is the two `capability.dag` files, `dag/extdeps/bmc/` and `dag/extdeps/ollama/`.
         //
         // The mint promised a valid symbol and returned an unparseable one with no refusal,
         // which is why nothing caught it: the emitter succeeded, the file was written, and the
@@ -2894,16 +2835,19 @@ pub(crate) fn import_resolution_facts_with_observation(
         if !root_path.is_dir() {
             continue;
         }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
+        let mut dag_files = Vec::new();
+        if let Err(cause) = collect_dag_files_tolerant(root_path, &mut dag_files) {
+            read_refusals.push((workspace_relative_repo_path(root), cause));
+            continue;
+        }
         dag_files.sort();
         for file in dag_files {
-            let rel = rel_path_for_layer_import(&file);
+            let rel = rel_path_for_layer_import(file.path());
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
             observed_paths.insert(workspace_relative_repo_path(&rel));
-            let content = match std::fs::read_to_string(&file) {
+            let content = match file.read() {
                 Ok(c) => c,
                 Err(e) => {
                     read_refusals.push((workspace_relative_repo_path(&rel), e.to_string()));
@@ -3136,12 +3080,14 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
         if !root_path.is_dir() {
             continue;
         }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
+        let mut files = Vec::new();
+        // A ledger row directory whose roster cannot be derived is not a tolerable read miss:
+        // a short pool-name set would silently drop the roster module's names.
+        collect_dag_files_tolerant(root_path, &mut files).unwrap_or_else(|cause| panic!("{cause}"));
         files.sort();
         for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            let Ok(content) = std::fs::read_to_string(&file) else {
+            let rel = rel_path_for_layer_import(file.path());
+            let Ok(content) = file.read() else {
                 continue;
             };
             let Some(module_name) = extract_module_path(&content) else {
@@ -3583,8 +3529,8 @@ pub(crate) fn reference_edges_for_file_on_demand<
         // declaration or a name the file imports (the import edge already carries that), so
         // guessing a pool declarer for it is a heuristic the closed substrate never needs. It
         // manufactured a phantom edge from `std.optional { Present }` importers to a fixture that
-        // merely declares the same spelling. The proximity tier below stays for import-less files,
-        // where it already applied.
+        // merely declares the same spelling. Import-less files use the same on-chain UniqueBare
+        // rule below — not a leftover proximity rank.
         if !imports.is_empty() {
             continue;
         }
@@ -3597,29 +3543,14 @@ pub(crate) fn reference_edges_for_file_on_demand<
             if mods.contains(&self_module) {
                 continue;
             }
-            // Proximity disambiguation (namespace-only "nearest in the containment tree"):
-            // among declarers, prefer the one sharing the longest module-path prefix with the
-            // referencing module. A single nearest → UniqueBare; a tie at the nearest depth →
-            // AmbiguousBare (a genuine homonym the source must qualify — the bright-cat lane).
-            let mut best_len = 0usize;
-            let mut winners: Vec<&String> = Vec::new();
-            for m in mods.iter() {
-                let shared = module_prefix_shared_len(&self_module, m);
-                if winners.is_empty() || shared > best_len {
-                    best_len = shared;
-                    winners.clear();
-                    winners.push(m);
-                } else if shared == best_len {
-                    winners.push(m);
-                }
-            }
-            match winners.len() {
-                0 => {}
-                1 => upgrade(winners[0].clone(), RefEdgeResolution::UniqueBare),
-                _ => {
-                    // Homonym-qualification worklist dump (bright-cat lane (c) seed): each
-                    // AmbiguousBare is a bare ref, in a file that does not declare it, whose
-                    // nearest declarers tie — the definitive "needs qualification" site.
+            // On-chain unique → UniqueBare. Census-unique off-chain → UniqueBare, because
+            // UniqueBinding still accepts that name on the compile path (dropping it is an
+            // undercount). Homonyms with no unique on-chain binder → no UniqueBare (proximity
+            // deleted); two or more on-chain → AmbiguousBare.
+            match pick_importless_bare(&self_module, mods) {
+                ImportlessBarePick::None => {}
+                ImportlessBarePick::Unique(m) => upgrade(m.clone(), RefEdgeResolution::UniqueBare),
+                ImportlessBarePick::Ambiguous(winners) => {
                     if std::env::var("REFAMBIG_DUMP").is_ok() {
                         let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
                         let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
@@ -3681,15 +3612,21 @@ pub fn reference_resolution_facts(
         if !root_path.is_dir() {
             continue;
         }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
+        let mut files = Vec::new();
+        if let Err(cause) = collect_dag_files_tolerant(root_path, &mut files) {
+            unaccounted.push(ReferenceAccountingRefusal {
+                path: cause,
+                cause: "the pool root's ledger roster could not be derived",
+            });
+            continue;
+        }
         files.sort();
         for file in files {
-            let rel = rel_path_for_layer_import(&file);
+            let rel = rel_path_for_layer_import(file.path());
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
-            let content = std::fs::read_to_string(&file).ok();
+            let content = file.read().ok();
             match reference_edges_for_file(&rel, content.as_deref(), &names) {
                 FileReferenceEdges::Edges(file_edges) => edges.extend(file_edges),
                 FileReferenceEdges::Unaccounted(cause) => {

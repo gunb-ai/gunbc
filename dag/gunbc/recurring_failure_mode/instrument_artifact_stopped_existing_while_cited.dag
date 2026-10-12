@@ -25,7 +25,6 @@ data instrument_artifact_stopped_existing_while_cited: RecurringFailureMode = Re
   evidence: [
     DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_floor_claim_cost_upload_bound_step", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_floor_claim_cost_artifact_name", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_floor_measurement_bound_steps", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_floor_disposition_upload_bound_step", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.gate_closure_decline_census", decl_name: "gate_closure_declined_identities", field: WholeDeclaration },

@@ -1,5 +1,6 @@
 module v2.test.long.emit_host_classical_not_ingested_equals_eval
 
+import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import std.types { List }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -148,7 +149,7 @@ fn ingested_arrow_from_source(source: String) -> Outcome<ResolvedTree> {
     f: fn(resolved) {
       match ingested_find_arrow_in_module(root: resolved.root) {
         Present { value: arrow } =>
-          outcome_accepted(value: ResolvedTree { root: arrow, symbol_index: empty_symbol_index(), resolved_declarations: resolved.resolved_declarations, lexical_bindings: resolved.lexical_bindings, unavailable_providers: resolved.unavailable_providers })
+          outcome_accepted(value: ResolvedTree { root: arrow, symbol_index: empty_symbol_index(), resolved_declarations: resolved.resolved_declarations, lexical_bindings: resolved.lexical_bindings, unavailable_providers: resolved.unavailable_providers, member_kinds: no_member_declaration_kinds() })
         Absent =>
           outcome_rejected(
             d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arrow_miss, node: resolved.root)

@@ -385,7 +385,7 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
         ),
         primitive_projection_row(
             primitive_pure_dag_seam_unreachable(),
-            "std.bytes".to_string(),
+            "std.error_primitives".to_string(),
             "pure_dag_seam_unreachable".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
@@ -422,7 +422,7 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
         primitive_projection_row(
             primitive_map_get(),
             "v2.std.collection".to_string(),
-            "map_get".to_string(),
+            "map_get_checked".to_string(),
             Rc::new(ProjectionFidelity::DivergentProjection {
                 divergence:
                     "declared return Outcome<Optional<V>> against the primitive's Optional<V>"

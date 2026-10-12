@@ -1,4 +1,3 @@
-// Cargo.toml
 // src/compiler_tests.rs
 // src/emitted_population.rs
 // src/extdeps_cargo.rs
@@ -34,10 +33,13 @@
 // src/extdeps_version_semver.rs
 // src/gunbc_cli_dispatch_generated.rs
 // src/gunbc_cli_dispatch_surface.rs
+// src/gunbc_crate_partition.rs
+// src/gunbc_emitted_crate_workspace.rs
 // src/gunbc_namespace_reference_derived_closure_admission.rs
 // src/gunbc_reference_derived_candidate.rs
 // src/gunbc_rust_crate_package_ident.rs
 // src/gunbc_rust_decl_type_overlay.rs
+// src/gunbc_rust_emitted_crate.rs
 // src/gunbc_rust_emitted_edge.rs
 // src/gunbc_rust_source_type_bindings.rs
 // src/gunbc_stage0_crate_layout_generated.rs
@@ -64,7 +66,7 @@
 // src/std_error_primitives.rs
 // src/std_execution_mode.rs
 // src/std_graph.rs
-// src/std_import.rs
+// src/std_import_statement.rs
 // src/std_induction.rs
 // src/std_integer.rs
 // src/std_interface_summary.rs
@@ -114,6 +116,7 @@
 // src/v1_compiler_emit_go.rs
 // src/v1_compiler_emit_python.rs
 // src/v1_compiler_emit_rust.rs
+// src/v1_compiler_emitted_workspace.rs
 // src/v1_compiler_expected_red_roster_join.rs
 // src/v1_compiler_frontend_observation.rs
 // src/v1_compiler_infer.rs
@@ -151,12 +154,14 @@
 // src/v1_rt.rs
 // src/v1_std_core.rs
 // src/v1_test_non_ascii_perf_fixture.rs
+// src/v1_tests_claim_annotation_gap_round_trip_test.rs
 // src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
 // src/v1_tests_claim_generic_identity_census.rs
 // src/v1_tests_claim_interpolation_hole_census.rs
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
+// src/v1_tests_claim_parse_source_extent_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
 // src/v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness.rs

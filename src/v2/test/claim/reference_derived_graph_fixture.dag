@@ -8,7 +8,8 @@ import v2.compiler.normalized_tree { no_resource_declarations }
 import v2.compiler.normalize { record_declaration_capture }
 import v2.compiler.parse { parse_module }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.module_graph {
   LocatedModuleRoot,
@@ -118,7 +119,7 @@ fn fixture_ingest() -> SourceRootIngest {
 fn parse_one(w: DagSourceReadWitness) -> Outcome<LocatedModuleRoot> {
   let lm = dag_language_model()
   bind_outcome(
-    o: tokenize(text: w.source.carried, file: w.compilation_unit, rules: lm.lex),
+    o: tokenize_prepared(text: w.source.carried, file: w.compilation_unit, prepared: dag_prepared_lex()),
     f: fn(token_stream) {
       bind_outcome(
         o: parse_module(tokens: token_stream, grammar: lm.grammar),

@@ -37,16 +37,3 @@ test fn then_outcome_builder_capture() -> Bool {
   let stage = then_outcome(f: add5, g: s_double)
   acc_int(o: stage(1), dflt: 0) == 12
 }
-
-fn lookup_always_42(n: Int) -> CacheProbe<Int> { Hit { value: 42 } }
-fn lookup_never(n: Int) -> CacheProbe<Int> { Miss }
-
-test fn cached_stage_hit_skips_stage() -> Bool {
-  let staged = cached_stage(lookup: lookup_always_42, stage: s_double)
-  acc_int(o: staged(5), dflt: 0) == 42
-}
-
-test fn cached_stage_miss_runs_stage() -> Bool {
-  let staged = cached_stage(lookup: lookup_never, stage: s_double)
-  acc_int(o: staged(5), dflt: 0) == 10
-}

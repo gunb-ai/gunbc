@@ -1,5 +1,6 @@
 module v2.test.claim.match_binder.match_binder_typing
 
+import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer, inferred_facts_resolved_type }
 import v2.std.qualified_name { declaration_reference_path_optional, lexical_reference_label_optional, qualified_name_last_segment }
@@ -731,7 +732,8 @@ fn mbt_resolved() -> ResolvedTree {
     symbol_index: mbt_index(),
     resolved_declarations: empty_symbol_index(),
     lexical_bindings: empty_map(),
-    unavailable_providers: []
+    unavailable_providers: [],
+    member_kinds: no_member_declaration_kinds()
   }
 }
 

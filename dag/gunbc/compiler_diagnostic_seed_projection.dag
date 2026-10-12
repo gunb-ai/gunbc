@@ -46,8 +46,8 @@ import std.algebra { list_append }
 // one DeclarationRef, and a receipt that had been read as covering two items covered one.
 
 // WHY THIS MODULE CARRIES THE ANCHOR AND ITS SIBLING CARRIES THE DISPOSITION, WHICH IS AN IMPORT
-// FACT AND NOT A MODELLING PREFERENCE. The receipt's consumer is gunbc.plans.compile_clean_forcecheck,
-// which RENDERS these paragraphs rather than restating them. A plan is reached from
+// FACT AND NOT A MODELLING PREFERENCE. The receipt's consumer was the compile-clean forcecheck plan (since
+// deleted), which RENDERED these paragraphs rather than restating them. A plan is reached from
 // gunbc.plan_registry, and gunbc.seed_growth_admission reaches that registry through
 // gunbc.rust_item_host_observation and gunbc.generated_artifact -- so a single module carrying both
 // the SeedGrowthChangeDisposition rows and the renderer closes a cycle, which the substrate refused
@@ -215,13 +215,12 @@ data compiler_diagnostic_seed_projection_withdrawn_figures: TranscribedFigureWit
 
 // THE PROJECTED PARAGRAPHS, WHICH ARE WHY THIS CARRIER IS NOT A STRING ROW WEARING A TYPE.
 //
-// gunbc.plans.compile_clean_forcecheck cites this receipt and, until this migration, restated it in
+// The compile-clean forcecheck plan (since deleted) cited this receipt and, until this migration, restated it in
 // four hand-authored paragraphs beside the citation -- the same fork the plan's own text already
 // records itself committing once (review 45565 quoted figures back from the doc after they had been
-// re-derived on the carrier). The plan now RENDERS these strings, so the committed markdown is a
-// projection of the rows above and the generated-artifact drift gate reds when the two disagree.
-// That is the executing consumer: editing a row here changes the emitted document, and editing the
-// document alone is reverted on the next heal.
+// re-derived on the carrier). The plan then RENDERED these strings, so the committed markdown was a
+// projection of the rows above and the generated-artifact drift gate redded when the two disagreed.
+// That was the executing consumer; with the plan deleted, no emitted document renders these strings.
 fn obligation_paragraph(o: CoproductExtensionObligation) -> String {
   match o.status {
     ObligationStandingUntilSeedDeletion =>

@@ -73,6 +73,7 @@ import extdeps.llm.codex_app_server {
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
+import extdeps.tools.util_linux_flock { flock_program, flock_exclusive_nonblocking_words }
 import v2.std.orchestration { EnvSet }
 import v2.std.compilers.cli_surface {
   ProcessArgvExpansion,
@@ -544,16 +545,45 @@ fn codex_press_account_trip_request_lines() -> String {
   ) + "\n"
 }
 
+// A TRIP THAT MUST NOT RACE A TURN runs under the turn's exclusive flock: account/read may refresh
+// the token, and a refresh rotates it (gunbc.codex_harness_credential). The lock is one more argv
+// layer in front of the same env-prefixed trip, so the program becomes flock and its arguments carry
+// the env invocation; with no lock the trip is exactly as before.
+type CodexTripLock {
+  lock_path: NonEmptyStr
+  conflict_exit_code: Int
+}
+
+fn codex_press_account_trip_program(lock: CodexTripLock?) -> String {
+  match lock {
+    Absent => env_path_resolved_program().invocation as String
+    Present { value: _ } => flock_program().invocation as String
+  }
+}
+
 fn codex_press_account_trip_invocation(
   executable: FilePath,
   codex_home: FilePath,
+  lock: CodexTripLock?,
 ) -> ProcessArgvExpansion {
+  let env_args = env_prefixed_args(
+    bindings: [EnvSet { name: "CODEX_HOME", value: codex_home as String }],
+    command_argv: [executable as String, "app-server", "--stdio"],
+  )
   process_argv_expansion(
     surface: cli_surface_of_literal_words(
-      words: env_prefixed_args(
-        bindings: [EnvSet { name: "CODEX_HOME", value: codex_home as String }],
-        command_argv: [executable as String, "app-server", "--stdio"],
-      ),
+      words: match lock {
+        Absent => env_args
+        Present { value: l } =>
+          skip(
+            flock_exclusive_nonblocking_words(
+              lock_path: l.lock_path,
+              conflict_exit_code: l.conflict_exit_code,
+              command: concat([env_path_resolved_program().invocation as String], env_args),
+            ),
+            1,
+          )
+      },
     ),
   )
 }
@@ -1608,6 +1638,7 @@ fn observe_codex_account_preflight(
           arguments: codex_press_account_trip_invocation(
             executable: projected.executable.path,
             codex_home: codex_home,
+            lock: none,
           ),
           stdin_payload: codex_press_account_trip_request_lines(),
         )

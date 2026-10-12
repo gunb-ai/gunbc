@@ -8,7 +8,8 @@ import gunbc.runner_microvm_lifecycle { AttemptIdentity, in_flight_attempt_of_id
 import gunbc.runner_microvm_cell_readiness { WorkspaceWorkload, in_flight_attempt_same }
 import gunbc.runner_microvm_cell_readiness_store { encode_attempt, decode_attempt, DecodeOk }
 import gunbc.workspace_gateway { WorkspaceGateway }
-import gunbc.workspace_microvm_access { WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_from_observations }
+import gunbc.workspace_ssh_access { WorkspaceDirectSsh, WorkspaceGatewaySsh }
+import gunbc.workspace_microvm_access { WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_from_observations, workspace_connection_text }
 import gunbc.runner_microvm_network { runner_slot_network }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.workspace_microvm { workspace_public_key, WorkspacePublicKeyRefused, workspace_machine_config }
@@ -44,7 +45,7 @@ fn test_scan(identity: AttemptIdentity, key: String) -> String {
 test fn workspace_readiness_requires_bootstrap_and_live_ssh_key() -> Bool {
   match workspace_test_identity() {
     Absent => false
-    Present { value: id } => match workspace_connection_from_observations(identity: id, gateway: test_gateway(identity: id), systemd_invocation: "systemd-test", gateway_known_host: "srv1.test.ts.net ssh-ed25519 AAAAGATEWAY", console: test_console(bootstrap: "workspace-test"), scanned_keys: test_scan(identity: id, key: "AAAATEST")) {
+    Present { value: id } => match workspace_connection_from_observations(identity: id, route: WorkspaceGatewaySsh { gateway: test_gateway(identity: id), known_host: "srv1.test.ts.net ssh-ed25519 AAAAGATEWAY" }, systemd_invocation: "systemd-test", console: test_console(bootstrap: "workspace-test"), scanned_keys: test_scan(identity: id, key: "AAAATEST")) {
       WorkspaceConnectionReady { connection: c } => c.identity.allocation_generation == 4 && (c.host_key as String) == "ssh-ed25519 AAAATEST"
       _ => false
     }
@@ -54,7 +55,7 @@ test fn workspace_readiness_requires_bootstrap_and_live_ssh_key() -> Bool {
 test fn workspace_readiness_refuses_old_guest_at_reused_address() -> Bool {
   match workspace_test_identity() {
     Absent => false
-    Present { value: id } => match workspace_connection_from_observations(identity: id, gateway: test_gateway(identity: id), systemd_invocation: "systemd-test", gateway_known_host: "srv1.test.ts.net ssh-ed25519 AAAAGATEWAY", console: test_console(bootstrap: "workspace-test"), scanned_keys: test_scan(identity: id, key: "AAAAPREVIOUS")) {
+    Present { value: id } => match workspace_connection_from_observations(identity: id, route: WorkspaceGatewaySsh { gateway: test_gateway(identity: id), known_host: "srv1.test.ts.net ssh-ed25519 AAAAGATEWAY" }, systemd_invocation: "systemd-test", console: test_console(bootstrap: "workspace-test"), scanned_keys: test_scan(identity: id, key: "AAAAPREVIOUS")) {
       WorkspaceConnectionUnavailable { reason: _ } => true
       _ => false
     }
@@ -64,7 +65,7 @@ test fn workspace_readiness_refuses_old_guest_at_reused_address() -> Bool {
 test fn workspace_readiness_refuses_foreign_bootstrap() -> Bool {
   match workspace_test_identity() {
     Absent => false
-    Present { value: id } => match workspace_connection_from_observations(identity: id, gateway: test_gateway(identity: id), systemd_invocation: "systemd-test", gateway_known_host: "srv1.test.ts.net ssh-ed25519 AAAAGATEWAY", console: test_console(bootstrap: "previous-allocation"), scanned_keys: test_scan(identity: id, key: "AAAATEST")) {
+    Present { value: id } => match workspace_connection_from_observations(identity: id, route: WorkspaceGatewaySsh { gateway: test_gateway(identity: id), known_host: "srv1.test.ts.net ssh-ed25519 AAAAGATEWAY" }, systemd_invocation: "systemd-test", console: test_console(bootstrap: "previous-allocation"), scanned_keys: test_scan(identity: id, key: "AAAATEST")) {
       WorkspaceConnectionUnavailable { reason: _ } => true
       _ => false
     }
@@ -88,5 +89,44 @@ test fn workspace_production_machine_config_consumes_committed_grant() -> Bool {
       _ => false
     }
     _ => false
+  }
+}
+
+
+test fn direct_ssh_uses_the_vm_key_without_a_jump_or_agent() -> Bool {
+  match workspace_test_identity() {
+    Absent => false
+    Present { value: id } => match workspace_connection_from_observations(identity: id,
+      route: WorkspaceDirectSsh { slot: id.attempt.slot, identity_file: "/fixture/vm-key" },
+      systemd_invocation: "systemd-test", console: test_console(bootstrap: "workspace-test"), scanned_keys: test_scan(identity: id, key: "AAAATEST")) {
+      WorkspaceConnectionReady { connection } => {
+        let text = workspace_connection_text(connection: connection)
+        starts_with(s: text, prefix: "Run on srv1:")
+          && string_contains(s: text, pattern: "IdentityAgent=none")
+          && string_contains(s: text, pattern: "ForwardAgent=no")
+          && string_contains(s: text, pattern: "-i '/fixture/vm-key'")
+          && !string_contains(s: text, pattern: " -J ")
+      }
+      _ => false
+    }
+  }
+}
+
+test fn direct_ssh_refuses_a_foreign_route_or_previous_guest_key() -> Bool {
+  match workspace_test_identity() {
+    Absent => false
+    Present { value: id } => {
+      let foreign = match workspace_connection_from_observations(identity: id,
+        route: WorkspaceDirectSsh { slot: RunnerSlotIdentity { host: "srv2", slot_index: 7 }, identity_file: "/fixture/vm-key" },
+        systemd_invocation: "systemd-test", console: test_console(bootstrap: "workspace-test"), scanned_keys: test_scan(identity: id, key: "AAAATEST")) {
+        WorkspaceConnectionUnavailable { reason: _ } => true _ => false
+      }
+      let previous = match workspace_connection_from_observations(identity: id,
+        route: WorkspaceDirectSsh { slot: id.attempt.slot, identity_file: "/fixture/vm-key" },
+        systemd_invocation: "systemd-test", console: test_console(bootstrap: "workspace-test"), scanned_keys: test_scan(identity: id, key: "AAAAPREVIOUS")) {
+        WorkspaceConnectionUnavailable { reason: _ } => true _ => false
+      }
+      foreign && previous
+    }
   }
 }

@@ -1,11 +1,10 @@
 module gunbc.roadmap_launch_deployment_cli
 
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
-import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.measure { second, second_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.git
-import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.git.object_store { git_object_id_wire_hex }
 import extdeps.exec.command { LocalExec }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -22,7 +21,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.host_layout { srv1_gunbc_repo_root, instance_receipts_dir }
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
-  read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,
+  read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent, ExpectedRevisionMalformed,
   admit_run_revision, RunRevisionAdmitted, RunRevisionRefused,
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
   run_binding_names_workflow_file,
@@ -39,9 +38,12 @@ import gunbc.live_deploy.apply_receipt {
   rlm_plan_run_id_env_name, rlm_apply_run_id_env_name,
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
 }
-import gunbc.fleet_desired_observe {
-  observe_fleet_desired_revision, FleetDesiredAdmitted, FleetDesiredAbsent, FleetDesiredUndecodable, FleetDesiredUnobserved,
+import gunbc.origin_main_revision_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
+  observe_origin_main_revision,
+}
+import gunbc.fleet_main_revision {
+  RemoteRevisionPresent, RemoteRevisionAbsent, RemoteRevisionUndecodable, RemoteRevisionUnobserved,
 }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
@@ -53,25 +55,41 @@ import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBind
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
-import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_timer_unit_name, deployment_tailnet_url }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  selected_deployment_spec,
+  prod_role_desired_deployment,
+  ProdRoleDeploymentSelected,
+  ProdRoleDeploymentRefused,
+  ProdRoleDeploymentRosterRefused,
+  ProdRoleDeploymentHolderRowMismatch,
+  desired_roster_refusal_detail,
+  prod_role_deployment_mismatch_detail,
+  ProdRoleDeployment,
+}
+import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import gunbc.live_deploy.emit {
-  live_deploy_serve_unit_file,
+  live_deploy_serve_unit_emission,
+  LiveDeployServeUnitEmitted,
+  LiveDeployServeUnitOidcReadbackRefused,
   live_deploy_belt_service_unit_file,
-  live_deploy_belt_timer_unit_file,
+  live_deploy_belt_exit_path_unit_file,
+  live_deploy_belt_answer_path_unit_file,
 }
 import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
 }
 import gunbc.live_deploy.unit_standing {
-  LaunchUnitStanding, observe_dashboard_service_standing, observe_belt_timer_standing, observe_belt_oneshot_standing,
+  LaunchUnitStanding, DashboardServiceRefused, observe_dashboard_service_standing, observe_belt_event_path_standing, observe_belt_oneshot_standing,
 }
 import gunbc.deploy_transition { ActuationStanding, ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable, transition_actuation_standing }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, prod_role_realization_refusal_detail }
 import gunbc.roadmap_belt_actuate {
   belt_tick_receipt_read_for_instance, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   belt_footprint_admission_for_instance, belt_provider_preflight_for_instance,
   BeltProviderPreflight, ProviderPreflightRefused,
+  belt_exit_spool_times, BeltExitSpoolTimesRead, BeltExitSpoolTimesUnreadable,
 }
 import gunbc.roadmap_dispatch_actuator { dispatch_actuator_selection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused }
 import gunbc.dispatch_selection { NoDerivedSizingExpectation }
@@ -81,7 +99,7 @@ import gunbc.roadmap_launch_deployment_observe {
   observe_healthz, HealthzServed, HealthzRefused,
   observe_instance_document, InstanceDocumentServed, InstanceDocumentRefused,
   observe_workflow_document, WorkflowDocumentServed, WorkflowDocumentRefused,
-  belt_tick_freshness,
+  EventBacklogFact, EventBacklogUnobserved, EventBacklogEntry, event_backlog_judge, iso8601_utc_epoch_seconds,
   observe_healthz_routed,
   observe_instance_document_routed,
   observe_workflow_document_routed,
@@ -151,6 +169,9 @@ data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"
 // (launch_admission_contract_text gains the gate and the centering_absent refusal arm).
 data rlm1_contract_digest_frozen: String = "7bcb9aaf9a17d274"
 data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
+// A HOST FACT, NOT A PROD PIN: this receipt mode runs on the srv1 runner and observes through the srv1 ssh
+// vantage and checkout. The entry refuses (RlmHolderNotOnVantage) unless the prod-role holder deploys
+// to this host, so a holder moved elsewhere refuses rather than being observed from the wrong machine.
 data rlm_receipt_host: String = "srv1"
 data rlm_receipt_vantage: String = "."
 data rlm_receipt_ssh_attempt_raw: String = "rlm-launch-deployment-receipt"
@@ -172,31 +193,12 @@ type RemoteRefRead
   = RemoteRefHex { hex: String }
   | RemoteRefUnreadable { detail: String }
 
-data main_ref_name: String = "refs/heads/main"
-
 fn read_remote_main_hex() -> RemoteRefRead {
-  let read = git.Core.LsRemoteRefInRepo(repo: rlm_receipt_vantage as FilePath, remote: "origin", ref_name: main_ref_name)
-  if read.exit_code != 0 {
-    RemoteRefUnreadable { detail: join(["git ls-remote origin ", main_ref_name, " exited ", to_string(read.exit_code), ": ", read.stderr], "") }
-  } else {
-    let line = trim(s: read.advertised)
-    if line == "" {
-      RemoteRefUnreadable { detail: join(["origin advertises no ", main_ref_name], "") }
-    } else {
-      match (match split(s: line, delimiter: "\t").first() { Absent => none  Present { value: wire_field } => git_object_id_from_untagged_hex(hex: wire_field) }) {
-        Present { value: oid } => RemoteRefHex { hex: git_object_id_wire_hex(oid: oid) as String }
-        Absent => RemoteRefUnreadable { detail: join(["origin advertises an undecodable ", main_ref_name, ": ", line], "") }
-      }
-    }
-  }
-}
-
-fn read_desired_hex() -> RemoteRefRead {
-  match observe_fleet_desired_revision(repo: rlm_receipt_vantage as FilePath) {
-    FleetDesiredAdmitted { revision: r } => RemoteRefHex { hex: git_object_id_wire_hex(oid: r) as String }
-    FleetDesiredAbsent => RemoteRefUnreadable { detail: "origin advertises no refs/fleet/desired" }
-    FleetDesiredUndecodable { advertised: a } => RemoteRefUnreadable { detail: join(["refs/fleet/desired undecodable: ", a], "") }
-    FleetDesiredUnobserved { cause: c } => RemoteRefUnreadable { detail: join(["refs/fleet/desired unobserved: ", c], "") }
+  match observe_origin_main_revision(repo: rlm_receipt_vantage as FilePath) {
+    RemoteRevisionPresent { revision: r } => RemoteRefHex { hex: git_object_id_wire_hex(oid: r) as String }
+    RemoteRevisionAbsent => RemoteRefUnreadable { detail: "origin advertises no refs/heads/main" }
+    RemoteRevisionUndecodable { advertised: a } => RemoteRefUnreadable { detail: join(["refs/heads/main undecodable: ", a], "") }
+    RemoteRevisionUnobserved { cause: c } => RemoteRefUnreadable { detail: c }
   }
 }
 
@@ -264,8 +266,7 @@ fn window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardIns
     repo: srv1_gunbc_repo_root as String as NonEmptyStr,
   ))
   WindowSnapshot {
-    main_hex: remote_ref_text(r: read_remote_main_hex()),
-    desired_hex: remote_ref_text(r: read_desired_hex()),
+    origin_main_hex: remote_ref_text(r: read_remote_main_hex()),
     deployed_revision_hex: deployed_revision_hex_text(o: tree),
     deployed_tree_hex: deployed_tree_hex_text(o: tree),
     running_release_hex: running_release_hex_routed(base: routed_base),
@@ -360,30 +361,53 @@ fn dispatch_preflight_fact(instance: HostDashboardInstance) -> DispatchPreflight
   }
 }
 
-fn tick_fact(instance: HostDashboardInstance, dashboard: DashboardReceiptFact, now: String) -> TickFact {
+fn tick_fact(instance: HostDashboardInstance) -> TickFact {
   match belt_tick_receipt_read_for_instance(instance: instance) {
     BeltTickReceiptAbsent => TickUnobserved { detail: "no belt tick receipt on the instance" }
     BeltTickReceiptUnreadable { reason: r } => TickUnobserved { detail: join(["belt tick receipt unreadable: ", r], "") }
-    BeltTickReceiptPresent { receipt: t } =>
-      match dashboard {
-        DashboardReceiptUnreadable { reason: r } => TickUnobserved { detail: join(["tick freshness cannot be judged without the dashboard receipt: ", r], "") }
-        DashboardReceiptRead { receipt: d } =>
-          TickObserved { receipt: t, freshness: belt_tick_freshness(observed_at: t.observed_at, deploy_completed_at: d.completed_at, now: now) }
+    BeltTickReceiptPresent { receipt: t } => TickObserved { receipt: t }
+  }
+}
+
+// THE BACKLOG ROW'S WET HALF: the exit spool's unconsumed entries, aged against the receipt run's own
+// now. The judgment is pure (event_backlog_judge); an unreadable spool or now refuses as unobserved.
+fn event_backlog_fact(instance: HostDashboardInstance, now: String) -> EventBacklogFact {
+  match iso8601_utc_epoch_seconds(text: now) {
+    Absent => EventBacklogUnobserved { detail: join(["the receipt run's now did not parse: ", now], "") }
+    Present { value: now_s } =>
+      match belt_exit_spool_times(instance: instance) {
+        BeltExitSpoolTimesUnreadable { reason } => EventBacklogUnobserved { detail: reason }
+        BeltExitSpoolTimesRead { entries } =>
+          match (entries |> filter(e => (e.mtime_epoch as Int) > second_count(now_s))).first() {
+            Present { value: e } => EventBacklogUnobserved { detail: join(["exit spool entry ", e.entry, " is modified after the receipt run's now; the clock or the stat is unreliable"], "") }
+            Absent => event_backlog_judge(entries: entries |> map(e => EventBacklogEntry { stage: e.stage, entry: e.entry, age: second(count: second_count(now_s) - (e.mtime_epoch as Int)) }))
+          }
       }
   }
 }
 
-fn unit_standing_fact(revision: String) -> LaunchUnitStanding
+fn unit_standing_fact(spec: DeploymentSpec, revision: String) -> LaunchUnitStanding
 {
-  let spec = deployment_spec_srv1()
+  let revision_binding = RevisionBoundAtEmission { revision: revision as CommitSha }
   LaunchUnitStanding {
-    dashboard: observe_dashboard_service_standing(
-      unit: spec.names.unit_name,
-      file: live_deploy_serve_unit_file(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }),
+    dashboard: match live_deploy_serve_unit_emission(spec: spec, revision: revision_binding, now_epoch: tracker_web_oidc_deploy_now_epoch()) {
+      LiveDeployServeUnitEmitted { file } =>
+        observe_dashboard_service_standing(unit: spec.names.unit_name, file: file)
+      LiveDeployServeUnitOidcReadbackRefused { cause } =>
+        DashboardServiceRefused {
+          unit: spec.names.unit_name as String,
+          property: "oidc-readback",
+          expected: "LiveDeployServeUnitEmitted",
+          observed: cause as String,
+        }
+    },
+    exit_path: observe_belt_event_path_standing(
+      unit: deployment_belt_exit_path_unit_name(names: spec.names),
+      file: live_deploy_belt_exit_path_unit_file(spec: spec),
     ),
-    timer: observe_belt_timer_standing(
-      unit: deployment_belt_timer_unit_name(names: spec.names),
-      file: live_deploy_belt_timer_unit_file(spec: spec),
+    answer_path: observe_belt_event_path_standing(
+      unit: deployment_belt_answer_path_unit_name(names: spec.names),
+      file: live_deploy_belt_answer_path_unit_file(spec: spec),
     ),
     oneshot: observe_belt_oneshot_standing(
       unit: deployment_belt_service_unit_name(names: spec.names),
@@ -395,6 +419,36 @@ fn unit_standing_fact(revision: String) -> LaunchUnitStanding
 // ---------------------------------------------------------------- the entry
 fn rlm_launch_deployment_receipt_wet() -> ProcessExit
 {
+  match rlm_receipt_holder_admission(selected: prod_role_desired_deployment()) {
+    RlmReceiptHolderRefused { reason } => exit_failure(reason: reason)
+    RlmReceiptHolderAdmitted { deployment } => rlm_launch_deployment_receipt_for(deployment: deployment)
+  }
+}
+
+type RlmReceiptHolderAdmission
+  = RlmReceiptHolderAdmitted { deployment: DesiredDeployment }
+  | RlmReceiptHolderRefused { reason: String }
+
+fn rlm_receipt_holder_admission(selected: ProdRoleDeployment) -> RlmReceiptHolderAdmission
+{
+  match selected {
+    ProdRoleDeploymentRefused { cause } =>
+      RlmReceiptHolderRefused { reason: join(["rlm_launch_deployment_receipt: ", prod_role_realization_refusal_detail(cause: cause)], "") }
+    ProdRoleDeploymentRosterRefused { refusal } =>
+      RlmReceiptHolderRefused { reason: join(["rlm_launch_deployment_receipt: ", desired_roster_refusal_detail(refusal: refusal)], "") }
+    ProdRoleDeploymentHolderRowMismatch { holder, rostered } =>
+      RlmReceiptHolderRefused { reason: join(["rlm_launch_deployment_receipt: ", prod_role_deployment_mismatch_detail(holder: holder, rostered: rostered)], "") }
+    ProdRoleDeploymentSelected { deployment } =>
+      if (deployment.target.host.identity as String) != rlm_receipt_host {
+        RlmReceiptHolderRefused { reason: join(["rlm_launch_deployment_receipt: RlmHolderNotOnVantage — the prod-role holder deploys to ", deployment.target.host.identity as String, " but this receipt mode observes through the ", rlm_receipt_host, " ssh vantage and checkout"], "") }
+      } else {
+        RlmReceiptHolderAdmitted { deployment: deployment }
+      }
+  }
+}
+
+fn rlm_launch_deployment_receipt_for(deployment: DesiredDeployment) -> ProcessExit
+{
   match observe_actions_run_binding() {
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["rlm_launch_deployment_receipt: RunUnbound — ", v, " ", d, "; the receipt mode runs only inside the fleet-converge workflow"], ""))
@@ -402,6 +456,8 @@ fn rlm_launch_deployment_receipt_wet() -> ProcessExit
       match read_expected_revision() {
         ExpectedRevisionAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["rlm_launch_deployment_receipt: ExpectedRevisionAbsent — ", v, " ", d], ""))
+        ExpectedRevisionMalformed { variable: v, value: r } =>
+          exit_failure(reason: join(["rlm_launch_deployment_receipt: ExpectedRevisionMalformed — ", v, " is not a 40-digit lower-hex revision: ", r], ""))
         ExpectedRevisionPresent { revision: expected } =>
           match admit_run_revision(binding: run, expected: expected) {
             RunRevisionRefused { expected: e, observed: o } =>
@@ -432,6 +488,7 @@ fn rlm_launch_deployment_receipt_wet() -> ProcessExit
                                     exit_failure(reason: join(["rlm_launch_deployment_receipt: FleetSshContextRefused — ", c], ""))
                                   FleetSshContextReady { context: context, receipt: _ } =>
                                     rlm_launch_deployment_receipt_bound(
+                                      deployment: deployment,
                                       run: run,
                                       revision: r,
                                       candidate_tree: candidate_tree,
@@ -454,8 +511,8 @@ fn rlm_launch_deployment_receipt_wet() -> ProcessExit
 // The routed production base URL, DERIVED from the deployment authority; Absent means the spec
 // declares no tailnet domain, and the routed endpoint facts refuse rather than fall back to
 // localhost (review 5061891290 P1-6 -- localhost stays complementary, never authoritative).
-fn rlm_routed_base_url() -> String? {
-  deployment_tailnet_url(spec: deployment_spec_srv1())
+fn rlm_routed_base_url(spec: DeploymentSpec) -> String? {
+  deployment_tailnet_url(spec: spec)
 }
 
 // One predecessor run record, read back from the workflow-runs API by run id (review 5061891290
@@ -526,6 +583,7 @@ fn rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_ru
 }
 
 fn rlm_launch_deployment_receipt_bound(
+  deployment: DesiredDeployment,
   run: ActionsRunBinding,
   revision: String,
   candidate_tree: String,
@@ -535,8 +593,8 @@ fn rlm_launch_deployment_receipt_bound(
   context: FleetSshExecutionContext,
 ) -> ProcessExit
 {
-  let instance = srv1_live_dashboard_instance()
-  let spec = deployment_spec_srv1()
+  let instance = deployment.instance
+  let spec = selected_deployment_spec(row: deployment)
   let subject = RoadmapLaunchDeploymentSubject {
     rlm1_merge_commit: rlm1_merge_commit,
     rlm1_contract_digest: rlm1_contract_digest_frozen,
@@ -552,10 +610,9 @@ fn rlm_launch_deployment_receipt_bound(
     dashboard_run_id: dashboard_run_id,
     receipt_run_id: run.run_id,
   }
-  let routed_base = rlm_routed_base_url()
+  let routed_base = rlm_routed_base_url(spec: spec)
   let opened = window_snapshot(context: context, instance: instance, routed_base: routed_base)
-  let main_hex = read_remote_main_hex()
-  let desired_hex = read_desired_hex()
+  let origin_main = read_remote_main_hex()
   let plan = match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
     FleetConvergePlanReceiptDecoded { receipt: p } => PlanReceiptRead { receipt: p }
     FleetConvergePlanReceiptUnreadable { reason: why } => PlanReceiptUnreadable { reason: why }
@@ -613,17 +670,13 @@ fn rlm_launch_deployment_receipt_bound(
     Present { value: h } => HostObserved { name: h as String }
     Absent => HostUnobserved { detail: "hostname probe did not succeed or returned empty output" }
   }
-  let unit_standing = unit_standing_fact(revision: revision)
+  let unit_standing = unit_standing_fact(spec: spec, revision: revision)
   let observation_window_closed = window_snapshot(context: context, instance: instance, routed_base: routed_base)
   let run_provenance = rlm_run_provenance_fact(run: run, plan_run_id: plan_run_id, apply_run_id: apply_run_id, dashboard_run_id: dashboard_run_id)
   let facts = RoadmapLaunchDeploymentFacts {
-    desired_revision: (match main_hex {
-      RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["main: ", d], "") }
-      RemoteRefHex { hex: m } =>
-        match desired_hex {
-          RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["refs/fleet/desired: ", d], "") }
-          RemoteRefHex { hex: d } => DesiredRevisionObserved { main_hex: m, desired_hex: d }
-        }
+    desired_revision: (match origin_main {
+      RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["origin/main: ", d], "") }
+      RemoteRefHex { hex: h } => DesiredRevisionObserved { revision_hex: h }
     }),
     plan_receipt: plan,
     apply_receipt: apply,
@@ -633,7 +686,8 @@ fn rlm_launch_deployment_receipt_bound(
     readiness: readiness,
     transition: transition_actuation_standing(instance_root: instance.instance_root as String),
     unit_standing: unit_standing,
-    tick_standing: tick_fact(instance: instance, dashboard: dashboard, now: now),
+    tick_standing: tick_fact(instance: instance),
+    event_backlog: event_backlog_fact(instance: instance, now: now),
     footprint: belt_footprint_admission_for_instance(instance: instance),
     provider_preflight: provider_fact(instance: instance),
     dispatch_preflight: dispatch_preflight_fact(instance: instance),

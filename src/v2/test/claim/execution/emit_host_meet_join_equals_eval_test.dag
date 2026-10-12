@@ -148,9 +148,9 @@ fn meet_join_eval_bool_false(value: RuntimeValue) -> Bool {
 fn meet_join_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == ^dag_complement_lit_true {
+      if id == ^dag_token_kw_true {
         outcome_accepted(value: meet_join_eval_octet_value(n: 1))
-      } else if id == ^dag_complement_lit_false {
+      } else if id == ^dag_token_kw_false {
         outcome_accepted(value: meet_join_eval_octet_value(n: 0))
       } else {
         outcome_rejected(

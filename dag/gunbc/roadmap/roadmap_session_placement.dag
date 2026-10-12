@@ -37,6 +37,13 @@ import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_insta
 import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_unit_name,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation,
+  AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
+  attempt_worker_unit_observation_of, attempt_unit_from_exit_record,
+}
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
+  attempt_exit_record_observe, attempt_exit_record_matching, attempt_exit_stage_listings,
+  AttemptWorkerRole, attempt_unit_role_token,
 }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation,
@@ -873,6 +880,81 @@ fn session_observe_unit_lifecycle(unit: NonEmptyStr) -> UnitLifecycle {
   session_unit_lifecycle(o: attempt_unit_observation(unit: unit))
 }
 
+// THE SETTLEMENT'S READ OF A WORKER UNIT, now that the unit is collected when its process ends
+// (gunbc.roadmap_dispatch_actuator dispatch_worker_unit_properties). A loaded unit is read as before;
+// a collected one is read from its exit record, so a worker that exited 0 settles as SUCCESS rather
+// than as cause-unknown. A collected unit with NO record keeps the arm it had: the manager has no such
+// unit, its lifetime is over, the cause is unknown -- the one arm safe to free on without a verdict,
+// and still only after the launch deadline (session_settle_decide). The settlement asks whether the
+// unit's lifetime is over, not whether a worker ran, so it needs no start receipt: the slot it is
+// settling IS one.
+fn session_worker_unit_lifecycle(unit: NonEmptyStr, loaded: AttemptUnitObservation, record: AttemptExitRecordObservation) -> UnitLifecycle {
+  match loaded {
+    AttemptUnitAbsent =>
+      match record {
+        AttemptExitRecordNone => UnitTerminatedCauseUnknown { detail: "the user manager has no such unit and it left no exit record" }
+        AttemptExitRecordFound { record: _ } => session_unit_lifecycle(o: attempt_unit_from_exit_record(unit: unit, record: record, start: AttemptUnitStartRecorded))
+        AttemptExitRecordUnreadable { reason } => UnitLifecycleUnknown { detail: reason }
+      }
+    AttemptUnitActive => session_unit_lifecycle(o: loaded)
+    AttemptUnitFinished { exit_status: _ } => session_unit_lifecycle(o: loaded)
+    AttemptUnitUnreadable { reason: _ } => session_unit_lifecycle(o: loaded)
+  }
+}
+
+fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, unit: NonEmptyStr) -> UnitLifecycle {
+  let loaded = attempt_unit_observation(unit: unit)
+  match loaded {
+    AttemptUnitAbsent =>
+      session_worker_unit_lifecycle(
+        unit: unit,
+        loaded: loaded,
+        record: attempt_exit_record_matching(
+          matches: (n, a, r) => r == attempt_unit_role_token(role: AttemptWorkerRole) && (dispatch_attempt_unit_name(node_id: n, attempt_key: a) as String) == (unit as String),
+          listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
+        ),
+      )
+    AttemptUnitActive => session_unit_lifecycle(o: loaded)
+    AttemptUnitFinished { exit_status: _ } => session_unit_lifecycle(o: loaded)
+    AttemptUnitUnreadable { reason: _ } => session_unit_lifecycle(o: loaded)
+  }
+}
+
+// THE START RECEIPT THE PROCESS OBSERVER NEEDS (gunbc.roadmap_dispatch_actuator
+// AttemptUnitStartStanding): this attempt's placement record. It is written immediately before the
+// worker unit is started, so its presence means dispatch committed to a unit; its absence means the
+// attempt never had one.
+fn session_worker_start_standing(observation: SessionPlacementObservation) -> AttemptUnitStartStanding {
+  match observation {
+    SessionPlacementObserved { slot: _, grant: _, returned: _ } => AttemptUnitStartRecorded
+    SessionPlacementAbsent { unit: _ } => AttemptUnitNeverStarted
+    SessionPlacementUnreadable { unit: _, detail } => AttemptUnitStartUnread { reason: detail }
+    SessionPlacementForeign { unit: _, detail } => AttemptUnitStartUnread { reason: detail }
+  }
+}
+
+// THE WORKER'S PROCESS OBSERVATION FOR ONE ATTEMPT: the unit, else its exit record, else -- only when
+// both are silent -- whether it was ever started. Each later read is taken only when the earlier one
+// could not answer, so a running worker costs one manager read as before.
+fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> AttemptUnitObservation {
+  let unit = dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
+  let loaded = attempt_unit_observation(unit: unit)
+  match loaded {
+    AttemptUnitAbsent => {
+      let record = attempt_exit_record_observe(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole)
+      match record {
+        AttemptExitRecordNone =>
+          attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)))
+        AttemptExitRecordFound { record: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
+        AttemptExitRecordUnreadable { reason: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
+      }
+    }
+    AttemptUnitActive => loaded
+    AttemptUnitFinished { exit_status: _ } => loaded
+    AttemptUnitUnreadable { reason: _ } => loaded
+  }
+}
+
 // THE DECISION, PURE OVER ONE SLOT. Every arm that does not release says why, and every arm that
 // releases names the generation it will close.
 type SessionSettleDecision
@@ -1008,7 +1090,8 @@ fn session_settle_release(stores: SessionPlacementStores, host: String, unit: No
 }
 
 // THE PASS TAKES THE UNIT OBSERVATIONS AS A FUNCTION OF THE UNIT NAME so a witness can plant them;
-// production passes session_observe_unit_lifecycle, the worker's own read.
+// production passes session_worker_unit_lifecycle_for_instance, the worker's own read (unit, then its
+// exit record).
 fn session_placement_settle_pass_at(stores: SessionPlacementStores, host: String, lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle, now: EpochSecs) -> SessionSettlePass {
   match cas_slot_keys(root: stores.slots_root) {
     CasSlotKeysListed { keys } => SessionSettlePassRan { settlements: map(keys, k => session_settle_one(stores: stores, host: host, key: k, lifecycle: lifecycle_of(k), now: now)) }
@@ -1020,6 +1103,6 @@ fn session_placement_settle_pass_at(stores: SessionPlacementStores, host: String
 fn session_placement_settle_pass(instance: HostDashboardInstance, stores: SessionPlacementStores) -> SessionSettlePass {
   match now_epoch_seconds() {
     Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger compares against a deadline" }
-    Present { value: now } => session_placement_settle_pass_at(stores: stores, host: instance.host_identity as String, lifecycle_of: session_observe_unit_lifecycle, now: now)
+    Present { value: now } => session_placement_settle_pass_at(stores: stores, host: instance.host_identity as String, lifecycle_of: u => session_worker_unit_lifecycle_for_instance(instance: instance, unit: u), now: now)
   }
 }

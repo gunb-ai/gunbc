@@ -1,6 +1,6 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty, contains, any, list_reverse }
+import v2.std.algebra { Cons, Empty, contains, list_reverse }
 import gunbc.explicit_witness_admission { explicit_witness_admissions, explicit_witness_admission_is_known_red }
 import std.optional { Optional, Present, Absent }
 import v2.std.integer { Int, int_gt, int_add, int_mul }
@@ -819,9 +819,9 @@ fn required_gate_prefixes() -> List<String> {
 // the stage0 partition rows.
 //
 // THE EMITTED-WORKSPACE PLAN'S WITNESSES (gunbc#12214, parent ruling msg_d375b91d from
-// loyal-swift-608). They run v2.workflow.emitted_crate_workspace emitted_workspace_plan_over over a
-// SUPPLIED three-module DAG and supplied edges -- the plan's RED selection, its transitive re-export
-// derivation and its ClosuresDisagree / NoDiscriminatingEdge refusals -- so the refusals keep
+// loyal-swift-608). They run gunbc.emitted_crate_workspace emitted_workspace_plan_from_emission over
+// a SUPPLIED three-module emission and its edges -- the plan's RED selection, its transitive
+// re-export derivation and its EmitterReverseEdge / NoDiscriminatingEdge refusals -- so the refusals keep
 // executing after merge (DESIGN 4b(4)). They never derive the live closure: that run, with the
 // emission and both cargo builds, stays in the author-run instrument
 // //gunbc/instruments:emitted-crate-workspace. SubstrateInputsOnly.
@@ -1167,7 +1167,7 @@ fn first_module_prefix_match(module_path: String, prefixes: List<String>) -> Mod
 //
 // THE COST ARM BRANCHES WITH `if`, NOT WITH A VARIANT MATCH, AND THAT IS LOAD-BEARING RATHER THAN
 // STYLE. `floor_cost_debt_holds` returns the corpus `Bool`, which is realized NATIVELY as a machine
-// scalar; `v2.std.algebra` `any` itself matches it as lowercase `true`/`false`. The interpreter's
+// scalar; the collection-roster `any` joins it as lowercase `true`/`false`. The interpreter's
 // `match_pattern` carries VariantPattern arms for Variant, Record, List, Str, Int and Null and NO
 // arm for a native bool, so a `True`/`False` variant pattern over this value matches nothing and
 // falls through at RUNTIME -- it parses, it typechecks, and it dies with

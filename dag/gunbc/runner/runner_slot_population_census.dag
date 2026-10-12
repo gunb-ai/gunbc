@@ -9,6 +9,7 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
+  host_committed_identities_at,
 }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
@@ -78,6 +79,17 @@ fn desired_unit_names_range(host: HostIdentity, slot: Int, limit: Int) -> List<S
   }
 }
 
+// THE COMMITTED POPULATION AS UNIT NAMES, AT IDENTITY GRAIN. Since #12339 a host's committed members
+// are not 1..width: on srv1 the microVM shakedown slot is a member by its authored index (13) and the
+// fleet range beneath it is 1..(width - 1) -- gunbc.runner_slot_allocation
+// host_committed_identities_at. A consumer that enumerated 1..width named a fleet slot the width never
+// charged for and dropped srv1-13, so the census classified the shakedown slot as retiring and the
+// transition obligation required it. Every desired-set reader goes through this one derivation.
+fn committed_unit_names_at(host: HostIdentity, committed: Int) -> List<String> {
+  host_committed_identities_at(host: host, committed: committed)
+    |> map(id => runner_slot_unit_name(slot: id) as String)
+}
+
 fn observed_unit_names(observed: List<ObservedRunnerUnit>) -> List<String> {
   observed |> map(o => o.unit)
 }
@@ -140,7 +152,7 @@ fn slot_population_census(host: HostIdentity, observed: List<ObservedRunnerUnit>
     RunnerWidthDerived { slots: slots } =>
       slot_population_census_against_desired(
         host: host,
-        desired: desired_unit_names_range(host: host, slot: 1, limit: slots),
+        desired: committed_unit_names_at(host: host, committed: slots),
         observed: observed,
       )
   }

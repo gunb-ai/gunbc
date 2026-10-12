@@ -31,7 +31,7 @@ import gunbc.fleet_convergence_verdict {
   FleetNotConverged,
   fleet_convergence_verdict,
 }
-import gunbc.host_phase_status { fleet_subsumption_enrollments }
+import gunbc.fleet_enrollment { fleet_enrollments }
 import gunbc.fleet_host_key_enrollment { fleet_host_key_enroll_apply }
 
 // Operator verdict join 5 (2026-08-09): the receipts hosts PUBLISH were consumed by
@@ -266,7 +266,7 @@ fn collect_fleet_convergence_wet() -> ProcessExit {
   let enroll_lines = fleet_host_key_enroll_apply(home: home)
   let collected = map(fleet_reach_probe_targets, h => collect_host_receipt(host: h))
   let verdict = fleet_convergence_verdict(
-    enrollments: fleet_subsumption_enrollments,
+    enrollments: fleet_enrollments,
     receipts: collected_receipts_only(collected: collected),
   )
   let verdict_line = match verdict {

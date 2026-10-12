@@ -1,0 +1,136 @@
+module test.claim.native_effect_realization_admission_witness
+
+import std.types { String, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_rows_of_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: v1.compiler.emit NativeEffectRealizationAdmission, computed by v1.compiler.emit_rust
+// native_entry_effects for a native entry's function. An effect it does not admit REFUSES EMISSION
+// with NativeEffectRealizationRefused, typed and naming the arm; before it, the rendered main wrote
+// its handles by hand, and an effect it did not write surfaced only as a rustc error at the handler
+// call, or for a resource trait with no implementor as a link failure. The executed half -- that
+// the handlers it admits are bound and answer -- is gunbc test //gunbc/instruments:native-serve.
+//
+// The fixtures are isolated (tools.multi_module_compile_fixture), so each declares the vocabulary
+// it needs. The denominators (std.compiler_entry native_*_route_denominator) name effects by
+// DECLARATION IDENTITY, so a fixture that means the real clock or the real Entropy declares it in the
+// module that owns it (extdeps.clock, std.resources), and the homonym case declares a Clock elsewhere
+// to show a spelling alone decides nothing.
+
+data fx_entry_driver_source: String = "module nefx.entry_driver\ntype CompilerEntryDriver = NativeServeDriver | NativeCliDriver | NativeClaimDriver\ntype ServeWireResponse { status: Int, body: String }\n"
+
+// The real clock: extdeps.clock Clock, a service on the shell transport.
+data fx_extdeps_clock_source: String = "module extdeps.clock\nservice Clock {\n  operation Now {\n    requires none\n    input {}\n    output { timestamp: String from \"stdout\" }\n    readonly\n    transport shell { argv: [\"date\", \"-u\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"date failed\"\n    }\n  }\n}\n"
+
+// A HOMONYM: a service spelled Clock that is not extdeps.clock Clock.
+data fx_homonym_clock_source: String = "module nefx.other\nservice Clock {\n  operation Now {\n    requires none\n    input {}\n    output { timestamp: String from \"stdout\" }\n    readonly\n    transport shell { argv: [\"date\", \"-u\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"date failed\"\n    }\n  }\n}\n"
+
+// std.resources Entropy, declared where it lives (no capability, so only the ruling can refuse it).
+data fx_std_resources_source: String = "module std.resources\nresource Entropy {\n  kind: Observation\n  mode: Read\n  acquire {}\n  release {}\n}\n"
+
+// A REST transport under an innocuous name: outgoing HTTP by what it binds, not by what it is called.
+data fx_rest_result_source: String = "module extdeps.transports.rest\ntype RestResult<Body> = RestAnswered { answer: Body } | RestRefused { refusal: String }\n"
+data fx_fetch_service_source: String = "module nefx.fetch\nimport extdeps.transports.rest { RestResult }\nservice Fetcher {\n  config {\n    endpoint: \"http://127.0.0.1\"\n  }\n  operation Get {\n    requires none\n    input {}\n    output { live: Bool from \"live\" }\n    readonly\n    transport rest { method: GET, path: \"/livez\" }\n    response {\n      200 => Bool\n    }\n  }\n}\n"
+
+// A resource with a capability renders as a trait with no implementor: Unavailable.
+data fx_serve_resource_trait_source: String = "module nefx.serve\nimport nefx.entry_driver { CompilerEntryDriver, NativeServeDriver, ServeWireResponse }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver\nresource Clock {\n  kind: Observation\n  mode: Read\n  acquire {}\n  release {}\n  capability now {\n    input {}\n    output { timestamp: String }\n  }\n}\nfn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String) -> ServeWireResponse\n  uses clk: Clock\n{\n  ServeWireResponse { status: 200, body: \"\" }\n}\n"
+
+data fx_serve_entropy_source: String = "module nefx.serve\nimport nefx.entry_driver { CompilerEntryDriver, NativeServeDriver, ServeWireResponse }\nimport std.resources { Entropy }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver\nfn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String) -> ServeWireResponse\n  uses rng: Entropy\n{\n  ServeWireResponse { status: 200, body: \"\" }\n}\n"
+
+data fx_cli_clock_source: String = "module nefx.cli\nimport nefx.entry_driver { CompilerEntryDriver, NativeCliDriver }\nimport extdeps.clock { Clock }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver\nfn v2_cli_main(argv: List<String>) -> String {\n  let r = Clock.Now()\n  r.timestamp\n}\n"
+
+data fx_cli_homonym_source: String = "module nefx.cli\nimport nefx.entry_driver { CompilerEntryDriver, NativeCliDriver }\nimport nefx.other { Clock }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver\nfn v2_cli_main(argv: List<String>) -> String {\n  let r = Clock.Now()\n  r.timestamp\n}\n"
+
+data fx_cli_fetch_source: String = "module nefx.cli\nimport nefx.entry_driver { CompilerEntryDriver, NativeCliDriver }\nimport nefx.fetch { Fetcher }\nimport extdeps.transports.rest { RestResult, RestAnswered, RestRefused }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver\nfn v2_cli_main(argv: List<String>) -> Bool {\n  match Fetcher.Get() {\n    RestAnswered { answer } => answer\n    RestRefused { refusal } => false\n  }\n}\n"
+
+data fx_claim_clock_source: String = "module nefx.claim\nimport nefx.entry_driver { CompilerEntryDriver, NativeClaimDriver }\nimport extdeps.clock { Clock }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver\nfn native_claim_report() -> String {\n  let r = Clock.Now()\n  r.timestamp\n}\n"
+
+data fx_serve_clock_source: String = "module nefx.serve\nimport nefx.entry_driver { CompilerEntryDriver, NativeServeDriver, ServeWireResponse }\nimport extdeps.clock { Clock }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver\nfn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String) -> ServeWireResponse {\n  let r = Clock.Now()\n  ServeWireResponse { status: 200, body: r.timestamp }\n}\n"
+
+fn fx_run(entry_path: String, entry_source: String, peers: List<FixtureSource>) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: concat([fixture_source("nefx/entry_driver.dag", fx_entry_driver_source), fixture_source(entry_path, entry_source)], peers),
+    entry: entry_path
+  })
+}
+
+fn fx_extdeps_clock() -> FixtureSource { fixture_source("extdeps/clock.dag", fx_extdeps_clock_source) }
+
+fn refusal_rows(o: MultiModuleCompileFixtureOutcome) -> List<CompileDiagnosticCensusRow> {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_rows_of_class(rows, "NativeEffectRealizationRefused")
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_rows_of_class(rows, "NativeEffectRealizationRefused")
+    FixtureInstrumentRefused { cause: _ } => []
+  }
+}
+
+// Refused by the admission, on the arm named by `marker` -- not merely "something refused", which a
+// typo in the fixture would also satisfy.
+fn refused_naming(o: MultiModuleCompileFixtureOutcome, marker: String) -> Bool {
+  let rows = refusal_rows(o: o)
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
+      (rows |> filter(r => r.blocking && string_contains(s: r.subject_name, pattern: marker)) |> count) == 1
+    _ => false
+  }
+}
+
+fn admitted(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: _, emitted_files: files, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
+      (refusal_rows(o: o) |> count) == 0 && (files |> count) > 0
+    _ => false
+  }
+}
+
+test fn serve_entry_demanding_a_resource_trait_refuses_as_unavailable() -> Bool {
+  refused_naming(o: fx_run(entry_path: "nefx/serve.dag", entry_source: fx_serve_resource_trait_source, peers: []),
+    marker: "resource nefx.serve Clock (uses clk) has no native realization: it is a resource trait with 1 capabilities and no native implementor")
+}
+
+test fn serve_entry_demanding_entropy_refuses_as_outside_the_denominator() -> Bool {
+  refused_naming(o: fx_run(entry_path: "nefx/serve.dag", entry_source: fx_serve_entropy_source, peers: [fixture_source("std/resources.dag", fx_std_resources_source)]),
+    marker: "resource std.resources Entropy (uses rng) is outside the NativeServeDriver denominator (ruling: gunbc.plans.demand_engine_program demand_engine_program_plan)")
+}
+
+test fn cli_entry_reaching_a_clock_service_refuses_as_outside_the_compiler_route() -> Bool {
+  refused_naming(o: fx_run(entry_path: "nefx/cli.dag", entry_source: fx_cli_clock_source, peers: [fx_extdeps_clock()]),
+    marker: "service extdeps.clock Clock is outside the NativeCliDriver denominator (ruling: gunbc.plans.demand_engine_program demand_engine_program_plan)")
+}
+
+test fn cli_entry_reaching_a_rest_service_refuses_as_outgoing_http() -> Bool {
+  refused_naming(o: fx_run(entry_path: "nefx/cli.dag", entry_source: fx_cli_fetch_source, peers: [fixture_source("nefx/fetch.dag", fx_fetch_service_source), fixture_source("extdeps/transports/rest.dag", fx_rest_result_source)]),
+    marker: "service nefx.fetch Fetcher is outside the NativeCliDriver denominator")
+}
+
+test fn claim_entry_reaching_a_clock_service_refuses_as_outside_its_declared_set() -> Bool {
+  refused_naming(o: fx_run(entry_path: "nefx/claim.dag", entry_source: fx_claim_clock_source, peers: [fx_extdeps_clock()]),
+    marker: "service extdeps.clock Clock is outside the NativeClaimDriver denominator (ruling: std.compiler_entry NativeClaimDriver)")
+}
+
+// THE IDENTITY CONTROL: a service SPELLED Clock that is not extdeps.clock Clock is not excluded from
+// the compiler route. Matching by spelling would refuse it; matching by declaration does not.
+test fn cli_entry_reaching_a_homonym_clock_is_judged_by_identity() -> Bool {
+  admitted(o: fx_run(entry_path: "nefx/cli.dag", entry_source: fx_cli_homonym_source, peers: [fixture_source("nefx/other.dag", fx_homonym_clock_source)]))
+}
+
+// THE POSITIVE CONTROL. Without it every RED above is satisfied by an admission that refuses
+// everything: the real clock under a serve entry is admitted.
+test fn serve_entry_reaching_a_clock_service_is_admitted() -> Bool {
+  admitted(o: fx_run(entry_path: "nefx/serve.dag", entry_source: fx_serve_clock_source, peers: [fx_extdeps_clock()]))
+}

@@ -9,7 +9,7 @@ import v2.std.collection {
   Present,
   empty_map,
   list_nth,
-  map_get,
+  map_get_checked,
   map_insert
 }
 import v2.std.diagnostic {
@@ -202,7 +202,7 @@ fn effect_io_pure_store_lookup(
   locator: EffectIoResourceLocator
 ) -> Outcome<RuntimeValue> {
   if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
-    match map_get(m: store.entries, key: locator.identity) {
+    match map_get_checked(m: store.entries, key: locator.identity) {
       Accepted { value: opt, diagnostics: d } =>
         match opt {
           Present { value: payload } =>

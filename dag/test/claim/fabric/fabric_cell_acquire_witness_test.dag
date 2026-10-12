@@ -4,8 +4,8 @@ import std.types { Bool, String, List, NonEmptyStr, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_host_identity { operator_host_srv3 }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import std.measure { byte_size_count }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
+import std.measure { byte_size_count, hardware_thread_count, hardware_thread_count_value }
 import gunbc.fabric_cell_converge {
   FabricCellRootAddress,
   FabricCellAttemptRootAddress,
@@ -16,6 +16,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_slice_name,
   fabric_cell_boundary_state_digest_of,
   fabric_cell_boundary_address_digest_of,
+  fabric_cell_desired_cpu_quota_identity,
 }
 import extdeps.systemd { MemoryMax, TasksMax }
 import gunbc.fabric_cell_observe {
@@ -447,16 +448,19 @@ fn kind_is_unknown_word(k: StatFileKind, word: String) -> Bool {
   }
 }
 
-fn converged_boundary_values() -> FabricCellBoundaryReading {
-  let desired = gunbc_runner_slot_desired()
-  BoundaryValuesRead {
-    memory_max: to_string(byte_size_count(b: desired.memory_max)),
-    memory_high: to_string(byte_size_count(b: desired.memory_high)),
-    memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
-    tasks_max: to_string(desired.tasks_max),
-    cpu_weight: to_string(desired.cpu_weight),
-    cpu_quota_per_sec: "6s",
+// THE QUOTA A CONVERGED HOST PRINTS FOLLOWS THE DESIRED ROW, NOT A LITERAL. This was "6s" while the
+// fleet row resolved six threads; #11716 (cores_per_slot = 1) made the row SlotCpuQuotaUnbounded,
+// which a converged host prints as `infinity`, and the literal went stale. A resolved row prints its
+// thread count as whole CPU-seconds, the spelling the six-second row below reads.
+fn converged_quota_raw(quota: RunnerSlotCpuQuota) -> String {
+  match quota {
+    CpuQuotaResolved { threads: t } => join([to_string(hardware_thread_count_value(t: t)), "s"], "")
+    SlotCpuQuotaUnbounded => "infinity"
   }
+}
+
+fn converged_boundary_values() -> FabricCellBoundaryReading {
+  boundary_values_with_quota_raw(raw: converged_quota_raw(quota: gunbc_runner_slot_desired().cpu_quota))
 }
 
 fn boundary_values_with_quota_raw(raw: String) -> FabricCellBoundaryReading {
@@ -583,13 +587,30 @@ test fn witness_acquire_drifted_quota_is_a_different_digest() -> Bool {
   }
 }
 
+// A HOST PRINTING `6s` AGREES WITH A DESIRED SIX-THREAD QUOTA. The desired side is composed from
+// the same spelling authority with a resolved six-thread quota rather than read off the slot row:
+// since #11716 the fleet row is SlotCpuQuotaUnbounded, so the slot digest no longer carries a
+// thread count and the span-versus-threads agreement this row exists for must name its own.
 test fn witness_acquire_observed_six_second_quota_matches_desired_threads() -> Bool {
+  let desired = gunbc_runner_slot_desired()
   address_probe_is_read_as(
     p: fabric_cell_boundary_address_probe(
       slot: witness_slot(),
       reading: boundary_values_with_quota_raw(raw: "6s"),
     ),
-    digest: fabric_cell_desired_state_digest(slot: witness_slot(), address: FabricCellResourceBoundaryAddress),
+    digest: fabric_cell_boundary_address_digest_of(
+      slice_name: fabric_cell_slice_name(slot: witness_slot()),
+      state: fabric_cell_boundary_state_digest_of(
+        memory_max: to_string(byte_size_count(b: desired.memory_max)),
+        memory_high: to_string(byte_size_count(b: desired.memory_high)),
+        memory_swap_max: to_string(byte_size_count(b: desired.memory_swap_max)),
+        tasks_max: to_string(desired.tasks_max),
+        cpu_weight: to_string(desired.cpu_weight),
+        cpu_quota_per_sec: fabric_cell_desired_cpu_quota_identity(
+          quota: CpuQuotaResolved { threads: hardware_thread_count(count: 6) },
+        ),
+      ),
+    ),
   )
 }
 

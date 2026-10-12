@@ -1,5 +1,6 @@
 module test.claim.host_axis_caps
 
+import extdeps.systemd.systemctl { systemctl_revert_memory_caps_argv }
 import std.logic { Bool }
 import std.types { NonEmptyStr, String, List, list_length }
 import gunbc.host_axis_caps {
@@ -260,4 +261,13 @@ test fn witness_cap_upsert_script_does_not_emit_raw_apostrophe_content() -> Bool
 test fn witness_cap_upsert_script_carries_no_hand_spelled_printf_quoting() -> Bool {
   !string_contains(s: cap_upsert_script(m: apostrophe_cap_member), pattern: "printf '%s' '")
     && !string_contains(s: deploy_runner_memory_cap_author_script(), pattern: "printf '%s' '")
+}
+
+// `systemctl revert` TAKES UNIT NAMES ONLY (extdeps.systemd.systemctl
+// systemctl_revert_memory_caps_argv). The earlier argv appended "MemoryMax" "MemoryHigh", which
+// systemctl read as two more units and reverted silently with exit 0 (observed, systemd 255). Every
+// token after the verb must be the unit itself.
+test fn the_revert_argv_names_only_the_unit() -> Bool {
+  join(systemctl_revert_memory_caps_argv(unit: "actions-runner@srv1-01.service"), " ")
+    == "systemctl revert actions-runner@srv1-01.service"
 }

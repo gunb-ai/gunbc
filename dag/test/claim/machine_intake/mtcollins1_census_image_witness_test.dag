@@ -353,6 +353,7 @@ fn census_input_varying(
     nocloud_dir_on_iso: base.nocloud_dir_on_iso,
     user_data_body: base.user_data_body,
     seed_files: [NoCloudSeedFile { name: mtcollins1_census_program_file, content: program }],
+    seed_artifacts: [],
     grub_kernel_cmdline: grub_kernel_cmdline,
     volume_id: volume_id,
     pinned_dates: pinned_dates,

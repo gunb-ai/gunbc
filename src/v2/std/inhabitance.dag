@@ -1,6 +1,6 @@
 module v2.std.inhabitance
 
-import std.types { List }
+import std.types { Bool, List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -21,7 +21,8 @@ import v2.std.find_witness {
 }
 import v2.std.node {
   Atom,
-  Cardinality,
+  Occupancy,
+  ComputationNode,
   Conj,
   Edge,
   Authored,
@@ -29,12 +30,29 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  node_is_arrow,
   node_subtree_nodes,
   node_synthetic
 }
-import std.algebra { list_append }
+import std.algebra { Empty, list_append, list_snoc_item }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
+import std.nat { Succ, Zero }
+import v2.std.collection { empty_map, list_at_optional, map_insert, map_lookup }
+import v2.std.arrow_signature {
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  anonymous_signature_arrow,
+  arrow_declared_parameter_order
+}
+import v2.std.node_query { declared_field_from_edge, node_positional_child_targets }
+import v2.std.type_binder { edge_is_type_params }
+import v2.std.optional_layers {
+  OccupancyWrapperMalformed,
+  TypeNodeOccupancy,
+  type_node_occupancy_read
+}
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
 // callee Arrow's type parameters (v2.std.type_binder type_param_names) is a DECLARED TYPE VARIABLE:
@@ -60,7 +78,7 @@ fn inhabitance_formal_declaration(declared: Node, type_params: List<Symbol>) -> 
     TypeNode { connective: Conj } => DeclaredType { declared: declared }
     TypeNode { connective: Disj } => DeclaredType { declared: declared }
     TypeNode { connective: Arrow } => DeclaredType { declared: declared }
-    TypeNode { connective: Cardinality } => DeclaredType { declared: declared }
+    TypeNode { connective: Occupancy } => DeclaredType { declared: declared }
     TypeNode { connective: Instantiation } => DeclaredType { declared: declared }
     ComputationNode { behavior: _ } => DeclaredType { declared: declared }
   }
@@ -86,12 +104,17 @@ fn type_variable_instance_lookup(
   })
 }
 
+// A match's arms against its scrutinee's coproduct: `declared` is the scrutinee's declared
+// coproduct and `produced` is the arms' covered carrier, so the one relation decides coverage --
+// exhaustive exactly when the arms structurally equal the whole coproduct
+// (gunbc.recurring_failure_mode native_infer_accepts_only_bool_and_int_match_scrutinees).
 type DeclaredTypePosition
   = PositionDirectCallArgument
   | PositionDeclaredReturn
   | PositionRecordField { record: Node }
   | PositionLetAnnotation { bound: Node }
   | PositionBinderDefault { default: Node }
+  | PositionMatchCoverage { match_node: Node, scrutinee: Node }
 
 // type_variables are the declaring Arrow's type parameters (v2.std.type_binder type_param_names):
 // the only atoms in `declared` that name no type, and so the only thing that keeps an
@@ -142,6 +165,10 @@ fn position_record_field(record: Node) -> DeclaredTypePosition {
   PositionRecordField { record: record }
 }
 
+fn position_match_coverage(match_node: Node, scrutinee: Node) -> DeclaredTypePosition {
+  PositionMatchCoverage { match_node: match_node, scrutinee: scrutinee }
+}
+
 // An annotated let (`let x: T = e`) is a declared position like the others, not a cast. Its
 // obligation is located at the authored annotation (the declared type the author wrote, as a
 // declared return is located at the body it judges), and the position names the bound value e
@@ -161,6 +188,10 @@ fn inhabitance_no_candidate_binder_default_reason() -> Symbol {
   ^infer_reason_default_does_not_inhabit_binder_type
 }
 
+fn inhabitance_no_candidate_match_coverage_reason() -> Symbol {
+  ^infer_reason_match_arms_do_not_cover_scrutinee
+}
+
 fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
   match position {
     PositionDirectCallArgument => ^position_direct_call_argument
@@ -168,6 +199,7 @@ fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
     PositionRecordField { record: _ } => ^position_record_field
     PositionLetAnnotation { bound: _ } => ^position_let_annotation
     PositionBinderDefault { default: _ } => ^position_binder_default
+    PositionMatchCoverage { match_node: _, scrutinee: _ } => ^position_match_coverage
   }
 }
 
@@ -181,9 +213,9 @@ fn inhabitance_declared_singleton(declared: Node) -> CandidateSet {
   }
 }
 
-fn inhabitance_cardinality_type(inner: Node) -> Node {
+fn inhabitance_occupancy_type(inner: Node) -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Cardinality },
+    kind: TypeNode { connective: Occupancy },
     children: [
       Edge { label: Positional, target: inner }
     ]
@@ -220,10 +252,21 @@ fn inhabitance_node_undecidable_reason(
     optional_present(value: UndecidableGenericFormal)
   } else {
     match n.kind {
-      TypeNode { connective: Cardinality } =>
+      TypeNode { connective: Occupancy } =>
         optional_present(value: UndecidableOptionalCarrier)
       _ => Absent
     }
+  }
+}
+
+fn inhabitance_pair_undecidable_reason_declared_then_produced(
+  declared: Node,
+  produced: Node,
+  type_variables: List<Symbol>
+) -> Optional<InhabitanceUndecidableReason> {
+  match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
+    Present { value: reason } => optional_present(value: reason)
+    Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
   }
 }
 
@@ -232,9 +275,24 @@ fn inhabitance_pair_undecidable_reason(
   produced: Node,
   type_variables: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
-    Present { value: reason } => optional_present(value: reason)
-    Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
+  if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
+    || inhabitance_node_mentions_type_variable(n: produced, type_variables: type_variables) {
+    inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+  } else {
+    match declared.kind {
+      TypeNode { connective: Occupancy } =>
+        match produced.kind {
+          TypeNode { connective: Occupancy } => Absent
+          TypeNode { connective: _ } =>
+            inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+          ComputationNode { behavior: _ } =>
+            inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+        }
+      TypeNode { connective: _ } =>
+        inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+      ComputationNode { behavior: _ } =>
+        inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+    }
   }
 }
 
@@ -253,7 +311,7 @@ fn inhabitance_pair_undecidable_reason(
 // Rung, ceiling, and next-rung triggers live in
 // gunbc.recurring_failure_mode.argument_type_obligation_absent_while_the_route_advances.
 // AN OPTIONAL PRODUCED AT A REQUIRED DECLARED TYPE IS DECIDED: IT DOES NOT INHABIT. `T?` admits
-// absence and a required type admits no absent value, so a produced Cardinality type node (the type
+// absence and a required type admits no absent value, so a produced Occupancy type node (the type
 // `T?` lowers to; v2.std.node_query declared_field_cardinality_of_target reads the same node as
 // Optional) inhabits no required declared type, whatever T is. UndecidableOptionalCarrier was
 // written for the LIFT direction -- a produced `T` at a declared `T?` -- and, read off either side,
@@ -274,7 +332,7 @@ fn inhabitance_optional_produced_at_required_declared(
   type_variables: List<Symbol>
 ) -> Bool {
   match produced.kind {
-    TypeNode { connective: Cardinality } =>
+    TypeNode { connective: Occupancy } =>
       match declared.kind {
         TypeNode { connective: Atom { identity: _ } } =>
           (count(declared.children) == 0)
@@ -289,6 +347,44 @@ fn inhabitance_optional_at_required_reason() -> Symbol {
   ^inhabitance_optional_produced_at_required_declared
 }
 
+fn inhabitance_optional_layer_depth_mismatch_reason() -> Symbol {
+  ^inhabitance_optional_layer_depth_mismatch
+}
+
+fn inhabitance_optional_layer_wrapper_malformed_reason() -> Symbol {
+  ^inhabitance_optional_layer_wrapper_malformed
+}
+
+// Malformed is not "no depth mismatch": a Bool false conflated those arms.
+type OptionalLayerInhabitanceVerdict
+  = OptionalLayerInhabitanceHolds
+  | OptionalLayerDepthMismatch
+  | OptionalLayerWrapperMalformed
+
+fn inhabitance_optional_layer_judgement(declared: Node, produced: Node) -> OptionalLayerInhabitanceVerdict {
+  match type_node_occupancy_read(n: declared) {
+    OccupancyWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
+    TypeNodeOccupancy { depth: dc, base: _ } =>
+      match type_node_occupancy_read(n: produced) {
+        OccupancyWrapperMalformed { wrapper: _ } => OptionalLayerWrapperMalformed
+        TypeNodeOccupancy { depth: pc, base: _ } =>
+          match dc {
+            Zero => OptionalLayerInhabitanceHolds
+            Succ { prev: _ } =>
+              match pc {
+                Zero => OptionalLayerInhabitanceHolds
+                Succ { prev: _ } =>
+                  if dc == pc {
+                    OptionalLayerInhabitanceHolds
+                  } else {
+                    OptionalLayerDepthMismatch
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   if inhabitance_optional_produced_at_required_declared(
     declared: obligation.declared,
@@ -297,11 +393,123 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
   ) {
     InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason() }
   } else {
-    declared_type_inhabitance_structural(obligation: obligation)
+    match inhabitance_optional_layer_judgement(declared: obligation.declared, produced: obligation.produced) {
+      OptionalLayerDepthMismatch =>
+        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
+      OptionalLayerWrapperMalformed =>
+        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason() }
+      OptionalLayerInhabitanceHolds => declared_type_inhabitance_structural(obligation: obligation)
+    }
   }
 }
 
+// AN ARROW AT AN ARROW IS ITS DOMAIN TYPES, POSITIONALLY, AND ITS RETURN. Parameter names and a body are
+// not part of what a callable inhabits: a named fn `fn(n: Int) -> Bool` and a lambda spelled `fn(x: Int)`
+// are one signature, so both sides are re-assembled through anonymous_signature_arrow (the one assembler
+// of a bodiless signature, whose binders are positional) and compared by the same exact structural
+// equality as every other type. This is the ONE judge for argument, declared-return and record-field
+// positions. A signature this arm does not normalize -- one that declares type parameters, whose order
+// cannot be read, or whose domain or return itself holds an Arrow -- stays on the exact comparison it
+// had before, which decides and may refuse; it is never widened to an advisory acceptance. Recursive
+// normalization of a nested Arrow is the climb.
+type ArrowSignatureRead
+  = ArrowSignatureTypes { domain_types: List<Node>, codomain: Node }
+  | ArrowSignatureUnreadable
+
+fn inhabitance_arrow_signature_read(arrow: Node) -> ArrowSignatureRead {
+  if fold(arrow.children, init: false, f: fn(acc, e) { acc || edge_is_type_params(e: e) }) {
+    ArrowSignatureUnreadable
+  } else {
+    match arrow_declared_parameter_order(arrow: arrow) {
+      ArrowParameterOrderAbsent => ArrowSignatureUnreadable
+      ArrowParameterOrderMalformed => ArrowSignatureUnreadable
+      ArrowParameterOrderDeclared { labels: labels } =>
+        let positional = node_positional_child_targets(node: arrow)
+        match list_at_optional(xs: positional, index: 0) {
+          Absent => ArrowSignatureUnreadable
+          Present { value: domain } =>
+            match list_at_optional(xs: positional, index: 1) {
+              Absent => ArrowSignatureUnreadable
+              Present { value: codomain } =>
+                inhabitance_arrow_signature_types(domain: domain, codomain: codomain, labels: labels)
+            }
+        }
+    }
+  }
+}
+
+fn inhabitance_arrow_signature_types(domain: Node, codomain: Node, labels: List<Symbol>) -> ArrowSignatureRead {
+  let types_by_label = fold(domain.children, init: empty_map(), f: fn(acc, e) {
+    match declared_field_from_edge(e: e) {
+      Present { value: binder } => map_insert(m: acc, key: binder.name, value: binder.type_node)
+      Absent => acc
+    }
+  })
+  let ordered = fold(labels, init: Present { value: Empty }, f: fn(acc, l) {
+    match acc {
+      Absent => Absent
+      Present { value: types } =>
+        match map_lookup(m: types_by_label, key: l) {
+          Present { value: t } => Present { value: list_snoc_item(xs: types, item: t) }
+          Absent => Absent
+        }
+    }
+  })
+  match ordered {
+    Absent => ArrowSignatureUnreadable
+    Present { value: types } =>
+      if inhabitance_signature_holds_arrow(domain_types: types, codomain: codomain) {
+        ArrowSignatureUnreadable
+      } else {
+        ArrowSignatureTypes { domain_types: types, codomain: codomain }
+      }
+  }
+}
+
+fn inhabitance_signature_holds_arrow(domain_types: List<Node>, codomain: Node) -> Bool {
+  fold(node_subtree_nodes(root: codomain), init: false, f: fn(acc, m) { acc || node_is_arrow(n: m) })
+    || fold(domain_types, init: false, f: fn(acc, t) {
+      acc || fold(node_subtree_nodes(root: t), init: false, f: fn(a, m) { a || node_is_arrow(n: m) })
+    })
+}
+
 fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
+  match inhabitance_pair_undecidable_reason(
+    declared: obligation.declared,
+    produced: obligation.produced,
+    type_variables: obligation.type_variables
+  ) {
+    Present { value: reason } => InhabitanceUndecidable { reason: reason }
+    Absent =>
+      if node_is_arrow(n: obligation.declared) && node_is_arrow(n: obligation.produced) {
+        declared_type_inhabitance_arrow(obligation: obligation)
+      } else {
+        declared_type_inhabitance_exact(obligation: obligation)
+      }
+  }
+}
+
+fn declared_type_inhabitance_arrow(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
+  match inhabitance_arrow_signature_read(arrow: obligation.declared) {
+    ArrowSignatureUnreadable => declared_type_inhabitance_exact(obligation: obligation)
+    ArrowSignatureTypes { domain_types: dd, codomain: dc } =>
+      match inhabitance_arrow_signature_read(arrow: obligation.produced) {
+        ArrowSignatureUnreadable => declared_type_inhabitance_exact(obligation: obligation)
+        ArrowSignatureTypes { domain_types: pd, codomain: pc } =>
+          declared_type_inhabitance_exact(obligation: DeclaredTypeObligation {
+            position: obligation.position,
+            parameter_identity: obligation.parameter_identity,
+            declared: anonymous_signature_arrow(domain_types: dd, codomain: dc, source: obligation.declared),
+            produced: anonymous_signature_arrow(domain_types: pd, codomain: pc, source: obligation.produced),
+            produced_declared_carrier: obligation.produced_declared_carrier,
+            application: obligation.application,
+            type_variables: obligation.type_variables
+          })
+      }
+  }
+}
+
+fn declared_type_inhabitance_exact(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_pair_undecidable_reason(
     declared: obligation.declared,
     produced: obligation.produced,
@@ -398,6 +606,7 @@ fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Ed
     PositionRecordField { record: record } => [Edge { label: Authored { name: ^inhabitance_record }, target: record }]
     PositionLetAnnotation { bound: bound } => [Edge { label: Authored { name: ^inhabitance_bound_value }, target: bound }]
     PositionBinderDefault { default: default } => [Edge { label: Authored { name: ^inhabitance_default_value }, target: default }]
+    PositionMatchCoverage { match_node: _, scrutinee: scrutinee } => [Edge { label: Authored { name: ^inhabitance_scrutinee }, target: scrutinee }]
   }
 }
 
@@ -408,6 +617,7 @@ fn inhabitance_no_candidate_reason(position: DeclaredTypePosition) -> Symbol {
     PositionRecordField { record: _ } => inhabitance_no_candidate_record_field_reason()
     PositionLetAnnotation { bound: _ } => inhabitance_no_candidate_let_annotation_reason()
     PositionBinderDefault { default: _ } => inhabitance_no_candidate_binder_default_reason()
+    PositionMatchCoverage { match_node: _, scrutinee: _ } => inhabitance_no_candidate_match_coverage_reason()
   }
 }
 

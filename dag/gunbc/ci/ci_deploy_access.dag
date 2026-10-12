@@ -405,3 +405,21 @@ fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
     p: fleet_posix_ci_runner_principal()
   )
 }
+
+// EVERY ACCESS THAT APPLIES A DEPLOYMENT, AS ONE ROSTER. A host-shared resource whose content is a
+// function of who deploys to that host -- /etc/sudoers.d/gunbc-deploy -- is derived from this list
+// filtered by host, never from the one access that happens to be running, so applying any
+// deployment through any access renders the same bytes (gunbc.ci_deploy_sudoers
+// deploy_sudoers_dropin_body). A new access is a row here; one left out is a principal whose grants
+// the next apply through another access would delete.
+fn deploy_access_roster() -> List<DeployAccess> {
+  [
+    ci_deploy_srv1_access,
+    ci_deploy_srv1_operator_access,
+    ci_deploy_srv1_operator_local_access,
+  ]
+}
+
+fn deploy_accesses_on_host(host: ComputeHost) -> List<DeployAccess> {
+  filter(xs: deploy_access_roster(), predicate: a => (a.host.identity as String) == (host.identity as String))
+}

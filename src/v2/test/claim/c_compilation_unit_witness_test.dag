@@ -1,5 +1,15 @@
 module v2.test.claim.c_compilation_unit_witness
 
+import gunbc.crate_partition {
+  ByValueTypeCycle,
+  CompilationUnitId,
+  InterfaceClosureUnreachedFixpoint,
+  ModuleDagEdge,
+  ModuleId,
+  PartitionR4Refused,
+  PartitionR4Valid
+}
+
 import std.algebra { Empty }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.types { NonEmptyStr, List, String }
@@ -16,17 +26,10 @@ import v2.extdeps.languages.c {
   c_validate_partition_r4
 }
 import v2.std.compilers.compilation_unit {
-  ByValueTypeCycle,
-  CompilationUnitId,
-  InterfaceClosureUnreachedFixpoint,
   ModuleDag,
-  ModuleDagEdge,
-  ModuleId,
   ModuleTypeDefinitionRow,
   PartitionFoldOk,
   PartitionFoldRefused,
-  PartitionR4Refused,
-  PartitionR4Valid,
   partition_fold_outcome,
   partition_fold_outcome_with_closure_fuel,
   partition_interface_contains_node,

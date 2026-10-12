@@ -1,0 +1,99 @@
+module extdeps.nvidia.api_trial_terms
+
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE TERMS THAT GOVERN AN NVIDIA-HOSTED API SERVICE, as their own upstream because they are an
+// independently versioned document (DESIGN section 3, external upstream decomposition). They are not
+// a property of a model -- the Nemotron 3 Ultra weights are licensed under OpenMDW-1.1, a different
+// document with different obligations -- and not of a router that forwards to the service: OpenRouter
+// links this PDF as the terms of service of its Nvidia endpoint for the free slug, and the obligations
+// below are NVIDIA's whoever relays the request.
+//
+// READ 2026-10-05 from the PDF itself; the document's own last line is "v. September 19, 2025". Every
+// obligation row below cites the section that states it, and the section text was read from that
+// version, not transcribed from a summary.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "assets.ngc.nvidia.com/products/api-catalog/legal/NVIDIA%20API%20Trial%20Terms%20of%20Service.pdf",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.api_trial_terms",
+      decl_name: "nvidia_api_trial_terms_v20250919",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+type NvidiaApiTrialTermsVersion20250919 {}
+
+type NvidiaApiTrialTermsVersion = NvidiaApiTrialTermsVersion20250919
+
+// WHAT THE TERMS OBLIGE OF A USER, one arm per obligation a caller's conduct can breach, each named for
+// the section that states it. A closed set rather than prose because a consumer deciding whether a use
+// is admissible must be able to ask about each obligation separately; a paragraph cannot be asked.
+//
+//   - 1.2 Trial Access Rights: access "for limited trial purposes only and without use of the API
+//     Service or Generated Content in production"; 1.4 repeats the trial limit for credits.
+//   - 2.6(a): User Content may not include "any confidential information, controlled or sensitive
+//     data, including protected health information, personal data"; 4.3 forbids uploading personal,
+//     financial, health or governmental information.
+//   - 3.3(iv): NVIDIA collects "User Content and Generated Content to improve NVIDIA products and
+//     services, including AI models". This is a disclosure rather than a user duty, carried because a
+//     caller choosing what to send needs it as much as the prohibitions.
+//   - 4.2: no copying, selling, sublicensing, transferring or distributing the service or Generated
+//     Content to others.
+//   - 4.12: no use of the service or Generated Content "to develop or improve products or services
+//     that compete with the API Service".
+type NvidiaApiTrialObligation
+  = TrialPurposeNoProduction
+  | NoConfidentialOrPersonalData
+  | ContentUsedToImproveNvidiaProducts
+  | NoRedistributionOfServiceOrOutput
+  | NoCompetingProductDevelopment
+
+fn nvidia_api_trial_obligation_section(o: NvidiaApiTrialObligation) -> NonEmptyStr {
+  match o {
+    TrialPurposeNoProduction => "1.2, 1.4" as NonEmptyStr
+    NoConfidentialOrPersonalData => "2.6(a), 4.3" as NonEmptyStr
+    ContentUsedToImproveNvidiaProducts => "3.3(iv)" as NonEmptyStr
+    NoRedistributionOfServiceOrOutput => "4.2" as NonEmptyStr
+    NoCompetingProductDevelopment => "4.12" as NonEmptyStr
+  }
+}
+
+type NvidiaApiTrialTerms {
+  version: NvidiaApiTrialTermsVersion
+  version_label: NonEmptyStr
+  obligations: List<NvidiaApiTrialObligation>
+  terms: ExternalAuthority
+}
+
+data nvidia_api_trial_terms_v20250919: NvidiaApiTrialTerms = NvidiaApiTrialTerms {
+  version: NvidiaApiTrialTermsVersion20250919 {},
+  version_label: "2025-09-19" as NonEmptyStr,
+  obligations: [
+    TrialPurposeNoProduction,
+    NoConfidentialOrPersonalData,
+    ContentUsedToImproveNvidiaProducts,
+    NoRedistributionOfServiceOrOutput,
+    NoCompetingProductDevelopment,
+  ],
+  terms: extdeps_external_authority_anchor,
+}
+
+fn nvidia_api_trial_terms_wire(t: NvidiaApiTrialTerms) -> NonEmptyStr {
+  join([
+    "NVIDIA API Trial Terms of Service v. ", t.version_label as String, " (",
+    join(map(t.obligations, o => nvidia_api_trial_obligation_section(o: o) as String), "; "), ")",
+  ], "") as NonEmptyStr
+}

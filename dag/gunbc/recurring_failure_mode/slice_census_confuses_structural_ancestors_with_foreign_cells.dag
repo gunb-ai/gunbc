@@ -1,0 +1,13 @@
+module gunbc.recurring_failure_mode.slice_census_confuses_structural_ancestors_with_foreign_cells
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data slice_census_confuses_structural_ancestors_with_foreign_cells: RecurringFailureMode = RecurringFailureMode {
+  identity: "slice_census_confuses_structural_ancestors_with_foreign_cells" as NonEmptyStr,
+  receipts: [
+    "2026-10-09, PR #13607: srv1's systemctl list-units fabric-cell-*.slice enumerates both fabric-cell-srv1-13.slice and its implicit fabric-cell-srv1.slice ancestor. The cell observer assumed every namespace entry was either a slot or foreign residue, so provisioning a legitimate slot made its next observation refuse. Enumeration was correct; the earliest unjustified boundary was discovery's incomplete subject vocabulary.",
+    "Repair: retain a structural-ancestor subject derived from this host's enrolled fabric cells through extdeps.systemd.systemd_slice_ancestor_names. It grants no cell identity, resource ownership or effect. Only the slice namespace admits it; unknown siblings, other hosts' ancestors and matching filesystem names still refuse. The expected-address observer remains independent, so seeing only the ancestor never satisfies the cell boundary. The live census fixture reaches production admission, with discriminating refusal and conservation controls.",
+  ],
+  evidence: [],
+}

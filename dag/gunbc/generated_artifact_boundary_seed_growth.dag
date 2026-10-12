@@ -58,7 +58,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // admitted -- DESIGN.md is the authority every lane in that program plans against, and a DESIGN.md
 // that has silently diverged from gunbc.design_document is premise contamination for all of them.
 // That is measured rather than argued: this phase's first execution found
-// docs/plans/realization-measurement-loop.md wrong since #9394, when the ContainerRuntime nickname
+// docs/plans/realization-measurement-loop.md (since deleted) wrong since #9394, when the ContainerRuntime nickname
 // was dissolved in the authority and the projection kept naming it, and gunbc#9392 had already
 // found 2198 characters standing in DESIGN.md that no authority held. Classified against all five
 // refused classes. NewLanguageBehavior: no -- the compile pipeline is byte-untouched; no diagnostic

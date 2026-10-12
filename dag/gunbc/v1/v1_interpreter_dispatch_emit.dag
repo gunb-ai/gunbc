@@ -107,7 +107,6 @@ fn dispatch_emit_site_key(site: InterpreterDispatchEmitSite) -> String {
     EvalCallBridgeFamilySite { module } => concat("eval_call_bridge::", qualified_name_to_dotted_string(qn: module))
     EvalCallNativeInterceptSite => "eval_call_native_intercept"
     TryV2StdCollectionMapPrimitiveGroundingSite => "try_v2_std_collection_map_primitive_grounding"
-    TryParseTableMemoDispatchSite => "try_parse_table_memo_dispatch"
     EvalMethodCallShortCircuitSite => "eval_method_call_short_circuit"
     EvalServiceCallCarveOutSite => "eval_service_call_carve_out"
   }
@@ -228,7 +227,6 @@ fn site_enum_name(site: InterpreterDispatchEmitSite) -> String {
     EvalCallBridgeFamilySite { module } => concat("EvalCallBridge", concat(module_pascal_after_domain_prefix(module: module), "Arm"))
     EvalCallNativeInterceptSite => "EvalCallNativeInterceptArm"
     TryV2StdCollectionMapPrimitiveGroundingSite => "TryV2StdCollectionMapPrimitiveGroundingArm"
-    TryParseTableMemoDispatchSite => "TryParseTableMemoDispatchArm"
     EvalMethodCallShortCircuitSite => "EvalMethodCallShortCircuitArm"
     EvalServiceCallCarveOutSite => "EvalServiceCallCarveOutArm"
   }
@@ -241,7 +239,6 @@ fn site_lookup_name(site: InterpreterDispatchEmitSite) -> String {
     EvalCallBridgeFamilySite { module } => concat("lookup_eval_call_bridge_", module_slug_after_domain_prefix(module: module))
     EvalCallNativeInterceptSite => "lookup_eval_call_native_intercept"
     TryV2StdCollectionMapPrimitiveGroundingSite => "lookup_try_v2_std_collection_map_primitive_grounding"
-    TryParseTableMemoDispatchSite => "lookup_try_parse_table_memo_dispatch"
     EvalMethodCallShortCircuitSite => "lookup_eval_method_call_short_circuit"
     EvalServiceCallCarveOutSite => "lookup_eval_service_call_carve_out"
   }
@@ -390,7 +387,6 @@ fn row_has_invalid_bridge_family_domain_prefix(row: InterpreterPrimitiveDispatch
     EvalAlgebraMethodInnerSite => false
     EvalCallNativeInterceptSite => false
     TryV2StdCollectionMapPrimitiveGroundingSite => false
-    TryParseTableMemoDispatchSite => false
     EvalMethodCallShortCircuitSite => false
     EvalServiceCallCarveOutSite => false
   }

@@ -18,7 +18,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // dag/test/claim/repository_convergence_wet_witness_test.dag --functions <comma-joined>:
 //   detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree,
 //   already_at_candidate_repairs_a_stale_index, cas_race_is_observed_after_fetch,
-//   reset_refusal_after_successful_cas_is_nonzero
+//   reset_refusal_after_successful_cas_is_nonzero,
+//   a_legacy_derived_roster_file_is_retired_and_read_back_absent
 // Scratch-repository WET matrix over the real git transport.
 
 // Record/replay receipt recipe (the setup invocation is stable; its recorded stdout carries the
@@ -186,6 +187,28 @@ test fn wrong_primary_standing_refuses_from_gits_roster() -> Bool {
       let outcome = repository_converge_wet(repo: linked_repo, remote: "origin", base_ref: "refs/remotes/origin/main", candidate: s.candidate)
       let cleaned = remove_scratch(s: s)
       cleaned && match outcome { ExitFailure { code: _, reason: _ } => true _ => false }
+    }
+  }
+}
+
+// A LEGACY DERIVED ROSTER LEFT BY AN OLDER gunbc IS RETIRED BY CONVERGENCE AND READ BACK ABSENT.
+// The fixture plants the file the old binary wrote; convergence must remove it (the loader never
+// does) and only then report success.
+test fn a_legacy_derived_roster_file_is_retired_and_read_back_absent() -> Bool {
+  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
+    Absent => false
+    Present { value: s } => {
+      let roster = join([s.repo, "/dag/gunbc/rung_drop/roster.dag"], "")
+      let planted = mutate_scratch(s: s, body: join([
+        "set -eu",
+        join(["mkdir -p ", s.repo, "/dag/gunbc/rung_drop"], ""),
+        join(["printf legacy > ", roster], ""),
+      ], "\n"))
+      let outcome = run_scratch(s: s)
+      let absent = mutate_scratch(s: s, body: join(["test ! -e ", roster], ""))
+      let cleaned = remove_scratch(s: s)
+      let converged = match outcome { ExitSuccess => true _ => false }
+      planted && converged && absent && cleaned
     }
   }
 }

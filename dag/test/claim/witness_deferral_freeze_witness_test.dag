@@ -273,15 +273,15 @@ test fn witness_deferral_freeze_live_roster_is_well_formed() -> Bool {
 
 test fn witness_deferral_freeze_commit_roster_enrollment_admits() -> Bool {
   witness_has_executing_consumer_for_row(
-    entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
-    function: "witness_content_key_subject_stable"
+    entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
+    function: "witness_resolve_distinct_param_bindings_holds"
   )
 }
 
 test fn witness_deferral_freeze_commit_roster_row_is_not_frozen() -> Bool {
   !frozen_path_deferral_covers(
-    entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
-    function: "witness_content_key_subject_stable"
+    entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
+    function: "witness_resolve_distinct_param_bindings_holds"
   )
 }
 

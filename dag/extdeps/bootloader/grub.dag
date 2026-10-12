@@ -81,6 +81,19 @@ fn grub_config_render(cfg: GrubConfig) -> String {
   join([header, body], "\n")
 }
 
+// The first linux/initrd command's literal operand in a generated configuration.
+// This is a narrow read, not an interpreter for arbitrary GRUB scripts: computed
+// or quoted operands remain different from the literal path a caller expects.
+fn grub_first_command_operand(config: String, command: String) -> String? {
+  let rows = map(split(s: config, delimiter: "\n"), line =>
+    filter(flat_map(split(s: trim(s: line), delimiter: "\t"), part => split(s: part, delimiter: " ")), word => word != ""))
+  let commands = filter(rows, words => match words.first() { Present { value: word } => word == command Absent => false })
+  match commands.first() {
+    Absent => none
+    Present { value: words } => words.skip(n: 1).first()
+  }
+}
+
 data grub_console_banner_prefix: NonEmptyStr = "GNU GRUB  version "
 data grub_failed_default_and_fallback: NonEmptyStr = "Failed to boot both default and fallback entries."
 data grub_error_prefix: NonEmptyStr = "error: "

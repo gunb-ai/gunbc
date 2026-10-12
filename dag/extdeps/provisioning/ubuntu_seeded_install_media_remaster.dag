@@ -6,13 +6,17 @@ import extdeps.tools.xorriso { xorriso_extract_tree_command, xorriso_replay_buil
 import extdeps.tools.gnu_coreutils { mkdir_parents_command, mktemp_directory_command, rm_recursive_force_one_file_system_command }
 import extdeps.tools.chmod { chmod_recursive_set_mode_command, chmod_path_resolved_program }
 import extdeps.posix.test_utility { test_regular_file_command }
-import extdeps.crypto.hash { sha256sum_file_command }
+import extdeps.crypto.hash { Digest, Sha256, Sha512, sha256sum_file_command }
+import extdeps.tools.curl { curl_download_command }
 import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaGrubConfig, ubuntu_install_media_grub_cfg_for }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
+  AdmittedSeedArtifact, SeedArtifactsAdmitted, SeedArtifactsRefused,
+  seeded_install_media_seed_artifact_admission, seed_artifact_admission_refusal_text,
   UbuntuSeededInstallMediaBuildInput,
 }
 import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.decl_ref { decl_ref }
 import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
 import std.optional { Present }
@@ -114,7 +118,7 @@ fn install_media_remaster_seed_directory_levels(nocloud_dir_on_iso: NonEmptyStr)
 // The seed files as the image holds them (grub.cfg is the other mapped file).
 fn install_media_remaster_seed_files(input: UbuntuSeededInstallMediaBuildInput) -> List<NonEmptyStr> {
   let seed_root = concat("/", input.nocloud_dir_on_iso as String)
-  concat([concat(seed_root, "/user-data") as NonEmptyStr, concat(seed_root, "/meta-data") as NonEmptyStr], map(input.seed_files, f => concat(seed_root, "/", f.name as String) as NonEmptyStr))
+  concat([concat(seed_root, "/user-data") as NonEmptyStr, concat(seed_root, "/meta-data") as NonEmptyStr], concat(map(input.seed_files, f => concat(seed_root, "/", f.name as String) as NonEmptyStr), map(input.seed_artifacts, a => concat(seed_root, "/", a.name as String) as NonEmptyStr)))
 }
 
 // Owner and group are pinned recursively from the TOPMOST directory the seed creates -- for a nested
@@ -253,12 +257,64 @@ fn install_media_remaster_write_seeds(host: CommandHost, writes: List<SeedWrite>
   })
 }
 
-fn install_media_remaster_write_nocloud_seed(host: CommandHost, work_dir: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput) -> String? {
-  let nocloud_dir = concat(work_dir as String, "/", input.nocloud_dir_on_iso as String) as NonEmptyStr
-  match host_command(host: host, command: mkdir_parents_command(path: nocloud_dir as String)) {
+// EACH ARTIFACT IS FETCHED, THEN READ BACK: the fetch's success is not the bytes' identity, so the
+// member is admitted only when its measured sha256 equals the one the input names. The first
+// artifact that does not hold ends the seed.
+// THE READBACK IS sha256sum'S, so it holds only against a Sha256 pin with that hex: a Sha512 pin can
+// never be satisfied by it and refuses rather than being compared by its hex alone.
+fn seed_artifact_readback_holds(read_back_sha256_hex: String, pin: Digest) -> Bool {
+  match pin.algorithm {
+    Sha256 => read_back_sha256_hex == (pin.hex as String)
+    Sha512 => false
+  }
+}
+
+fn install_media_remaster_fetch_artifact(host: CommandHost, nocloud_dir: NonEmptyStr, artifact: AdmittedSeedArtifact) -> String? admit_callers: [
+  decl_ref(module_path: "extdeps.provisioning.ubuntu_seeded_install_media_remaster", decl_name: "install_media_remaster_fetch_artifacts"),
+] {
+  let path = concat(nocloud_dir as String, "/", artifact.basename.value as String) as NonEmptyStr
+  match host_command(host: host, command: curl_download_command(url: artifact.source_url as String, destination: path as String)) {
     HostCommandDone { stdout: _ } =>
-      install_media_remaster_write_seeds(host: host, writes: install_media_remaster_seed_writes(nocloud_dir: nocloud_dir, input: input), scope_root: work_dir)
-    other => Present { value: concat("mkdir -p ", nocloud_dir as String, ": ", host_command_outcome_text(e: other)) }
+      match install_media_remaster_digest(host: host, path: path) {
+        Absent => Present { value: install_media_remaster_digest_refusal(host: host, path: path) }
+        Present { value: d } =>
+          if seed_artifact_readback_holds(read_back_sha256_hex: d, pin: artifact.digest) { none } else { Present { value: concat("seed artifact ", artifact.basename.value as String, " read back sha256 ", d, " but the input names ", artifact.digest.hex as String) } }
+      }
+    other => Present { value: concat("fetching seed artifact ", artifact.basename.value as String, ": ", host_command_outcome_text(e: other)) }
+  }
+}
+
+// THE FETCH IS SEALED TO THE CHECKED ROUTE. An AdmittedSeedArtifact was admitted against ONE input's
+// seed population, and the destination is that input's seed directory under the remaster's work
+// directory; a caller that could hand either helper a different directory could replay an
+// admission against a seed it was never checked against (a name refused there as a collision would
+// become a write) or point a valid basename outside the seed. So the only caller of the pair is
+// install_media_remaster_write_nocloud_seed, which admits, derives the directory, and fetches in one
+// body (compile probe: test.probe.seed_artifact_fetch_forged_probe).
+fn install_media_remaster_fetch_artifacts(host: CommandHost, nocloud_dir: NonEmptyStr, artifacts: List<AdmittedSeedArtifact>) -> String? admit_callers: [
+  decl_ref(module_path: "extdeps.provisioning.ubuntu_seeded_install_media_remaster", decl_name: "install_media_remaster_write_nocloud_seed"),
+] {
+  fold(artifacts, init: none, f: (acc, a) => match acc {
+    Present { value: r } => Present { value: r }
+    Absent => install_media_remaster_fetch_artifact(host: host, nocloud_dir: nocloud_dir, artifact: a)
+  })
+}
+
+// THE NAMES ARE ADMITTED BEFORE THE SEED DIRECTORY IS EVEN CREATED, so a refused name moves no byte.
+fn install_media_remaster_write_nocloud_seed(host: CommandHost, work_dir: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput) -> String? {
+  match seeded_install_media_seed_artifact_admission(input: input) {
+    SeedArtifactsRefused { refusals: rs } => Present { value: join(map(rs, r => seed_artifact_admission_refusal_text(refusal: r)), "; ") }
+    SeedArtifactsAdmitted { artifacts: admitted } => {
+      let nocloud_dir = concat(work_dir as String, "/", input.nocloud_dir_on_iso as String) as NonEmptyStr
+      match host_command(host: host, command: mkdir_parents_command(path: nocloud_dir as String)) {
+        HostCommandDone { stdout: _ } =>
+          match install_media_remaster_write_seeds(host: host, writes: install_media_remaster_seed_writes(nocloud_dir: nocloud_dir, input: input), scope_root: work_dir) {
+            Present { value: r } => Present { value: r }
+            Absent => install_media_remaster_fetch_artifacts(host: host, nocloud_dir: nocloud_dir, artifacts: admitted)
+          }
+        other => Present { value: concat("mkdir -p ", nocloud_dir as String, ": ", host_command_outcome_text(e: other)) }
+      }
+    }
   }
 }
 

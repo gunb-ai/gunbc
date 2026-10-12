@@ -43,7 +43,7 @@ import v2.extdeps.languages.bash_build {
 // gunbc.runner_jit_mint plan_jit_mint refuses a mint into any group without it).
 //
 // IT RUNS ONLY WHERE THE ATTEMPT IS. runs-on is the provenance label plus the attempt's own
-// registration name -- exactly the two labels gunbc.runner_jit_mint microvm_attempt_registration_labels
+// registration name -- exactly the two labels gunbc.runner.jit_registration_subject microvm_attempt_registration_labels
 // mints -- so no other registration can take it, and GitHub's record of which runner ran it is the
 // join between this job and the attempt (the binding gunbc.runner_bound_attempt_receipt relies on).
 // The operator passes the attempt's unit name as the `attempt` input; a wrong name queues forever
@@ -218,7 +218,7 @@ fn microvm_shakedown_workflow(script: String) -> Workflow {
       inputs: [
         DispatchInput {
           name: microvm_shakedown_attempt_input,
-          description: Present { value: "The attempt's registration name (its transient unit name, gunbc.runner_jit_mint jit_runner_name_for). It is REQUIRED in runs-on, so a wrong name queues forever rather than running on any other runner." },
+          description: Present { value: "The attempt's registration name (its transient unit name, gunbc.runner.jit_registration_subject jit_runner_name_for). It is REQUIRED in runs-on, so a wrong name queues forever rather than running on any other runner." },
           required: true,
           default: none,
           type: InputString,

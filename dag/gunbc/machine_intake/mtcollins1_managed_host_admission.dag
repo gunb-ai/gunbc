@@ -1,0 +1,71 @@
+module gunbc.machine_intake_mtcollins1_managed_host_admission
+
+import std.types { List, NonEmptyStr }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import gunbc.machine_intake_subject {
+  FirmwareEntry,
+  FirmwareManifest,
+  MachineIntakeSubject,
+  qualification_subject_of,
+}
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
+  mtcollins1_assembly,
+  mtcollins1_intake_subject,
+}
+import gunbc.megarac_operation_standing {
+  CurrentBuildKnownUnread,
+  CurrentBuildRead,
+  CurrentBuildUnobserved,
+  megarac_current_build,
+}
+import gunbc.machine_intake_megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
+
+// THE UNIT'S CURRENT INTAKE SUBJECT, FROM COMMITTED BUILD EVIDENCE, NEVER INFERRED.
+// gunbc.megarac_operation_standing megarac_current_build reads the committed readings and the
+// recorded 2026-10-02 reflash. A later reading of 0.45.3 supersedes the transition's `to` the
+// moment it lands. Unobserved current firmware yields Absent: the admission projection then
+// keeps the unit out rather than guessing a subject.
+//
+// This is not a ManagedHostAdmission record. That record is assembled in gunbc.managed_host from
+// this subject, the frozen BmcSecureStanding, and the unit's other arrival observations, so this
+// module does not import the population type (no cycle, and no second roster).
+
+fn bmc_firmware_manifest(firmware: BmcFirmwareReleaseIdentity) -> FirmwareManifest {
+  FirmwareManifest {
+    entries: [FirmwareEntry { component: "bmc", version: firmware.raw_version }],
+    configuration_digests: [],
+  }
+}
+
+fn mtcollins1_current_intake_subject() -> MachineIntakeSubject? {
+  match mtcollins1_intake_subject() {
+    Absent => none
+    Present { value: standing } =>
+      match megarac_current_build(evidence: mtcollins1_megarac_operation_evidence(), endpoint: mtcollins1_endpoint) {
+        CurrentBuildUnobserved => none
+        CurrentBuildRead { reading: r } =>
+          Present {
+            value: MachineIntakeSubject {
+              subject: qualification_subject_of(
+                unit_key: standing.subject.unit_key,
+                assembly: mtcollins1_assembly,
+                firmware: bmc_firmware_manifest(firmware: r.identity.firmware),
+              ),
+              attempt_id: standing.attempt_id,
+            },
+          }
+        CurrentBuildKnownUnread { transition: t } =>
+          Present {
+            value: MachineIntakeSubject {
+              subject: qualification_subject_of(
+                unit_key: standing.subject.unit_key,
+                assembly: mtcollins1_assembly,
+                firmware: bmc_firmware_manifest(firmware: t.to),
+              ),
+              attempt_id: standing.attempt_id,
+            },
+          }
+      }
+  }
+}

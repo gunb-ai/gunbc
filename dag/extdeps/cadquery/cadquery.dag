@@ -1,6 +1,6 @@
 module extdeps.cadquery.cadquery
 
-import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.python { python_program }
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.measure { Micrometer, micrometer_count }
@@ -41,7 +41,6 @@ data cadquery_ocp_distribution: OcpDistribution = OcpWithVtk
 
 // PATH-resolved, for the reason extdeps.exec.command program_spelling_is_an_observation_claim
 // records: an absolute path is a claim about a filesystem this repository has not observed.
-fn python_program() -> ProgramIdentity = uncataloged_program(invocation: "python3")
 
 // RUN ONE EMITTED PROGRAM. The script path is the caller's -- this module has no authority to
 // enumerate the programs a consumer might run, exactly as extdeps.tools.make refuses to enumerate

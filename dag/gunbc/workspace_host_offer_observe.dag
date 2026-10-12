@@ -23,6 +23,8 @@ import gunbc.workspace_tool_observer { workspace_observe_tools, WorkspaceToolsRe
 import gunbc.workspace_allocation_supply { workspace_observe_host_supply, WorkspaceHostSupplyObserved, WorkspaceHostSupplyUnavailable }
 import gunbc.workspace_gateway_store { workspace_read_gateway_evidence, WorkspaceGatewayEvidenceRead, WorkspaceGatewayEvidenceUnavailable }
 import gunbc.workspace_offer_producer { WorkspaceHostOfferRead, WorkspaceHostOfferUnmet, workspace_host_offer_admit }
+import gunbc.workspace_allocation_policy { workspace_enrolled_ssh_access }
+import gunbc.workspace_ssh_access { WorkspaceSshFromHost, WorkspaceSshThroughGateway, WorkspaceHostAccessObserved, WorkspaceGatewayAccessObserved }
 
 // RUNS ON THE CANDIDATE HOST, inside its installed controller release, and only reads. Every
 // existing host-local observer is reused unchanged; this fold composes them per designated slot.
@@ -55,12 +57,24 @@ fn workspace_observe_slot_offer(request: WorkspaceRequest, host: HostIdentity, s
             WorkspaceToolsUnobserved { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason }
             WorkspaceToolsReady { observation: tools } => match workspace_observe_host_supply(host: host) {
               WorkspaceHostSupplyUnavailable { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason }
-              WorkspaceHostSupplyObserved { observation: supply } => match workspace_read_gateway_evidence(store: fabric_state_storage_binding(), slot: slot) {
-                WorkspaceGatewayEvidenceUnavailable { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason }
-                WorkspaceGatewayEvidenceRead { evidence: gateway } => match clock_now_probed_at() {
-                  Absent => WorkspaceHostOfferUnmet { host: host, reason: "host offer clock is unavailable" }
-                  Present { value: now } => workspace_host_offer_admit(root: fabric_control_plane_store_root(), request: request,
-                    commissioned: committed, image: image, host: supply, tools: tools, gateway: gateway, now: now as String)
+              WorkspaceHostSupplyObserved { observation: supply } => match workspace_enrolled_ssh_access(owner: request.owner) {
+                Absent => WorkspaceHostOfferUnmet { host: host, reason: "workspace owner has no admitted SSH access policy" }
+                Present { value: access } => match access {
+                  WorkspaceSshFromHost { identity_file: _ } => match clock_now_probed_at() {
+                    Absent => WorkspaceHostOfferUnmet { host: host, reason: "host offer clock is unavailable" }
+                    Present { value: now } => workspace_host_offer_admit(root: fabric_control_plane_store_root(), request: request,
+                      commissioned: committed, image: image, host: supply, tools: tools,
+                      access: WorkspaceHostAccessObserved { host: host, observed_at: supply.observed_at }, now: now as String)
+                  }
+                  WorkspaceSshThroughGateway => match workspace_read_gateway_evidence(store: fabric_state_storage_binding(), slot: slot) {
+                    WorkspaceGatewayEvidenceUnavailable { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason }
+                    WorkspaceGatewayEvidenceRead { evidence: gateway } => match clock_now_probed_at() {
+                      Absent => WorkspaceHostOfferUnmet { host: host, reason: "host offer clock is unavailable" }
+                      Present { value: now } => workspace_host_offer_admit(root: fabric_control_plane_store_root(), request: request,
+                        commissioned: committed, image: image, host: supply, tools: tools,
+                        access: WorkspaceGatewayAccessObserved { evidence: gateway }, now: now as String)
+                    }
+                  }
                 }
               }
             }

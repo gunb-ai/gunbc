@@ -1,0 +1,93 @@
+module gunbc.runner_microvm_network_receipt_store
+
+import std.types { String, NonEmptyStr, Bool }
+import std.decl_ref { decl_ref }
+import product.host_identity { HostIdentity }
+import gunbc.runner_host_deploy { runner_host_deploy_for, runner_slot_identities_of,
+  RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
+import gunbc.file_access { path_ancestor_prefixes }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread, entry_is_root_authoritative }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied,
+  FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
+}
+import gunbc.runner_microvm_network {
+  ConvergedSlotNetwork, runner_microvm_converged_receipt_path,
+  render_converged_slot_network, parse_converged_slot_network,
+  ConvergedSlotNetworkParsed, ConvergedSlotNetworkMalformed,
+}
+
+type NetworkReceiptRead
+  = NetworkReceiptAbsent
+  | NetworkReceiptPresent { receipt: ConvergedSlotNetwork }
+  | StoredNetworkReceiptUnreadable { reason: String }
+
+fn network_receipt_ancestors_owned() -> Bool {
+  all(["/"] + path_ancestor_prefixes(path: runner_microvm_converged_receipt_path), path =>
+    match read_store_ownership(path: path) {
+      OwnershipRead { ownership: StoreRootOwned } => true
+      OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+      OwnershipUnread { reason: _ } => false
+    })
+}
+
+// The receipt covers the host's enrolled network population, including runner TAPs that
+// are not fabric execution cells. Consumers name the host, never a narrower workload roster.
+fn parse_host_network_receipt(text: String, host: HostIdentity) -> NetworkReceiptRead {
+  match runner_host_deploy_for(host: host) {
+    RunnerHostDeployUnmodeled { host: _ } => StoredNetworkReceiptUnreadable { reason: "network receipt host has no enrolled deployment" }
+    RunnerHostDeployRefused { host: _, cause } => StoredNetworkReceiptUnreadable { reason: cause }
+    RunnerHostDeployFound { deploy } => match parse_converged_slot_network(text: text,
+      candidates: runner_slot_identities_of(deploy: deploy)) {
+      ConvergedSlotNetworkParsed { receipt } => if receipt.host == host { NetworkReceiptPresent { receipt: receipt } }
+        else { StoredNetworkReceiptUnreadable { reason: "network receipt names another host" } }
+      ConvergedSlotNetworkMalformed { cause } => StoredNetworkReceiptUnreadable { reason: to_string(cause) }
+    }
+  }
+}
+
+fn read_network_receipt(host: HostIdentity) -> NetworkReceiptRead {
+  if !network_receipt_ancestors_owned() { StoredNetworkReceiptUnreadable { reason: "network receipt ancestors are absent or outside root custody" } }
+  else {
+    let read = Filesystem.Read(path: runner_microvm_converged_receipt_path)
+    match filesystem_exact_read(path: runner_microvm_converged_receipt_path, content: read.content,
+      success: read.success, error: read.error, error_kind: read.error_kind) {
+      FilesystemExactPathAbsent { path: _ } => NetworkReceiptAbsent
+      FilesystemExactPathUnreadable { path: _, kind: _, error } => StoredNetworkReceiptUnreadable { reason: error }
+      FilesystemExactPathKindUnrecognized { path: _, observed: _, error } => StoredNetworkReceiptUnreadable { reason: error }
+      FilesystemExactPathRead { path: _, content } => match entry_is_root_authoritative(path: runner_microvm_converged_receipt_path) {
+        Present { value: reason } => StoredNetworkReceiptUnreadable { reason: reason as String }
+        Absent => parse_host_network_receipt(text: content, host: host)
+      }
+    }
+  }
+}
+
+// Initial publication is atomic and never replaces a generation a controller may already use.
+// A rerun verifies the stored generation against fresh host readings before reaching this entry.
+fn publish_initial_network_receipt(receipt: ConvergedSlotNetwork) -> NetworkReceiptRead
+  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_network_observe", decl_name: "initialize_local_network_receipt")]
+{
+  if !network_receipt_ancestors_owned() { StoredNetworkReceiptUnreadable { reason: "network receipt store is not installed under root custody" } }
+  else {
+    let text = render_converged_slot_network(c: receipt)
+    let write = Filesystem.WriteCreateNew(path: runner_microvm_converged_receipt_path, content: text)
+    let published = match filesystem_create_new(path: runner_microvm_converged_receipt_path,
+      success: write.success, error: write.error, error_kind: write.error_kind) {
+      FilesystemCreated { path: _ } => true
+      FilesystemCreateTargetOccupied { path: _ } => true
+      FilesystemCreateRefused { path: _, kind: _, error: _ } => false
+      FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => false
+    }
+    if !published { StoredNetworkReceiptUnreadable { reason: "network receipt publication refused" } }
+    else { match read_network_receipt(host: receipt.host) {
+      NetworkReceiptPresent { receipt: actual } => if render_converged_slot_network(c: actual) == text {
+        NetworkReceiptPresent { receipt: actual }
+      } else { StoredNetworkReceiptUnreadable { reason: "existing network generation differs; explicit recovery is required" } }
+      other => other
+    } }
+  }
+}

@@ -1,0 +1,63 @@
+module test.claim.parse_test_grammar_program_routes
+
+import v2.compiler.body_lowering_fold { body_lower_call_arg_capture_is_named, body_lower_find_captured }
+import test.claim.parse_test_declaration_choice_route { route_parse_at, route_shells }
+import v2.extdeps.languages.dag { ParseSubtreeAbsent, ParseSubtreeFound }
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ROUTE CONTROLS THE ZERO-OVERLAP GRAMMAR PROGRAM LACKED ANYWHERE. Every other production the
+// program changed (gunbc#13034, #13039, #13056, #13087, #13133) already had a route control, and
+// gunbc#13126 moved those modules into the admitted `test.claim.parse_test` family so they gate. These
+// three productions had none: each claim parses ONE supplied source at the production itself (not a
+// whole module) and asserts which alternative the parse took, read by the reader that consumes it.
+// The whole-file gap these do not close is declared at gunbc.guarantee_stall
+// grammar_change_parses_no_real_corpus_file_stall.
+
+// `arg` (gunbc#13056): the positional arm is guarded by !(name :). The route is read by
+// v2.compiler.body_lowering_fold body_lower_call_arg_capture_is_named, the reader the call lowering uses.
+fn gpr_arg_is_named(text: String) -> Symbol {
+  match route_parse_at(text: text, production: ^dag_production_arg) {
+    Rejected { diagnostics: _ } => ^gpr_refused
+    Accepted { value: tree, diagnostics: _ } =>
+      match body_lower_find_captured(root: tree, emitted: ^dag_surface_arg) {
+        ParseSubtreeAbsent => ^gpr_unfound
+        ParseSubtreeFound { captured: arg } =>
+          if body_lower_call_arg_capture_is_named(arg_capture: arg) { ^gpr_named } else { ^gpr_positional }
+      }
+  }
+}
+
+test fn a_name_colon_argument_takes_the_named_route_holds() -> Bool {
+  gpr_arg_is_named(text: "x: 1") == ^gpr_named
+}
+
+test fn a_bare_argument_takes_the_positional_route_holds() -> Bool {
+  gpr_arg_is_named(text: "x") == ^gpr_positional
+}
+
+// `match_arm` (gunbc#13056): the expression alternative was removed, so an expression arm body now
+// takes the guarded `match_arm_stmt_body` route, and never the `empty_block_body` one.
+test fn an_expression_arm_body_takes_the_statement_body_route_holds() -> Bool {
+  match route_parse_at(text: "S { node: node } => node", production: ^dag_production_match_arm) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      (length(xs: route_shells(n: tree, emitted: ^dag_surface_match_arm_stmt_body, acc: [])) == 1)
+        && (length(xs: route_shells(n: tree, emitted: ^dag_surface_empty_block_body, acc: [])) == 0)
+  }
+}
+
+// `if_expr` (gunbc#13056): one `if cond` head, then the then-form or the block form. The then-form
+// carries no block body, so it is told from the block form by the absence of an fn_body shell.
+test fn if_then_else_takes_the_then_form_route_holds() -> Bool {
+  match route_parse_at(text: "if c then a else b", production: ^dag_production_if_expr) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      (length(xs: route_shells(n: tree, emitted: ^dag_surface_if_expr, acc: [])) == 1)
+        && (length(xs: route_shells(n: tree, emitted: ^dag_surface_fn_body, acc: [])) == 0)
+  }
+}

@@ -1,6 +1,7 @@
 module v2.compiler.normalized_tree
 
 import v2.compiler.body_lowering_fold {
+  body_term_erase_tree,
   BodyLoweredTree,
   DeclaredTypeKind,
   DeclaredTypeModifiers,
@@ -26,6 +27,7 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra { fold_list }
 import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
+import v2.std.member_declaration_kind { DeclaredMember }
 import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own lowering left no wrapper
@@ -59,7 +61,16 @@ type NormalizedTree sole_constructor {
   import_bindings: FreeMonoid<AliasBindingRow>,
   type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
   type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
+  member_declarations: NormalizedMemberDeclarations,
 }
+
+// WHETHER THE TOP-LEVEL MEMBERS' AUTHORED KINDS WERE READ. normalize reads them from the parse
+// (member_declaration_capture); a hand-built root has no parse, and an empty list would say "this module
+// declares no members" about a module nothing was read for. So the unread arm is a value, never an empty
+// list (v2.std.member_declaration_kind MemberKindChannel carries the same distinction forward).
+type NormalizedMemberDeclarations
+  = MemberDeclarationsNotRead
+  | MemberDeclarationsRead { members: FreeMonoid<DeclaredMember> }
 
 // THE RETENTION DOOR (MQ-4). A shell the body lowering could not lower is a typed variant of its result
 // (v2.compiler.body_lowering_fold WrapperRetention), gathered by v2.compiler.normalize into the
@@ -88,7 +99,7 @@ type NormalizedTree sole_constructor {
 // BodyWrapperRetained and drops it -- never through a silent `diagnostics: _`.
 fn admit_retention_free(tree: BodyLoweredTree, diagnostics: Diagnostics) -> Outcome<Node> {
   match tree.retained {
-    Empty => Accepted { value: tree.node, diagnostics: diagnostics }
+    Empty => Accepted { value: body_term_erase_tree(n: tree.node), diagnostics: diagnostics }
     Cons { head: first, tail: _ } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -207,10 +218,24 @@ fn admit_normalized_tree(
           test_markers: test_markers,
           import_bindings: import_bindings,
           type_declaration_kinds: type_declaration_kinds,
-          type_declaration_modifiers: type_declaration_modifiers
+          type_declaration_modifiers: type_declaration_modifiers,
+          member_declarations: MemberDeclarationsNotRead
         },
         diagnostics: diagnostics
       }
+  }
+}
+
+// The one place a read member roster joins a tree, so admit_normalized_tree keeps its signature for the
+// hand-built callers that hold no parse.
+fn normalized_tree_with_member_declarations(tree: NormalizedTree, members: FreeMonoid<DeclaredMember>) -> NormalizedTree {
+  NormalizedTree {
+    root: tree.root,
+    test_markers: tree.test_markers,
+    import_bindings: tree.import_bindings,
+    type_declaration_kinds: tree.type_declaration_kinds,
+    type_declaration_modifiers: tree.type_declaration_modifiers,
+    member_declarations: MemberDeclarationsRead { members: members }
   }
 }
 
@@ -356,7 +381,8 @@ fn admit_unmarked_normalized_roots(
             test_markers: test_marker_channel_empty(),
             import_bindings: no_import_bindings(),
             type_declaration_kinds: no_type_declaration_kinds(),
-            type_declaration_modifiers: no_type_declaration_modifiers()
+            type_declaration_modifiers: no_type_declaration_modifiers(),
+            member_declarations: MemberDeclarationsNotRead
           }
         )
       }

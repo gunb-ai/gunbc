@@ -5,7 +5,10 @@ import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.live_deploy.spec {
   DeploymentNames,
   deployment_belt_service_unit_name,
-  deployment_belt_timer_unit_name,
+  deployment_belt_exit_path_unit_name,
+  deployment_belt_answer_path_unit_name,
+  deployment_belt_exit_drain_service_unit_name,
+  deployment_belt_discovery_service_unit_name,
 }
 import gunbc.live_deploy.operations {
   systemctl_mask_now_command,
@@ -82,15 +85,19 @@ fn quiescence_regime(awareness: ReleaseMarkerAwareness) -> QuiescenceRegimeDecis
   }
 }
 
-// THE QUIESCED SET IS EVERY UNIT THAT CAN ACTUATE A RELEASE, so both belt units are in it, not only
-// the timer. Disabling the timer alone leaves the one-shot service startable by anything reaching
-// systemd, and the HTTP dispatcher lives in the serve unit -- the deploy convergence design record
-// already notes that stopping only the timer leaves the click path admitting against a
-// half-published release, which is this defect one layer out.
+// THE QUIESCED SET IS EVERY UNIT THAT CAN ACTUATE A RELEASE: the belt's two event path units (a
+// recorded exit or a publication answer starts a unit that queues obligations -- there is no belt
+// timer since dogfood intervention #4), the belt service that queues the launch, the drain and discovery services those
+// paths start (static oneshots: masking only the triggers leaves them startable by any other
+// requester), and the serve unit, where the HTTP dispatcher lives -- the deploy convergence design record already notes that stopping
+// only the belt's trigger leaves the click path admitting against a half-published release.
 fn bootstrap_quiesced_units(names: DeploymentNames) -> List<NonEmptyStr> {
   [
-    deployment_belt_timer_unit_name(names: names),
+    deployment_belt_exit_path_unit_name(names: names),
+    deployment_belt_answer_path_unit_name(names: names),
     deployment_belt_service_unit_name(names: names),
+    deployment_belt_exit_drain_service_unit_name(names: names),
+    deployment_belt_discovery_service_unit_name(names: names),
     names.unit_name,
   ]
 }
@@ -102,7 +109,7 @@ fn bootstrap_quiesced_units(names: DeploymentNames) -> List<NonEmptyStr> {
 // asserted a guarantee the operation does not deliver.
 //
 // MEASURED, not reasoned: `gunbc.live_deploy.emit` renders the belt SERVICE with
-// `install: NotInstallable` -- a STATIC unit, activated by the belt timer rather than an [Install]
+// `install: NotInstallable` -- a STATIC unit, activated by another unit rather than an [Install]
 // section. A static unit has no enablement symlinks, so `systemctl disable` does nothing; only the
 // `--now` half took effect, which is exactly the non-durable `stop` rejected above. The belt
 // service's declared durability was supplied by the timer being disabled separately, not by this

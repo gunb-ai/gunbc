@@ -1,0 +1,105 @@
+module extdeps.llm.openai_compat_sse
+
+import std.types { String, Bool }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.parse {
+  JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document,
+  JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field,
+}
+
+// OPENAI-COMPATIBLE CHAT COMPLETIONS STREAMING (server-sent events): each event is a `data: ` line
+// whose payload is a JSON chunk or the sentinel `[DONE]`. An error may arrive as a data line whose
+// JSON carries an `error` member. A stream that started and never reached `[DONE]` is severed.
+// This module is the stream shape shared by OpenAI-compatible hosts; it lists no products.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "platform.openai.com/docs/api-reference/chat/streaming",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.openai_compat_sse",
+      decl_name: "OpenAiCompatSseRead",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type OpenAiCompatSseRead
+  = SseNotAStream
+  | SseCompleted
+  | SseErrorChunk { payload: String }
+  | SseSevered { detail: String }
+
+type SseAcc {
+  saw_data: Bool
+  saw_done: Bool
+  error_payload: String?
+}
+
+fn openai_compat_sse_line_payload(line: String) -> String? {
+  let t = trim(s: line)
+  if t.starts_with("data:") {
+    Present { value: trim(s: substring(s: t, start: 5, end: length(t))) }
+  } else {
+    none
+  }
+}
+
+fn openai_compat_sse_json_has_error(payload: String) -> Bool {
+  match parse_json_document(s: payload) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: doc } =>
+      match json_field(obj: doc, key: "error") {
+        FieldRead { value: _ } => true
+        FieldAbsent => false
+        FieldMalformed { cause: _ } => false
+      }
+  }
+}
+
+fn openai_compat_sse_step(acc: SseAcc, line: String) -> SseAcc {
+  match openai_compat_sse_line_payload(line: line) {
+    Absent => acc
+    Present { value: p } =>
+      if p == "[DONE]" {
+        SseAcc { saw_data: true, saw_done: true, error_payload: acc.error_payload }
+      } else if openai_compat_sse_json_has_error(payload: p) {
+        SseAcc { saw_data: true, saw_done: acc.saw_done, error_payload: Present { value: p } }
+      } else {
+        SseAcc { saw_data: true, saw_done: acc.saw_done, error_payload: acc.error_payload }
+      }
+  }
+}
+
+fn openai_compat_sse_looks_like_stream(body: String) -> Bool {
+  trim(s: body).starts_with("data:")
+}
+
+fn openai_compat_sse_read(body: String) -> OpenAiCompatSseRead {
+  if !openai_compat_sse_looks_like_stream(body: body) {
+    SseNotAStream
+  } else {
+    let acc = fold(split(s: body, delimiter: "\n"), init: SseAcc { saw_data: false, saw_done: false, error_payload: none }, f: (a, line) =>
+      openai_compat_sse_step(acc: a, line: line))
+    match acc.error_payload {
+      Present { value: p } => SseErrorChunk { payload: p }
+      Absent =>
+        if acc.saw_done {
+          SseCompleted
+        } else if acc.saw_data {
+          SseSevered { detail: "the OpenAI-compatible event stream started and never reached [DONE]" }
+        } else {
+          SseSevered { detail: "the body started as a data: stream but carried no data payload" }
+        }
+    }
+  }
+}

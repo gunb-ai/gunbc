@@ -1,0 +1,32 @@
+module gunbc.guarantee_stall.grammar_change_parses_no_real_corpus_file_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, UncountedNotEnumerable, climbs_when }
+
+// A §4b(2) STALL, NOT A §4b(3) DROP: no control has ever parsed real corpus files on a grammar
+// change, so nothing fell and there is no previous rung to name (gunbc.rung_drop's own header
+// routes a never-held class here). Declared under sharp-raven-357's ruling of 2026-10-03 on
+// gunbc#13126, after gunbc#13056 broke src/v2/std/node.dag, dag/gunbc/scm/object_store.dag and
+// src/v2/workflow/realization_runner.dag with every merge-gating check green.
+//
+// WHAT HOLDS TODAY. The floor carries route controls on supplied source: one per production the
+// zero-overlap grammar program changed, plus the verbatim broken shapes, in the admitted
+// test.claim.parse_test family (test.claim.parse_test_grammar_program_routes and its siblings). They
+// catch a regression of those shapes and no other: a grammar change that breaks a real file through a
+// shape no control spells still merges.
+//
+// THE BLOCKER IS COST ON THE INTERPRETED ROUTE. Its instrument: one real corpus file parsed through
+// the v2 front end by v2.lens.enforcement.grammar_coverage grammar_coverage_ingest_path, executed as a
+// claim under claim_batch, which reports that claim's eval steps and CPU. On the interpreted route a
+// whole file costs orders of magnitude more than the floor's new-witness budget per claim; the
+// native-built parser does not. So the climb is the native route gating, not an interpreter ceiling
+// lane (the operator declined a long-test CI lane, so nothing gating would run interpreted whole-file
+// claims).
+data grammar_change_parses_no_real_corpus_file_stall: GuaranteeStall = GuaranteeStall {
+  subject: "A grammar-authority change merges without any control parsing the real corpus files it can affect: today no control parses real corpus files on a grammar change, which is how gunbc#13056 broke src/v2/std/node.dag unseen. Held instead: supplied-source route controls, one per changed production, plus the verbatim broken shapes",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding { grounding: "the native-built parser on the merge path: a whole-file parse on the interpreted route exceeds the floor's per-claim budget by orders of magnitude (re-derived by v2.lens.enforcement.grammar_coverage grammar_coverage_ingest_path under claim_batch)" },
+  population: UncountedNotEnumerable { reason: "the corpus .dag files a grammar-authority change can affect" },
+  next_rung_trigger: climbs_when(capability: "every corpus file is parsed by the native-built parser on every pull request that changes a grammar authority, and a parse refusal blocks the merge.")
+}

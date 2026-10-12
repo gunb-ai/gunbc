@@ -1,0 +1,39 @@
+module test.claim.workspace_network_receipt_population_witness_test
+
+import std.types { Bool, String }
+import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.runner_slot_allocation { fabric_execution_slot_identities, srv1_microvm_shakedown_slot }
+import gunbc.runner_microvm_network_receipt_store { parse_host_network_receipt, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
+import gunbc.runner_microvm_network { parse_converged_slot_network, ConvergedSlotNetworkMalformed,
+  slot_network_sanitation_subject, SanitationSubjectAdmitted }
+import test.fixture.srv1_network_receipt { observed_srv1_network_receipt }
+
+// Actual publisher bytes discriminate the previous consumer's narrower fabric-cell roster.
+// Parsing the host receipt does not authorize another slot for fabric execution.
+test fn published_host_network_population_reaches_the_workspace_consumer() -> Bool {
+  (match parse_converged_slot_network(text: observed_srv1_network_receipt,
+    candidates: fabric_execution_slot_identities()) { ConvergedSlotNetworkMalformed { cause: _ } => true other => false })
+    && (match parse_host_network_receipt(text: observed_srv1_network_receipt, host: operator_host_srv1) {
+      NetworkReceiptPresent { receipt } => receipt.slots.count() == 10
+        && (match slot_network_sanitation_subject(slot: srv1_microvm_shakedown_slot(), receipt: receipt) {
+          SanitationSubjectAdmitted { subject: _ } => true other => false
+        })
+      other => false
+    })
+}
+
+test fn host_network_reader_refuses_another_receipt_host() -> Bool {
+  let text = join(split(s: observed_srv1_network_receipt, delimiter: "host=srv1"), "host=srv2")
+  match parse_host_network_receipt(text: text, host: operator_host_srv1) {
+    StoredNetworkReceiptUnreadable { reason } => reason == "network receipt names another host"
+    other => false
+  }
+}
+
+test fn host_network_reader_refuses_an_unenrolled_network_slot() -> Bool {
+  let text = join(split(s: observed_srv1_network_receipt, delimiter: "slot=srv1-13"), "slot=srv1-99")
+  match parse_host_network_receipt(text: text, host: operator_host_srv1) {
+    StoredNetworkReceiptUnreadable { reason: _ } => true
+    other => false
+  }
+}

@@ -3,6 +3,7 @@ module test.claim.fabric_cell_effect_witness
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
 import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
 import gunbc.membership_reconcile {
   MemberAction, MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
   MemberNotOwned,
@@ -39,7 +40,8 @@ import gunbc.fabric_cell_effect {
   fabric_cell_realization,
   fabric_cell_realization_refusal_count,
   fabric_cell_plan_effects,
-  fabric_cell_boundary_add_realization,
+  fabric_cell_slice_desired_directives_for_slot,
+  fabric_cell_address_realization,
   AddressRefused,
   AddressRealizable,
 }
@@ -273,13 +275,59 @@ fn has_line(lines: List<String>, line: String) -> Bool {
 }
 
 fn boundary_add_directive_lines(quota: RunnerSlotCpuQuota) -> List<String> {
-  match fabric_cell_boundary_add_realization(slot: srv3_fabric_slot(), quota: quota) {
-    AddressRefused { refusal: _ } => [] as List<String>
-    AddressRealizable { effect: e } =>
-      match e {
-        FabricCellSliceEnsure { slice_unit: _, directives: ds } =>
-          map(ds, d => systemd_slice_directive_line(directive: d))
-        FabricCellDirectoryEnsure { path: _, owner: _ } => [] as List<String>
-      }
+  map(fabric_cell_slice_desired_directives_for_slot(slot: srv3_fabric_slot(), quota: quota),
+    d => systemd_slice_directive_line(directive: d))
+}
+
+fn workspace_boundary_member(digest: NonEmptyStr) -> FabricCellMember {
+  FabricCellMember { slot: srv1_microvm_shakedown_slot(), address: FabricCellResourceBoundaryAddress, state_digest: digest }
+}
+
+fn workspace_desired_boundary() -> FabricCellMember {
+  workspace_boundary_member(digest: fabric_cell_desired_state_digest(slot: srv1_microvm_shakedown_slot(), address: FabricCellResourceBoundaryAddress))
+}
+
+// Independent live read, 2026-10-09: the add path persisted all five other limits but unlimited CPU.
+data workspace_unlimited_boundary: NonEmptyStr = "fabric-cell-srv1-13.slice;memory_max=30064771072;memory_high=30064771072;memory_swap_max=0;tasks_max=16384;cpu_weight=100;cpu_quota_per_sec=infinity"
+
+test fn workspace_boundary_add_uses_its_own_cpu_quota() -> Bool {
+  let member = workspace_desired_boundary()
+  match fabric_cell_address_realization(action: MemberAdded { at: fabric_cell_member_key(member: member), to: member }) {
+    AddressRealizable { effect: FabricCellSliceEnsure { slice_unit, directives } } => slice_unit == "fabric-cell-srv1-13.slice"
+      && directives.count() == 6
+      && has_line(lines: map(directives, d => systemd_slice_directive_line(directive: d)), line: "CPUQuota=400%")
+      && !has_line(lines: map(directives, d => systemd_slice_directive_line(directive: d)), line: "CPUQuota=")
+    other => false
   }
+}
+
+test fn workspace_unlimited_predecessor_repairs_only_the_cpu_directive() -> Bool {
+  let target = workspace_desired_boundary()
+  let change = MemberChanged { at: fabric_cell_member_key(member: target),
+    from: workspace_boundary_member(digest: workspace_unlimited_boundary), to: target }
+  match fabric_cell_address_realization(action: change) {
+    AddressRealizable { effect: FabricCellSliceEnsure { slice_unit, directives } } => slice_unit == "fabric-cell-srv1-13.slice"
+      && map(directives, d => systemd_slice_directive_line(directive: d)) == ["CPUQuota=400%"]
+    other => false
+  }
+}
+
+test fn workspace_quota_repair_refuses_other_drift_or_an_unreviewed_target() -> Bool {
+  let target = workspace_desired_boundary()
+  let old = workspace_boundary_member(digest: workspace_unlimited_boundary)
+  let key = fabric_cell_member_key(member: target)
+  let wrong_memory = workspace_boundary_member(digest: join(split(s: workspace_unlimited_boundary as String,
+    delimiter: "memory_max=30064771072"), "memory_max=4294967296") as NonEmptyStr)
+  let finite_prior = workspace_boundary_member(digest: join(split(s: workspace_unlimited_boundary as String,
+    delimiter: "cpu_quota_per_sec=infinity"), "cpu_quota_per_sec=2000000") as NonEmptyStr)
+  all([
+    MemberChanged { at: key, from: wrong_memory, to: target },
+    MemberChanged { at: key, from: finite_prior, to: target },
+    MemberChanged { at: key, from: target, to: old },
+    MemberChanged { at: "another-address", from: old, to: target },
+    MemberChanged { at: key, from: old, to: member_at(address: FabricCellResourceBoundaryAddress) },
+  ], action => match fabric_cell_address_realization(action: action) {
+    AddressRefused { refusal: CellChangeNotYetRealizable { address_wire: _ } } => true
+    other => false
+  })
 }

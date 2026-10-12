@@ -1,5 +1,6 @@
 module v2.std.node
 
+import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
 import std.algebra { Cons, Empty, list_snoc_item }
 import std.optional { Present }
@@ -47,6 +48,14 @@ fn host_text_type_node() -> Node {
   }
 }
 
+// THE KERNEL HOST-TEXT FREE-MONOID OPERATION: concatenation of two host texts. Distinct from
+// v2.std.text / std.algebra list_append over FreeMonoid<Char>. This is the witness of
+// dag_host_text_free_monoid_inhabitance; the only lawful crossing to the structural carrier remains
+// UnicodeScalarSequenceUnfold (DESIGN section 4).
+fn host_text_concatenation(left: String, right: String) -> String {
+  concat(left, right)
+}
+
 // THE VALUE TYPE OF A SYMBOL, as a node: what a symbol literal (`^x`) is typed as and what an
 // annotation naming Symbol binds to. This module declares Symbol, so it owns its type node, as
 // v2.std.logic bool_node does for Bool and v2.std.integer integer_int_type_node for Int. The atom's
@@ -65,7 +74,7 @@ type Connective
   | Conj
   | Disj
   | Arrow
-  | Cardinality
+  | Occupancy
   | Instantiation
 
 type Behavior
@@ -97,7 +106,7 @@ type ConnectiveCoproductVariant
   | ConnectiveConjArm
   | ConnectiveDisjArm
   | ConnectiveArrowArm
-  | ConnectiveCardinalityArm
+  | ConnectiveOccupancyArm
   | ConnectiveInstantiationArm
 
 fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
@@ -106,7 +115,7 @@ fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
     ConnectiveConjArm,
     ConnectiveDisjArm,
     ConnectiveArrowArm,
-    ConnectiveCardinalityArm,
+    ConnectiveOccupancyArm,
     ConnectiveInstantiationArm,
   ]
 }
@@ -120,7 +129,7 @@ fn connective_from_coproduct_variant(
     ConnectiveConjArm => Conj
     ConnectiveDisjArm => Disj
     ConnectiveArrowArm => Arrow
-    ConnectiveCardinalityArm => Cardinality
+    ConnectiveOccupancyArm => Occupancy
     ConnectiveInstantiationArm => Instantiation
   }
 }
@@ -157,6 +166,19 @@ type StructuralEdgeLabel
 // in the scope enclosing the match, so no pattern binder reaches the rest
 // (v2.compiler.resolve resolve_match_arm_admitted, its one consumer). It adds no behavior kind;
 // a marked Bind anywhere else is a malformed tree.
+//
+// ConstantMemberEdge: A NULLARY ARROW THAT IS A `data` CONSTANT. A named edge (targeting an empty
+// Conj, as MatchArmScopeExitEdge is) on the Arrow body lowering builds for `data x: T = e`
+// (v2.compiler.body_lowering_fold body_lower_data_decl_to_member, its one producer). The Arrow is the
+// same member a nullary `fn x() -> T` lowers to; the marker is the one fact that differs: a reference
+// to a marked Arrow USES ITS VALUE, so it is typed at the Arrow's declared codomain T
+// (v2.compiler.infer infer_declaration_reference_facts_indexed) and evaluates to the value of the
+// nullary application (v2.compiler.eval), while a reference to an unmarked Arrow denotes the function.
+// It adds no behavior kind. WHAT HOLDS IT, stated at its rung: its one producer marks only the Arrow
+// of a `data` declaration (nullary by construction), and the reader answers Absent for the marker on a
+// non-Arrow (v2.test.claim.compiler.data_reference_value drv_a_marked_non_arrow_is_not_a_constant). No
+// wall refuses the marker on a NON-nullary Arrow: that holds only by the single producer, so a second
+// producer must add that wall rather than rely on this note.
 type CoreEdgeLabel
   = ArrowBodyEdge
   | ArrowSignatureOrderEdge
@@ -180,12 +202,37 @@ type CoreEdgeLabel
   | ArrowEffectClaimsEdge
   | ArrowExecutionModeClaimEdge
   | BinderTypeEdge
+  | BinderStructureEdge
   | BinderDefaultEdge
   | ArrowResourceRequirementsEdge
+  | AdmitCallersEdge
   | LexicalReferenceEdge
   | MapLiteralEntryEdge
   | MapLiteralEntriesEdge
+  | BodyTermLoweredEdge { seal: BodyTermLoweredSeal }
   | MatchArmScopeExitEdge
+  | ConstantMemberEdge
+
+// THE LOWERED TERM'S SEAL (MQ-5). Body lowering wraps each producer's result in a node whose one edge
+// carries this marker, and readers take a node under it as lowered output, whole
+// (v2.compiler.body_lowering_fold body_term_of). The marker carries a sole_constructor record, so the
+// only way to write the label is through body_term_lowered_seal, and that mint admits one caller: the
+// body-lowering mint. A lookalike built anywhere else does not compile -- the record has no other
+// constructor and the mint refuses the call. The record is not on the codec's closed marker list
+// (core_edge_labels), so no wire form decodes to it either. On the native route admit_callers is
+// discarded (gunbc.rung_drop admit_callers_discarded_on_the_native_route), so there the record's
+// sole construction site is the whole wall.
+type BodyTermLoweredSeal sole_constructor {
+  shape: LoweredShape,
+}
+
+fn body_term_lowered_seal(shape: LoweredShape) -> BodyTermLoweredSeal
+  admit_callers: [
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_seal")
+  ]
+{
+  BodyTermLoweredSeal { shape: shape }
+}
 
 fn core_edge_label(marker: CoreEdgeLabel) -> EdgeLabel {
   StructuralLabel { label: CoreMarker { marker: marker } }
@@ -244,12 +291,15 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     ArrowEffectClaimsEdge,
     ArrowExecutionModeClaimEdge,
     BinderTypeEdge,
+    BinderStructureEdge,
     BinderDefaultEdge,
     ArrowResourceRequirementsEdge,
+    AdmitCallersEdge,
     LexicalReferenceEdge,
     MapLiteralEntryEdge,
     MapLiteralEntriesEdge,
     MatchArmScopeExitEdge,
+    ConstantMemberEdge,
   ]
 }
 
@@ -279,12 +329,16 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ArrowEffectClaimsEdge => ^core_arrow_effect_claims_edge
     ArrowExecutionModeClaimEdge => ^core_arrow_execution_mode_claim_edge
     BinderTypeEdge => ^core_binder_type_edge
+    BinderStructureEdge => ^core_binder_structure_edge
     BinderDefaultEdge => ^core_binder_default_edge
     ArrowResourceRequirementsEdge => ^core_arrow_resource_requirements_edge
+    AdmitCallersEdge => ^core_admit_callers_edge
     LexicalReferenceEdge => ^core_lexical_reference_edge
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
     MapLiteralEntriesEdge => ^core_map_literal_entries_edge
+    BodyTermLoweredEdge { seal: _ } => ^core_body_term_lowered_edge
     MatchArmScopeExitEdge => ^core_match_arm_scope_exit_edge
+    ConstantMemberEdge => ^core_constant_member_edge
   }
 }
 type Edge {
@@ -307,6 +361,16 @@ fn node_with_occurrence_id(
   occurrence_id: NodeOccurrenceIdentity
 ) -> Node {
   Node { kind: kind, children: children, occurrence_id: occurrence_id }
+}
+
+// Whether the node is an Arrow type node -- the one connective question every reader of a lowered callable or
+// nullary-member shape asks. Single accessor: readers import this rather than re-matching the coproduct.
+fn node_is_arrow(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
 }
 
 fn node_rebuild(n: Node, children: List<Edge>) -> Node {
@@ -648,7 +712,7 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
     Conj => LabeledEdges
     Disj => LabeledEdges
     Arrow => ArrowBodyEdges
-    Cardinality => PositionalEdges
+    Occupancy => PositionalEdges
     Instantiation => PositionalEdges
   }
 }
@@ -664,7 +728,7 @@ fn connective_edge_discipline_for_child_count(c: Connective, child_count: Int) -
     Conj => connective_edge_discipline(c: c)
     Disj => connective_edge_discipline(c: c)
     Instantiation => connective_edge_discipline(c: c)
-    Cardinality => connective_edge_discipline(c: c)
+    Occupancy => connective_edge_discipline(c: c)
   }
 }
 
@@ -828,16 +892,43 @@ data arrow_signature_order_label: EdgeLabel = StructuralLabel { label: CoreMarke
 // (v2.std.symbol_index symbol_index_declares_resource_at) or that repeats one. Like the other two it is
 // metadata to every value reader: v2.compiler.infer and v2.std.type_binder node_inferred_subtree_nodes
 // skip every arrow_named_edge_is_contract edge.
+
+// THE DECLARED PERMITTED-CALLERS EDGE, restored with its consumer for the former drop
+// gunbc.rung_drop.admit_callers_discarded_on_the_native_route. A fn Arrow built from a signature that declared an
+// admit_callers clause carries the clause's STRUCTURED ROSTER under the core marker AdmitCallersEdge
+// (v2.compiler body_lowering_fold body_lower_fn_admit_clause_edges: the carrier consumes the authored
+// spine at lowering and re-hangs each entry as a positional record conj), and the consumer reads the
+// declared permitted callers off it (v2.compiler.infer infer_caller_admission_diags). It is NOT a
+// contract edge: a contract edge's target is a claim the Arrow makes in a ruled vocabulary
+// (std.effects EffectClaim, std.execution_mode ExecutionMode), while this edge's target is the
+// roster the consumer judges. Like a contract edge it is optional, appears at most once, and is
+// never a binder.
+//
+// THE FOURTH, ConstantMemberEdge: what a `data` Arrow promises about its USE -- a reference to it is the
+// value of its nullary application, not the function. Its target is an empty Conj and carries no
+// vocabulary, so v2.std.arrow_contract has nothing to check on it; like the other three it is metadata to
+// every value reader, and it is read only by v2.std.node_query arrow_constant_member_codomain.
 fn arrow_named_edge_is_contract(e: Edge) -> Bool {
   edge_is_core(e: e, marker: ArrowEffectClaimsEdge)
     || edge_is_core(e: e, marker: ArrowExecutionModeClaimEdge)
     || edge_is_core(e: e, marker: ArrowResourceRequirementsEdge)
+    || edge_is_core(e: e, marker: ConstantMemberEdge)
 }
 
+// THE ONE METADATA FACT FOR ARROW NAMED EDGES: this edge's target is metadata to every value
+// reader -- never a value the Arrow is built from, never a binder. The single predicate every value
+// reader that walks an Arrow consumes (v2.compiler.infer's gather fold and product evidence,
+// v2.compiler.translate's grounding gate, v2.std.type_binder node_inferred_subtree_nodes) and every
+// count of an Arrow's binders reads (arrow_named_edge_is_non_binder here and v2.std.type_binder
+// arrow_named_labels_conform), so no reader keeps its own list of metadata labels. DESIGN section 3:
+// each fact lives in exactly one place.
+fn arrow_named_edge_is_metadata(e: Edge) -> Bool {
+  arrow_named_edge_is_contract(e: e) || edge_is_core(e: e, marker: AdmitCallersEdge)
+}
 
-// The Arrow named edges that are not binders: its body, its declared order and its contract edges.
-// The one predicate every count of an Arrow's binders reads (here and v2.std.type_binder
-// arrow_named_labels_conform), so they agree on what a binder is.
+// The Arrow named edges that are not binders: its body, its declared order, and the metadata edges.
+// The one predicate every count of an Arrow's binders
+// reads (here and v2.std.type_binder arrow_named_labels_conform), so they agree on what a binder is.
 fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
   match e.label {
     Positional => false
@@ -845,7 +936,7 @@ fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
     StructuralLabel { label: _ } =>
       edge_is_core(e: e, marker: ArrowBodyEdge)
         || edge_is_core(e: e, marker: ArrowSignatureOrderEdge)
-        || arrow_named_edge_is_contract(e: e)
+        || arrow_named_edge_is_metadata(e: e)
   }
 }
 
@@ -876,6 +967,7 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   && (core_occurrences(marker: ArrowEffectClaimsEdge, children: children) <= 1)
   && (core_occurrences(marker: ArrowExecutionModeClaimEdge, children: children) <= 1)
   && (core_occurrences(marker: ArrowResourceRequirementsEdge, children: children) <= 1)
+  && (core_occurrences(marker: AdmitCallersEdge, children: children) <= 1)
   && fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
@@ -951,7 +1043,7 @@ fn arrow_parameter_order_step(read: ArrowParameterOrderRead, element: Node) -> A
         TypeNode { connective: Conj } => OrderUnreadable
         TypeNode { connective: Disj } => OrderUnreadable
         TypeNode { connective: Arrow } => OrderUnreadable
-        TypeNode { connective: Cardinality } => OrderUnreadable
+        TypeNode { connective: Occupancy } => OrderUnreadable
         TypeNode { connective: Instantiation } => OrderUnreadable
         ComputationNode { behavior: _ } => OrderUnreadable
       }
@@ -1063,7 +1155,7 @@ fn arrow_domain_binder_labels(children: List<Edge>) -> DomainBinderLabelsRead {
         TypeNode { connective: Atom { identity: _ } } => DomainBinderLabelsUnreadable
         TypeNode { connective: Disj } => DomainBinderLabelsUnreadable
         TypeNode { connective: Arrow } => DomainBinderLabelsUnreadable
-        TypeNode { connective: Cardinality } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Occupancy } => DomainBinderLabelsUnreadable
         TypeNode { connective: Instantiation } => DomainBinderLabelsUnreadable
         ComputationNode { behavior: _ } => DomainBinderLabelsUnreadable
       }
@@ -1098,9 +1190,11 @@ fn arrow_first_positional_target(children: List<Edge>) -> FirstPositionalTarget 
 // Atom is unwritable here rather than refused downstream.
 //
 // A KINDED TYPE PARAMETER (`type MachineWidth<bits: WidthResolution>`) carries its kind the way a value
-// binder carries its type: one BinderTypeEdge, here on the binder's own Atom, so the identity the
-// binder declares is unchanged and an unkinded binder is exactly the leaf it was. Any other child is
-// unwritable. v2.std.type_binder type_param_kind_optional is the one reader of the edge.
+// binder carries its type: one BinderTypeEdge, here on the binder's own Atom. A parameter bounded by a
+// signature-world STRUCTURE instead carries one BinderStructureEdge: a distinct marker, so whether a
+// bound is a structure is a fact of how the binder is built (v2.std.type_binder type_param_bound), never
+// guessed from the annotation's shape. An unkinded, unbounded binder is exactly the leaf it was. Any
+// other child is unwritable.
 fn type_binder_conforms(e: Edge) -> Bool {
   match e.label {
     Positional => false
@@ -1111,7 +1205,7 @@ fn type_binder_conforms(e: Edge) -> Bool {
         TypeNode { connective: Conj } => false
         TypeNode { connective: Disj } => false
         TypeNode { connective: Arrow } => false
-        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Occupancy } => false
         TypeNode { connective: Instantiation } => false
         ComputationNode { behavior: _ } => false
       }
@@ -1121,7 +1215,7 @@ fn type_binder_conforms(e: Edge) -> Bool {
 fn type_binder_children_conform(children: List<Edge>) -> Bool {
   match children {
     Empty => true
-    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge)
+    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge) || edge_is_core(e: k, marker: BinderStructureEdge)
     Cons { head: _, tail: Cons { head: _, tail: _ } } => false
   }
 }
@@ -1142,7 +1236,7 @@ fn type_binder_conj_conforms(t: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1376,7 +1470,7 @@ fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
     TypeNode { connective: Atom { identity: _ } } => NotMarkedReference
     TypeNode { connective: Disj } => NotMarkedReference
     TypeNode { connective: Arrow } => NotMarkedReference
-    TypeNode { connective: Cardinality } => NotMarkedReference
+    TypeNode { connective: Occupancy } => NotMarkedReference
     TypeNode { connective: Instantiation } => NotMarkedReference
     ComputationNode { behavior: _ } => NotMarkedReference
   }
@@ -1395,7 +1489,7 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
     TypeNode { connective: Disj } => UnsupportedArrowBody
-    TypeNode { connective: Cardinality } => UnsupportedArrowBody
+    TypeNode { connective: Occupancy } => UnsupportedArrowBody
     TypeNode { connective: Instantiation } => UnsupportedArrowBody
   }
 }
@@ -1416,12 +1510,18 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
 // not hold still refuses with the same reason, now raised at the USE by eval_type_node_atom's own arm, where
 // it means what it says. What disappears is a refusal based solely on the body's FORM; what remains is the
 // refusal based on a missing binding, which is the only one that was ever a fact about the program.
+//
+// DeclarationReferenceBody IS ADMITTED ON THE SAME REASONING. A fn whose body is a reference to a `data`
+// constant (`fn f() -> Int { k }`) refused here by FORM before eval reached the reference, so the one
+// route that evaluates a constant (v2.compiler.eval eval_constant_member_body, keyed on v2.std.node
+// ConstantMemberEdge) could never run. A declaration reference that is not a constant still refuses at
+// the USE, with ^eval_rejected_runtime_binding_lookup_miss raised by eval_type_node_atom's own arm.
 fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
   match form {
     UnsupportedArrowBody => false
     DirectAtomBody => true
     RecordConstructBody => false
-    DeclarationReferenceBody => false
+    DeclarationReferenceBody => true
     ParameterReferenceBody => true
     LexicalReferenceBody => true
     FunctionValueBody => false
@@ -1458,7 +1558,7 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -1601,7 +1701,7 @@ fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
     TypeNode { connective: Atom { identity: _ } } => CostEdgeComposed
     TypeNode { connective: Conj } => CostEdgeComposed
     TypeNode { connective: Disj } => CostEdgeComposed
-    TypeNode { connective: Cardinality } => CostEdgeComposed
+    TypeNode { connective: Occupancy } => CostEdgeComposed
     TypeNode { connective: Instantiation } => CostEdgeComposed
     ComputationNode { behavior: Value } => CostEdgeComposed
     ComputationNode { behavior: Transform } => CostEdgeComposed
@@ -1675,7 +1775,7 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
     Conj => edges_conform(children: children, d: LabeledEdges)
     Disj => edges_conform(children: children, d: LabeledEdges)
     Arrow => arrow_body_edges_conform(children: children)
-    Cardinality =>
+    Occupancy =>
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Instantiation =>
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
@@ -1773,7 +1873,7 @@ fn is_empty_conj_root(n: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -2004,7 +2104,7 @@ fn canonical_hash_of_connective(c: Connective) -> Fnv1a64Structural {
     Conj => content_hash_atom(value: ^canonical_tag_conj)
     Disj => content_hash_atom(value: ^canonical_tag_disj)
     Arrow => content_hash_atom(value: ^canonical_tag_arrow)
-    Cardinality => content_hash_atom(value: ^canonical_tag_cardinality)
+    Occupancy => content_hash_atom(value: ^canonical_tag_cardinality)
     Instantiation => content_hash_atom(value: ^canonical_tag_instantiation)
   }
 }

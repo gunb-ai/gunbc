@@ -1589,7 +1589,7 @@ test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool
   list_length(items: lines) == 2
     && fabric_cell_line_occurrences(
         lines: lines,
-        target: "REFUSED-REALIZATION fabric-cell resource-boundary change realization undeclared: no staged intermediates (gunbc.change_realization)",
+        target: "REFUSED-REALIZATION fabric-cell resource-boundary change has no admitted resource transition (gunbc.change_realization)",
       ) == 1
     && fabric_cell_line_occurrences(
         lines: lines,
@@ -1618,7 +1618,7 @@ test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool 
       ) == 1
     && fabric_cell_line_occurrences(
         lines: lines,
-        target: "REFUSED-REALIZATION fabric-cell resource-boundary change realization undeclared: no staged intermediates (gunbc.change_realization)",
+        target: "REFUSED-REALIZATION fabric-cell resource-boundary change has no admitted resource transition (gunbc.change_realization)",
       ) == 0
 }
 
@@ -2353,14 +2353,15 @@ test fn locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker() -> Bool
 }
 
 
-// THE DEPLOY BRANCH POLICY IS A COMPARISON, NOT A TRUST. An empty requirement refuses even when it
-// would trivially match, because that is the "any branch" policy the mode must never default to.
-test fn deploy_branch_policy_compares_and_never_admits_any_branch() -> Bool {
+// Operator 2026-10-09: empty requirement admits the observed branch. A named requirement still
+// has to match. An empty checkout never admits.
+test fn deploy_branch_policy_admits_any_observed_branch_when_unconstrained() -> Bool {
   fleet_converge_deploy_branch_admits(observed: "main", required: "main")
     && fleet_converge_deploy_branch_admits(observed: " main\n", required: "main")
+    && fleet_converge_deploy_branch_admits(observed: "session/x", required: "")
     && !fleet_converge_deploy_branch_admits(observed: "worktree-fleet-converge-status", required: "main")
-    && !fleet_converge_deploy_branch_admits(observed: "main", required: "")
     && !fleet_converge_deploy_branch_admits(observed: "", required: "")
+    && !fleet_converge_deploy_branch_admits(observed: "", required: "main")
 }
 
 

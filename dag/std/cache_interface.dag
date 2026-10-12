@@ -20,7 +20,7 @@ import std.realization_schedule {
   CostTimeAxis,
   cost_time_axis_established,
 }
-import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind, parse_table_artifact_kind }
+import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind }
 
 type StorageSurface = NonEmptyStr where brand("StorageSurface")
 

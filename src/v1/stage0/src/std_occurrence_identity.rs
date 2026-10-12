@@ -58,7 +58,9 @@ pub fn authored_token_ordinal_eq(left: AuthoredTokenOrdinal, right: AuthoredToke
     (left.value.clone() == right.value.clone())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
+)]
 pub struct OccurrenceId {
     pub value: i64,
 }
@@ -549,14 +551,10 @@ pub fn occurrence_id_list_is_prefix_of(
                         Some(head) => {
                             if occurrence_id_eq(head.clone(), expected.clone()) {
                                 Rc::new(OccurrenceIdListPrefixAcc {
-                                    path_remaining: Rc::new(
-                                        acc.path_remaining
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .skip(1 as usize)
-                                            .collect::<Vec<_>>(),
-                                    ),
+                                    path_remaining: Rc::new(v1_rt::list_skip(
+                                        &acc.path_remaining.clone(),
+                                        1,
+                                    )),
                                     ok: true,
                                 })
                             } else {

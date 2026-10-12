@@ -28,6 +28,19 @@ fn id_uid_argv() -> List<String> {
   [id_program().invocation as String, "-u"]
 }
 
+// NO OPERAND, DELIBERATELY: id(1) with no operand answers from the CALLING PROCESS's own
+// credentials, established at its exec and never changing afterwards. The reach probe asks "which
+// account did the transport actually reach", and the only account that can say is the one the session
+// IS — so the probe supplies no user and reads the login name the session itself carries. A user
+// operand would ask the account database about a different account and answer the wrong question.
+//
+// -un, NOT -u: -n selects NAMES over numeric uids (the probe records the login name it was granted,
+// not a per-host uid), and -u then prints that name alone rather than the full `id` record. One flag
+// for the name, one for the field; the probe trims the newline the remote shell leaves on stdout.
+fn id_user_name_argv() -> List<String> {
+  [id_program().invocation as String, "-un"]
+}
+
 fn id_gid_argv() -> List<String> {
   [id_program().invocation as String, "-g"]
 }

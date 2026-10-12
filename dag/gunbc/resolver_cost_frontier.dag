@@ -30,11 +30,6 @@ data resolver_cost_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "demand identity for 'this name, in this closure' exists as a carrier (docs/plans/demand-engine-program.md M1), so no consumer of a closure run demands a whole-pool heads reading and the module path index can read module declarations alone"),
   ),
   frontier_row_path(
-    path: "src/v1/stage0/src/cli_run/required_floor_runner.rs",
-    reason: "the pure-producer warm builds and drops one WHOLE-CLOSURE evaluation frame per producer module (WarmFrameSlot), held one at a time so the freed frames no longer grow the allocator arena, while a warm reads only a small share of the frame index (the frame-demand reading on gunbc#12890). Holding them one at a time moved their drop into the warm and costs more per frame than holding them together: a CPU residual on the floor accepted as a stated trade against the peak saving (gunbc#12890, lane manager selection of 2026-10-01)",
-    dissolution: unbound_dissolution(description: "the demand-sized frame consumes the (name, namespace) declarer pool of PR-2 (docs/plans/type-env-single-authority-design.md): a runtime scope resolves each demanded name from the pool-level declarer index that surface_pool_admit admits in the runtime-item namespace, so no frame materializes the indexes of its whole closure"),
-  ),
-  frontier_row_path(
     path: "src/v1/stage0/src/cli_run/pool_acquire.rs",
     reason: "HeadsReading.module is retained for the process: every MultiEntryIndex whose pool contains the file projects it, and a run builds its indexes on demand by phase routing, so no release point is known when the first census projects it (gunbc#12768)",
     dissolution: unbound_dissolution(description: "the set of MultiEntryIndex constructions that will demand each pool file is derivable before the first projection, so the heads module node is released after the last demanding index projects it rather than re-parsed"),

@@ -19,8 +19,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Cause ownership (sharp-bee-290 + nimble-boar-198 reconciliation 2026-07-13; durable table in
 // v2.workflow.compile_door_ledger known_frontier_causes): resolve_ambiguous_export LANDED fix in
 // phase-2 flip (this file's ImportScoped RED / NamespaceOnlyY GREEN pair).
-// parse_grammar_choice_overlap_residue on import syntax remains migration-owned until phase-3
-// grammar deletion.
 
 fn quad_qn_node(seg: Symbol) -> Node {
   fold_list_node(

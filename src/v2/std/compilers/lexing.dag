@@ -20,9 +20,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, combine_hash, symbol_identity_digest }
-import std.content_hash { Fnv1a64Structural }
-import v2.std.integer { integer_int_content_digest }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.text { Char, String }
 import std.unicode.char_class { unicode_char_code_point }
@@ -231,9 +229,10 @@ fn phrase_to_source_text(p: LexicalPhrase) -> String {
 }
 
 // TOKEN STARTS STRICTLY INCREASE ALONG A STREAM. A token's start is its stream position: the parse
-// keys its memo and decides repeat progress by it (v2.compiler.parse parse_current_position), and
-// refuses a stream that breaks the order at its entry (parse_token_start_order_violation,
-// TokenStartsNotIncreasing) rather than serve one position's answer for another.
+// identifies a stream position and decides repeat progress by it (v2.compiler.parse
+// parse_current_position), and refuses a stream that breaks the order at its entry
+// (parse_token_start_order_violation, TokenStartsNotIncreasing) rather than take one position's
+// progress for another's.
 type Token {
   class: Symbol
   lexeme: Lexeme
@@ -254,13 +253,10 @@ type Token {
 // (v2.compiler.tokenize lex_walk_step), the one place the source is read, through the two builders
 // below, so there is no second pass over the source and a layout question is a lookup. A line feed
 // counts when it is in a gap -- in trivia or an annotation between tokens -- never inside a token (a
-// multi-line string). `digest` summarizes exactly the recorded entries, folded as each is recorded, so
-// the parse memo key covers layout without a lookup per token. A stream built from tokens alone
-// (fixtures) carries no layout, and a layout question on it answers `LineBreakUnknownWithoutSource`
+// multi-line string). A stream built from tokens alone (fixtures) carries no layout, and a layout question on it answers `LineBreakUnknownWithoutSource`
 // -- never an assumed single line.
 type StreamLayout {
   line_break_before: Map<Int, Int>
-  digest: Fnv1a64Structural
 }
 
 type TokenStream {
@@ -292,14 +288,13 @@ type LineBreakAnswer
   | LineBreakUnknownWithoutSource
 
 fn stream_layout_empty() -> StreamLayout {
-  StreamLayout { line_break_before: empty_map(), digest: symbol_identity_digest(sym: ^stream_layout_digest_nil) }
+  StreamLayout { line_break_before: empty_map() }
 }
 
 // The token starting at octet `token_start` has a line break in its gap, which began at `gap_start`.
 fn stream_layout_with_break(layout: StreamLayout, token_start: Int, gap_start: Int) -> StreamLayout {
   StreamLayout {
-    line_break_before: map_insert(m: layout.line_break_before, key: token_start, value: gap_start),
-    digest: combine_hash(a: layout.digest, b: combine_hash(a: integer_int_content_digest(value: token_start), b: integer_int_content_digest(value: gap_start)))
+    line_break_before: map_insert(m: layout.line_break_before, key: token_start, value: gap_start)
   }
 }
 

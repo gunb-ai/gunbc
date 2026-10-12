@@ -1,6 +1,8 @@
 module gunbc.host_reach_identity_probe
 
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.id { id_user_name_argv }
+import extdeps.tools.hostname { hostname_read_argv }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.typed_argv_exec {
@@ -27,6 +29,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -175,18 +178,6 @@ data host_reach_identity_probe_receipts: List<HostReachIdentityProbeReceipt> = [
     requested_principal: "gunbc-fleet",
     outcome: ProbeAuthenticationRefused { cause: "gunbc-fleet@srv4: Permission denied (publickey)." },
   },
-  HostReachIdentityProbeReceipt {
-    host: "srv5" as HostIdentity,
-    probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
-    requested_principal: "",
-    outcome: ProbeTargetUnobserved { cause: "principal unobserved (no SSH attempted): Spark account that accepted the fleet key at OOBE is unverified recollection; awaits an authorized read-only observation" },
-  },
-  HostReachIdentityProbeReceipt {
-    host: "srv6" as HostIdentity,
-    probed_at: "2026-08-10T01:11:35Z" as NonEmptyStr,
-    requested_principal: "",
-    outcome: ProbeTargetUnobserved { cause: "principal unobserved (no SSH attempted): Spark account that accepted the fleet key at OOBE is unverified recollection; awaits an authorized read-only observation" },
-  },
 ]
 
 fn host_reach_identity_probe_receipt_for(host: HostIdentity) -> HostReachIdentityProbeReceipt? {
@@ -268,15 +259,19 @@ fn observe_reach_secrets_network(host: HostIdentity) -> ObservationVerdict? {
   }
 }
 
-// Producer 2 — P0:host-identity-converge. The enrolled slot identity is the desired
-// short hostname (fleet naming convention: the fleet_intent slot label IS the hostname
-// the SetHostnameCas converge drives toward). A reachable probe whose hostname differs
+// Producer 2 — P0:host-identity-converge. The desired short hostname is the one
+// gunbc.hostname_allocation ALLOCATED to the slot -- not the identity's spelling, which coincides
+// with it only for the legacy rows. A slot with no allocation cannot be judged Converged or Drifted
+// and refuses as UnknownRefused. A reachable probe whose hostname differs
 // is Drifted — real divergence, the thing the converge corrects — while an unreachable
 // or unauthenticated host is Inaccessible (cannot say), and a host-key mismatch is
 // Conflict (the machine answering may not be the enrolled host at all; treating its
 // hostname as an identity observation would launder a wrong-machine read into drift).
-fn host_identity_desired_short_hostname(host: HostIdentity) -> String {
-  host as String
+fn host_identity_desired_short_hostname(host: HostIdentity) -> String? {
+  match canonical_hostname_for_fleet_slot(fleet_slot: host) {
+    Present { value: h } => Present { value: h as String }
+    Absent => none
+  }
 }
 
 // Repair #2: identity Converged requires BOTH dimensions — the observed hostname equals
@@ -286,10 +281,14 @@ fn host_identity_desired_short_hostname(host: HostIdentity) -> String {
 fn identity_verdict_from_outcome(host: HostIdentity, requested_principal: String, o: ReachProbeOutcome) -> ObservationVerdict {
   match o {
     ProbeReachable { observed_short_hostname: observed, observed_principal: obs_principal } =>
-      if observed == host_identity_desired_short_hostname(host: host) && obs_principal == requested_principal {
-        Converged
-      } else {
-        Drifted
+      match host_identity_desired_short_hostname(host: host) {
+        Absent => UnknownRefused
+        Present { value: desired } =>
+          if observed == desired && obs_principal == requested_principal {
+            Converged
+          } else {
+            Drifted
+          }
       }
     ProbeTransportUnavailable { cause: _ } => Inaccessible
     ProbeAuthenticationRefused { cause: _ } => Inaccessible
@@ -326,11 +325,13 @@ type FleetReachProbeRun {
 // receipt stays keyed by fleet IDENTITY — addressing is transport, never identity.
 // Repairs #1 + #2: consult fleet_probe_target_for FIRST. A refused target (unobserved
 // principal) yields ProbeTargetUnobserved and NEVER touches SSH. A ready target runs two
-// typed argv ops against the SAME explicit principal@endpoint — `hostname` for host
-// identity and `id -un` for the account actually reached — so ProbeReachable carries both
-// dimensions and the receipt carries the requested principal for the identity verdict.
+// typed argv ops against the SAME explicit principal@endpoint — `hostname_read_argv` for
+// host identity and `id_user_name_argv` for the account actually reached — so ProbeReachable
+// carries both dimensions and the receipt carries the requested principal for the identity
+// verdict. The argv is spelled by the tool module that owns the tool, not hand-typed here:
+// the probe no longer decides how `hostname` or `id` get their flags.
 fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> ReachProbeOutcome {
-  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["id", "-un"]) {
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: id_user_name_argv()) {
     TypedArgvExecConverged { result: idr } =>
       if idr.success {
         ProbeReachable { observed_short_hostname: trim(hostname_stdout), observed_principal: trim(idr.stdout) }
@@ -343,7 +344,7 @@ fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> Re
 
 fn probe_ready_target_once(host: String, endpoint: String, remote_principal: String) -> ReachProbeOutcome {
   let target = fleet_probe_ready_ssh_target(t_host: host, endpoint: endpoint, remote_principal: remote_principal)
-  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["hostname"]) {
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: hostname_read_argv()) {
     TypedArgvExecConverged { result: r } =>
       if r.success {
         probe_reachable_with_principal(target: target, hostname_stdout: r.stdout)

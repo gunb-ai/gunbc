@@ -211,7 +211,7 @@ fn harness_worker_guidance_at(worktree: String, test_command: String, test_recei
     grounded(premise: IterationSelectsByPattern { grain: "//pkg:name" },
              module_path: "gunbc.compute.test_selection", decl_name: "select_witness_files"),
     grounded(premise: RunRebuildsOnTreeChange,
-             module_path: "gunbc.compute.work_request", decl_name: "work_identity"),
+             module_path: "gunbc.compute.work_provider_local", decl_name: "compute_work_identity"),
     grounded(premise: AcceptanceIsTheContractValidation,
              module_path: "gunbc.roadmap_execution_contract", decl_name: "validation_operation_command"),
     grounded(premise: CapabilityWithheld { capability: BuildOrTestOutsideTheProcess },

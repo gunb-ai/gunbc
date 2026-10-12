@@ -23,7 +23,7 @@ import extdeps.llm.anthropic_messages_api {
   ModelContextWindowExceeded,
 }
 import extdeps.ollama.api { ollama_default_port }
-import gunbc.fleet_intent_network { srv5_host_lan_endpoint, srv6_host_lan_endpoint, host_lan_address }
+import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint, serving_route_endpoint_wire }
 import product.host_identity { HostIdentity }
 

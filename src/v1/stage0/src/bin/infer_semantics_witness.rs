@@ -4,7 +4,6 @@ use im::HashMap;
 use im::{vector as vec, Vector as Vec};
 use std::process::ExitCode;
 use std::rc::Rc;
-use v1_compiler::v1_rt::VecCompat;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::std_induction::SubValueRelation;
@@ -45,119 +44,33 @@ fn source_roots() -> [std::path::PathBuf; 2] {
     [ws.join("src/v1"), ws.join("dag")]
 }
 
-fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
-    let content = std::fs::read_to_string(path).ok()?;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("//") {
-            continue;
-        }
-        return trimmed
-            .strip_prefix("module ")
-            .and_then(|rest| rest.split_whitespace().next())
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string());
-    }
-    None
+fn pool_root_strings() -> std::vec::Vec<String> {
+    source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
 }
 
-fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            scan_dag_files(&path, index);
-        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            if let Some(module_path) = extract_module_declaration(&path) {
-                index.insert(module_path, path);
-            }
-        }
-    }
-}
-
-fn build_module_index() -> HashMap<String, std::path::PathBuf> {
-    let mut index = HashMap::new();
-    for root in source_roots() {
-        if root.exists() {
-            scan_dag_files(&root, &mut index);
-        }
-    }
-    index
-}
-
-fn extract_imports(source: &str) -> Vec<String> {
-    let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
-        source.to_string(),
-        "test.dag".to_string(),
-        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
-    );
-    let source_index =
-        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
-    let mut source_indices = HashMap::new();
-    source_indices.insert("test.dag".to_string(), source_index);
-    let result = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
-    match &result.module {
-        Some(module) => v1_compiler::v1_std_core::module_imports(module.clone())
-            .iter()
-            .map(|imp| imp.name.clone())
-            .collect(),
-        None => vec![],
-    }
-}
-
-fn resolve_imports_transitively(
-    entry_path: &str,
-    entry_content: &str,
-    module_index: &HashMap<String, std::path::PathBuf>,
-) -> Vec<Rc<SourceFile>> {
-    let ws = workspace_root();
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue = vec![(entry_path.to_string(), entry_content.to_string())];
-
-    while let Some((_path, content)) = queue.pop_back() {
-        for module_path in extract_imports(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = module_index.get(&module_path) {
-                if let Ok(file_content) = std::fs::read_to_string(file_path) {
-                    let rel_path = file_path
-                        .strip_prefix(&ws)
-                        .unwrap_or(file_path)
-                        .to_string_lossy()
-                        .to_string();
-                    seen.insert(
-                        module_path.clone(),
-                        Rc::new(SourceFile {
-                            path: rel_path.clone(),
-                            content: file_content.clone(),
-                        }),
-                    );
-                    queue.push((rel_path, file_content));
-                }
-            }
-        }
-    }
-
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    sources.push(Rc::new(SourceFile {
-        path: entry_path.to_string(),
-        content: entry_content.to_string(),
-    }));
-    sources
+/// Compile-subject closure of a witness entry. Not an import-line BFS.
+fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc<SourceFile>> {
+    v1_compiler::cli_run::resolve_seeded_compile_closure(
+        std::vec![Rc::new(SourceFile {
+            path: entry_path.to_string(),
+            content: entry_content.to_string(),
+        })],
+        &pool_root_strings(),
+    )
+    .unwrap_or_else(|e| panic!("witness compile-subject closure: {e}"))
+    .into()
 }
 
 fn compile_dag(source: &str) -> Rc<PipelineResult> {
-    let module_index = build_module_index();
-    let sources = resolve_imports_transitively("test.dag", source, &module_index);
+    let sources = resolve_imports_transitively("test.dag", source);
     compile_sources(Rc::new(sources), RenderTarget::Rust)
 }
 
 fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
-    let module_index = build_module_index();
-    let sources = resolve_imports_transitively("test.dag", source, &module_index);
+    let sources = resolve_imports_transitively("test.dag", source);
     compile_to_resolved(Rc::new(sources))
 }
 

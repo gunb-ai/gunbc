@@ -4,13 +4,15 @@ import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
-// ROSTERED AS A STALL, NOT A RUNG DROP: nothing fell. No partition has ever seen an inline
-// crate::<module>:: path the expression emitter writes, so previous/temporary/reason would
-// fabricate an event (gunbc.rung_drop states the distinction). The use-line population reaches the
+// ROSTERED AS A STALL, NOT A RUNG DROP: nothing fell. The use-line population reaches the
 // partition through gunbc.rust_emitted_edge; these four deciders write their paths inside
-// emit_typed_expr / render_rust_type, which return String, so the edge they decide is not returned.
-// A missed inline edge is not silent: the multi-crate build of the partition (Pkg7e) fails loudly
-// with an unresolved crate path, which is the current rung.
+// emit_typed_expr / render_rust_type, which return String, so the edge they decide is not returned
+// WITH THE TEXT. Since gunbc#13597 the partition sees them anyway: v1.compiler.emit_rust
+// emitted_inline_path_edges reads every `crate::<module>` path back off each emitted module's code
+// (outside comments, use declarations and string literals) and returns it as an InlinePathReference
+// source edge. That is a reading of the text, not a structural return, so the rung is unchanged --
+// a renderer that wrote a path the reader cannot see would still fail only at the multi-crate build,
+// loudly, with an unresolved crate path. The trigger below dissolves the reader.
 data emitted_inline_crate_path_edges_unreturned_stall: GuaranteeStall = GuaranteeStall {
   subject: "cross-module crate::<module>:: paths written inline by the Rust expression and type emitter, absent from the edge set the crate partition decides over",
   current: Mitigatable,

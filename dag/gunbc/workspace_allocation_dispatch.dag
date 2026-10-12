@@ -1,0 +1,132 @@
+module gunbc.workspace_allocation_dispatch
+
+import std.types { String, NonEmptyStr }
+import std.algebra { trim }
+import std.process { ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.clock_read { clock_now_probed_at }
+import product.placement_supply { HostIdentity }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObservation, workspace_convergence_observe, WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
+import gunbc.workspace_allocation_launch_directive { workspace_launch_directive, workspace_launch_directive_text, workspace_launch_directive_from_text, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
+import gunbc.workspace_reconcile_once { workspace_reconcile_prepare }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, workspace_allocation_json, workspace_record_preparation_wait, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
+import gunbc.workspace_request_consumer { workspace_consumer_reconcile_enrolled, WorkspaceConsumerIdle, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare, WorkspaceConsumerRoute, WorkspaceConsumerSettled, WorkspaceConsumerRetry }
+import gunbc.workspace_allocation_policy { workspace_installed_policy }
+import gunbc.workspace_allocation_admission { workspace_owner_enrollment, workspace_enrolled_owners, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
+import gunbc.workspace_operator_request { workspace_operator_on_candidate_host }
+
+// Discover the outstanding request from protected state rather than requiring an HTTP process
+// to remember or forward its identity. Retirement runs before installed-artifact or offer reads.
+fn workspace_allocation_prepare(host: NonEmptyStr, release_dir: NonEmptyStr) -> WorkspaceConvergenceObservation {
+  match clock_now_probed_at() {
+    Absent => WorkspaceConvergenceUnobserved { reason: "workspace consumer clock is unavailable" }
+    Present { value: now } => match workspace_installed_policy() {
+    WorkspacePolicyRefused { reason: detail } => WorkspaceConvergenceUnobserved { reason: detail }
+    WorkspacePolicyAdmitted { policy } => match workspace_consumer_reconcile_enrolled(store: fabric_state_storage_binding(),
+      owners: workspace_enrolled_owners(policy: policy), observed_at: now as String) {
+      WorkspaceConsumerIdle => WorkspaceConvergenceUnobserved { reason: "no outstanding workspace request" }
+      WorkspaceConsumerRefused { reason: detail } => WorkspaceConvergenceUnobserved { reason: detail }
+      WorkspaceConsumerRetry => WorkspaceConvergenceUnobserved { reason: "workspace owner changed concurrently; reconcile again" }
+      WorkspaceConsumerRetire { allocation: _ } => WorkspaceConvergenceUnobserved { reason: "workspace retirement remains outstanding" }
+      WorkspaceConsumerSettled { allocation: _ } => WorkspaceConvergenceUnobserved { reason: "unplanned workspace retirement settled; no host apply required" }
+      WorkspaceConsumerPrepare { allocation: allocation } => match workspace_reconcile_prepare(
+        store: fabric_state_storage_binding(), allocation: allocation,
+        local_host: host as HostIdentity, release_dir: release_dir) {
+        WorkspaceConvergenceUnobserved { reason: detail } => workspace_publish_preparation_wait(allocation: allocation, reason: detail)
+        WorkspaceConvergenceObserved { basis: planned } => if (planned.host as String) != (host as String) {
+          WorkspaceConvergenceUnobserved { reason: concat("workspace plan selected another host: ", planned.host as String) }
+        } else { workspace_allocation_selected(owner: allocation.request.owner,
+          request_key: allocation.request.idempotency_key, host: host, release_dir: release_dir) }
+      }
+      WorkspaceConsumerRoute { allocation: allocation } => workspace_allocation_selected(
+        owner: allocation.request.owner, request_key: allocation.request.idempotency_key, host: host, release_dir: release_dir)
+    }
+    }
+  }
+}
+
+// A preparation that could not select publishes its located reason for the owner's view and stops.
+fn workspace_publish_preparation_wait(allocation: WorkspaceAllocation, reason: String) -> WorkspaceConvergenceObservation {
+  match workspace_record_preparation_wait(store: fabric_state_storage_binding(), request: allocation.request, reason: reason) {
+    WorkspaceStoreWritten { allocation: _ } => WorkspaceConvergenceUnobserved { reason: reason }
+    WorkspaceStoreConflict => WorkspaceConvergenceUnobserved { reason: "workspace changed while publishing preparation wait; reconcile again" }
+    WorkspaceStoreWriteRefused { reason: detail } => WorkspaceConvergenceUnobserved { reason: detail }
+  }
+}
+
+// Local authorities are read only after the existing selected-host check. Apply still obtains
+// its identity and installed artifact from the hash-admitted plan. Planning binds the locus to
+// its admitted run revision, not an independent caller-selected environment path.
+fn workspace_allocation_selected(owner: PrincipalRef, request_key: NonEmptyStr, host: NonEmptyStr, release_dir: NonEmptyStr) -> WorkspaceConvergenceObservation {
+  match workspace_convergence_observe(store: fabric_state_storage_binding(),
+    owner: owner, idempotency_key: request_key) {
+    WorkspaceConvergenceUnobserved { reason: detail } => WorkspaceConvergenceUnobserved { reason: detail }
+    WorkspaceConvergenceObserved { basis: selected } => if selected.host != host {
+      WorkspaceConvergenceUnobserved { reason: "workspace plan request is executing on a different host" }
+    } else { WorkspaceConvergenceObserved { basis: selected } }
+  }
+}
+
+// These entries can only be granted at an exact installed release. Its workspace-root binding is
+// part of sudo's exact argv, so stdin cannot select code or an installed image from another tree.
+fn workspace_allocation_dispatch_root() -> String {
+  match shell.Env.Get(name: gunbc_workspace_root_env_name as NonEmptyStr).value {
+    Present { value } => value
+    Absent => ""
+  }
+}
+
+fn workspace_allocation_dispatch_refused(reason: String) -> CliWireResponse {
+  CliWirePrintable { bytes: "", exit: exit_failure(reason: reason) }
+}
+
+fn workspace_allocation_prepare_cli() -> CliWireResponse {
+  let input = Filesystem.Read(path: "/dev/stdin")
+  let fields = split(input.content, separator: "\n")
+  if !input.success || count(fields) != 2 || !workspace_operator_on_candidate_host() {
+    workspace_allocation_dispatch_refused(reason: "workspace allocation subject or host is invalid")
+  } else { match fields.first() {
+    Absent => workspace_allocation_dispatch_refused(reason: "workspace installed release is absent")
+    Present { value: installed } => if installed == "" || installed != workspace_allocation_dispatch_root() {
+      workspace_allocation_dispatch_refused(reason: "workspace allocation release differs from this installed helper")
+    } else { match fields.last() {
+      Absent => workspace_allocation_dispatch_refused(reason: "workspace host is absent")
+      Present { value: host } => match workspace_allocation_prepare(host: host as NonEmptyStr, release_dir: installed as NonEmptyStr) {
+        WorkspaceConvergenceUnobserved { reason } => workspace_allocation_dispatch_refused(reason: reason)
+        WorkspaceConvergenceObserved { basis } => CliWirePrintable {
+          bytes: workspace_launch_directive_text(directive: workspace_launch_directive(basis: basis, release_dir: installed as NonEmptyStr)), exit: ExitSuccess,
+        }
+      }
+    } }
+  } }
+}
+
+// Apply re-reads only the exact request from the reviewed directive. It never runs preparation or
+// chooses a newer request. The controller independently repeats this generation fence at launch.
+fn workspace_allocation_readback_cli() -> CliWireResponse {
+  let input = Filesystem.Read(path: "/dev/stdin")
+  if !input.success || !workspace_operator_on_candidate_host() {
+    workspace_allocation_dispatch_refused(reason: "workspace readback input or host is invalid")
+  } else { match workspace_launch_directive_from_text(text: input.content) {
+    WorkspaceLaunchDirectiveRefused { reason } => workspace_allocation_dispatch_refused(reason: reason)
+    WorkspaceLaunchDirectiveReady { directive: planned } => if (planned.release_dir as String) != workspace_allocation_dispatch_root()
+      || !(match workspace_installed_policy() {
+        WorkspacePolicyAdmitted { policy } => match workspace_owner_enrollment(policy: policy, owner: planned.allocation.request.owner) { Present { value: _ } => true Absent => false }
+        WorkspacePolicyRefused { reason: _ } => false
+      }) {
+      workspace_allocation_dispatch_refused(reason: "workspace readback release or owner is not admitted")
+    } else { match workspace_convergence_observe(store: fabric_state_storage_binding(),
+      owner: planned.allocation.request.owner, idempotency_key: planned.allocation.request.idempotency_key) {
+      WorkspaceConvergenceUnobserved { reason } => workspace_allocation_dispatch_refused(reason: reason)
+      WorkspaceConvergenceObserved { basis: current } => CliWirePrintable {
+        bytes: workspace_launch_directive_text(directive: workspace_launch_directive(basis: current, release_dir: planned.release_dir)), exit: ExitSuccess,
+      }
+    } }
+  } }
+}

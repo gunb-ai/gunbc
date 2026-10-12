@@ -1,0 +1,89 @@
+module gunbc.machine_intake_arrival_run
+
+import std.types { NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import gunbc.actions_run_binding {
+  actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
+  fleet_converge_arrival_subject_env_name,
+}
+import extdeps.github.actions_environment { github_run_id_variable_name }
+import gunbc.auth.access_token_source {
+  select_access_token_source, AccessTokenSourceSelected, AccessTokenSourceUnavailable,
+  WorkloadIdentityToken, GcloudPrintToken, OperatorSuppliedToken,
+}
+import gunbc.machine_intake_arrival_admission { arrival_admit_executor }
+import gunbc.machine_intake_arrival_subject {
+  admit_arrival_subject, ArrivalSubjectAdmitted, ArrivalSubjectInPopulation,
+  ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
+}
+import gunbc.machine_intake_arrival_interlock {
+  arrival_archive_slot_acquire, arrival_archive_slot_release, arrival_after_acquire,
+}
+import gunbc.managed_host_unit_hold { unit_hold_store_root }
+
+// THE ARRIVAL JOB'S WET DOOR (review 77263, review 77435, review 77746). Re-runs credential-free
+// admit so WIF cannot outrun a refused subject, then requires WorkloadIdentityToken (the minted
+// WIF bearer, in-process — not interpolated onto argv), takes arrival_archive_slot_acquire, and
+// arrival_archive_slot_release. It does not fold a dry/unobserved PriorLifeBoundary into
+// ExitSuccess: that would be fabricated plausible output (DESIGN §5). Until a live BMC/archive
+// observation is bound as the prefix input, the held door refuses with a typed cause. Witnesses
+// still supply a DryPriorLifeWorld to converge_mtjade1_arrival_prefix. BMC account writes and
+// the pinned bmc-mtjade1-gunbc accessor stay behind this door: the locus is
+// SecretLocusReservedNotOnAccessorRoster until FamilyObserved.
+
+fn arrival_wet_prefix_from_unobserved_world() -> ProcessExit {
+  exit_failure(reason: "arrival_converge refuses unobserved PriorLifeBoundary: no production observation is bound")
+}
+
+fn arrival_converge_wet() -> ProcessExit uses fs: std.resources.Filesystem {
+  match arrival_admit_executor() {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess => arrival_converge_after_admit()
+  }
+}
+
+fn arrival_converge_after_admit() -> ProcessExit uses fs: std.resources.Filesystem {
+  match select_access_token_source() {
+    AccessTokenSourceUnavailable { cause: c } =>
+      exit_failure(reason: concat("arrival_converge: ", c as String))
+    AccessTokenSourceSelected { source: WorkloadIdentityToken } =>
+      match actions_variable_read(name: fleet_converge_arrival_subject_env_name) {
+        ActionsVariableAbsent { variable: v, detail: d } =>
+          exit_failure(reason: concat("arrival_converge: ", concat(v, concat(" ", d))))
+        ActionsVariablePresent { value: wire } =>
+          match admit_arrival_subject(wire: wire) {
+            ArrivalSubjectInPopulation { subject: s } => arrival_converge_under_archive_interlock(subject: s)
+            ArrivalSubjectUnknown { wire: w } =>
+              exit_failure(reason: concat("arrival_converge refuses unknown arrival_subject '", concat(w, "' after admit")))
+            ArrivalSubjectIsManagedHostExecutorConfusion { wire: w } =>
+              exit_failure(reason: concat("arrival_converge refuses executor/host as arrival_subject '", concat(w, "' after admit")))
+            ArrivalSubjectOutsideGrant { wire: w } =>
+              exit_failure(reason: concat("arrival_converge refuses arrival_subject '", concat(w, "' outside the standing grant after admit")))
+          }
+      }
+    AccessTokenSourceSelected { source: GcloudPrintToken } =>
+      exit_failure(reason: "arrival_converge: this job federates; select_access_token_source must be WorkloadIdentityToken, not GcloudPrintToken")
+    AccessTokenSourceSelected { source: OperatorSuppliedToken { token: _ } } =>
+      exit_failure(reason: "arrival_converge: this job federates; select_access_token_source must be WorkloadIdentityToken, not an operator-supplied token")
+  }
+}
+
+fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> ProcessExit uses fs: std.resources.Filesystem {
+  match actions_variable_read(name: github_run_id_variable_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: concat("arrival_converge: ", concat(v, concat(" ", d))))
+    ActionsVariablePresent { value: run_id } =>
+      arrival_after_acquire(
+        outcome: arrival_archive_slot_acquire(
+          root: unit_hold_store_root,
+          subject: subject,
+          owner: join(["arrival-converge:", run_id], "") as DurableHoldOwnerRef,
+        ),
+        body: fn() {
+          arrival_wet_prefix_from_unobserved_world()
+        },
+        release_fn: fn(h) { arrival_archive_slot_release(root: unit_hold_store_root, held: h) },
+      )
+  }
+}

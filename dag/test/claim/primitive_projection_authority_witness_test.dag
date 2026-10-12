@@ -3,6 +3,7 @@ module test.claim.primitive_projection_authority_witness_test
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
   DeclarationPrimitiveUndisposed,
+  PrimitiveProjection,
   DeclarationProjectsNoPrimitive,
   DeclarationProjectsPrimitive,
   DivergentProjection,
@@ -20,6 +21,7 @@ import std.primitive_projection {
 }
 import std.primitive_identity {
   BuiltinRegistry,
+  primitive_projection_roster,
   DerivedFromAuthority,
   EmitHandler,
   InterpreterDispatch,
@@ -50,7 +52,7 @@ import std.types { Bool, List, String }
 
 // Executes the question a candidate collector asks of this carrier: given a DECLARATION, is it the
 // modeled surface of a PRIMITIVE, and are the two one authority or two. The discriminating control
-// is the DivergentProjection row -- v2.std.collection map_get -- which must answer NOT one
+// is the DivergentProjection row -- v2.std.collection map_get_checked -- which must answer NOT one
 // authority while the seam and modeled rows answer that they are. A carrier that collapsed the
 // three fidelities into a boolean suppress flag reds w_divergent_projection_is_not_one_authority,
 // which is the whole reason the third variant exists.
@@ -91,7 +93,7 @@ test fn w_modeled_projection_answers_with_its_fidelity() -> Bool {
 
 test fn w_divergent_projection_answers_with_its_fidelity() -> Bool {
   match primitive_projection_for_declaration(
-    declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get")
+    declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get_checked")
   ) {
     DeclarationProjectsNoPrimitive => false
     DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
@@ -158,7 +160,7 @@ test fn w_undisposed_is_not_one_authority_and_so_never_suppresses() -> Bool {
 
 test fn w_divergent_projection_is_not_one_authority() -> Bool {
   !declaration_and_primitive_are_one_authority(
-    declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get"),
+    declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get_checked"),
     primitive: primitive_map_get,
   )
 }
@@ -336,4 +338,42 @@ test fn w_live_census_answers_runtime_coverage_for_a_named_symbol() -> Bool {
     RuntimeRowOnEmitHandlerOnly => false
     RuntimeRowAbsentFromEnumeratedSurfaces => false
   }
+}
+
+// ---- the forked-spelling census (RFM one_spelling_names_a_primitive_*) ----------------------
+// A roster row whose declared function bears its primitive's OWN runtime name while carrying a
+// DIVERGENT contract is one spelling naming two meanings. The declaration must stop squatting on
+// the primitive's name: the census refuses the class. This measures the roster DATA; the
+// compiler-side census check over v1.compiler.infer_method's declaration set is the next rung and
+// is reported as a follow-up, not built here.
+fn projection_row_shares_spelling_with_divergent_contract(row: PrimitiveProjection) -> Bool {
+  match row.fidelity {
+    DivergentProjection { divergence: _ } =>
+      (row.declaration.decl_name as String) == primitive_identity_runtime_name(identity: row.primitive)
+    _ => false
+  }
+}
+
+test fn w_projection_census_declares_no_divergent_shared_spelling() -> Bool {
+  primitive_projection_roster() |> fold(init: true, f: fn(acc, row) {
+    acc && !projection_row_shares_spelling_with_divergent_contract(row: row)
+  })
+}
+
+// Positive control: the projection FACT is kept — the declared Outcome-wrapped lookup still
+// projects the primitive, under its own non-primitive spelling, with the divergence named.
+fn projection_row_is_the_outcome_lookup_projection(row: PrimitiveProjection) -> Bool {
+  match row.fidelity {
+    DivergentProjection { divergence: _ } =>
+      (row.declaration.module_path as String) == "v2.std.collection"
+        && (row.declaration.decl_name as String) == "map_get_checked"
+        && (row.primitive.slug as String) == "primitive.map_get"
+    _ => false
+  }
+}
+
+test fn w_projection_census_keeps_the_outcome_lookup_projection_under_its_own_name() -> Bool {
+  primitive_projection_roster() |> fold(init: false, f: fn(acc, row) {
+    acc || projection_row_is_the_outcome_lookup_projection(row: row)
+  })
 }

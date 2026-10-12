@@ -1,7 +1,0 @@
-[workspace-root] discovered /home/briansrls/scratch-wt/gcp-iam-bootstrap
-✓ typecheck v2.std.compilers.target_model done in 20 seconds
-✓ typecheck v2.compiler.target_serialize done in 2 seconds
-✓ typecheck v2.compiler.translate done in 3 seconds
-PASS bootstrap_role_drift_never_authorizes_adoption
-PASS deny_exceptions_and_incomplete_readback_withhold_trust
-PASS workflow_trust_requires_completed_deny_and_privilege_readback

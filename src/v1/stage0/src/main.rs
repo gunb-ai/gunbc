@@ -73,7 +73,7 @@ enum RetainedCommands {
         #[arg(long)]
         claim_run: bool,
         /// Named argument for the entry function, repeatable: `--arg name=value`.
-        /// Values enter as String; a missing `=` refuses rather than guessing.
+        /// Bound against the parameter's resolved type identity: kernel String, Int, and Bool, and std.types NonEmptyStr (String where string_non_empty). Other types refuse.
         #[arg(long = "arg")]
         args: Vec<String>,
     },
@@ -147,13 +147,16 @@ fn is_cargo_target_output_dir(parent: &std::path::Path, child: &std::path::Path)
 /// RUNG, HONESTLY: this restores a guard, it does not prove a live bug -- `find target -name
 /// '*.dag'` returns 0 in this worktree today. The hazard is evidenced by the deleted code's own
 /// comment naming its case: a corpus copy under `target/func_env_semantic_baseline_corpus/dag/**`.
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
-    cli_run::derived_row_roster::ensure_if_row_dir_or_panic(dir);
+fn collect_dag_files(
+    dir: &std::path::Path,
+    files: &mut Vec<cli_run::derived_row_roster::AcquiredDag>,
+) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
         .map(|e| e.unwrap_or_else(|e| panic!("failed to read dir entry in {:?}: {}", dir, e)))
         .collect();
     entries.sort_by_key(|e| e.file_name());
+    let mut here = Vec::new();
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
@@ -162,9 +165,12 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
             }
             collect_dag_files(&path, files);
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            files.push(path);
+            here.push(path);
         }
     }
+    files.extend(
+        cli_run::derived_row_roster::acquire_dir_files(dir, here).unwrap_or_else(|e| panic!("{e}")),
+    );
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -272,6 +278,11 @@ enum OutputWriteRefusal {
         path: String,
         cause: String,
     },
+    /// A Rust emission is written as its partitioned Cargo workspace, and the writer refused.
+    WorkspaceNotWritten {
+        path: String,
+        cause: String,
+    },
 }
 
 impl std::fmt::Display for OutputWriteRefusal {
@@ -292,6 +303,12 @@ impl std::fmt::Display for OutputWriteRefusal {
             }
             Self::FileNotWritten { path, cause } => {
                 write!(f, "could not write {path}: {cause}")
+            }
+            Self::WorkspaceNotWritten { path, cause } => {
+                write!(
+                    f,
+                    "could not write the emitted Rust workspace at {path}: {cause}"
+                )
             }
         }
     }
@@ -323,6 +340,29 @@ fn write_output_files(
     output_dir: &str,
     result: &v1_compiler::v1_compiler_compile::PipelineResult,
 ) -> Result<(), OutputWriteRefusal> {
+    // A RUST EMISSION NAMES ITS CRATE AND OWNS NO MANIFEST: its layout is the partition plan's,
+    // written by the one workspace writer every emitted-Rust route uses. The top package sits at
+    // `output_dir`, so a reader finds Cargo.toml, src/lib.rs and src/main.rs where a crate is.
+    if let (1, Some(rust_crate)) = (result.rust_crates.len(), result.rust_crates.front()) {
+        if let Err(e) = std::fs::create_dir_all(output_dir) {
+            return Err(OutputWriteRefusal::OutputDirectoryNotCreated {
+                path: output_dir.to_string(),
+                cause: e.to_string(),
+            });
+        }
+        return v1_compiler::cli_run::write_emitted_workspace(
+            &result.files,
+            &result.emitted_edges,
+            &result.rust_crates,
+            std::path::Path::new(output_dir),
+            &rust_crate.crate_name,
+        )
+        .map(|_| ())
+        .map_err(|cause| OutputWriteRefusal::WorkspaceNotWritten {
+            path: output_dir.to_string(),
+            cause,
+        });
+    }
     let src_dir = format!("{}/src", output_dir);
     if let Err(e) = std::fs::create_dir_all(&src_dir) {
         return Err(OutputWriteRefusal::OutputDirectoryNotCreated {
@@ -656,8 +696,10 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 let mut dag_paths = Vec::new();
                 collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);
                 let mut sources = Vec::new();
-                for path in &dag_paths {
-                    let content = std::fs::read_to_string(path)
+                for source in &dag_paths {
+                    let path = source.path();
+                    let content = source
+                        .read()
                         .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
                     let filename = path.file_name().unwrap().to_string_lossy().to_string();
                     sources.push(Rc::new(v1_compiler_compile::SourceFile {
@@ -1048,21 +1090,8 @@ mod tests {
 /// driver's subject.
 /// A missing `=` REFUSES with the offending spec rather than guessing a positional —
 /// the deleted handler's own rule, kept because it is right, not because it was there.
-fn decode_run_args(
-    raw: &[String],
-) -> Result<Vec<(Option<String>, v1_compiler::v1_interpreter::Value)>, String> {
-    raw.iter()
-        .map(|spec| match spec.split_once('=') {
-            Some((name, value)) if !name.is_empty() => Ok((
-                Some(name.to_string()),
-                v1_compiler::v1_interpreter::str_value(value),
-            )),
-            _ => Err(format!(
-                "--arg expects name=value, got `{spec}` (a missing `=` is refused, not \
-                 interpreted as a positional argument)"
-            )),
-        })
-        .collect()
+fn decode_run_args(raw: &[String]) -> Result<Vec<(String, String)>, String> {
+    cli_run::parse_run_arg_specs(raw)
 }
 
 /// `gunbc run` -- argv -> modeled intent -> the RETAINED resolve/eval engine -> exit code.
@@ -1422,11 +1451,19 @@ fn run_one_function(
     ctx: &v1_compiler::v1_interpreter::InterpContext,
     function: &str,
     entry_file: &str,
-    run_args: &[(Option<String>, v1_compiler::v1_interpreter::Value)],
+    run_args: &[(String, String)],
     claim_run: bool,
 ) -> Verdict {
-    match v1_compiler::v1_interpreter::run_in_context_with_args(ctx, function, run_args, !claim_run)
-    {
+    let bound = match cli_run::bind_run_args_for_entry(ctx, function, run_args) {
+        Ok(bound) => bound,
+        Err(message) => {
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: {message}")),
+            };
+        }
+    };
+    match v1_compiler::v1_interpreter::run_in_context_with_args(ctx, function, &bound, !claim_run) {
         // A claim run's Bool is the verdict: false is a FAILED claim, exit 1. Outside a
         // claim run a Bool is an ordinary value and says nothing about success.
         Ok(v1_compiler::v1_interpreter::Value::Bool(false)) if claim_run => Verdict {

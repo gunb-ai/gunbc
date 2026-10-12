@@ -6,6 +6,7 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import extdeps.bmc.access_profile {
   AccessProfileAmbiguous,
+  AccessProfileBoardNotFactsBound,
   AccessProfileCatalogRowRefused,
   AccessProfileKnown,
   AccessProfileUncatalogued,
@@ -22,6 +23,8 @@ import extdeps.bmc.access_profile {
   ProfilePromotedFromObservation,
   bmc_access_profile_for,
 }
+import extdeps.board_authority { BoardAuthorityLookup }
+import gunbc.board_authority_binding { board_authority_bindings }
 import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
 
@@ -108,6 +111,7 @@ type BoundBmcAccessContextStanding
   | AccessContextObservationEvidenceMismatch { endpoint: BmcControllerEndpoint, manifest: List<EvidenceRef>, raw_response: ContentHash }
   | AccessContextProbeEvidenceMismatch { endpoint: BmcControllerEndpoint, manifest: List<EvidenceRef>, raw_response: ContentHash }
   | AccessContextControlRouteEvidenceMismatch { endpoint: BmcControllerEndpoint, manifest: List<EvidenceRef>, raw_response: ContentHash }
+  | AccessContextBoardNotFactsBound { observed_identity: BmcObservedIdentity, board: BoardAuthorityLookup }
   | AccessContextProfileUncatalogued { observed_identity: BmcObservedIdentity }
   | AccessContextProfileAmbiguous { observed_identity: BmcObservedIdentity, count: Int }
   | AccessContextCatalogRefused { standing: BmcAccessProfileCatalogRowStanding }
@@ -193,9 +197,10 @@ fn bind_looked_up_access_context(
   observation: BmcAccessObservation,
   catalog: List<BmcAccessProfileCatalogRow>,
 ) -> BoundBmcAccessContextStanding {
-  match bmc_access_profile_for(identity: observation.identity, catalog: catalog) {
+  match bmc_access_profile_for(identity: observation.identity, catalog: catalog, bindings: board_authority_bindings) {
     AccessProfileKnown { profile: p, provenance: prov } =>
       bind_known_profile(subject: subject, receipt: receipt, observation: observation, profile: p, provenance: prov)
+    AccessProfileBoardNotFactsBound { observed_identity: i, board: b } => AccessContextBoardNotFactsBound { observed_identity: i, board: b }
     AccessProfileUncatalogued { observed_identity: i } => AccessContextProfileUncatalogued { observed_identity: i }
     AccessProfileAmbiguous { observed_identity: i, count: n } => AccessContextProfileAmbiguous { observed_identity: i, count: n }
     AccessProfileCatalogRowRefused { standing: s } => AccessContextCatalogRefused { standing: s }

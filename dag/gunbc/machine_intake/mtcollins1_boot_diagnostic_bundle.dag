@@ -127,10 +127,7 @@ import gunbc.machine_intake_megarac_media_attach {
   CdErrorRead,
   CdErrorUnread,
   CdErrorNone,
-  CdErrorUncatalogued,
-  CdErrorStopReason,
-  MegaRacPresentationStopped,
-  stop_reason_text,
+  CdErrorNonzero,
   megarac_share_type_wire,
   MegaRacSessionRefused,
   MegaRacSessionTokenUnreadable,
@@ -506,8 +503,7 @@ fn stale_power_off_text(record: StaleMediumPowerOff) -> String {
 fn cd_reading_text(r: CdErrorReading) -> String {
   match r {
     CdErrorRead { code: CdErrorNone } => "0"
-    CdErrorRead { code: CdErrorStopReason { status: st, class: k } } => concat(to_string(st.code), concat(" ", stop_reason_text(status: st, class: k)))
-    CdErrorRead { code: CdErrorUncatalogued { wire: w } } => concat(to_string(w), " (uncatalogued)")
+    CdErrorRead { code: CdErrorNonzero { wire: w, firmware: _ } } => concat(to_string(w), " (observed; no meaning established)")
     CdErrorUnread { detail: d } => concat("UNREAD: ", d)
   }
 }
@@ -597,8 +593,6 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: join(["the presentation of '", n as String, "' did not reach Started with a bound session before ", to_string(d), " (", to_string(k), " looks, route: ", attach_route_text(route: r), "); last look ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), ", at refusal ", cd_reading_text(r: ca), ". No boot-device or power handoff was made"], "") }
     MegaRacReadinessRefused { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_refusal: ca } =>
       Present { value: join(["the presentation of '", n as String, "' was refused by the readiness policy after ", to_string(k), " looks (route: ", attach_route_text(route: r), "): ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), ", at refusal ", cd_reading_text(r: ca), ". No boot-device or power handoff was made"], "") }
-    MegaRacPresentationStopped { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, stop: st, class: c, general_at_refusal: g } =>
-      Present { value: join(["the presentation of '", n as String, "' is ", stop_reason_text(status: st, class: c), " after ", to_string(k), " looks (route: ", attach_route_text(route: r), "): ", readiness_look_text(l: l), "; cd_error_code before any write ", cd_reading_text(r: cb), " (general settings ", raw_read_text(r: g), "). No boot-device or power handoff was made"], "") }
     MegaRacReadinessClockUnreadable { image_name: n, route: r, detail: d } =>
       Present { value: join(["the clock could not be read, so the readiness window for '", n as String, "' could not be declared or judged: ", d, " (route: ", attach_route_text(route: r), ")"], "") }
     MegaRacConfigurationsUnreadable { detail: d } =>
@@ -638,7 +632,7 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
     MegaRacOfferedAmbiguouslyAfterDetach { image_name: n, image_indices: ids, detach: x } =>
       Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing further was written"], "") }
     MegaRacMediaStateUnestablished { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_ready: ca, general_at_ready: g } =>
-      Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), " (general settings ", raw_read_text(r: g), "). A code outside the firmware UI's stop-reason table (extdeps.bmc.megarac megarac_rmedia_status_0_32), or an unread one, has no vendor meaning, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
+      Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), " (general settings ", raw_read_text(r: g), "). A code other than 0, or 16 on the build an executed receipt grounded it for, or an unread one, has no established meaning, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
     MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: cb, reason: why } =>
       Present { value: join(["this attempt cannot establish the media state, and nothing was written: cd_error_code before any write was ", cd_reading_text(r: cb), "; ", why as String], "") }
     MegaRacReadinessClockIncoherent { image_name: n, route: rt, opened_at: o, previous: p, look: l, looks: k } =>

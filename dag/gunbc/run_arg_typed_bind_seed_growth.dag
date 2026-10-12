@@ -1,0 +1,64 @@
+module gunbc.run_arg_typed_bind_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+
+// Seed-growth obligation for typed `gunbc run --arg` inhabitance in the seed CLI kernel.
+// `gunbc.cli_dispatch_surface` owns the option as CliTextValue (argv is text). There is no
+// `.dag` binder: `v2.cli.compile_cli` is the native compile door and has no `run` verb, so
+// the seed CLI (`std.compiler_entry` RetainedHostCliKernel) is the only production route.
+data run_arg_typed_bind_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "parse_run_arg_specs", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "parse_cli_decimal_int", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "CliArgAdmission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "cli_arg_no_inhabitance_route", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "bind_cli_arg_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "bind_cli_int", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "cli_arg_resolved_type_node", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "type_nodes_name_the_same_declaration", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "std_types_nonempty_str_item", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "refers_to_std_types_nonempty_str", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "std_types_nonempty_str_admission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "nonempty_str_predicates_from_decl", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "cli_arg_admission_from_type_expr", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "cli_arg_admission_for_kernel", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "bind_run_arg_specs_against_admissions", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "bind_run_args_for_entry", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "declared_parameter_type_exprs", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "type_declaration_rhs", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "cli_run_arg_channel_tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "spec", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "admission", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "declared", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "bind", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "named_arg_parses_to_a_named_string_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "value_may_contain_further_equals_signs", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "empty_value_is_admitted_and_distinct_from_absent", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "bare_token_without_equals_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "empty_parameter_name_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "one_malformed_spec_refuses_the_whole_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "int_parameter_given_non_numeric_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "int_parameter_given_decimal_two_is_int_two", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "unsupported_declared_type_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "qualified_or_branded_int_label_refuses_rather_than_matching_the_leaf", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "nonemptystr_non_empty_binds_as_string", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "nonemptystr_empty_refuses_naming_the_parameter", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "bool_parameter_accepts_true_false_only", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "compile_ctx", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "source", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "kernel_int_entry_ctx", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "std_types_nonempty_entry_ctx", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "bind_run_args_for_entry_int_executes_as_int_two", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "bind_run_args_for_entry_std_types_nonemptystr_inhabits_and_empty_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "isolated_std_types_nonemptystr_whose_string_is_int_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "same_spelling_user_int_or_nonemptystr_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.cli_run_arg_channel_tests", decl_name: "bind_run_args_for_entry_duplicate_or_unknown_name_refuses", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST: `gunbc run --arg` is the seed CLI kernel. argv is always text (`CliTextValue`); inhabiting a parameter's resolved type identity is a later, located decision that today lives only in `v1_compiler.cli_run`. Silent String binding was fail-open: `--arg supersedes=2` inhabited Str(\"2\") against an Int parameter. Conversion is authorized from std.coercion type_reference_identity: kernel String/Int/Bool, and the exact std.types NonEmptyStr declaration whose peeled ground is KernelMinted String and whose complete where-population is exactly string_non_empty. A same-spelling user type, a std.types NonEmptyStr whose ground is not kernel String, or any deferred/extra predicate is refused. WHY ADMITTED AGAINST THE v1 FREEZE (gunbc.v1_maintenance_standing v1_seed_standing): by PURPOSE — silent wrong binding on every `gunbc run` of a v2 entry, including belt_scm_corrective_integrate_cli and fabric/fci1 NonEmptyStr recipes. It adds no language behaviour. The native CLI door (`v2.cli.compile_cli`) has no `run` verb.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these declarations when a `.dag` driver can receive argv as values AND bind `--arg` text against the entry's resolved type identity — kernel String/Int/Bool and std.types NonEmptyStr whose ground is KernelMinted String and whose predicates are exactly string_non_empty — so the seed binder is not a second authority. That capability is a modeled `gunbc run` on the native CLI. WHAT DOES NOT RETIRE IT: a leaf-name table; generic where-peel of any String/Int alias; a spelling match on the peeled ground; skipping deferred predicates; copying the binder into another host file.",
+  current_boundary: "v1_compiler.cli_run bind_run_args_for_entry (called from v1_compiler.main run_one_function); admissions from cli_arg_admission_from_type_expr over declared_parameter_type_exprs; one bind loop in bind_run_arg_specs_against_admissions; dag/gunbc/run_arg_typed_bind_seed_growth.dag"
+}

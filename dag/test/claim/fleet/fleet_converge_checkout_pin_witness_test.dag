@@ -62,8 +62,7 @@ test fn commit_valued_checkout_refs_are_admitted() -> Bool {
 // THE RENDERING: the fleet-converge ref renders to the bytes the regenerated fleet-converge.yml
 // carries, with the mode disjunction grouped under the && (extdeps.github.expressions precedence).
 test fn the_fleet_converge_ref_renders_to_the_emitted_bytes() -> Bool {
-  interpolate(expression: fleet_converge_checkout_ref)
-    == "${{ (github.event.inputs.mode == 'mtcollins1_boot' || github.event.inputs.mode == 'gcp_iam_converge' || github.event.inputs.mode == 'namecheap_observe') && github.sha || github.event.inputs.expected_revision || github.sha }}"
+  interpolate(expression: fleet_converge_checkout_ref) == "${{ github.sha }}"
 }
 
 fn one_step_workflow(uses_checkout: Bool, ref_text: String) -> Workflow {

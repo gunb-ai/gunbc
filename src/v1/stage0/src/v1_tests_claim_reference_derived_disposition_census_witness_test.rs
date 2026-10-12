@@ -17,9 +17,11 @@ pub use crate::v1_compiler_emit_rust::{
     reference_derived_candidate_disposition, reference_derived_census,
     reference_derived_disposition_name, reference_derived_row_diagnostics,
 };
-pub use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
 use crate::v1_compiler_infer_emit_info::TypeRepr::EnumRepr;
-pub use crate::v1_compiler_infer_emit_info::{TypeRepr, TypeSummary};
+pub use crate::v1_compiler_infer_emit_info::{
+    empty_emit_graph_info, empty_type_summary_index, type_summary_index_insert,
+};
+pub use crate::v1_compiler_infer_emit_info::{TypeRepr, TypeSummary, TypeSummaryIndex};
 use crate::v1_compiler_infer_items::ItemKind::FnItem;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind};
 use crate::v1_rt;
@@ -91,7 +93,7 @@ pub fn fixture_disposition(
                 Rc::new(vec![]),
                 v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
             ),
-            v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
+            crate::v1_compiler_infer_emit_info::empty_type_summary_index(),
             v1_rt::rc_empty_map::<String, String>(),
             false,
         ),
@@ -132,7 +134,7 @@ pub fn cross_module_candidate_with_export_proof_survives() -> bool {
             Rc::new(vec![]),
             v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
         ),
-        v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
+        crate::v1_compiler_infer_emit_info::empty_type_summary_index(),
         v1_rt::rc_empty_map::<String, String>(),
         false,
     ) == Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
@@ -219,12 +221,14 @@ pub fn variant_arm_red_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn fixture_variant_type_summaries() -> Rc<HashMap<String, Rc<TypeSummary>>> {
-    v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
+pub fn fixture_variant_type_summaries() -> Rc<TypeSummaryIndex> {
+    crate::v1_compiler_infer_emit_info::type_summary_index_insert(
+        crate::v1_compiler_infer_emit_info::empty_type_summary_index(),
+        "fixture.E".to_string(),
         "E".to_string(),
         Rc::new(TypeSummary {
             name: "E".to_string(),
+            key: "fixture.E".to_string(),
             repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
             field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
             field_type_map: v1_rt::rc_empty_map::<String, String>(),
@@ -257,7 +261,7 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
         v1_rt::rc_map_insert(
             v1_rt::rc_empty_map::<String, String>(),
             "V".to_string(),
-            "E".to_string(),
+            "fixture.E".to_string(),
         ),
         false,
     ) == Rc::new(
@@ -276,12 +280,14 @@ pub fn ambiguous_parent_red_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn fixture_colliding_variant_type_summaries() -> Rc<HashMap<String, Rc<TypeSummary>>> {
-    v1_rt::rc_map_insert(
+pub fn fixture_colliding_variant_type_summaries() -> Rc<TypeSummaryIndex> {
+    crate::v1_compiler_infer_emit_info::type_summary_index_insert(
         fixture_variant_type_summaries(),
+        "fixture.F".to_string(),
         "F".to_string(),
         Rc::new(TypeSummary {
             name: "F".to_string(),
+            key: "fixture.F".to_string(),
             repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
             field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
             field_type_map: v1_rt::rc_empty_map::<String, String>(),
@@ -338,7 +344,7 @@ pub fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> b
             v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, String>(),
                 "V".to_string(),
-                "E".to_string(),
+                "fixture.E".to_string(),
             ),
             true,
         ),
@@ -369,7 +375,7 @@ pub fn non_variant_name_still_answers_registry_absent() -> bool {
             v1_rt::rc_map_insert(
                 v1_rt::rc_empty_map::<String, String>(),
                 "V".to_string(),
-                "E".to_string(),
+                "fixture.E".to_string(),
             ),
             false,
         ),

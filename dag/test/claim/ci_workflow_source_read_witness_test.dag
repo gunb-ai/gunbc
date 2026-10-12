@@ -46,9 +46,13 @@ test fn a_code_search_page_binds_the_hermetic_fixture_hit() -> Bool {
     CodeSearchPageComplete { page, hits_read } =>
       hits_read == 1
         && count(page.items) == 1
-        && first(page.items).sha == hermetic_code_search_blob_sha
-        && first(page.items).path == hermetic_code_search_path
-        && first(page.items).repository.full_name == hermetic_code_search_repository.full_name
+        && match first(page.items) {
+          Present { value: hit } =>
+            hit.sha == hermetic_code_search_blob_sha
+              && hit.path == hermetic_code_search_path
+              && hit.repository.full_name == hermetic_code_search_repository.full_name
+          Absent => false
+        }
     CodeSearchPageTruncated { page, hits_read, cause } => false
     CodeSearchPageRefused { performance } => false
   }

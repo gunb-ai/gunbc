@@ -7,6 +7,10 @@ use self::NativeDriverChildStanding::*;
 use self::NativeDriverCostAccounting::*;
 use self::NativeDriverCostRowStanding::*;
 use self::NativeDriverExclusiveRowKey::*;
+use self::NativeEffectClass::*;
+use self::NativeEffectScope::*;
+pub use crate::std_decl_ref::decl_ref;
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_measure::Nanosecond;
 pub use crate::std_measure::{
     millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count,
@@ -52,6 +56,92 @@ pub enum CompilerEntryDriver {
     NativeCliDriver,
     NativeClaimDriver,
     NativeServeDriver,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeEffectClass {
+    NativeEffectDeclaration { declaration: Rc<DeclarationRef> },
+    NativeOutgoingHttp,
+}
+impl NativeEffectClass {
+    pub fn declaration(&self) -> Rc<DeclarationRef> {
+        match self {
+            NativeEffectClass::NativeEffectDeclaration {
+                declaration: __val, ..
+            } => __val.clone(),
+            NativeEffectClass::NativeOutgoingHttp => panic!("no declaration on unit variant"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeEffectScope {
+    NativeAdmitAllExcept {
+        excluded: Rc<Vec<Rc<NativeEffectClass>>>,
+    },
+    NativeAdmitOnly {
+        admitted: Rc<Vec<Rc<NativeEffectClass>>>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeEffectDenominator {
+    pub route: CompilerEntryDriver,
+    pub ruling: Rc<DeclarationRef>,
+    pub scope: Rc<NativeEffectScope>,
+}
+
+pub fn native_effect_declared(module_path: String, decl_name: String) -> Rc<NativeEffectClass> {
+    Rc::new(NativeEffectClass::NativeEffectDeclaration {
+        declaration: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+    })
+}
+
+pub fn native_compiler_route_denominator() -> Rc<NativeEffectDenominator> {
+    thread_local! {
+            static CACHED: Rc<NativeEffectDenominator> = {
+                Rc::new(NativeEffectDenominator {
+        route: CompilerEntryDriver::NativeCliDriver,
+        ruling: crate::std_decl_ref::decl_ref("gunbc.plans.demand_engine_program".to_string(), "demand_engine_program_plan".to_string()),
+        scope: Rc::new(NativeEffectScope::NativeAdmitAllExcept {
+        excluded: Rc::new(vec![native_effect_declared("std.resources".to_string(), "Clock".to_string()), native_effect_declared("std.resources".to_string(), "Network".to_string()), native_effect_declared("std.resources".to_string(), "Entropy".to_string()), native_effect_declared("std.resources".to_string(), "AuthContext".to_string()), native_effect_declared("extdeps.clock".to_string(), "Clock".to_string()), Rc::new(NativeEffectClass::NativeOutgoingHttp)]),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<NativeEffectDenominator>| c.clone())
+}
+
+pub fn native_service_route_denominator() -> Rc<NativeEffectDenominator> {
+    thread_local! {
+            static CACHED: Rc<NativeEffectDenominator> = {
+                Rc::new(NativeEffectDenominator {
+        route: CompilerEntryDriver::NativeServeDriver,
+        ruling: crate::std_decl_ref::decl_ref("gunbc.plans.demand_engine_program".to_string(), "demand_engine_program_plan".to_string()),
+        scope: Rc::new(NativeEffectScope::NativeAdmitAllExcept {
+        excluded: Rc::new(vec![native_effect_declared("std.resources".to_string(), "Entropy".to_string()), native_effect_declared("std.resources".to_string(), "AuthContext".to_string())]),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<NativeEffectDenominator>| c.clone())
+}
+
+pub fn native_claim_route_denominator() -> Rc<NativeEffectDenominator> {
+    thread_local! {
+            static CACHED: Rc<NativeEffectDenominator> = {
+                Rc::new(NativeEffectDenominator {
+        route: CompilerEntryDriver::NativeClaimDriver,
+        ruling: crate::std_decl_ref::decl_ref("std.compiler_entry".to_string(), "NativeClaimDriver".to_string()),
+        scope: Rc::new(NativeEffectScope::NativeAdmitOnly {
+        admitted: Rc::new(vec![native_effect_declared("extdeps.filesystem.filesystem_io".to_string(), "Filesystem".to_string())]),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<NativeEffectDenominator>| c.clone())
 }
 
 #[derive(

@@ -27,7 +27,6 @@ type InterpreterDispatchEmitSite
   | EvalCallBridgeFamilySite { module: QualifiedName }
   | EvalCallNativeInterceptSite
   | TryV2StdCollectionMapPrimitiveGroundingSite
-  | TryParseTableMemoDispatchSite
   | EvalMethodCallShortCircuitSite
   | EvalServiceCallCarveOutSite
 
@@ -228,7 +227,7 @@ fn v1_interpreter_cross_form_spellings() -> List<String> {
 // eval_builtin_inner; eval_algebra_method_inner; eval_call, which carries TWO separate mechanisms
 // -- guard-predicated v4 std bridge families AND a native fold intercept -- both running BEFORE the
 // free-call dispatch, which is why fold_list and the bridge names never reach the builtin registry;
-// try_v2_std_collection_map_primitive_grounding; try_parse_table_memo_dispatch; a lookup
+// try_v2_std_collection_map_primitive_grounding; a lookup
 // short-circuit inside eval_method_call; and the Filesystem.Read hermetic carve-out in
 // eval_service_call. dispatch_site_count() derives the site count from the roster rather than
 // restating it in prose. AN EARLIER REVISION UNDERCOUNTED eval_call by modelling it as the fold
@@ -242,8 +241,7 @@ fn v1_interpreter_cross_form_spellings() -> List<String> {
 // gunbc.generated_artifact V1InterpreterDispatchGeneratedRsArtifact). Handler macros in
 // v1_interpreter.rs consult the generated lookup before matching bodies on the generated enum.
 // Exhaustiveness is site-scoped: on single-family sites (eval_builtin_inner,
-// eval_algebra_method_inner, try_v2_std_collection_map_primitive_grounding,
-// try_parse_table_memo_dispatch) a roster row without a handler body fails cargo build via a
+// eval_algebra_method_inner, try_v2_std_collection_map_primitive_grounding) a roster row without a handler body fails cargo build via a
 // non-exhaustive inner match on the generated enum; on eval_call_bridge and
 // eval_call_native_intercept — shared enums with per-family macro subsets — the same mismatch
 // degrades to runtime unreachable! until per-family enum split lands (named follow-up). A handler
@@ -2189,24 +2187,6 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       dispatch_emit_site: EvalCallNativeInterceptSite,
       enumeration: AuthoredInRoster,
     },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "parse_table_memo.parse_table_lookup" },
-      form: NativeSpecial,
-      authored_spelling: "parse_table_lookup",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "try_parse_table_memo_dispatch",
-      dispatch_emit_site: TryParseTableMemoDispatchSite,
-      enumeration: AuthoredInRoster,
-    },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "parse_table_memo.parse_table_insert" },
-      form: NativeSpecial,
-      authored_spelling: "parse_table_insert",
-      realization_module: "v1_interpreter",
-      dispatch_symbol: "try_parse_table_memo_dispatch",
-      dispatch_emit_site: TryParseTableMemoDispatchSite,
-      enumeration: AuthoredInRoster,
-    },
   ]
 }
 
@@ -2232,7 +2212,7 @@ type SeedScaffoldDisposition {
 // SO R1 CLOSES THE DUAL-AUTHORITY DEFECT the prior scaffold carried: roster edits without
 // regenerating lookup tables now fail the generated-artifact fixed point instead of silently
 // falling through at eval_call_native_intercept. The hand-Rust census does not shrink yet —
-// v1_interpreter_roster_seed_scaffold still carries six macro_rules authorities until emit
+// v1_interpreter_roster_seed_scaffold still carries five macro_rules authorities (the sixth, v1_parse_table_arms, was deleted with the parse memo) until emit
 // generates flat match arms, with net_added_lines 0 against the pre-R1 scaffold baseline. What it
 // buys is one roster authority, generated routing, and drift enforcement rather than a second
 // manually synced lookup table.
@@ -2247,7 +2227,6 @@ fn v1_interpreter_roster_seed_scaffold() -> SeedScaffoldDisposition {
       "v1_bridge_family_arms",
       "v1_native_intercept_arms",
       "v1_map_grounding_arms",
-      "v1_parse_table_arms",
     ],
     net_added_lines: 0,
     target_roadmap_node: "v1-interpreter-primitive-dispatch-authority",

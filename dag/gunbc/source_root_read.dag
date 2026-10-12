@@ -15,11 +15,12 @@ import std.optional { Absent, Present }
 // directory. Only the host's NotADirectory observation admits a candidate as a file; every
 // other failure stops the walk. In particular a disappearing entry or a broken symlink cannot
 // silently shrink the compiler's source population. The transport refuses lossy name encodings.
-type SourceRootWalkTask { path: String, root: Bool }
+type SourceRootWalkTask { path: String, root: Bool, origin: String }
+type SourceRootWalkedPath { path: String, origin: String }
 type SourceRootPaths
-  = SourceRootPathsRead { paths: List<String> }
+  = SourceRootPathsRead { paths: List<SourceRootWalkedPath> }
   | SourceRootPathsRefused { path: String, kind: String, cause: String }
-type SourceRootFile { path: String, content: String }
+type SourceRootFile { path: String, content: String, origin: String }
 type SourceRootFiles
   = SourceRootFilesRead { files: List<SourceRootFile> }
   | SourceRootFilesRefused { path: String, kind: String, cause: String }
@@ -39,9 +40,9 @@ fn source_root_candidate_is_file(root: Bool, error_kind: String) -> Bool {
   }
 }
 
-fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<String>) -> SourceRootPaths {
+fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWalkedPath>) -> SourceRootPaths {
   match pending |> first {
-    Absent => SourceRootPathsRead { paths: paths |> sort_by(path => path) }
+    Absent => SourceRootPathsRead { paths: paths |> sort_by(walked => walked.path) }
     Present { value: task } => {
       let rest = pending.skip(n: 1)
       let listed = Filesystem.List(path: task.path)
@@ -49,13 +50,17 @@ fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<String>) -> S
         entries: listed.entries, error: listed.error) {
         FilesystemDirectoryListed(listing) => {
           let children = filesystem_listing_entry_names(listing: listing) |> map(name => SourceRootWalkTask {
-            path: source_root_child_path(directory: task.path, name: name), root: false
+            path: source_root_child_path(directory: task.path, name: name),
+            root: false,
+            origin: task.origin
           })
           source_root_walk(pending: concat(children, rest), paths: paths)
         }
         FilesystemDirectoryListingRefused { directory: _, error: cause } =>
           if source_root_candidate_is_file(root: task.root, error_kind: listed.error_kind) {
-            let next = if task.path.ends_with(suffix: ".dag") { concat(paths, [task.path]) } else { paths }
+            let next = if task.path.ends_with(suffix: ".dag") {
+              concat(paths, [SourceRootWalkedPath { path: task.path, origin: task.origin }])
+            } else { paths }
             source_root_walk(pending: rest, paths: next)
           } else {
             SourceRootPathsRefused { path: task.path, kind: listed.error_kind, cause: cause }
@@ -73,13 +78,13 @@ fn source_root_read_file(path: String) -> FilesystemExactRead {
     error: read.error, error_kind: read.error_kind)
 }
 
-fn source_root_read_paths(pending: List<String>, files: List<SourceRootFile>) -> SourceRootFiles {
+fn source_root_read_paths(pending: List<SourceRootWalkedPath>, files: List<SourceRootFile>) -> SourceRootFiles {
   match pending |> first {
     Absent => SourceRootFilesRead { files: files }
-    Present { value: path } => match source_root_read_file(path: path) {
+    Present { value: walked } => match source_root_read_file(path: walked.path) {
       FilesystemExactPathRead { path: observed, content: content } =>
         source_root_read_paths(pending: pending.skip(n: 1),
-          files: concat(files, [SourceRootFile { path: observed, content: content }]))
+          files: concat(files, [SourceRootFile { path: observed, content: content, origin: walked.origin }]))
       FilesystemExactPathAbsent { path: observed } =>
         SourceRootFilesRefused { path: observed, kind: "not_found", cause: "source disappeared before it could be read" }
       FilesystemExactPathUnreadable { path: observed, kind: kind, error: cause } =>
@@ -91,7 +96,10 @@ fn source_root_read_paths(pending: List<String>, files: List<SourceRootFile>) ->
 }
 
 fn source_root_read(roots: List<String>) -> SourceRootFiles {
-  match source_root_walk(pending: roots |> map(path => SourceRootWalkTask { path: path, root: true }), paths: []) {
+  match source_root_walk(
+    pending: roots |> map(path => SourceRootWalkTask { path: path, root: true, origin: path }),
+    paths: []
+  ) {
     SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
       SourceRootFilesRefused { path: path, kind: kind, cause: cause }
     SourceRootPathsRead { paths: paths } => source_root_read_paths(pending: paths, files: [])

@@ -2,7 +2,8 @@ module v2.test.parse.g0_service_decl_parse_probe
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { ParseArtifact, parse_module }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.language_model { LanguageModel }
@@ -24,7 +25,7 @@ data probe_cached_lm: LanguageModel = dag_language_model()
 
 fn parse_src(src: String) -> Outcome<ParseArtifact> {
   let lm = probe_cached_lm
-  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+  match tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex()) {
     Accepted { value: ts, diagnostics: _ } => parse_module(tokens: ts, grammar: lm.grammar)
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
@@ -50,7 +51,7 @@ fn smallest_service_parsed() -> Outcome<ParseArtifact> {
 // stage is pinned and a fixture that dies in the lexer reds instead of flattering the claim.
 fn refuses_at_parse(src: String) -> Bool {
   let lm = probe_cached_lm
-  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+  match tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex()) {
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Accepted { value: _, diagnostics: _ } => false
@@ -186,6 +187,42 @@ test fn field_default_without_expr_still_refuses_holds() -> Bool {
 
 test fn posix_effective_principal_service_parses_holds() -> Bool {
   parses(src: posix_effective_principal_service_source)
+}
+
+data requires_resource_with_realization_source: String = "module m\nservice access.Net {\n  operation Read {\n    requires Network\n    input { read: Req }\n    output { ok: String from \"stdout\" }\n    readonly\n    transport shell { argv: [\"true\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"failed\"\n    }\n    mock_response {\n      0 => { ok: \"x\" } \"hermetic\"\n    }\n  }\n}\n"
+
+data requires_resource_then_transport_source: String = "module m\nservice S {\n  operation Op {\n    requires Network\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+
+data requires_none_with_realization_source: String = "module m\nservice S {\n  operation Op {\n    requires none\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+
+data requires_resource_malformed_transport_source: String = "module m\nservice S {\n  operation Op {\n    requires Network\n    transport bogus { argv: [\"true\"] }\n  }\n}\n"
+
+data requires_members_without_comma_source: String = "module m\nservice S {\n  operation Op {\n    requires Network Fs\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+
+data requires_two_members_with_realization_source: String = "module m\nservice S {\n  operation Op {\n    requires Network, Fs\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+
+test fn requires_members_without_a_comma_still_refuse_holds() -> Bool {
+  !parses(src: requires_members_without_comma_source)
+}
+
+test fn requires_two_members_then_transport_parses_holds() -> Bool {
+  parses(src: requires_two_members_with_realization_source)
+}
+
+test fn requires_resource_with_realization_members_parses_holds() -> Bool {
+  parses(src: requires_resource_with_realization_source)
+}
+
+test fn requires_resource_then_transport_parses_holds() -> Bool {
+  parses(src: requires_resource_then_transport_source)
+}
+
+test fn requires_none_with_realization_parses_control_holds() -> Bool {
+  parses(src: requires_none_with_realization_source)
+}
+
+test fn requires_resource_with_unknown_transport_kind_still_refuses_holds() -> Bool {
+  !parses(src: requires_resource_malformed_transport_source)
 }
 
 test fn remaining_service_arms_parse_holds() -> Bool {

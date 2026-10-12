@@ -3519,13 +3519,14 @@ mod import_binding_authority_tests {
 
     /// The declaration must sit in a PARENT env: `callable_lookup_over_candidates` checks
     /// `func_env.local` first and returns immediately on a hit, so a local declaration never
-    /// reaches the authored-membership branch. `v2.std.collection` / `map_get` is not an arbitrary
+    /// reaches the authored-membership branch. `v2.std.collection` / `map_get_checked` is not an arbitrary
     /// choice -- it is the specimen carrying `DivergentProjection` fidelity, which is the condition
     /// `declared_candidate_rivals_the_builtin` requires.
-    fn parent_env_declaring_map_get() -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv> {
+    fn parent_env_declaring_map_get_checked() -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>
+    {
         use crate::v1_compiler_infer_sigs::{ResolvedFormals, ResolvedFuncEnv, ResolvedFuncSig};
         let sig = Rc::new(ResolvedFuncSig {
-            name: "map_get".to_string(),
+            name: "map_get_checked".to_string(),
             params: crate::v1_std_core::empty_node_list(),
             // This synthetic declaration deliberately has no parameters. Its empty formal
             // population is kernel-grounded, not awaiting a module-context resolution pass.
@@ -3540,7 +3541,7 @@ mod import_binding_authority_tests {
             name: "v2.std.collection".to_string(),
             local: Rc::new(crate::v1_rt::map_insert(
                 crate::v1_rt::empty_map(),
-                "map_get".to_string(),
+                "map_get_checked".to_string(),
                 sig,
             )),
             parents: Rc::new(im::Vector::new()),
@@ -3565,7 +3566,7 @@ mod import_binding_authority_tests {
     /// That is an OBSERVATION-BOUNDARY defect, not a bad fixture spelling.
     ///
     /// AND IT DOES NOT MEAN THE POLICY IS DEAD. That convenient reading is refuted by a specimen in
-    /// the tree: `map_get` is declared at `v2.std.collection` with `DivergentProjection` fidelity in
+    /// the tree: `map_get_checked` is declared at `v2.std.collection` with `DivergentProjection` fidelity in
     /// `std.primitive_projection`, which is exactly the condition
     /// `declared_candidate_rivals_the_builtin` tests. So the collision is real, reachable from
     /// authored source, and already witnessed by `callable_candidate_ambiguity_witness_test`.
@@ -3577,16 +3578,16 @@ mod import_binding_authority_tests {
     #[test]
     fn authored_membership_alone_decides_the_callable_verdict() {
         use crate::v1_compiler_infer_lookup::callable_lookup_over_candidates;
-        use crate::v1_compiler_infer_sigs::{CallableIdentity, FuncSigLookup};
+        use crate::v1_compiler_infer_sigs::FuncSigLookup;
 
-        let env = parent_env_declaring_map_get();
+        let env = parent_env_declaring_map_get_checked();
 
         let named = callable_lookup_over_candidates(
             env.clone(),
-            type_env_with_authored(&["map_get"]),
-            "map_get".to_string(),
+            type_env_with_authored(&["map_get_checked"]),
+            "map_get_checked".to_string(),
         );
-        let omitted = callable_lookup_over_candidates(
+        let bare = callable_lookup_over_candidates(
             env,
             type_env_with_authored(&["cut_unrelated_marker"]),
             "map_get".to_string(),
@@ -3598,7 +3599,7 @@ mod import_binding_authority_tests {
         match &*named {
             FuncSigLookup::FuncSigResolved { declared, .. } => {
                 assert_eq!(declared.owner_module_path, "v2.std.collection");
-                assert_eq!(declared.decl_name, "map_get");
+                assert_eq!(declared.decl_name, "map_get_checked");
             }
             other => panic!(
                 "naming the callable must suppress the builtin co-candidate and resolve to the \
@@ -3606,38 +3607,112 @@ mod import_binding_authority_tests {
             ),
         }
 
-        // AND THE AMBIGUOUS ARM IS CHECKED BY ITS EXACT IDENTITY SET, never by a count and never by
-        // list order. A count would pass on a substitution, and an order-sensitive comparison would
-        // make candidate ordering -- which nothing declares to be semantic -- part of the assertion.
-        match &*omitted {
-            FuncSigLookup::FuncSigAmbiguous { candidates, .. } => {
-                let mut observed: Vec<String> = candidates
-                    .iter()
-                    .map(|c| match &*c.identity {
-                        CallableIdentity::DeclaredCallable { identity } => format!(
-                            "declared:{}:{}",
-                            identity.owner_module_path, identity.decl_name
-                        ),
-                        CallableIdentity::BuiltinCallable { primitive_name } => {
-                            format!("builtin:{primitive_name}")
-                        }
-                    })
-                    .collect();
-                observed.sort();
-                observed.dedup();
-                assert_eq!(
-                    observed,
-                    vec![
-                        "builtin:map_get".to_string(),
-                        "declared:v2.std.collection:map_get".to_string(),
-                    ],
-                    "the two rival authorities must both be present, and only those two"
-                );
-            }
+        // THE OLD map_get FORK IS DISSOLVED, AND THIS ARM IS ITS PERMANENT REGRESSION CONTROL,
+        // checked by its exact identity set rather than a count or list order. Before the rename,
+        // omitting the declaration from the authored list while calling the bare name minted TWO
+        // rival authorities -- `builtin:map_get` and `declared:v2.std.collection:map_get` -- and
+        // went ambiguous. The rename moved the declaration to `map_get_checked`, so the bare
+        // spelling now has no declared candidate at all: only the builtin remains, which this
+        // route leaves unresolved (builtins reach inference through the method path).
+        //
+        // HONESTY ABOUT WHAT THIS ARM CAN AND CANNOT SEE ANY MORE (review 77428). The former
+        // rival-join -- a rival declaration omitted from the authored list joining the builtin
+        // into FuncSigAmbiguous -- is NOT reachable at this seam any more, and that absence is
+        // the repair, not a hole: the only DivergentProjection row in the compiled roster
+        // (std_primitive_projection.rs) answers to the declaration `map_get_checked`, which is
+        // not a primitive-registry key, while the registry keys the primitive as `map_get`
+        // (v1_compiler_infer_method.rs). parent_closure_callable_candidates takes the declared
+        // identity's decl_name from the LOOKUP KEY, so no lookup name can carry both a rival
+        // declaration and a builtin co-candidate; a synthetic fixture that "declares map_get"
+        // mints the identity (v2.std.collection, map_get), which the roster does not cover. A
+        // re-widening that reclaimed the bare spelling under a registry-keyed name would
+        // re-ambient the join, but THIS arm would still green until a lookup name carried both
+        // authorities -- so the rival predicate's own discriminating control
+        // (declared_candidate_rivals_the_builtin_discriminates_by_row_fidelity, below) stays
+        // enrolled as the executing evidence for the mechanism, per DESIGN 4b(4), and the census
+        // wall w_projection_census_declares_no_divergent_shared_spelling holds the no-shared-
+        // spelling fact at the tree grain.
+        match &*bare {
+            FuncSigLookup::FuncSigUnresolved => {}
+            FuncSigLookup::FuncSigAmbiguous { candidates } => panic!(
+                "the dissolved map_get fork must not return: the bare spelling minted rivals \
+                 {:?}",
+                candidates
+            ),
             other => panic!(
-                "omitting it from a NONEMPTY authored list must admit the builtin rival and go \
-                 ambiguous, got {other:?}"
+                "the dissolved map_get fork must leave the bare spelling a single builtin \
+                 authority -- no declared candidate, never ambiguous -- got {other:?}"
             ),
         }
+    }
+
+    /// THE RIVAL PREDICATE'S OWN DISCRIMINATING CONTROL, ENROLLED AFTER THE RENAME DISSOLVED THE
+    /// SEAM'S SHARED SPELLING (review 77428; DESIGN 4b(4): the class's executing evidence stays
+    /// enrolled). Checked against the COMPILED roster's actual rows, so a row that loses its
+    /// DivergentProjection fidelity, a predicate that stops consulting the roster, or a roster
+    /// that stops carrying the divergent specimen all fail here. The identity values are the
+    /// mechanism's own data: the divergent declaration must rival, a modeled projection must
+    /// not, an unprojected declaration must not, and a builtin candidate is never a rival to
+    /// itself.
+    #[test]
+    fn declared_candidate_rivals_the_builtin_discriminates_by_row_fidelity() {
+        use crate::v1_compiler_infer_lookup::declared_candidate_rivals_the_builtin;
+        use crate::v1_compiler_infer_sigs::CallableIdentity::{BuiltinCallable, DeclaredCallable};
+        use crate::v1_compiler_infer_sigs::{CallableCandidate, DeclaredCallableIdentity};
+
+        let candidate_for = |owner: &str, decl: &str| {
+            Rc::new(CallableCandidate {
+                identity: Rc::new(DeclaredCallable {
+                    identity: Rc::new(DeclaredCallableIdentity {
+                        owner_module_path: owner.to_string(),
+                        decl_name: decl.to_string(),
+                    }),
+                }),
+                sig: parent_env_declaring_map_get_checked()
+                    .parents
+                    .iter()
+                    .next()
+                    .expect("fixture parent")
+                    .local
+                    .values()
+                    .next()
+                    .expect("fixture signature")
+                    .clone(),
+            })
+        };
+
+        // The compiled roster's one DivergentProjection row: the declaration must rival.
+        assert!(declared_candidate_rivals_the_builtin(candidate_for(
+            "v2.std.collection",
+            "map_get_checked"
+        )));
+        // A modeled projection is a faithful alias, never a rival.
+        assert!(!declared_candidate_rivals_the_builtin(candidate_for(
+            "v2.std.collection",
+            "empty_map"
+        )));
+        // An unprojected declaration is never a rival.
+        assert!(!declared_candidate_rivals_the_builtin(candidate_for(
+            "cut.unrelated.module",
+            "map_get_checked"
+        )));
+        // A builtin candidate is never a rival to itself.
+        assert!(!declared_candidate_rivals_the_builtin(Rc::new(
+            CallableCandidate {
+                identity: Rc::new(BuiltinCallable {
+                    primitive_name: "map_get".to_string(),
+                }),
+                sig: parent_env_declaring_map_get_checked()
+                    .parents
+                    .iter()
+                    .next()
+                    .expect("fixture parent")
+                    .local
+                    .values()
+                    .next()
+                    .expect("fixture signature")
+                    .clone(),
+            }
+        )));
     }
 }

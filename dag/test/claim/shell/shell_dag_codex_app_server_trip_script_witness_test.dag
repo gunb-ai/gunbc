@@ -50,6 +50,7 @@ fn trip_surface(codex_home: String) -> String {
   let invocation = codex_press_account_trip_invocation(
     executable: "/usr/bin/codex" as FilePath,
     codex_home: codex_home as FilePath,
+    lock: none,
   )
   let argument_words: List<String> = list_flat_map(
     xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),

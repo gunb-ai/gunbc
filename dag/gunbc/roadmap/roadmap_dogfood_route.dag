@@ -641,7 +641,7 @@ data dogfood_start_receipt_key: NonEmptyStr = "dogfood-start-receipt" as NonEmpt
 data dogfood_start_receipt_schema: String = "dogfood-start-receipt/v6"
 
 // THE SLOT LIVES IN A ROOT THE DEPLOYMENT ALREADY CONVERGES. The file CAS store does not create its
-// root (gunbc.durable_cas_file_store), so the slot is placed in the instance's attempt-state root --
+// the attempt-state demand (gunbc.roadmap_dashboard_instance dashboard_instance_dispatch_attempt_state_directory) both deployment routes ensure with its owner
 // the AttemptStateRoot member gunbc.live_deploy.spec deployment_owned_steps installs with its owner
 // and mode before any belt timer runs, and the directory the session placement records already
 // share -- under its own key. A root of its own would be a second deployment member for one file.

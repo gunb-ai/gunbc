@@ -101,3 +101,27 @@ fn find_owner_executable_files_command(root: String) -> ArgvCommand {
 fn find_symlink_targets_command(root: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-type", "l", "-printf", "l %P -> %l\\n"])
 }
+
+// THE REGULAR FILES UNDER A ROOT WITH THEIR SIZE AND MODIFICATION TIME, ONE
+// `<size>\t<mtime>\t<relative path>` LINE EACH, AND NOTHING READ BUT METADATA. Every -printf
+// directive here is answered from the inode find already holds from its own stat(2) of the entry
+// (find manual, "Format Directives"): %s is st_size in bytes, %T@ is st_mtime as seconds since the
+// epoch with a fractional part, %P is the path with the starting point removed. No directive opens
+// the file, and the expression carries no action that runs another program, so the command reads
+// no file content -- find_command_runs_another_program below is how a consumer checks the second
+// half on the value rather than on this note. The path is LAST so a name holding a tab survives as
+// the rest of the line; the escapes are find's own, so the argv word carries a backslash and a
+// letter, never a control character.
+fn find_regular_file_size_mtime_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-type", "f", "-printf", "%s\\t%T@\\t%P\\n"])
+}
+
+// THE ACTIONS THAT MAKE find RUN ANOTHER PROGRAM ON WHAT IT MATCHED (find manual, "Run Commands"):
+// -exec and -execdir, and their prompting forms -ok and -okdir. find itself reads directory entries
+// and inodes; every content reader it can reach -- cat, sha256sum, grep -- arrives through one of
+// these four. find_regular_files_sha256_command above is a real builder that uses one.
+data find_program_running_actions: List<String> = ["-exec", "-execdir", "-ok", "-okdir"]
+
+fn find_command_runs_another_program(command: ArgvCommand) -> Bool {
+  any(command.arguments, a => any(find_program_running_actions, x => a == x))
+}

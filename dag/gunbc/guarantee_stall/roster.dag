@@ -30,6 +30,7 @@ import gunbc.guarantee_stall.doc_graph_dangling_link_population_stall { doc_grap
 import gunbc.guarantee_stall.enforcement_live_closure_gate_stall { enforcement_live_closure_gate_stall }
 import gunbc.guarantee_stall.mandatory_tag_live_corpus_stall { mandatory_tag_live_corpus_stall }
 import gunbc.guarantee_stall.test_reference_ledger_typed_census_stall { test_reference_ledger_typed_census_stall }
+import gunbc.guarantee_stall.grammar_change_parses_no_real_corpus_file_stall { grammar_change_parses_no_real_corpus_file_stall }
 import gunbc.guarantee_stall.parse_ingest_grammar_relation_stall { parse_ingest_grammar_relation_stall }
 import gunbc.guarantee_stall.required_regen_host_derivation_stall { required_regen_host_derivation_stall }
 import gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall { self_host_hand_authorized_cargo_toml_stall }
@@ -76,7 +77,10 @@ import gunbc.guarantee_stall.text_carrier_render_not_keyed_on_identity_stall { t
 import gunbc.guarantee_stall.free_semigroup_text_crossing_decided_by_spelling_stall { free_semigroup_text_crossing_decided_by_spelling_stall }
 import gunbc.guarantee_stall.emitted_inline_crate_path_edges_unreturned_stall { emitted_inline_crate_path_edges_unreturned_stall }
 import gunbc.guarantee_stall.compile_pool_provision_wired_but_unreachable_stall { compile_pool_provision_wired_but_unreachable_stall }
+import gunbc.guarantee_stall.member_kind_door_binding_executed_by_no_claim_stall { member_kind_door_binding_executed_by_no_claim_stall }
 import gunbc.guarantee_stall.filesystem_read_outcome_node_grain_census_stall { filesystem_read_outcome_node_grain_census_stall }
+import gunbc.guarantee_stall.authored_record_field_list_standing_for_type_population_stall { authored_record_field_list_standing_for_type_population_stall }
+import gunbc.guarantee_stall.native_step_trip_awaits_fleet_job_cgroup_stall { native_step_trip_awaits_fleet_job_cgroup_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -245,10 +249,14 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   emitted_inline_crate_path_edges_unreturned_stall,
   test_reference_ledger_typed_census_stall,
   compile_pool_provision_wired_but_unreachable_stall,
+  grammar_change_parses_no_real_corpus_file_stall,
   browser_ready_labels_fleet_route_stall,
   accumulator_copy_untyped_combiner_refusals_stall,
   keyed_apply_patch_rebuilds_rows_per_hunk_stall,
+  member_kind_door_binding_executed_by_no_claim_stall,
   filesystem_read_outcome_node_grain_census_stall,
+  authored_record_field_list_standing_for_type_population_stall,
+  native_step_trip_awaits_fleet_job_cgroup_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.

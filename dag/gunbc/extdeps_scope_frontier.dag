@@ -213,6 +213,8 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/ninfer/ninfer_serve.dag",
+  "dag/extdeps/ninfer/qwen3_8_27b_nvfp4.dag",
   "dag/extdeps/vendor/bambu_lab.dag",
   "dag/extdeps/vendor/molex.dag",
   "dag/extdeps/printing/bambu_lab_filament.dag",
@@ -580,6 +582,10 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/cloudflare/r2.dag",
   "dag/extdeps/cloudflare/r2_buckets.dag",
   "dag/extdeps/deepseek/deepseek_v4_1_flash.dag",
+  "dag/extdeps/nvidia/api_trial_terms.dag",
+  "dag/extdeps/nvidia/nemotron_3_ultra.dag",
+  "dag/extdeps/openrouter/openrouter.dag",
+  "dag/extdeps/openrouter/nvidia_nemotron_3_ultra_free.dag",
   "dag/extdeps/zhipu/glm_5_3.dag",
   "dag/extdeps/radixark/glm_5_3_nvfp4.dag",
   "dag/extdeps/docker/images/gitcommit90_glm_53_one_spark.dag",
@@ -613,6 +619,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/tailscale/acl_api.dag",
   "dag/extdeps/process/gnu_bash_exit.dag",
   "dag/extdeps/llm/openai_rest.dag",
+  "dag/extdeps/llm/openai_compat_sse.dag",
+  "dag/extdeps/http/header_dump.dag",
   "dag/extdeps/auth/jwt.dag",
   "dag/extdeps/uuid/uuid.dag",
   "dag/extdeps/time/rfc3339.dag",

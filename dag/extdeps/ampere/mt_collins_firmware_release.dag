@@ -1,10 +1,10 @@
 module extdeps.ampere.mt_collins_firmware_release
 
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import std.types { Int, NonEmptyStr, List }
 import std.measure { ByteSize, byte_size, Second, second }
 import extdeps.crypto.hash { sha256_digest }
 import std.optional { Present }
-import extdeps.boards.types { AmpereMtCollins }
 import extdeps.firmware.types {
   FirmwareReleaseRow, FirmwareTarget, FirmwareSemanticVersion,
   BmcController, HostBios, ScpFirmware, MainboardCpld,
@@ -42,7 +42,7 @@ data mt_collins_firmware_delivery_authority: ExternalAuthority = ExternalAuthori
 }
 
 data mt_collins_bmc_0_45_3_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
-  board: AmpereMtCollins,
+  board: mt_collins_board_authority,
   target: BmcController,
   version: firmware_semantic_version(major: 0, minor: 45, patch: 3),
   released_on: 1703635200000,
@@ -56,7 +56,7 @@ data mt_collins_bmc_0_45_3_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
 }
 
 data mt_collins_bios_0acod014_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
-  board: AmpereMtCollins,
+  board: mt_collins_board_authority,
   target: HostBios,
   version: firmware_semantic_version(major: 0, minor: 14, patch: 0),
   released_on: 1702339200000,
@@ -70,7 +70,7 @@ data mt_collins_bios_0acod014_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
 }
 
 data mt_collins_scp_2_10_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
-  board: AmpereMtCollins,
+  board: mt_collins_board_authority,
   target: ScpFirmware,
   version: firmware_semantic_version(major: 2, minor: 10, patch: 0),
   released_on: 1674691200000,
@@ -84,7 +84,7 @@ data mt_collins_scp_2_10_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
 }
 
 data mt_collins_mb_cpld_v06_hpm: FirmwareReleaseRow = FirmwareReleaseRow {
-  board: AmpereMtCollins,
+  board: mt_collins_board_authority,
   target: MainboardCpld,
   version: firmware_semantic_version(major: 6, minor: 0, patch: 0),
   released_on: 1654560000000,

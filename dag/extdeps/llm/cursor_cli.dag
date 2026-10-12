@@ -108,8 +108,11 @@ data cursor_model_grok_high_fast: CursorModelId = "cursor-grok-4.5-high-fast" as
 data cursor_observed_model_roster_size: Int = 193
 
 // DELIBERATELY NOT USED: -w/--worktree starts the agent in an isolated git worktree the CLI creates under ~/.cursor/worktrees/<repo>/<name>. This repository's belt already creates and owns attempt worktrees under the dashboard instance's own attempts root, with the branch name and attempt identity bound to the roadmap node.\n\nAccepting the CLI's worktree would hand that ownership to the provider: the location would move outside the instance root the model treats as owned, the naming would stop deriving from the attempt, and teardown would belong to a directory nobody declared. The flag is recorded so the choice is visible rather than looking like an oversight — a later reader finding two worktree mechanisms should know only one is ours.
-type CursorInvocation {
-  auth: CursorAuth
+// THE RUN AND THE CREDENTIAL ARE TWO FACTS. Everything but the key decides the argv; the key decides
+// only where the credential travels. Keeping them apart lets a caller whose key is not in hand (a
+// spawn that exports it from a custody file in the child, gunbc.roadmap_dispatch_actuator) build the
+// same argv this module builds, rather than spelling cursor-agent's flags a second time.
+type CursorRunShape {
   model: CursorModelId
   mode: CursorExecutionMode
   sandbox: CursorSandboxChoice
@@ -118,6 +121,11 @@ type CursorInvocation {
   trust_workspace: Bool
   workspace: FilePath
   prompt: NonEmptyStr
+}
+
+type CursorInvocation {
+  auth: CursorAuth
+  run: CursorRunShape
 }
 
 // THE AUTH FIELD WAS NEVER READ, SO BOTH ARMS PRODUCED THE SAME PROCESS. shape_cursor_agent_argv
@@ -147,20 +155,20 @@ type CursorProcessInvocation {
   environment: List<CursorEnvBinding>
 }
 
-fn cursor_common_argv(inv: CursorInvocation) -> List<String> {
+fn cursor_common_argv(run: CursorRunShape) -> List<String> {
   concat(
     [cursor_cli_program, "--print"],
     concat(
-      ["--output-format", cursor_output_format_wire(f: inv.output_format)],
+      ["--output-format", cursor_output_format_wire(f: run.output_format)],
       concat(
-        ["--model", inv.model as String],
+        ["--model", run.model as String],
         concat(
-          cursor_mode_args(mode: inv.mode),
+          cursor_mode_args(mode: run.mode),
           concat(
-            cursor_sandbox_args(choice: inv.sandbox),
+            cursor_sandbox_args(choice: run.sandbox),
             concat(
-              if inv.force { ["--force"] } else { [] },
-              if inv.trust_workspace { ["--trust"] } else { [] },
+              if run.force { ["--force"] } else { [] },
+              if run.trust_workspace { ["--trust"] } else { [] },
             ),
           ),
         ),
@@ -169,11 +177,17 @@ fn cursor_common_argv(inv: CursorInvocation) -> List<String> {
   )
 }
 
-fn cursor_tail_argv(inv: CursorInvocation) -> List<String> {
+fn cursor_tail_argv(run: CursorRunShape) -> List<String> {
   concat(
-    ["--workspace", inv.workspace as String],
-    [inv.prompt as String],
+    ["--workspace", run.workspace as String],
+    [run.prompt as String],
   )
+}
+
+// The argv of a run whose key reaches the process through CURSOR_API_KEY set by someone else: the
+// environment arm's argv, with nothing about the key in it.
+fn cursor_environment_authenticated_argv(run: CursorRunShape) -> List<String> {
+  concat(cursor_common_argv(run: run), cursor_tail_argv(run: run))
 }
 
 fn shape_cursor_invocation(inv: CursorInvocation) -> CursorProcessInvocation {
@@ -182,15 +196,15 @@ fn shape_cursor_invocation(inv: CursorInvocation) -> CursorProcessInvocation {
       CursorProcessInvocation {
         program: cursor_cli_program,
         argv: concat(
-          cursor_common_argv(inv: inv),
-          concat(["--api-key", key as String], cursor_tail_argv(inv: inv)),
+          cursor_common_argv(run: inv.run),
+          concat(["--api-key", key as String], cursor_tail_argv(run: inv.run)),
         ),
         environment: [],
       }
     CursorApiKeyEnvironment { key } =>
       CursorProcessInvocation {
         program: cursor_cli_program,
-        argv: concat(cursor_common_argv(inv: inv), cursor_tail_argv(inv: inv)),
+        argv: cursor_environment_authenticated_argv(run: inv.run),
         environment: [
           CursorEnvBinding { name: cursor_api_key_env_var, value: key },
         ],
@@ -212,14 +226,16 @@ fn cursor_automation_invocation(
 ) -> CursorInvocation {
   CursorInvocation {
     auth: CursorApiKeyEnvironment { key: key },
-    model: model,
-    mode: mode,
-    sandbox: sandbox,
-    output_format: output_format,
-    force: force,
-    trust_workspace: trust_workspace,
-    workspace: workspace,
-    prompt: prompt,
+    run: CursorRunShape {
+      model: model,
+      mode: mode,
+      sandbox: sandbox,
+      output_format: output_format,
+      force: force,
+      trust_workspace: trust_workspace,
+      workspace: workspace,
+      prompt: prompt,
+    },
   }
 }
 

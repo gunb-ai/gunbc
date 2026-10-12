@@ -87,10 +87,22 @@ test fn witness_exit_ok_parses_sessions() -> Bool {
   match classify_tmux_session_list(exit_ok: true, stdout: output, stderr: "") {
     TmuxSessionsListed { entries } =>
       count(entries) == 2
-        && entries.first().session_name == "alpha"
-        && entries.first().windows == 1
-        && entries.skip(n: 1).first().session_name == "beta"
-        && entries.skip(n: 1).first().windows == 2
+        && (match entries.first() {
+            Present { value: v } => v.session_name == "alpha"
+            Absent => false
+          })
+        && (match entries.first() {
+            Present { value: v } => v.windows == 1
+            Absent => false
+          })
+        && (match entries.skip(n: 1).first() {
+            Present { value: v } => v.session_name == "beta"
+            Absent => false
+          })
+        && (match entries.skip(n: 1).first() {
+            Present { value: v } => v.windows == 2
+            Absent => false
+          })
     TmuxNoServer { evidence: _ } => false
     TmuxListUnknowable { stderr: _ } => false
     TmuxListStdoutRefused { line_number: _, raw: _, reason: _ } => false
@@ -102,7 +114,10 @@ test fn witness_ls_output_parse_matches_classifier() -> Bool {
   match parse_tmux_ls_output(output: output) {
     TmuxLsParsed { entries } =>
       count(entries) == 1
-        && entries.first().session_name == "gunbc-dispatch-node-4"
+        && (match entries.first() {
+            Present { value: v } => v.session_name == "gunbc-dispatch-node-4"
+            Absent => false
+          })
     TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
   }
 }

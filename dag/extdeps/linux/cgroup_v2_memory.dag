@@ -1,6 +1,5 @@
 module extdeps.linux.cgroup_v2_memory
 
-import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
 import std.algebra { trim }
 import std.checked_arithmetic { nat_magnitude }
@@ -57,6 +56,8 @@ type CgroupMemoryInterfaceFile
   | MemoryMax
   | MemoryHigh
   | MemorySwapCurrent
+  | MemorySwapMax
+  | MemorySwapPeak
   | MemoryEvents
 
 fn cgroup_memory_interface_file_name(f: CgroupMemoryInterfaceFile) -> NonEmptyStr {
@@ -66,6 +67,8 @@ fn cgroup_memory_interface_file_name(f: CgroupMemoryInterfaceFile) -> NonEmptySt
     MemoryMax => "memory.max"
     MemoryHigh => "memory.high"
     MemorySwapCurrent => "memory.swap.current"
+    MemorySwapMax => "memory.swap.max"
+    MemorySwapPeak => "memory.swap.peak"
     MemoryEvents => "memory.events"
   }
 }
@@ -77,6 +80,8 @@ fn cgroup_memory_metric_kind(f: CgroupMemoryInterfaceFile) -> CgroupMemoryMetric
     MemoryMax => Instantaneous
     MemoryHigh => Instantaneous
     MemorySwapCurrent => Instantaneous
+    MemorySwapMax => Instantaneous
+    MemorySwapPeak => LifetimeEpochScoped
     MemoryEvents => CumulativeCounter
   }
 }

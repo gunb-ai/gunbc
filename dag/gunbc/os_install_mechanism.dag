@@ -37,6 +37,7 @@ import gunbc.machine_intake_access {
   AccessContextObservationEvidenceMismatch,
   AccessContextObservationForOtherAttempt,
   AccessContextProbeEvidenceMismatch,
+  AccessContextBoardNotFactsBound,
   AccessContextProfileAmbiguous,
   AccessContextProfileLookupNotRun,
   AccessContextProfileUncatalogued,
@@ -155,6 +156,7 @@ fn os_install_solution_of_delivery(solution: BootDeliverySolution) -> OsInstallM
             AccessContextProbeEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextControlRouteEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextPromotedProfileUnverified { observation_receipt: _, promotion_receipt: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextBoardNotFactsBound { observed_identity: _, board: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextProfileUncatalogued { observed_identity: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextProfileAmbiguous { observed_identity: _, count: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextCatalogRefused { standing: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }

@@ -1,0 +1,18 @@
+module test.claim.mtcollins_sol_host_payload_integrity_witness
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.tools.sha256sum { Sha256Matches, sha256sum_verify_via_shell }
+import gunbc.mtcollins_memory_change {
+  mtcollins_training_capture_path,
+  mtcollins_training_capture_sha256,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+test fn committed_sol_host_payload_hashes_to_the_positive_control_identity() -> Bool {
+  sha256sum_verify_via_shell(
+    path: mtcollins_training_capture_path,
+    expected_digest: mtcollins_training_capture_sha256,
+  ) == Sha256Matches
+}

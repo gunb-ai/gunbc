@@ -1,9 +1,13 @@
 module gunbc.instruments.native_serve_fixture
 
-import std.types { String, CommitSha }
+import std.types { String, Int, Bool, CommitSha }
 import std.compiler_entry { CompilerEntryDriver, NativeServeDriver }
 import extdeps.http.server { ServeWireResponse, ServeWireHeader, WireHeaderLocation }
 import gunbc.native_serve { native_serve_text_plain }
+import extdeps.clock { Clock }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import std.resources { Network }
+import std.algebra { trim }
 
 // THE SMALLEST SERVICE THAT EXERCISES EVERY DECISION OF THE NATIVE SERVE DOOR, served by
 // `gunbc test //gunbc/instruments:native-serve` (gunbc.native_serve_probe judges what it answers).
@@ -46,7 +50,79 @@ fn native_serve_handle(method: String, path: String, body: String, tailscale_ide
     fixture_text(status: 200, body: concat("spun ", concat(to_string(value: fixture_spin(n: 1000000000000000, acc: 7)), "\n")))
   } else if path == "/echo" && method == "POST" {
     fixture_text(status: 200, body: body)
+  } else if path == "/effects/clock" && method == "GET" {
+    fixture_clock_readings()
+  } else if path == "/effects/rest" && method == "POST" {
+    fixture_peer_liveness(port_text: body)
   } else {
     fixture_text(status: 404, body: concat("no route for ", concat(method, concat(" ", concat(path, "\n")))))
   }
+}
+
+// ── THE BOUND EFFECT HANDLERS, EXERCISED (native broker 2N) ─────────────────────────────────────
+// These two routes make this entry demand effects, so its rendered main binds the handlers
+// v1.compiler.emit NativeEffectRealizationAdmission admitted for it -- extdeps.clock Clock on the
+// existing shell transport, and FixturePeer on the existing REST lowering -- and nothing else.
+// gunbc.native_serve_probe judges what they answer; this handler only reports what it observed.
+//
+// /effects/clock reads Clock.Now twice in order. The probe holds the pair plausible (an RFC 3339
+// UTC second in a sane year) and monotone (the second reading is not before the first).
+fn fixture_clock_readings() -> ServeWireResponse {
+  let first = Clock.Now()
+  let second = Clock.Now()
+  fixture_text(status: 200, body: concat(first.timestamp as String, concat("\n", concat(second.timestamp as String, "\n"))))
+}
+
+// /effects/rest asks another served process for its liveness document over the REST transport.
+// The body is the port to ask: the instrument starts a second instance of this fixture as the
+// local test server and sends its bound port (the answered arm), and sends a port nothing listens
+// on (the RestTransportRefused arm). The answer names the arm the transport produced, nothing more.
+fn fixture_peer_liveness(port_text: String) -> ServeWireResponse {
+  match parse_int(s: trim(s: port_text)) {
+    Absent => fixture_text(status: 400, body: "the body is not a port\n")
+    Present { value: port } => fixture_text(status: 200, body: concat(fixture_rest_arm(rest: native_serve_fixture.Peer.Liveness(port: port)), "\n"))
+  }
+}
+
+fn fixture_rest_arm(rest: RestResult<Bool>) -> String {
+  match rest {
+    RestAnswered { answer } => if answer { "answered live" } else { "answered not-live" }
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status, body } => concat("refused status ", to_string(value: status))
+      RestTransportRefused { cause } => "refused transport"
+      RestBodyUndecodable { status, cause } => concat("refused body ", to_string(value: status))
+    }
+  }
+}
+
+// The peer is another native-serve process on loopback. The ORIGIN is the endpoint and the port the
+// path's first segment, because the port is the one fact only known after the peer binds port 0:
+// the REST transport's endpoint is per-service configuration, so a per-call port can only be carried
+// in the request target. This is the fixture's shape, not a pattern for production services.
+service native_serve_fixture.Peer {
+  config {
+    endpoint: "http://127.0.0.1"
+  }
+
+  operation Liveness {
+    requires Network
+    input {
+      port: Int
+    }
+    output {
+      live: Bool from "live"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: ":\{port\}/livez"
+    }
+    response {
+      200 => FixturePeerLiveness
+    }
+  }
+}
+
+type FixturePeerLiveness {
+  live: Bool
 }

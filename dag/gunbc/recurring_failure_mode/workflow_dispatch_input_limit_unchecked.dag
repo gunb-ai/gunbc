@@ -1,0 +1,14 @@
+module gunbc.recurring_failure_mode.workflow_dispatch_input_limit_unchecked
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data workflow_dispatch_input_limit_unchecked: RecurringFailureMode = RecurringFailureMode {
+  identity: "workflow_dispatch_input_limit_unchecked" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a generated workflow is valid YAML and passes local generation but declares more workflow_dispatch inputs than GitHub accepts. Every manual mode is then unavailable, including modes that use only a few fields. A YAML parser cannot prove the hosted API's cardinality contract.",
+    "OBSERVED 2026-10-09 during srv1 workspace bringup, PR #13607: base 2a519d27f6f77db2a20696a2ffc4f540dbd88f40 declares 28 inputs. Adding the image artifact locator made 29; dispatch at 048d345cd302d412565d6b214f1e912a788ffecb returned HTTP 422 with 'you may only define up to 25 inputs'. Push run 37877157911 also failed workflow validation, before any host job ran. GitHub documents 25 at https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_dispatchinputs .",
+    "REPAIR: extdeps.github.actions owns workflow_dispatch_max_inputs, and the fleet YAML producer refuses above it. Consolidating five printer operation detail inputs into one JSON input retains their domain checks and brings this workflow to 25 inputs including the workspace artifact locator. RUNG FOUND AT: detectable only by the remote dispatcher. CURRENT RUNG: mechanically preventable for this producer. CEILING: structurally impossible when every workflow-dispatch carrier admits its bounded input population at construction. NEXT TRIGGER: generic workflow construction owns this admission, so another emitter cannot omit the same API limit.",
+  ],
+  evidence: [],
+}

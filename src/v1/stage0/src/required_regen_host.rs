@@ -2979,6 +2979,8 @@ pub struct RegenRoundCostOutcome {
 }
 
 pub const REGEN_ROUND_COST_RECEIPT_REL: &str = "target/stage0-regen-round-cost.txt";
+/// Set on the single re-exec after the seed build replaced the running executable.
+const REGEN_ROUND_COST_REEXEC_ENV: &str = "GUNBC_REGEN_ROUND_COST_REEXEC";
 const REGEN_ROUND_COST_PRODUCER: &str = "claim_executor --regen-round-cost";
 const REGEN_ROUND_COST_ENTRY_UNDER_ROOT: &str = "gunbc/regen_round_cost.dag";
 
@@ -3699,6 +3701,235 @@ fn journal_stage0_paths_for_subject(
     fs::write(&manifest_path, bytes).map_err(|e| format!("write {}: {e}", manifest_path.display()))
 }
 
+/// The seed build's cost as observed by one process image.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SeedBuildCost {
+    compiled_crates: u64,
+    wall_ms: u64,
+    /// `None` is `gunbc.regen_round_cost` `CpuUnreadable`, never zero.
+    cpu_ms: Option<u64>,
+}
+
+/// What the replaced image hands to the built one: its seed-build cost, the source identity it
+/// built (HEAD plus the digest of the uncommitted tracked diff: a dirty tree stays legal, a
+/// same-commit source change is visible), and the digest of the artifact it built.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SeedHandoff {
+    cost: SeedBuildCost,
+    source: String,
+    built_exe: String,
+}
+
+/// Why the seed handoff refuses. Standing: runtime mitigation (guarantee-ladder rung 1) -- a
+/// typed refusal at the point the invalid state is observed; the invalid state stays writable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SeedHandoffRefusal {
+    /// The built image was replaced by another path replacement after the handoff. Claims
+    /// nothing about idempotence: only that the executable changed again.
+    ExecutableReplacedAfterHandoff {
+        before: String,
+        after: String,
+    },
+    /// The source the first image built is not the source this image sees (another commit, or
+    /// the same commit with a different uncommitted tracked diff).
+    SourceChangedAcrossHandoff {
+        carried: String,
+        observed: String,
+    },
+    /// The descriptor opened for the exec holds other bytes than the build produced.
+    OpenedTargetNotBuildOutput {
+        built: String,
+        opened: String,
+    },
+    /// This image is not the artifact the first image built.
+    WrongArtifactAcrossHandoff {
+        built: String,
+        running: String,
+    },
+    /// The composed ledger holds other than exactly one `round.seed_build` measurement, so the
+    /// carried cost cannot be added exactly once.
+    SeedBuildMeasurementCount {
+        found: usize,
+    },
+    /// The carried observation does not decode.
+    HandoffUndecodable {
+        value: String,
+    },
+    ReExecFailed {
+        path: String,
+        cause: String,
+    },
+}
+
+impl std::fmt::Display for SeedHandoffRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let p = REGEN_ROUND_COST_PRODUCER;
+        match self {
+            Self::ExecutableReplacedAfterHandoff { before, after } => write!(
+                f,
+                "refusal: ExecutableReplacedAfterHandoff: {p}: the seed build replaced the \
+                 running executable again after the one handoff ({before} -> {after}); the tree \
+                 is the carried one, so another path is replacing the executable"
+            ),
+            Self::SourceChangedAcrossHandoff { carried, observed } => write!(
+                f,
+                "refusal: SourceChangedAcrossHandoff: {p}: first image built source {carried}, \
+                 this image sees {observed}"
+            ),
+            Self::OpenedTargetNotBuildOutput { built, opened } => write!(
+                f,
+                "refusal: OpenedTargetNotBuildOutput: {p}: the build produced {built} but the \
+                 descriptor opened for the exec holds {opened}"
+            ),
+            Self::WrongArtifactAcrossHandoff { built, running } => write!(
+                f,
+                "refusal: WrongArtifactAcrossHandoff: {p}: first image built {built}, this \
+                 image is {running}"
+            ),
+            Self::SeedBuildMeasurementCount { found } => write!(
+                f,
+                "refusal: SeedBuildMeasurementCount: {p}: expected exactly one round.seed_build \
+                 measurement to receive the carried cost, found {found}"
+            ),
+            Self::HandoffUndecodable { value } => write!(
+                f,
+                "refusal: HandoffUndecodable: {p}: {REGEN_ROUND_COST_REEXEC_ENV}={value:?}"
+            ),
+            Self::ReExecFailed { path, cause } => write!(
+                f,
+                "refusal: ReExecFailed: {p}: the seed build replaced the running executable and \
+                 re-exec of {path} failed: {cause}"
+            ),
+        }
+    }
+}
+
+enum SeedHandoffDecision {
+    Proceed,
+    ReExec(SeedHandoff),
+}
+
+impl SeedHandoff {
+    fn encode(&self) -> String {
+        let cpu = self
+            .cost
+            .cpu_ms
+            .map_or("unreadable".to_string(), |c| c.to_string());
+        format!(
+            "crates={};wall_ms={};cpu_ms={};source={};built_exe={}",
+            self.cost.compiled_crates, self.cost.wall_ms, cpu, self.source, self.built_exe
+        )
+    }
+
+    fn decode(value: &str) -> Result<Self, SeedHandoffRefusal> {
+        let bad = || SeedHandoffRefusal::HandoffUndecodable {
+            value: value.to_string(),
+        };
+        let mut it = value.split(';').map(|kv| kv.split_once('='));
+        let mut field = |key: &str| -> Result<String, SeedHandoffRefusal> {
+            match it.next() {
+                Some(Some((k, v))) if k == key => Ok(v.to_string()),
+                _ => Err(bad()),
+            }
+        };
+        let compiled_crates = field("crates")?.parse::<u64>().map_err(|_| bad())?;
+        let wall_ms = field("wall_ms")?.parse::<u64>().map_err(|_| bad())?;
+        let cpu = field("cpu_ms")?;
+        let cpu_ms = if cpu == "unreadable" {
+            None
+        } else {
+            Some(cpu.parse::<u64>().map_err(|_| bad())?)
+        };
+        let source = field("source")?;
+        let built_exe = field("built_exe")?;
+        Ok(SeedHandoff {
+            cost: SeedBuildCost {
+                compiled_crates,
+                wall_ms,
+                cpu_ms,
+            },
+            source,
+            built_exe,
+        })
+    }
+
+    fn from_env() -> Result<Option<Self>, SeedHandoffRefusal> {
+        match std::env::var(REGEN_ROUND_COST_REEXEC_ENV) {
+            Ok(v) => Self::decode(&v).map(Some),
+            Err(std::env::VarError::NotPresent) => Ok(None),
+            Err(std::env::VarError::NotUnicode(v)) => Err(SeedHandoffRefusal::HandoffUndecodable {
+                value: v.to_string_lossy().into_owned(),
+            }),
+        }
+    }
+}
+
+fn decide_seed_handoff(
+    incoming: Option<&SeedHandoff>,
+    exe_before: &str,
+    exe_after: &str,
+    source: &str,
+    cost: &SeedBuildCost,
+) -> Result<SeedHandoffDecision, SeedHandoffRefusal> {
+    if let Some(h) = incoming {
+        if h.source != source {
+            return Err(SeedHandoffRefusal::SourceChangedAcrossHandoff {
+                carried: h.source.clone(),
+                observed: source.to_string(),
+            });
+        }
+        if h.built_exe != exe_before {
+            return Err(SeedHandoffRefusal::WrongArtifactAcrossHandoff {
+                built: h.built_exe.clone(),
+                running: exe_before.to_string(),
+            });
+        }
+        if exe_before != exe_after {
+            return Err(SeedHandoffRefusal::ExecutableReplacedAfterHandoff {
+                before: exe_before.to_string(),
+                after: exe_after.to_string(),
+            });
+        }
+        return Ok(SeedHandoffDecision::Proceed);
+    }
+    if exe_before == exe_after {
+        return Ok(SeedHandoffDecision::Proceed);
+    }
+    Ok(SeedHandoffDecision::ReExec(SeedHandoff {
+        cost: cost.clone(),
+        source: source.to_string(),
+        built_exe: exe_after.to_string(),
+    }))
+}
+
+/// Compose the carried pre-handoff seed build into this image's observation: crate count and
+/// the `round.seed_build` ledger row, summed exactly once. A carried CPU that is unreadable
+/// makes the composed CPU unreadable, never zero.
+fn compose_seed_build_cost(
+    carried: Option<&SeedBuildCost>,
+    this_image_crates: u64,
+    mut marks: std::vec::Vec<v1_rt::TraceLedgerRow>,
+) -> Result<(u64, std::vec::Vec<v1_rt::TraceLedgerRow>), SeedHandoffRefusal> {
+    let Some(c) = carried else {
+        return Ok((this_image_crates, marks));
+    };
+    let found = marks
+        .iter()
+        .filter(|r| r.label == "round.seed_build")
+        .count();
+    if found != 1 {
+        return Err(SeedHandoffRefusal::SeedBuildMeasurementCount { found });
+    }
+    for row in marks.iter_mut().filter(|r| r.label == "round.seed_build") {
+        row.wall_ms += c.wall_ms;
+        row.cpu_ms = match (row.cpu_ms, c.cpu_ms) {
+            (Some(a), Some(b)) => Some(a + b),
+            _ => None,
+        };
+    }
+    Ok((this_image_crates + c.compiled_crates, marks))
+}
+
 fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservation, String> {
     v1_rt::trace_mark(format!("{label}.begin"));
     let output = Command::new("cargo")
@@ -3752,10 +3983,101 @@ fn current_exe_on_disk() -> Result<PathBuf, String> {
     ))
 }
 
+/// Open the path ONCE and digest the bytes read through that descriptor. The returned file is
+/// the exec target: `/proc/self/fd/N` names this inode, so a later replacement of the path
+/// cannot make the executed image differ from the hashed one.
+fn open_exec_target(path: &Path) -> Result<(fs::File, String), String> {
+    let mut file = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let digest = digest_open_file(&mut file)?;
+    Ok((file, digest))
+}
+
+/// Admit the exec target: the carry keeps the BUILD-OUTPUT digest, and the opened descriptor's
+/// digest must equal it. Never overwrites the carry from the open.
+fn admit_exec_target(
+    carry: SeedHandoff,
+    opened_digest: &str,
+) -> Result<SeedHandoff, SeedHandoffRefusal> {
+    if carry.built_exe != opened_digest {
+        return Err(SeedHandoffRefusal::OpenedTargetNotBuildOutput {
+            built: carry.built_exe,
+            opened: opened_digest.to_string(),
+        });
+    }
+    Ok(carry)
+}
+
+/// Digest of the bytes of an open file, read from its start.
+fn digest_open_file(file: &mut fs::File) -> Result<String, String> {
+    use std::io::{Read, Seek};
+    file.rewind().map_err(|e| format!("rewind: {e}"))?;
+    let mut bytes = std::vec::Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|e| format!("read: {e}"))?;
+    Ok(bytes_digest(&bytes))
+}
+
+/// The RUNNING image: `/proc/self/exe` opened directly, no installed-pathname reopen and no
+/// ` (deleted)` strip. Three identities stay separate: the build output (`current_exe_digest`,
+/// the installed path), the opened exec target (`open_exec_target`, carried as `built_exe`),
+/// and this one.
+fn running_image_digest() -> Result<String, String> {
+    let mut file =
+        fs::File::open("/proc/self/exe").map_err(|e| format!("open /proc/self/exe: {e}"))?;
+    digest_open_file(&mut file)
+}
+
 fn current_exe_digest() -> Result<String, String> {
     let on_disk = current_exe_on_disk()?;
     let bytes = fs::read(&on_disk).map_err(|e| format!("read {}: {e}", on_disk.display()))?;
     Ok(bytes_digest(&bytes))
+}
+
+/// HEAD, the digest of the uncommitted tracked diff, and path+content digests of untracked,
+/// non-ignored files (a new module or source the build consumes).
+fn source_identity(workspace: &Path, head: &str) -> Result<String, String> {
+    let run = |args: &[&str]| -> Result<Vec<u8>, String> {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(workspace)
+            .output()
+            .map_err(|e| format!("git {}: {e}", args.join(" ")))?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        }
+        Ok(output.stdout)
+    };
+    let diff = run(&["diff", "HEAD", "--binary"])?;
+    let listing = run(&["ls-files", "--others", "--exclude-standard", "-z"])?;
+    let mut untracked = std::vec::Vec::new();
+    for rel in listing.split(|b| *b == 0).filter(|p| !p.is_empty()) {
+        use std::os::unix::ffi::OsStrExt;
+        let full = workspace.join(std::ffi::OsStr::from_bytes(rel));
+        let content = fs::read(&full).map_err(|e| format!("read {}: {e}", full.display()))?;
+        untracked.push((rel.to_vec(), content));
+    }
+    Ok(compose_source_identity(head, &diff, &mut untracked))
+}
+
+fn compose_source_identity(
+    head: &str,
+    tracked_diff: &[u8],
+    untracked: &mut [(std::vec::Vec<u8>, std::vec::Vec<u8>)],
+) -> String {
+    untracked.sort_by(|a, b| a.0.cmp(&b.0));
+    // Length-prefixed raw path bytes: no filename byte (`=`, newline, NUL) can move a
+    // boundary between entries.
+    let mut payload = std::vec::Vec::new();
+    for (path, content) in untracked.iter() {
+        payload.extend_from_slice(&(path.len() as u64).to_le_bytes());
+        payload.extend_from_slice(path);
+        payload.extend_from_slice(bytes_digest(content).as_bytes());
+    }
+    format!(
+        "{head}+{}+{}",
+        bytes_digest(tracked_diff),
+        bytes_digest(&payload)
+    )
 }
 
 fn git_tree_dirty(workspace: &Path) -> Result<bool, String> {
@@ -4350,8 +4672,8 @@ fn assembled_seed_modules(
             GeneratedFoundationCrate | GeneratedLayeredCoreCrate => {
                 host_shell_modules.extend(row.modules.iter().cloned());
             }
-            // Emit-core is a consumer/re-export, not a module-bearing assembly owner.
-            GeneratedEmitCoreCrate => {}
+            // Emit-core and facade crates are consumers/re-exports, not module-bearing assembly owners.
+            GeneratedEmitCoreCrate | GeneratedFacadeCrate => {}
         }
     }
     host_shell_modules
@@ -5467,22 +5789,67 @@ pub fn run_regen_round_cost(
     let host = host_name();
     let tree = git_head_sha(&workspace)?;
     let tree_dirty = git_tree_dirty(&workspace)?;
-    let exe_before = current_exe_digest()?;
+    let source_identity = source_identity(&workspace, &tree)?;
+    let exe_before = running_image_digest()?;
 
     // Recover an interrupted transaction before attempting to build or observe a new subject.
     restore_regen_convergence_journal(&workspace)?;
 
     v1_rt::trace_ledger_arm();
     let rustfmt_spawns_before = rustfmt_spawn_count();
+    let seed_cpu_before = v1_rt::trace_process_tree_cpu_ms();
+    let seed_wall_before = std::time::Instant::now();
     let seed_build = seed_cargo_build(&workspace, "round.seed_build")?;
+    let seed_build_wall_ms = seed_wall_before.elapsed().as_millis() as u64;
+    let seed_build_cpu_ms = match (seed_cpu_before, v1_rt::trace_process_tree_cpu_ms()) {
+        (Some(b), Some(a)) => Some(a.saturating_sub(b)),
+        _ => None,
+    };
     let exe_after = current_exe_digest()?;
-    if exe_before != exe_after {
-        return Err(format!(
-            "refusal: the seed build replaced the running executable ({exe_before} -> \
-             {exe_after}), so an emit from this process would measure a seed the build did not \
-             produce. Re-run {REGEN_ROUND_COST_PRODUCER} so the emitting seed is the built one."
-        ));
+    let handoff_in = SeedHandoff::from_env().map_err(|cause| cause.to_string())?;
+    let seed_build_cost = SeedBuildCost {
+        compiled_crates: seed_build.compiled_crates,
+        wall_ms: seed_build_wall_ms,
+        cpu_ms: seed_build_cpu_ms,
+    };
+    match decide_seed_handoff(
+        handoff_in.as_ref(),
+        &exe_before,
+        &exe_after,
+        &source_identity,
+        &seed_build_cost,
+    )
+    .map_err(|cause| cause.to_string())?
+    {
+        SeedHandoffDecision::Proceed => {}
+        SeedHandoffDecision::ReExec(carry) => {
+            // ROOT CAUSE: the build's output path IS this process's image path, so a build that
+            // relinks replaces the executable that is running it. The emit below runs in this
+            // process, so it must be the built seed: hand the observation to the built binary,
+            // which composes it into the receipt exactly once.
+            use std::os::fd::AsRawFd;
+            use std::os::unix::process::CommandExt;
+            let on_disk = current_exe_on_disk()?;
+            // `carry.built_exe` is the build-output digest; the descriptor we exec must match
+            // it before the exec, and the carry is never re-identified from the open.
+            let (target, target_digest) = open_exec_target(&on_disk)?;
+            let carry =
+                admit_exec_target(carry, &target_digest).map_err(|cause| cause.to_string())?;
+            let err = Command::new(format!("/proc/self/fd/{}", target.as_raw_fd()))
+                .arg0(&on_disk)
+                .args(std::env::args_os().skip(1))
+                .env(REGEN_ROUND_COST_REEXEC_ENV, carry.encode())
+                .exec();
+            return Err(SeedHandoffRefusal::ReExecFailed {
+                path: on_disk.display().to_string(),
+                cause: err.to_string(),
+            }
+            .to_string());
+        }
     }
+    // Pre-handoff cost joins this image's no-op rebuild: summed once, here, before the
+    // ledger rows and the crate count reach the receipt.
+    let carried_cost = handoff_in.as_ref().map(|h| h.cost.clone());
 
     let (
         basename_to_module,
@@ -5775,13 +6142,19 @@ pub fn run_regen_round_cost(
 
     // The runtime's `Vec` is the persistent vector its emitted programs use; the receipt
     // renderer takes a slice, so the rows are collected once here.
-    let marks: std::vec::Vec<v1_rt::TraceLedgerRow> = v1_rt::trace_ledger_drain()
+    let drained_marks: std::vec::Vec<v1_rt::TraceLedgerRow> = v1_rt::trace_ledger_drain()
         .ok_or_else(|| {
             "refusal: the trace ledger was not armed, so no phase was recorded".to_string()
         })?
         .iter()
         .cloned()
         .collect();
+    let (seed_build_crates_total, marks) = compose_seed_build_cost(
+        carried_cost.as_ref(),
+        seed_build.compiled_crates,
+        drained_marks,
+    )
+    .map_err(|cause| cause.to_string())?;
     let host_shell_modules =
         super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
     let rendered = render_round_cost_receipt(
@@ -5789,7 +6162,7 @@ pub fn run_regen_round_cost(
         &host,
         &tree,
         tree_dirty,
-        seed_build.compiled_crates,
+        seed_build_crates_total,
         rebuild_compiled_crates,
         rustfmt_spawn_count() - rustfmt_spawns_before,
         &marks,
@@ -5817,6 +6190,280 @@ pub fn run_regen_round_cost(
 #[cfg(test)]
 mod regen_round_cost_tests {
     use super::*;
+
+    fn cost(crates: u64, wall: u64, cpu: Option<u64>) -> SeedBuildCost {
+        SeedBuildCost {
+            compiled_crates: crates,
+            wall_ms: wall,
+            cpu_ms: cpu,
+        }
+    }
+
+    fn row(label: &str, wall: u64, cpu: Option<u64>) -> v1_rt::TraceLedgerRow {
+        v1_rt::TraceLedgerRow {
+            label: label.to_string(),
+            wall_ms: wall,
+            cpu_ms: cpu,
+        }
+    }
+
+    /// P1 discriminator: a supplied nonzero pre-handoff cost and crate count survive the
+    /// production composition and the production render, once.
+    #[test]
+    fn pre_handoff_seed_build_cost_is_composed_exactly_once_into_the_receipt() {
+        let carried = cost(655, 180_000, Some(170_000));
+        let marks = vec![
+            row("round.seed_build", 96, Some(100)),
+            row("corpus_load", 7, Some(7)),
+        ];
+        let (crates, composed) = compose_seed_build_cost(Some(&carried), 0, marks.clone()).unwrap();
+        assert_eq!(crates, 655);
+        assert_eq!(composed[0].wall_ms, 180_096);
+        assert_eq!(composed[0].cpu_ms, Some(170_100));
+        assert_eq!(composed[1].wall_ms, 7, "other phases are untouched");
+        // no carried cost: identity (no omission invented, nothing added)
+        let (c0, m0) = compose_seed_build_cost(None, 3, marks.clone()).unwrap();
+        assert_eq!((c0, m0[0].wall_ms), (3, 96));
+        // unreadable carried CPU is unreadable, never zero
+        let (_, un) = compose_seed_build_cost(Some(&cost(1, 1, None)), 0, marks.clone()).unwrap();
+        assert_eq!(un[0].cpu_ms, None);
+        // zero rows: the carried duration would vanish while the crates stayed
+        assert!(matches!(
+            compose_seed_build_cost(Some(&carried), 0, vec![row("corpus_load", 7, Some(7))]),
+            Err(SeedHandoffRefusal::SeedBuildMeasurementCount { found: 0 })
+        ));
+        // two rows: the carried duration would be counted twice
+        let two = vec![
+            row("round.seed_build", 96, Some(1)),
+            row("round.seed_build", 4, Some(1)),
+        ];
+        assert!(matches!(
+            compose_seed_build_cost(Some(&carried), 0, two),
+            Err(SeedHandoffRefusal::SeedBuildMeasurementCount { found: 2 })
+        ));
+
+        let workspace = workspace_root();
+        let roots = vec![
+            workspace.join("dag").display().to_string(),
+            workspace.join("src/v2").display().to_string(),
+        ];
+        let rendered = render_round_cost_receipt(
+            &roots,
+            "h",
+            "t",
+            false,
+            crates,
+            0,
+            0,
+            &composed,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            "e",
+            "c",
+        )
+        .expect("the production renderer accepts the composed rows");
+        assert!(
+            rendered.contains("seed_build_compiled_crates=655"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("phase=seed_build wall_ms=180096"),
+            "{rendered}"
+        );
+        assert_eq!(rendered.matches("seed_build_compiled_crates=").count(), 1);
+    }
+
+    #[test]
+    fn source_identity_sees_untracked_files() {
+        let mut none: Vec<(Vec<u8>, Vec<u8>)> = vec![];
+        let base = compose_source_identity("H", b"d", &mut none);
+        let mut added = vec![(b"new.dag".to_vec(), b"x".to_vec())];
+        let with_new = compose_source_identity("H", b"d", &mut added);
+        let mut edited = vec![(b"new.dag".to_vec(), b"y".to_vec())];
+        let edited_id = compose_source_identity("H", b"d", &mut edited);
+        assert_ne!(
+            base, with_new,
+            "an added untracked file changes the identity"
+        );
+        assert_ne!(
+            with_new, edited_id,
+            "an edited untracked file changes the identity"
+        );
+        let c = cost(1, 1, None);
+        let carry = match decide_seed_handoff(None, "a", "b", &with_new, &c).unwrap() {
+            SeedHandoffDecision::ReExec(h) => h,
+            SeedHandoffDecision::Proceed => panic!(),
+        };
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), "b", "b", &edited_id, &c),
+            Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
+        ));
+    }
+
+    #[test]
+    fn untracked_framing_distinguishes_ambiguous_populations() {
+        let c = cost(1, 1, None);
+        // old framing: path '=' digest '\n'. Two files vs one file whose NAME embeds the
+        // first file's entry.
+        let mut two = vec![
+            (b"a.dag".to_vec(), b"x".to_vec()),
+            (b"b.dag".to_vec(), b"y".to_vec()),
+        ];
+        let forged = format!("a.dag={}\nb.dag", bytes_digest(b"x")).into_bytes();
+        let mut one = vec![(forged, b"y".to_vec())];
+        let id_two = compose_source_identity("H", b"d", &mut two);
+        let id_one = compose_source_identity("H", b"d", &mut one);
+        assert_ne!(id_two, id_one);
+        let carry = match decide_seed_handoff(None, "a", "b", &id_two, &c).unwrap() {
+            SeedHandoffDecision::ReExec(h) => h,
+            SeedHandoffDecision::Proceed => panic!(),
+        };
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), "b", "b", &id_one, &c),
+            Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
+        ));
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), "b", "b", &id_two, &c),
+            Ok(SeedHandoffDecision::Proceed)
+        ));
+    }
+
+    #[test]
+    fn exec_target_digest_is_of_the_opened_inode_not_the_path() {
+        let dir = std::env::temp_dir().join(format!("rrc-exec-target-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("img");
+        fs::write(&path, b"built").unwrap();
+        let (file, digest) = open_exec_target(&path).unwrap();
+        // the path is replaced after the open: the descriptor still names the hashed bytes
+        fs::remove_file(&path).unwrap();
+        fs::write(&path, b"replaced").unwrap();
+        use std::io::{Read, Seek};
+        let mut f = file;
+        f.rewind().unwrap();
+        let mut got = std::vec::Vec::new();
+        f.read_to_end(&mut got).unwrap();
+        assert_eq!(got, b"built");
+        assert_eq!(digest, bytes_digest(b"built"));
+        assert_ne!(digest, current_digest_of(&path));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn current_digest_of(p: &Path) -> String {
+        bytes_digest(&fs::read(p).unwrap())
+    }
+
+    #[test]
+    fn exec_target_admission_compares_with_the_build_output_and_never_overwrites() {
+        let c = cost(1, 1, None);
+        // production decision: build output B is what the carry names
+        let carry = match decide_seed_handoff(None, "old", "B", "S", &c).unwrap() {
+            SeedHandoffDecision::ReExec(h) => h,
+            SeedHandoffDecision::Proceed => panic!(),
+        };
+        assert_eq!(carry.built_exe, "B");
+        // build=B, install replaced with C before the open: opened=C refuses
+        assert!(matches!(
+            admit_exec_target(carry.clone(), "C"),
+            Err(SeedHandoffRefusal::OpenedTargetNotBuildOutput { .. })
+        ));
+        // build=B, opened=B (a byte-identical replacement included): proceeds, carry intact
+        let admitted = admit_exec_target(carry.clone(), "B").unwrap();
+        assert_eq!(admitted, carry);
+        // and the receiver still proceeds on the admitted carry
+        assert!(matches!(
+            decide_seed_handoff(Some(&admitted), "B", "B", "S", &c),
+            Ok(SeedHandoffDecision::Proceed)
+        ));
+    }
+
+    #[test]
+    fn running_image_is_read_from_proc_self_exe_not_the_installed_path() {
+        let direct = bytes_digest(&fs::read("/proc/self/exe").unwrap());
+        assert_eq!(running_image_digest().unwrap(), direct);
+    }
+
+    #[test]
+    fn modify_after_verify_and_installed_running_mismatch_refuse() {
+        let c = cost(1, 1, None);
+        // the first image hashed inode I = B and carried it; another writer then rewrote I
+        let dir = std::env::temp_dir().join(format!("rrc-mav-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("img");
+        fs::write(&path, b"B").unwrap();
+        let (_target, built) = open_exec_target(&path).unwrap();
+        let carry = SeedHandoff {
+            cost: c.clone(),
+            source: "S".into(),
+            built_exe: built.clone(),
+        };
+        // rewrite the same inode, then put B back at the installed path
+        let mut rewritten = fs::OpenOptions::new().write(true).open(&path).unwrap();
+        use std::io::Write as _;
+        rewritten.write_all(b"C").unwrap();
+        let running = digest_open_file(&mut fs::File::open(&path).unwrap()).unwrap();
+        assert_ne!(
+            running, built,
+            "the rewrite is visible through the running inode"
+        );
+        // receiver: running image C, installed path B again -> the old path-reopen said Proceed
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), &running, &built, "S", &c),
+            Err(SeedHandoffRefusal::WrongArtifactAcrossHandoff { .. })
+        ));
+        // installed/running mismatch with the carried artifact running
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), &built, &running, "S", &c),
+            Err(SeedHandoffRefusal::ExecutableReplacedAfterHandoff { .. })
+        ));
+        // same artifact everywhere proceeds
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), &built, &built, "S", &c),
+            Ok(SeedHandoffDecision::Proceed)
+        ));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn handoff_decisions_are_typed_and_round_trip() {
+        let c = cost(4, 5, Some(6));
+        let carry = match decide_seed_handoff(None, "a", "b", "T", &c).unwrap() {
+            SeedHandoffDecision::ReExec(h) => h,
+            SeedHandoffDecision::Proceed => panic!("replaced exe must hand off"),
+        };
+        assert_eq!(carry.built_exe, "b", "the carry names the built artifact");
+        assert_eq!(SeedHandoff::decode(&carry.encode()).unwrap(), carry);
+        assert!(matches!(
+            decide_seed_handoff(None, "a", "a", "T", &c),
+            Ok(SeedHandoffDecision::Proceed)
+        ));
+        // positive: the re-exec'd image is the built artifact, same source, build is a no-op
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), "b", "b", "T", &c),
+            Ok(SeedHandoffDecision::Proceed)
+        ));
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), "b", "c", "T", &c),
+            Err(SeedHandoffRefusal::ExecutableReplacedAfterHandoff { .. })
+        ));
+        // same commit, different uncommitted source
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), "b", "b", "T-other-diff", &c),
+            Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
+        ));
+        // wrong artifact: running image is not the one the first image built
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), "z", "z", "T", &c),
+            Err(SeedHandoffRefusal::WrongArtifactAcrossHandoff { .. })
+        ));
+        assert!(matches!(
+            SeedHandoff::decode("garbage"),
+            Err(SeedHandoffRefusal::HandoffUndecodable { .. })
+        ));
+    }
 
     #[test]
     fn assembled_seed_includes_foundation_and_layered_partitions_not_emit_consumer() {

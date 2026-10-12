@@ -383,3 +383,14 @@ test fn a_probe_that_did_not_answer_refuses_under_its_own_name() -> Bool {
     && outcome_label(o: converge_outcome(slots: [unread_route], h: clean_host())) == "route-unread"
     && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOff, digest: Present { value: converged_digest }, auto: kernel_absent()))) == "no-forwarding"
 }
+
+
+// networkd must not re-enable IPv6 after sysctl has disabled it on the TAP.
+test fn staged_tap_policy_disables_networkd_ipv6_autoconfiguration() -> Bool {
+  let files = converge_staged_files(slots: [slot(i: 13)], host: runner_microvm_shared_host_grain, tap_owner: "ghrunner")
+  any(files, file => file.path == "/var/lib/gunbc-microvm-network-stage/gunbc-tap13.network"
+    && string_contains(s: file.content, pattern: "LinkLocalAddressing=no\n")
+    && string_contains(s: file.content, pattern: "IPv6AcceptRA=no\n"))
+    && any(files, file => file.path == "/var/lib/gunbc-microvm-network-stage/gunbc-tap13-ipv6.conf"
+      && string_contains(s: file.content, pattern: "disable_ipv6 = 1"))
+}

@@ -7,7 +7,7 @@ import gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_ev
 }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
   bash_build_assign,
@@ -254,7 +254,7 @@ fn floor_outcome_wire(o: FloorOutcome) -> String {
 }
 
 fn posix_exit_status_decimal(code: Int) -> String {
-  integer_int_to_decimal_string(value: code)
+  int_to_decimal_string(value: code)
 }
 
 fn infra_signature_wire(sig: InfraSignature) -> String {

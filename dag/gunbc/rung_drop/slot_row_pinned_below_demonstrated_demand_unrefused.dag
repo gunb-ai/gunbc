@@ -1,7 +1,7 @@
 module gunbc.rung_drop.slot_row_pinned_below_demonstrated_demand_unrefused
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Superseded, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
@@ -58,7 +58,11 @@ data slot_row_pinned_below_demonstrated_demand_unrefused: RungDrop = RungDrop {
 
   declared: "2026-09-19",
 
-  standing: Standing,
+  standing: Superseded {
+    ruling: "the operator ruling of 2026-10-09 (the v1 withdrawal): the floor lane was deleted from gunbc.compiler_gate_workflow, so the floor no longer runs in a fleet slot and the slot wall's floor-demand conjunct (the subject of this row) was withdrawn with it; the same ruling moved the slot to a fixed 22 GiB maximum with no swap for the emit-and-build steps that do run there" as NonEmptyStr,
+    decision_record: "the relayed REQUEST_CHANGES on gunbc#13641 and the operator's brief to session smart-gull-336 (2026-10-09), carried by the change that declares gunbc.rung_drop v1_required_lanes_withdrawn and moves gunbc.runner_slot_desired to 22/21 GiB and MemorySwapMax=0; the floor's own envelope survives as gunbc.floor_demand gunbc_floor_pinned_memory_max / _high" as NonEmptyStr,
+    loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr
+  },
 
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,

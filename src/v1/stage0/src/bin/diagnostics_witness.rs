@@ -18,8 +18,7 @@ use v1_compiler::v1_std_core::{
     CompilerDiagnostic, ErrorNode,
 };
 
-type ModuleIndex = HashMap<String, std::path::PathBuf>;
-type WitnessCase = (&'static str, fn(&ModuleIndex));
+type WitnessCase = (&'static str, fn());
 
 const SUITE_IMPORT_RESOLUTION: &str = "import_resolution";
 const SUITE_REEXPORT_SURFACE: &str = "reexport_surface";
@@ -39,114 +38,37 @@ fn source_roots() -> [std::path::PathBuf; 2] {
     [ws.join("src/v1"), ws.join("dag")]
 }
 
-fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
-    let content = std::fs::read_to_string(path).ok()?;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("//") {
-            continue;
-        }
-        return trimmed
-            .strip_prefix("module ")
-            .and_then(|rest| rest.split_whitespace().next())
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string());
-    }
-    None
+fn pool_root_strings() -> Vec<String> {
+    source_roots()
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
 }
 
-fn scan_dag_files(dir: &std::path::Path, index: &mut ModuleIndex) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            scan_dag_files(&path, index);
-        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            if let Some(module_path) = extract_module_declaration(&path) {
-                index.insert(module_path, path);
-            }
-        }
-    }
-}
-
-fn build_module_index() -> ModuleIndex {
-    let mut index = HashMap::new();
-    for root in source_roots() {
-        if root.exists() {
-            scan_dag_files(&root, &mut index);
-        }
-    }
-    index
-}
-
-fn extract_imports(source: &str) -> Vec<String> {
-    let tokens = v1_compiler::v1_compiler_tokenize::tokenize(
-        source.to_string(),
-        "test.dag".to_string(),
-        v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment(),
-    );
-    let source_index =
-        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
-    let mut source_indices = HashMap::new();
-    source_indices.insert("test.dag".to_string(), source_index);
-    let result = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
-    match &result.module {
-        Some(module) => v1_compiler::v1_std_core::module_imports(module.clone())
-            .iter()
-            .map(|imp| imp.name.clone())
-            .collect(),
-        None => vec![],
-    }
-}
-
-fn resolve_imports_transitively(
+/// Compile-subject closure of a witness entry. Not an import-line BFS.
+fn resolve_over_roots(
     entry_path: &str,
     entry_content: &str,
-    module_index: &ModuleIndex,
+    pool_roots: &[String],
 ) -> Vec<Rc<SourceFile>> {
-    let ws = workspace_root();
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue = vec![(entry_path.to_string(), entry_content.to_string())];
-
-    while let Some((_path, content)) = queue.pop() {
-        for module_path in extract_imports(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = module_index.get(&module_path) {
-                if let Ok(file_content) = std::fs::read_to_string(file_path) {
-                    let rel_path = file_path
-                        .strip_prefix(&ws)
-                        .unwrap_or(file_path)
-                        .to_string_lossy()
-                        .to_string();
-                    seen.insert(
-                        module_path.clone(),
-                        Rc::new(SourceFile {
-                            path: rel_path.clone(),
-                            content: file_content.clone(),
-                        }),
-                    );
-                    queue.push((rel_path, file_content));
-                }
-            }
-        }
-    }
-
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    sources.push(Rc::new(SourceFile {
-        path: entry_path.to_string(),
-        content: entry_content.to_string(),
-    }));
-    sources
+    v1_compiler::cli_run::resolve_seeded_compile_closure(
+        vec![Rc::new(SourceFile {
+            path: entry_path.to_string(),
+            content: entry_content.to_string(),
+        })],
+        pool_roots,
+    )
+    .unwrap_or_else(|e| panic!("witness compile-subject closure: {e}"))
 }
 
-fn compile_multi(module_index: &ModuleIndex, files: &[(&str, &str)]) -> Rc<PipelineResult> {
+fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc<SourceFile>> {
+    resolve_over_roots(entry_path, entry_content, &pool_root_strings())
+}
+
+fn compile_multi(files: &[(&str, &str)]) -> Rc<PipelineResult> {
     let mut all_sources: HashMap<String, Rc<SourceFile>> = HashMap::new();
     for (path, content) in files {
-        let resolved = resolve_imports_transitively(path, content, module_index);
+        let resolved = resolve_imports_transitively(path, content);
         for src in resolved {
             all_sources.entry(src.path.clone()).or_insert(src);
         }
@@ -170,7 +92,7 @@ fn type_mismatch_count(result: &PipelineResult) -> usize {
         .count()
 }
 
-fn establishment_report(module_index: &ModuleIndex) {
+fn establishment_report() {
     let probes: &[(&str, &str, &str)] = &[
         (
             "distinct_record_at_arg",
@@ -229,7 +151,7 @@ fn establishment_report(module_index: &ModuleIndex) {
         ),
     ];
     for (label, path, source) in probes {
-        let result = compile_multi(module_index, &[(path, source)]);
+        let result = compile_multi(&[(path, source)]);
         eprintln!(
             "establishment {label}: type_mismatch={} total_diags={}",
             type_mismatch_count(&result),
@@ -265,13 +187,11 @@ fn first_arity_mismatch_message(result: &PipelineResult) -> Option<String> {
 
 /// Golden: MissingExport names export/module/importer and span points at the missing name.
 /// Also covers UnresolvedImport variant + grounded message.
-fn import_resolution_variants_and_span(module_index: &ModuleIndex) {
+fn import_resolution_variants_and_span() {
     let provider = "module provider\ntype User { name: String }\n";
     let missing_export = "module consumer\nimport provider { NonExistent }\n";
-    let missing_result = compile_multi(
-        module_index,
-        &[("provider.dag", provider), ("consumer.dag", missing_export)],
-    );
+    let missing_result =
+        compile_multi(&[("provider.dag", provider), ("consumer.dag", missing_export)]);
     assert_eq!(missing_result.diagnostics.len(), 1);
     let missing = &missing_result.diagnostics[0];
     assert!(
@@ -303,7 +223,7 @@ fn import_resolution_variants_and_span(module_index: &ModuleIndex) {
     );
 
     let unresolved = "module consumer\nimport nonexistent { Thing }\n";
-    let unresolved_result = compile_multi(module_index, &[("consumer.dag", unresolved)]);
+    let unresolved_result = compile_multi(&[("consumer.dag", unresolved)]);
     assert!(
         !unresolved_result.diagnostics.is_empty(),
         "expected UnresolvedImport diagnostic"
@@ -323,7 +243,7 @@ fn import_resolution_variants_and_span(module_index: &ModuleIndex) {
 }
 
 /// Golden: variant not re-exported through a type-only import surface.
-fn reexport_surface_missing_variant(module_index: &ModuleIndex) {
+fn reexport_surface_missing_variant() {
     let files = &[
         ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
         (
@@ -335,7 +255,7 @@ fn reexport_surface_missing_variant(module_index: &ModuleIndex) {
             "module self_gen8_use\nimport self_gen8_proxy { B }\n",
         ),
     ];
-    let result = compile_multi(module_index, files);
+    let result = compile_multi(files);
     assert_eq!(result.diagnostics.len(), 1);
     let d = &result.diagnostics[0];
     assert!(
@@ -350,9 +270,9 @@ fn reexport_surface_missing_variant(module_index: &ModuleIndex) {
 
 /// Golden: UnresolvedType names the unknown type; ArityMismatch fires on bare containers
 /// but not on parameterized std containers or user-defined types.
-fn type_and_arity_discrimination(module_index: &ModuleIndex) {
+fn type_and_arity_discrimination() {
     let unresolved_source = "module types\ntype Wrapper { inner: Bogus }\n";
-    let unresolved_result = compile_multi(module_index, &[("types.dag", unresolved_source)]);
+    let unresolved_result = compile_multi(&[("types.dag", unresolved_source)]);
     let unresolved: Vec<_> = unresolved_result
         .diagnostics
         .iter()
@@ -367,7 +287,7 @@ fn type_and_arity_discrimination(module_index: &ModuleIndex) {
     assert!(unresolved_msg.contains("Bogus"), "{unresolved_msg}");
 
     let bare = "module bare\nimport std.types { List }\ntype Foo { items: List }\n";
-    let bare_result = compile_multi(module_index, &[("bare.dag", bare)]);
+    let bare_result = compile_multi(&[("bare.dag", bare)]);
     assert!(
         has_arity_mismatch(&bare_result),
         "bare List should trigger ArityMismatch, got: {:?}",
@@ -377,7 +297,7 @@ fn type_and_arity_discrimination(module_index: &ModuleIndex) {
     assert!(bare_msg.contains("List"), "ArityMismatch should name List");
 
     let parameterized = "module param\nimport std.types { List }\ntype Foo { items: List<Int> }\n";
-    let parameterized_result = compile_multi(module_index, &[("param.dag", parameterized)]);
+    let parameterized_result = compile_multi(&[("param.dag", parameterized)]);
     assert!(
         !has_arity_mismatch(&parameterized_result),
         "parameterized List<Int> should not trigger ArityMismatch, got: {:?}",
@@ -385,7 +305,7 @@ fn type_and_arity_discrimination(module_index: &ModuleIndex) {
     );
 
     let user_defined = "module custom\ntype Widget { label: String }\ntype Bag { item: Widget }\n";
-    let user_defined_result = compile_multi(module_index, &[("custom.dag", user_defined)]);
+    let user_defined_result = compile_multi(&[("custom.dag", user_defined)]);
     assert!(
         !has_arity_mismatch(&user_defined_result),
         "user-defined type should not trigger ArityMismatch, got: {:?}",
@@ -394,9 +314,9 @@ fn type_and_arity_discrimination(module_index: &ModuleIndex) {
 }
 
 /// Golden: empty list literal fails without collection context; succeeds with List<T> context.
-fn empty_list_literal_context(module_index: &ModuleIndex) {
+fn empty_list_literal_context() {
     let wrong = "module elist\nfn make_stuff() -> String {\n  []\n}\n";
-    let wrong_result = compile_multi(module_index, &[("elist.dag", wrong)]);
+    let wrong_result = compile_multi(&[("elist.dag", wrong)]);
     let wrong_diags: Vec<_> = wrong_result
         .diagnostics
         .iter()
@@ -418,7 +338,7 @@ fn empty_list_literal_context(module_index: &ModuleIndex) {
 
     let ok =
         "module elist_ok\nimport std.types { List }\nfn make_list() -> List<String> {\n  []\n}\n";
-    let ok_result = compile_multi(module_index, &[("elist_ok.dag", ok)]);
+    let ok_result = compile_multi(&[("elist_ok.dag", ok)]);
     let ok_diags: Vec<_> = ok_result
         .diagnostics
         .iter()
@@ -444,13 +364,13 @@ fn empty_list_literal_context(module_index: &ModuleIndex) {
 /// deleted expected-type pick) must now raise VariantCollision. RED control:
 /// an unbound constructor literal must raise UnresolvedType. GREEN control:
 /// a sole-owner arm constructs clean.
-fn constructor_owner_ruling_walls(module_index: &ModuleIndex) {
+fn constructor_owner_ruling_walls() {
     let collided = "module test.claim.variant_owner_expected_type\n\
         import std.logic { Bool }\n\
         type AEarlyOwner = SharedVariant | AOnlyVariant\n\
         type ZLaterOwner = SharedVariant | ZOnlyVariant\n\
         fn make_z_variant() -> ZLaterOwner { SharedVariant }\n";
-    let collided_result = compile_multi(module_index, &[("variant_owner.dag", collided)]);
+    let collided_result = compile_multi(&[("variant_owner.dag", collided)]);
     assert!(
         collided_result.diagnostics.iter().any(|d| matches!(
             &*d.diagnostic,
@@ -462,7 +382,7 @@ fn constructor_owner_ruling_walls(module_index: &ModuleIndex) {
 
     let unbound = "module test.claim.unbound_ctor\n\
         fn mk() -> Int { let g = GhostArm { x: 1 } 2 }\n";
-    let unbound_result = compile_multi(module_index, &[("unbound_ctor.dag", unbound)]);
+    let unbound_result = compile_multi(&[("unbound_ctor.dag", unbound)]);
     assert!(
         unbound_result.diagnostics.iter().any(|d| matches!(
             &*d.diagnostic,
@@ -475,7 +395,7 @@ fn constructor_owner_ruling_walls(module_index: &ModuleIndex) {
     let sole = "module test.claim.sole_owner\n\
         type OnlyOwner = SoleArm | OtherArm\n\
         fn mk() -> OnlyOwner { SoleArm }\n";
-    let sole_result = compile_multi(module_index, &[("sole_owner.dag", sole)]);
+    let sole_result = compile_multi(&[("sole_owner.dag", sole)]);
     let sole_hard: Vec<String> = diagnostic_messages(&sole_result)
         .into_iter()
         .filter(|m| !m.starts_with("complexity: "))
@@ -526,13 +446,13 @@ fn suite_cases(suite: &str) -> Result<Vec<WitnessCase>, String> {
 /// value cannot fill a differently-named declared formal (TypeMismatch) — in record
 /// fields and direct call args alike. Greens pin the sanctioned skips: optional
 /// fields and dag_can_cast pairs (Int->Float).
-fn record_literal_field_walls(module_index: &ModuleIndex) {
+fn record_literal_field_walls() {
     // RED: omitted required field on a record literal
     let missing = "module fieldwall_missing\n\
         type Ev = EvA | EvB { n: Int, m: Int }\n\
         type Prov { id: String, ev: Ev }\n\
         data p: Prov = Prov { id: \"x\" }\n";
-    let missing_result = compile_multi(module_index, &[("fieldwall_missing.dag", missing)]);
+    let missing_result = compile_multi(&[("fieldwall_missing.dag", missing)]);
     let missing_diags: Vec<_> = missing_result
         .diagnostics
         .iter()
@@ -551,7 +471,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
     let variant_missing = "module fieldwall_variant\n\
         type Ev = EvA | EvB { n: Int, m: Int }\n\
         data v: Ev = EvB { n: 1 }\n";
-    let variant_result = compile_multi(module_index, &[("fieldwall_variant.dag", variant_missing)]);
+    let variant_result = compile_multi(&[("fieldwall_variant.dag", variant_missing)]);
     let variant_diags: Vec<_> = variant_result
         .diagnostics
         .iter()
@@ -568,7 +488,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         type Ev = EvA | EvB { n: Int, m: Int }\n\
         type Prov { id: String, ev: Ev }\n\
         data q: Prov = Prov { id: \"x\", ev: 42 }\n";
-    let wrong_result = compile_multi(module_index, &[("fieldwall_wrongtype.dag", wrong_typed)]);
+    let wrong_result = compile_multi(&[("fieldwall_wrongtype.dag", wrong_typed)]);
     let wrong_diags: Vec<_> = wrong_result
         .diagnostics
         .iter()
@@ -584,7 +504,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
     let kernel_kernel = "module fieldwall_kernel\n\
         type Prov2 { id: String }\n\
         data k: Prov2 = Prov2 { id: 7 }\n";
-    let kernel_result = compile_multi(module_index, &[("fieldwall_kernel.dag", kernel_kernel)]);
+    let kernel_result = compile_multi(&[("fieldwall_kernel.dag", kernel_kernel)]);
     assert!(
         kernel_result
             .diagnostics
@@ -600,8 +520,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         type Box { label: String }\n\
         fn takes_node(n: Node) -> Bool { true }\n\
         fn bad_node_arg() -> Bool { takes_node(n: Box { label: \"x\" }) }\n";
-    let node_arg_result =
-        compile_multi(module_index, &[("fieldwall_node_arg.dag", record_at_node)]);
+    let node_arg_result = compile_multi(&[("fieldwall_node_arg.dag", record_at_node)]);
     assert!(
         node_arg_result
             .diagnostics
@@ -617,10 +536,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         type Box { label: String }\n\
         type Prov { id: String, ev: Ev }\n\
         data r: Prov = Prov { id: \"x\", ev: Box { label: \"y\" } }\n";
-    let record_union_result = compile_multi(
-        module_index,
-        &[("fieldwall_record_at_union.dag", record_at_union)],
-    );
+    let record_union_result = compile_multi(&[("fieldwall_record_at_union.dag", record_at_union)]);
     assert!(
         record_union_result
             .diagnostics
@@ -636,10 +552,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         type Other = OtherA | OtherB { k: Int }\n\
         type Prov { id: String, ev: Ev }\n\
         data w: Prov = Prov { id: \"x\", ev: OtherA { k: 1 } }\n";
-    let wrong_variant_result = compile_multi(
-        module_index,
-        &[("fieldwall_wrong_variant.dag", wrong_variant)],
-    );
+    let wrong_variant_result = compile_multi(&[("fieldwall_wrong_variant.dag", wrong_variant)]);
     assert!(
         wrong_variant_result
             .diagnostics
@@ -660,13 +573,10 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
           dissolves_to: Terminal { reason: \"phantom-mechanism\" },\n\
           bind: \"anchor\",\n\
         }\n";
-    let missing_variant_mechanism_result = compile_multi(
-        module_index,
-        &[(
-            "fieldwall_missing_variant_mechanism.dag",
-            missing_variant_mechanism,
-        )],
-    );
+    let missing_variant_mechanism_result = compile_multi(&[(
+        "fieldwall_missing_variant_mechanism.dag",
+        missing_variant_mechanism,
+    )]);
     assert!(
         missing_variant_mechanism_result
             .diagnostics
@@ -686,13 +596,10 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
           dissolves_to: SingleAuthority,\n\
           bind: \"anchor\",\n\
         }\n";
-    let missing_variant_mechanism_green_result = compile_multi(
-        module_index,
-        &[(
-            "fieldwall_missing_variant_mechanism_green.dag",
-            missing_variant_mechanism_green,
-        )],
-    );
+    let missing_variant_mechanism_green_result = compile_multi(&[(
+        "fieldwall_missing_variant_mechanism_green.dag",
+        missing_variant_mechanism_green,
+    )]);
     assert!(
         !missing_variant_mechanism_green_result
             .diagnostics
@@ -707,7 +614,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         type Ev = EvA | EvB { n: Int, m: Int }\n\
         fn wants(e: Ev) -> Int { 7 }\n\
         fn call_bad() -> Int { wants(e: 9) }\n";
-    let call_result = compile_multi(module_index, &[("fieldwall_callarg.dag", call_arg)]);
+    let call_result = compile_multi(&[("fieldwall_callarg.dag", call_arg)]);
     assert!(
         call_result
             .diagnostics
@@ -722,7 +629,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         type Ev = EvA | EvB { n: Int, m: Int }\n\
         type Prov { id: String, ev: Ev }\n\
         data g: Prov = Prov { id: \"x\", ev: EvA }\n";
-    let complete_result = compile_multi(module_index, &[("fieldwall_green.dag", complete)]);
+    let complete_result = compile_multi(&[("fieldwall_green.dag", complete)]);
     assert!(
         !complete_result.diagnostics.iter().any(|d| matches!(
             &*d.diagnostic,
@@ -737,13 +644,10 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         type Payload { n: Int }\n\
         type Holder { value: Payload? }\n\
         data h: Holder = Holder { value: Present { value: Payload { n: 1 } } }\n";
-    let optional_wrapper_green_result = compile_multi(
-        module_index,
-        &[(
-            "fieldwall_optional_wrapper_green.dag",
-            optional_wrapper_green,
-        )],
-    );
+    let optional_wrapper_green_result = compile_multi(&[(
+        "fieldwall_optional_wrapper_green.dag",
+        optional_wrapper_green,
+    )]);
     assert!(
         !optional_wrapper_green_result
             .diagnostics
@@ -764,10 +668,8 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
             }\n\
           }\n\
         }\n";
-    let optional_wrapper_red_result = compile_multi(
-        module_index,
-        &[("fieldwall_optional_wrapper_red.dag", optional_wrapper_red)],
-    );
+    let optional_wrapper_red_result =
+        compile_multi(&[("fieldwall_optional_wrapper_red.dag", optional_wrapper_red)]);
     assert!(
         optional_wrapper_red_result
             .diagnostics
@@ -781,7 +683,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
     let optional = "module fieldwall_opt\n\
         type Opt { a: Int, b: Int? }\n\
         data o: Opt = Opt { a: 1 }\n";
-    let optional_result = compile_multi(module_index, &[("fieldwall_opt.dag", optional)]);
+    let optional_result = compile_multi(&[("fieldwall_opt.dag", optional)]);
     assert!(
         !optional_result
             .diagnostics
@@ -795,7 +697,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
     let cast_ok = "module fieldwall_cast\n\
         type Fl { x: Float }\n\
         data f: Fl = Fl { x: 3 }\n";
-    let cast_result = compile_multi(module_index, &[("fieldwall_cast.dag", cast_ok)]);
+    let cast_result = compile_multi(&[("fieldwall_cast.dag", cast_ok)]);
     assert!(
         !cast_result
             .diagnostics
@@ -806,10 +708,9 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
     );
 }
 
-fn run_suite(module_index: &ModuleIndex, suite: &str) -> Result<(), String> {
+fn run_suite(suite: &str) -> Result<(), String> {
     for (name, test) in suite_cases(suite)? {
-        let index = module_index.clone();
-        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| test(&index))).is_err() {
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(test)).is_err() {
             return Err(format!("{name} panicked"));
         }
     }
@@ -823,8 +724,7 @@ fn main() -> ExitCode {
         return fail("usage: diagnostics_witness <suite>");
     }
 
-    let module_index = build_module_index();
-    match run_suite(&module_index, suite) {
+    match run_suite(suite) {
         Ok(()) => ExitCode::SUCCESS,
         Err(msg) => fail(msg),
     }

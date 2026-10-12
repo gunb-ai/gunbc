@@ -1,0 +1,43 @@
+module extdeps.ampere.mt_collins_board
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.ampere.mt_collins_getting_started_guide.subject { mt_collins_gsg_authority }
+import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
+
+data extdeps_external_authority_anchor: ExternalAuthority = mt_collins_gsg_authority
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.mt_collins_board",
+      decl_name: "mt_collins_board",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE MT. COLLINS BOARD AS A SUBJECT, joining the two Ampere documents that already own its facts
+// rather than restating either: the Getting Started Guide (figures, orientation) and the public
+// product brief. A board-grain subject exists so a bound host's board can reach its per-board
+// authority by reference instead of through a closed enum.
+type MtCollinsBoard {
+  getting_started_guide: ExternalAuthority
+  product_brief: MtCollinsPublicProductBrief
+}
+
+data mt_collins_board: MtCollinsBoard = MtCollinsBoard {
+  getting_started_guide: mt_collins_gsg_authority,
+  product_brief: mt_collins_public_product_brief,
+}
+
+data mt_collins_board_authority: BoardAuthorityRef = BoardAuthorityRef {
+  subject: DeclarationRef {
+    module_path: "extdeps.ampere.mt_collins_board",
+    decl_name: "mt_collins_board",
+    field: WholeDeclaration
+  }
+}

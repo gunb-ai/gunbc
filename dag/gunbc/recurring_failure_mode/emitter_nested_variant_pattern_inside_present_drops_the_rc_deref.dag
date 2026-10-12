@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.emitter_nested_variant_pattern_inside_present_drops_the_rc_deref
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data emitter_nested_variant_pattern_inside_present_drops_the_rc_deref: RecurringFailureMode = RecurringFailureMode {
+  identity: "emitter_nested_variant_pattern_inside_present_drops_the_rc_deref" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a record pattern whose field is an Optional of a coproduct, with the coproduct variant pattern nested inside Present (`ExprMethodCall { method_semantics: Present { value: AlgebraMethodSemantics { .. } } }`), is emitted as `Some(MethodSemantics::AlgebraMethodSemantics{..})` against a field of type Option<Rc<MethodSemantics>>. The emitter does not dereference the Rc carrier through Present for a nested pattern, so rustc refuses with E0308 in generated code.",
+
+    "HARM: loud, not silent -- the closure stops building, located at the emitted pattern rather than the .dag arm, which is correct and accepted. Found when regenerating the infer mirror for gunbc#13574, where the working spelling (nested matches: Present { value: v } then a match on v) is used in equality_operand_list_read_name in src/v1/04_infer.dag. That spelling is a workaround under DESIGN section 5 and is filed here as the line-stop.",
+
+    "RUNG: mitigatable -- rustc stops the build; nothing in the emitter refuses or lowers the nested pattern. ATTAINABLE CEILING: structurally guaranteed -- the emitter knows the field's Rust carrier and the nested pattern's variant, so it can lower the pattern through the deref. NEXT-RUNG TRIGGER, the capability: the emitter lowers a variant pattern nested inside Present in a record-field pattern through the Rc carrier, so the specimen compiles and runs; at that point the specimen is enrolled in gunbc.instruments.native_emission_controls as a permanent regression control and the split in equality_operand_list_read_name may return to one nested pattern.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.instruments.native_emission_nested_present_specimen", decl_name: "specimen_nested_is_lit"),
+    decl_ref(module_path: "gunbc.instruments.native_emission_nested_present_specimen", decl_name: "specimen_nested_is_lit_split"),
+  ],
+}

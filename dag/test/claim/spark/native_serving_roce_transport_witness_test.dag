@@ -56,7 +56,7 @@ import gunbc.spark.serving_arm_launch { ArmNodeLaunch, arm_rail_gid_selection, g
 
 // The rollback's script text: its prepare and finish legs, around the typed deliberate start.
 
-data w_awaited_fixture: AwaitedIncarnation = AwaitedIncarnation { host: "srv6" as HostIdentity, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }
+data w_awaited_fixture: AwaitedIncarnation = AwaitedIncarnation { host: "srv10" as HostIdentity, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }
 
 fn w_rollback_text(unit_name: NonEmptyStr, transaction_id: String, container_name: NonEmptyStr) -> String {
   join([spark_native_rollback_prepare_script(unit_name: unit_name, transaction_id: transaction_id, container_name: container_name),
@@ -180,7 +180,7 @@ test fn w_no_stage_script_parses_nccl_itself() -> Bool {
 
 // ── THE ARM'S ROSTER IS PLANNED HERE, HEAD FIRST ─────────────────────────────────────────────
 //
-// Group B left the pair roster on 2026-09-08 (spark_pair_serving_groups = [FabricGroupA]); this
+// Group B left the pair roster on 2026-09-08 (the pair roster then named only the since-decommissioned group A); this
 // apply is its authority. The head-first order is load-bearing: workers restarted before the
 // head's new rendezvous store existed were observed joining the PREVIOUS epoch's store while the
 // head crash-looped on DistStoreError (2026-09-16).

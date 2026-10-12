@@ -19,6 +19,9 @@ pub enum EmittedEdgeProvenance {
     RuntimePrelude,
     ReexportFacade,
     SemanticSourceReference,
+    DeclaredImport,
+    InlinePathReference,
+    ServiceRuntimeSurface,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -73,15 +76,6 @@ pub fn rust_runtime_prelude_module() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_emit_only_basenames() -> Rc<Vec<String>> {
-    thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["dry_run".to_string()])
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
-}
-
 pub fn rust_prelude_emitted_edges(module: String) -> Rc<Vec<Rc<EmittedEdge>>> {
     if (module.clone() == rust_runtime_prelude_module()) {
         Rc::new(vec![Rc::new(EmittedEdge {
@@ -117,6 +111,45 @@ pub fn semantic_source_reference_edge(from: String, to_module: String) -> Rc<Emi
     })
 }
 
+pub fn declared_import_edge(from: String, to_module: String) -> Rc<EmittedEdge> {
+    Rc::new(EmittedEdge {
+        from: from.clone(),
+        to: Rc::new(EmittedEdgeTarget::EmittedModuleTarget {
+            module: to_module.clone(),
+        }),
+        provenance: EmittedEdgeProvenance::DeclaredImport,
+    })
+}
+
+pub fn inline_path_reference_edge(from: String, to_module: String) -> Rc<EmittedEdge> {
+    Rc::new(EmittedEdge {
+        from: from.clone(),
+        to: Rc::new(EmittedEdgeTarget::EmittedModuleTarget {
+            module: to_module.clone(),
+        }),
+        provenance: EmittedEdgeProvenance::InlinePathReference,
+    })
+}
+
+pub fn rust_service_runtime_module() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dry_run".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn service_runtime_surface_edge(from: String) -> Rc<EmittedEdge> {
+    Rc::new(EmittedEdge {
+        from: from.clone(),
+        to: Rc::new(EmittedEdgeTarget::EmittedModuleTarget {
+            module: rust_service_runtime_module(),
+        }),
+        provenance: EmittedEdgeProvenance::ServiceRuntimeSurface,
+    })
+}
+
 pub fn emitted_edge_target_module(edge: Rc<EmittedEdge>) -> Rc<Vec<String>> {
     match (*edge.to.clone()).clone() {
         EmittedEdgeTarget::EmittedModuleTarget { module: target, .. } => {
@@ -132,3 +165,9 @@ pub struct RuntimePrelude;
 pub struct ReexportFacade;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SemanticSourceReference;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeclaredImport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InlinePathReference;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceRuntimeSurface;

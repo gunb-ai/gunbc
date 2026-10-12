@@ -1,0 +1,38 @@
+module test.claim.cron_schedule_render_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Listed, Ranged, Step, render_cron_field, render_cron_schedule }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CRON FIELD RENDERS AS CRONTAB TEXT, NEVER AS ARITHMETIC OVER ITS BOUNDS (gunbc.recurring_failure_mode
+// adjacent_interpolation_holes_fused_into_one_operator_hole). Before gunbc#13436 v1 parsed the
+// two-hole templates of the Ranged and offset-Step arms as one hole holding s - e and st / sp, so a
+// range 1..5 rendered as the difference of its bounds and an offset step 5 every 15 as their
+// quotient. Each input below is chosen so the arithmetic reading DISAGREES with the text: 1 - 5 and
+// 5 / 15 are not the strings 1-5 and 5/15 under any rendering of a number.
+test fn a_cron_range_renders_as_start_dash_end() -> Bool {
+  render_cron_field(f: Ranged { start: 1, end: 5 }) == "1-5"
+}
+
+test fn an_offset_cron_step_renders_as_start_slash_step() -> Bool {
+  render_cron_field(f: Step { start: 5, step: 15 }) == "5/15"
+}
+
+// The one-hole arms beside them, so a regression in the shared renderer is not read as a
+// separator defect: an exact value, a list, and a step from zero.
+test fn the_one_hole_cron_arms_render_their_values() -> Bool {
+  render_cron_field(f: Exact { value: 7 }) == "7"
+    && render_cron_field(f: Listed { values: [1, 15, 30] }) == "1,15,30"
+    && render_cron_field(f: Step { start: 0, step: 10 }) == "*/10"
+}
+
+test fn a_cron_schedule_with_a_range_renders_five_fields() -> Bool {
+  render_cron_schedule(s: CronSchedule {
+    minute: Step { start: 0, step: 10 },
+    hour: Ranged { start: 9, end: 17 },
+    day_of_month: Wildcard,
+    month: Wildcard,
+    day_of_week: Ranged { start: 1, end: 5 }
+  }) == "*/10 9-17 * * 1-5"
+}

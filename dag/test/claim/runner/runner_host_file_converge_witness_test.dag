@@ -10,7 +10,7 @@ import extdeps.needrestart {
   needrestart_unit_name_prefix_regex,
 }
 import product.host_identity { HostIdentity }
-import gunbc.runner_slot_population_census { desired_unit_names_range }
+import gunbc.runner_slot_population_census { desired_unit_names_range, committed_unit_names_at }
 import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees, TransitionPopulationUndecidable }
 import gunbc.fleet_host_identity { operator_host_srv1 }
@@ -728,22 +728,29 @@ fn srv1_width() -> Int? {
   }
 }
 
+// THE LIVE SET IS THE COMMITTED IDENTITIES, NOT 1..width. Since #12339 srv1's committed population
+// is srv1-01..(width - 1) plus the shakedown slot srv1-13 (gunbc.runner_slot_allocation
+// host_committed_identities_at), so cutting the listing at the width named a slot the width no longer
+// charges as live and masked srv1-13. The live set comes from the census authority's one derivation;
+// the retiring set is the rest of the listing.
 fn srv1_live_names() -> List<String> {
-  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: 1, limit: w) }
+  match srv1_width() { Absent => [] Present { value: w } => committed_unit_names_at(host: "srv1" as HostIdentity, committed: w) }
 }
 
 fn srv1_retiring_names(limit: Int) -> List<String> {
-  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: w + 1, limit: limit) }
+  let live = srv1_live_names()
+  match srv1_width() { Absent => [] Present { value: _ } => srv1_unit_names(slot: 1, limit: limit) |> filter(u => !any(live, l => l == u)) }
 }
 
 // The last declared-live slot: the one the REDs below mask or lose to show that retirement never
 // excuses a live slot.
 fn srv1_last_live_names() -> List<String> {
-  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: w, limit: w) }
+  fold(srv1_live_names(), init: [], f: (acc, u) => [u])
 }
 
 fn srv1_all_but_last_live_names() -> List<String> {
-  match srv1_width() { Absent => [] Present { value: w } => srv1_unit_names(slot: 1, limit: w - 1) }
+  let last = srv1_last_live_names()
+  srv1_live_names() |> filter(u => !any(last, l => l == u))
 }
 
 fn every_unit_holds(pop: RunnerSlotPopulation, units: List<String>, wire: String) -> Bool {

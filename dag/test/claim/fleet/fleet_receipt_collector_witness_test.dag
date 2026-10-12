@@ -1,5 +1,6 @@
 module test.claim.fleet_receipt_collector_witness
 
+import gunbc.fleet_enrollment { fleet_enrollments }
 import v2.std.live_tree { LiveTreeDisposition }
 import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -127,7 +128,7 @@ test fn witness_partial_collection_never_yields_fleet_converged() -> Bool {
       receipt: ConvergeCliReceipt { host: "srv1", applied: 1, drifted: 0, verdict: VerdictConverged, reason: none },
     },
   ])
-  match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: rows) {
+  match fleet_convergence_verdict(enrollments: fleet_enrollments, receipts: rows) {
     FleetConverged { host_count: _ } => false
     FleetNotConverged { standings: s } => length(s) > 0
   }

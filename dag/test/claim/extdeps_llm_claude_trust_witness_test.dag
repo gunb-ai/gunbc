@@ -6,6 +6,9 @@ import extdeps.llm.cli {
   claude_trust_store_path,
   claude_workspace_trust_seeded,
   shape_claude_invoke_argv,
+  shape_claude_print_argv,
+  ClaudePrintUnboundedTurns,
+  ClaudePrintMaxTurns,
   ProviderAccountDefaultModel,
   ReasoningHigh,
 }
@@ -76,5 +79,35 @@ test fn w_argv_head_is_program_authority() -> Bool {
     Present { value: head } => head == claude_cli_program
     Absent => false
   }
+}
+
+test fn w_print_argv_is_stream_json_headless() -> Bool {
+  let argv = shape_claude_print_argv(
+    append_system_prompt: "brief",
+    start_prompt: "go",
+    permission_args: ["--dangerously-skip-permissions"],
+    model: ProviderAccountDefaultModel,
+    effort: ReasoningHigh,
+    turn_bound: ClaudePrintMaxTurns { turns: 1 },
+  )
+  let wire = join(argv, separator: "\0")
+  match argv.first() {
+    Present { value: head } => head == claude_cli_program
+    Absent => false
+  }
+    && string_contains(s: wire, pattern: "\0-p\0--output-format\0stream-json\0--verbose")
+    && string_contains(s: wire, pattern: "\0--max-turns\01\0")
+    && string_contains(s: wire, pattern: "\0--effort\0high\0")
+    && string_contains(s: wire, pattern: "\0--append-system-prompt\0brief\0")
+    && string_contains(s: wire, pattern: "\0--dangerously-skip-permissions\0go")
+    && !string_contains(s: wire, pattern: "--session-id")
+    && !string_contains(s: join(shape_claude_print_argv(
+      append_system_prompt: "brief",
+      start_prompt: "go",
+      permission_args: [],
+      model: ProviderAccountDefaultModel,
+      effort: ReasoningHigh,
+      turn_bound: ClaudePrintUnboundedTurns,
+    ), separator: "\0"), pattern: "--max-turns")
 }
 

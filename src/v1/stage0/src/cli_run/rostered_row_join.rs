@@ -376,19 +376,31 @@ fn unaccounted_sources(accounted: &[(String, String)]) -> Vec<JoinFinding> {
     let mut out = Vec::new();
     for root in JOIN_POOL_ROOTS {
         let mut files = Vec::new();
-        crate::cli_run::collect_dag_files_tolerant(&ws.join(root), &mut files);
+        if let Err(cause) = crate::cli_run::collect_dag_files_tolerant(&ws.join(root), &mut files) {
+            out.push(JoinFinding {
+                kind: JoinFindingKind::SourceUnaccounted,
+                row_type: "(no row type — the pool root could not be acquired)".to_string(),
+                subject: root.to_string(),
+                detail: format!(
+                    "acquiring this pool root refused ({cause}), so no source under it can be \
+                     joined to the declared population"
+                ),
+            });
+            continue;
+        }
         files.sort();
         for file in files {
             let rel = file
+                .path()
                 .strip_prefix(&ws)
-                .unwrap_or(&file)
+                .unwrap_or(file.path())
                 .to_string_lossy()
                 .replace('\\', "/");
             if accounted_paths.contains(rel.as_str()) {
                 continue;
             }
-            let digest = match std::fs::read(&file) {
-                Ok(bytes) => content_digest(&bytes),
+            let digest = match file.read() {
+                Ok(text) => content_digest(text.as_bytes()),
                 Err(e) => format!("unreadable: {e}"),
             };
             out.push(JoinFinding {
@@ -408,7 +420,8 @@ fn unaccounted_sources(accounted: &[(String, String)]) -> Vec<JoinFinding> {
 }
 
 /// File stems under `dag/gunbc/recurring_failure_mode/` versus roster member names.
-/// Independent of `derived_row_roster::row_stems`: a skip in the writer must still refuse here.
+/// Independent of `derived_row_roster::acquire_dir_files`' row selection: a skip in the derivation
+/// must still refuse here.
 fn join_recurring_failure_mode_files_to_roster(
     rostered_names: &BTreeSet<String>,
 ) -> Vec<JoinFinding> {
@@ -692,9 +705,9 @@ pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, Str
                     enrolled.roster_module,
                     enrolled.roster_declaration,
                     if enrolled.variant == "RecurringFailureModeRows" {
-                        " — for this roster that can mean the derived writer skipped the file \
-                         (for example an unlistable name), not a missing hand-edited list \
-                         entry in gitignored roster.dag"
+                        " — for this roster that can mean the in-memory derivation skipped the \
+                         file (for example a declaration the line-shape selector missed), not a \
+                         missing hand-edited list entry"
                     } else {
                         ""
                     }

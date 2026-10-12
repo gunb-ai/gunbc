@@ -104,10 +104,10 @@ data primitive_d0_parallel_roster_surface_authority_count: Int = 2
 // primitive_d0_derived_surface_drift_audit_note. Counted: open_surface_authority_count=0. Derived
 // does not mean complete; parallel roster does not mean single-authority.
 
-// Interpreter dispatch is seven dispatch symbols in v1_interpreter
+// Interpreter dispatch is six dispatch symbols in v1_interpreter
 // (gunbc.v1_interpreter_primitive_surface): eval_builtin_inner; eval_algebra_method_inner;
 // eval_call (bridge families plus native fold intercept);
-// try_v2_std_collection_map_primitive_grounding; try_parse_table_memo_dispatch; eval_method_call
+// try_v2_std_collection_map_primitive_grounding; eval_method_call
 // lookup short-circuit; eval_service_call Filesystem.Read carve-out. Row/arm-identity/spelling
 // denominators are v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count
 // on the roster authority — not duplicated here. primitive_interpreter_surface_rows derives from

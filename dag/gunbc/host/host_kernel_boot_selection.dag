@@ -1,0 +1,24 @@
+module gunbc.host_kernel_boot_selection
+
+import std.types { Bool, String }
+import std.algebra { trim }
+import extdeps.bootloader.grub { grub_first_command_operand }
+
+// srv1's observed Ubuntu GRUB realization uses literal default 0 and the next_entry
+// override. Refuse a different realization or a pending override instead of guessing its
+// boot selection. This changes no boot policy and retains the old kernels for BMC recovery.
+fn kernel_maintenance_grub_selects(config: String, environment: String, target: String) -> Bool {
+  let defaults = filter(map(split(s: config, delimiter: "\n"), line => trim(s: line)), line => starts_with(s: line, prefix: "set default="))
+  let overrides = ["next_entry", "prev_entry", "prev_saved_entry", "initrdfail"]
+  let next_entry_reference = "$\{next_entry}"
+  defaults.count() == 2 && any(defaults, line => line == "set default=\"0\"")
+    && any(defaults, line => line == concat("set default=\"", concat(next_entry_reference, "\"")))
+    && !any(split(s: environment, delimiter: "\n"), line => any(overrides, key =>
+      starts_with(s: line, prefix: concat(key, "=")) && line != concat(key, "=")))
+    && (match grub_first_command_operand(config: config, command: "linux") {
+      Present { value: path } => path == concat("/vmlinuz-", target) Absent => false
+    })
+    && (match grub_first_command_operand(config: config, command: "initrd") {
+      Present { value: path } => path == concat("/initrd.img-", target) Absent => false
+    })
+}

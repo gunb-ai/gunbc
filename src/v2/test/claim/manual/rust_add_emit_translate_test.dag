@@ -13,7 +13,6 @@ import v2.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   run_test_claim_assert,
-  test_claim_cache_receipt,
   test_claim_typed_input_node
 }
 import v2.compiler.translate { coerce_grounded_node, translate }

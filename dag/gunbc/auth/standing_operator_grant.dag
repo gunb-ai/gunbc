@@ -1,13 +1,18 @@
 module gunbc.auth.standing_operator_grant
 
 import std.types { String, Bool, List, NonEmptyStr, Timestamp }
+import v2.std.algebra { length }
 import product.host_identity { HostIdentity, host_identity_eq }
+import std.optional { Present }
 import std.list { list_member }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, Unclaimed }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_mtjade1 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire }
-import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthorization, InterlockedBy, InterlockPending }
+import gunbc.fleet_host_identity { operator_host_mtjade1 }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
+import gunbc.auth.authorization_pattern_selection {
+  StandingDestructiveAuthorization, StandingRulingInterlock,
+  InterlockPending, InterlockedBy,
+}
 
 // ── A STANDING OPERATOR GRANT, COMMITTED AS A RULING ───────────────────────────────────────────
 //
@@ -27,38 +32,40 @@ import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthoriza
 // its claim, its fresh readings and its readback. And it does not widen: a group, a host or an effect
 // outside the row is not covered, and the consumer falls back to the per-effect approval it always had.
 //
-// THE EFFECTS ARE ONLY THOSE A GATE CONSUMES (DESIGN §3c, review 74624). D0's release is consumed here
-// (gunbc.spark.pair_serving_d0_door d0_gate). ArmLaunch is consumed by gunbc.spark.group_arm_launch
-// group_arm_released_launch_causes. HostEffectRecover is consumed by gunbc.spark.standing_host_effect_recover
-// recover_covering_grant. The image, checkpoint and teardown effects the Group A ruling also covers are
-// NOT rows: nothing gates them on a grant (they are fenced by the per-host claim), and an effect row
-// nothing reads would pre-authorize what no wall asks about.
+// THE EFFECTS ARE ONLY THOSE A GATE CONSUMES (DESIGN §3c, review 74624) -- AND TODAY NONE IS. The three
+// arms below were consumed by D0's release door, the group arm launch and the standing host-effect
+// recovery, all deleted with Group A (decommissioned and sold, 2026-10-07) together with the Group A grant
+// that named them. They remain only because the type cannot be empty while the mtjade1 grant's consuming
+// gates (gunbc#13497) have not landed their own arms; that change replaces them, and no grant row names
+// them now.
 //
 // MTJADE1 LIVE OPS (operator ruling 2026-10-06, msg_7402f8df-7917-4b24-bb86-c4e7d51991f7) names BMC
-// reads/writes, boots, and firmware qualification. Those classes are a declared frontier: the first
-// consuming gate lands in gunbc#13497 (stern-ibex-771 route A -- bindable fleet-converge principal,
-// effect arm in the same closure as the secret/cell fetch) and must call standing_grant_covers for a
-// named arm -- O1c-3's BmcSecure authorization discharge, managed_host_boot admission/authorization,
-// or MegaRAC per-build operation evidence / admit_megarac_host_at_current_build. The prior-life archive
-// is a BMC read (it writes only our store) and has no grant arm. The mtjade1 grant's effects list is
-// empty until that change lands the arm. The interlock is InterlockPending until a consuming gate names
-// a hold: that state refuses to discharge irreversibility, so a bindable boot under this row does not
-// select federation.
+// reads/writes, boots, and firmware qualification. StandingBmcSecureAccountWrite is owned by
+// gunbc#13517 (O1c-3b): the variant, wire key, and InterlockedBy admit_rotation_apply. This module
+// consumes that arm on the mtjade1 effects list and standing_grant_arm_interlock overlay; J4 reads
+// it via grant_discharges_bmc_secure_account_write. Route A also consumes archive and firmware
+// arms (admit_arrival_subject). J6 boot stays a frontier until managed_host_boot.
 type StandingGrantEffect
   = StandingD0ReleaseToFleet
   | StandingArmLaunch
   | StandingHostEffectRecover
+  | StandingJadeArrivalArchive
+  | StandingJadeFirmwareQualification
+  | StandingBmcSecureAccountWrite
 
 fn standing_grant_effect_wire(e: StandingGrantEffect) -> NonEmptyStr {
   match e {
     StandingD0ReleaseToFleet => "d0-release-to-fleet" as NonEmptyStr
     StandingArmLaunch => "arm-launch" as NonEmptyStr
     StandingHostEffectRecover => "host-effect-recover" as NonEmptyStr
+    StandingJadeArrivalArchive => "jade-arrival-archive" as NonEmptyStr
+    StandingJadeFirmwareQualification => "jade-firmware-qualification" as NonEmptyStr
+    StandingBmcSecureAccountWrite => "bmc-secure-account-write" as NonEmptyStr
   }
 }
 
-// A GRANT BOUNDS EITHER A FABRIC GROUP AND ITS HOSTS, OR ONE NAMED HOST. Group A is the first;
-// mtjade1 is the second. Hosts live in the arm: a host-scoped grant does not restate its host in a
+// A GRANT BOUNDS EITHER A FABRIC GROUP AND ITS HOSTS, OR ONE NAMED HOST. Group A was the first (deleted
+// with the group, 2026-10-07); mtjade1 is the second. Hosts live in the arm: a host-scoped grant does not restate its host in a
 // parallel list. Coverage still requires every requested host to be in the grant's derived hosts.
 type StandingGrantScope
   = StandingGrantFabricGroup { group: FabricGroup, hosts: List<HostIdentity> }
@@ -95,43 +102,67 @@ fn standing_grant_scope_matches(g: StandingOperatorGrant, scope: StandingGrantSc
   }
 }
 
-// THE GROUP A DEVELOPMENT GRANT. The words are the operator's, given directly in the parent session on
-// 2026-10-03 and relayed by valiant-crab-775 (dashboard message msg_2940687d): "you have my permission to
-// use group A however you want from now on." The operator also ruled that the approval broker and app
-// are a separate lane and will not be set up now, so a per-effect approval for Group A cannot be met.
-// The interlock is D0's own durable claim of the consent (gunbc.spark.pair_serving_d0 d0_claim_grant):
-// the release runs only under that claim, its pending state and its fresh all-quiescent reading.
-data group_a_dev_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
-  identity: "group-a-dev-standing-grant-2026-10-03" as NonEmptyStr,
-  principal: "operator" as NonEmptyStr,
-  ruled_at: "2026-10-03T05:00:00Z",
-  ruling: StandingDestructiveAuthorization {
-    ruling_text: "Operator ruling 2026-10-03, given directly in valiant-crab-775's session and relayed by dashboard message msg_2940687d: 'you have my permission to use group A however you want from now on.' The approval broker and app are a separate lane and will not be set up now. Scope as relayed: FabricGroupA hosts srv5-srv8; the D0 release-to-fleet plus the GLM staircase's host effects (image produce and distribute, checkpoint materialize, arm launch and teardown), and, per valiant-crab-775 on 2026-10-03, recovering a dead lane's host-effect claim on a Group A host after a fresh quiescence read. Group B is outside it." as NonEmptyStr,
-    effect_subject: "Group A development effects: the D0 release-to-fleet of Group A's pair-serving authority and the GLM-5.3-Flash staircase's host effects on srv5-srv8" as NonEmptyStr,
-    interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant") },
-  },
-  scope: StandingGrantFabricGroup { group: FabricGroupA, hosts: [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8] },
-  effects: [StandingD0ReleaseToFleet, StandingArmLaunch, StandingHostEffectRecover],
-}
-
 // THE MTJADE1 LIVE-OPS GRANT. The words are the operator's, given directly in eager-gull-22's session
 // on 2026-10-06 and relayed by dashboard message msg_7402f8df-7917-4b24-bb86-c4e7d51991f7: "live operations
 // on mtjade1 are authorized whenever, indefinitely. That covers BMC reads and writes (history archive,
 // login/credential change), boots, and firmware qualification on Mt. Jade, with no per-run approval
 // needed. Scope is mtjade1 only; mtcollins1 wet steps still need their own go-ahead." Quote unchanged.
-// Effects list empty: no consuming gate has landed (O1c-3 BmcSecure discharge, managed_host_boot
-// authorization, MegaRAC current-build admission). The prior-life archive is not an arm.
+// Grant grain stays InterlockPending (no blanket hold; unnamed classes such as J6 boot still refuse
+// to discharge). Landed arms are InterlockedBy named holds via standing_grant_arm_interlock.
+// StandingJadeFirmwareQualification stays InterlockPending until a held writer lands.
+// StandingBmcSecureAccountWrite's overlay hold is #13517's admit_rotation_apply. Mode, pool, SA and
+// secret names: operator sign-off msg_f03558d1.
+// THE BMCSECURE ARM PROMOTES ONLY THIS GRAIN. A supplied InterlockPending with any other
+// obligation, or InterlockedBy a foreign hold, stays as written so grant_discharges still
+// refuses those mutants (test.claim.machine_intake_arrival_converge_witness
+// w_bmc_secure_apply_pending_interlock_refuses_at_discharge).
+data mtjade1_grant_grain_pending_obligation: NonEmptyStr = "grant grain names no hold; landed arms name holds via standing_grant_arm_interlock; J6 boot remains pending until managed_host_boot" as NonEmptyStr
+
 data mtjade1_live_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
   identity: "mtjade1-live-standing-grant-2026-10-06" as NonEmptyStr,
   principal: "operator" as NonEmptyStr,
   ruled_at: "2026-10-06T00:00:00Z",
   ruling: StandingDestructiveAuthorization {
     ruling_text: "Operator ruling 2026-10-06, given directly in eager-gull-22's session and relayed by dashboard message msg_7402f8df-7917-4b24-bb86-c4e7d51991f7: 'live operations on mtjade1 are authorized whenever, indefinitely. That covers BMC reads and writes (history archive, login/credential change), boots, and firmware qualification on Mt. Jade, with no per-run approval needed. Scope is mtjade1 only; mtcollins1 wet steps still need their own go-ahead.'" as NonEmptyStr,
-    effect_subject: "mtjade1 live operations: BMC credential/login writes, boots, and MegaRAC firmware qualification -- effect rows only as consuming gates land" as NonEmptyStr,
-    interlock: InterlockPending { obligation: "consuming gates (O1c-3 BmcSecure authorization discharge, managed_host_boot admission, MegaRAC current-build admission) have not named a hold" as NonEmptyStr },
+    effect_subject: "mtjade1 live operations: BMC credential/login writes, boots, and MegaRAC firmware qualification -- effect rows only as consuming gates land. Arrival mode/input/pair/secret names (arrival_converge, arrival_subject, github-mtjade1-arrival, mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com, bmc-mtjade1-gunbc) signed off msg_f03558d1." as NonEmptyStr,
+    interlock: InterlockPending { obligation: mtjade1_grant_grain_pending_obligation },
   },
   scope: StandingGrantHost { host: operator_host_mtjade1 },
-  effects: [] as List<StandingGrantEffect>,
+  effects: [StandingJadeArrivalArchive, StandingJadeFirmwareQualification, StandingBmcSecureAccountWrite],
+}
+
+fn standing_grant_arm_interlock(g: StandingOperatorGrant, e: StandingGrantEffect) -> StandingRulingInterlock {
+  match e {
+    StandingD0ReleaseToFleet => g.ruling.interlock
+    StandingArmLaunch => g.ruling.interlock
+    StandingHostEffectRecover => g.ruling.interlock
+    StandingJadeArrivalArchive => InterlockedBy {
+      hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+    }
+    StandingJadeFirmwareQualification => InterlockPending {
+      obligation: "firmware qualification writer is not in converge_mtjade1_arrival_prefix; discharge only when that writer runs under ArrivalArchiveSlotHeld from arrival_archive_slot_acquire" as NonEmptyStr,
+    }
+    StandingBmcSecureAccountWrite =>
+      match g.ruling.interlock {
+        InterlockPending { obligation: o } =>
+          if (o as String) == (mtjade1_grant_grain_pending_obligation as String) {
+            InterlockedBy {
+              hold: decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply"),
+            }
+          } else {
+            InterlockPending { obligation: o }
+          }
+        InterlockedBy { hold: h } => InterlockedBy { hold: h }
+      }
+  }
+}
+
+fn standing_ruling_with_arm_interlock(g: StandingOperatorGrant, e: StandingGrantEffect) -> StandingDestructiveAuthorization {
+  StandingDestructiveAuthorization {
+    ruling_text: g.ruling.ruling_text,
+    effect_subject: g.ruling.effect_subject,
+    interlock: standing_grant_arm_interlock(g: g, e: e),
+  }
 }
 
 // COVERAGE IS AN IDENTITY JOIN: the scope is the grant's, the effect is one of its effects, and EVERY host

@@ -424,11 +424,7 @@ test fn every_published_image_observation_carries_its_instrument_and_date() -> B
 // half therefore runs over a SUPPLIED unplaced set: asserting admission against the live census would
 // need a host the fleet does not have.
 test fn the_admissible_build_hosts_exclude_the_claimed_serving_group() -> Bool {
-  !spark_host_is_unplaced(host: "srv5" as HostIdentity)
-    && !spark_host_is_unplaced(host: "srv6" as HostIdentity)
-    && !spark_host_is_unplaced(host: "srv7" as HostIdentity)
-    && !spark_host_is_unplaced(host: "srv8" as HostIdentity)
-    && !spark_host_is_unplaced(host: "srv9" as HostIdentity)
+  !spark_host_is_unplaced(host: "srv9" as HostIdentity)
     && !spark_host_is_unplaced(host: "srv10" as HostIdentity)
     && !spark_host_is_unplaced(host: "srv11" as HostIdentity)
     && !spark_host_is_unplaced(host: "srv12" as HostIdentity)
@@ -436,7 +432,7 @@ test fn the_admissible_build_hosts_exclude_the_claimed_serving_group() -> Bool {
       SparkHostAdmitted { host: h } => (h as String) == "srv10"
       SparkHostRefused { cause: _ } => false
     })
-    && (match admit_unplaced_host(raw: "srv5", purpose: vllm_build_host_purpose) {
+    && (match admit_unplaced_host(raw: "srv9", purpose: vllm_build_host_purpose) {
       SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "not admissible for")
       SparkHostAdmitted { host: _ } => false
     })
@@ -448,22 +444,30 @@ test fn the_admissible_build_hosts_exclude_the_claimed_serving_group() -> Bool {
 
 // THE REACHABILITY JOIN IS COMPARED AGAINST THE VENDOR LABEL, NOT THE FLEET IDENTITY, and the second
 // arm is what makes that load-bearing rather than incidental: a Spark answers `hostname -s` with
-// spark-a3ee and never with srv5, so a join written against the identity would call every host in the
+// spark-0c75 and never with srv9, so a join written against the identity would call every host in the
 // fleet a defect. This is the same label-versus-identity confusion that refused this lane's first
-// modelled leg, asserted here so it cannot come back as a green check.
+// modelled leg, asserted here so it cannot come back as a green check. Sold srv5 (spark-a3ee, decommissioned
+// 2026-10-07) has no lane any more, so its reading is unjoinable rather than answered.
 test fn the_reachability_join_reads_the_vendor_label_and_refuses_the_identity() -> Bool {
-  (match classify_reported_hostname(host: "srv5" as HostIdentity, endpoint: "192.168.1.226" as NonEmptyStr, reported: "spark-a3ee" as NonEmptyStr) {
-    SparkHostAnswered { host: _, endpoint: _, reported_hostname: n } => (n as String) == "spark-a3ee"
+  (match classify_reported_hostname(host: "srv9" as HostIdentity, endpoint: "192.168.1.236" as NonEmptyStr, reported: "spark-0c75" as NonEmptyStr) {
+    SparkHostAnswered { host: _, endpoint: _, reported_hostname: n } => (n as String) == "spark-0c75"
     SparkHostIdentityMismatch { host: _, endpoint: _, expected: _, reported: _ } => false
     SparkHostIdentityUnjoinable { host: _, endpoint: _, reported: _ } => false
     SparkHostUnreachable { host: _, endpoint: _, cause: _ } => false
     SparkHostUnresolved { host: _ } => false
   })
-    && (match classify_reported_hostname(host: "srv5" as HostIdentity, endpoint: "192.168.1.226" as NonEmptyStr, reported: "srv5" as NonEmptyStr) {
+    && (match classify_reported_hostname(host: "srv9" as HostIdentity, endpoint: "192.168.1.236" as NonEmptyStr, reported: "srv9" as NonEmptyStr) {
       SparkHostIdentityMismatch { host: _, endpoint: _, expected: want, reported: got } =>
-        (want as String) == "spark-a3ee" && (got as String) == "srv5"
+        (want as String) == "spark-0c75" && (got as String) == "srv9"
       SparkHostAnswered { host: _, endpoint: _, reported_hostname: _ } => false
       SparkHostIdentityUnjoinable { host: _, endpoint: _, reported: _ } => false
+      SparkHostUnreachable { host: _, endpoint: _, cause: _ } => false
+      SparkHostUnresolved { host: _ } => false
+    })
+    && (match classify_reported_hostname(host: "srv5" as HostIdentity, endpoint: "192.168.1.226" as NonEmptyStr, reported: "spark-a3ee" as NonEmptyStr) {
+      SparkHostIdentityUnjoinable { host: _, endpoint: _, reported: _ } => true
+      SparkHostAnswered { host: _, endpoint: _, reported_hostname: _ } => false
+      SparkHostIdentityMismatch { host: _, endpoint: _, expected: _, reported: _ } => false
       SparkHostUnreachable { host: _, endpoint: _, cause: _ } => false
       SparkHostUnresolved { host: _ } => false
     })
@@ -480,8 +484,8 @@ test fn the_reachability_join_reads_the_vendor_label_and_refuses_the_identity() 
 // An earlier revision returned success whenever the receipt file wrote, so the run in which every
 // admissible host refused the key exited zero with its diagnostics intact and discarded.
 test fn only_a_joined_answer_counts_as_reachable() -> Bool {
-  spark_host_answered(r: SparkHostAnswered { host: "srv5" as HostIdentity, endpoint: "e" as NonEmptyStr, reported_hostname: "spark-a3ee" as NonEmptyStr })
-    && !spark_host_answered(r: SparkHostIdentityMismatch { host: "srv5" as HostIdentity, endpoint: "e" as NonEmptyStr, expected: "spark-a3ee" as NonEmptyStr, reported: "other" as NonEmptyStr })
+  spark_host_answered(r: SparkHostAnswered { host: "srv9" as HostIdentity, endpoint: "e" as NonEmptyStr, reported_hostname: "spark-0c75" as NonEmptyStr })
+    && !spark_host_answered(r: SparkHostIdentityMismatch { host: "srv9" as HostIdentity, endpoint: "e" as NonEmptyStr, expected: "spark-0c75" as NonEmptyStr, reported: "other" as NonEmptyStr })
     && !spark_host_answered(r: SparkHostIdentityUnjoinable { host: "srv1" as HostIdentity, endpoint: "e" as NonEmptyStr, reported: "srv1" as NonEmptyStr })
     && !spark_host_answered(r: SparkHostUnreachable { host: "srv9" as HostIdentity, endpoint: "192.168.1.236" as NonEmptyStr, cause: "Permission denied (publickey,password)" })
     && !spark_host_answered(r: SparkHostUnresolved { host: "srv9" as HostIdentity })

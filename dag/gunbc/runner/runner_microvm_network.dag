@@ -644,6 +644,10 @@ fn runner_slot_netdev_text(net: RunnerSlotNetwork, owner: NonEmptyStr) -> String
 // ConfigureWithoutCarrier IS REQUIRED AND IS NOT A TUNING KNOB. A tap has no carrier until a guest
 // opens it, so without this networkd leaves the address unassigned and the host has no route to a
 // guest that has not booted yet -- which is every guest, at the moment the VM is configured.
+// systemd v255 link_ipv6_enabled and link_update_ipv6_sysctl enable IPv6 when networkd owns
+// an IPv6 link-local policy. Disable that policy as well as the per-TAP sysctl:
+// https://github.com/systemd/systemd/blob/v255/src/network/networkd-link.c
+// https://github.com/systemd/systemd/blob/v255/src/network/networkd-sysctl.c
 fn runner_slot_network_file_text(net: RunnerSlotNetwork) -> String {
   join([
     "[Match]\n",
@@ -652,6 +656,8 @@ fn runner_slot_network_file_text(net: RunnerSlotNetwork) -> String {
     "[Network]\n",
     "Address=", runner_slot_host_cidr(net: net), "\n",
     "ConfigureWithoutCarrier=yes\n",
+    "LinkLocalAddressing=no\n",
+    "IPv6AcceptRA=no\n",
   ], "")
 }
 
@@ -740,7 +746,8 @@ fn runner_slot_network_install_operations(
 // path. A job-user-writable receipt that root believes is the rostered root-equivalence class with
 // the principals swapped, so the local observe mode's target/ report is a diagnostic and never
 // this path.
-data runner_microvm_converged_receipt_path: String = "/var/lib/gunbc/microvm-network/converged-slot-network.txt"
+data runner_microvm_converged_receipt_root: String = "/var/lib/gunbc/microvm-network"
+data runner_microvm_converged_receipt_path: String = concat(runner_microvm_converged_receipt_root, "/converged-slot-network.txt")
 
 // THE DIRECTORY IS THE AUTHORITY AND THE FILE PATH IS DERIVED FROM IT, so the place the ruleset is
 // installed and the place the install ensures exists cannot become two facts. Spelling the leaf as

@@ -1,0 +1,23 @@
+{
+  "@odata.id": "/redfish/v1/Systems/system/Bios",
+  "@odata.type": "#Bios.v1_1_0.Bios",
+  "Actions": {
+    "#Bios.ResetBios": {
+      "target": "/redfish/v1/Systems/system/Bios/Actions/Bios.ResetBios"
+    }
+  },
+  "Description": "BIOS Configuration Service",
+  "Id": "BIOS",
+  "Links": {
+    "ActiveSoftwareImage": {
+      "@odata.id": "/redfish/v1/UpdateService/FirmwareInventory/bios_active"
+    },
+    "SoftwareImages": [
+      {
+        "@odata.id": "/redfish/v1/UpdateService/FirmwareInventory/bios_active"
+      }
+    ],
+    "SoftwareImages@odata.count": 1
+  },
+  "Name": "BIOS Configuration"
+}

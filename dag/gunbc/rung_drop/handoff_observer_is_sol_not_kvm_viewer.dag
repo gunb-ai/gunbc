@@ -1,0 +1,44 @@
+module gunbc.rung_drop.handoff_observer_is_sol_not_kvm_viewer
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 4b(3) DROP (2026-10-06; operator decision msg_bb46c20f, over gunbc#12492, following the
+// operator ruling msg_7627e67f). gunbc#12492 made an ESTABLISHED KVM observer a required precondition of
+// the mtcollins1 boot handoff. The only KVM client the observer ever drove was the controller vendor's
+// own served viewer, whose source carries a proprietary notice; everything derived from it moved out of
+// public gunbc under msg_7627e67f, so no public KVM client exists and megarac_kvm_observer_start answers
+// NotStarted. Keeping the requirement would make every public handoff refuse.
+//
+// WHAT IS LOST: the boot handoff no longer requires a screen witness. The required observer is the SOL
+// collector of this run: the handoff is admitted only over the SolHeldAt that mtcollins1_sol_supervised
+// returned for this attempt's collector (sol_handoff_admission in gunbc.machine_intake_mtcollins1_boot_run),
+// and with no such observation it refuses. The screen is recorded as not observed, never inferred.
+//
+// WHAT STAYS ENROLLED: kvm_handoff_admission still refuses an observer that is not started or not
+// established (test.claim.machine_intake.megarac_kvm_still_witness_test), now as this drop's control for
+// the day the capability returns; and the acceptance matrix holds a RED that the handoff refuses with no
+// SOL observation, with a mutant that opens the gate and must fail.
+
+data handoff_observer_is_sol_not_kvm_viewer: RungDrop = RungDrop {
+  identity: "handoff_observer_is_sol_not_kvm_viewer" as NonEmptyStr,
+
+  subject: "the mtcollins1 boot handoff no longer requires an established KVM observer; it requires this run's SOL observation instead, and the KVM screen still is recorded as not observed",
+
+  declared: "2026-10-06",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.machine_intake_mtcollins1_boot_run sol_handoff_admission, a typed admission over the run-bound SolHeldAt of mtcollins1_sol_supervised, refusing the handoff without it",
+    },
+    population: [
+      "the mtcollins1 boot handoff only (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_actuate), for as long as no public non-vendor KVM client exists",
+    ],
+    restoration_trigger: "THE CAPABILITY: a public, non-vendor KVM client that ESTABLISHES the observer, meaning it logs in to the controller, holds one seat, and journals an established line bound to the BMC host and the attempt, readable through kvm_observer_standing_now. WHAT THAT MUST BE SUFFICIENT FOR: restoring kvm_handoff_admission as a second required precondition of the mtcollins1 handoff beside the SOL admission, with the established-or-refuse control already enrolled in test.claim.machine_intake.megarac_kvm_still_witness_test. The existence of some KVM client, or of a client that cannot establish the observer, does not satisfy this.",
+  }
+}

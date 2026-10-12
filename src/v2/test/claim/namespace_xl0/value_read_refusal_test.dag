@@ -2,9 +2,9 @@ module v2.test.claim.namespace_xl0.value_read_refusal
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
@@ -46,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // WHAT IS NOT CLAIMED HERE, AND WHY. The brief asked for a control that an arm missing `=>` still
 // refuses as match_arm_navigation_refused. That source does not reach lowering: the parser refuses
-// it (parse_grammar_choice_overlap_residue), so no source text can drive the navigation arm from
+// it, so no source text can drive the navigation arm from
 // this route, and a control that cannot go red on this route would be a decoration (DESIGN section
 // 4b). The navigation refusal survives only for a parse tree whose arm has no pattern or no `=>`.
 data vrr_header: String = "module mq.vrr\n\nimport std.types { Bool }\n\ntype VrrRecord { f: Bool }\n\n"
@@ -142,11 +142,11 @@ fn vrr_observe_refusal(d: Diagnostic) -> VrrObserved {
 fn vrr_observe(source: String) -> VrrObserved {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       match tokenize(text: source, file: ^value_read_refusal_file, rules: dag_lex()) {
         Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
         Accepted { value: token_stream, diagnostics: _ } =>
-          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
             Rejected { diagnostics: d } => vrr_observe_refusal(d: diagnostics_fatal(d: d))
             Accepted { value: artifact, diagnostics: _ } =>
               match normalize(parse_tree: artifact.tree) {

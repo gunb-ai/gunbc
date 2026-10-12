@@ -57,13 +57,10 @@ module v1.compiler.trait_bound_witness
 // and scoped narrowly to a function body that IS DIRECTLY a top-level match expression (the exact
 // shape of the two real specimens this was traced from, realize_route<T> and classify_write<T> in
 // dag/std/cache_interface.dag) -- a body wrapped in Let/If/Branch before reaching the match is NOT
-// walked. That is a declared boundary, not a silent gap: BoundedToDirectTopLevelMatchBody names it
-// below, and the next-rung trigger is a recursive body walker mirroring
-// emit_rust_expr_if/emit_rust_expr_let's accessor shapes once a second real specimen needs it
-// (DESIGN.md S4b no-untracked-stall).
-
-type TraitBoundWitnessScope
-  = | BoundedToDirectTopLevelMatchBody
+// walked. THAT BOUNDARY IS RETIRED: its trigger fired on gunbc.product.data_class admit_data_effect,
+// whose cloned-scrutinee match is a fold step's body, and v1_fn_body_rc_match_clone_bound_param_names
+// (05_emit_rust.dag) now walks every match in the body. The scope variant that named the boundary is
+// deleted with it, as BoundedToDirectSingleCallLambdaBody's was.
 
 // gunbc dashboard node://adhoc-574e999b-39c, Row 1b. A second, structurally distinct trigger from
 // the RC-match one above: a wrapper fn whose body forwards its own arguments directly into ONE
@@ -107,8 +104,8 @@ type TraitBoundWitnessScope
 // v1_call_forwarding_clone_bound_param_names now walks children recursively, mirroring the equality
 // half rather than special-casing scrutinee position -- the variant is deleted below because the
 // scope it named no longer exists, and a boundary declaration that outlives its boundary is the
-// stale citation DESIGN section 3 forbids. BoundedToDirectTopLevelMatchBody is UNCHANGED and still
-// stands: the RC-match trigger was not widened here, and its own next-rung trigger is still open.
+// stale citation DESIGN section 3 forbids. The RC-match trigger was later widened the same way (see
+// the retirement note above).
 
 fn v1_rc_match_scrutinee_clone_bound_param_names(
   generic_param_names: List<String>,

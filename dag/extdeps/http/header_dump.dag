@@ -1,0 +1,132 @@
+module extdeps.http.header_dump
+
+import std.types { String, List, HttpStatus, http_status_of }
+import std.algebra { trim }
+import std.nat { nat_range_inclusive }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.ietf.http_semantics { HttpRetryAfter, RetryAfterAbsent, RetryAfterUnread, http_retry_after_from_text }
+
+// A CURL -D HEADER DUMP is the status line and headers of each response the transport saw, in order.
+// Only the LAST block describes the answer the caller got, so a status line starts a fresh reading.
+// HTTP field names are case-insensitive (RFC 9110 section 5.1). This module is the dump's shape; it
+// enumerates no products.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc9112#section-4",
+  }
+}
+
+data rfc9110_field_names_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc9110#section-5.1",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.http.header_dump",
+      decl_name: "HttpHeaderDump",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [rfc9110_field_names_authority]
+}
+
+type HttpHeaderDump
+  = HeaderDumpRead { text: String }
+  | HeaderDumpUnread { cause: String }
+
+type HttpNamedHeader {
+  name: String
+  value: String
+}
+
+type HttpHeaderScan {
+  status: HttpStatus?
+  fields: List<HttpNamedHeader>
+}
+
+data http_ascii_upper: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+data http_ascii_lower: String = "abcdefghijklmnopqrstuvwxyz"
+
+fn http_ascii_fold(s: String) -> String {
+  fold(nat_range_inclusive(lo: 0, hi: 25), init: s, f: (acc, i) =>
+    replace(acc, substring(s: http_ascii_upper, start: i, end: i + 1), substring(s: http_ascii_lower, start: i, end: i + 1)))
+}
+
+fn http_status_from_status_line(line: String) -> HttpStatus? {
+  match split(s: trim(s: line), delimiter: " ").skip(n: 1).first() {
+    Absent => none
+    Present { value: code } =>
+      match parse_int(s: code) {
+        Absent => none
+        Present { value: n } => http_status_of(n: n)
+      }
+  }
+}
+
+fn http_header_scan_line(acc: HttpHeaderScan, line: String) -> HttpHeaderScan {
+  let t = trim(s: line)
+  if http_ascii_fold(s: t).starts_with("http/") {
+    HttpHeaderScan { status: http_status_from_status_line(line: t), fields: [] }
+  } else {
+    match split(s: t, delimiter: ":").first() {
+      Absent => acc
+      Present { value: raw_name } => {
+        let name = http_ascii_fold(s: trim(s: raw_name))
+        if length(t) <= length(raw_name) {
+          acc
+        } else {
+          HttpHeaderScan {
+            status: acc.status,
+            fields: concat(acc.fields, [HttpNamedHeader { name: name, value: trim(s: substring(s: t, start: length(raw_name) + 1, end: length(t))) }]),
+          }
+        }
+      }
+    }
+  }
+}
+
+fn http_header_scan_of_text(dump: String) -> HttpHeaderScan {
+  fold(split(s: dump, delimiter: "\n"), init: HttpHeaderScan { status: none, fields: [] }, f: (acc, line) =>
+    http_header_scan_line(acc: acc, line: line))
+}
+
+fn http_header_scan_field(scan: HttpHeaderScan, name: String) -> String? {
+  match filter(scan.fields, h => h.name == http_ascii_fold(s: name)).last() {
+    Absent => none
+    Present { value: h } => Present { value: h.value }
+  }
+}
+
+fn http_header_dump_status(dump: HttpHeaderDump) -> HttpStatus? {
+  match dump {
+    HeaderDumpUnread { cause: _ } => none
+    HeaderDumpRead { text: t } => http_header_scan_of_text(dump: t).status
+  }
+}
+
+fn http_header_dump_retry_after(dump: HttpHeaderDump) -> HttpRetryAfter {
+  match dump {
+    HeaderDumpUnread { cause: c } => RetryAfterUnread { cause: c }
+    HeaderDumpRead { text: _ } =>
+      match http_header_dump_field(dump: dump, name: "retry-after") {
+        Absent => RetryAfterAbsent
+        Present { value: v } => http_retry_after_from_text(text: v)
+      }
+  }
+}
+
+fn http_header_dump_field(dump: HttpHeaderDump, name: String) -> String? {
+  match dump {
+    HeaderDumpUnread { cause: _ } => none
+    HeaderDumpRead { text: t } => http_header_scan_field(scan: http_header_scan_of_text(dump: t), name: name)
+  }
+}

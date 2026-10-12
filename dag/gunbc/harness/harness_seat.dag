@@ -1,10 +1,13 @@
 module gunbc.harness.harness_seat
 
 import product.host_identity { HostIdentity }
+import gunbc.serving.session_store { ServingSessionEntry, serving_session_record_for_request }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
-import std.measure { Measure, Count, One, money_amount_micro, second, measure_count }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, fabric_group_hosts }
+import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count }
+import extdeps.accounting.encumbrance { Held, Expended, Released }
+import extdeps.api_rate_limit { upstream_rate_limit_key }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
   ServingRouteTurnCeiling, serving_enrolled_routes, serving_route_turn_ceiling_count,
@@ -27,7 +30,7 @@ import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric_event_log {
   HeadExpectation, event_log_refusal_wire, SeatStoreRefused, SeatStandingStoreRefused, HeadObserved, HeadObservationRefused, event_log_observe_head, EventAppended,
   EventAppendStale, EventAppendRefused, event_log_append, SeatGranted, SeatFull, SeatContended,
-  SeatAcquireRefused, fabric_seat_acquire, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved,
+  SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved,
   fabric_seat_observe, PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition,
   RedemptionReading, RedemptionReadAt, RedemptionReadRefused, fabric_redemption_read,
 }
@@ -38,7 +41,18 @@ import gunbc.harness.harness_backend {
   harness_route_availability, HarnessEngineReading, harness_observe_engine_at,
 }
 import gunbc.harness.harness_wire { HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape, harness_backend_url_for_endpoint }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_unit_model_id }
+import gunbc.harness.harness_reasoning_wire {
+  HarnessServingUnit, harness_unit_model_id, HarnessReasoningLevel, harness_unit_placement, HarnessUnitPlacement, PlacedOnFleetSeat,
+  LeasedFromHostedQuota, RunOnOperatorEndpoint, harness_serving_unit_wire,
+}
+import gunbc.harness.harness_operator_route {
+  harness_operator_route, operator_class_admission, OperatorClassAdmitted, OperatorClassRefused,
+  operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header, operator_chat_completions_url,
+}
+import gunbc.harness.harness_hosted_route {
+  HarnessHostedAccess, HarnessHostedQuota, HostedBound, HostedBindRefused, harness_hosted_bind, HostedReleased, HostedReleaseRefused,
+  harness_hosted_release,
+}
 import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, Work, ServiceInterfaceRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, identity_frame }
 import product.fabric.supply { EstimatedGrantDuration, GrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
 import product.fabric.selection {
@@ -82,7 +96,11 @@ import gunbc.serving.turn_admission {
   ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire,
   ServingGroupAdmission, AdmissibleForClass, InadmissibleQualityTurnInFlight, InadmissibleGroupNotIdle,
   InadmissibleRouteHoldingForCapacity, InadmissibleClassCeilingReached, InadmissibleUnexplainedOccupancy,
-  AdmissibilityUnread, serving_group_admission, serving_admission_detail, serving_isolation_profile,
+  AdmissibilityUnread, serving_group_admission,
+  ServingSessionRecord, NoSessionRecord, HostTierUnread, serving_session_standing, serving_session_placement,
+  ServingSessionResidency, SessionRecord, ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica,
+  GpuPrefixUnread, serving_unread_when_owner_unprobed,
+  serving_admission_detail, serving_isolation_profile,
   spark_serving_trust_domain, serving_delay_valuation, serving_dispatch_inputs,
 }
 import gunbc.serving.turn_demand { ServingModelRequirementRef, serving_turn_requirements, serving_turn_work, ServingTurnRequest }
@@ -291,6 +309,8 @@ type HarnessSeatBinding
   = HarnessSeatBound { url: String, grant: LeaseGrant, partition: PartitionId, ceiling: Nat, group_wire: String, launch: VllmEndpointProcessLaunch, store: FabricStorageBinding, model: NonEmptyStr, unit: HarnessServingUnit, class: ServingCoTenancyClass, seat: HarnessSeatReference }
   | HarnessSeatPending { detail: String }
   | HarnessSeatRefused { detail: String }
+  | HarnessHostedBound { url: String, model: NonEmptyStr, unit: HarnessServingUnit, level: HarnessReasoningLevel, access: HarnessHostedAccess }
+  | HarnessOperatorBound { url: String, model: NonEmptyStr, unit: HarnessServingUnit, header_dir: NonEmptyStr, header_file: NonEmptyStr }
 
 fn seat_bind_detail(group: FabricGroup, text: String) -> String {
   join([fabric_group_wire(g: group) as String, ": ", text], "")
@@ -591,10 +611,11 @@ type HarnessCandidates {
   notes: List<String>
   retryable: Bool
   incarnations: List<IncarnationMemoEntry>
+  owner_standing: ServingSessionResidency?
 }
 
 fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -> HarnessCandidates {
-  HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable, incarnations: acc.incarnations }
+  HarnessCandidates { candidates: acc.candidates, notes: concat(acc.notes, [note]), retryable: acc.retryable || retryable, incarnations: acc.incarnations, owner_standing: acc.owner_standing }
 }
 
 // A BOUND OFFER BECOMES A CANDIDATE ONLY THROUGH PROVIDER-USE ADMISSION, AND THE ORDER IS FORCED.
@@ -669,7 +690,6 @@ fn harness_declared_unit_digest(group: FabricGroup) -> DeclaredUnitDigestStandin
 }
 
 type HarnessDeclaredUnitRoster {
-  group_a: DeclaredUnitDigestStanding
   group_b: DeclaredUnitDigestStanding
 }
 
@@ -680,15 +700,13 @@ type HarnessDeclaredUnitRoster {
 // repair is to carry the first value from the least common ancestor rather than to cache it.
 fn harness_declared_unit_roster() -> HarnessDeclaredUnitRoster {
   HarnessDeclaredUnitRoster {
-    group_a: harness_declared_unit_digest(group: FabricGroupA),
-    group_b: harness_declared_unit_digest(group: FabricGroupB),
+    group_b: harness_declared_unit_digest(group: FabricGroupB {}),
   }
 }
 
 fn harness_declared_unit_from_roster(roster: HarnessDeclaredUnitRoster, group: FabricGroup) -> DeclaredUnitDigestStanding {
   match group {
-    FabricGroupA => roster.group_a
-    FabricGroupB => roster.group_b
+    FabricGroupB {} => roster.group_b
   }
 }
 
@@ -724,21 +742,18 @@ fn harness_group_participation(access: FleetSshContextPreparation, group: Fabric
 }
 
 type HarnessGroupParticipationRoster {
-  group_a: ServingGroupRendezvousReach?
   group_b: ServingGroupRendezvousReach?
 }
 
 fn harness_group_participation_roster(access: FleetSshContextPreparation) -> HarnessGroupParticipationRoster {
   HarnessGroupParticipationRoster {
-    group_a: harness_group_participation(access: access, group: FabricGroupA),
-    group_b: harness_group_participation(access: access, group: FabricGroupB),
+    group_b: harness_group_participation(access: access, group: FabricGroupB {}),
   }
 }
 
 fn harness_participation_from_roster(roster: HarnessGroupParticipationRoster, group: FabricGroup) -> ServingGroupRendezvousReach? {
   match group {
-    FabricGroupA => roster.group_a
-    FabricGroupB => roster.group_b
+    FabricGroupB {} => roster.group_b
   }
 }
 
@@ -861,6 +876,7 @@ fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoin
         notes: acc.notes,
         retryable: acc.retryable,
         incarnations: acc.incarnations,
+        owner_standing: acc.owner_standing,
       }
     OfferNotAdmittedForUse { offer: _, cause: why } =>
       harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: join(["provider-use admission refused this turn: ", refusal_reason(c: why)], "")), retryable: false)
@@ -893,7 +909,7 @@ fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoin
 //
 // AND THE MODEL SCREEN SITS HERE TOO, before the offer exists. A route serving something the demand
 // did not ask for is not a candidate at all, which is a different answer from being outbid.
-fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricStorageBinding, now: EpochSecs, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> HarnessCandidates {
+fn harness_add_candidate(acc: HarnessCandidates, session: ServingSessionRecord, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricStorageBinding, now: EpochSecs, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> HarnessCandidates {
   match route {
     ServingRouteUnresolved { group: _, obligation: o } =>
       harness_no_candidate(acc: acc, note: o as String, retryable: false)
@@ -924,7 +940,7 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
             WithholdRouteNotProgressing { note: why } =>
               harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why), retryable: true)
             ProgressDoesNotWithhold =>
-              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, subject: subject, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, store: store, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster)
+              harness_candidate_from_standing(acc: acc, session: session, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, subject: subject, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, store: store, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster)
           }
       }
     }
@@ -937,6 +953,7 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
 // wedged engine may clear and the next placement round re-observes.
 fn harness_candidate_from_standing(
   acc: HarnessCandidates,
+  session: ServingSessionRecord,
   group: FabricGroup,
   endpoint: ServingRouteEndpoint,
   route: ServingRoute,
@@ -964,11 +981,12 @@ fn harness_candidate_from_standing(
                 )
               } else {
                 harness_add_serving_candidate(
-                  acc: acc, endpoint: endpoint, class: class, requirement: requirement, subject: subject,
+                  acc_in: acc, endpoint: endpoint, class: class, requirement: requirement, subject: subject,
                   availability: availability, launch: launch, engine: engine,
                   model: observed_model, unit: observed_unit, readback: observed_readback,
                   seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
                   seats_held: harness_seat_standing(route: route, store: store, now: now),
+                  session: session,
                   now: now, access: access, declared_units: declared_units, participation_roster: participation_roster,
                 )
               }
@@ -990,7 +1008,7 @@ fn harness_candidate_from_standing(
 // are taken one call up, in harness_add_candidate, which no claim executes because it reads live
 // endpoints.
 fn harness_add_serving_candidate(
-  acc: HarnessCandidates,
+  acc_in: HarnessCandidates,
   endpoint: ServingRouteEndpoint,
   class: ServingCoTenancyClass,
   requirement: ServingModelRequirement,
@@ -1003,12 +1021,14 @@ fn harness_add_serving_candidate(
   unit: HarnessServingUnit,
   seats: Nat,
   seats_held: ServingSeatStanding,
+  session: ServingSessionRecord,
   now: EpochSecs,
   access: FleetSshContextPreparation,
   declared_units: HarnessDeclaredUnitRoster,
   participation_roster: HarnessGroupParticipationRoster,
 ) -> HarnessCandidates {
   let group = endpoint.group
+  let acc = harness_note_owner_standing(acc: acc_in, session: session, launch: launch, engine: engine)
   let admission = serving_group_admission(
     incoming: class,
     tenancy: serving_co_tenancy(reading: engine.queue),
@@ -1028,7 +1048,7 @@ fn harness_add_serving_candidate(
         Absent => {
           let observed = harness_incarnation_standing(access: access, group: group, launch: launch)
           harness_bind_candidate(
-            acc: HarnessCandidates { candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: append(acc.incarnations, IncarnationMemoEntry { launch_key: launch_key, standing: observed }) },
+            acc: HarnessCandidates { candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: append(acc.incarnations, IncarnationMemoEntry { launch_key: launch_key, standing: observed }), owner_standing: acc.owner_standing },
             group: group, endpoint: endpoint, launch: launch, availability: availability, readback: readback, incarnation: observed, route: harness_serving_route(group: group, launch: launch, readback: readback, incarnation: observed, declared_unit: declared_unit, participation: participation), subject: subject, model: model, unit: unit, seats: seats)
         }
       }
@@ -1062,14 +1082,68 @@ fn harness_is_excluded(excluded: List<String>, key: NonEmptyStr) -> Bool {
 // while keeping a declared-but-silent one a candidate. gunbc.serving.serving_enrollment is the
 // authority for the second question; every route it names still has to answer a probe before it
 // becomes a candidate, which is what makes membership observed rather than declared.
-fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricStorageBinding, now: EpochSecs, excluded: List<String>, access: FleetSshContextPreparation, incarnations: List<IncarnationMemoEntry>, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> HarnessCandidates {
-  let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: incarnations }, f: (acc, r) =>
-    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, subject: subject, store: store, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster))
-  HarnessCandidates {
-    candidates: filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key)),
-    notes: collected.notes,
-    retryable: collected.retryable,
-    incarnations: collected.incarnations,
+fn harness_collect_candidates(session: ServingSessionRecord, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricStorageBinding, now: EpochSecs, excluded: List<String>, access: FleetSshContextPreparation, incarnations: List<IncarnationMemoEntry>, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> HarnessCandidates {
+  let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: incarnations, owner_standing: none }, f: (acc, r) =>
+    harness_add_candidate(acc: acc, session: session, route: r, class: class, requirement: requirement, subject: subject, store: store, now: now, access: access, declared_units: declared_units, participation_roster: participation_roster))
+  let kept = filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key))
+  harness_apply_session_attachment(session: session, collected: collected, kept: kept)
+}
+
+// THE FINAL FILTER harness_collect_candidates applies after the route fold: one pass over kept
+// candidates, partitioned on ServingSessionPlacement. Missing owner standing is unread (pinned).
+// There is no Bool predicate beside this match -- PlacementFree stays, OwnedByAnotherReplica notes.
+fn harness_apply_session_attachment(session: ServingSessionRecord, collected: HarnessCandidates, kept: List<HarnessCandidate>) -> HarnessCandidates {
+  match session {
+    NoSessionRecord =>
+      HarnessCandidates { candidates: kept, notes: collected.notes, retryable: collected.retryable, incarnations: collected.incarnations, owner_standing: collected.owner_standing }
+    SessionRecord { owner_launch: _, prefix_intact: _, last_turn: _ } => {
+      let owner_standing = collected.owner_standing
+      let standing = match owner_standing {
+        Present { value: s } => s
+        Absent => serving_unread_when_owner_unprobed()
+      }
+      fold(kept, init: HarnessCandidates {
+        candidates: [],
+        notes: collected.notes,
+        retryable: collected.retryable,
+        incarnations: collected.incarnations,
+        owner_standing: match owner_standing {
+          Present { value: s } => Present { value: s }
+          Absent => Present { value: standing }
+        },
+      }, f: (acc, c) =>
+        match serving_session_placement(residency: standing, record: session, candidate_launch: vllm_endpoint_process_launch_key(launch: c.launch)) {
+          PlacementFree =>
+            HarnessCandidates { candidates: concat(acc.candidates, [c]), notes: acc.notes, retryable: acc.retryable, incarnations: acc.incarnations, owner_standing: acc.owner_standing }
+          OwnedByAnotherReplica { owner: _ } =>
+            HarnessCandidates {
+              candidates: acc.candidates,
+              notes: concat(acc.notes, [join([fabric_group_wire(g: c.group) as String, ": this session is attached to another launch, so it is not moved to a different replica"], "")]),
+              retryable: true,
+              incarnations: acc.incarnations,
+              owner_standing: acc.owner_standing,
+            }
+        })
+    }
+  }
+}
+
+// THE OWNER'S STANDING IS READ WHERE THE OWNER IS PROBED: only a candidate whose launch IS the recorded
+// owner contributes a standing, from the session record's own attributed reuse reading, whatever order the routes are folded in.
+fn harness_note_owner_standing(acc: HarnessCandidates, session: ServingSessionRecord, launch: VllmEndpointProcessLaunch, engine: HarnessEngineReading) -> HarnessCandidates {
+  match session {
+    NoSessionRecord => acc
+    SessionRecord { owner_launch: owner, prefix_intact: _, last_turn: _ } => {
+      let key = vllm_endpoint_process_launch_key(launch: launch)
+      if (owner as String) != (key as String) {
+        acc
+      } else {
+        HarnessCandidates {
+          candidates: acc.candidates, notes: acc.notes, retryable: acc.retryable, incarnations: acc.incarnations,
+          owner_standing: Present { value: serving_session_standing(record: session, current_launch: key, host: HostTierUnread, gpu: GpuPrefixUnread) },
+        }
+      }
+    }
   }
 }
 
@@ -1204,6 +1278,7 @@ fn harness_seat_after_grant_authority(store: FabricStorageBinding, group: Fabric
     SeatAuthorityRefuses { cause: why } =>
       match release_retry(store: store, partition: partition, ceiling: ceiling, reference: grant.reference, reason: "the pair-serving authority moved between admission and the seat's acquisition" as NonEmptyStr, now: now) {
         HarnessSeatReleased { partition: _ } => SeatReleasedAuthorityMoved { cause: why }
+        HarnessHostedCredentialRemoved => SeatUnreleasedAuthorityMoved { cause: why, release_detail: "a fleet seat release answered as a hosted credential removal" }
         HarnessSeatReleaseRefused { detail: d } => SeatUnreleasedAuthorityMoved { cause: why, release_detail: d }
       }
   }
@@ -1223,6 +1298,8 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
     }
     EndpointProcessWasReplaced { endpoint: _, expected: _, observed: _, observed_at: _, receipt: _ } =>
         match release_retry(store: store, partition: partition, ceiling: candidate.ceiling, reference: grant.reference, reason: "the engine was replaced between selection and acquisition" as NonEmptyStr, now: now) {
+          HarnessHostedCredentialRemoved =>
+            AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: "a fleet seat release answered as a hosted credential removal; the seat may still be held") }
           HarnessSeatReleased { partition: _ } =>
             AcquisitionLost {
               key: candidate.key,
@@ -1353,11 +1430,11 @@ fn harness_placement_grant_duration(policy: LeasePolicy) -> GrantDuration {
   EstimatedGrantDuration { seconds: second(count: policy.maximum_duration_seconds) }
 }
 
-fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricStorageBinding, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> PlacementRound {
+fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, store: FabricStorageBinding, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster, participation_roster: HarnessGroupParticipationRoster) -> PlacementRound {
   match acc.done {
     Present { value: _ } => acc
     Absent => {
-      let collected = harness_collect_candidates(class: class, requirement: requirement, subject: subject, store: store, now: now, excluded: acc.excluded, access: access, incarnations: acc.incarnations, declared_units: declared_units, participation_roster: participation_roster)
+      let collected = harness_collect_candidates(session: session, class: class, requirement: requirement, subject: subject, store: store, now: now, excluded: acc.excluded, access: access, incarnations: acc.incarnations, declared_units: declared_units, participation_roster: participation_roster)
       let notes = concat(acc.notes, collected.notes)
       let retryable = acc.retryable || collected.retryable
       match select_supply(
@@ -1420,7 +1497,74 @@ data harness_placement_rounds: Nat = 3
 // the Work carries and the one the candidate screen applies are one value with one source. A caller
 // that constructed the request itself could hand in a request naming one requirement beside a
 // screen argument naming another.
-fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
+fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?) -> HarnessSeatBinding {
+  match harness_requirement_placement(requirement: requirement, class: class) {
+    LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
+    PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session)
+    RunOnOperatorEndpoint => harness_bind_operator(class: class, shape: shape)
+  }
+}
+
+// THE OPERATOR ENDPOINT TAKES NO SEAT: the class floor is applied, the Bearer header file is materialized from
+// the credential file, and the binding carries the chat-completions URL. Only the OpenAI chat shape is spoken
+// by ninfer-serve, so any other shape refuses by name.
+fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape) -> HarnessSeatBinding {
+  match shape {
+    AnthropicMessagesShape => HarnessSeatRefused { detail: "the operator endpoint speaks the OpenAI chat-completions shape only" }
+    OpenAiChatCompletionsShape =>
+      match operator_class_admission(route: harness_operator_route, class: class) {
+        OperatorClassRefused { detail: d } => HarnessSeatRefused { detail: d }
+        OperatorClassAdmitted =>
+          match operator_chat_completions_url() {
+            Absent => HarnessSeatRefused { detail: "the operator endpoint URL could not be composed" }
+            Present { value: u } =>
+              match operator_open_header(route: harness_operator_route) {
+                OperatorHeaderRefused { detail: d } => HarnessSeatRefused { detail: d }
+                OperatorHeaderOpened { header_dir: dir, header_file: hf } =>
+                  HarnessOperatorBound { url: u as String, model: harness_unit_model_id(unit: harness_operator_route.unit), unit: harness_operator_route.unit, header_dir: dir, header_file: hf }
+              }
+          }
+      }
+  }
+}
+
+// WHERE A REQUIREMENT IS PLACED. Any admitted model lands on the operator-run endpoint, by the operator's
+// ruling (see operator_placement_ruling = gunbc.design_ruling harness_default_requirement_places_on_operator_endpoint),
+// which overrules the earlier rule that an unnamed requirement lands only on a fleet seat. The hosted listing stays
+// governed by trial terms (extdeps.nvidia.api_trial_terms): an unnamed requirement must not quietly route a turn
+// to an upstream whose terms the caller never chose, so only a caller naming the hosted unit reaches it.
+//
+// THE RULING GOVERNS THE CLASS THE ROUTE'S QUALITY FLOOR ADMITS. The operator route admits batch turns only, so an
+// unnamed requirement from a quality-sensitive caller (the router's place entry, the seat-collision probe) keeps
+// its fleet seat rather than being refused by a route it could never use; the ruling's words ("make our harness
+// pick this pod") are read as the harness worker's default, not as removing the fleet path for interactive turns.
+fn harness_requirement_placement(requirement: ServingModelRequirement, class: ServingCoTenancyClass) -> HarnessUnitPlacement {
+  match requirement {
+    AnyAdmittedModel =>
+      match operator_class_admission(route: harness_operator_route, class: class) {
+        OperatorClassAdmitted => harness_unit_placement(unit: harness_operator_route.unit)
+        OperatorClassRefused { detail: _ } => PlacedOnFleetSeat
+      }
+    ExactServingUnit { unit: u } => harness_unit_placement(unit: u)
+  }
+}
+
+// THE HOSTED BIND. A hosted unit takes no seat: the credential is materialized and its liveness read, the
+// level is selected, and the binding carries the two quota rows each request will lease. A fleet unit
+// handed here refuses by name rather than being placed on a seat behind the caller's back.
+fn harness_bind_hosted(short_hostname: String, unit: HarnessServingUnit, actor: NonEmptyStr, max_tokens: TokenCount) -> HarnessSeatBinding {
+  match harness_unit_placement(unit: unit) {
+    PlacedOnFleetSeat => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served on a fleet seat; bind it with harness_bind_seat"], "") }
+    RunOnOperatorEndpoint => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served by the operator endpoint; bind it with harness_bind_seat"], "") }
+    LeasedFromHostedQuota =>
+      match harness_hosted_bind(unit: unit, short_hostname: short_hostname, actor: actor, max_tokens: max_tokens) {
+        HostedBindRefused { detail: d } => HarnessSeatRefused { detail: d }
+        HostedBound { url: u, model: m, unit: un, level: l, access: a } => HarnessHostedBound { url: u as String, model: m, unit: un, level: l, access: a }
+      }
+  }
+}
+
+fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?) -> HarnessSeatBinding {
   let subject = harness_turn_subject(request: harness_turn_request(shape: shape, requirement: requirement, inputs: inputs), attempt: attempt)
   match event_log_store_for_host(short_hostname: short_hostname) {
     HostStoreRefused { detail: d } => HarnessSeatRefused { detail: d }
@@ -1432,7 +1576,7 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
           let declared_units = harness_declared_unit_roster()
           let participation_roster = harness_group_participation_roster(access: access)
           let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false, incarnations: [] }, f: (acc, round) =>
-            harness_placement_round(acc: acc, class: class, requirement: requirement, subject: subject, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, access: access, declared_units: declared_units, participation_roster: participation_roster))
+            harness_placement_round(acc: acc, session: serving_session_record_for_request(entry: session, next_inputs: inputs), class: class, requirement: requirement, subject: subject, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, access: access, declared_units: declared_units, participation_roster: participation_roster))
           match placed.done {
             Present { value: b } => b
             Absent =>
@@ -1445,8 +1589,12 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
 
 // RELEASE IS AN EVENT ON THE SAME PARTITION, appended against the head observed at release time
 // and retried on stale, because the seat's neighbours keep moving the head while this turn ran.
+// A HOSTED BINDING HOLDS NO SEAT, so its release is its own arm: each request already settled its quota
+// leases, and what remains to give back is the credential's header file. Reporting it as a released
+// partition would name a pool the binding never held.
 type HarnessSeatRelease
   = HarnessSeatReleased { partition: PartitionId }
+  | HarnessHostedCredentialRemoved
   | HarnessSeatReleaseRefused { detail: String }
 
 type ReleaseFold {
@@ -1543,6 +1691,8 @@ fn harness_seat_pointer_of(binding: HarnessSeatBinding) -> HarnessSeatPointer? {
       Present { value: HarnessSeatPointer { partition: p, reference: g.reference, owner: r.attempt } }
     HarnessSeatRefused { detail: _ } => none
     HarnessSeatPending { detail: _ } => none
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => none
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => none
   }
 }
 
@@ -1563,6 +1713,13 @@ fn harness_release_seat(binding: HarnessSeatBinding, reason: NonEmptyStr) -> Har
   match binding {
     HarnessSeatRefused { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release: ", d], "") }
     HarnessSeatPending { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release, the placement is pending: ", d], "") }
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: d, header_file: _ } =>
+      if operator_close_header(header_dir: d) { HarnessHostedCredentialRemoved } else { HarnessSeatReleaseRefused { detail: join(["the operator bearer header directory ", d as String, " could not be removed"], "") } }
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: a } =>
+      match harness_hosted_release(access: a) {
+        HostedReleased => HarnessHostedCredentialRemoved
+        HostedReleaseRefused { detail: d } => HarnessSeatReleaseRefused { detail: d }
+      }
     HarnessSeatBound { url: _, grant: g, partition: p, ceiling: ceiling, group_wire: _, launch: _, store: store, model: _, unit: _, class: _, seat: _ } =>
       match now_epoch_seconds() {
         Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
@@ -1719,10 +1876,149 @@ fn harness_release_fenced(store: FabricStorageBinding, capability: HarnessReleas
 fn harness_seat_release_wire(r: HarnessSeatRelease) -> String {
   match r {
     HarnessSeatReleased { partition: p } => join(["released on ", p as String], "")
+    HarnessHostedCredentialRemoved => "hosted credential removed"
     HarnessSeatReleaseRefused { detail: d } => join(["release refused: ", d], "")
   }
 }
 
 fn harness_now_epoch() -> EpochSecs? {
   now_epoch_seconds()
+}
+
+data hosted_inflight_none: Nat = 0
+
+// ── IN-FLIGHT HOSTED SENDS: A CHARGE THAT SURVIVES THE ROLLOVER ─────────────────────────────────
+//
+// A hosted request is charged to the window it is admitted in (gunbc.harness.harness_hosted_route
+// harness_hosted_round_charge), but nothing on this side can bound WHEN its first byte leaves: curl's
+// connect deadline stops applying once the connection is open, and a process can pause between the
+// admission and the write for as long as it likes. Measured: a pause before the first header write put the
+// request's first byte 8.0 s after admission, past a 5.98 s deadline, with curl exiting 0. So a send that
+// has been admitted and whose transport has not returned may arrive in ANY later window, and it must be
+// counted there too.
+//
+// THE QUOTA POOLS CANNOT CARRY THAT, because every charge in a lapsing pool belongs to one window. So an
+// admitted send also holds a SEAT in a per-credential in-flight partition, under the same pool shape every
+// harness seat uses (harness_seat_pool_root: no replenishment, quiescence required -- a held seat charges
+// until evidence releases it, never by expiry). Each later admission counts the in-flight seats acquired
+// BEFORE its window began and charges its quota pools for them as well as for itself; the seat is released
+// when the transport returns, whatever it returned.
+//
+// TWO CONSEQUENCES, BOTH CONSERVATIVE AND STATED RATHER THAN ENGINEERED AWAY. Two admissions in one window
+// each count the same carried seats, so a carried send can be charged more than once in a window. And a
+// seat held by a process that crashed charges every later window until it is released; the refusal that
+// starvation produces names each held seat, its holder, and the release that frees it -- the same
+// harness_release_cli route a stuck serving seat takes.
+fn hosted_inflight_partition(quota: HarnessHostedQuota) -> PartitionId {
+  join(["inflight-", upstream_rate_limit_key(l: quota.per_minute) as String], "") as PartitionId
+}
+
+fn hosted_inflight_ceiling(quota: HarnessHostedQuota) -> Nat {
+  quota.per_minute.requests
+}
+
+type HostedInflightSeat {
+  reference: NonEmptyStr
+  acquired_at: EpochSecs
+}
+
+fn hosted_inflight_held(pool: Pool<Count, One>) -> List<HostedInflightSeat> {
+  let held = filter(pool.ledger.entries, e => match e.state {
+    Held { maximum_liability: _ } => true
+    Expended { actual: _, settled_at: _ } => false
+    Released { reason: _, released_at: _ } => false
+  })
+  fold(held, init: [] as List<HostedInflightSeat>, f: (acc, e) =>
+    match filter(pool.terms, t => (t.reference as String) == (e.reference as String)).first() {
+      Absent => acc
+      Present { value: t } => concat(acc, [HostedInflightSeat { reference: e.reference, acquired_at: t.acquired_at }])
+    })
+}
+
+// THE SENDS A WINDOW MUST COVER BESIDES ITS OWN: those admitted before it began and not yet returned.
+fn hosted_inflight_carried(pool: Pool<Count, One>, window_start: EpochSecs) -> Nat {
+  fold(filter(hosted_inflight_held(pool: pool), s => s.acquired_at < window_start), init: hosted_inflight_none, f: (n, _s) => n + 1)
+}
+
+type HostedInflightReading
+  = HostedInflightRead { pool: Pool<Count, One>, generation: Nat, store: FabricStorageBinding, release_hint: String }
+  | HostedInflightUnread { detail: String }
+
+fn hosted_inflight_release_hint(quota: HarnessHostedQuota, pool: Pool<Count, One>, generation: Nat, walk: ChainWalk<PoolEvent>) -> String {
+  let seats = hosted_inflight_held(pool: pool)
+  if count(seats) == 0 { "" } else {
+    join([
+      "; in-flight seats held on ", hosted_inflight_partition(quota: quota) as String, " (release each once its holder is known to be gone: gunbc run --entry dag/gunbc/harness/harness_cli.dag --function harness_release_cli --arg partition=", hosted_inflight_partition(quota: quota) as String,
+      " --arg ceiling=", to_string(hosted_inflight_ceiling(quota: quota)), " --arg generation=", to_string(generation), " --arg reason=<why> --arg reference=<seat> --arg grant=<grant>): ",
+      join(map(seats, s => join([
+        s.reference as String, " acquired_at=", to_string(s.acquired_at),
+        " grant=", match admitting_event_for(walk: walk, reference: s.reference) { Present { value: g } => g as String  Absent => "unknown" },
+      ], "")), "; "),
+    ], "")
+  }
+}
+
+fn harness_hosted_inflight_read(quota: HarnessHostedQuota) -> HostedInflightReading {
+  match event_log_store_for_host(short_hostname: quota.short_hostname) {
+    HostStoreRefused { detail: d } => HostedInflightUnread { detail: d }
+    HostStoreResolved { store: store, executor: _ } => {
+      let partition = hosted_inflight_partition(quota: quota)
+      match event_log_read_partition(store: store, partition: partition, budget: 4096) {
+        PartitionReadRefused { cause: c } => HostedInflightUnread { detail: join(["the in-flight partition could not be read: ", event_log_refusal_wire(cause: c)], "") }
+        PartitionReadOk { head: _, walk: walk } =>
+          match walk {
+            ChainIncomplete { missing: m, newest_first_so_far: _ } => HostedInflightUnread { detail: join(["the in-flight partition chain is missing event ", m as String], "") }
+            ChainBudgetExhausted { at: a } => HostedInflightUnread { detail: join(["the in-flight partition exceeded the read budget at ", a as String], "") }
+            ChainWalked { oldest_first: xs } =>
+              match pool_fold(root: harness_seat_pool_root(partition: partition, ceiling: hosted_inflight_ceiling(quota: quota)), oldest_first: xs) {
+                PoolFoldRefused { at_event: e, wire: w } => HostedInflightUnread { detail: join(["the in-flight partition does not fold at ", e as String, ": ", w], "") }
+                PoolFolded { pool: p, generation: g } =>
+                  HostedInflightRead { pool: p, generation: g, store: store, release_hint: hosted_inflight_release_hint(quota: quota, pool: p, generation: g, walk: walk) }
+              }
+          }
+      }
+    }
+  }
+}
+
+type HostedInflightHold
+  = HostedInflightHeld { reference: NonEmptyStr, store: FabricStorageBinding }
+  | HostedInflightRefused { detail: String }
+
+fn harness_hosted_inflight_acquire(quota: HarnessHostedQuota, store: FabricStorageBinding, reference: NonEmptyStr, term: Second) -> HostedInflightHold {
+  match now_epoch_seconds() {
+    Absent => HostedInflightRefused { detail: "the clock could not be read as epoch seconds" }
+    Present { value: now } => {
+      let partition = hosted_inflight_partition(quota: quota)
+      let term_seconds = second_count(s: term)
+      match fabric_seat_acquire(
+        store: store, partition: partition,
+        root: harness_seat_pool_root(partition: partition, ceiling: hosted_inflight_ceiling(quota: quota)),
+        actor: quota.actor,
+        request: SeatRequest { reference: reference, amount: Measure { count: 1 }, at: now, term_seconds: term_seconds },
+        policy: LeasePolicy { maximum_duration_seconds: term_seconds, release_law: QuiescenceRequired },
+        attempts: 3, budget: 4096,
+      ) {
+        SeatGranted { grant: _, generation: _, attempts_used: _ } => HostedInflightHeld { reference: reference, store: store }
+        SeatFull { wire: w, attempts_used: _ } => HostedInflightRefused { detail: join(["every in-flight seat is held (", w, "), so another send cannot be accounted for"], "") }
+        other => HostedInflightRefused { detail: seat_acquisition_wire(a: other) }
+      }
+    }
+  }
+}
+
+fn harness_hosted_inflight_release(quota: HarnessHostedQuota, hold: HostedInflightHold, reason: NonEmptyStr) -> String? {
+  match hold {
+    HostedInflightRefused { detail: _ } => none
+    HostedInflightHeld { reference: r, store: store } =>
+      match now_epoch_seconds() {
+        Absent => Present { value: join(["the in-flight seat ", r as String, " could not be released: the clock could not be read"], "") }
+        Present { value: now } =>
+          match release_retry(store: store, partition: hosted_inflight_partition(quota: quota), ceiling: hosted_inflight_ceiling(quota: quota), reference: r, reason: reason, now: now) {
+            HarnessSeatReleased { partition: _ } => none
+            HarnessHostedCredentialRemoved => Present { value: join(["the in-flight seat ", r as String, " release answered as a credential removal"], "") }
+            HarnessSeatReleaseRefused { detail: d } => Present { value: join(["the in-flight seat ", r as String, " could not be released: ", d], "") }
+          }
+      }
+  }
 }

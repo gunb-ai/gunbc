@@ -51,7 +51,7 @@ import gunbc.roadmap.roadmap_result_returned {
   ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved,
   result_returned_observation_of,
 }
-import gunbc.roadmap_belt_tick_cli { belt_tick_result_tail_exit, belt_tick_exit_with_snapshot_closes }
+import gunbc.roadmap_belt_tick_cli { belt_tick_exit_with_snapshot_closes }
 import gunbc.roadmap.roadmap_event_carrier { SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
 import test.claim.roadmap_belt_actuate_witness { completed_attempt_progress }
 
@@ -698,20 +698,7 @@ test fn an_undelivered_result_fails_the_tick_and_is_named_beside_an_observation_
     ResultReturnNoRequest { node_id: "b", attempt_key: "k2", reason: "launched unclaimed" },
   ] }
   let clean = all([clean_pass, ResultReturnPassRan { outcomes: [] }, ResultReturnPassWithheld { reason: "observe-only" }], p => match result_return_pass_exit(pass: p) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
-  let both = match belt_tick_result_tail_exit(returned: undelivered_pass, tail: ExitFailure { code: 1, reason: "served observation write failed" }) {
-    ExitFailure { code, reason } => code == 1 && string_contains(s: reason, pattern: "served observation write failed") && string_contains(s: reason, pattern: "b attempt k2 (publication-refused)")
-    ExitSuccess => false
-  }
-  let observation_only = match belt_tick_result_tail_exit(returned: clean_pass, tail: ExitFailure { code: 1, reason: "served observation write failed" }) {
-    ExitFailure { code: _, reason } => reason == "served observation write failed"
-    ExitSuccess => false
-  }
-  let result_only = match belt_tick_result_tail_exit(returned: undelivered_pass, tail: ExitSuccess) {
-    ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "b attempt k2")
-    ExitSuccess => false
-  }
-  let neither = match belt_tick_result_tail_exit(returned: clean_pass, tail: ExitSuccess) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
-  undelivered && unreadable && clean && both && observation_only && result_only && neither
+  undelivered && unreadable && clean
 }
 
 // A SNAPSHOT THE RESULT RETURN LEFT BEHIND FAILS THE TICK AND IS NAMED, AND REPLACES NOTHING. A

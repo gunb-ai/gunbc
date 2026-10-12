@@ -99,7 +99,9 @@ data si_unique_index: SymbolIndex = symbol_index_fill_module_root(
 data si_unique_index_containment_only: SymbolIndex = symbol_index_fill_containment_node(
   index: empty_symbol_index(),
   path: si_unique_module_qn,
-  node: si_unique_module_root_node
+  node: si_unique_module_root_node,
+  counts: disj_variant_counts_in_module(root: si_unique_module_root_node),
+  module_qn: si_unique_module_qn
 )
 
 test fn symbol_index_materializes_type_variant_paths_holds() -> Bool {
@@ -237,17 +239,33 @@ test fn symbol_index_unique_variant_alias_at_module_holds() -> Bool {
   }
 }
 
-test fn symbol_index_unique_variant_without_alias_red_control_holds() -> Bool {
+// THE COUNT RULE IS THE WITHOUT SIDE. The module-level variant alias exists only where the tag is
+// declared by ONE coproduct in the module (disj_variant_counts_in_module): this module declares
+// ^Yes twice (^Mood and ^Classical), so the fused containment walk mints nothing for it — the
+// WITHOUT side — while the unique module mints for ^Yes — the WITH side. A fill that minted a
+// module alias for a twice-declared tag reds the first arm; a containment walk that stopped
+// minting reds the second. THE PAIR IS THE EVIDENCE, NOT EITHER ARM.
+test fn symbol_index_module_variant_alias_requires_a_unique_count_holds() -> Bool {
   match symbol_index_lexical_lookup(
-    index: si_unique_index_containment_only,
-    position: si_unique_module_qn,
+    index: si_index,
+    position: si_module_qn,
     name: ^Yes
   ) {
+    LexicalUnbound =>
+      match symbol_index_lexical_lookup(
+        index: si_unique_index,
+        position: si_unique_module_qn,
+        name: ^Yes
+      ) {
+        LexicalHit { node: _, path: _ } => true
+        LexicalAmbiguous { candidates: _ } => false
+        LexicalUnbound => false
+      }
     LexicalHit { node: _, path: _ } => false
     LexicalAmbiguous { candidates: _ } => false
-    LexicalUnbound => true
   }
 }
+
 
 test fn symbol_index_variant_visibility_equivalence_holds() -> Bool {
   match symbol_index_lexical_lookup(

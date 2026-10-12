@@ -82,7 +82,7 @@ Observed at the wipe boundary (identity-grain, 2026-08-15), beyond the predicted
 - **Trim rows only:** `dag/gunbc/instruments/dag_compile_clean_scope.dag` (broad non-floor consumers) · `dag/gunbc/ci/ci_layer_roots.dag` (~40 importers) · `dag/gunbc/ci/ci_release_bins.dag` (the owned-CI control plane formerly listed here was deleted whole with its lane; it is no longer a trim row)
 - `dag/gunbc/ci/ci_floor_measurement.dag` is a **fleet budget authority** (runner placement, oomd, host budgets import it) — survives despite the name
 - **Field grain:** `node_frontier_selection` comes off the generic `Runnable` in `dag/std/realization_schedule.dag` + `src/v1/stage0/src/std_realization_schedule.rs` (in flight with step 0's area)
-- `dag/gunbc/plans/ci_*.dag` planning carriers are registered quarry — deleting any requires plan-registry surgery; `dag/gunbc/plans/affected_set_self_confirmation.dag` is the only unregistered one
+- `dag/gunbc/plans/ci_*.dag` planning carriers are registered quarry — deleting any requires plan-registry surgery
 - **Frozen X:** `src/v1/stage0/src/cli_run.rs` and the interpreter — trims only, never file deletion, and no new builtin rows land there
 
 ## Green bar / cutover

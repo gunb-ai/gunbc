@@ -1,7 +1,10 @@
 module test.claim.fleet.altra_firmware_library_witness
 
-import std.types { Bool }
-import gunbc.altra_firmware_library { beta_bmc_version_comparisons, reference_report }
+import std.types { Bool, Int, List, String }
+import gunbc.altra_firmware_library {
+  beta_bmc_version_comparisons, reference_report,
+  AltraLibraryArchive, AltraLibraryMember, SsifKernelPatchBundle, OpenBmcManifestVersion,
+}
 import gunbc.fleet_bmc_observation {
   srv3_bmc_firmware_2_07_00_observation,
   srv3_bmc_firmware_3_22_00_observation,
@@ -30,4 +33,39 @@ test fn reference_report_reads_fleet_bmc_observations() -> Bool {
   let report = reference_report()
   map(report.bmc_version_comparisons, row => row.observation)
     == [srv3_bmc_firmware_observation, srv4_bmc_firmware_observation]
+}
+
+fn is_firmware_archive(a: AltraLibraryArchive) -> Bool {
+  match a.subject {
+    SsifKernelPatchBundle => false
+    _ => true
+  }
+}
+
+fn members_named(members: List<AltraLibraryMember>, name: String) -> Int {
+  length(filter(members, m => (m.archive_name as String) == name))
+}
+
+// Completeness is an identity join: every firmware archive the report lists has
+// exactly one member row under its own name, and no member row names an archive
+// the report does not list. A dropped or duplicated row fails one direction.
+test fn every_firmware_archive_has_exactly_one_member() -> Bool {
+  let report = reference_report()
+  let archives = filter(report.drive_archives, a => is_firmware_archive(a: a))
+  fold(archives, init: true, f: fn(ok, a) { ok && members_named(members: report.archive_members, name: a.archive_name as String) == 1 })
+    && fold(report.archive_members, init: true, f: fn(ok, m) {
+      ok && length(filter(archives, a => (a.archive_name as String) == (m.archive_name as String))) == 1
+    })
+}
+
+// The SCP archive is named by its 2.10.20260210 build, but its OpenBMC push member
+// declares version 4.01: a read-back of that push must be compared with 4.01.
+test fn scp_push_member_declares_the_bios_version() -> Bool {
+  let report = reference_report()
+  fold(filter(report.archive_members, m => (m.archive_name as String) == "ALTRAD8UD-1L2T(2.10.20260210)SCP.zip"), init: false, f: fn(ok, m) {
+    match m.manifest {
+      OpenBmcManifestVersion { version: v } => (v as String) == "4.01"
+      _ => ok
+    }
+  })
 }

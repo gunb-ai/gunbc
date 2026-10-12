@@ -20,7 +20,6 @@ data required_verdict_placed_only_on_the_merge_queue: RecurringFailureMode = Rec
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_stage0_regen_condition", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_stage0_regen_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "build_lane_run_script", field: WholeDeclaration },
   ],
 }

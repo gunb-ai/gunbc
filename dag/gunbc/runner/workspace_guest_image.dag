@@ -196,7 +196,11 @@ fn workspace_installed_image(release_dir: String, identity: NonEmptyStr) -> Work
   if digest.length() != 64 || !all(digest.chars(), cp => base16_is_lower_digit_code_point(cp: cp)) {
     WorkspaceImageRefused { reason: "workspace image identity must be its lowercase SHA-256" }
   } else {
-    let root = join([release_dir, "/images/workspace/", digest], "")
+    let root = workspace_installed_image_root(release_dir: release_dir, identity: identity)
     verify_workspace_image(kernel: concat(concat(root, "/"), runner_guest_kernel_artifact.filename as String), rootfs: concat(root, "/workspace.ext4"), expected_sha256: identity)
   }
+}
+
+fn workspace_installed_image_root(release_dir: String, identity: NonEmptyStr) -> String {
+  join([release_dir, "/images/workspace/", identity as String], "")
 }

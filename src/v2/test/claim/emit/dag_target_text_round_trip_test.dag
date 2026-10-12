@@ -1,9 +1,9 @@
 module v2.test.emit.dag_target_text_round_trip
 
 import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag {
   dag_lex,
   dag_target_model,
@@ -92,7 +92,7 @@ fn trt_text(tokens: List<ConcreteSyntaxToken>, transforms: Map<Symbol, TokenClas
 }
 
 fn trt_lex(text: String) -> List<Token> {
-  match tokenize(text: text, file: ^trt_probe, rules: dag_lex()) {
+  match tokenize_prepared(text: text, file: ^trt_probe, prepared: dag_prepared_lex()) {
     Accepted { value: stream, diagnostics: _ } => stream.all
     Rejected { diagnostics: _ } => []
   }
@@ -122,13 +122,12 @@ fn trt_parse(tokens: List<Token>, production: Symbol) -> Optional<Node> {
     Accepted { value: prepared, diagnostics: _ } =>
       match prepared {
         PreparedVoidGrammar => Absent
-        PreparedModeled { modeled: modeled, materialization: m } =>
+        PreparedModeled { modeled: modeled } =>
           match parse_production_prepared(
             tokens: tokens,
             validated: modeled.validated,
             analysis: modeled.analysis,
-            production_name: production,
-            materialization: m
+            production_name: production
           ) {
             Rejected { diagnostics: _ } => Absent
             Accepted { value: artifact, diagnostics: _ } => trt_present(node: artifact.tree)

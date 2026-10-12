@@ -5,7 +5,7 @@ import std.types { List }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
-  program_assembly_phase_parse_measured_seeded,
+  program_assembly_phase_parse_seeded,
   program_assembly_phase_tokenize
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -47,7 +47,8 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.lens_verdict { lens_verdict_diagnostic_located_text_in_spans }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_resolve_textual_locus }
 import v2.std.text { String }
-import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.integer { Int }
+import std.integer { int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import std.occurrence_identity {
@@ -1125,15 +1126,13 @@ type ReferenceConservationSubject {
 fn reference_conservation_subject_of_read(
   read: DagSourceReadWitness,
   lex: PreparedLexRules,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> ReferenceConservationSubject {
-  let parsed = program_assembly_phase_parse_measured_seeded(
+  let parsed = program_assembly_phase_parse_seeded(
     tokens: program_assembly_phase_tokenize(read: read, lex: lex),
     prepared: prepared,
-    residue: residue,
     seed: occurrence_id_allocator_initial()
-  ).outcome
+  )
   ReferenceConservationSubject {
     path: read.artifact.file_path,
     parsed: parsed,
@@ -1253,11 +1252,10 @@ fn reference_conservation_of_read(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   lex: PreparedLexRules,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> ReferenceConservationReport {
   reference_conservation_of_subject(
-    subject: reference_conservation_subject_of_read(read: read, lex: lex, prepared: prepared, residue: residue),
+    subject: reference_conservation_subject_of_read(read: read, lex: lex, prepared: prepared),
     token_classes: declared_token_classes(lm: lm)
   )
 }
@@ -1265,8 +1263,7 @@ fn reference_conservation_of_read(
 fn reference_conservation_of_ingest(
   ingest: SourceRootIngest,
   lm: LanguageModel,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> FreeMonoid<ReferenceConservationReport> {
   let lex = prepare_lex_rules(rules: lm.lex)
   fold_list(
@@ -1275,7 +1272,7 @@ fn reference_conservation_of_ingest(
     cons: fn(acc, read) {
       list_snoc_item(
         xs: acc,
-        item: reference_conservation_of_read(read: read, lm: lm, lex: lex, prepared: prepared, residue: residue)
+        item: reference_conservation_of_read(read: read, lm: lm, lex: lex, prepared: prepared)
       )
     }
   )
@@ -1301,7 +1298,7 @@ fn authored_atom_extent_text(atom: AuthoredAtom) -> String {
     Textual { file: _, extent: extent } =>
       match extent {
         ByteRange { start: s, end: e } =>
-          integer_int_to_decimal_string(value: s) + "-" + integer_int_to_decimal_string(value: e)
+          int_to_decimal_string(value: s) + "-" + int_to_decimal_string(value: e)
         WholeFile => "whole-file"
       }
     NodeLocus { anchor: _ } => "unlocated"
@@ -1352,7 +1349,7 @@ fn reference_conservation_refusal_text(report: ReferenceConservationReport) -> S
 // the accepted subject carried, in chain order: the census's per-path record of what an accepted
 // module's front end attached without refusing.
 fn reference_conservation_report_lines(report: ReferenceConservationReport) -> FreeMonoid<String> {
-  let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + integer_int_to_decimal_string(value: report.role_excluded) + " header_channel=" + integer_int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + integer_int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + integer_int_to_decimal_string(value: report.role_reader_refused) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured)) + " refusal=" + reference_conservation_refusal_text(report: report)
+  let summary = "module " + report.path + " authored=" + int_to_decimal_string(value: report.authored) + " conserved=" + int_to_decimal_string(value: report.conserved) + " locus_erased=" + int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + int_to_decimal_string(value: report.role_excluded) + " header_channel=" + int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + int_to_decimal_string(value: report.role_reader_refused) + " refused=" + int_to_decimal_string(value: report.refused) + " import_channel=" + int_to_decimal_string(value: report.import_channel) + " dropped=" + int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + int_to_decimal_string(value: length(xs: report.unmeasured)) + " refusal=" + reference_conservation_refusal_text(report: report)
   let with_dropped = fold_list(
     xs: report.dropped,
     empty: Cons { head: summary, tail: Empty },

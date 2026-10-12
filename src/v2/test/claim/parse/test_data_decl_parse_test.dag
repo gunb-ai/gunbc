@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn parse_outcome(src: String, file: Symbol) -> String {
   let lm = dag_language_model()
-  match tokenize(text: src, file: file, rules: lm.lex) {
+  match tokenize_prepared(text: src, file: file, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => "TOKENIZE_REFUSED"
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {

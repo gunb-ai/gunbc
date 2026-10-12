@@ -1,11 +1,11 @@
 module gunbc.memory_configuration_evaluation
 
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.integer { UInt8 }
 import std.algebra { FreeSemigroup }
 import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.boards.types { AmpereMtCollins }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsPopulationRoleRefusal, MtCollinsChannelPopulationRoleStanding,
   PopulationRolesResolved, PopulationRolesRefused, mt_collins_channel_population_roles, mt_collins_socket_dimm_sizes_supported,
@@ -211,7 +211,7 @@ fn memory_firmware_scope_facts(configuration: MemoryConfiguration, read: MemoryM
 }
 
 fn memory_placement_facts(configuration: MemoryConfiguration) -> MemoryCheckFacts {
-  if configuration.platform.board != AmpereMtCollins || count(configuration.population) == 0 {
+  if configuration.platform.board != mt_collins_board_authority || count(configuration.population) == 0 {
     memory_unknown(fact: MemoryModelMissing { obligation: MemoryPlacement })
   } else {
     memory_placement_from_roles(configuration: configuration, standing: mt_collins_channel_population_roles)
@@ -253,7 +253,7 @@ fn memory_catalog_binding_facts(configuration: MemoryConfiguration) -> MemoryChe
 }
 
 fn memory_socket_capacity_facts(configuration: MemoryConfiguration) -> MemoryCheckFacts {
-  if configuration.platform.board != AmpereMtCollins || count(configuration.population) == 0 {
+  if configuration.platform.board != mt_collins_board_authority || count(configuration.population) == 0 {
     memory_unknown(fact: MemoryModelMissing { obligation: MemorySocketCapacity })
   } else {
     let authority = decl_ref(module_path: "extdeps.ampere.mt_collins_product_brief.memory_population", decl_name: "mt_collins_socket_dimm_sizes_supported")

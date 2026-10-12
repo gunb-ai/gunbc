@@ -3,10 +3,17 @@ module gunbc.emitted_subject_build_gate
 import std.types { Bool, String, List }
 import v2.std.algebra { list_map }
 import std.algebra { list_append }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.realization_width { byte_size_saturating_sub }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.gunbc_cli_command { gunbc_test_command }
 import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
+import gunbc.runner_slot_desired {
+  gunbc_runner_slot_desired,
+  SlotJobCgroupOwnership, JobOwnsNoBoundedCgroup, JobOwnsBoundedCgroup,
+}
+import gunbc.memory_envelope { memory_envelope_slot_requirement_value }
 
 // THE SUBJECT OF THE REQUIRED EMIT-AND-BUILD LANE, AND WHAT IT IS CAREFULLY NOT.
 //
@@ -19,13 +26,14 @@ import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
 // in for a compile. Those controls are the instruments' own and are not restated here; this module
 // decides only WHICH subjects the required lane runs and with what argv.
 //
-// WHAT ITS RED DISCRIMINATES THAT NO EXISTING REQUIRED LANE DOES, which is the question
-// gunbc.compiler_gate_workflow's roster header requires an author to answer before proposing a
-// lane. Every required lane today reads the corpus through the INTERPRETER or through the SEED's
-// own Rust: the floor evaluates witnesses, the generated lane lints hand-written and stage0-mirrored
-// Rust and regenerates the stage0 mirrors, and both build the seed binary. NOTHING ON THE MERGE
-// PATH EMITS A V2 CLOSURE AND COMPILES THE RESULT. So a defect that is invisible under evaluation
-// and fatal under emission reaches main green. That is not a hypothesis: `gunbc.recurring_failure_mode`
+// WHAT ITS RED DISCRIMINATES, AND WHY IT LANDED BESIDE LANES THAT ALREADY READ THE CORPUS. Every
+// other required lane of that day read the corpus through the INTERPRETER or through the SEED's own
+// Rust: the floor evaluated witnesses, the generated lane linted hand-written and stage0-mirrored
+// Rust and regenerated the stage0 mirrors, and both built the seed binary. NOTHING ON THE MERGE
+// PATH EMITTED A V2 CLOSURE AND COMPILED THE RESULT, so a defect invisible under evaluation and
+// fatal under emission reached main green. Those lanes were withdrawn on 2026-10-09 and this is now
+// the only required lane (gunbc.compiler_gate_workflow header); the argument below is why it is the
+// one that was kept. That is not a hypothesis: `gunbc.recurring_failure_mode`
 // `bounded_natural_arithmetic_evaluated_as_unbounded_int` records it in as many words -- rows over
 // `UInt8` typecheck and their witnesses evaluate, "their emitted Rust is produced by nothing on the
 // merge path" -- and BOTH retained subjects refused on it at once, because `std.integer` is in every
@@ -102,6 +110,105 @@ fn emitted_subject_build_label_text(row: EmittedSubjectBuildRow) -> String {
 data native_fault_experiment_env_name: String = "GUNBC_NATIVE_FAULT_EXPERIMENT"
 data native_fault_experiment_skip_value: String = "skip_pull_request"
 data native_fault_experiment_run_value: String = "run"
+
+// THE REQUIRED JOB EMITS AND BUILDS BOTH PRODUCTS FRESH (operator ruling 2026-10-09: "this version
+// requires fresh emission/build of both retained products and refuses a restored final-product
+// hit. Ordinary Cargo reuse may remain"). The workflow passes this input on every subject step;
+// native_lane_runner reads it and, under `fresh`, consults no native product store and commits
+// nothing -- and REFUSES a run that also binds a store root, because an invocation asking for a
+// fresh product while offering a store to serve it from is a contradiction, not a miss. The store
+// steps (job-private root, the two federations, the save) left the required job with this ruling;
+// cargo's own dependency reuse inside the job's checkout is untouched.
+data native_product_reuse_env_name: String = "GUNBC_NATIVE_PRODUCT_REUSE"
+data native_product_reuse_fresh_value: String = "fresh"
+
+// THE MEMORY ENVELOPE OF A SUBJECT STEP (operator ruling 2026-10-09: "MemorySwapMax=0 and a fixed
+// hard memory maximum; a lower compiler abort/trip threshold; a peak and swap receipt; no larger-
+// runner retry"). The fleet slot is the fixed hard maximum and the ONE authority for its numbers
+// (gunbc.runner_slot_desired: MemoryMax, MemoryHigh one GiB under it, no swap). Two inputs carry
+// the envelope to gunbc test, and which of them a subject step passes is decided by ONE fleet fact
+// (native_step_memory_inputs over gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership):
+//
+// 1. native_step_memory_envelope_env_name REQUIRES an envelope; its one value is the projection of
+//    gunbc.memory_envelope EnvelopeSlotRequired: a cgroup with a NUMERIC memory.max must already
+//    bind the step -- the fleet slot's -- and gunbc test refuses a run that none binds
+//    (memory_envelope_decision over the governor's binding_cap_cgroup_dir walk, which reads `max`
+//    as unset), reads that cgroup before the producer, prints a MEMORY RECEIPT at exit (the OOM
+//    kills and high/max events the step added, swap resident at exit, whether the swap peak rose,
+//    the slot's memory.swap.max, the peak) and REFUSES the run on any OOM kill or any swap
+//    (memory_envelope_verdict), whatever the producer answered. Every subject step passes it: a
+//    required step that cannot say what bounded it is not the measurement the gate names.
+// 2. native_step_memory_bind_env_name asks gunbc test to bind the step's OWN cgroup at the TRIP
+//    (memory_governor BIND_MEMORY_CGROUP_ENV, the bind claim_executor already takes), so a product
+//    build that outgrows the envelope trips inside the step -- exit 137 -- before the slot's
+//    throttle line, with a receipt at the step's own grain. THE TRIP IS DERIVED, NOT AUTHORED: it
+//    is the slot's MemoryHigh less the headroom declared here, so this module states only how far
+//    under the throttle line the compiler trips, a slot change moves the trip with it, and a step
+//    cannot be bound above the slot that holds it. The required steps pass this input ONLY WHERE A
+//    JOB OWNS A BOUNDED CGROUP: today a fleet job runs as the deprivileged job user under a root
+//    unit and the governor creates its leaf at the cgroup root, so the first required run that
+//    asked refused in four seconds (run 38002497388, MemoryCgroupBindRefused). That fact is the
+//    slot row's gunbc_runner_slot_job_cgroup_ownership; the climb it blocks is rostered as
+//    gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall; and flipping the fact
+//    when the fleet earns it puts the bind back on every subject step with no other edit.
+//
+// There is no larger runner and no retry: a trip, at either grain, is the line stopping.
+data native_step_memory_envelope_env_name: String = "GUNBC_MEMORY_ENVELOPE_REQUIRED"
+data native_step_memory_envelope_slot_value: String = memory_envelope_slot_requirement_value()
+data native_step_memory_bind_env_name: String = "GUNBC_BIND_MEMORY_CGROUP_BYTES"
+data native_step_memory_headroom: ByteSize = byte_size(1073741824)
+
+fn native_step_memory_trip() -> ByteSize {
+  let slot = gunbc_runner_slot_desired()
+  byte_size_saturating_sub(total: slot.memory_high, reserved: native_step_memory_headroom)
+}
+
+fn native_step_memory_trip_text() -> String {
+  to_string(byte_size_count(b: native_step_memory_trip()))
+}
+
+fn slot_memory_max_text() -> String {
+  to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max))
+}
+
+// ONE ENVELOPE INPUT OF A SUBJECT STEP: the environment name and the value it carries. The workflow
+// renders these as the step's env rows; the shape is this module's so the decision below owes
+// nothing to YAML.
+type NativeStepMemoryInput {
+  env_name: String
+  env_value: String
+}
+
+// WHICH ENVELOPE INPUTS A SUBJECT STEP PASSES, AS A FUNCTION OF THE FLEET FACT. The fact is a
+// parameter so a claim can exercise both arms by supplying it, and the workflow passes the live
+// row's. A job that owns no bounded cgroup gets the slot requirement alone; a job that does gets
+// the requirement and the bind at the derived trip.
+fn native_step_memory_inputs(ownership: SlotJobCgroupOwnership) -> List<NativeStepMemoryInput> {
+  let required = NativeStepMemoryInput { env_name: native_step_memory_envelope_env_name, env_value: native_step_memory_envelope_slot_value }
+  let bind = NativeStepMemoryInput { env_name: native_step_memory_bind_env_name, env_value: native_step_memory_trip_text() }
+  match ownership {
+    JobOwnsNoBoundedCgroup { why: _ } => [required]
+    JobOwnsBoundedCgroup { staged_by: _ } => [required, bind]
+  }
+}
+
+// THE LINES THE FAILURE NOTICE CARRIES ABOUT THE ENVELOPE, a function of the same fact so the notice
+// cannot outlive it: which grain bounded the step and the input that required it, what the trip is
+// and why it is or is not asked for, the exit code the kernel leaves, and that nothing retries bigger.
+fn emit_build_memory_envelope_lines(ownership: SlotJobCgroupOwnership) -> List<String> {
+  let trip_line = match ownership {
+    JobOwnsNoBoundedCgroup { why: why } =>
+      join(["The per-step trip at ", native_step_memory_trip_text(), " bytes is not asked for: ", why, " (gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership; the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall)."], "")
+    JobOwnsBoundedCgroup { staged_by: staged_by } =>
+      join(["This step also asked the kernel for its own bound at ", native_step_memory_trip_text(), " bytes (", staged_by, "), so an exit of 137 may be that trip rather than the slot's."], "")
+  }
+  [
+    join(["This step ran inside the fleet slot's memory envelope (gunbc.runner_slot_desired: MemoryMax ", slot_memory_max_text(), " bytes, no swap once converged), which gunbc test required (", native_step_memory_envelope_env_name, "=", native_step_memory_envelope_slot_value, ") and receipted at exit."], ""),
+    trip_line,
+    "An exit of 137 here is the kernel tripping the envelope's memory.max: the compiler outgrew it. There is no larger runner and no retry; the line stops until the growth is understood (DESIGN section 6b).",
+    "A MEMORY RECEIPT line precedes every successful subject step; a run that charged swap or was OOM-killed is refused even when its instrument held.",
+  ]
+}
 
 fn emitted_subject_build_command(row: EmittedSubjectBuildRow) -> ArgvCommand {
   gunbc_test_command(label: emitted_subject_build_label_text(row: row))

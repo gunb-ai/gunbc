@@ -5,7 +5,7 @@ import std.types { NonEmptyStr, List, String }
 import std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, LeaseAbsent, LeasePortForeign, LeaseInaccessible }
-import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, fabric_group_hosts, fabric_group_wire, FabricGroup }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_unit }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_plan_under, SparkPairApplyPlan, SparkPairApplyPlanned, SparkPairApplyRefused }
@@ -53,14 +53,14 @@ fn w_lease(h: ContentHash, observed_stale: Bool) -> HeldLease {
 
 fn w_active() -> PairServingGroupAuthority {
   PairServingActive {
-    group: FabricGroupA,
+    group: FabricGroupB {},
     exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
   }
 }
 
 fn w_pending(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
-    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA),
+    group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}),
     transaction: "witness-transaction" as NonEmptyStr,
     authorization_binding: h,
     lease: w_lease(h: h, observed_stale: stale),
@@ -69,7 +69,7 @@ fn w_pending(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
 
 fn w_suspended(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
   SuspendedForAuthorizedSuccessor {
-    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA),
+    group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}),
     authorization: "witness-authorization" as NonEmptyStr,
     exact_candidate_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
     lease: w_lease(h: h, observed_stale: stale),
@@ -79,14 +79,14 @@ fn w_suspended(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
 
 fn w_fenced() -> PairServingGroupAuthority {
   FencedRefusal {
-    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA),
+    group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}),
     cause: "witness-foreign-occupant" as NonEmptyStr,
     disposition_authority: "witness-operator" as NonEmptyStr,
   }
 }
 
 fn w_released(h: ContentHash) -> PairServingGroupAuthority {
-  ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+  ReleasedToFleet { group: FabricGroupB {}, release_receipt: h }
 }
 
 // APPLY ACTS ONLY WHEN ACTIVE. The four negatives are the content of this claim: an apply seam that
@@ -178,12 +178,10 @@ test fn capacity_partitions_into_three_present_subjects() -> Bool {
 // filter observable: four hosts must leave.
 test fn a_released_authority_removes_its_hosts_from_the_commitment() -> Bool {
   with_w_hash(scenario: h => {
-    let live = spark_claimed_members_under(authorities: spark_pair_serving_authorities)
     let released = spark_claimed_members_under(authorities: [w_released(h: h)])
     let suspended = spark_claimed_members_under(authorities: [w_pending(h: h, stale: false)])
-    (length(live) == length(fabric_group_hosts(g: FabricGroupA)))
-      && (length(released) == 0)
-      && (length(suspended) == length(fabric_group_hosts(g: FabricGroupA)))
+    (length(released) == 0)
+      && (length(suspended) == length(fabric_group_hosts(g: FabricGroupB {})))
   })
 }
 
@@ -199,27 +197,10 @@ fn w_plan_refused(p: SparkPairApplyPlan) -> Bool {
 
 test fn the_apply_seam_refuses_a_suspended_or_absent_authority() -> Bool {
   with_w_hash(scenario: h => {
-    let r = spark_pair_realization(unit: spark_pair_serving_unit(group: FabricGroupA))
+    let r = spark_pair_realization(unit: spark_pair_serving_unit(group: FabricGroupB {}))
     w_plan_refused(p: spark_pair_apply_plan_under(r: r, authority: Present { value: w_pending(h: h, stale: false) }))
       && w_plan_refused(p: spark_pair_apply_plan_under(r: r, authority: Present { value: w_released(h: h) }))
       && w_plan_refused(p: spark_pair_apply_plan_under(r: r, authority: Present { value: w_fenced() }))
       && w_plan_refused(p: spark_pair_apply_plan_under(r: r, authority: none))
   })
-}
-
-// THE LIVE ROUTE STILL RUNS, which is what stops the three claims above from being satisfied by a seam
-// that refuses everything. This one calls the real production folds over the live authority population.
-test fn the_live_commitment_fold_still_claims_every_group_a_host() -> Bool {
-  length(spark_claimed_serving_group_members())
-    == length(fabric_group_hosts(g: FabricGroupA))
-    && all(spark_pair_serving_authorities, a => pair_serving_commits_hosts(a: a))
-}
-
-// AN UNCLAIMED GROUP HAS NO AUTHORITY AT ALL, which is the discriminating input for the lookup: a
-// lookup that ignored its argument would answer Present here too.
-test fn an_unclaimed_group_has_no_authority_row() -> Bool {
-  match pair_serving_authority_for(group: FabricGroupB) {
-    Absent => true
-    Present { value: _ } => false
-  }
 }

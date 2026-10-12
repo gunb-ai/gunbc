@@ -1,0 +1,104 @@
+module gunbc.hetzner_cloud_server_control
+
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.cloud.hetzner_cloud_api
+import extdeps.cloud.hetzner_cloud_api {
+  HetznerServerResponse, HetznerServerRead, HetznerServerObserved, HetznerServerReadRefused,
+  classify_hetzner_server_get,
+}
+import gunbc.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.hetzner_cloud_server_reading {
+  AcquiredServerRead, AcquiredServerIdUnparsed, acquired_server_id, judge_acquired_server_read, acquired_server_read_line, acquired_server_observed,
+}
+import gunbc.hetzner_cloud_acquisition {
+  hetzner_cloud_default_read_token, HetznerProjectToken, hetzner_cax41_nbg1_1_acquisition, hetzner_cax41_hel1_1_acquisition,
+}
+import gunbc.auth.access_token_source {
+  resolve_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
+  access_token_upsert_required_reason,
+}
+import gunbc.auth.secret_ref_credential {
+  fetch_secret_ref_credential_with_token, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
+}
+
+// THE FLEET'S HANDS ON A HETZNER CLOUD GUEST THROUGH ITS PROVIDER: the out-of-band route
+// gunbc.host_control_route ProviderApiControlRoute names, driven from a controller with the
+// project's token read from Secret Manager by reference. Nothing here runs on the guest.
+
+// THE CUSTODY LADDER, as gunbc.cloudflare.r2_bucket_ensure walks it: the run's resolved GCP identity,
+// then the exact pinned version of the account's token. Each absence refuses before any Hetzner call.
+type HetznerCredentials
+  = HetznerCredentialsReady { token: Secret }
+  | HetznerCredentialsRefused { cause: NonEmptyStr }
+
+fn hetzner_credentials(token: HetznerProjectToken) -> HetznerCredentials uses net: Network {
+  match resolve_access_token() {
+    AccessTokenUpsertRequired { plan: plan } =>
+      HetznerCredentialsRefused { cause: concat("NO GCP ACCESS TOKEN: ", access_token_upsert_required_reason(plan: plan)) as NonEmptyStr }
+    AccessTokenEnsureRefused { reason: reason } =>
+      HetznerCredentialsRefused { cause: concat("NO GCP ACCESS TOKEN: ", reason as String) as NonEmptyStr }
+    AccessTokenReady { token: gcp_token } =>
+      match fetch_secret_ref_credential_with_token(secret_ref: token.credential, access_token: gcp_token) {
+        SecretCredentialAccessUpsertRequired { plan: _ } =>
+          HetznerCredentialsRefused { cause: "THE HETZNER TOKEN COULD NOT BE READ: the access ensure requires an interactive authentication this run cannot perform" as NonEmptyStr }
+        SecretCredentialFetchRefused { reason: reason } =>
+          HetznerCredentialsRefused { cause: concat("THE HETZNER TOKEN COULD NOT BE READ: ", reason as String) as NonEmptyStr }
+        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+          HetznerCredentialsRefused { cause: "THE HETZNER TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
+        SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+          HetznerCredentialsRefused { cause: join(["THE HETZNER TOKEN READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested, ", answered about ", resolved], "") as NonEmptyStr }
+        SecretCredentialReady { credential: token, resolved_version: _ } => HetznerCredentialsReady { token: token }
+      }
+  }
+}
+
+// ── reading one acquired server ─────────────────────────────────────────────────────────────────
+
+fn read_acquired_server(token: Secret, acquisition: ProviderResourceAcquisition) -> AcquiredServerRead uses net: Network {
+  match acquired_server_id(acquisition: acquisition) {
+    Absent => AcquiredServerIdUnparsed { acquisition: acquisition }
+    Present { value: id } => judge_acquired_server_read(
+      acquisition: acquisition,
+      id: id,
+      read: classify_hetzner_server_get(outcome: match hcloud.Servers.Get(auth_token: token, server_id: id) {
+        RestAnswered { answer: got } => RestAnswered { answer: HetznerServerResponse { id: got.id, name: got.name, status: got.status } }
+        RestRefused { refusal } => RestRefused { refusal: refusal }
+      }),
+    )
+  }
+}
+
+// ── the read-only entry ─────────────────────────────────────────────────────────────────────────
+
+data hetzner_cloud_acquired_servers: List<ProviderResourceAcquisition> = [
+  hetzner_cax41_nbg1_1_acquisition,
+  hetzner_cax41_hel1_1_acquisition,
+]
+
+data hetzner_cloud_server_read_receipt_path: String = "target/hetzner-cloud-server-read-receipt.txt"
+
+// READS EVERY ACQUIRED SERVER AND CHANGES NOTHING: the token's first use, before any rebuild, so a
+// credential or identity fault refuses on a call that cannot cost a guest its disk.
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/hetzner_cloud_server_control.dag --function read`
+fn read() -> ProcessExit uses net: Network {
+  match hetzner_credentials(token: hetzner_cloud_default_read_token) {
+    HetznerCredentialsRefused { cause: cause } => exit_failure(reason: cause as String)
+    HetznerCredentialsReady { token: token } => {
+      let reads = map(hetzner_cloud_acquired_servers, a => read_acquired_server(token: token, acquisition: a))
+      let text = join(map(reads, r => acquired_server_read_line(read: r)), "\n")
+      let written = Filesystem.Write(path: hetzner_cloud_server_read_receipt_path, content: text)
+      if !written.success {
+        exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error))
+      } else if (filter(reads, r => !acquired_server_observed(read: r)) |> count) == 0 {
+        ExitSuccess
+      } else {
+        exit_failure(reason: text)
+      }
+    }
+  }
+}

@@ -17,7 +17,7 @@ import v2.std.diagnostic {
   WholeFile,
   textual_whole_file_diagnostic,
 }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 import extdeps.languages.json.emit { quote_json_string }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
@@ -83,8 +83,8 @@ fn lens_verdict_extent_text(e: Extent) -> String {
     WholeFile => "(whole file)"
     ByteRange { start: st, end: en } =>
       concat(
-        concat("bytes ", integer_int_to_decimal_string(value: st)),
-        concat("..", integer_int_to_decimal_string(value: en))
+        concat("bytes ", int_to_decimal_string(value: st)),
+        concat("..", int_to_decimal_string(value: en))
       )
   }
 }
@@ -123,11 +123,11 @@ fn lens_verdict_node_occurrence_text(node: Node) -> String {
   match node.occurrence_id {
     OccurrenceSynthetic => concat("<synthetic node occurrence", concat(atom, ">"))
     OccurrenceMinted { id: id } =>
-      concat("<node occurrence #", concat(integer_int_to_decimal_string(value: id.value), concat(atom, ">")))
+      concat("<node occurrence #", concat(int_to_decimal_string(value: id.value), concat(atom, ">")))
     OccurrenceProjected { id: id, caused_by: _ } =>
-      concat("<projected node occurrence #", concat(integer_int_to_decimal_string(value: id.value), concat(atom, ">")))
+      concat("<projected node occurrence #", concat(int_to_decimal_string(value: id.value), concat(atom, ">")))
     OccurrencePending { caused_by: cause } =>
-      concat("<pending node occurrence caused by #", concat(integer_int_to_decimal_string(value: cause.value), concat(atom, ">")))
+      concat("<pending node occurrence caused by #", concat(int_to_decimal_string(value: cause.value), concat(atom, ">")))
   }
 }
 

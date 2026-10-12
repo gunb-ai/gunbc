@@ -7,7 +7,7 @@ data tailscale_acl_reference_fixture_path: String = "dag/test/fixture/tailscale_
 
 fn witness_operator_policy_row_counts() -> Bool {
   let policy = operator_tailscale_acl_policy
-  (length(policy.grants) == 4)
+  (length(policy.grants) == 5)
     && (length(policy.ssh) == 3)
     && (length(policy.node_attrs) == 1)
     && (length(policy.tag_owners) == 2)
@@ -43,6 +43,21 @@ fn witness_emit_matches_reference_fixture() -> Bool {
   read.success && (expected_tailscale_acl_json() == read.content)
 }
 
+fn witness_dusk_serving_api_only() -> Bool {
+  let wider = TailscaleAclPolicy {
+    grants: operator_tailscale_acl_policy.grants.append(TailscaleGrant {
+      src: [sel_tag_ci()],
+      dst: [sel_ipv4(address: dusk_serving_ip)],
+      ip: [sel_wildcard()],
+    }),
+    ssh: operator_tailscale_acl_policy.ssh,
+    node_attrs: operator_tailscale_acl_policy.node_attrs,
+    tag_owners: operator_tailscale_acl_policy.tag_owners,
+  }
+  dusk_serving_reached_by_dashboard_api_only(policy: operator_tailscale_acl_policy)
+    && !dusk_serving_reached_by_dashboard_api_only(policy: wider)
+}
+
 fn witness_dashboard_tag_not_ci_in_acl_model() -> Bool {
   tag_dashboard != tag_ci
     && !string_contains(s: tag_dashboard, pattern: "tag:ci")
@@ -58,4 +73,5 @@ test fn tailscale_acl_witnesses() -> Bool {
     && witness_security_spine()
     && witness_emit_matches_reference_fixture()
     && witness_dashboard_tag_not_ci_in_acl_model()
+    && witness_dusk_serving_api_only()
 }

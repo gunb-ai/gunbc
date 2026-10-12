@@ -1,0 +1,45 @@
+module test.probe.qualification_job_log_receipt_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. Each function below is a route by which a caller outside
+// gunbc.runner.runner_qualification_dispatch would otherwise hold a job-log receipt for rows it never
+// read from a run, or read a run's outputs under a token or run id the collector never admitted: (a)
+// writing the sealed receipt from invented readings, (b) calling the one function that mints it from
+// outside the collect stage, (c) calling the reads past the read plan, (d) reading the claim-cost
+// artifact for a free token and run id. The witness
+// test.claim.qualification_job_log_receipt_forged_probe_witness hands this source to the compiler and
+// requires each refusal at its subject by name. dag/test/probe/ sits under the whole-tree
+// strict-resolve exclusion, so this source reaches the compiler only through that witness.
+
+import std.content_hash { content_hash_atom }
+import std.types { Int, NonEmptyStr }
+import std.resources { Network }
+import gunbc.github_effect_perform { ControllerInstallationToken }
+import gunbc.runner.runner_host_unit_slot { HostUnitSlot }
+import gunbc.runner.runner_qualification_dispatch {
+  CollectedQualificationRun, QualificationJobLogReceipt, QualificationLogReadings,
+  JobLogInstrumentStanding, AttemptJobLog, job_log_standing,
+  QualificationCollectOutcome, collect_qualification_instruments_under,
+  ClaimCostArtifactRead, read_claim_cost_artifact,
+}
+
+// (a) AN OUTSIDE-AUTHORED RECEIPT. Refuses at QualificationJobLogReceipt.
+fn forged_receipt(c: CollectedQualificationRun, h: HostUnitSlot, rd: QualificationLogReadings) -> QualificationJobLogReceipt {
+  QualificationJobLogReceipt { collected: c, slot: h, log_code_points: 1, log_digest: content_hash_atom(value: "invented"), readings: rd }
+}
+
+// (b) THE MINTER CALLED FROM OUTSIDE THE COLLECT STAGE, over a log this caller supplies. Refuses at
+// job_log_standing.
+fn sneaked_receipt(c: CollectedQualificationRun, h: HostUnitSlot, l: AttemptJobLog) -> JobLogInstrumentStanding {
+  job_log_standing(collected: c, slot: h, log: l)
+}
+
+// (c) THE READS CALLED PAST THE READ PLAN: a genuine collection under a token the plan never admitted.
+// Refuses at collect_qualification_instruments_under.
+fn reads_past_the_plan(c: CollectedQualificationRun, t: ControllerInstallationToken) -> QualificationCollectOutcome uses net: Network {
+  collect_qualification_instruments_under(collected: c, token: t)
+}
+
+// (d) THE CLAIM-COST READ UNDER A FREE TOKEN AND ANOTHER RUN'S ID. Refuses at read_claim_cost_artifact.
+fn claim_cost_for_another_run(t: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, other_run_id: Int) -> ClaimCostArtifactRead uses net: Network {
+  read_claim_cost_artifact(token: t, owner: owner, repo: repo, run_id: other_run_id)
+}

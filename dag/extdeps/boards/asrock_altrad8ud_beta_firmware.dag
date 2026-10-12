@@ -58,34 +58,40 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data asrock_altrad8ud_beta_disclaimer: NonEmptyStr = "Beta firmware is still undergoing final testing; use is at the user's risk and ASRock Rack assumes no responsibility. ASRock Rack recommends keeping current firmware when the system works properly."
 
+data asrock_altrad8ud_beta_bios_4_01_listing: AsrockAltrad8udBetaFirmwareListing = AsrockAltrad8udBetaFirmwareListing {
+  target: HostBios,
+  version: SemanticFirmwareVersion { value: firmware_semantic_version(major: 4, minor: 1, patch: 0) },
+  listed_on: 1776124800000,
+  packages: [
+    AsrockBetaFirmwarePackage { image_kind: InstantFlashRom, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 5110000), decimal_increment: byte_size(count: 10000) } },
+    AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 5110000), decimal_increment: byte_size(count: 10000) } },
+  ],
+  description: "Updated RC to 0ACRB_022",
+}
+
+data asrock_altrad8ud_beta_bmc_3_22_00_listing: AsrockAltrad8udBetaFirmwareListing = AsrockAltrad8udBetaFirmwareListing {
+  target: BmcController,
+  version: SemanticFirmwareVersion { value: asrock_altrad8ud_bmc_3_22_00_release.version },
+  listed_on: 1772064000000,
+  packages: [
+    AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 27710000), decimal_increment: byte_size(count: 10000) } },
+  ],
+  description: "A password change is enforced upon the first login to the WebUI",
+}
+
+data asrock_altrad8ud_beta_scp_2_10_20260210_listing: AsrockAltrad8udBetaFirmwareListing = AsrockAltrad8udBetaFirmwareListing {
+  target: ScpFirmware,
+  version: ScpBuildVersion { major: 2, minor: 10, build_date: Iso8601CivilDate { year: 2026, month: 2, day: 10 } },
+  listed_on: 1776729600000,
+  packages: [
+    AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 165250), decimal_increment: byte_size(count: 10) } },
+    AsrockBetaFirmwarePackage { image_kind: InstantFlashSlim, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 165010), decimal_increment: byte_size(count: 10) } },
+  ],
+  description: "Ampere SCP firmware",
+}
+
 data asrock_altrad8ud_beta_firmware_listings: List<AsrockAltrad8udBetaFirmwareListing> = [
-  AsrockAltrad8udBetaFirmwareListing {
-    target: HostBios,
-    version: SemanticFirmwareVersion { value: firmware_semantic_version(major: 4, minor: 1, patch: 0) },
-    listed_on: 1776124800000,
-    packages: [
-      AsrockBetaFirmwarePackage { image_kind: InstantFlashRom, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 5110000), decimal_increment: byte_size(count: 10000) } },
-      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 5110000), decimal_increment: byte_size(count: 10000) } },
-    ],
-    description: "Updated RC to 0ACRB_022",
-  },
-  AsrockAltrad8udBetaFirmwareListing {
-    target: BmcController,
-    version: SemanticFirmwareVersion { value: asrock_altrad8ud_bmc_3_22_00_release.version },
-    listed_on: 1772064000000,
-    packages: [
-      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 27710000), decimal_increment: byte_size(count: 10000) } },
-    ],
-    description: "A password change is enforced upon the first login to the WebUI",
-  },
-  AsrockAltrad8udBetaFirmwareListing {
-    target: ScpFirmware,
-    version: ScpBuildVersion { major: 2, minor: 10, build_date: Iso8601CivilDate { year: 2026, month: 2, day: 10 } },
-    listed_on: 1776729600000,
-    packages: [
-      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 165250), decimal_increment: byte_size(count: 10) } },
-      AsrockBetaFirmwarePackage { image_kind: InstantFlashSlim, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 165010), decimal_increment: byte_size(count: 10) } },
-    ],
-    description: "Ampere SCP firmware",
-  },
+  asrock_altrad8ud_beta_bios_4_01_listing,
+  asrock_altrad8ud_beta_bmc_3_22_00_listing,
+  asrock_altrad8ud_beta_scp_2_10_20260210_listing,
 ]

@@ -12,7 +12,10 @@ import v2.workflow.orchestration_bash_emit_support { orch_bash_do, orch_bash_emi
 // settle/complete are permitted only from recorded post-readback obligations; they skip the
 // old controller wait because the slot may already have been legitimately reused. The helper
 // must verify the durable release/generation receipts, not reconstruct them from live guest state.
-// bind persists the actual slot invocation. finish owns strong readback, credential removal,
+// The controller claims its invocation in the journal before any commissioning effect. After
+// it exits, bind confirms that invocation (or records a controller that failed before claiming).
+// This ordering keeps the controller and bind interpreter out of the same bounded slice at once.
+// finish owns strong readback, credential removal,
 // mutation settlement and generation publication (including recovery after publication).
 // None of these helpers is called in the waiting loop. The systemd-owned executor retains the
 // existing fleet flock even when the workflow disconnects. Failure NEVER releases the durable
@@ -88,7 +91,6 @@ data workspace_executor_submit_once: String = join([
   "  executor_observe || exit 66",
   "  [[ $executor_seen =~ ^[a-f0-9]\{32}$ && $executor_seen != \"$executor_expected\" ]] || exit 67",
   "  executor_expected=$executor_seen",
-  "  timeout --kill-after=5s \"$\{executor_polls}s\" \"$executor_helper\" bind \"$INVOCATION_ID\" \"$executor_expected\"",
   "fi",
 ], "\n")
 
@@ -120,6 +122,15 @@ data workspace_executor_settle: String = join([
   "printf '%s\\n' \"$executor_terminal\"",
 ], "\n")
 
+// The bounded wait already proved this exact invocation quiescent. bind independently rereads
+// systemd and the held mutation, so replacement between the wait and this helper still refuses.
+// A disconnected submitter retains the same unbound-submission fence/drain recovery obligation.
+data workspace_executor_bind_completed_invocation: String = join([
+  "if [[ $executor_action == start ]]; then",
+  "  timeout --kill-after=5s \"$\{executor_polls}s\" \"$executor_helper\" bind \"$INVOCATION_ID\" \"$executor_expected\"",
+  "fi",
+], "\n")
+
 // The interpreter emits the transport once when building the reviewed artifact, not while
 // waiting on a host. Foreign command leaves contain transport mechanics only; no readiness,
 // reservation, provenance or fleet-generation policy is implemented in these Bash commands.
@@ -131,6 +142,7 @@ fn workspace_commissioning_executor_script() -> String {
       orch_bash_do(command: workspace_executor_drain_submission),
       orch_bash_do(command: workspace_executor_submit_once),
       orch_bash_do(command: workspace_executor_await_invocation),
+      orch_bash_do(command: workspace_executor_bind_completed_invocation),
       orch_bash_do(command: workspace_executor_settle),
     ],
     on_failure: FailFast,

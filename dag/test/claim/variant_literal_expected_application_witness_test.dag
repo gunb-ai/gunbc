@@ -1,0 +1,18 @@
+module test.claim.variant_literal_expected_application_witness_test
+
+import std.types { Bool }
+
+// A variant literal of a generic owner takes the expected APPLICATION of that owner as its type
+// (v1.compiler.infer variant_literal_expected_application). The specimen is the shape of
+// extdeps.dns.domain_name parse_dns_label_list: a fold in result position seeded with a bare
+// constructor, whose step pushes onto the accumulator's payload. Typed as the uninstantiated
+// declaration, the payload binding carried the formal `ok` and the pipe reached the emitter as a
+// plain `.list_push(` method no Rust type has (E0599). Typed as the declared return's application,
+// the payload is a List and the pipe lowers to the runtime list primitive. The excluded
+// `Outcome<ok, err>` keeps the declaration's formals from reappearing anywhere in the module.
+
+data vlea_fold_source: String = "module vlea_fold\n\ntype Outcome<ok, err> = Good \{ value: ok } | Bad \{ value: err }\n\nfn collect_nonempty(xs: List<String>) -> Outcome<List<String>, String> \{\n  fold(xs, init: Good \{ value: [] }, f: (acc, x) => match acc \{\n    Bad \{ value: e } => Bad \{ value: e }\n    Good \{ value: items } => if x == \"\" \{ Bad \{ value: \"empty\" } } else \{ Good \{ value: items |> list_push(x) } }\n  })\n}\n"
+
+test fn a_constructor_seeded_fold_in_result_position_takes_the_declared_application() -> Bool {
+  compile_dag_rust_emit_check(vlea_fold_source, "src/vlea_fold.rs", ["rc_list_push("], [".list_push(", "Outcome<ok, err>"])
+}

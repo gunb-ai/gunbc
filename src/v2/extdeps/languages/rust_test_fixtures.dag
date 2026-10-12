@@ -8,6 +8,7 @@ import std.algebra { Cons, Empty }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
+import v2.std.arrow_signature { declared_signature }
 
 import v2.extdeps.languages.rust {
   rust_add_declared_inhabitants_root,
@@ -1522,13 +1523,15 @@ fn rust_variant_construct_translation_rules_node() -> Node {
 }
 
 fn rust_variant_construct_binding_spellings() -> Map<Symbol, String> {
-  let m0 = map_insert(empty_map(), ^dag_binding_fn_one_or_two, "one_or_two")
-  let m1 = map_insert(m0, ^dag_binding_rec_lit_nine, "9")
-  let m2 = map_insert(m1, ^dag_binding_pick_lit_one, "1")
-  let m3 = map_insert(m2, ^dag_binding_pick_lit_two, "2")
-  let m4 = map_insert(m3, ^dag_binding_rec_v, "v")
-  let m5 = map_insert(m4, ^dag_binding_type_variant_holds, "Holds")
-  map_insert(m5, ^dag_binding_field_variant_value, "value")
+  let m0 = rust_binding_spellings()
+  let m1 = map_insert(m0, ^dag_binding_fn_one_or_two, "one_or_two")
+  let m2 = map_insert(m1, ^dag_binding_rec_lit_nine, "9")
+  let m3 = map_insert(m2, ^dag_binding_pick_lit_one, "1")
+  let m4 = map_insert(m3, ^dag_binding_pick_lit_two, "2")
+  let m5 = map_insert(m4, ^dag_binding_rec_v, "v")
+  let m6 = map_insert(m5, ^dag_binding_type_variant_holds, "Holds")
+  let m7 = map_insert(m6, ^dag_binding_field_variant_value, "value")
+  map_insert(m7, ^dag_binding_type_variant_true, "True")
 }
 
 fn rust_variant_construct_additional_lex_rules() -> List<LexRule> {
@@ -1542,8 +1545,11 @@ fn rust_variant_construct_additional_lex_rules() -> List<LexRule> {
 fn rust_variant_construct_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_fn_add_lex_rules().rules,
-      right: rust_variant_construct_additional_lex_rules()
+      left: list_append(
+        left: rust_fn_add_lex_rules().rules,
+        right: rust_variant_construct_additional_lex_rules()
+      ),
+      right: rust_value_expression_family_lex_rules()
     ),
     modes: []
   }
@@ -1667,9 +1673,9 @@ fn rust_variant_construct_target_model_staging() -> TargetModel {
   }
 }
 
-data rust_logic_complement_source_text: String = "fn complement(a: Bool) -> Bool { match (a) { True => False, False => True } }"
+data rust_logic_complement_source_text: String = "fn complement(a: bool) -> bool { match (a) { true => false, false => true } }"
 
-data rust_logic_complement_swapped_arms_source_text: String = "fn complement(a: Bool) -> Bool { match (a) { True => True, False => False } }"
+data rust_logic_complement_swapped_arms_source_text: String = "fn complement(a: bool) -> bool { match (a) { true => true, false => false } }"
 
 fn rust_logic_complement_signature_with_open() -> List<ConcreteSyntaxToken> {
   [
@@ -1696,16 +1702,16 @@ fn rust_logic_complement_body_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^rust_token_unwired_match },
     FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^dag_binding_param_a },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_a },
     FixedToken { token_class: ^rust_token_rparen },
     FixedToken { token_class: ^rust_token_lbrace },
-    FixedToken { token_class: ^dag_complement_lit_true },
+    FixedToken { token_class: ^dag_token_kw_true },
     FixedToken { token_class: ^rust_token_unwired_fat_arrow },
-    FixedToken { token_class: ^dag_complement_lit_false },
+    FixedToken { token_class: ^dag_token_kw_false },
     FixedToken { token_class: ^rust_token_comma },
-    FixedToken { token_class: ^dag_complement_lit_false },
+    FixedToken { token_class: ^dag_token_kw_false },
     FixedToken { token_class: ^rust_token_unwired_fat_arrow },
-    FixedToken { token_class: ^dag_complement_lit_true },
+    FixedToken { token_class: ^dag_token_kw_true },
     FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
@@ -1795,26 +1801,29 @@ fn rust_logic_complement_translation_rules_node() -> Node {
 }
 
 fn rust_logic_complement_binding_spellings() -> Map<Symbol, String> {
-  let m0 = map_insert(empty_map(), ^dag_binding_fn_complement, "complement")
-  map_insert(m0, ^dag_binding_param_a, "a")
+  let m0 = rust_binding_spellings()
+  let m1 = map_insert(m0, ^dag_binding_fn_complement, "complement")
+  map_insert(m1, ^dag_binding_param_a, "a")
 }
 
 fn rust_logic_complement_additional_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
     rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
-    rust_lex_rule(token_class: ^rust_token_ty_bool, text: "Bool"),
-    rust_lex_rule(token_class: ^dag_binding_param_a, text: "a"),
-    rust_lex_rule(token_class: ^dag_complement_lit_true, text: "True"),
-    rust_lex_rule(token_class: ^dag_complement_lit_false, text: "False")
+    rust_lex_rule(token_class: ^rust_token_ty_bool, text: "bool"),
+    rust_lex_rule(token_class: ^dag_token_kw_true, text: "true"),
+    rust_lex_rule(token_class: ^dag_token_kw_false, text: "false")
   ]
 }
 
 fn rust_logic_complement_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_fn_add_lex_rules().rules,
-      right: rust_logic_complement_additional_lex_rules()
+      left: list_append(
+        left: rust_fn_add_lex_rules().rules,
+        right: rust_logic_complement_additional_lex_rules()
+      ),
+      right: rust_value_expression_family_lex_rules()
     ),
     modes: []
   }
@@ -1883,7 +1892,7 @@ fn rust_logic_complement_target_model_bundle_core() -> Node {
   }
 }
 
-data rust_logic_complement_emit_host_main_suffix: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }\n\nfn main() { let v = complement(True); let d: i32 = match v { False => 0, True => 1 }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+data rust_logic_complement_emit_host_main_suffix: String = "\n\nfn main() { let v = complement(true); let d: i32 = match v { false => 0, true => 1 }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
 
 fn rust_logic_complement_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
@@ -2031,11 +2040,10 @@ fn rust_bool_fn_additional_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
     rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
-    rust_lex_rule(token_class: ^rust_token_ty_bool, text: "Bool"),
-    rust_lex_rule(token_class: ^dag_binding_param_a, text: "a"),
-    rust_lex_rule(token_class: ^dag_binding_param_b, text: "b"),
-    rust_lex_rule(token_class: ^dag_complement_lit_true, text: "True"),
-    rust_lex_rule(token_class: ^dag_complement_lit_false, text: "False")
+    rust_lex_rule(token_class: ^rust_token_ty_bool, text: "bool"),
+    rust_lex_rule(token_class: ^dag_token_kw_true, text: "true"),
+    rust_lex_rule(token_class: ^dag_token_kw_false, text: "false"),
+    rust_lex_rule(token_class: ^dag_binding_param_b, text: "b")
   ]
 }
 
@@ -2043,8 +2051,11 @@ fn rust_bool_fn_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: list_append(
-        left: rust_fn_add_lex_rules().rules,
-        right: rust_bool_fn_additional_lex_rules()
+        left: list_append(
+          left: rust_fn_add_lex_rules().rules,
+          right: rust_bool_fn_additional_lex_rules()
+        ),
+        right: rust_value_expression_family_lex_rules()
       ),
       modes: []
     }
@@ -2172,9 +2183,10 @@ fn rust_bool_fn_target_model(
     signature_with_open: signature_with_open,
     body_tokens: body_tokens
   )
-  let m0 = map_insert(empty_map(), fn_binding, fn_spelling)
-  let m1 = map_insert(m0, ^dag_binding_param_a, "a")
-  let binding_spellings = map_insert(m1, ^dag_binding_param_b, "b")
+  let m0 = rust_binding_spellings()
+  let m1 = map_insert(m0, fn_binding, fn_spelling)
+  let m2 = map_insert(m1, ^dag_binding_param_a, "a")
+  let binding_spellings = map_insert(m2, ^dag_binding_param_b, "b")
   TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
@@ -2222,25 +2234,25 @@ fn rust_bool_binop_body_tokens(true_body: Symbol, false_body: Symbol) -> List<Co
   [
     FixedToken { token_class: ^rust_token_unwired_match },
     FixedToken { token_class: ^rust_token_lparen },
-    FixedToken { token_class: ^dag_binding_param_a },
+    BoundToken { token_class: ^rust_token_ident, binding: ^dag_binding_param_a },
     FixedToken { token_class: ^rust_token_rparen },
     FixedToken { token_class: ^rust_token_lbrace },
-    FixedToken { token_class: ^dag_complement_lit_true },
+    FixedToken { token_class: ^dag_token_kw_true },
     FixedToken { token_class: ^rust_token_unwired_fat_arrow },
     FixedToken { token_class: true_body },
     FixedToken { token_class: ^rust_token_comma },
-    FixedToken { token_class: ^dag_complement_lit_false },
+    FixedToken { token_class: ^dag_token_kw_false },
     FixedToken { token_class: ^rust_token_unwired_fat_arrow },
     FixedToken { token_class: false_body },
     FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
 
-data rust_logic_meet_source_text: String = "fn meet(a: Bool, b: Bool) -> Bool { match (a) { True => b, False => False } }"
+data rust_logic_meet_source_text: String = "fn meet(a: bool, b: bool) -> bool { match (a) { true => b, false => false } }"
 
-data rust_logic_meet_swapped_arms_source_text: String = "fn meet(a: Bool, b: Bool) -> Bool { match (a) { True => False, False => b } }"
+data rust_logic_meet_swapped_arms_source_text: String = "fn meet(a: bool, b: bool) -> bool { match (a) { true => false, false => b } }"
 
-data rust_logic_meet_emit_host_main_suffix: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }\n\nfn main() { let v = meet(True, True); let d: i32 = match v { False => 0, True => 1 }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+data rust_logic_meet_emit_host_main_suffix: String = "\n\nfn main() { let v = meet(true, true); let d: i32 = match v { false => 0, true => 1 }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
 
 fn rust_logic_meet_target_model_staging() -> TargetModel {
   rust_bool_fn_target_model(
@@ -2250,7 +2262,7 @@ fn rust_logic_meet_target_model_staging() -> TargetModel {
     signature_with_open: rust_bool_binop_signature_with_open(fn_binding: ^dag_binding_fn_meet),
     body_tokens: rust_bool_binop_body_tokens(
       true_body: ^dag_binding_param_b,
-      false_body: ^dag_complement_lit_false
+      false_body: ^dag_token_kw_false
     ),
     production_sym: ^rust_production_fn_logic_meet,
     relation_sym: ^rust_relation_rule_fn_logic_meet,
@@ -2260,11 +2272,11 @@ fn rust_logic_meet_target_model_staging() -> TargetModel {
   )
 }
 
-data rust_logic_join_source_text: String = "fn join(a: Bool, b: Bool) -> Bool { match (a) { True => True, False => b } }"
+data rust_logic_join_source_text: String = "fn join(a: bool, b: bool) -> bool { match (a) { true => true, false => b } }"
 
-data rust_logic_join_swapped_arms_source_text: String = "fn join(a: Bool, b: Bool) -> Bool { match (a) { True => b, False => True } }"
+data rust_logic_join_swapped_arms_source_text: String = "fn join(a: bool, b: bool) -> bool { match (a) { true => b, false => true } }"
 
-data rust_logic_join_emit_host_main_suffix: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }\n\nfn main() { let v = join(True, False); let d: i32 = match v { False => 0, True => 1 }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
+data rust_logic_join_emit_host_main_suffix: String = "\n\nfn main() { let v = join(true, false); let d: i32 = match v { false => 0, true => 1 }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
 
 fn rust_logic_join_target_model_staging() -> TargetModel {
   rust_bool_fn_target_model(
@@ -2273,7 +2285,7 @@ fn rust_logic_join_target_model_staging() -> TargetModel {
     source_text: rust_logic_join_source_text,
     signature_with_open: rust_bool_binop_signature_with_open(fn_binding: ^dag_binding_fn_join),
     body_tokens: rust_bool_binop_body_tokens(
-      true_body: ^dag_complement_lit_true,
+      true_body: ^dag_token_kw_true,
       false_body: ^dag_binding_param_b
     ),
     production_sym: ^rust_production_fn_logic_join,
@@ -2284,21 +2296,21 @@ fn rust_logic_join_target_model_staging() -> TargetModel {
   )
 }
 
-data rust_logic_family_prelude: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }"
+data rust_logic_family_prelude: String = ""
 
 data rust_logic_family_member_meet: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
   member_id: "meet",
-  result_expression: "match meet(True, True) { False => 0, True => 1 }"
+  result_expression: "match meet(true, true) { false => 0, true => 1 }"
 }
 
 data rust_logic_family_member_join: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
   member_id: "join",
-  result_expression: "match join(True, False) { False => 0, True => 1 }"
+  result_expression: "match join(true, false) { false => 0, true => 1 }"
 }
 
 data rust_logic_family_member_complement: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
   member_id: "complement",
-  result_expression: "match complement(True) { False => 0, True => 1 }"
+  result_expression: "match complement(true) { false => 0, true => 1 }"
 }
 
 fn rust_logic_family_dispatch_members() -> List<RustEmitHostFamilyMember> {
@@ -2402,7 +2414,7 @@ fn rust_logic_selected_bundle_target_model_staging() -> TargetModel {
 
 data rust_logic_family_member_meet_zero: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
   member_id: "meet",
-  result_expression: "match meet(True, False) { False => 0, True => 1 }"
+  result_expression: "match meet(true, false) { false => 0, true => 1 }"
 }
 
 fn rust_logic_family_dispatch_members_meet_zero() -> List<RustEmitHostFamilyMember> {
@@ -3429,10 +3441,12 @@ fn rust_arrow_with_body_node(
   return_type_binding: Symbol,
   body: Node
 ) -> Node {
+  let domain = rust_nullary_arrow_domain_conj_node()
+  let signature = declared_signature(params: domain.children, source: domain)
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_nullary_arrow_domain_conj_node() },
+      signature.domain,
       Edge {
         label: Positional,
         target: rust_type_atom_node(identity: return_type_binding)
@@ -3441,6 +3455,7 @@ fn rust_arrow_with_body_node(
         label: Positional,
         target: rust_type_atom_node(identity: return_type_binding)
       },
+      signature.order,
       Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ],
     occurrence_id: OccurrenceSynthetic

@@ -32,9 +32,7 @@ import product.network_topology {
 }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet_host_identity {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6,
-  operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
-  operator_host_mtcollins1,
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_mtcollins1,
 }
 
 
@@ -166,68 +164,6 @@ data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
-// DCH-0 (2026-09-02). THE TWO ROWS BELOW ARE THE ENROLMENT ACT, and this note says what they do and
-// what they deliberately do not do, because in this module authoring the row IS the act rather than
-// a description of one.
-//
-// ADDRESS PROVENANCE. Both literals are the wireless-keyed CR1000A static reservations transcribed in
-// gunbc.spark.dgx_procurement -- srv5 holds spark_a3ee_reservation (192.168.1.226) and srv6 holds
-// spark_3bd5_reservation (192.168.1.225), joined to these slots by
-// dgx_spark_router_binding_operator_allocation, an attributable OperatorAllocation and not a
-// measurement. THIS IS A SECOND SPELLING OF ONE ADDRESS AND IT IS ADMITTED RATHER THAN HIDDEN: the
-// procurement module imports THIS one for operator_host_srv5/srv6, so a projection from the binding
-// is refused by the import graph's one law -- measured by adding it and compiling, `circular
-// dependency detected: gunbc.fleet_intent_network -> gunbc.spark.dgx_procurement`. The duplication
-// therefore dissolves with the 🟡 dissolve-on note above it: when NetworkEndpoint.address re-grounds
-// onto extdeps.network.address.IpAddress, these two rows converge onto the SAME Ipv4Address value the
-// reservation rows already carry, exactly as srv2/srv3 converge onto gunbc.fleet_reach's rows. Until
-// then the reservation is the authority and this is a transcription of it, marked as one.
-//
-// WHAT ENROLMENT HERE DOES NOT DO, stated because the adjacent act is the dangerous one. Membership in
-// gunbc.fleet_intent's ComputeHost / fleet_intent_known_hosts list is a SEPARATE act with three
-// production consumers, one of which -- gunbc.runner.runner_host_deploy `admit_runner_host` -- is a
-// fail-closed enrolment wall that currently protects these two machines by returning
-// RunnerHostUnenrolled. Nothing here touches that list, so that wall still stands for srv5/srv6.
-//
-// THE LIVE RECONCILIATION IS OUTSTANDING, AND IT IS ALREADY REPRESENTABLE RATHER THAN PROSE. No
-// observed-vs-desired readback of the rendered serving unit has been performed on either host. That
-// obligation needs no new carrier: gunbc.spark.serving_observation_scope derives its observation
-// denominator from dgx_spark_reserved_identities(), which already names srv5 and srv6, so
-// spark_observation_coverage answers SparkObservationIncomplete with both hosts in `missing` until a
-// probe transaction supplies them. The readback needs host access this lane does not hold; the gap is
-// therefore reported by that join and not asserted here.
-data srv5_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
-  label: "srv5-host-lan",
-  subject: EndpointHost { host: operator_host_srv5 },
-  address: "192.168.1.226",
-  role: HostOperatingSystem,
-  locality: Lan,
-}
-
-data srv6_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
-  label: "srv6-host-lan",
-  subject: EndpointHost { host: operator_host_srv6 },
-  address: "192.168.1.225",
-  role: HostOperatingSystem,
-  locality: Lan,
-}
-
-data srv7_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
-  label: "srv7-host-lan",
-  subject: EndpointHost { host: operator_host_srv7 },
-  address: "192.168.1.232",
-  role: HostOperatingSystem,
-  locality: Lan,
-}
-
-data srv8_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
-  label: "srv8-host-lan",
-  subject: EndpointHost { host: operator_host_srv8 },
-  address: "192.168.1.233",
-  role: HostOperatingSystem,
-  locality: Lan,
-}
-
 data srv9_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv9-host-lan",
   subject: EndpointHost { host: operator_host_srv9 },
@@ -340,14 +276,6 @@ data fleet_intent_network: NetworkTopology = NetworkTopology {
     srv2_host_lan_endpoint,
     srv3_host_lan_endpoint,
     srv4_host_lan_endpoint,
-    srv5_host_lan_endpoint,
-    srv6_host_lan_endpoint,
-    srv7_host_lan_endpoint,
-    srv8_host_lan_endpoint,
-    srv9_host_lan_endpoint,
-    srv10_host_lan_endpoint,
-    srv11_host_lan_endpoint,
-    srv12_host_lan_endpoint,
     srv1_bmc_endpoint,
     srv2_bmc_endpoint,
     srv3_bmc_endpoint,

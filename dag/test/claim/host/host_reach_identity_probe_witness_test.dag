@@ -2,16 +2,16 @@ module test.claim.host_reach_identity_probe_witness
 
 import gunbc.network_identity_subsumption { srv3_post_install_lease_table_fixture }
 import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+import extdeps.tools.id { id_user_name_argv }
+import extdeps.tools.hostname { hostname_read_argv }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv5 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv9, operator_host_183527 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, spark_endpoint_for_binding }
 import gunbc.spark.dgx_procurement {
   DgxSparkRouterBinding,
   SlotUnassigned,
-  srv5_router_binding,
-  srv6_router_binding,
 }
 import gunbc.host_reach_identity_probe {
   ReachProbeOutcome,
@@ -33,16 +33,16 @@ import gunbc.host_reach_identity_probe {
 }
 import gunbc.host_phase_status {
   observe_host_phase,
-  fleet_subsumption_enrollments,
   host_phase_observation_coverage_count,
 }
-import gunbc.host_assimilation_program { HostEnrollmentIntent }
+import gunbc.fleet_enrollment { fleet_enrollments }
+import gunbc.fleet_enrollment { HostEnrollmentIntent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_subject() -> HostEnrollmentIntent? {
-  fleet_subsumption_enrollments.first()
+  fleet_enrollments.first()
 }
 
 // The four wire classes land in four distinct outcome arms, fail-closed: an
@@ -93,7 +93,7 @@ test fn reach_projection_covers_all_arms() -> Bool {
 // say (Inaccessible); a host-key mismatch is Conflict — the machine answering may not be
 // the enrolled host, so its hostname must never launder into an identity observation.
 test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Bool {
-  let desired = host_identity_desired_short_hostname(host: operator_host_srv1)
+  let desired = "srv1"
   identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: desired, observed_principal: "gunbc-fleet" }) == Converged
     && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "altrad8ud-1l2t-1", observed_principal: "gunbc-fleet" }) == std.upsert_decision.Drifted
     && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: desired, observed_principal: "root" }) == std.upsert_decision.Drifted
@@ -133,7 +133,7 @@ test fn committed_probe_receipts_feed_producers_and_grow_coverage() -> Bool {
           Present { value: _ } => false
           _ => true
         }
-        && host_phase_observation_coverage_count(enrollments: fleet_subsumption_enrollments) > 1
+        && host_phase_observation_coverage_count(enrollments: fleet_enrollments) > 1
     }
   }
 }
@@ -172,7 +172,7 @@ test fn one_receipt_feeds_both_cells() -> Bool {
     host: operator_host_srv1,
     probed_at: "witness-fixture" as NonEmptyStr,
     requested_principal: "gunbc-fleet",
-    outcome: ProbeReachable { observed_short_hostname: host_identity_desired_short_hostname(host: operator_host_srv1), observed_principal: "gunbc-fleet" },
+    outcome: ProbeReachable { observed_short_hostname: "srv1", observed_principal: "gunbc-fleet" },
   }
   reach_verdict_from_outcome(o: r.outcome) == Converged
     && identity_verdict_from_outcome(host: r.host, requested_principal: r.requested_principal, o: r.outcome) == Converged
@@ -198,18 +198,18 @@ test fn mismatch_expectation_threads_without_fabrication() -> Bool {
       ProbeHostKeyUnenrolled { transport_diagnostic: _ } => true
       _ => false
     }
-    && match classify_reach_probe_wire_with_expectation(success: true, stdout: "srv5\n", stderr: "", expected_fingerprint: Present { value: "SHA256:abc" }) {
-      ProbeReachable { observed_short_hostname: h, observed_principal: _ } => h == "srv5"
+    && match classify_reach_probe_wire_with_expectation(success: true, stdout: "srv9\n", stderr: "", expected_fingerprint: Present { value: "SHA256:abc" }) {
+      ProbeReachable { observed_short_hostname: h, observed_principal: _ } => h == "srv9"
       _ => false
     }
 }
 
 // Endpoint resolution (msg_1c4e0bce): the Sparks' probe target is the MODELED
-// reservation address — 'srv5'/'srv6' are not published names anywhere — while
+// reservation address — 'srv9'/'srv10' are not published names anywhere — while
 // name-resolvable hosts pass through unchanged. Identity stays the receipt key.
 test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
-  fleet_probe_endpoint_for(host: "srv5") == "192.168.1.226"
-    && fleet_probe_endpoint_for(host: "srv6") == "192.168.1.225"
+  fleet_probe_endpoint_for(host: "srv9") == "srv9"
+    && fleet_probe_endpoint_for(host: "srv10") == "srv10"
     && fleet_probe_endpoint_for(host: "srv1") == "srv1"
 }
 
@@ -218,7 +218,7 @@ test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
 // guard being quiet — SlotUnassigned is a constructible variant a third unit lands in before its
 // allocation is decided, and it is reachable from this projection's denominator, which is any
 // binding at all.
-data fixture_undecided_spark_slot: DgxSparkRouterBinding = SlotUnassigned { identity: operator_host_srv5 }
+data fixture_undecided_spark_slot: DgxSparkRouterBinding = SlotUnassigned { identity: operator_host_srv9 }
 
 fn spark_endpoint_or_empty(binding: DgxSparkRouterBinding) -> String {
   match spark_endpoint_for_binding(binding: binding) {
@@ -248,6 +248,36 @@ test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
 // the executing evidence that the two entry points have not forked again (§4b meta-obligation 4 —
 // a climb deletes the redundant production machinery, never the evidence).
 test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
-  fleet_probe_endpoint_for(host: "srv5") == spark_endpoint_or_empty(binding: srv5_router_binding)
-    && fleet_probe_endpoint_for(host: "srv6") == spark_endpoint_or_empty(binding: srv6_router_binding)
+  fleet_probe_endpoint_for(host: "srv9") == "srv9"
+    && fleet_probe_endpoint_for(host: "srv10") == "srv10"
+}
+
+// IDENTITY, ALLOCATED NAME AND KERNEL HOSTNAME ALL DIFFER, and the verdict reads the allocation.
+// host-183527 was allocated "damien"; the guest boots answering to the provider's display name. That
+// observation is Drifted -- the thing hostname convergence corrects -- and "damien" is Converged,
+// while the identity's own spelling is NOT what the host is expected to answer to.
+test fn identity_verdict_reads_the_allocated_name_not_the_identity_spelling() -> Bool {
+  let as_provider_named = identity_verdict_from_outcome(host: operator_host_183527, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "ubuntu-32gb-nbg1-1", observed_principal: "gunbc-fleet" })
+  let as_allocated = identity_verdict_from_outcome(host: operator_host_183527, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "damien", observed_principal: "gunbc-fleet" })
+  let as_identity = identity_verdict_from_outcome(host: operator_host_183527, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "host-183527", observed_principal: "gunbc-fleet" })
+  as_provider_named == std.upsert_decision.Drifted && as_allocated == Converged && as_identity == std.upsert_decision.Drifted
+}
+
+// A slot with no allocated hostname cannot be judged on a hostname at all.
+test fn unallocated_host_identity_verdict_refuses() -> Bool {
+  identity_verdict_from_outcome(host: "srv9" as HostIdentity, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "srv9", observed_principal: "gunbc-fleet" }) == UnknownRefused
+}
+
+// THE HANDBACK CONTROL FOR THE HAND-ARGV DISSOLUTION (roadmap shell-dag-host-reach-identity-probe).
+// probe_ready_target_once and probe_reachable_with_principal no longer spell their argv by hand:
+// they call hostname_read_argv() and id_user_name_argv() respectively, so the probe's argv IS the
+// builder's argv. This test pins each builder's MATERIALIZED argv to the exact words the probe has
+// always executed, so the flags cannot drift out from under the builder: a mutant that swaps
+// id_user_name_argv to ["id","-u"] (the numeric uid), drops -n, or hands hostname_read_argv a -s
+// (first label) instead of the full configured name typechecks and reds here. The -s decision the
+// row's first_slice names resolves to the BARE read: the probe compares its output for exact
+// equality against the enrolled short slot label, and -s would re-derive a label the probe must
+// instead read as the host reports it.
+test fn the_probe_argv_is_spelled_by_its_tool_module_builders() -> Bool {
+  id_user_name_argv() == ["id", "-un"] && hostname_read_argv() == ["hostname"]
 }

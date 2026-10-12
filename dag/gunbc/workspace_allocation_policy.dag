@@ -1,9 +1,11 @@
 module gunbc.workspace_allocation_policy
 
-import std.types { NonEmptyStr, List }
-import gunbc.fleet_ssh_access { operator_ssh_principal }
+import std.types { String, NonEmptyStr, List }
+import extdeps.ssh { SshPublicKey, Ed25519 }
+import gunbc.fleet_posix_accounts { fleet_posix_home_directory, fleet_posix_operator_user }
+import gunbc.workspace_ssh_access { WorkspaceSshAccess, WorkspaceSshFromHost }
 import gunbc.principal_projection { PrincipalRef }
-import gunbc.workspace_allocation_admission { WorkspaceEnrollmentRoster, WorkspaceOwnerEnrollment, WorkspacePublicKeyCatalogRow, WorkspacePolicyAdmission, workspace_policy_admit }
+import gunbc.workspace_allocation_admission { WorkspaceEnrollmentRoster, WorkspaceOwnerEnrollment, WorkspacePublicKeyCatalogRow, WorkspacePolicyAdmission, workspace_policy_admit, workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
 
 // Enrollment is administrator-authored and lands as a reviewed row; the installed release is the
 // root-owned authority the controller reads, so no request, browser or guest can add a row.
@@ -17,22 +19,35 @@ fn workspace_operator_principal() -> PrincipalRef {
   }
 }
 
-data workspace_operator_public_key_ref: NonEmptyStr = "gunbc.fleet_ssh_access.operator_ssh_principal"
+data workspace_operator_public_key_ref: NonEmptyStr = "gunbc.workspace_allocation_policy.workspace_operator_guest_key"
+
+// Generated on srv1 for this workspace only, at the operator's request. The private key remains
+// in the operator's 0600 file there; it is not installed into host authorized_keys or workflow jobs.
+data workspace_operator_guest_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIMqh2/pEx3PptwZqnFneipNltQcry0TBF2Emi7g/BjUY",
+  comment: "gunbc-workspace-srv1-13",
+}
+
+fn workspace_operator_guest_identity_file() -> NonEmptyStr {
+  concat(fleet_posix_home_directory(login: fleet_posix_operator_user.name) as String,
+    "/.ssh/gunbc-workspace-srv1-13") as NonEmptyStr
+}
 
 fn workspace_enrollment_roster() -> WorkspaceEnrollmentRoster {
   WorkspaceEnrollmentRoster { enrollments: [
-    WorkspaceOwnerEnrollment { principal: workspace_operator_principal(), public_key_ref: workspace_operator_public_key_ref },
+    WorkspaceOwnerEnrollment { principal: workspace_operator_principal(), public_key_ref: workspace_operator_public_key_ref,
+      ssh_access: WorkspaceSshFromHost { identity_file: workspace_operator_guest_identity_file() } },
   ] }
 }
 
-// Each reference names exactly one enrolled ed25519 key, carried in the extdeps.ssh key model. The operator's guest key reuses the
-// existing fleet SSH principal's public key; a customer's row carries that customer's own key,
-// and a reference is never shared between owners.
+// Each reference names exactly one enrolled ed25519 key, carried in the extdeps.ssh key model.
+// Guest enrollment is independent of the credentials used to log into a fleet host.
 fn workspace_public_key_catalog() -> List<WorkspacePublicKeyCatalogRow> {
   [
     WorkspacePublicKeyCatalogRow {
       reference: workspace_operator_public_key_ref,
-      key: operator_ssh_principal.public_key,
+      key: workspace_operator_guest_key,
     },
   ]
 }
@@ -41,4 +56,14 @@ fn workspace_public_key_catalog() -> List<WorkspacePublicKeyCatalogRow> {
 // join stops each consumer with its typed reason; no consumer falls back to the raw roster.
 fn workspace_installed_policy() -> WorkspacePolicyAdmission {
   workspace_policy_admit(roster: workspace_enrollment_roster(), catalog: workspace_public_key_catalog())
+}
+
+fn workspace_enrolled_ssh_access(owner: PrincipalRef) -> WorkspaceSshAccess? {
+  match workspace_installed_policy() {
+    WorkspacePolicyRefused { reason: _ } => none
+    WorkspacePolicyAdmitted { policy } => match workspace_owner_enrollment(policy: policy, owner: owner) {
+      Absent => none
+      Present { value: enrollment } => Present { value: enrollment.ssh_access }
+    }
+  }
 }

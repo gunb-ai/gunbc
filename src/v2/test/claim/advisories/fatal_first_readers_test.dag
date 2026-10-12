@@ -66,9 +66,11 @@ test fn grammar_coverage_stage_rejected_reports_each_chains_fatal_holds() -> Boo
 }
 
 // THE DOOR LEDGER'S HISTOGRAM IS OF FATAL CAUSES. The three refusal chains the long claim
-// v2.test.long.compile_door_ledger's real subjects produce (determinism, error_primitives, bit) are
-// SUPPLIED here, each headed by one shared advisory: the histogram must count their fatals, and every
-// fatal must be owned. A head-grain reader counts the advisory three times and nothing else.
+// v2.test.long.compile_door_ledger's real subjects historically produced (determinism,
+// error_primitives, bit) are SUPPLIED here, each headed by one shared advisory: the histogram
+// must count their fatals, and every fatal must be owned. A head-grain reader counts the
+// advisory three times and nothing else. Do not substitute unrelated causes for
+// member_not_a_binder on error_primitives/bit.
 test fn door_ledger_histogram_counts_each_refusals_fatal_holds() -> Bool {
   let rows = [
     door_refused_row(path: "dag/std/determinism.dag", d: residue_headed_chain(fatal: ^resolve_reason_unbound_symbol)),

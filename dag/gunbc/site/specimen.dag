@@ -1,7 +1,6 @@
 module gunbc.site.specimen
 
 import std.types { Int, List, String, NonEmptyStr }
-import v2.std.algebra { filter }
 import std.markup { Fragment, attr }
 import gunbc.site.markup { el_attrs, txt }
 import gunbc.site.document { SiteStyles, site_document, site_styles, site_extend_styles }

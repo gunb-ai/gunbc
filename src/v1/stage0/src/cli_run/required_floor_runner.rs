@@ -173,9 +173,7 @@ pub(crate) fn floor_compile_clean_emit_ok_via_index(
     let index = process_shared_index(index_roots);
     let census_only = compile_clean_census_only_sources_for_compiled(&index, &sources);
     // #8204 out-of-closure fill runs independently of resolve: an earlier
-    // resolution refusal must not mask SourceAnnotationRefused in the rest of
-    // the indexed pool. Compiled-file admission is the via-index parse itself
-    // (`tokenize_artifact` + `admit_source_annotations`).
+    // resolution refusal must not mask a parse refusal in the rest of the indexed pool.
     let census_fill_diags = compile_clean_census_fill_hard_diagnostics(&census_only);
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
@@ -13875,9 +13873,26 @@ pub fn run_required_floor(
         "[floor-receipt] receipt=fixture-closure-union-controls state=held red_wall_ms={control_red_ms} \
          clean_wall_ms={control_clean_ms}"
     );
+    // Printed BEFORE the compile so a run cancelled inside the phase still names the union's size
+    // and its identity join against the prepared subject (a censored run otherwise has no members).
+    eprintln!(
+        "[floor-phase] phase=fixture-closure-union-emit state=begin members={} \
+         outside_prepared={outside_prepared} prepared_paths={} fixture_compiles={}",
+        union.members.len(),
+        prepared_source_paths.len(),
+        union.fixture_compiles
+    );
     let union_started = std::time::Instant::now();
     let union_cpu_started = v1_interpreter::thread_cpu_nanos();
-    let union_observed = crate::cli_run::fixture_closure_union_emit_receipt(&union)?;
+    let union_observed = crate::cli_run::fixture_closure_union_emit_receipt_staged(
+        &union,
+        &|stage, members, wall_ms| {
+            eprintln!(
+                "[floor-phase] phase=fixture-closure-union-emit stage={stage} members={members} \
+                 wall_ms={wall_ms}"
+            );
+        },
+    )?;
     eprintln!(
         "[floor-phase] phase=fixture-closure-union-emit state=held fixture_compiles={} \
          memo_hits={} members={} digest={} outside_prepared={outside_prepared} files={} emit_diagnostics={} \

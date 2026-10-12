@@ -1,5 +1,6 @@
 module gunbc.bmc_converge
 
+import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.bmc.capability {
   BmcFirmwareIntent,
   BmcFirmwareIntentMismatch,
@@ -20,7 +21,6 @@ import extdeps.bmc.types {
   BmcOverlayConfigObserved,
   BmcUpdateServiceObservation,
 }
-import extdeps.boards.types { BaseboardModel }
 import extdeps.crypto.hash { Digest }
 import extdeps.filesystem.linux {
   linux_overlay_observation_is_flash_backed,
@@ -98,7 +98,7 @@ import std.upsert_decision {
 
 type ApprovedBmcFirmwareArtifact {
   firmware: BmcFirmwareVersion
-  board: BaseboardModel
+  board: BoardAuthorityRef
   image_uri: Uri
   digest: Digest
 }
@@ -254,7 +254,7 @@ fn bmc_firmware_intent_mismatch_reason(
 
 fn bmc_firmware_classification(
   host: HostIdentity,
-  board: BaseboardModel,
+  board: BoardAuthorityRef,
   intent: BmcFirmwareIntent,
   observation: BmcFirmwareObservation?,
   artifact: ApprovedBmcFirmwareArtifact?,
@@ -421,7 +421,7 @@ fn bmc_fan_config_persistence_apply_suitability(
 fn bmc_fan_policy_apply_suitability(
   standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
-  board: BaseboardModel,
+  board: BoardAuthorityRef,
   intent: BmcControlPlaneIntent,
   observation: BmcFanPolicyObservation,
   persistence: BmcConfigPersistenceObservation?,
@@ -867,7 +867,7 @@ fn bmc_fan_firmware_blocks_realizer(
 fn bmc_fan_policy_qualify_with_projection(
   standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
-  board: BaseboardModel,
+  board: BoardAuthorityRef,
   intent: BmcControlPlaneIntent,
   observed: BmcFanPolicyObservation,
   persistence: BmcConfigPersistenceObservation?,
@@ -976,7 +976,7 @@ fn bmc_fan_policy_qualify_with_projection(
 fn bmc_fan_policy_classification(
   standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
-  board: BaseboardModel,
+  board: BoardAuthorityRef,
   intent: BmcControlPlaneIntent,
   observation: BmcFanPolicyObservation?,
   persistence: BmcConfigPersistenceObservation?,

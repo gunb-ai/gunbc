@@ -10,7 +10,7 @@ import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.vllm.environment {
   VllmEngineReadyTimeoutSeconds, VllmSparseIndexerMaxLogitsMb, vllm_environment_variable_name,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.serving_arm {
   ArmIntent,
 }

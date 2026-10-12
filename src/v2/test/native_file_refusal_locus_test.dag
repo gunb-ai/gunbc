@@ -23,10 +23,10 @@ fn at_text(file: Symbol, start: Int) -> Diagnostic {
   }
 }
 
-fn residue_head() -> Diagnostic {
+fn advisory_head() -> Diagnostic {
   Diagnostic {
-    reason: ^parse_grammar_choice_overlap_residue,
-    at: invariant_port_locus(port: ^native_file_refusal_locus_port, invariant: ^grammar_choice_overlap),
+    reason: ^tokenize_lex_e1_unrecognized_char,
+    at: invariant_port_locus(port: ^native_file_refusal_locus_port, invariant: ^tokenize_lex_e1_unrecognized_char),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -39,7 +39,7 @@ fn located_row() -> NativeTestFileRefusal {
   native_test_file_refusal(
     path: ^native_file_refusal_locus_fixture,
     module: optional_absent(),
-    d: NonEmptyDiagnostics { head: residue_head(), tail: [at_text(file: ^native_file_refusal_locus_fixture, start: 4)] },
+    d: NonEmptyDiagnostics { head: advisory_head(), tail: [at_text(file: ^native_file_refusal_locus_fixture, start: 4)] },
     spans: span_index_empty(),
     text: "\u{00e9}\u{000a}ab"
   )

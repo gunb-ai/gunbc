@@ -16,7 +16,8 @@ import v2.compiler.ingested_fixture_arrows {
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { ResolvedTree, resolve }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_language_model_surface_empty_prelude,
@@ -62,8 +63,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // consumer). Fast-lane tests stay in parse_binding_fidelity_test.dag.
 
 fn pbf_tokenize() -> Outcome<TokenStream> {
-  let lm = dag_language_model()
-  tokenize(text: ingested_add_module_source, file: ^pbf_source_file, rules: lm.lex)
+  tokenize_prepared(text: ingested_add_module_source, file: ^pbf_source_file, prepared: dag_prepared_lex())
 }
 
 fn pbf_parse_tokens(tokens: TokenStream) -> Outcome<ParseTree> {

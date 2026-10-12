@@ -5,8 +5,8 @@ import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.host_phase_status { fleet_subsumption_enrollments }
-import gunbc.host_assimilation_program { HostEnrollmentIntent }
+import gunbc.fleet_enrollment { fleet_enrollments }
+import gunbc.fleet_enrollment { HostEnrollmentIntent }
 import gunbc.fleet_converge_cli { ConvergeCliReceipt, ConvergeCliRefusalCause, KnobFrontier }
 import gunbc.host_converge { VerdictConverged, VerdictAbsent, Drifted }
 import gunbc.fleet_convergence_verdict {
@@ -45,7 +45,7 @@ fn converged_receipt(host: String) -> ConvergeCliReceipt {
 // green, and the unobserved count is a positive number (the arc's honest progress
 // denominator). This witness is the named current defect made executable.
 test fn live_fleet_is_not_converged_and_unobserved_cells_are_counted() -> Bool {
-  match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: no_receipts()) {
+  match fleet_convergence_verdict(enrollments: fleet_enrollments, receipts: no_receipts()) {
     FleetNotConverged { standings: ss } => fleet_unobserved_cell_count(standings: ss) > 0
     FleetConverged { host_count: _ } => false
   }
@@ -55,8 +55,8 @@ test fn live_fleet_is_not_converged_and_unobserved_cells_are_counted() -> Bool {
 // CONVERGED knob receipt, the unobserved lifecycle cells still prevent fleet
 // convergence — knob green never outvotes an unobserved required cell.
 test fn knob_receipts_alone_cannot_converge_the_fleet() -> Bool {
-  let receipts = map(fleet_subsumption_enrollments, e => converged_receipt(host: e.host as String))
-  match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: receipts) {
+  let receipts = map(fleet_enrollments, e => converged_receipt(host: e.host as String))
+  match fleet_convergence_verdict(enrollments: fleet_enrollments, receipts: receipts) {
     FleetNotConverged { standings: _ } => true
     FleetConverged { host_count: _ } => false
   }

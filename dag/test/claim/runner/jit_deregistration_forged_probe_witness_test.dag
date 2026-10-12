@@ -36,9 +36,9 @@ fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int 
   }
 }
 
-data control_source: String = "module probe_jit_deregistration_harness_control\nimport std.types { Bool }\nimport gunbc.runner.runner_jit_perform { JitMintDispatch }\nimport gunbc.runner.runner_jit_deregistration { JitDeregistration, jit_runner_deregistered }\nfn done(d: JitDeregistration) -> Bool { jit_runner_deregistered(result: d) }\n"
+data control_source: String = "module probe_jit_deregistration_harness_control\nimport std.types { Bool }\nimport gunbc.runner.runner_jit_perform { JitMintDispatch }\nimport gunbc.runner.jit_registration_subject { JitRegistrationSubject }\nimport gunbc.runner.runner_jit_deregistration { JitDeregistration, jit_runner_deregistered }\nfn done(d: JitDeregistration) -> Bool { jit_runner_deregistered(result: d) }\n"
 
-data sealed_records: List<String> = ["AuthorizedJitMintDispatch", "JitRegistration", "OrganizationRunnerListRead", "JitDeregistrationReceipt"]
+data sealed_records: List<String> = ["AuthorizedJitMintDispatch", "JitRegistration", "JitRegistrationSubject", "OrganizationRunnerListRead", "JitDeregistrationReceipt"]
 
 test fn a_source_that_only_names_the_modules_forges_nothing() -> Bool {
   let c = census_of(source: control_source)

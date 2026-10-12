@@ -1,0 +1,56 @@
+module test.claim.workspace_ssh_access_witness_test
+
+import std.types { Bool, String }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.workspace_ssh_access { WorkspaceSshFromHost, WorkspaceSshThroughGateway, WorkspaceHostAccessObserved, workspace_access_refusal, workspace_access_receipt }
+import gunbc.workspace_allocation_policy { workspace_enrolled_ssh_access, workspace_operator_principal, workspace_operator_guest_key, workspace_operator_guest_identity_file }
+import gunbc.fleet_ssh_access { operator_ssh_principal, fleet_automation_ssh_key }
+import gunbc.runner_slot_allocation
+import gunbc.workspace_gateway
+import gunbc.fleet_known_hosts_anchor
+
+test fn direct_host_access_is_fresh_and_bound_to_the_selected_host() -> Bool {
+  let slot = RunnerSlotIdentity { host: "srv1", slot_index: 13 }
+  let path = WorkspaceSshFromHost { identity_file: "/fixture/vm-key" }
+  let observed = WorkspaceHostAccessObserved { host: "srv1", observed_at: "2026-10-09T00:00:00Z" }
+  let positive = match workspace_access_refusal(access: path, slot: slot, evidence: observed, now: "2026-10-09T00:00:01Z") { Absent => true _ => false }
+  let foreign = match workspace_access_refusal(access: path, slot: RunnerSlotIdentity { host: "srv2", slot_index: 13 }, evidence: observed, now: "2026-10-09T00:00:01Z") { Present { value: _ } => true _ => false }
+  let stale = match workspace_access_refusal(access: path, slot: slot, evidence: observed, now: "2026-10-09T00:01:01Z") { Present { value: _ } => true _ => false }
+  let future = match workspace_access_refusal(access: path, slot: slot, evidence: observed, now: "2026-10-08T23:59:59Z") { Present { value: _ } => true _ => false }
+  positive && foreign && stale && future
+}
+
+test fn a_host_local_observation_cannot_admit_a_gateway_route() -> Bool {
+  match workspace_access_refusal(access: WorkspaceSshThroughGateway,
+    slot: RunnerSlotIdentity { host: "srv1", slot_index: 13 },
+    evidence: WorkspaceHostAccessObserved { host: "srv1", observed_at: "2026-10-09T00:00:00Z" }, now: "2026-10-09T00:00:01Z") {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn the_operator_uses_a_separate_guest_key_on_the_host() -> Bool {
+  let separate = workspace_operator_guest_key.material != operator_ssh_principal.public_key.material
+    && workspace_operator_guest_key.material != fleet_automation_ssh_key.material
+  separate && match workspace_enrolled_ssh_access(owner: workspace_operator_principal()) {
+    Present { value: WorkspaceSshFromHost { identity_file } } => identity_file == workspace_operator_guest_identity_file()
+    _ => false
+  }
+}
+
+test fn workspace_gateway_tailnet_names_have_one_enrolled_host_key() -> Bool {
+  all(gunbc.runner_slot_allocation.workspace_execution_slot_identities(), slot =>
+    match gunbc.workspace_gateway.workspace_fleet_gateway(slot: slot) {
+      Absent => false
+      Present { value: gateway } => count(filter(gunbc.fleet_known_hosts_anchor.fleet_known_hosts_rows(), row => row.endpoint == (gateway.tailnet_name as String))) == 1
+    })
+}
+
+// The wire identity must consume the observed host and instant, not a fixed success marker.
+test fn host_access_receipt_is_bound_to_its_observation() -> Bool {
+  let observed = WorkspaceHostAccessObserved { host: "srv1", observed_at: "2026-10-09T00:00:00Z" }
+  let receipt = workspace_access_receipt(evidence: observed)
+  receipt == workspace_access_receipt(evidence: observed)
+    && receipt != workspace_access_receipt(evidence: WorkspaceHostAccessObserved { host: "srv2", observed_at: "2026-10-09T00:00:00Z" })
+    && receipt != workspace_access_receipt(evidence: WorkspaceHostAccessObserved { host: "srv1", observed_at: "2026-10-09T00:00:01Z" })
+}

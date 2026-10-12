@@ -1,0 +1,128 @@
+module extdeps.github.actions_artifacts
+
+import extdeps.github.github { default_api_base, max_per_page }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.credentials { EnvVar }
+import std.types { Bool, Bytes, Int, List, String }
+import std.resources { Network }
+import std.serialization { Text }
+import extdeps.ietf.http_semantics { GET }
+
+// THE GITHUB ACTIONS ARTIFACTS REST API, as the upstream names it: "List workflow run artifacts"
+// (operationId actions/list-workflow-run-artifacts) and "Download an artifact"
+// (actions/download-artifact), docs.github.com/en/rest/actions/artifacts, read 2026-10-04.
+//
+// THE DOWNLOAD IS A REDIRECT TO A ZIP, AND BOTH HALVES ARE UPSTREAM FACTS. GitHub answers
+// `GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}` with `302 Found` and a
+// `Location` header naming a short-lived storage URL (about one minute), and `410 Gone` once the
+// artifact has expired; `archive_format` admits exactly `zip`, and the body at the Location is the
+// artifact as a zip archive -- upload-artifact always archives, even a single file. Following the
+// redirect is the bound REST realization's work, not this interface's: the seed handler
+// (v1_interpreter observe_rest_exchange, over ureq's redirect policy) follows it and decides on the
+// final response, so the response block below names the answer at the end of the redirect.
+//
+// THE ARCHIVE IS Bytes AND NO BOUND REALIZATION CAN YET CARRY IT. The REST handler reads every body
+// as UTF-8 text (RestBodyObservation carries body: String), so a zip arrives as a body that could not
+// be read and the call answers RestBodyUndecodable with the status it came under. That refusal is the
+// honest answer today and it is typed; reading a member out of the archive needs a binary body
+// carrier on the REST transport and an inflate reader, which is
+// the trigger of gunbc.runner.runner_qualification_dispatch qualification_instrument_extraction_frontier_rows'
+// parse_claim_cost_tsv row. Its production caller is that module's read_claim_cost_artifact.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/artifacts"
+  }
+}
+
+// THE FIELDS A READER OF A RUN'S ARTIFACTS ASKS OF ONE, AND NO OTHERS. The claim-cost read
+// (gunbc.runner.runner_qualification_dispatch conclude_claim_cost_listing) finds the artifact by
+// name, refuses it when upstream's `expired` flag is set -- a download would answer 410 -- and
+// downloads it by id. Upstream's artifact object also carries size_in_bytes, archive_download_url,
+// created_at and expires_at; nothing here reads them, so they are not modeled (DESIGN 3c), and a
+// size that one day is read arrives as std.measure ByteSize, not a bare count.
+type ActionsArtifact {
+  id: Int
+  name: String
+  expired: Bool
+}
+
+type ActionsArtifactList {
+  total_count: Int
+  artifacts: List<ActionsArtifact>
+}
+
+// `archive_format` IS A PATH SEGMENT WHOSE UPSTREAM VOCABULARY HAS ONE MEMBER, `zip`, so the path
+// carries it as the literal upstream spelling rather than as an input. An input would make every
+// other spelling representable, and a coproduct input interpolated into a path is rendered by the
+// seed with its AUTHORED variant name (the regression extdeps.github.workflow_runs
+// WorkflowJobAttemptFilter records), so neither would be more faithful than the literal.
+// AUTHENTICATION IS THE CALLER'S TOKEN. Accepting an auth_token operation input does not by itself
+// bind authentication; auth_input names that input as the credential, as extdeps.github.git_database
+// and github.WorkflowRuns declare, so the controller installation token the qualification collector
+// passes is the one the request carries rather than the ambient GITHUB_TOKEN. An empty token keeps
+// the env fallback, the same dual declaration github.WorkflowRuns uses.
+service github.Artifacts {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: auth_token
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+  }
+
+  operation ListWorkflowRunArtifacts {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      run_id: String
+      per_page: Int = max_per_page
+    }
+    output {
+      result: ActionsArtifactList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/artifacts",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => ActionsArtifactList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation DownloadArtifact {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      artifact_id: String
+    }
+    output {
+      archive: Bytes
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/artifacts/\{artifact_id\}/zip",
+      response_format: Text
+    }
+    response {
+      200 => Bytes
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      410 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
