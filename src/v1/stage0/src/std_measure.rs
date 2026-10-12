@@ -1724,6 +1724,13 @@ pub fn second_to_millisecond(s: Second) -> Millisecond {
     ))
 }
 
+pub fn millisecond_to_second_floor(m: Millisecond) -> Second {
+    second(v1_rt::int_div(
+        millisecond_count(m.clone()),
+        milliseconds_per_second(),
+    ))
+}
+
 pub type Percent = Rc<Measure<Dimensionless, One, Nat>>;
 
 pub fn percent(count: Nat) -> Percent {
