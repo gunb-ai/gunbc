@@ -1,0 +1,92 @@
+module v2.test.claim.parse.record_pun_probe
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Hash, content_hash, symbol_lexeme }
+import std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PUNNED FIELD `R { s }` IN A TAGGED RECORD IS THE FIELD `s: s` (v2.extdeps.languages.dag
+// dag_grammar_field_init_pun_expr). The v1 seed admits it, at any depth; v2 parsed only `s: s`, so a
+// record whose nested initializer used the pun stopped at parse_g0_tokens_remain.
+//
+// THE DISCRIMINATING CONTROL IS IDENTITY OF LOWERING, not that the pun parses: each punned spelling
+// and its explicit long form have the same signature and differ only in the body, and they normalize
+// to the SAME tree. A grammar that read the pun as anything else (a dropped field, a field bound to a
+// different name) cannot satisfy it, and the difference controls below show the comparison is not a
+// constant.
+fn normalized_hash(tag: String, text: String) -> Optional<Hash> {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: tree, diagnostics: _ } => Present { value: content_hash(n: tree.root) }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn parse_refusal_reason_of(tag: String, text: String) -> String {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).parsed {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal(d: d).reason)
+  }
+}
+
+fn parsed_ok(tag: String, text: String) -> Bool {
+  parse_refusal_reason_of(tag: tag, text: text) == "ACCEPTED"
+}
+
+fn same_tree(a: Optional<Hash>, b: Optional<Hash>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => x == y
+      }
+  }
+}
+
+fn probe(body: String) -> String {
+  "module probe.pun\n\ntype X {\n  s: Int\n  t: Int\n}\n\ntype W {\n  a: Int\n  b: X\n}\n\nfn f(s: Int, t: Int, u: Int) -> W {\n  " + body + "\n}\n"
+}
+
+fn top_pun_source() -> String { probe(body: "X { s, t }") }
+fn top_long_source() -> String { probe(body: "X { s: s, t: t }") }
+fn mixed_pun_source() -> String { probe(body: "X { s, t: t }") }
+fn nested_pun_source() -> String { probe(body: "W { a: u, b: X { s, t } }") }
+fn nested_long_source() -> String { probe(body: "W { a: u, b: X { s: s, t: t } }") }
+fn other_name_source() -> String { probe(body: "X { s: t, t }") }
+fn dropped_field_source() -> String { probe(body: "X { s }") }
+fn if_block_source() -> String { "module probe.pun\n\nfn f(flag: Bool, x: Int, y: Int) -> Int {\n  if flag { x } else { y }\n}\n" }
+
+test fn a_punned_field_lowers_as_the_explicit_field_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "tp", text: top_pun_source()), b: normalized_hash(tag: "tl", text: top_long_source()))
+}
+
+test fn a_pun_beside_an_explicit_field_lowers_as_the_long_form_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "mp", text: mixed_pun_source()), b: normalized_hash(tag: "ml", text: top_long_source()))
+}
+
+test fn a_nested_punned_field_lowers_as_the_explicit_field_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "np", text: nested_pun_source()), b: normalized_hash(tag: "nl", text: nested_long_source()))
+}
+
+test fn a_pun_is_not_a_field_bound_to_another_name_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "on", text: other_name_source()), b: normalized_hash(tag: "tl2", text: top_long_source())) == false
+}
+
+test fn a_pun_is_not_a_dropped_field_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "df", text: dropped_field_source()), b: normalized_hash(tag: "tp2", text: top_pun_source())) == false
+}
+
+test fn a_block_headed_by_a_value_name_is_still_a_block_holds() -> Bool {
+  parsed_ok(tag: "ifb", text: if_block_source())
+}
+
+test fn r_two_ACCEPTED() -> Bool { parse_refusal_reason_of(tag: "two", text: probe(body: "X { s t }")) == "ACCEPTED" }
+test fn r_comma_ACCEPTED() -> Bool { parse_refusal_reason_of(tag: "comma", text: probe(body: "X { s t: t }")) == "ACCEPTED" }
+test fn r_two_declaration_marker_not_test() -> Bool { parse_refusal_reason_of(tag: "two", text: probe(body: "X { s t }")) == "parse_declaration_marker_not_test" }
+test fn r_comma_declaration_marker_not_test() -> Bool { parse_refusal_reason_of(tag: "comma", text: probe(body: "X { s t: t }")) == "parse_declaration_marker_not_test" }
+test fn r_two_g0_tokens_remain() -> Bool { parse_refusal_reason_of(tag: "two", text: probe(body: "X { s t }")) == "parse_g0_tokens_remain" }
+test fn r_comma_g0_tokens_remain() -> Bool { parse_refusal_reason_of(tag: "comma", text: probe(body: "X { s t: t }")) == "parse_g0_tokens_remain" }
