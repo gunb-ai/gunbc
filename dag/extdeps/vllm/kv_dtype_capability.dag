@@ -118,12 +118,14 @@ data deepseek_v4_sparse_mla_sm10_row: KvMainDtypeRow = kv_main_dtype_row(
   basis: KvBasisUpstreamSource { revision: vllm_deepseek_v4_1_sm12_revision, locator: v41_flashinfer_sparse_locator },
 )
 
-// vLLM 0.30.0 NVIDIA Qwen4Exp QSA backend requires a BF16 main KV cache
+// NVIDIA Qwen4Exp QSA backend requires a BF16 main KV cache
 // (vllm/models/qwen4_exp/nvidia/qsa.py). Main KV, indexer cache, and weight quantization
 // stay distinct. CONSUMER: P4 feasibility (acceptable KV precision on that arch).
+// full_revision is the commit `refs/tags/v0.30.0` resolved to on github.com/vllm-project/vllm
+// (ced6857afa0ea7b2e3f0846a62e1394e90f15607), not the tag spelling: VllmSourceRevision is one build.
 data vllm_0_30_0_qwen4_exp_qsa_revision: VllmSourceRevision = vllm_source_revision(
   repository: "github.com/vllm-project/vllm" as NonEmptyStr,
-  full_revision: "v0.30.0" as NonEmptyStr,
+  full_revision: "ced6857afa0ea7b2e3f0846a62e1394e90f15607" as NonEmptyStr,
 )
 
 data qwen4_exp_qsa_locator: NonEmptyStr = "vllm/models/qwen4_exp/nvidia/qsa.py" as NonEmptyStr

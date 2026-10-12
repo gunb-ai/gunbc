@@ -1,7 +1,7 @@
 module test.claim.home_serving_extdeps_facts_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, List }
+import std.types { Bool, List, String }
 import std.optional { Present, Absent }
 import std.measure {
   bandwidth_count, watt_count, byte_size_count, gibibyte, gibibyte_to_byte_size, hardware_thread_count_value,
@@ -115,9 +115,12 @@ test fn w_ninfer_qwen35_planner_admits_the_closed_interval() -> Bool {
     pages_of_max_context: 4,
     kv_capacity_pages: 8,
   }) {
-    Qwen35KvCapacityAdmitted { lo: lo, hi: hi } => lo == 8 && hi == 32
-    Qwen35ConcurrencyOutOfRange { got: _ } => false
-    Qwen35KvPagesOutOfBounds { lo: _, hi: _, got: _ } => false
+    Qwen35KvCapacityAdmitted { lo: lo, hi: hi, revision: r, locator: loc } =>
+      lo == 8 && hi == 32
+        && (r.full_revision as String) == "81c8ce093b2c1646a87566a8e59d807fcf0ec95c"
+        && (loc as String) == "src/models/qwen3_5/program/planning/startup.cpp"
+    Qwen35ConcurrencyOutOfRange { got: _, revision: _, locator: _ } => false
+    Qwen35KvPagesOutOfBounds { lo: _, hi: _, got: _, revision: _, locator: _ } => false
   }
 }
 
@@ -127,9 +130,10 @@ test fn w_ninfer_qwen35_planner_refuses_concurrency_outside_1_8() -> Bool {
     pages_of_max_context: 4,
     kv_capacity_pages: 36,
   }) {
-    Qwen35ConcurrencyOutOfRange { got: g } => g == 9
-    Qwen35KvCapacityAdmitted { lo: _, hi: _ } => false
-    Qwen35KvPagesOutOfBounds { lo: _, hi: _, got: _ } => false
+    Qwen35ConcurrencyOutOfRange { got: g, revision: r, locator: _ } =>
+      g == 9 && (r.full_revision as String) == "81c8ce093b2c1646a87566a8e59d807fcf0ec95c"
+    Qwen35KvCapacityAdmitted { lo: _, hi: _, revision: _, locator: _ } => false
+    Qwen35KvPagesOutOfBounds { lo: _, hi: _, got: _, revision: _, locator: _ } => false
   }
 }
 
@@ -139,9 +143,12 @@ test fn w_ninfer_qwen35_planner_refuses_pages_outside_the_interval() -> Bool {
     pages_of_max_context: 8,
     kv_capacity_pages: 7,
   }) {
-    Qwen35KvPagesOutOfBounds { lo: lo, hi: hi, got: g } => lo == 8 && hi == 16 && g == 7
-    Qwen35KvCapacityAdmitted { lo: _, hi: _ } => false
-    Qwen35ConcurrencyOutOfRange { got: _ } => false
+    Qwen35KvPagesOutOfBounds { lo: lo, hi: hi, got: g, revision: r, locator: loc } =>
+      lo == 8 && hi == 16 && g == 7
+        && (r.full_revision as String) == "81c8ce093b2c1646a87566a8e59d807fcf0ec95c"
+        && (loc as String) == "src/models/qwen3_5/program/planning/startup.cpp"
+    Qwen35KvCapacityAdmitted { lo: _, hi: _, revision: _, locator: _ } => false
+    Qwen35ConcurrencyOutOfRange { got: _, revision: _, locator: _ } => false
   }
 }
 
