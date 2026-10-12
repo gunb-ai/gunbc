@@ -1230,11 +1230,9 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// History is not this module's to repair — but "I cannot see the baseline" is a refusal to
 /// state, not a fact to assume.
 ///
-/// Annotation-grain refusals are the exception named by
-/// `fail_closed_gate_refuses_its_own_repair`: the parser still produced the module (annotation
-/// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
-/// unreadable base sealed the transition that only moves `//` onto the declaration the grain
-/// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
+/// Annotation binding cannot refuse (std.source_annotation attaches every comment to its gap), so
+/// the annotation-grain exception `fail_closed_gate_refuses_its_own_repair` once needed has no
+/// population: any diagnostic, or a file that produced no module, is an unobservable base.
 /// THE ENVIRONMENT IS REQUIRED, NOT DEFAULTED. A default would be the HEAD grammar, and this
 /// function's entire job is reading the BASE revision -- so a forgetful caller would read base text
 /// under head rules and answer confidently, which is
@@ -1255,15 +1253,7 @@ pub fn base_records(
         ),
         environment,
     );
-    let annotation_erased_readable = !fill.modules.is_empty()
-        && !fill.diagnostics.is_empty()
-        && fill.diagnostics.iter().all(|d| {
-            matches!(
-                *d.diagnostic,
-                crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused { .. }
-            )
-        });
-    if !fill.diagnostics.is_empty() && !annotation_erased_readable {
+    if !fill.diagnostics.is_empty() {
         return Err(format!(
             "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
              declarations cannot be read",
@@ -1514,11 +1504,9 @@ pub(crate) fn reconstruct_base_index(
                     index_insert(&mut base_index, record);
                 }
             }
-            // A BASE THIS PARSER CANNOT READ IS UNEVALUATED, FULL STOP. The annotation case that
-            // used to be repaired here is now answered truthfully upstream: `base_records` reads
-            // the real base declarations out of an annotation-refused parse via
-            // `annotation_erased_readable`, so the only reason left to reach this arm is a base
-            // carrying NON-annotation diagnostics. Substituting head records there is exactly the
+            // A BASE THIS PARSER CANNOT READ IS UNEVALUATED, FULL STOP. Annotation binding cannot
+            // refuse, so the only reason to reach this arm is a base carrying diagnostics.
+            // Substituting head records there is exactly the
             // fabricated parse the readable path exists to avoid -- the remainders would still
             // compare equal whenever the head touched only comments, so the old discriminator
             // would happily certify a baseline for a file that failed to parse for an unrelated

@@ -58,11 +58,11 @@ type GrammarAuthorityStanding
   = OneSharedAdmission { admission: DeclarationRef }
   | ForkedAdmission { left: ParseEntryPoint, right: ParseEntryPoint }
 
-data annotation_admission_seam: DeclarationRef = decl_ref(module_path: "v1.compiler.annotation_bind", decl_name: "admit_source_annotations")
+data annotation_admission_seam: DeclarationRef = decl_ref(module_path: "v1.compiler.annotation_bind", decl_name: "bind_annotations")
 
 // THE REQUIRED PARSE PHASE. `claim_executor --required-ci --required-lane witnesses` sweeps
 // src/v1, dag and src/v2 and puts every file through the frontend's own per-source census-fill
-// parse -- tokenize into the annotation channel, parse in an occurrence scope, then admit. The
+// parse -- tokenize into the annotation channel, parse in an occurrence scope, then bind every comment to its gap. The
 // walk is host Rust; the parse it calls is not.
 data required_parse_phase_entry: ParseEntryPoint = ParseEntryPoint {
   invoked_as: "claim_executor --required-ci --required-lane witnesses (parse phase)" as NonEmptyStr,
