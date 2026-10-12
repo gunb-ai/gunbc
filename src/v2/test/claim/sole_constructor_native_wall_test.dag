@@ -11,14 +11,14 @@ import std.algebra { Cons, Empty }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.compiler.body_lowering_fold {
-  QualifiedDeclaredTypeModifiers,
   SoleConstructorModifier,
+  TypeDeclModuleModifierRows,
   TypeDeclarationModifierChannel,
   TypeDeclarationModifiersCaptured
 }
 import v2.compiler.infer { infer_sole_constructor_path_diags }
 import v2.compiler.resolve { ResolvedTree }
-import v2.std.collection { empty_map }
+import v2.std.collection { empty_map, map_insert }
 import v2.std.diagnostic { None, Some, diagnostics_has_reason }
 import v2.std.logic { Bool }
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
@@ -55,24 +55,32 @@ fn wall_tree(channel: TypeDeclarationModifierChannel) -> ResolvedTree {
   }
 }
 
-fn wall_sealed_channel() -> TypeDeclarationModifierChannel {
-  TypeDeclarationModifiersCaptured {
-    covered: [wall_module_aca()],
-    rows: [
-      QualifiedDeclaredTypeModifiers {
-        module: wall_module_aca(),
-        name: ^SealedRec,
-        modifiers: Cons { head: SoleConstructorModifier, tail: Empty }
-      }
-    ]
+fn wall_rows_empty() -> TypeDeclModuleModifierRows {
+  TypeDeclModuleModifierRows { by_name: empty_map() }
+}
+
+fn wall_rows_sealed() -> TypeDeclModuleModifierRows {
+  TypeDeclModuleModifierRows {
+    by_name: map_insert(
+      m: empty_map(),
+      key: ^SealedRec,
+      value: Cons { head: SoleConstructorModifier, tail: Empty }
+    )
   }
 }
 
-fn wall_open_channel() -> TypeDeclarationModifierChannel {
+fn wall_channel_modules(first: QualifiedName, first_rows: TypeDeclModuleModifierRows) -> TypeDeclarationModifierChannel {
   TypeDeclarationModifiersCaptured {
-    covered: [wall_module_aca()],
-    rows: Empty
+    by_module: map_insert(m: empty_map(), key: first, value: first_rows)
   }
+}
+
+fn wall_sealed_channel() -> TypeDeclarationModifierChannel {
+  wall_channel_modules(first: wall_module_aca(), first_rows: wall_rows_sealed())
+}
+
+fn wall_open_channel() -> TypeDeclarationModifierChannel {
+  wall_channel_modules(first: wall_module_aca(), first_rows: wall_rows_empty())
 }
 
 fn wall_foreign_module() -> Symbol {
@@ -126,10 +134,7 @@ test fn an_uncovered_declaring_module_refuses_unreadable_holds() -> Bool {
     type_path: wall_type_path(),
     constructing_module: optional_present(value: wall_foreign_module()),
     tree: wall_tree(
-      channel: TypeDeclarationModifiersCaptured {
-        covered: [Cons { head: ^other, tail: Empty }],
-        rows: Empty
-      }
+      channel: wall_channel_modules(first: Cons { head: ^other, tail: Empty }, first_rows: wall_rows_empty())
     )
   ) {
     None => false
@@ -158,17 +163,11 @@ test fn a_homonym_in_another_module_does_not_seal_this_modules_open_type_holds()
     constructing_module: optional_present(value: wall_home_module()),
     tree: wall_tree(
       channel: TypeDeclarationModifiersCaptured {
-        covered: [
-          wall_module_aca(),
-          Cons { head: ^bcb, tail: Empty }
-        ],
-        rows: [
-          QualifiedDeclaredTypeModifiers {
-            module: Cons { head: ^bcb, tail: Empty },
-            name: ^SealedRec,
-            modifiers: Cons { head: SoleConstructorModifier, tail: Empty }
-          }
-        ]
+        by_module: map_insert(
+          m: map_insert(m: empty_map(), key: wall_module_aca(), value: wall_rows_empty()),
+          key: Cons { head: ^bcb, tail: Empty },
+          value: wall_rows_sealed()
+        )
       }
     )
   ) {

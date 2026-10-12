@@ -10842,43 +10842,35 @@ type DeclaredTypeModifiers {
   modifiers: FreeMonoid<TypeDeclModifier>
 }
 
-// THE SAME ROW, QUALIFIED BY THE DECLARING MODULE, so a later stage can key ownership on the
-// resolved type's module rather than a file-path string. Bare `name` is unique only inside one
-// module; the construction wall looks this up by (module, name).
-type QualifiedDeclaredTypeModifiers {
-  module: QualifiedName
-  name: Symbol
-  modifiers: FreeMonoid<TypeDeclModifier>
+// THE CHANNEL INFER READS, keyed by declaring module then member name. A key in `by_module`
+// covers that module: an empty `by_name` is "not sealed". A declaring module absent from
+// `by_module` is unreadable rather than silently open. Hand-built fixtures insert only the
+// modules they claim (often none: empty map).
+type TypeDeclModuleModifierRows {
+  by_name: Map<Symbol, FreeMonoid<TypeDeclModifier>>
 }
 
-// THE CHANNEL INFER READS. There is no unavailable default: a tree states the modules it covered.
-// Absence of a row inside `covered` is "not sealed". A declaring module outside `covered` is
-// unreadable rather than silently open. Hand-built fixtures pass Captured with the modules they
-// claim (often none: covered Empty) and an empty row list.
 type TypeDeclarationModifierChannel
   = TypeDeclarationModifiersCaptured {
-      covered: List<QualifiedName>
-      rows: List<QualifiedDeclaredTypeModifiers>
+      by_module: Map<QualifiedName, TypeDeclModuleModifierRows>
     }
 
-// Covers no modules: not "nothing is sealed". Infer treats a declaring module outside `covered`
+// Covers no modules: not "nothing is sealed". Infer treats a declaring module outside `by_module`
 // as unreadable (`TypeDeclModifierModuleUncovered`). This helper is for trees that are not a
 // `.dag` declaration population (ingest-bridge CoreNodes, hermetic fixtures without type
 // decls). A construct-shaped node against it refuses modifiers_unreadable; a non-construct
 // never consults the channel.
 fn type_declaration_modifiers_covering_no_modules() -> TypeDeclarationModifierChannel {
-  TypeDeclarationModifiersCaptured { covered: Empty, rows: Empty }
+  TypeDeclarationModifiersCaptured { by_module: empty_map() }
 }
 
+// Membership of SoleConstructorModifier on the parsed modifier list (the closed TypeDeclModifier
+// surface). NominalOpaqueModifier is a sibling variant, not a negation of sealing.
 fn type_decl_modifiers_include_sole_constructor(modifiers: FreeMonoid<TypeDeclModifier>) -> Bool {
-  fold(modifiers, init: false, f: fn(acc, m) {
-    if acc {
-      true
-    } else {
-      match m {
-        SoleConstructorModifier => true
-        NominalOpaqueModifier => false
-      }
+  fold_list(xs: modifiers, empty: false, cons: fn(found, m) {
+    match m {
+      SoleConstructorModifier => true
+      NominalOpaqueModifier => found
     }
   })
 }
@@ -10888,27 +10880,20 @@ type TypeDeclModifierRowLookup
   | TypeDeclModifierRowAbsent
   | TypeDeclModifierRowPresent { modifiers: FreeMonoid<TypeDeclModifier> }
 
-fn type_declaration_modifier_module_covered(covered: List<QualifiedName>, module: QualifiedName) -> Bool {
-  fold(covered, init: false, f: fn(acc, m) { acc || (m == module) })
-}
-
 fn type_declaration_modifier_row_at(
   channel: TypeDeclarationModifierChannel,
   module: QualifiedName,
   name: Symbol
 ) -> TypeDeclModifierRowLookup {
   match channel {
-    TypeDeclarationModifiersCaptured { covered: covered, rows: rows } =>
-      if !type_declaration_modifier_module_covered(covered: covered, module: module) {
-        TypeDeclModifierModuleUncovered
-      } else {
-        fold(rows, init: TypeDeclModifierRowAbsent, f: fn(acc, row) {
-          if (row.module == module) && symbol_eq(a: row.name, b: name) {
-            TypeDeclModifierRowPresent { modifiers: row.modifiers }
-          } else {
-            acc
+    TypeDeclarationModifiersCaptured { by_module: by_module } =>
+      match map_lookup(m: by_module, key: module) {
+        Absent => TypeDeclModifierModuleUncovered
+        Present { value: rows } =>
+          match map_lookup(m: rows.by_name, key: name) {
+            Absent => TypeDeclModifierRowAbsent
+            Present { value: modifiers } => TypeDeclModifierRowPresent { modifiers: modifiers }
           }
-        })
       }
   }
 }
