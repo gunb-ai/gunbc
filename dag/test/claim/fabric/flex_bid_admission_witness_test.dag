@@ -32,14 +32,14 @@ import product.fabric.selection {
   OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
 }
 import product.fabric.budget { MoneyAccount }
+import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
 import product.fabric.flex_policy {
-  ExactRatio, FlexPolicy, FlexBidLedger, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
+  FlexPolicy, FlexBidLedger, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
   FlexScreenedCandidate, FlexBidAdmission, FlexBidAdmitted, FlexBidRefused, FlexNoAcquisitionRemaining,
   FlexRetainedLimitWouldRise, FlexRateCapBelowMin, FlexMoneyRefused, FlexSupplyNotSelected,
   FlexOnDemandFractionExceeded, FlexCurrencyMismatch, FlexDecimalConversionRefused,
   FlexCandidateMachineMismatch,
   flex_floor_buffer, flex_bid_admission, flex_buffered_min,
-  exact_ratio_denominator,
 }
 import extdeps.cloud.vast_ai {
   VastAiOffer, vast_ai_min_bid_money_per_hour, vast_ai_dph_total_money_per_hour,
@@ -131,7 +131,7 @@ fn t_policy(cap_micros: Nat) -> FlexPolicy {
   FlexPolicy {
     fleet_rate_cap: usd_hour(micros: cap_micros),
     floor_buffer: flex_floor_buffer,
-    on_demand_fraction: ExactRatio { numerator: 1, denominator_predecessor: 0 },
+    on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
   }
 }
@@ -144,7 +144,7 @@ fn t_policy_eur(cap_micros: Nat) -> FlexPolicy {
   FlexPolicy {
     fleet_rate_cap: eur_hour(micros: cap_micros),
     floor_buffer: flex_floor_buffer,
-    on_demand_fraction: ExactRatio { numerator: 1, denominator_predecessor: 0 },
+    on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
   }
 }
@@ -153,7 +153,7 @@ fn t_policy_no_on_demand(cap_micros: Nat) -> FlexPolicy {
   FlexPolicy {
     fleet_rate_cap: usd_hour(micros: cap_micros),
     floor_buffer: flex_floor_buffer,
-    on_demand_fraction: ExactRatio { numerator: 0, denominator_predecessor: 0 },
+    on_demand_fraction: NonzeroNatFraction { num: 0, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
   }
 }
@@ -397,8 +397,8 @@ test fn a_revocable_offer_is_refused_for_warm_residency() -> Bool {
 }
 
 test fn floor_buffer_is_the_exact_tenth_ratio() -> Bool {
-  flex_floor_buffer.numerator == 1
-    && exact_ratio_denominator(r: flex_floor_buffer) == 10
+  flex_floor_buffer.num == 1
+    && nonzero_nat_fraction_field(r: flex_floor_buffer).denom == 10
     && money_per_hour_micros(q: flex_buffered_min(min_bid: one_dollar(), buffer: flex_floor_buffer)) == 1100000
 }
 
