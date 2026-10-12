@@ -1,6 +1,6 @@
 module extdeps.github.actions
 
-import std.unicode.scalar { char_text }
+import std.unicode.scalar { ascii_lowercase }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.github.log_annotations {
@@ -356,10 +356,7 @@ fn runner_arch_label(arch: Architecture) -> String {
 // case mapping, so a non-ASCII case variant is compared exactly: two such spellings read as
 // DIFFERENT labels, which surfaces as a loud divergence rather than a silent match.
 fn runner_label_match_key(label: String) -> String {
-  join(
-    label |> chars |> map(c => if c >= 65 && c <= 90 { char_text(c: c + 32) } else { char_text(c: c) }),
-    "",
-  )
+  ascii_lowercase(s: label)
 }
 
 fn runner_labels_equivalent(a: String, b: String) -> Bool {

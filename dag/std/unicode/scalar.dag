@@ -28,10 +28,24 @@ fn scalar_of_code_point(cp: Int) -> Result<Char, NotUnicodeScalar> {
   }
 }
 
+// The code point a refusal names, whichever way the scalar predicate failed.
+fn not_unicode_scalar_code_point(n: NotUnicodeScalar) -> Int {
+  match n {
+    SurrogateCodePoint { code_point: cp } => cp
+    CodePointOutOfRange { code_point: cp } => cp
+  }
+}
+
 // THE TOTAL SPELLING: a Char is a scalar by construction, so spelling it as host text cannot
 // refuse, and a caller holding one never handles a refusal (construction over validation, DESIGN
 // section 5). It is realized through the declared text-crossing route std.coercion
 // unicode_scalar_fold over a one-scalar sequence (DESIGN section 4, UnicodeScalarSequenceUnfold).
+//
+// STAGED REPAIR (gunbc.recurring_failure_mode char_brand_admits_any_int): the seed does not yet
+// enforce Char, so a non-scalar Int can reach this fold. The host realization of that fold now
+// REFUSES it loudly, naming NotUnicodeScalar (the same unicode_scalar predicate scalar_of_code_point
+// decides), where it used to drop the value silently; every non-literal caller was moved to
+// from_code_point, so a literal (which the seed proves) is the only call left in the corpus.
 fn char_text(c: Char) -> String {
   unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: c))
 }
@@ -46,4 +60,52 @@ fn from_code_point(cp: Int) -> Result<String, NotUnicodeScalar> {
     Ok { value: c } => Ok { value: char_text(c: c) }
     Err { value: n } => Err { value: n }
   }
+}
+
+// ASCII CASE FOLDING WITHOUT AN Int -> Char CROSSING. Spelling a shifted code point as text needs a
+// Char, which the seed does not enforce (gunbc.recurring_failure_mode char_brand_admits_any_int), so
+// the three ASCII case folds that were `char_text(c: cp + 32)` are string rewrites over these 26
+// pairs instead: no code point is computed, so no non-scalar can be spelled.
+type AsciiLetterPair { upper: String, lower: String }
+
+data ascii_letter_pairs: List<AsciiLetterPair> = [
+  AsciiLetterPair { upper: "A", lower: "a" },
+  AsciiLetterPair { upper: "B", lower: "b" },
+  AsciiLetterPair { upper: "C", lower: "c" },
+  AsciiLetterPair { upper: "D", lower: "d" },
+  AsciiLetterPair { upper: "E", lower: "e" },
+  AsciiLetterPair { upper: "F", lower: "f" },
+  AsciiLetterPair { upper: "G", lower: "g" },
+  AsciiLetterPair { upper: "H", lower: "h" },
+  AsciiLetterPair { upper: "I", lower: "i" },
+  AsciiLetterPair { upper: "J", lower: "j" },
+  AsciiLetterPair { upper: "K", lower: "k" },
+  AsciiLetterPair { upper: "L", lower: "l" },
+  AsciiLetterPair { upper: "M", lower: "m" },
+  AsciiLetterPair { upper: "N", lower: "n" },
+  AsciiLetterPair { upper: "O", lower: "o" },
+  AsciiLetterPair { upper: "P", lower: "p" },
+  AsciiLetterPair { upper: "Q", lower: "q" },
+  AsciiLetterPair { upper: "R", lower: "r" },
+  AsciiLetterPair { upper: "S", lower: "s" },
+  AsciiLetterPair { upper: "T", lower: "t" },
+  AsciiLetterPair { upper: "U", lower: "u" },
+  AsciiLetterPair { upper: "V", lower: "v" },
+  AsciiLetterPair { upper: "W", lower: "w" },
+  AsciiLetterPair { upper: "X", lower: "x" },
+  AsciiLetterPair { upper: "Y", lower: "y" },
+  AsciiLetterPair { upper: "Z", lower: "z" },
+]
+
+fn ascii_lowercase(s: String) -> String {
+  fold(ascii_letter_pairs, init: s, f: (acc, p) => join(split(s: acc, delimiter: p.upper), p.lower))
+}
+
+fn ascii_uppercase(s: String) -> String {
+  fold(ascii_letter_pairs, init: s, f: (acc, p) => join(split(s: acc, delimiter: p.lower), p.upper))
+}
+
+fn ascii_uppercase_first(s: String) -> String {
+  let n = string_length(s: s)
+  if n == 0 { "" } else { concat(ascii_uppercase(s: substring(s: s, start: 0, end: 1)), substring(s: s, start: 1, end: n)) }
 }

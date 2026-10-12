@@ -2,14 +2,10 @@ module extdeps.uri.percent_encoding
 
 import std.optional { Absent, Optional, Present }
 import std.types { NonEmptyStr, List }
-import std.unicode.scalar { char_text }
+import std.error_primitives { Ok, Err }
+import std.unicode.scalar { from_code_point, scalar_of_code_point, not_unicode_scalar_code_point, SurrogateCodePoint, CodePointOutOfRange }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.encoding { utf8_decode_octets }
-import std.unicode.types {
-  unicode_scalar_max_code_point,
-  unicode_surrogate_first_code_point,
-  unicode_surrogate_last_code_point,
-}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -163,15 +159,14 @@ fn uri_hex_nibble_wire(nibble: UriHexNibble) -> String {
   }
 }
 
+// THE SCALAR PREDICATE IS std.unicode.scalar's, NOT RESTATED HERE: a second range test would be a
+// second authority for the Unicode scalar values (section 3.9, D76), so the two refusals below map
+// that one authority's NotUnicodeScalar arms.
 fn uri_validated_scalar_construction(cp: Int) -> UriValidatedScalarConstruction {
-  if cp < 0 {
-    UriValidatedScalarOutOfRangeRefused { cp: cp }
-  } else if cp > unicode_scalar_max_code_point {
-    UriValidatedScalarOutOfRangeRefused { cp: cp }
-  } else if cp >= unicode_surrogate_first_code_point && cp <= unicode_surrogate_last_code_point {
-    UriValidatedScalarSurrogateRefused { cp: cp }
-  } else {
-    UriValidatedScalarConstructed(UriValidatedScalar { admitted_cp: cp })
+  match scalar_of_code_point(cp: cp) {
+    Ok { value: c } => UriValidatedScalarConstructed(UriValidatedScalar { admitted_cp: c })
+    Err { value: SurrogateCodePoint { code_point: c } } => UriValidatedScalarSurrogateRefused { cp: c }
+    Err { value: CodePointOutOfRange { code_point: c } } => UriValidatedScalarOutOfRangeRefused { cp: c }
   }
 }
 
@@ -244,14 +239,21 @@ fn uri_validated_scalar_code_point(scalar: UriValidatedScalar) -> Int {
 
 fn uri_percent_encode_admitted_scalar_wire(scalar: UriValidatedScalar) -> UriPercentEncodeFoldState {
   let cp = uri_validated_scalar_code_point(scalar: scalar)
-  if uri_component_is_unreserved(cp: cp) {
-    UriPercentEncodeBuilding { wire: char_text(c: cp) }
-  } else {
-    fold(
-      bytes_octets(b: utf8_encode_bytes(s: char_text(c: cp))),
-      init: UriPercentEncodeBuilding { wire: "" },
-      f: (acc, o) => uri_percent_encode_octet_step(state: acc, o: o)
-    )
+  match from_code_point(cp: cp) {
+    Err { value: SurrogateCodePoint { code_point: c } } =>
+      UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: c } }
+    Err { value: CodePointOutOfRange { code_point: c } } =>
+      UriPercentEncodeRefused { cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: c } }
+    Ok { value: text } =>
+      if uri_component_is_unreserved(cp: cp) {
+        UriPercentEncodeBuilding { wire: text }
+      } else {
+        fold(
+          bytes_octets(b: utf8_encode_bytes(s: text)),
+          init: UriPercentEncodeBuilding { wire: "" },
+          f: (acc, o) => uri_percent_encode_octet_step(state: acc, o: o)
+        )
+      }
   }
 }
 
@@ -357,6 +359,7 @@ fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeCom
 type UriPercentDecodeRefusalCause
   = UriPercentDecodeTruncatedEscape
   | UriPercentDecodeNonHexDigit { cp: Int }
+  | UriPercentDecodeNotUnicodeScalar { cp: Int }
   | UriPercentDecodeNotUtf8
 
 type UriPercentDecodeComponent
@@ -380,8 +383,12 @@ fn uri_hex_digit_value(cp: Int) -> Int? {
 
 // A literal character's UTF-8 octets, from the one UTF-8 encoder (std.bytes utf8_encode_bytes),
 // prepended in reverse.
-fn uri_decode_literal(octets_rev: List<Int>, cp: Int) -> List<Int> {
-  fold(bytes_octets(b: utf8_encode_bytes(s: char_text(c: cp))), init: octets_rev, f: (acc, o) => Cons { head: o, tail: acc })
+fn uri_decode_literal(octets_rev: List<Int>, cp: Int) -> UriPercentDecodeFold {
+  match from_code_point(cp: cp) {
+    Err { value: n } => UriDecodeRefused { cause: UriPercentDecodeNotUnicodeScalar { cp: not_unicode_scalar_code_point(n: n) } }
+    Ok { value: text } =>
+      UriDecodeText { octets_rev: fold(bytes_octets(b: utf8_encode_bytes(s: text)), init: octets_rev, f: (acc, o) => Cons { head: o, tail: acc }) }
+  }
 }
 
 fn uri_percent_decode_step(state: UriPercentDecodeFold, cp: Int) -> UriPercentDecodeFold {
@@ -389,7 +396,7 @@ fn uri_percent_decode_step(state: UriPercentDecodeFold, cp: Int) -> UriPercentDe
     UriDecodeRefused { cause: k } => UriDecodeRefused { cause: k }
     UriDecodeText { octets_rev: out } =>
       if cp == 37 { UriDecodeAfterPercent { octets_rev: out } }
-      else { UriDecodeText { octets_rev: uri_decode_literal(octets_rev: out, cp: cp) } }
+      else { uri_decode_literal(octets_rev: out, cp: cp) }
     UriDecodeAfterPercent { octets_rev: out } =>
       match uri_hex_digit_value(cp: cp) {
         Absent => UriDecodeRefused { cause: UriPercentDecodeNonHexDigit { cp: cp } }
@@ -411,7 +418,18 @@ fn uri_percent_decode_component(value: String) -> UriPercentDecodeComponent {
     UriDecodeText { octets_rev: out } =>
       match utf8_decode_octets(octets: reverse(out)) {
         Absent => UriPercentComponentDecodeRefused { cause: UriPercentDecodeNotUtf8 }
-        Present { value: scalars } => UriPercentComponentDecoded { value: join(scalars |> map(c => char_text(c: c)), "") }
+        Present { value: scalars } =>
+          match fold(scalars, init: Ok { value: "" }, f: (acc, c) => match acc {
+            Err { value: n } => Err { value: n }
+            Ok { value: text } =>
+              match from_code_point(cp: c) {
+                Ok { value: spelled } => Ok { value: concat(text, spelled) }
+                Err { value: n } => Err { value: n }
+              }
+          }) {
+            Ok { value: text } => UriPercentComponentDecoded { value: text }
+            Err { value: n } => UriPercentComponentDecodeRefused { cause: UriPercentDecodeNotUnicodeScalar { cp: not_unicode_scalar_code_point(n: n) } }
+          }
       }
   }
 }

@@ -1,7 +1,8 @@
 module v2.std.compilers.semantic_decl_emission
 
 import std.types { List }
-import std.unicode.scalar { char_text }
+import std.unicode.scalar { from_code_point }
+import std.error_primitives { Ok, Err }
 import std.optional { Present, Absent }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -136,6 +137,16 @@ fn semantic_decl_emission_bundle_malformed_diagnostic(bundle: Node) -> Diagnosti
   }
 }
 
+// A char's text is decided by std.unicode.scalar from_code_point; a value it refuses becomes the
+// typed marker below, which semantic_decl_string_from_bundle_node refuses as a malformed bundle,
+// never a dropped or defaulted character.
+fn semantic_decl_char_identity(c: Char) -> Symbol {
+  match from_code_point(cp: c) {
+    Ok { value: spelled } => spelled
+    Err { value: _ } => ^semantic_decl_char_not_unicode_scalar
+  }
+}
+
 // THE FREE-MONOID ENCODING READS CODE POINTS, SO THE STRING IS VIEWED AS ONE HERE.
 //
 // The parameter is an ordinary string and its callers are right to pass one -- `semantic_decl_emit`
@@ -156,7 +167,7 @@ fn semantic_decl_string_to_bundle_node(s: String) -> Node {
         children: [
           target_model_named_edge(
             name: ^free_monoid_field_head,
-            target: target_model_type_atom_node(identity: char_text(c: c))
+            target: target_model_type_atom_node(identity: semantic_decl_char_identity(c: c))
           ),
           target_model_named_edge(
             name: ^free_monoid_field_tail,
@@ -186,12 +197,16 @@ fn semantic_decl_string_from_bundle_node(bundle: Node) -> Outcome<String> {
             f: fn(tail) {
               match head.kind {
                 TypeNode { connective: Atom { identity: c } } =>
+                  if c == ^semantic_decl_char_not_unicode_scalar {
+                    semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
+                  } else {
                   bind_outcome(
                     o: semantic_decl_string_from_bundle_node(bundle: tail),
                     f: fn(rest) {
                       outcome_accepted(value: concat(rest, c))
                     }
                   )
+                  }
                 TypeNode { connective: Conj } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
                 TypeNode { connective: Disj } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)
                 TypeNode { connective: Arrow } => semantic_decl_string_from_bundle_node_otherwise(bundle: bundle)

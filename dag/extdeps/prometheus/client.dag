@@ -1,6 +1,5 @@
 module extdeps.prometheus.client
 
-import std.unicode.scalar { char_text }
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.decimal { ExactDecimal, ExactDecimalAdmitted, ExactDecimalScaleRefused, admit_exact_decimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_multiply, CheckedIntReady, CheckedIntOverflow }
@@ -157,8 +156,8 @@ fn prometheus_scan_step(acc: SampleLexemeScan, ch: String) -> SampleLexemeScan {
 }
 
 fn prometheus_scan_lexeme(body: String) -> SampleLexemeScan {
-  fold(chars(body), init: SampleLexemeScan { mantissa_digits: "", fraction_digits: 0, exponent_text: "", exponent_sign_negative: false, in_fraction: false, in_exponent: false, ok: true }, f: (acc, cp) =>
-    prometheus_scan_step(acc: acc, ch: char_text(c: cp)))
+  fold(enumerate(chars(body)), init: SampleLexemeScan { mantissa_digits: "", fraction_digits: 0, exponent_text: "", exponent_sign_negative: false, in_fraction: false, in_exponent: false, ok: true }, f: (acc, pair) =>
+    prometheus_scan_step(acc: acc, ch: substring(s: body, start: pair.first, end: pair.first + 1)))
 }
 
 // The scale after the exponent is folded in: fraction digits minus the exponent. A non-negative

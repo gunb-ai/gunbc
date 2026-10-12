@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.types { Char }
 import std.error_primitives { Ok, Err }
-import std.unicode.scalar { SurrogateCodePoint, CodePointOutOfRange, char_text, from_code_point }
+import std.unicode.scalar { SurrogateCodePoint, CodePointOutOfRange, from_code_point }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping
@@ -68,28 +68,18 @@ type YamlScalarResult
 // a stream), so a reader that accepted them could not tell their content from indentation.
 data yaml_refused_text: String = "\u{0}\u{1}\u{2}\u{3}\u{4}\u{5}\u{6}\u{7}\u{8}\u{B}\u{C}\u{D}\u{E}\u{F}\u{10}\u{11}\u{12}\u{13}\u{14}\u{15}\u{16}\u{17}\u{18}\u{19}\u{1A}\u{1B}\u{1C}\u{1D}\u{1E}\u{1F}\u{7F}\u{80}\u{81}\u{82}\u{83}\u{84}\u{85}\u{86}\u{87}\u{88}\u{89}\u{8A}\u{8B}\u{8C}\u{8D}\u{8E}\u{8F}\u{90}\u{91}\u{92}\u{93}\u{94}\u{95}\u{96}\u{97}\u{98}\u{99}\u{9A}\u{9B}\u{9C}\u{9D}\u{9E}\u{9F}\u{A0}\u{1680}\u{2000}\u{2001}\u{2002}\u{2003}\u{2004}\u{2005}\u{2006}\u{2007}\u{2008}\u{2009}\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}\u{FFFE}\u{FFFF}"
 
-// Each refused character is a Unicode scalar by construction (an element of the literal above), so
-// it is spelled as text through std.unicode.scalar char_text, which cannot refuse.
-data yaml_refused_code_points: List<Char> = chars(s: yaml_refused_text)
+// Each refused character is spelled as the one-character slice of the literal above, so its text
+// and its code point come from the same unfold and no Int is asked to be a Char at run time
+// (gunbc.recurring_failure_mode char_brand_admits_any_int).
+type YamlRefusedCharacter { cp: Int, spelled: String }
 
-data yaml_refused_characters: List<String> = map(yaml_refused_code_points, c => char_text(c: c))
+data yaml_refused_rows: List<YamlRefusedCharacter> = map(enumerate(chars(s: yaml_refused_text)), pair => YamlRefusedCharacter { cp: pair.second, spelled: substring(s: yaml_refused_text, start: pair.first, end: pair.first + 1) })
 
-fn yaml_first_refused(text: String) -> Char? {
-  fold(yaml_refused_code_points, init: none, f: (acc, c) => match acc {
+fn yaml_first_refused(text: String) -> YamlRefusedCharacter? {
+  fold(yaml_refused_rows, init: none, f: (acc, r) => match acc {
     Present { value: found } => Present { value: found }
-    Absent => if string_contains(s: text, pattern: char_text(c: c)) { Present { value: c } } else { none }
+    Absent => if string_contains(s: text, pattern: r.spelled) { Present { value: r } } else { none }
   })
-}
-
-fn yaml_first_refused_character(text: String) -> Int {
-  match yaml_first_refused(text: text) {
-    Absent => -1
-    Present { value: c } => c
-  }
-}
-
-fn yaml_contains_refused_character(text: String) -> Bool {
-  any(yaml_refused_characters, c => string_contains(s: text, pattern: c))
 }
 
 fn yaml_line_containing(lines: List<String>, pattern: String, index: Int) -> Int {
@@ -1430,7 +1420,7 @@ fn yaml_line_ending_in_whitespace(lines: List<String>, index: Int) -> Int {
 
 fn ingest_yaml_source(src: String) -> YamlIngestResult {
   match yaml_first_refused(text: src) {
-    Present { value: c } => YamlIngestRejected { line: yaml_line_containing(lines: yaml_source_lines(src: src), pattern: char_text(c: c), index: 0), reason: yaml_refused_character_reason(cp: c) }
+    Present { value: r } => YamlIngestRejected { line: yaml_line_containing(lines: yaml_source_lines(src: src), pattern: r.spelled, index: 0), reason: yaml_refused_character_reason(cp: r.cp) }
     Absent =>
       if yaml_has_leading_tab(src: src) {
         YamlIngestRejected { line: yaml_line_with_leading_tab(lines: yaml_source_lines(src: src), index: 0), reason: "a tab in a line's leading whitespace is outside the supported subset (YAML indents with spaces only; a literal line may not begin with a tab either)" }

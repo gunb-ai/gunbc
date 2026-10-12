@@ -1,6 +1,6 @@
 module gunbc.v1_interpreter_dispatch_emit
 
-import std.unicode.scalar { char_text }
+import std.unicode.scalar { ascii_uppercase_first }
 import std.types { List }
 import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
 
@@ -18,36 +18,10 @@ import std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
 
-fn to_upper_char(ch: Int) -> String {
-  let cp = ch
-  if cp >= 97 && cp <= 122 {
-    char_text(c: cp - 32)
-  } else {
-    char_text(c: ch)
-  }
-}
-
-fn capitalize_first(s: String) -> String {
-  let chars_list = s |> chars
-  if count(chars_list) == 0 {
-    ""
-  } else {
-    chars_list
-      |> enumerate
-      |> map(pair =>
-        if pair.first == 0 {
-          to_upper_char(ch: pair.second)
-        } else {
-          char_text(c: pair.second)
-        })
-      |> join(separator: "")
-  }
-}
-
 fn to_pascal_segment(segment: String) -> String {
   segment
     |> split(delimiter: "_")
-    |> map(part => capitalize_first(s: part))
+    |> map(part => ascii_uppercase_first(s: part))
     |> join(separator: "")
 }
 

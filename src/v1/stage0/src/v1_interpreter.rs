@@ -23578,15 +23578,24 @@ macro_rules! v1_builtin_arms {
                     .max(0)
                     .min(len)
                     .max(start);
-                let s: String = cps
-                    .skip(start as usize)
-                    .take((end - start) as usize)
-                    .iter()
-                    .filter_map(|v| match v {
-                        Value::Int(cp) => char::from_u32(*cp as u32),
-                        _ => None,
-                    })
-                    .collect();
+                let mut s = String::new();
+                for v in cps.skip(start as usize).take((end - start) as usize).iter() {
+                    match v {
+                        Value::Int(cp) => match u32::try_from(*cp).ok().and_then(char::from_u32) {
+                            Some(ch) => s.push(ch),
+                            None => {
+                                return Err(InterpError::TypeError {
+                                    msg: format!("chars_to_string: {cp} is not a Unicode scalar value (std.unicode.scalar NotUnicodeScalar); refusing to drop it silently"),
+                                });
+                            }
+                        },
+                        _ => {
+                            return Err(InterpError::TypeError {
+                                msg: "chars_to_string: element is not an Int code point".to_string(),
+                            });
+                        }
+                    }
+                }
                 Ok(Some(str_value(s)))
             },
 

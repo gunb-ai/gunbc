@@ -1,7 +1,8 @@
 module v2.extdeps.languages.swift.rows
 
 import std.types { String, List, Bool, Int, Char }
-import std.unicode.scalar { char_text }
+import std.unicode.scalar { from_code_point }
+import std.error_primitives { Ok, Err }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Optional, Present, Absent }
 import v2.std.algebra { list_append, length }
@@ -587,7 +588,14 @@ fn swl_escape_scalar(cp: Char) -> String {
   else if cp == 13 { "\\r" }
   else if cp == 0 { "\\0" }
   else if cp < 32 || cp >= 127 { join(["\\u\{", int_to_upper_hex(n: cp), "\}"], "") }
-  else { char_text(c: cp) }
+  else {
+    match from_code_point(cp: cp) {
+      Ok { value: spelled } => spelled
+      // std.unicode.scalar refused it as a scalar: it is spelled by its code point, the same
+      // lossless escape a non-printable scalar takes, never dropped.
+      Err { value: _ } => join(["\\u\{", int_to_upper_hex(n: cp), "\}"], "")
+    }
+  }
 }
 
 fn swl_escape_text(s: String) -> String {

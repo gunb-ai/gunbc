@@ -95,14 +95,50 @@ fn escape_json_string(s: String) -> String {
 // code point below 0x20 is covered by construction, and none of the replacement texts contains a
 // code point a later pass splits on, so each original character escapes exactly once. Output bytes
 // are identical to the per-char fold's; only the building cost changes (DESIGN section 6).
-data json_named_escape_code_points: List<Int> = [8, 9, 10, 12, 13]
+// Each row spells its own delimiter through a LITERAL char_text, so no code point is computed and
+// no Int is asked to be a Char at run time (gunbc.recurring_failure_mode char_brand_admits_any_int).
+type JsonEscapeRow { code_point: Int, spelled: String }
 
-data json_control_escape_code_points: List<Int> = [
-  0, 1, 2, 3, 4, 5, 6, 7, 11, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+data json_named_escape_rows: List<JsonEscapeRow> = [
+  JsonEscapeRow { code_point: 8, spelled: char_text(c: 8) },
+  JsonEscapeRow { code_point: 9, spelled: char_text(c: 9) },
+  JsonEscapeRow { code_point: 10, spelled: char_text(c: 10) },
+  JsonEscapeRow { code_point: 12, spelled: char_text(c: 12) },
+  JsonEscapeRow { code_point: 13, spelled: char_text(c: 13) },
 ]
 
-fn json_escape_replace(s: String, code_point: Int, replacement: String) -> String {
-  join(split(s: s, delimiter: char_text(c: code_point)), replacement)
+data json_control_escape_rows: List<JsonEscapeRow> = [
+  JsonEscapeRow { code_point: 0, spelled: char_text(c: 0) },
+  JsonEscapeRow { code_point: 1, spelled: char_text(c: 1) },
+  JsonEscapeRow { code_point: 2, spelled: char_text(c: 2) },
+  JsonEscapeRow { code_point: 3, spelled: char_text(c: 3) },
+  JsonEscapeRow { code_point: 4, spelled: char_text(c: 4) },
+  JsonEscapeRow { code_point: 5, spelled: char_text(c: 5) },
+  JsonEscapeRow { code_point: 6, spelled: char_text(c: 6) },
+  JsonEscapeRow { code_point: 7, spelled: char_text(c: 7) },
+  JsonEscapeRow { code_point: 11, spelled: char_text(c: 11) },
+  JsonEscapeRow { code_point: 14, spelled: char_text(c: 14) },
+  JsonEscapeRow { code_point: 15, spelled: char_text(c: 15) },
+  JsonEscapeRow { code_point: 16, spelled: char_text(c: 16) },
+  JsonEscapeRow { code_point: 17, spelled: char_text(c: 17) },
+  JsonEscapeRow { code_point: 18, spelled: char_text(c: 18) },
+  JsonEscapeRow { code_point: 19, spelled: char_text(c: 19) },
+  JsonEscapeRow { code_point: 20, spelled: char_text(c: 20) },
+  JsonEscapeRow { code_point: 21, spelled: char_text(c: 21) },
+  JsonEscapeRow { code_point: 22, spelled: char_text(c: 22) },
+  JsonEscapeRow { code_point: 23, spelled: char_text(c: 23) },
+  JsonEscapeRow { code_point: 24, spelled: char_text(c: 24) },
+  JsonEscapeRow { code_point: 25, spelled: char_text(c: 25) },
+  JsonEscapeRow { code_point: 26, spelled: char_text(c: 26) },
+  JsonEscapeRow { code_point: 27, spelled: char_text(c: 27) },
+  JsonEscapeRow { code_point: 28, spelled: char_text(c: 28) },
+  JsonEscapeRow { code_point: 29, spelled: char_text(c: 29) },
+  JsonEscapeRow { code_point: 30, spelled: char_text(c: 30) },
+  JsonEscapeRow { code_point: 31, spelled: char_text(c: 31) },
+]
+
+fn json_escape_replace(s: String, delimiter: String, replacement: String) -> String {
+  join(split(s: s, delimiter: delimiter), replacement)
 }
 
 fn json_escape_named_replacement(code_point: Int) -> String {
@@ -118,27 +154,27 @@ fn json_escape_control_replacement(code_point: Int) -> String {
 }
 
 fn json_escape_via_passes(s: String) -> String {
-  let unslashed = json_escape_replace(s: s, code_point: 92, replacement: "\\\\")
-  let quoted = json_escape_replace(s: unslashed, code_point: 34, replacement: "\\\"")
+  let unslashed = json_escape_replace(s: s, delimiter: char_text(c: 92), replacement: "\\\\")
+  let quoted = json_escape_replace(s: unslashed, delimiter: char_text(c: 34), replacement: "\\\"")
   let named = fold(
-    json_named_escape_code_points,
+    json_named_escape_rows,
     init: quoted,
-    f: fn(acc, code_point) {
+    f: fn(acc, row) {
       json_escape_replace(
         s: acc,
-        code_point: code_point,
-        replacement: json_escape_named_replacement(code_point: code_point),
+        delimiter: row.spelled,
+        replacement: json_escape_named_replacement(code_point: row.code_point),
       )
     },
   )
   fold(
-    json_control_escape_code_points,
+    json_control_escape_rows,
     init: named,
-    f: fn(acc, code_point) {
+    f: fn(acc, row) {
       json_escape_replace(
         s: acc,
-        code_point: code_point,
-        replacement: json_escape_control_replacement(code_point: code_point),
+        delimiter: row.spelled,
+        replacement: json_escape_control_replacement(code_point: row.code_point),
       )
     },
   )
