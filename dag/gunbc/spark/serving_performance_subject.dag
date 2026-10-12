@@ -575,8 +575,31 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
   }
 }
 
+// UNREAD-ON-BOTH IS THE SPARK-GB10 JOIN BASIS, NOT A STANDING GAP. `subject_axis_is_unknown` therefore
+// stays false for an absent accelerator so existing Spark rows remain Established and two unread
+// accelerators still join. A cited realization against an unread Spark subject IS unread-on-one-side:
+// counting it only as a known SKU mismatch reports AxisDeltaOnOneAxis, which hides that one side was
+// never observed. That one-sided unread is folded here so the delta is WithUnreadAxes.
+fn serving_accelerator_unread_on_exactly_one_side(left: ServingPerformanceSubject, right: ServingPerformanceSubject) -> Bool {
+  match left.accelerator {
+    Absent => match right.accelerator {
+      Absent => false
+      Present { value: _ } => true
+    }
+    Present { value: _ } => match right.accelerator {
+      Absent => true
+      Present { value: _ } => false
+    }
+  }
+}
+
 fn either_side_unknown_axes(left: ServingPerformanceSubject, right: ServingPerformanceSubject) -> List<ServingSubjectAxis> {
-  filter(serving_subject_axes, a => subject_axis_is_unknown(s: left, a: a) || subject_axis_is_unknown(s: right, a: a))
+  filter(serving_subject_axes, a =>
+    if (serving_subject_axis_wire(a: a) as String) == (serving_subject_axis_wire(a: AxisAccelerator) as String) {
+      serving_accelerator_unread_on_exactly_one_side(left: left, right: right)
+    } else {
+      subject_axis_is_unknown(s: left, a: a) || subject_axis_is_unknown(s: right, a: a)
+    })
 }
 
 // A KNOWN DIFFERENCE IS ONE ON AN AXIS BOTH SIDES ACTUALLY READ. An axis unknown on either side is
