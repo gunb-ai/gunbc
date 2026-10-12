@@ -4,9 +4,9 @@ import v2.compiler.body_lowering_fold { body_lower_body_subtree_lower, body_lowe
 import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_realization, fold_recurrence_loop }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
+import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { node_atom_identity_optional }
+import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { ComputationNode, Node, Symbol, Transform }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
