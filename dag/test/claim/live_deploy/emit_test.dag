@@ -150,6 +150,8 @@ import gunbc.live_deploy.emit {
   Decide, Mutate,
   memory_cap_withheld_line,
   deploy_apply_frame_steps,
+  deploy_apply_frame_decide_steps,
+  deploy_apply_frame_mutate_steps,
   deploy_publication_principal_ensure_command,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
@@ -1627,9 +1629,10 @@ test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
 // SUPPLIED DECISION: a Refused Decide drops every Mutate, including ones listed after it.
 // RED on a compositor that still concatenates Mutate after an emit-time poison.
 test fn a_supplied_refused_decide_yields_zero_mutation_steps() -> Bool {
-  let planted = Mutate { steps: deploy_apply_frame_steps(spec: deployment_spec_srv1()) }
+  let planted = Mutate { member: "planted" as NonEmptyStr, steps: deploy_apply_frame_steps(spec: deployment_spec_srv1()) }
   let fragments = [
     Decide {
+      member: "refused" as NonEmptyStr,
       standing: HostScriptRefused { cause: "approval-broker helper grant NOT EMITTED" },
       steps: [],
     },
@@ -1637,6 +1640,23 @@ test fn a_supplied_refused_decide_yields_zero_mutation_steps() -> Bool {
   ]
   compose_host_script_mutate_steps(fragments: fragments).length() == 0
     && !string_contains(s: pipeline_steps_text(steps: compose_host_script(fragments: fragments).steps), pattern: "mktemp")
+}
+
+// A nonzero names its fragment: compose prefixes every Decide/Mutate step with a marker derived
+// from the fragment's member and the step index. RED if compose concatenates raw steps.
+test fn compose_traces_each_decide_and_mutate_step() -> Bool {
+  let spec = deployment_spec_srv1()
+  let fragments = [
+    Decide {
+      member: "probe" as NonEmptyStr,
+      standing: HostScriptProceed,
+      steps: deploy_apply_frame_decide_steps(spec: spec),
+    },
+    Mutate { member: "probe" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps() },
+  ]
+  let text = pipeline_steps_text(steps: compose_host_script(fragments: fragments).steps)
+  string_contains(s: text, pattern: "__GUNBC_HOST_SCRIPT_STEP__ Decide probe 0")
+    && string_contains(s: text, pattern: "__GUNBC_HOST_SCRIPT_STEP__ Mutate probe 0")
 }
 
 // INHABITANCE: withheld caps are a CONVERGE_WITHHELD report that still precedes binary/tree/unit

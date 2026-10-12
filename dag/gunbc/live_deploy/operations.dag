@@ -22,7 +22,7 @@ import extdeps.tools.gnu_coreutils {
   coreutils_install_owner_flag,
   coreutils_install_group_flag,
 }
-import extdeps.tools.diffutils { diffutils_cmp_program, diffutils_cmp_silent_flag }
+import extdeps.tools.diffutils { diffutils_cmp_program }
 import gunbc.fleet_posix_accounts { fleet_visudo_binary_path, fleet_cp_binary_path, fleet_mv_binary_path }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.shell_command_text {
@@ -237,11 +237,14 @@ fn deploy_stage_install_from_command(
   )
 }
 
+// NOT SILENT. `cmp -s` returns 2 when a operand is missing and prints nothing (cmp(1): -s
+// suppresses all normal output, including the "No such file" line). bright-moth-475's prod
+// apply ended host_effect_apply exit=2 after helpers visudo with no named command; that is
+// this flag. A missing or differing staged file must name both paths on stderr.
 fn deploy_stage_cmp_stages_command(left: String, right: String) -> String {
   shell_command_text_of_node(
     stmt: bash_build_command_with_words(words: [
       bash_build_word_lit(text: diffutils_cmp_program as String),
-      bash_build_word_lit(text: diffutils_cmp_silent_flag as String),
       deploy_stage_path_word(stage_name: left),
       deploy_stage_path_word(stage_name: right),
     ]),

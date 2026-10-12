@@ -1926,8 +1926,33 @@ type HostScriptStanding
   | HostScriptRefused { cause: String }
 
 type HostScriptFragment
-  = Decide { standing: HostScriptStanding, steps: List<PipelineStep> }
-  | Mutate { steps: List<PipelineStep> }
+  = Decide { member: NonEmptyStr, standing: HostScriptStanding, steps: List<PipelineStep> }
+  | Mutate { member: NonEmptyStr, steps: List<PipelineStep> }
+
+type HostScriptTraceAcc {
+  next: Int
+  steps: List<PipelineStep>
+}
+
+fn host_script_step_marker(kind: String, member: NonEmptyStr, index: Int) -> PipelineStep {
+  deploy_raw(command: join([
+    "printf '%s\\n' '__GUNBC_HOST_SCRIPT_STEP__ ",
+    kind,
+    " ",
+    member as String,
+    " ",
+    to_string(index),
+    "' >&2",
+  ], ""))
+}
+
+fn host_script_trace_steps(kind: String, member: NonEmptyStr, steps: List<PipelineStep>) -> List<PipelineStep> {
+  fold(steps, init: HostScriptTraceAcc { next: 0, steps: [] }, f: (acc, st) =>
+    HostScriptTraceAcc {
+      next: acc.next + 1,
+      steps: concat(acc.steps, [host_script_step_marker(kind: kind, member: member, index: acc.next), st]),
+    }).steps
+}
 
 fn host_script_standing_join(left: HostScriptStanding, right: HostScriptStanding) -> HostScriptStanding {
   match left {
@@ -1943,8 +1968,8 @@ fn host_script_standing_join(left: HostScriptStanding, right: HostScriptStanding
 
 fn host_script_fragment_standing(f: HostScriptFragment) -> HostScriptStanding {
   match f {
-    Decide { standing: s, steps: _ } => s
-    Mutate { steps: _ } => HostScriptProceed
+    Decide { member: _, standing: s, steps: _ } => s
+    Mutate { member: _, steps: _ } => HostScriptProceed
   }
 }
 
@@ -1955,8 +1980,8 @@ fn compose_host_script_standing(fragments: List<HostScriptFragment>) -> HostScri
 
 fn compose_host_script_decide_steps(fragments: List<HostScriptFragment>) -> List<PipelineStep> {
   flat_map(fragments, f => match f {
-    Decide { standing: _, steps: s } => s
-    Mutate { steps: _ } => []
+    Decide { member: m, standing: _, steps: s } => host_script_trace_steps(kind: "Decide", member: m, steps: s)
+    Mutate { member: _, steps: _ } => []
   })
 }
 
@@ -1965,13 +1990,13 @@ fn compose_host_script_mutate_steps(fragments: List<HostScriptFragment>) -> List
     HostScriptRefused { cause: _ } => []
     HostScriptProceed =>
       flat_map(fragments, f => match f {
-        Mutate { steps: s } => s
-        Decide { standing: _, steps: _ } => []
+        Mutate { member: m, steps: s } => host_script_trace_steps(kind: "Mutate", member: m, steps: s)
+        Decide { member: _, standing: _, steps: _ } => []
       })
     HostScriptWithheld { cause: _ } =>
       flat_map(fragments, f => match f {
-        Mutate { steps: s } => s
-        Decide { standing: _, steps: _ } => []
+        Mutate { member: m, steps: s } => host_script_trace_steps(kind: "Mutate", member: m, steps: s)
+        Decide { member: _, standing: _, steps: _ } => []
       })
   }
 }
@@ -2056,11 +2081,13 @@ fn deploy_memory_cap_decide_fragment(
   match cap_authorization_for_host(d: authorization, host: host) {
     CapAuthorizationWithheld { cause: why } =>
       Decide {
+        member: "memory-cap" as NonEmptyStr,
         standing: HostScriptProceed,
         steps: [deploy_raw(command: memory_cap_withheld_line(host: host, cause: why))],
       }
     CapAuthorizationRefused { cause: why } =>
       Decide {
+        member: "memory-cap" as NonEmptyStr,
         standing: HostScriptRefused { cause: why },
         steps: [deploy_raw(command: memory_cap_host_refused_command(host: host, cause: why))],
       }
@@ -2072,9 +2099,10 @@ fn deploy_memory_cap_decide_fragment(
           members: members,
           units: units,
         ) {
-        Decide { standing: HostScriptProceed, steps: [] }
+        Decide { member: "memory-cap" as NonEmptyStr, standing: HostScriptProceed, steps: [] }
       } else {
         Decide {
+          member: "memory-cap" as NonEmptyStr,
           standing: HostScriptRefused { cause: "memory-cap apply ordering gate failed" },
           steps: [deploy_raw(command: memory_cap_ordering_refused_command(host: host))],
         }
@@ -2089,10 +2117,10 @@ fn deploy_memory_cap_mutate_fragment(
 ) -> HostScriptFragment {
   let host = spec.target.host.identity
   match cap_authorization_for_host(d: authorization, host: host) {
-    CapAuthorizationWithheld { cause: _ } => Mutate { steps: [] }
-    CapAuthorizationRefused { cause: _ } => Mutate { steps: [] }
+    CapAuthorizationWithheld { cause: _ } => Mutate { member: "memory-cap" as NonEmptyStr, steps: [] }
+    CapAuthorizationRefused { cause: _ } => Mutate { member: "memory-cap" as NonEmptyStr, steps: [] }
     CapAuthorizedForThisHost { desired: members, authorized_retiring: _, target_units: units } =>
-      Mutate { steps: deploy_memory_cap_authorized_mutate_steps(spec: spec, members: members, units: units) }
+      Mutate { member: "memory-cap" as NonEmptyStr, steps: deploy_memory_cap_authorized_mutate_steps(spec: spec, members: members, units: units) }
   }
 }
 
@@ -2104,12 +2132,12 @@ fn deploy_memory_cap_apply_steps(
 ) -> List<PipelineStep> {
   concat(
     match deploy_memory_cap_decide_fragment(spec: spec, authorization: authorization) {
-      Decide { standing: _, steps: s } => s
-      Mutate { steps: s } => s
+      Decide { member: _, standing: _, steps: s } => s
+      Mutate { member: _, steps: s } => s
     },
     match deploy_memory_cap_mutate_fragment(spec: spec, authorization: authorization) {
-      Mutate { steps: s } => s
-      Decide { standing: _, steps: s } => s
+      Mutate { member: _, steps: s } => s
+      Decide { member: _, standing: _, steps: s } => s
     },
   )
 }
@@ -3686,8 +3714,9 @@ fn deploy_apply_frame_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   concat(deploy_apply_frame_decide_steps(spec: spec), deploy_apply_frame_mutate_steps())
 }
 
-fn host_script_decide_refused(cause: String, command: String) -> HostScriptFragment {
+fn host_script_decide_refused(member: NonEmptyStr, cause: String, command: String) -> HostScriptFragment {
   Decide {
+    member: member,
     standing: HostScriptRefused { cause: cause },
     steps: [deploy_raw(command: command)],
   }
@@ -3707,7 +3736,7 @@ fn owned_directory_refuse_fragments(spec: DeploymentSpec, plan: ReleaseEffectPla
     } else {
       match owned_directory_install_plan_of(t: t) {
         EnsurePlanUnavailable { reason } =>
-          [host_script_decide_refused(cause: reason, command: concat(owned_directory_unplannable_poison, reason))]
+          [host_script_decide_refused(member: "owned-directory" as NonEmptyStr, cause: reason, command: concat(owned_directory_unplannable_poison, reason))]
         EnsurePlanAvailable { plan: _ } =>
           match t {
             OwnedDirectoryDeclared { member: _, path: _, owner: _, mode: _ } => []
@@ -3715,6 +3744,7 @@ fn owned_directory_refuse_fragments(spec: DeploymentSpec, plan: ReleaseEffectPla
               match managed_directory_admit(d: directory) {
                 ManagedDirectoryRefused { member, path, writer } =>
                   [host_script_decide_refused(
+                    member: "owned-directory" as NonEmptyStr,
                     cause: join([member as String, " writer uncovered"], ""),
                     command: join([managed_directory_writer_uncovered_poison, member as String, " path=", path as String, " writer=", writer as String], ""),
                   )]
@@ -3726,6 +3756,7 @@ fn owned_directory_refuse_fragments(spec: DeploymentSpec, plan: ReleaseEffectPla
                         ManagedEntryModeDerived { mode: _ } => []
                         ManagedEntryModeRefused { member, path, reason } =>
                           [host_script_decide_refused(
+                            member: "owned-directory" as NonEmptyStr,
                             cause: reason as String,
                             command: join([managed_directory_entry_mode_refused_poison, member as String, " path=", path as String, " reason=", reason as String], ""),
                           )]
@@ -3742,6 +3773,7 @@ fn apply_oidc_refuse_fragments(spec: DeploymentSpec, oidc_now: Second?) -> List<
     LiveDeployOidcEnvAdmitted { directives: _ } => []
     LiveDeployOidcEnvRefused { cause } =>
       [host_script_decide_refused(
+        member: "oidc" as NonEmptyStr,
         cause: cause as String,
         command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
       )]
@@ -3753,11 +3785,13 @@ fn approval_broker_helper_grant_refuse_fragments(revision: ReleaseRevisionBindin
     HelperGrantAdmitted => []
     HelperGrantWordRefused { word: w } =>
       [host_script_decide_refused(
+        member: "helper-grant" as NonEmptyStr,
         cause: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }),
         command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w })),
       )]
     HelperGrantLocusWritableByGrantee { owner: o } =>
       [host_script_decide_refused(
+        member: "helper-grant" as NonEmptyStr,
         cause: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }),
         command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o })),
       )]
@@ -3799,6 +3833,7 @@ fn fabric_storage_refuse_fragments(spec: DeploymentSpec) -> List<HostScriptFragm
     Absent =>
       if spec_has_fabric_storage_apply_step(spec: spec) {
         [host_script_decide_refused(
+          member: "fabric-storage" as NonEmptyStr,
           cause: "fabric storage door unknown",
           command: join([fabric_storage_door_unknown_instance_poison, spec.instance_id as String, "\n"], ""),
         )]
@@ -3811,6 +3846,7 @@ fn fabric_storage_refuse_fragments(spec: DeploymentSpec) -> List<HostScriptFragm
 fn fleet_converge_timer_refuse_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
   if spec_has_fleet_converge_timer_step(spec: spec) {
     [host_script_decide_refused(
+      member: "fleet-converge-timer" as NonEmptyStr,
       cause: "FleetConvergeTimerUnit retired",
       command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)",
     )]
@@ -3850,21 +3886,22 @@ fn apply_intent_fragments(
   concat(
     concat(
       [
-        Decide { standing: HostScriptProceed, steps: deploy_apply_frame_decide_steps(spec: spec) },
+        Decide { member: "frame" as NonEmptyStr, standing: HostScriptProceed, steps: deploy_apply_frame_decide_steps(spec: spec) },
         deploy_memory_cap_decide_fragment(spec: spec, authorization: cap_authorization),
       ],
       apply_emit_time_refuse_fragments(spec: spec, plan: plan, oidc_now: oidc_now),
     ),
     [
-      Mutate { steps: deploy_apply_frame_mutate_steps() },
-      Mutate { steps: deploy_apply_preamble_steps(access: access, spec: spec) },
-      Mutate { steps: owned_directory_apply_steps(spec: spec, plan: plan) },
+      Mutate { member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps() },
+      Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },
+      Mutate { member: "owned-directory" as NonEmptyStr, steps: owned_directory_apply_steps(spec: spec, plan: plan) },
       deploy_memory_cap_mutate_fragment(spec: spec, authorization: cap_authorization),
       Mutate {
+        member: "spec-steps" as NonEmptyStr,
         steps: flat_map(spec.steps, step =>
           apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
       },
-      Mutate { steps: deploy_apply_receipt_steps(spec: spec) },
+      Mutate { member: "receipt" as NonEmptyStr, steps: deploy_apply_receipt_steps(spec: spec) },
     ],
   )
 }
@@ -4027,12 +4064,13 @@ fn approval_broker_dark_install_intent(
 ) -> Pipeline {
   compose_host_script(fragments: concat(
     concat(
-      [Decide { standing: HostScriptProceed, steps: [deploy_raw(command: deploy_shell_strict_options_command)] }],
+      [Decide { member: "frame" as NonEmptyStr, standing: HostScriptProceed, steps: [deploy_raw(command: deploy_shell_strict_options_command)] }],
       concat(
         match managed_directory_admit(d: approval_device_store_directory()) {
           ManagedDirectoryAdmitted { dir: _ } => []
           ManagedDirectoryRefused { member, path, writer } =>
             [host_script_decide_refused(
+              member: "owned-directory" as NonEmptyStr,
               cause: join([member as String, " writer uncovered"], ""),
               command: join([managed_directory_writer_uncovered_poison, member as String, " path=", path as String, " writer=", writer as String], ""),
             )]
@@ -4041,6 +4079,7 @@ fn approval_broker_dark_install_intent(
       ),
     ),
     [Mutate {
+      member: "dark-install" as NonEmptyStr,
       steps: concat(
         concat(
           [deploy_stage_directory_let_step()],

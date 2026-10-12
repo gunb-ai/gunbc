@@ -221,7 +221,8 @@ test fn the_grant_replaces_atomically_and_reads_back_identity_and_bytes() -> Boo
     && string_contains(s: step_text_at(i: 14), pattern: "'-c' '-O' '-P' '-f'")
     && ends_with(s: step_text_at(i: 14), suffix: concat(final_path, "'"))
     && string_contains(s: step_text_at(i: 15), pattern: final_path)
-    && starts_with(s: step_text_at(i: 16), prefix: "'cmp' '-s'")
+    && starts_with(s: step_text_at(i: 16), prefix: "'cmp'")
+    && !string_contains(s: step_text_at(i: 16), pattern: "'-s'")
     && string_contains(s: step_text_at(i: 17), pattern: "'!' '-name' '0123456789abcdef0123456789abcdef01234567' '-exec' '/usr/bin/sudo' '-n' '/usr/bin/rm' '-rf' '--' '{}' '+'")
 }
 
