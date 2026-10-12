@@ -41,7 +41,7 @@ import gunbc.ci.ci_spec { gunbc_ci_tier_o_drift_check_invoke }
 // (gunbc.tier_o_artifact_emit tier_o_artifacts) -- drifts without any PR touching it: a runner-host
 // row changes and the committed sudoers does not follow. This workflow reads the default branch on a
 // schedule, compares each committed file with its authority's emission, and fails the run with one
-// typed, located finding per drifted file, each naming its remedy (tools.tier_o_drift_check).
+// typed, located finding per drifted file, each naming its remedy (gunbc.instruments.tier_o_drift_check).
 // It holds read-only permissions and writes nothing; a failed run is a signal, never a gate -- it is
 // not a required context and is not triggered by a pull request or a merge_group.
 data drift_watch_workflow_name: String = "drift-watch"

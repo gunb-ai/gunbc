@@ -30,7 +30,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // trigger paths derive from `witness_layer_roots`, `src/v1/**` and `gunbc.seed_build_artifact_emit`
 // `seed_build_artifacts`), converges the stage0 mirrors with `claim_executor --regen-round-cost` to
 // first_generation_equal, writes the eleven seed-build artifacts without loading the registry
-// (`tools.seed_build_artifacts_regen`), and seals the changed files as a candidate;
+// (`gunbc.instruments.seed_build_artifacts_regen`), and seals the changed files as a candidate;
 // `gunbc.heal_publisher_workflow` re-derives it from the default branch and pushes ONE bot commit,
 // compare-and-set on the head sha, never forced, with a receipt comment naming each artifact. A fork
 // pull request gets a visible notice, not a repair. IT JUDGES NOTHING AND IS NOT A REQUIRED CONTEXT: a

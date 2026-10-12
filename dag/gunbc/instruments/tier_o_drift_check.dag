@@ -1,4 +1,4 @@
-module tools.tier_o_drift_check
+module gunbc.instruments.tier_o_drift_check
 
 import std.types { String, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
