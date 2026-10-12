@@ -12,7 +12,6 @@ import gunbc.spark.cell_role {
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
-import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, glm_group_b_serving_arm, spark_serving_arm_host_claims }
 import gunbc.spark.serving_subject {
   ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_eq,
@@ -20,7 +19,6 @@ import gunbc.spark.serving_subject {
   glm_group_b_serving_subject, spark_serving_reservations,
 }
 import gunbc.spark.host_commitment {
-  spark_claimed_members_under,
   spark_standing_of,
   spark_host_standings,
   spark_admissibility_to,
@@ -80,11 +78,14 @@ data fixture_duplicate_assignments: List<SparkCellRoleAssignment> = [
 
 // ── GROUP B AS FIXTURE ────────────────────────────────────────────────────────────────────────
 //
-// srv9-srv12 were sold 2026-10-10, so the production unit roster is empty (rung drop
-// `serving_fixtures_name_sold_group_b_hosts`). The serving subject still names them, so the
-// population these claims discriminate on is supplied here: the production placement, claim and
-// reservation rows folded over the four Group B identities. `production_unit_roster_is_empty` is the
-// inhabitance claim that keeps the real roster honest.
+// srv9-srv12 were sold 2026-10-10, so the production unit roster, arm-claim roster and reservation
+// roster are empty (rung drop `serving_fixtures_name_sold_group_b_hosts`; inhabitance:
+// `production_unit_roster_is_empty_and_standings_cover_no_host`,
+// `production_serving_reservations_are_empty_after_the_sale`). Folding those empty production rows
+// over the four sold identities answers Uncommitted for every host — a sold-hardware fact asserted
+// as live Group B placement. The discriminating population is supplied here, same pattern as
+// #13641 / #13776: fixture claims and one fixture reservation keyed on the surviving subject
+// identity (`glm_group_b_serving_arm` = disposal).
 data fixture_group_b_units: List<HostIdentity> = [operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12]
 
 data glm_canary_host_claim: ServingArmHostClaim = ServingArmHostClaim {
@@ -99,12 +100,35 @@ data fixture_group_b_ruling: ServingRulingCitation = ServingRulingCitation {
   ruled: "fixture: group B GLM reservation (hardware sold)" as NonEmptyStr,
 }
 
+fn fixture_group_b_arm_claim(host: HostIdentity) -> ServingArmHostClaim {
+  ServingArmHostClaim {
+    arm: glm_group_b_serving_arm,
+    host: host,
+    basis: "fixture: sold Group B GLM arm placement (#13641 / #13776)" as NonEmptyStr,
+  }
+}
+
+data fixture_group_b_arm_claims: List<ServingArmHostClaim> = [
+  fixture_group_b_arm_claim(host: operator_host_srv9),
+  fixture_group_b_arm_claim(host: operator_host_srv10),
+  fixture_group_b_arm_claim(host: operator_host_srv11),
+  fixture_group_b_arm_claim(host: operator_host_srv12),
+]
+
+data fixture_group_b_reservations: List<SparkServingReservation> = [
+  SparkServingReservation {
+    subject: glm_group_b_serving_subject,
+    hosts: fixture_group_b_units,
+    basis: fixture_group_b_ruling,
+  },
+]
+
 data group_b_standings: List<SparkHostStanding> = spark_host_standings_in(
   units: fixture_group_b_units,
   assignments: spark_cell_role_assignments,
-  claimed_group_members: spark_claimed_members_under(authorities: spark_pair_serving_authorities),
-  arm_claims: spark_serving_arm_host_claims,
-  serving_reservations: spark_serving_reservations,
+  claimed_group_members: [],
+  arm_claims: fixture_group_b_arm_claims,
+  serving_reservations: fixture_group_b_reservations,
   host_effects: [] as List<HostEffectRecord>,
 )
 
@@ -400,7 +424,7 @@ fn placed_by_the_group_b_arm(host: HostIdentity) -> Bool {
       any(spark_authority_held_causes_of(c: c), o => match o {
         OccupiedByServingArm { claim: claimed } =>
           host_identity_eq(a: claimed.host, b: host)
-            && string_contains(s: declaration_ref_display_key(ref: claimed.arm), pattern: "glm_group_b_serving_assignment")
+            && string_contains(s: declaration_ref_display_key(ref: claimed.arm), pattern: "dgx_spark_disposed_units")
         CommittedToCellRole { role: _ } => false
         MemberOfClaimedServingGroup { group: _ } => false
         OccupiedByHostEffect { purpose: _, executor: _ } => false
@@ -457,7 +481,7 @@ test fn the_group_b_head_host_is_committed_and_its_cause_names_the_assignment() 
                any(spark_authority_held_causes_of(c: c), o => match o {
                  OccupiedByServingArm { claim: claimed } =>
                    host_identity_eq(a: claimed.host, b: operator_host_srv9)
-                     && string_contains(s: declaration_ref_display_key(ref: claimed.arm), pattern: "glm_group_b_serving_assignment")
+                     && string_contains(s: declaration_ref_display_key(ref: claimed.arm), pattern: "dgx_spark_disposed_units")
                  CommittedToCellRole { role: _ } => false
                  MemberOfClaimedServingGroup { group: _ } => false
                  OccupiedByHostEffect { purpose: _, executor: _ } => false
