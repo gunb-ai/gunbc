@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.refinement_has_no_carrier
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data refinement_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
+  identity: "refinement_has_no_carrier" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a where clause refining the type of a fn parameter (`lifetime_seconds: Int where range(min: 1, max: 3600)`), a record field or an io field (`n: Int where range(min: 0)`), which v1 reads (`v1` `02_parse` `parse_param` / `parse_field`: type, refinement, wire key, default), and v2 has no way to carry the refinement on the lowered binder: the one where-clause reader (`v2.compiler.body_lowering_fold` `body_lower_kept_where_clause`) serves a type variant, and a parameter's or field's type is read by `body_lower_type_expr_lowered_optional`, which keeps the base type and drops the clause.",
+    "HARM: a parameter or field lowered without its refinement admits every value of the base type where the author narrowed it, silently -- the refinement is the binder's contract.",
+    "CONTAINED, NOT SILENT: the grammar parses the refinement in each position (`v2.extdeps.languages.dag` `dag_grammar_typed_param_expr` for a parameter, taken only where a clause is written; `dag_grammar_io_field_decl_expr`, the first slot of the field tail, for a record or io field) and body lowering refuses, located at the clause, with a distinct reason per position: `body_lowering_reason_parameter_refinement_unmodeled` (`body_lower_param_refinement_refusal_optional`, both arms) and `body_lowering_reason_field_refinement_unmodeled` (`body_lower_first_field_refinement_optional` for a record, `body_lower_io_item_step` for an io block). The module refuses at normalize. Before the field case the form did not parse, which refused the module at the parse population without naming the cause.",
+    "RUNG FOUND AT: mitigated (typed, located refusal). CEILING: structurally impossible -- a binder's refinement is part of its lowered type. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a parameter's or field's lowered type carries its where-clause refinement, read through the one where-clause reader type variants use rather than a second one, so neither `body_lowering_reason_parameter_refinement_unmodeled` nor `body_lowering_reason_field_refinement_unmodeled` has a producer.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_parses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_refuses_at_its_clause_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_parses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_refuses_at_its_clause_holds", field: WholeDeclaration },
+  ],
+}

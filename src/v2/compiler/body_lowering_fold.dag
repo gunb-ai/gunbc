@@ -4435,7 +4435,7 @@ fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outco
 // reader of a where clause (body_lower_kept_where_clause) serves a type variant; a parameter's type
 // is read by body_lower_type_expr_lowered_optional, which would keep the base type and drop the
 // refinement. So until a parameter's type can carry its refinement the fn refuses
-// (gunbc.recurring_failure_mode parameter_refinement_has_no_carrier). The clause is searched only
+// (gunbc.recurring_failure_mode refinement_has_no_carrier). The clause is searched only
 // inside this declaration's own param_list.
 // A parameter's DEFAULT is not refused here any more: it lowers onto the parameter's binder
 // (body_lower_typed_param_optional, body_lower_binder_edge_read; XL-2 PR2c-ii).
