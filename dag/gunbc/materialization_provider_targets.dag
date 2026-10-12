@@ -106,7 +106,8 @@ data evaluation_store_address_producer: DeclarationRef = target_decl(
 
 data evaluation_store_address_production_consumers: List<DeclarationRef> = [
   target_decl(module_path: "std.materialization_provider", decl_name: "addressed_request"),
-  target_decl(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency")
+  target_decl(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency"),
+  target_decl(module_path: "gunbc.instruments.native_materialization_store_closure", decl_name: "identity_address_text")
 ]
 
 data evaluation_store_address_persist_callers_expected: List<DeclarationRef> = [
@@ -117,7 +118,8 @@ data evaluation_store_address_persist_callers_expected: List<DeclarationRef> = [
 data evaluation_store_address_admitted_consumers_expected: List<DeclarationRef> = [
   target_decl(module_path: "std.materialization_object", decl_name: "store_lookup_from_address"),
   target_decl(module_path: "std.materialization_object", decl_name: "store_commit_prepare_admitted"),
-  target_decl(module_path: "std.materialization_object", decl_name: "store_object_name")
+  target_decl(module_path: "std.materialization_object", decl_name: "store_object_name"),
+  target_decl(module_path: "gunbc.instruments.native_materialization_store_closure", decl_name: "identity_address_text")
 ]
 
 fn evaluation_store_address_ref_in(wanted: DeclarationRef, xs: List<DeclarationRef>) -> Bool {
