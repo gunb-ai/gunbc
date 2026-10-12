@@ -35,6 +35,7 @@ import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
 import v2.workflow.realization_attempt {
   PhaseInfer,
+  PhaseTranslate,
   V2RealizationRefused,
   V2TranslateSerialized,
   attempt_assembled
@@ -376,8 +377,8 @@ test fn attempt_joined_admits_in_module_construction_of_a_sealed_type_holds() ->
     V2TranslateSerialized { emitted_nonempty: _ } => true
     V2RealizationRefused { phase: p, exact_cause: _, located: _ } =>
       match p {
-        PhaseInfer => false
-        _ => true
+        PhaseTranslate => true
+        _ => false
       }
   }
 }
