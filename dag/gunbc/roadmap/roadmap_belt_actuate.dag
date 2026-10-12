@@ -33,13 +33,17 @@ import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_au
 import gunbc.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
 import gunbc.dispatch_credential_snapshot {
   TakenCredentialSnapshot,
-  taken_credential_snapshot_path,
+  CredentialSnapshotSubject,
   dispatch_credential_snapshot_discard,
+  CredentialSnapshotRemoved,
+  CredentialSnapshotLeftToItsAttempt,
+  CredentialSnapshotRemovalFailed,
   NoCredentialSnapshot,
   CredentialSnapshotHeld,
 }
 import gunbc.roadmap_dispatch_actuator {
   DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request,
+  dispatch_credential_snapshot_subject_for_instance,
   RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded,
   filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name,
   dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
@@ -2136,8 +2140,10 @@ fn belt_footprint_admission_for_instance(
 // any SpawnFailed -- never launches that child, so the snapshot would outlive the attempt. The
 // decision is a pure fold over the outcome so every arm is witnessed; the discard is applied once,
 // here, around everything that follows selection, and it removes the snapshot the selection took --
-// never a path re-derived here. A selection that took none holds NoCredentialSnapshot and passes
-// through unchanged.
+// never a path re-derived here -- and only when that snapshot was taken for THIS attempt: an attempt
+// holding another attempt's snapshot (which the spawn fold refuses to launch) leaves that file for its
+// own attempt rather than removing what another child is about to read. A selection that took none
+// holds NoCredentialSnapshot and passes through unchanged.
 type BeltSnapshotDisposition
   = SnapshotConsumedByChild
   | SnapshotDiscardRequired
@@ -2153,6 +2159,7 @@ fn belt_snapshot_disposition(outcome: BeltSpawnOutcome) -> BeltSnapshotDispositi
 
 fn belt_snapshot_owned_outcome(
   snapshot: TakenCredentialSnapshot,
+  attempt: CredentialSnapshotSubject,
   provider_wire_label: String,
   launch: LaunchIdentity,
   outcome: BeltSpawnOutcome,
@@ -2160,16 +2167,17 @@ fn belt_snapshot_owned_outcome(
   match belt_snapshot_disposition(outcome: outcome) {
     SnapshotConsumedByChild => outcome
     SnapshotDiscardRequired =>
-      if dispatch_credential_snapshot_discard(snapshot: snapshot) {
-        outcome
-      } else {
-        SpawnFailed {
-          node_id: launch.node_id as String,
-          step: "credential-snapshot-discard",
-          detail: join(["the attempt did not launch its provider, and its credential snapshot ", taken_credential_snapshot_path(snapshot: snapshot) as String, " could not be removed"], ""),
-          provider: provider_wire_label,
-          launch: launch,
-        }
+      match dispatch_credential_snapshot_discard(snapshot: snapshot, attempt: attempt) {
+        CredentialSnapshotRemoved => outcome
+        CredentialSnapshotLeftToItsAttempt { reason: _ } => outcome
+        CredentialSnapshotRemovalFailed { reason } =>
+          SpawnFailed {
+            node_id: launch.node_id as String,
+            step: "credential-snapshot-discard",
+            detail: join(["the attempt did not launch its provider, and ", reason as String], ""),
+            provider: provider_wire_label,
+            launch: launch,
+          }
       }
   }
 }
@@ -2211,11 +2219,12 @@ fn belt_actuate_spawn_for_instance(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
+      let attempt_key = dispatch_attempt_key(node_id: node.node, probed_at: probed_at)
       let selection = dispatch_actuator_selection_for_request(
         instance: instance,
         request: executor,
         node_id: node.node,
-        attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
+        attempt_key: attempt_key,
         sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
       )
       match selection {
@@ -2262,6 +2271,9 @@ fn belt_actuate_spawn_for_instance(
             CredentialSnapshotHeld { snapshot } =>
               belt_snapshot_owned_outcome(
                 snapshot: snapshot,
+                attempt: dispatch_credential_snapshot_subject_for_instance(
+                  instance: instance, node_id: node.node, attempt_key: attempt_key, provider: provider,
+                ),
                 provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
                 launch: launch,
                 outcome: post_selection,

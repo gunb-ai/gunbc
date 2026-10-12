@@ -231,6 +231,9 @@ import gunbc.dispatch_credential_snapshot {
   DispatchSnapshotRefused,
   dispatch_credential_snapshot_take,
   dispatch_credential_snapshot_discard,
+  CredentialSnapshotRemoved,
+  CredentialSnapshotLeftToItsAttempt,
+  CredentialSnapshotRemovalFailed,
   AttemptCredentialSnapshot,
   NoCredentialSnapshot,
   CredentialSnapshotHeld,
@@ -610,6 +613,22 @@ fn held_snapshot_for_another_attempt(
   }
 }
 
+// A selection that refuses after its take discards the snapshot it took, for the attempt it took it
+// for; a discard that does not remove it is appended to the refusal, never dropped.
+fn selection_refused_discarding(
+  reason: NonEmptyStr,
+  snapshot: TakenCredentialSnapshot,
+  attempt: CredentialSnapshotSubject,
+) -> DispatchActuatorSelection {
+  match dispatch_credential_snapshot_discard(snapshot: snapshot, attempt: attempt) {
+    CredentialSnapshotRemoved => DispatchActuatorSelectionRefused { reason: reason }
+    CredentialSnapshotLeftToItsAttempt { reason: left } =>
+      DispatchActuatorSelectionRefused { reason: join([reason as String, "; and ", left as String], "") as NonEmptyStr }
+    CredentialSnapshotRemovalFailed { reason: failed } =>
+      DispatchActuatorSelectionRefused { reason: join([reason as String, "; and ", failed as String], "") as NonEmptyStr }
+  }
+}
+
 // THE EXPLICIT CLAUDE DRAW OBSERVES BEFORE IT SELECTS. The declared Claude row's standing admits no
 // draw, so selection over it would always refuse; this snapshots the credential, runs the standing
 // trip under that snapshot, projects the CLI's own report (gunbc.claude_code_limit_standing),
@@ -698,16 +717,13 @@ fn dispatch_actuator_claude_selection_observed(
   let snapshot_path = dispatch_credential_snapshot_path_for_instance(
     instance: instance, node_id: node_id, attempt_key: attempt_key, provider: ClaudeCodeProvider,
   )
+  let subject = dispatch_credential_snapshot_subject_for_instance(
+    instance: instance, node_id: node_id, attempt_key: attempt_key, provider: ClaudeCodeProvider,
+  )
   match claude_credential_custody_source() {
     ClaudeCustodyUnbound { reason } => DispatchActuatorSelectionRefused { reason: reason }
     ClaudeCustodyFile { path: custody } =>
-      match dispatch_credential_snapshot_take(
-        subject: dispatch_credential_snapshot_subject_for_instance(
-          instance: instance, node_id: node_id, attempt_key: attempt_key, provider: ClaudeCodeProvider,
-        ),
-        source: custody,
-        snapshot: snapshot_path,
-      ) {
+      match dispatch_credential_snapshot_take(subject: subject, source: custody, snapshot: snapshot_path) {
         DispatchSnapshotRefused { reason } => DispatchActuatorSelectionRefused { reason: reason }
         DispatchSnapshotTaken { snapshot } =>
           match resolve_dispatch_selection(
@@ -728,13 +744,7 @@ fn dispatch_actuator_claude_selection_observed(
                 credential_snapshot: CredentialSnapshotHeld { snapshot: snapshot },
               }
             DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason } =>
-              if dispatch_credential_snapshot_discard(snapshot: snapshot) {
-                DispatchActuatorSelectionRefused { reason: reason }
-              } else {
-                DispatchActuatorSelectionRefused {
-                  reason: join([reason as String, "; and the credential snapshot ", taken_credential_snapshot_path(snapshot: snapshot) as String, " could not be removed"], "") as NonEmptyStr,
-                }
-              }
+              selection_refused_discarding(reason: reason, snapshot: snapshot, attempt: subject)
           }
       }
   }
@@ -823,13 +833,10 @@ fn cursor_selection_observed(
     let snapshot_path = dispatch_credential_snapshot_path_for_instance(
       instance: instance, node_id: node_id, attempt_key: attempt_key, provider: CursorDispatchProvider,
     )
-    match dispatch_credential_snapshot_take(
-      subject: dispatch_credential_snapshot_subject_for_instance(
-        instance: instance, node_id: node_id, attempt_key: attempt_key, provider: CursorDispatchProvider,
-      ),
-      source: cursor_worker_turn_api_key_host_path,
-      snapshot: snapshot_path,
-    ) {
+    let subject = dispatch_credential_snapshot_subject_for_instance(
+      instance: instance, node_id: node_id, attempt_key: attempt_key, provider: CursorDispatchProvider,
+    )
+    match dispatch_credential_snapshot_take(subject: subject, source: cursor_worker_turn_api_key_host_path, snapshot: snapshot_path) {
       DispatchSnapshotRefused { reason } => DispatchActuatorSelectionRefused { reason: reason }
       DispatchSnapshotTaken { snapshot } => {
         let selection = worker_turn_selection_of(
@@ -845,13 +852,7 @@ fn cursor_selection_observed(
         match selection {
           DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => selection
           DispatchActuatorSelectionRefused { reason } =>
-            if dispatch_credential_snapshot_discard(snapshot: snapshot) {
-              selection
-            } else {
-              DispatchActuatorSelectionRefused {
-                reason: join([reason as String, "; and the credential snapshot ", taken_credential_snapshot_path(snapshot: snapshot) as String, " could not be removed"], "") as NonEmptyStr,
-              }
-            }
+            selection_refused_discarding(reason: reason, snapshot: snapshot, attempt: subject)
         }
       }
     }
