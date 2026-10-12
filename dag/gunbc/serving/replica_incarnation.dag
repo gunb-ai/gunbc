@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
 import std.algebra { trim }
 import std.decimal { ExactDecimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_multiply, checked_int_add, CheckedIntReady, CheckedIntOverflow }
-import std.measure { Hertz, hertz, hertz_count }
+import std.measure { Hertz, hertz, hertz_count, ClockTickCount, clock_tick_count, clock_tick_count_value }
 import std.content_hash { ContentHash }
 import product.fabric.demand { ObservationReceiptRef }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
@@ -30,8 +30,11 @@ import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch }
 // exports process_start_time_seconds as btime + starttime/CLK_TCK, and this reads the same btime, tick
 // rate and starttime of every process matching the engine binary: the one whose reading EQUALS the
 // exported decimal, as integers with no rounding, is the process that answered. Two agreeing candidates
-// or none refuse; the nearest is never taken. The executable's digest is read off /proc/<pid>/exe so a
-// replaced binary under the same start field cannot be mistaken for the same launch.
+// or none refuse; the nearest is never taken. The executable's digest is RECORDED off /proc/<pid>/exe as
+// evidence about the answering process; it is not compared against any earlier launch, so it does not
+// detect a binary replaced under the same start field. What keeps the digest attributable is the
+// generation: the start ticks are read again after the digest and a changed or unread generation is
+// Unread.
 //
 // WHAT THIS DOES NOT ESTABLISH, STATED SO THE STANDING IS NOT READ AS MORE: it binds the exporting
 // process to the host and to an executable digest. It does not compare the process's flags with the
@@ -58,7 +61,7 @@ fn replica_incarnation_unread(cause: String) -> ReplicaIncarnationStanding {
 // exported = units / 10^scale; computed = (btime * ticks + starttime) / ticks. Equal exactly when
 // units * ticks == (btime * ticks + starttime) * 10^scale, so no division occurs. Every integer step is
 // checked: a magnitude outrunning i64 is not a match, never a wrapped equality that fabricates one.
-fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_seconds: EpochSecs, ticks_per_second: Hertz, start_ticks: Int) -> Bool {
+fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_seconds: EpochSecs, ticks_per_second: Hertz, start_ticks: ClockTickCount) -> Bool {
   let ticks = hertz_count(h: ticks_per_second)
   match checked_int_multiply(a: exported.units, b: ticks) {
     CheckedIntOverflow { cause: _ } => false
@@ -66,7 +69,7 @@ fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_second
       match checked_int_multiply(a: boot_epoch_seconds, b: ticks) {
         CheckedIntOverflow { cause: _ } => false
         CheckedIntReady { value: boot_ticks } =>
-          match checked_int_add(a: boot_ticks, b: start_ticks) {
+          match checked_int_add(a: boot_ticks, b: clock_tick_count_value(t: start_ticks)) {
             CheckedIntOverflow { cause: _ } => false
             CheckedIntReady { value: since_epoch_ticks } =>
               match checked_int_multiply(a: since_epoch_ticks, b: decimal_pow10(exponent: exported.fraction_digits)) {
@@ -80,7 +83,7 @@ fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_second
 
 type ProcessStartReading {
   pid: Int
-  start_ticks: Int
+  start_ticks: ClockTickCount
 }
 
 type ProcessJoin
@@ -128,7 +131,7 @@ fn read_candidate_starts(transport: HostEffectTransport, pids: List<Int>) -> Can
           HostTextRefused { cause: c } => CandidateUnread { cause: join(["pid ", to_string(pid), " stat: ", c], "") }
           HostTextObserved { stdout: text } =>
             match proc_pid_stat_start_time(content: text) {
-              StartTimeObserved { ticks_since_boot: st } => CandidatesRead { readings: append(rs, ProcessStartReading { pid: pid, start_ticks: st }) }
+              StartTimeObserved { ticks_since_boot: st } => CandidatesRead { readings: append(rs, ProcessStartReading { pid: pid, start_ticks: clock_tick_count(count: st) }) }
               StartTimeCommUnterminated => CandidateUnread { cause: join(["pid ", to_string(pid), " stat has no terminated comm field"], "") }
               StartTimeFieldAbsent { fields_after_comm: _ } => CandidateUnread { cause: join(["pid ", to_string(pid), " stat has too few fields"], "") }
               StartTimeUnparseable { field: f } => CandidateUnread { cause: join(["pid ", to_string(pid), " starttime `", f, "` is not an integer"], "") }
@@ -153,26 +156,35 @@ fn reread_start(transport: HostEffectTransport, pid: Int) -> ProcessStartReading
   }
 }
 
+// THE POST-DIGEST DECISION, PURE OVER THE TWO READINGS IT JOINS: the digest line read off the exe, and the
+// start ticks read again after it. Hermetic transports publish one constant per operation, so a
+// first-then-second read cannot be replayed through the transport; the decision is therefore its own
+// function and bind_executable, its only caller, supplies the readings.
+fn bind_digested_executable(launch: ReplicaEndpointLaunch, joined: ProcessStartReading, digest_line: String, reread: ProcessStartReading?) -> ReplicaIncarnationStanding {
+  let pid = joined.pid
+  match sha256sum_line_digest(line: digest_line) {
+    Absent => replica_incarnation_unread(cause: "the executable digest line carried no sha256")
+    Present { value: d } =>
+      match sha256_digest_content_hash(digest: d) {
+        Absent => replica_incarnation_unread(cause: "the executable digest is not a sha256")
+        Present { value: h } =>
+          if !same_generation(joined: joined, reread: reread) {
+            replica_incarnation_unread(cause: join(["pid ", to_string(pid), " did not keep the generation joined to the exported instant across the executable read, so the digest cannot be attributed to the answering process"], ""))
+          } else {
+            ReplicaIncarnationBound {
+              incarnation: ReplicaIncarnation { launch: launch, pid: pid, executable_digest: h, receipt: replica_incarnation_receipt },
+            }
+          }
+      }
+  }
+}
+
 fn bind_executable(transport: HostEffectTransport, launch: ReplicaEndpointLaunch, joined: ProcessStartReading) -> ReplicaIncarnationStanding {
   let pid = joined.pid
   match host_read_text(transport: transport, operation: Sha256SumFile { path: join(["/proc/", to_string(pid), "/exe"], "") as NonEmptyStr }) {
     HostTextRefused { cause: c } => replica_incarnation_unread(cause: join(["the executable of pid ", to_string(pid), " could not be digested: ", c], ""))
     HostTextObserved { stdout: line } =>
-      match sha256sum_line_digest(line: line) {
-        Absent => replica_incarnation_unread(cause: "the executable digest line carried no sha256")
-        Present { value: d } =>
-          match sha256_digest_content_hash(digest: d) {
-            Absent => replica_incarnation_unread(cause: "the executable digest is not a sha256")
-            Present { value: h } =>
-              if !same_generation(joined: joined, reread: reread_start(transport: transport, pid: pid)) {
-                replica_incarnation_unread(cause: join(["pid ", to_string(pid), " did not keep the generation joined to the exported instant across the executable read, so the digest cannot be attributed to the answering process"], ""))
-              } else {
-              ReplicaIncarnationBound {
-                incarnation: ReplicaIncarnation { launch: launch, pid: pid, executable_digest: h, receipt: replica_incarnation_receipt },
-              }
-              }
-          }
-      }
+      bind_digested_executable(launch: launch, joined: joined, digest_line: line, reread: reread_start(transport: transport, pid: pid))
   }
 }
 
