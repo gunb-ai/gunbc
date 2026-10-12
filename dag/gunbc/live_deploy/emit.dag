@@ -3196,29 +3196,29 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
     ] }
-    UnitFile => concat(
-      if !plan_writes_unit(plan: plan) { [] } else { concat(
-        apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
-        match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
-          LiveDeployServeUnitEmitted { file } => concat(
+    UnitFile => match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
+      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => []
+      LiveDeployServeUnitEmitted { file } => concat(
+        if !plan_writes_unit(plan: plan) { [] } else { concat(
+          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
+          concat(
             apply_systemd_unit_write_steps(spec: spec, file: file),
             [deploy_raw(command: deploy_stage_install_command(
               stage_name: spec.service.unit_name as String,
               mode: install_file_shared_mode,
               dest: deployment_systemd_unit_path(names: spec.names) as String,
             ))],
-          )
-          LiveDeployServeUnitOidcReadbackRefused { cause: _ } => []
-        },
-      ) },
-      concat(
-        if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
-        if !plan_restarts_process(plan: plan) { [] } else { concat([
-          deploy_effect(inv: systemctl_enable_effect(unit: plan.target.unit)),
-          deploy_effect(inv: systemctl_restart_effect(unit: plan.target.unit)),
-        ], approval_broker_lifecycle_steps(spec: spec)) },
-      ),
-    )
+          ),
+        ) },
+        concat(
+          if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
+          if !plan_restarts_process(plan: plan) { [] } else { concat([
+            deploy_effect(inv: systemctl_enable_effect(unit: plan.target.unit)),
+            deploy_effect(inv: systemctl_restart_effect(unit: plan.target.unit)),
+          ], approval_broker_lifecycle_steps(spec: spec)) },
+        ),
+      )
+    }
     UnitManager => []
     ServiceProcess => []
     DirectoryRoot { path: _ } => []
@@ -3292,30 +3292,30 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
     ]))
-    SystemdUnit => concat(
-      concat(
-        match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
-          LiveDeployServeUnitEmitted { file } => concat(
+    SystemdUnit => match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
+      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => []
+      LiveDeployServeUnitEmitted { file } => concat(
+        concat(
+          concat(
             apply_systemd_unit_write_steps(spec: spec, file: file),
             [deploy_raw(command: deploy_stage_install_command(
               stage_name: spec.service.unit_name as String,
               mode: install_file_shared_mode,
               dest: art.path as String,
             ))],
-          )
-          LiveDeployServeUnitOidcReadbackRefused { cause: _ } => []
-        },
-        apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
-      ),
-      concat(
-        [
-          deploy_effect(inv: systemctl_daemon_reload_effect()),
-          deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
-          deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
-        ],
-        approval_broker_lifecycle_steps(spec: spec),
-      ),
-    )
+          ),
+          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
+        ),
+        concat(
+          [
+            deploy_effect(inv: systemctl_daemon_reload_effect()),
+            deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
+            deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
+          ],
+          approval_broker_lifecycle_steps(spec: spec),
+        ),
+      )
+    }
     PublicationHelperPathUnit => concat(
       concat(
         apply_publication_spool_steps(spec: spec),
