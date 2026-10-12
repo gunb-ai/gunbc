@@ -326,10 +326,10 @@ fn resume_waiting_durable(root: NonEmptyStr, work: LogicalWorkId) -> ResumeStand
 }
 
 // Ready supply oscillating (2 -> 0 -> 1 -> 2) does not expire a waiting turn and does not mint a
-// new identity. apply_ready_supply is the step that WOULD delete on zero if expiry were a law;
-// it keeps the waiting record for every reading, including zero. offer_against_ready_supply is
-// what a controller does with that reading: zero supply is not unpersisted work, it is waiting
-// with no replica ready to take it.
+// new identity. apply_ready_supply_law is the transition: ExpireWaitingOnZeroSupply drops the
+// waiting record at ready == 0; KeepWaitingAcrossZeroSupply is the admitted law and keeps it.
+// offer_against_ready_supply is what a controller does with that reading: zero supply is not
+// unpersisted work, it is waiting with no replica ready to take it.
 type ReadyOffer
   = SupplyReady { record: CallerWorkRecord }
   | SupplyAbsentWaiting { record: CallerWorkRecord }
@@ -358,17 +358,40 @@ fn offer_against_ready_supply(
   }
 }
 
-fn apply_ready_supply(
+type ReadySupplyLaw
+  = KeepWaitingAcrossZeroSupply
+  | ExpireWaitingOnZeroSupply
+
+fn drop_record(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CallerBacklogSnapshot {
+  CallerBacklogSnapshot {
+    records: filter(snapshot.records, r => !logical_work_eq(a: r.work, b: work)),
+  }
+}
+
+fn apply_ready_supply_law(
+  law: ReadySupplyLaw,
   snapshot: CallerBacklogSnapshot,
   work: LogicalWorkId,
   ready: Nat,
 ) -> CallerBacklogSnapshot {
   match offer_against_ready_supply(snapshot: snapshot, work: work, ready: ready) {
     SupplyReady { record: _ } => snapshot
-    SupplyAbsentWaiting { record: _ } => snapshot
+    SupplyAbsentWaiting { record: _ } =>
+      match law {
+        KeepWaitingAcrossZeroSupply => snapshot
+        ExpireWaitingOnZeroSupply => drop_record(snapshot: snapshot, work: work)
+      }
     SupplyUnknownWork => snapshot
     SupplyTerminal { phase: _ } => snapshot
   }
+}
+
+fn apply_ready_supply(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  ready: Nat,
+) -> CallerBacklogSnapshot {
+  apply_ready_supply_law(law: KeepWaitingAcrossZeroSupply, snapshot: snapshot, work: work, ready: ready)
 }
 
 fn waiting_survives_ready_supply(
@@ -538,7 +561,7 @@ data persist_before_offer_basis_ref: DeclarationRef = decl_ref(module_path: "gun
 data retriable_refusal_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "caller_retry_disposition")
 data stable_turn_identity_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "resume_waiting_durable")
 data idempotent_retry_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable")
-data no_expiry_on_long_wait_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "waiting_survives_ready_supply")
+data no_expiry_on_long_wait_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "apply_ready_supply_law")
 data durable_cancellation_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "cancel_work")
 data no_double_execution_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "commit_attempt")
 

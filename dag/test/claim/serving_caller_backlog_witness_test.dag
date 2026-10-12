@@ -20,7 +20,8 @@ import gunbc.serving.caller_backlog {
   RetryComeBack, RetryTerminal,
   empty_caller_backlog, persist_waiting, snapshot_after_persist, offer_persisted,
   resume_from_snapshot, view_after_controller_restart, resume_after_restart,
-  waiting_survives_ready_supply, apply_ready_supply, offer_against_ready_supply,
+  waiting_survives_ready_supply, apply_ready_supply, apply_ready_supply_law, offer_against_ready_supply,
+  KeepWaitingAcrossZeroSupply, ExpireWaitingOnZeroSupply,
   SupplyReady, SupplyAbsentWaiting, SupplyUnknownWork, SupplyTerminal,
   commit_attempt, snapshot_after_commit,
   cancel_work, snapshot_after_cancel, note_recovery, caller_retry_disposition, lookup_record,
@@ -106,8 +107,22 @@ test fn w_waiting_survives_ready_supply_drop_and_controller_restart_without_nudg
   let after_supply = waiting_survives_ready_supply(snapshot: durable, work: work_a, supplies: supplies)
   let view = view_after_controller_restart(durable: durable)
   let after_zero = apply_ready_supply(snapshot: durable, work: work_a, ready: 0)
+  let expired = apply_ready_supply_law(
+    law: ExpireWaitingOnZeroSupply,
+    snapshot: durable,
+    work: work_a,
+    ready: 0,
+  )
+  let kept = apply_ready_supply_law(
+    law: KeepWaitingAcrossZeroSupply,
+    snapshot: durable,
+    work: work_a,
+    ready: 0,
+  )
   (match after_supply { ResumedWaiting { record: r } => (r.work as String) == (work_a as String)  ResumedTerminal { phase: _ } => false  ResumeUnknownWork => false })
     && is_waiting(s: after_zero)
+    && (match resume_from_snapshot(snapshot: expired, work: work_a) { ResumeUnknownWork => true  ResumedWaiting { record: _ } => false  ResumedTerminal { phase: _ } => false })
+    && (match resume_from_snapshot(snapshot: kept, work: work_a) { ResumedWaiting { record: r } => (r.work as String) == (work_a as String)  ResumedTerminal { phase: _ } => false  ResumeUnknownWork => false })
     && (match offer_against_ready_supply(snapshot: after_zero, work: work_a, ready: 0) { SupplyAbsentWaiting { record: r } => (r.work as String) == (work_a as String)  SupplyReady { record: _ } => false  SupplyUnknownWork => false  SupplyTerminal { phase: _ } => false })
     && (match offer_against_ready_supply(snapshot: durable, work: work_a, ready: 2) { SupplyReady { record: r } => (r.work as String) == (work_a as String)  SupplyAbsentWaiting { record: _ } => false  SupplyUnknownWork => false  SupplyTerminal { phase: _ } => false })
     && (match resume_from_snapshot(snapshot: view.memory, work: work_a) { ResumeUnknownWork => true  ResumedWaiting { record: _ } => false  ResumedTerminal { phase: _ } => false })
