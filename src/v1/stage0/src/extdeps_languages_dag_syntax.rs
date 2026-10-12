@@ -353,3 +353,45 @@ pub fn dag_parse_environment() -> Rc<ParseEnvironment> {
         }
     CACHED.with(|c: &Rc<ParseEnvironment>| c.clone())
 }
+
+pub fn strip_line_comment_delimiter(lexeme: String) -> String {
+    {
+        let len = v1_rt::string_length(&lexeme);
+        if v1_rt::starts_with(lexeme.clone(), "// ".to_string()) {
+            v1_rt::substring(&lexeme, 3, len.clone())
+        } else {
+            if v1_rt::starts_with(lexeme.clone(), "//".to_string()) {
+                v1_rt::substring(&lexeme, 2, len.clone())
+            } else {
+                lexeme.clone()
+            }
+        }
+    }
+}
+
+pub fn render_line_comment_delimiter(line: String) -> String {
+    if (v1_rt::string_length(&line) == 0) {
+        "//".to_string()
+    } else {
+        v1_rt::concat("// ".to_string(), line.clone())
+    }
+}
+
+pub fn render_annotation_block(text: String) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for line in Rc::new(
+            text.clone()
+                .split(&"\n".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            __result.push(render_line_comment_delimiter(line.clone()));
+        }
+        __result
+    })
+    .join(&"\n".to_string())
+}

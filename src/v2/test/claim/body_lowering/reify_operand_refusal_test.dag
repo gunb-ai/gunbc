@@ -3,7 +3,8 @@ module v2.test.claim.body_lowering.reify_operand_refusal
 import v2.compiler.body_lowering_fold { body_lower_reify_arrow_body }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Branch, ComputationNode, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
