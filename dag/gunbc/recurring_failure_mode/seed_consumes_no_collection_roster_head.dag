@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.seed_consumes_no_collection_roster_head
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data seed_consumes_no_collection_roster_head: RecurringFailureMode = RecurringFailureMode {
+  identity: "seed_consumes_no_collection_roster_head" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a bare collection-roster head (any, filter, ...) called on a v2.std.text String-alias receiver in a seed-compiled module. The seed consumes no part of the collection roster (the std.algebra collection_*_shape rows), so the head resolves to nothing and the seed refuses it as 'function ... not found in scope'. v2 binds the same head through v2.compiler.fold_lowering collection_roster_rows; the seed does not.",
+    "HARM: authors of seed-compiled v2 modules are forced into equivalent respellings (v2.std.text string_any_char_in is the negated for_all over the negated predicate, identical in meaning to any). The refusal is typed and located, so this is a capability gap on the loud side of the ladder, never a silent wrong answer; the cost is respelling and the reader's time to recognize it.",
+    "DISPOSITION (operator-delegated ruling, 2026-10-10): the seed is closed to growth (DESIGN section 7: it shrinks toward zero; v1 standing admits only changes serving the v2 self-host program). Binding roster heads in the seed was measured at roughly 300-500 lines across resolve, lookup and emit plus mirror regeneration, for one call site, and was declined. The respelling survives the seed's retirement unchanged, so it is not a scaffold. RUNG found at: mitigatable (typed refusal at resolve). CEILING: structurally guaranteed, since every roster head is decidable from the row.",
+    "NEXT-RUNG TRIGGER: the seed no longer compiles v2.std.text because v2 self-emits it, OR roster consumption is added to the seed; SUFFICIENT FOR a bare roster head on a String-alias receiver to bind in a seed-compiled module, at which point the respelling may return to the natural head.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.algebra", decl_name: "collection_any_shape", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "collection_roster_rows", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.text", decl_name: "string_any_char_in", field: WholeDeclaration },
+  ],
+}

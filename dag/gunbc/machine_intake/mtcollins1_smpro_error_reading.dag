@@ -1,6 +1,5 @@
 module gunbc.machine_intake_mtcollins1_smpro_error_reading
 
-import v2.std.algebra { filter }
 import std.types { Int, List, NonEmptyStr, String }
 import std.optional { Present }
 import extdeps.crypto.hash { Digest, sha256_digest }

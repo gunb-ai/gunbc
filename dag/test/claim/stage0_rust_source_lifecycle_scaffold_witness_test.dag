@@ -70,7 +70,7 @@ import gunbc.stage0_rust_host_observation {
 }
 import std.content_hash { Fnv1a64Structural }
 import std.disposition { RealizationDispatch, Scaffold, SingleAuthority }
-import v2.std.algebra { any, length, list_map }
+import v2.std.algebra { length, list_map }
 import v2.std.text { String }
 import v2.compiler.self_host.stage0_crate_layout { wet_actuator_generated_stage0_files }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
