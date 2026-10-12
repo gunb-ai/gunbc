@@ -1,6 +1,7 @@
 module gunbc.live_deploy.apply_receipt
 
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, GitRef }
+import product.host_identity { HostIdentity }
 import std.algebra { trim }
 import std.content_hash { content_hash_atom, content_hash_tagged_structural }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonString, json_kv, json_string, json_object, json_array, serialize_json }
@@ -47,7 +48,7 @@ import gunbc.actions_run_binding {
 // and '}'), so the candidate side and the deployed side
 // (gunbc.live_deploy.deployed_tree_observation deployed_tree_root_tree_argv) read the same object
 // the same way.
-data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v3"
+data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v4"
 
 type LiveDeployRoleSingletonDisposition
   = RoleSingletonsNoop
@@ -130,6 +131,13 @@ fn live_deploy_apply_receipt_artifact_path_for(instance_id: String) -> String {
   join([live_deploy_apply_receipt_dir_for(instance_id: instance_id), "/live_deploy_receipt.json"], "")
 }
 
+// THE PATH IS RELATIVE TO THE DEPLOYING CHECKOUT. A CI transaction writes it in the workflow
+// runner's workspace and the fleet-converge job uploads that directory as a GitHub Actions
+// artifact (gunbc.ci.ci_spec gunbc_live_deploy_receipt_artifact_dir). An operator-local apply writes
+// the same relative path on the operator's machine — the record of the LATEST local apply for that
+// instance_id (Filesystem.Write overwrites). Those are different filesystems: a local apply cannot
+// overwrite the uploaded CI artifact.
+
 data rlm_plan_run_id_env_name: String = "RLM_PLAN_RUN_ID"
 data rlm_apply_run_id_env_name: String = "RLM_APPLY_RUN_ID"
 data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
@@ -180,6 +188,24 @@ fn read_live_deploy_fleet_provenance() -> LiveDeployFleetProvenanceRead {
 // gone, so the field had no referent left. A field whose only reachable value is a constant is dead
 // data, not a receipt.
 
+// ONE RECEIPT, TWO PROVENANCE ARMS. Fleet plan/apply run identities, RLM expected revision, and
+// the Actions run binding exist only on the dashboard transaction. Operator-local apply has none
+// of those; inventing an ActionsRunBinding would be a fabricated observation. v3 of this schema
+// required them at the top level and is refused at decode, not mapped.
+
+type LiveDeployApplyProvenance
+  = FleetTransactionProvenance {
+      run: ActionsRunBinding
+      expected_revision: String
+      fleet: LiveDeployFleetProvenance
+    }
+  | OperatorLocalApply {
+      host: HostIdentity
+      principal: NonEmptyStr
+    }
+
+data live_deploy_apply_provenance_kind_fleet: String = "fleet_transaction"
+data live_deploy_apply_provenance_kind_local: String = "operator_local"
 
 type LiveDeployApplyOutcome
   = LiveDeployApplyConverged
@@ -190,17 +216,15 @@ type LiveDeployReadinessOutcome
   | LiveDeployReadinessRefused { detail: String }
 
 type LiveDeployApplyReceipt {
-  run: ActionsRunBinding
   target: String
   instance_id: String
-  expected_revision: String
   candidate_revision: String
   candidate_surface_identity: String
   candidate_tree_oid: String
   apply_outcome: LiveDeployApplyOutcome
   role_singleton_disposition: LiveDeployRoleSingletonDisposition
   readiness: LiveDeployReadinessOutcome
-  provenance: LiveDeployFleetProvenance
+  provenance: LiveDeployApplyProvenance
   completed_at: String
 }
 
@@ -218,22 +242,35 @@ fn live_deploy_readiness_text(o: LiveDeployReadinessOutcome) -> String {
   }
 }
 
+fn live_deploy_apply_provenance_identity_text(p: LiveDeployApplyProvenance) -> String {
+  match p {
+    FleetTransactionProvenance { run, expected_revision, fleet } =>
+      join([
+        live_deploy_apply_provenance_kind_fleet, "|",
+        actions_run_binding_identity_text(binding: run), "|", expected_revision, "|",
+        fleet.plan_run_id, "|", fleet.apply_run_id, "|", fleet.plan_artifact_hash, "|",
+        fleet.plan_receipt_identity, "|", fleet.apply_receipt_identity,
+      ], "")
+    OperatorLocalApply { host, principal } =>
+      join([live_deploy_apply_provenance_kind_local, "|", host as String, "|", principal as String], "")
+  }
+}
+
 fn live_deploy_apply_receipt_identity_text(r: LiveDeployApplyReceipt) -> String {
   join([
-    actions_run_binding_identity_text(binding: r.run), "|", r.target, "|", r.instance_id, "|", r.expected_revision, "|",
+    r.target, "|", r.instance_id, "|",
     r.candidate_revision, "|", r.candidate_surface_identity, "|", r.candidate_tree_oid, "|",
     live_deploy_apply_outcome_text(o: r.apply_outcome), "|",
     live_deploy_role_singleton_disposition_text(d: r.role_singleton_disposition), "|",
     live_deploy_readiness_text(o: r.readiness), "|",
-    r.provenance.plan_run_id, "|", r.provenance.apply_run_id, "|", r.provenance.plan_artifact_hash, "|",
-    r.provenance.plan_receipt_identity, "|", r.provenance.apply_receipt_identity, "|",
+    live_deploy_apply_provenance_identity_text(p: r.provenance), "|",
     r.completed_at,
   ], "")
 }
 
 fn live_deploy_apply_receipt_identity_hex(r: LiveDeployApplyReceipt) -> String {
   content_hash_tagged_structural(
-    tag: "live-deploy-apply-receipt-v3" as NonEmptyStr,
+    tag: "live-deploy-apply-receipt-v4" as NonEmptyStr,
     payload: content_hash_atom(value: live_deploy_apply_receipt_identity_text(r: r) as NonEmptyStr),
   ).digest as String
 }
@@ -265,26 +302,46 @@ fn live_deploy_readiness_json(o: LiveDeployReadinessOutcome) -> JsonValue {
   }
 }
 
+fn live_deploy_fleet_json(fleet: LiveDeployFleetProvenance) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "plan_run_id", value: json_string(s: fleet.plan_run_id)),
+    json_kv(key: "apply_run_id", value: json_string(s: fleet.apply_run_id)),
+    json_kv(key: "plan_artifact_hash", value: json_string(s: fleet.plan_artifact_hash)),
+    json_kv(key: "plan_receipt_identity", value: json_string(s: fleet.plan_receipt_identity)),
+    json_kv(key: "apply_receipt_identity", value: json_string(s: fleet.apply_receipt_identity)),
+  ])
+}
+
+fn live_deploy_apply_provenance_json(p: LiveDeployApplyProvenance) -> JsonValue {
+  match p {
+    FleetTransactionProvenance { run, expected_revision, fleet } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: live_deploy_apply_provenance_kind_fleet)),
+        json_kv(key: "run", value: actions_run_binding_json(binding: run)),
+        json_kv(key: "expected_revision", value: json_string(s: expected_revision)),
+        json_kv(key: "fleet", value: live_deploy_fleet_json(fleet: fleet)),
+      ])
+    OperatorLocalApply { host, principal } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: live_deploy_apply_provenance_kind_local)),
+        json_kv(key: "host", value: json_string(s: host as String)),
+        json_kv(key: "principal", value: json_string(s: principal as String)),
+      ])
+  }
+}
+
 fn live_deploy_apply_receipt_json(r: LiveDeployApplyReceipt) -> JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: live_deploy_apply_receipt_schema)),
-    json_kv(key: "run", value: actions_run_binding_json(binding: r.run)),
     json_kv(key: "target", value: json_string(s: r.target)),
     json_kv(key: "instance_id", value: json_string(s: r.instance_id)),
-    json_kv(key: "expected_revision", value: json_string(s: r.expected_revision)),
     json_kv(key: "candidate_revision", value: json_string(s: r.candidate_revision)),
     json_kv(key: "candidate_surface_identity", value: json_string(s: r.candidate_surface_identity)),
     json_kv(key: "candidate_tree_oid", value: json_string(s: r.candidate_tree_oid)),
     json_kv(key: "apply_outcome", value: live_deploy_apply_outcome_json(o: r.apply_outcome)),
     json_kv(key: "role_singleton_disposition", value: live_deploy_role_singleton_disposition_json(d: r.role_singleton_disposition)),
     json_kv(key: "readiness", value: live_deploy_readiness_json(o: r.readiness)),
-    json_kv(key: "provenance", value: json_object(members: [
-      json_kv(key: "plan_run_id", value: json_string(s: r.provenance.plan_run_id)),
-      json_kv(key: "apply_run_id", value: json_string(s: r.provenance.apply_run_id)),
-      json_kv(key: "plan_artifact_hash", value: json_string(s: r.provenance.plan_artifact_hash)),
-      json_kv(key: "plan_receipt_identity", value: json_string(s: r.provenance.plan_receipt_identity)),
-      json_kv(key: "apply_receipt_identity", value: json_string(s: r.provenance.apply_receipt_identity)),
-    ])),
+    json_kv(key: "provenance", value: live_deploy_apply_provenance_json(p: r.provenance)),
     json_kv(key: "completed_at", value: json_string(s: r.completed_at)),
     json_kv(key: "receipt_identity", value: json_string(s: live_deploy_apply_receipt_identity_hex(r: r))),
   ])
@@ -355,9 +412,88 @@ fn live_deploy_readiness_of_member(doc: JsonValue) -> LiveDeployReadinessDecode 
   }
 }
 
+type LiveDeployFleetFieldsDecode
+  = FleetFieldsDecoded { fleet: LiveDeployFleetProvenance }
+  | FleetFieldsUnreadable { reason: String }
+
+fn live_deploy_fleet_fields_of_object(inner: JsonValue) -> LiveDeployFleetFieldsDecode {
+  match json_required_string_member(doc: inner, key: "plan_run_id") {
+    JsonStringMemberRefused { reason: r } => FleetFieldsUnreadable { reason: join(["provenance.fleet: ", r], "") }
+    JsonStringMemberFound { value: plan_run_id } =>
+      match json_required_string_member(doc: inner, key: "apply_run_id") {
+        JsonStringMemberRefused { reason: r } => FleetFieldsUnreadable { reason: join(["provenance.fleet: ", r], "") }
+        JsonStringMemberFound { value: apply_run_id } =>
+          match json_required_string_member(doc: inner, key: "plan_artifact_hash") {
+            JsonStringMemberRefused { reason: r } => FleetFieldsUnreadable { reason: join(["provenance.fleet: ", r], "") }
+            JsonStringMemberFound { value: hash } =>
+              match json_required_string_member(doc: inner, key: "plan_receipt_identity") {
+                JsonStringMemberRefused { reason: r } => FleetFieldsUnreadable { reason: join(["provenance.fleet: ", r], "") }
+                JsonStringMemberFound { value: plan_rid } =>
+                  match json_required_string_member(doc: inner, key: "apply_receipt_identity") {
+                    JsonStringMemberRefused { reason: r } => FleetFieldsUnreadable { reason: join(["provenance.fleet: ", r], "") }
+                    JsonStringMemberFound { value: apply_rid } =>
+                      FleetFieldsDecoded {
+                        fleet: LiveDeployFleetProvenance {
+                          plan_run_id: plan_run_id, apply_run_id: apply_run_id, plan_artifact_hash: hash,
+                          plan_receipt_identity: plan_rid, apply_receipt_identity: apply_rid,
+                        },
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
 type LiveDeployProvenanceDecode
-  = ProvenanceDecoded { provenance: LiveDeployFleetProvenance }
+  = ProvenanceDecoded { provenance: LiveDeployApplyProvenance }
   | ProvenanceUnreadable { reason: String }
+
+fn live_deploy_operator_local_of_object(inner: JsonValue) -> LiveDeployProvenanceDecode {
+  match json_required_string_member(doc: inner, key: "host") {
+    JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
+    JsonStringMemberFound { value: host } =>
+      if host == "" {
+        ProvenanceUnreadable { reason: "provenance.host is empty" }
+      } else {
+        match json_required_string_member(doc: inner, key: "principal") {
+          JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
+          JsonStringMemberFound { value: principal } =>
+            if principal == "" {
+              ProvenanceUnreadable { reason: "provenance.principal is empty" }
+            } else {
+              ProvenanceDecoded {
+                provenance: OperatorLocalApply { host: host as HostIdentity, principal: principal as NonEmptyStr },
+              }
+            }
+        }
+      }
+  }
+}
+
+fn live_deploy_fleet_transaction_of_object(inner: JsonValue) -> LiveDeployProvenanceDecode {
+  match actions_run_binding_of_member(doc: inner, key: "run") {
+    ActionsRunBindingUnreadable { reason: r } => ProvenanceUnreadable { reason: join(["provenance.run: ", r], "") }
+    ActionsRunBindingDecoded { binding: run } =>
+      match json_required_string_member(doc: inner, key: "expected_revision") {
+        JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
+        JsonStringMemberFound { value: expected } =>
+          match json_object_unique_member(v: inner, key: "fleet") {
+            JsonMemberAbsent => ProvenanceUnreadable { reason: "provenance.fleet is missing" }
+            JsonMemberDuplicated { count: _ } => ProvenanceUnreadable { reason: "provenance.fleet is duplicated" }
+            JsonMemberNotAnObject => ProvenanceUnreadable { reason: "provenance is not an object at fleet" }
+            JsonMemberFound { value: fleet_doc } =>
+              match live_deploy_fleet_fields_of_object(inner: fleet_doc) {
+                FleetFieldsUnreadable { reason: r } => ProvenanceUnreadable { reason: r }
+                FleetFieldsDecoded { fleet } =>
+                  ProvenanceDecoded {
+                    provenance: FleetTransactionProvenance { run: run, expected_revision: expected, fleet: fleet },
+                  }
+              }
+          }
+      }
+  }
+}
 
 fn live_deploy_provenance_of_member(doc: JsonValue) -> LiveDeployProvenanceDecode {
   match json_object_unique_member(v: doc, key: "provenance") {
@@ -365,30 +501,15 @@ fn live_deploy_provenance_of_member(doc: JsonValue) -> LiveDeployProvenanceDecod
     JsonMemberDuplicated { count: c } => ProvenanceUnreadable { reason: join(["provenance appears ", to_string(c), " times; the member must be unique"], "") }
     JsonMemberNotAnObject => ProvenanceUnreadable { reason: "the receipt document is not an object at provenance" }
     JsonMemberFound { value: inner } =>
-      match json_required_string_member(doc: inner, key: "plan_run_id") {
+      match json_required_string_member(doc: inner, key: "kind") {
         JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
-        JsonStringMemberFound { value: plan_run_id } =>
-          match json_required_string_member(doc: inner, key: "apply_run_id") {
-            JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
-            JsonStringMemberFound { value: apply_run_id } =>
-              match json_required_string_member(doc: inner, key: "plan_artifact_hash") {
-                JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
-                JsonStringMemberFound { value: hash } =>
-                  match json_required_string_member(doc: inner, key: "plan_receipt_identity") {
-                    JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
-                    JsonStringMemberFound { value: plan_rid } =>
-                      match json_required_string_member(doc: inner, key: "apply_receipt_identity") {
-                        JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
-                        JsonStringMemberFound { value: apply_rid } =>
-                          ProvenanceDecoded {
-                            provenance: LiveDeployFleetProvenance {
-                              plan_run_id: plan_run_id, apply_run_id: apply_run_id, plan_artifact_hash: hash,
-                              plan_receipt_identity: plan_rid, apply_receipt_identity: apply_rid,
-                            },
-                          }
-                      }
-                  }
-              }
+        JsonStringMemberFound { value: kind } =>
+          if kind == live_deploy_apply_provenance_kind_fleet {
+            live_deploy_fleet_transaction_of_object(inner: inner)
+          } else if kind == live_deploy_apply_provenance_kind_local {
+            live_deploy_operator_local_of_object(inner: inner)
+          } else {
+            ProvenanceUnreadable { reason: join(["provenance.kind is not fleet_transaction|operator_local: ", kind], "") }
           }
       }
   }
@@ -405,18 +526,12 @@ fn live_deploy_apply_receipt_decode(raw: String) -> LiveDeployApplyReceiptDecode
           if schema != live_deploy_apply_receipt_schema {
             LiveDeployApplyReceiptUnreadable { reason: join(["live-deploy receipt schema is not ", live_deploy_apply_receipt_schema, ": ", schema], "") }
           } else {
-            match actions_run_binding_of_member(doc: doc, key: "run") {
-              ActionsRunBindingUnreadable { reason: r } => LiveDeployApplyReceiptUnreadable { reason: join(["live-deploy receipt run: ", r], "") }
-              ActionsRunBindingDecoded { binding: run } =>
                 match json_required_string_member(doc: doc, key: "target") {
                   JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
                   JsonStringMemberFound { value: target } =>
                     match json_required_string_member(doc: doc, key: "instance_id") {
                       JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
                       JsonStringMemberFound { value: instance_id } =>
-                    match json_required_string_member(doc: doc, key: "expected_revision") {
-                      JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
-                      JsonStringMemberFound { value: expected } =>
                         match json_required_string_member(doc: doc, key: "candidate_revision") {
                           JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
                           JsonStringMemberFound { value: candidate } =>
@@ -442,10 +557,8 @@ fn live_deploy_apply_receipt_decode(raw: String) -> LiveDeployApplyReceiptDecode
                                                           JsonStringMemberRefused { reason: r } => LiveDeployApplyReceiptUnreadable { reason: r }
                                                           JsonStringMemberFound { value: completed_at } => {
                                                         let receipt = LiveDeployApplyReceipt {
-                                                          run: run,
                                                           target: target,
                                                           instance_id: instance_id,
-                                                          expected_revision: expected,
                                                           candidate_revision: candidate,
                                                           candidate_surface_identity: surface,
                                                           candidate_tree_oid: tree_oid,
@@ -474,9 +587,7 @@ fn live_deploy_apply_receipt_decode(raw: String) -> LiveDeployApplyReceiptDecode
                             }
                         }
                     }
-                    }
                 }
-            }
           }
       }
   }

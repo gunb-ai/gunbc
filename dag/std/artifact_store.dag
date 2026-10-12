@@ -9,6 +9,7 @@ import std.content_hash {
   content_hash_tagged,
   content_hash_tagged_structural,
   as_content_hash_structural,
+  content_hash_equal,
 }
 import std.measure { ByteSize, byte_size, measure_count }
 import std.materialization_ladder { CacheProvider }
@@ -211,14 +212,14 @@ fn store_bytes_used(store: ArtifactStore) -> Int {
 }
 
 fn store_get(store: ArtifactStore, key: ContentHash) -> StoreLookup {
-  match store.rows |> filter(r => r.key == key) |> first {
+  match store.rows |> filter(r => content_hash_equal(left: r.key, right: key)) |> first {
     Present { value: row } =>
       let bumped = ArtifactRow { key: row.key, artifact_bytes: row.artifact_bytes, last_use_ordinal: store.next_ordinal }
       StoreHit {
         store: ArtifactStore {
           budget: store.budget,
           next_ordinal: store.next_ordinal + 1,
-          rows: concat(store.rows |> filter(r => (r.key == key) == false), [bumped])
+          rows: concat(store.rows |> filter(r => content_hash_equal(left: r.key, right: key) == false), [bumped])
         },
         row: bumped
       }
@@ -251,7 +252,7 @@ fn evict_until_within_budget(store: ArtifactStore, evicted: List<ContentHash>) -
           store: ArtifactStore {
             budget: store.budget,
             next_ordinal: store.next_ordinal,
-            rows: store.rows |> filter(r => (r.key == victim.key) == false)
+            rows: store.rows |> filter(r => content_hash_equal(left: r.key, right: victim.key) == false)
           },
           evicted: concat(evicted, [victim.key])
         )
@@ -288,7 +289,7 @@ fn store_put(store: ArtifactStore, key: ContentHash, artifact_bytes: ByteSize) -
     let grown = ArtifactStore {
       budget: store.budget,
       next_ordinal: store.next_ordinal + 1,
-      rows: concat(store.rows |> filter(r => (r.key == key) == false), [fresh])
+      rows: concat(store.rows |> filter(r => content_hash_equal(left: r.key, right: key) == false), [fresh])
     }
     let packed = evict_until_within_budget(store: grown, evicted: [])
     StorePutAdmitted { store: packed.store, evicted: packed.evicted }

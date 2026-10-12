@@ -396,7 +396,7 @@ fn admitted_spec(admission: RoleSingletonAdmission) -> DeploymentSpec admit_call
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_admitted_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "role_singleton_disposition_of"),
-  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_receipted_decided"),
 ] {
   admission.spec
 }
@@ -405,7 +405,7 @@ fn admitted_decision(admission: RoleSingletonAdmission) -> RoleSingletonConverge
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_admitted_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "role_singleton_disposition_of"),
-  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_receipted_decided"),
 ] {
   admission.decision
 }
@@ -1188,7 +1188,7 @@ fn assess_spec_over_roster_over(spec: DeploymentSpec, source: RoleSingletonReadi
 
 fn assess_and_admit(deployment: DesiredDeployment) -> RoleSingletonAdmissionResult admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport"),
-  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_receipted_decided"),
 ] {
   match bind_desired_selected_identity(desired: deployment) {
     DesiredSelectedIdentityUnknownInstance { instance_id } =>

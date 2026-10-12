@@ -33,6 +33,8 @@ import gunbc.live_deploy.apply_receipt {
   LiveDeployApplyConverged,
   LiveDeployApplyReceipt,
   LiveDeployFleetProvenance,
+  FleetTransactionProvenance,
+  OperatorLocalApply,
   LiveDeployReadinessObserved,
   RoleSingletonsNoop,
 }
@@ -229,19 +231,21 @@ fn rlm_apply(run: ActionsRunBinding, plan_identity: String) -> FleetConvergeAppl
 
 fn rlm_dashboard(run: ActionsRunBinding, expected: String) -> LiveDeployApplyReceipt {
   LiveDeployApplyReceipt {
-    run: run,
     target: "srv1",
     instance_id: "srv1-live",
-    expected_revision: expected,
     candidate_revision: expected,
     candidate_surface_identity: rlm_fixture_surface,
     candidate_tree_oid: rlm_fixture_tree,
     apply_outcome: LiveDeployApplyConverged,
     role_singleton_disposition: RoleSingletonsNoop,
     readiness: LiveDeployReadinessObserved { revision: expected, surface: rlm_fixture_surface },
-    provenance: LiveDeployFleetProvenance {
-      plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash,
-      plan_receipt_identity: rlm_plan_identity(), apply_receipt_identity: rlm_apply_identity(),
+    provenance: FleetTransactionProvenance {
+      run: run,
+      expected_revision: expected,
+      fleet: LiveDeployFleetProvenance {
+        plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash,
+        plan_receipt_identity: rlm_plan_identity(), apply_receipt_identity: rlm_apply_identity(),
+      },
     },
     completed_at: rlm_fixture_deploy_completed_at,
   }
@@ -633,12 +637,19 @@ test fn witness_provenance_unobserved_is_incomplete_at_run_provenance() -> Bool 
 test fn witness_dashboard_citing_another_plan_receipt_is_incomplete_at_dashboard_receipt() -> Bool {
   let base = rlm_dashboard(run: rlm_run(run_id: "1003", revision: rlm_fixture_r), expected: rlm_fixture_r)
   let d = LiveDeployApplyReceipt {
-    run: base.run, target: base.target, instance_id: base.instance_id, expected_revision: base.expected_revision, candidate_revision: base.candidate_revision,
+    target: base.target, instance_id: base.instance_id, candidate_revision: base.candidate_revision,
     candidate_surface_identity: base.candidate_surface_identity, candidate_tree_oid: base.candidate_tree_oid,
     apply_outcome: base.apply_outcome, role_singleton_disposition: base.role_singleton_disposition, readiness: base.readiness,
-    provenance: LiveDeployFleetProvenance {
-      plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash,
-      plan_receipt_identity: "9999999999999999", apply_receipt_identity: rlm_apply_identity(),
+    provenance: FleetTransactionProvenance {
+      run: match base.provenance {
+        FleetTransactionProvenance { run, expected_revision: _, fleet: _ } => run
+        OperatorLocalApply { host: _, principal: _ } => rlm_run(run_id: "1003", revision: rlm_fixture_r)
+      },
+      expected_revision: rlm_fixture_r,
+      fleet: LiveDeployFleetProvenance {
+        plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash,
+        plan_receipt_identity: "9999999999999999", apply_receipt_identity: rlm_apply_identity(),
+      },
     },
     completed_at: base.completed_at,
   }

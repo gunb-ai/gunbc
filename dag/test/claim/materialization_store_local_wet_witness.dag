@@ -1,15 +1,16 @@
 module test.claim.materialization_store_local_wet_witness
 
+import std.judgment_contract { identity_structural_component, identity_digest_component }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom }
+import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, sha256_hex_digest, as_content_hash_cryptographic, as_content_hash_structural }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, ArtifactManifest,
   UniverseArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
   RealizationServed, RealizationCommitted, RealizationConvergedOnPriorCommit,
   request_key, request_kind, evaluation_store_address, evaluation_store_admitted_address,
-  evaluation_store_address_preimage, request_judgment_contract,
+  evaluation_store_address_preimage, evaluation_store_address_digest, request_judgment_contract,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
 }
@@ -39,7 +40,7 @@ import extdeps.realization.materialization_store_local {
   local_store_record_recency, local_store_is_object_name, local_store_is_store_file_name, local_store_object_bytes, local_store_family_budget,
   LocalStoreFamilyBudget, local_store_budget_sum,
   LocalStoreRecencyHoldRefused, LocalStoreRecencyReceipt,
-  local_store_with_family, LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, local_store_commit_under, local_store_held_session, LocalStoreHoldStale, LocalStoreHoldNamedWindowHeadMoved, LocalStoreHoldWrongFamily,
+  local_store_with_family, LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, local_store_commit_under_request, local_store_held_session, LocalStoreHoldStale, LocalStoreHoldNamedWindowHeadMoved, LocalStoreHoldWrongFamily,
   local_store_hold_key, local_store_hold_owner_prefix,
   LocalStoreHoldAcquisition, LocalStoreHoldAcquired, LocalStoreHoldRefused, LocalStoreHoldRefusal, LocalStoreFamilyBusy,
   LocalStoreHolderUnobservable, LocalStoreHoldRecoveryRefused, LocalStoreHoldContended, LocalStoreHoldStoreUnavailable,
@@ -89,20 +90,33 @@ fn h(v: String) -> Fnv1a64Structural {
   content_hash_atom(value: v as NonEmptyStr)
 }
 
+// A FIXTURE DIGEST OF THE ADMITTED FAMILY, SUPPLIED RATHER THAN COMPUTED: the label's structural
+// fingerprint written four times. Distinct labels give distinct digests, which is all a fixture
+// input needs, and the value is never offered as the SHA-256 of anything. The store ADDRESS of a
+// request built from these is still derived for real by every operation in this file.
+fn fixture_digest(v: String) -> ContentHash {
+  let seed = content_hash_atom(value: v as NonEmptyStr)
+  let quad = join([seed.digest as String, seed.digest as String, seed.digest as String, seed.digest as String], "")
+  match sha256_hex_digest(hex: quad) {
+    Present { value: digest } => as_content_hash_cryptographic(digest: digest)
+    Absent => as_content_hash_structural(structural: seed)
+  }
+}
+
 fn bundle_req(module: String) -> ArtifactRequest {
   NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
-    route_binary_identity: h(v: "route-binary-1"),
-    module_identity: h(v: module),
-    canonical_module_import_closure_identity: h(v: "closure-1"),
-    ordered_test_identity_population: h(v: "t1,t2"),
-    eval_interpretation_identity: h(v: "eval-1")
+    route_binary_identity: fixture_digest(v: "route-binary-1"),
+    module_identity: fixture_digest(v: module),
+    canonical_module_import_closure_identity: fixture_digest(v: "closure-1"),
+    ordered_test_identity_population: fixture_digest(v: "t1,t2"),
+    eval_interpretation_identity: fixture_digest(v: "eval-1")
   })
 }
 
 fn universe_req() -> ArtifactRequest {
   UniverseArtifactRequest {
-    tested_tree_identity: h(v: "tree-1"),
-    route_binary: DeclaredInput { ref: "route_binary_identity", digest: h(v: "route-binary-1") }
+    tested_tree_identity: fixture_digest(v: "tree-1"),
+    route_binary: DeclaredInput { ref: "route_binary_identity", component: identity_digest_component(hash: fixture_digest(v: "route-binary-1")) }
   }
 }
 
@@ -278,7 +292,10 @@ test fn incomplete_refuses_by_real_execution() -> Bool {
       let incomplete = encode_store_object(
         manifest: ArtifactManifest {
           kind: request_kind(req: req),
-          request_key: request_key(req: req),
+          request_key: match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
+            Absent => request_key(req: req)
+            Present { value: a } => evaluation_store_address_digest(address: a)
+          },
           parts: [payload_part(payload: verdicts_only)]
         },
         payloads: [verdicts_only],
@@ -701,7 +718,7 @@ test fn a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution()
         LocalStoreBracketRefused { refusal: _ } => false
         LocalStoreBracketRan { value: leaked, hold_release: _ } => {
           let rs = bundle_req(module: "s")
-          let c = local_store_commit_under(held: leaked, req: rs, payloads: verdicts(text: "s pass"), parts: [])
+          let c = local_store_commit_under_request(held: leaked, req: rs, payloads: verdicts(text: "s pass"), parts: [])
           commit_tag(c: c.commit) == "occupancy_unavailable" && hold_refusal_is_named_window_head_moved(r: c.hold_refusal)
             && !Filesystem.Read(path: object_path(root_path: root_path, req: rs)).success
             && store_lookup_is_miss(l: local_store_lookup(capability: store, req: rs))
@@ -871,6 +888,14 @@ fn sized_verdicts(module: String, n: Int) -> List<ArtifactPayload> {
 // cleared. The same request Y is retried with a LARGER result: it must be charged at its current size
 // -- which no longer fits beside W, so W is evicted -- and disk stays within budget. Admitting the
 // retry on the first attempt's smaller row would publish Y beside W and settle over the ceiling.
+//
+// THE SIZES ARE DERIVED FROM THE OBJECT ENVELOPE, NOT CHOSEN. A stored verdict-bundle object is its
+// envelope E plus about fourteen bytes per repetition (the payload is written percent-encoded and
+// again inside the result preimage). E is about 1,170 bytes now that the evaluation preimage
+// carries five family-tagged digests where it carried one fingerprint. With X=30, W=20, small Y=40
+// and large Y=190 repetitions against the 4,096-byte budget: X and W fit together; adding small Y
+// does not, and W with small Y does, so exactly X is evicted; W with large Y does not fit and large
+// Y alone does, so exactly W is evicted. Each inequality holds for any E between 950 and 1,430.
 test fn a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
@@ -881,12 +906,12 @@ test fn a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_exec
       let rx = bundle_req(module: "x")
       let rw = bundle_req(module: "w")
       let ry = bundle_req(module: "y")
-      let cx = local_store_commit(capability: store, req: rx, payloads: sized_verdicts(module: "x", n: 70), parts: [])
-      let cw = local_store_commit(capability: store, req: rw, payloads: sized_verdicts(module: "w", n: 50), parts: [])
+      let cx = local_store_commit(capability: store, req: rx, payloads: sized_verdicts(module: "x", n: 30), parts: [])
+      let cw = local_store_commit(capability: store, req: rw, payloads: sized_verdicts(module: "w", n: 20), parts: [])
       let x_path = object_path(root_path: root_path, req: rx)
       let unlinked = Filesystem.Delete(path: x_path).success
       let blocked = shell.Mkdir.NewOwnerOnly(path: x_path).success
-      let small = local_store_commit(capability: store, req: ry, payloads: sized_verdicts(module: "y", n: 100), parts: [])
+      let small = local_store_commit(capability: store, req: ry, payloads: sized_verdicts(module: "y", n: 40), parts: [])
       let cleared = shell.Remove.RecursiveForce(path: x_path).success
       let large = local_store_commit(capability: store, req: ry, payloads: sized_verdicts(module: "y", n: 190), parts: [])
       commit_tag(c: cx.commit) == "committed" && commit_tag(c: cw.commit) == "committed" && unlinked && blocked
@@ -896,6 +921,57 @@ test fn a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_exec
         && large.evicted |> any(n => n == object_name(req: rw))
         && store_lookup_is_hit(l: local_store_lookup(capability: store, req: ry))
         && root_object_bytes(root_path: root_path) <= budget
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// A STORE POPULATED BEFORE THE ADDRESS BECAME SHA-256 KEEPS WORKING, AND ITS OLD RECORDS ARE RETIRED BY
+// THE ORDINARY BOUND. The root is given what such a store holds: a record under a sixteen-digit
+// fingerprint name, a byte part beside it, and an occupancy row charging both. Reopened under this
+// code: the sweep leaves the indexed record and its part alone and the row still decodes (the name
+// predicate reads either address family); a request is a MISS, never served the old record, because
+// its address is a different name; a first commit lands beside the old record with the root inside
+// budget; and the second commit, which no longer fits beside both, evicts the OLDEST row -- the old
+// record -- by name, after which neither it nor its part is on disk and both new records are hits.
+// Nothing here is a migration step: the old record leaves the way any cold record does. The old
+// row is charged 2,000 bytes (an 1,800-byte record and a 200-byte part) and a new record is about
+// 1,190, so one new record fits beside it in the 4,096-byte budget and two do not.
+test fn a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budget = bundle_family_budget_bytes(root: root)
+  let old_name = "0123456789abcdef.materialization.v3"
+  let old_part = concat(old_name, concat(".part.", output_module_test_verdicts as String))
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: _ } => {
+      let planted_record = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: old_name), content: repeat_string(s: "o", n: 1800)).success
+      let planted_part = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: old_part), content: repeat_string(s: "p", n: 200)).success
+      let slot = store_path(root_path: root_path, name: concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, ".1"))
+      let planted_row = Filesystem.Write(path: slot, content: join(["gunbc-store-occupancy v2", "next 2", concat(old_name, " 2000 1")], "\n")).success
+      match local_store_open(root: root, budgets: witness_family_budgets) {
+        LocalStoreUnavailable { root_path: _, cause: _ } => false
+        LocalStoreOpened { capability: store, durability: _ } => {
+          let kept_by_sweep = !(store.sweep.removed |> any(n => n == old_name || n == old_part))
+          let row_decodes = index_row_count(root_path: root_path) == 1
+          let not_served = store_lookup_is_miss(l: local_store_lookup(capability: store, req: bundle_req(module: "n1")))
+          let first = local_store_commit(capability: store, req: bundle_req(module: "n1"), payloads: verdicts(text: "n1 pass"), parts: [])
+          let beside = Filesystem.Read(path: store_path(root_path: root_path, name: old_name)).success
+            && root_object_bytes(root_path: root_path) <= budget
+          let second = local_store_commit(capability: store, req: bundle_req(module: "n2"), payloads: verdicts(text: "n2 pass"), parts: [])
+          planted_record && planted_part && planted_row && kept_by_sweep && row_decodes && not_served
+            && commit_tag(c: first.commit) == "committed" && count(first.evicted) == 0 && beside
+            && commit_tag(c: second.commit) == "committed"
+            && second.evicted |> any(n => n == old_name)
+            && !Filesystem.Read(path: store_path(root_path: root_path, name: old_name)).success
+            && !Filesystem.Read(path: store_path(root_path: root_path, name: old_part)).success
+            && store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: "n1")))
+            && store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: "n2")))
+            && root_object_bytes(root_path: root_path) <= budget
+        }
+      }
     }
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
@@ -1160,7 +1236,7 @@ test fn an_identical_retry_of_a_verified_record_copies_nothing_by_real_execution
     Absent => false
     Present { value: store } => {
       let rp = bundle_req(module: "v")
-      let bytes = repeat_string(s: "v", n: 2800)
+      let bytes = repeat_string(s: "v", n: 2600)
       let first = local_store_commit(capability: store, req: rp, payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: "staging-v1", bytes: bytes))
       let trap = shell.Mkdir.NewOwnerOnly(path: copy_path_of(root_path: root_path, req: rp)).success
       let again = local_store_commit(capability: store, req: rp, payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: "staging-v2", bytes: bytes))
@@ -1374,9 +1450,11 @@ fn session_commit_ok(c: LocalStoreCommit) -> Bool {
 // advances the slot by 2; N per-commit brackets advance it by 2N. If the session were secretly
 // the per-commit path, the two deltas would match and this claim would fail. Lookups run under
 // the same session. This measures hold-acquire count, not root-List count: occupancy writes still
-// list the store.
+// list the store. N is three because three of these objects fit the 4,096-byte
+// fixture budget together and six do not: an eviction inside the session would turn a commit's
+// earlier hit into a miss for a reason this claim is not about.
 test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution() -> Bool {
-  let n = 6
+  let n = 3
   let session_root_path = fresh_root_path()
   let bracket_root_path = fresh_root_path()
   let session_root = WitnessScratchRoot { root: session_root_path }
@@ -1386,8 +1464,8 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
     Present { value: store } => {
       let before = hold_slot_head_generation(root_path: session_root_path)
       match local_store_held_session(capability: store, family: native_module_verdict_bundle_artifact_kind, run: h => {
-        let writes = [1, 2, 3, 4, 5, 6] |> map(i => local_store_commit_under(held: h, req: bundle_req(module: concat("s", i as String)), payloads: verdicts(text: "s pass"), parts: []))
-        let hits = [1, 2, 3, 4, 5, 6] |> map(i => store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: concat("s", i as String)))))
+        let writes = [1, 2, 3] |> map(i => local_store_commit_under_request(held: h, req: bundle_req(module: concat("s", i as String)), payloads: verdicts(text: "s pass"), parts: []))
+        let hits = [1, 2, 3] |> map(i => store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: concat("s", i as String)))))
         writes |> all(c => session_commit_ok(c: c)) && hits |> all(x => x)
       }) {
         LocalStoreBracketRefused { refusal: _ } => false
@@ -1400,7 +1478,7 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
     Absent => false
     Present { value: store } => {
       let before = hold_slot_head_generation(root_path: bracket_root_path)
-      let writes = [1, 2, 3, 4, 5, 6] |> map(i => local_store_commit(capability: store, req: bundle_req(module: concat("b", i as String)), payloads: verdicts(text: "b pass"), parts: []))
+      let writes = [1, 2, 3] |> map(i => local_store_commit(capability: store, req: bundle_req(module: concat("b", i as String)), payloads: verdicts(text: "b pass"), parts: []))
       writes |> all(c => session_commit_ok(c: c)) && (hold_slot_head_generation(root_path: bracket_root_path) - before) == (2 * n)
     }
   }

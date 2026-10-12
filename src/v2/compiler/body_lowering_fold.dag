@@ -5453,6 +5453,9 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
     OperandRefLowered { lowered: lowered } => outcome_accepted(value: optional_present(value: lowered))
     OperandRefAbsent =>
       let raw = body_lower_deep_unwrap_optional(node: node)
+      if body_lower_is_block_value(node: raw) {
+        body_lower_block_value_lowered(raw: raw)
+      } else {
       match body_lower_fold(node: raw) {
         Accepted { value: folded, diagnostics: d } =>
           match body_lower_lowered_behind_shells_read(node: folded) {
@@ -5463,7 +5466,58 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
           }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
+      }
     OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+// A BLOCK `{ .. }` IN VALUE POSITION (a match arm body) IS LOWERED BY THE WALKER ALONE, NEVER FOLDED FIRST.
+// The fold leaves a block as an unsealed fn_body shell (body_lower_fold_dispatch has no fn_body case: a
+// fn_decl's own body is lowered by its producer) that the peel cannot read, so the walker lowered the block
+// anyway and the fold's whole result was discarded: every nesting level paid the fold (which lowers the
+// nested blocks through this reader) AND the walker (which lowers them again), 3^d in the depth d of
+// `Present { value: v } => { match .. }` arms. The dag+src/v2 native census never reached its first module.
+// The block is recognised by its shape (productions down single captured children to fn_body), not by a
+// fold attempt.
+fn body_lower_is_block_value(node: Node) -> Bool {
+  if body_lower_is_fn_body_shell(node: node) {
+    true
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Absent => false
+      Present { value: _ } =>
+        match parse_production_captured_child_optional(node: node) {
+          Absent => false
+          Present { value: captured } => body_lower_is_block_value(node: body_lower_deep_unwrap_optional(node: captured))
+        }
+    }
+  }
+}
+
+// The block's statements through the walker's own statement spine (body_lower_try_statement_spine, the
+// walker's first step: a block of two or more statements, or one that returns). A block of ONE statement is
+// that statement's value, read once by the value reader; the walker instead folded the whole block (which
+// lowers the nested blocks) and, when that left the unsealed shell, lowered the same statement again by
+// its control-form route -- a second reader of the one value.
+fn body_lower_block_value_lowered(raw: Node) -> Outcome<Optional<Node>> {
+  match body_lower_try_statement_spine(captured: raw) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: Present { value: lowered }, diagnostics: d } =>
+      outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
+    Accepted { value: Absent, diagnostics: _ } =>
+      match body_lower_find_captured(root: raw, emitted: ^dag_surface_stmt_seq) {
+        ParseSubtreeAbsent => body_lower_body_subtree_lower_rest(captured: raw)
+        ParseSubtreeFound { captured: spine } =>
+          match body_lower_stmt_spine_head_optional(spine: spine) {
+            Absent => body_lower_body_subtree_lower_rest(captured: raw)
+            Present { value: head } =>
+              match body_lower_value_read(value: head) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: lowered, diagnostics: d } =>
+                  outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
+              }
+          }
+      }
   }
 }
 
