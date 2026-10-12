@@ -662,9 +662,9 @@ fn addressed_request(req: ArtifactRequest) -> AddressedRequestAdmission {
 // The identity and preimage are still derived from the request, and every component is still
 // judged: a request the persistent scope refuses is refused here too, so this mint is not a way
 // around the admission. What it leaves unexecuted is the digest computation, and the pairing
-// obligation is discharged where the real derivation runs: gunbc.instruments
-// native_materialization_store_closure compares a real address with a digest derived outside this
-// corpus, and the wet store witnesses commit and read back under real addresses.
+// obligation is discharged where the real derivation runs: test.claim.materialization_provider_witness
+// compares a real address with a digest derived outside this corpus, and the wet store witnesses
+// commit and read back under real addresses.
 fn addressed_request_with_supplied_digest(req: ArtifactRequest, digest: Sha256Digest) -> AddressedRequestAdmission admit_callers: [
   decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "witness_supplied_addressed"),
   decl_ref(module_path: "test.claim.materialization_store_witness", decl_name: "witness_supplied_addressed"),

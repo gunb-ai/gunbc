@@ -4,6 +4,7 @@ import std.judgment_contract { identity_structural_component, identity_text_comp
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
   ContentHash,
+  serialize_content_hash,
   Fnv1a64,
   content_hash_atom,
   as_content_hash_cryptographic,
@@ -940,6 +941,46 @@ test fn persistent_component_standing_is_decided_by_the_typed_request_and_the_fa
     && standing_tag(row: EvaluationIdentityComponentRow { ref: "tree", component: identity_upstream_object_component(relation: "some.other.relation", hash: sha1) }, git_rows: typed) == "not_admitted"
     && standing_tag(row: EvaluationIdentityComponentRow { ref: "d", component: identity_digest_component(hash: fingerprint) }, git_rows: none_typed) == "fingerprint"
     && standing_tag(row: EvaluationIdentityComponentRow { ref: "tree", component: identity_upstream_object_component(relation: git_object_identity_relation, hash: fingerprint) }, git_rows: typed) == "fingerprint"
+}
+
+fn independent_fixture_sha256(hex: String) -> ContentHash {
+  match sha256_hex_digest(hex: hex) {
+    Present { value: d } => as_content_hash_cryptographic(digest: d)
+    Absent => as_content_hash_structural(structural: content_hash_atom(value: "unreachable-independent-fixture"))
+  }
+}
+
+fn independent_bundle_request(module_hex: String) -> ArtifactRequest {
+  NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
+    route_binary_identity: independent_fixture_sha256(hex: "1111111111111111111111111111111111111111111111111111111111111111"),
+    module_identity: independent_fixture_sha256(hex: module_hex),
+    canonical_module_import_closure_identity: independent_fixture_sha256(hex: "3333333333333333333333333333333333333333333333333333333333333333"),
+    ordered_test_identity_population: independent_fixture_sha256(hex: "4444444444444444444444444444444444444444444444444444444444444444"),
+    eval_interpretation_identity: independent_fixture_sha256(hex: "5555555555555555555555555555555555555555555555555555555555555555")
+  })
+}
+
+// THE REAL DERIVATION AGAINST A DIGEST ESTABLISHED OUTSIDE THIS CORPUS. This is the pairing claim for
+// every witness that supplies its address digest (addressed_request_with_supplied_digest): it runs
+// evaluation_store_address itself, SHA-256 included, and compares the result with a literal that was
+// produced by writing the canonical preimage out by hand from the encoding's definition and hashing
+// it with an independent SHA-256. So it holds only if the encoder, the component order and the
+// digest all agree with that outside derivation; comparing two paths through this corpus's own
+// derivation could not show that. The red: one changed digit in one component is a different
+// address. The same program is a case of gunbc.instruments native_materialization_store_closure,
+// which will execute it as emitted code once that instrument's closure builds.
+test fn the_store_address_is_the_independently_derived_sha256_of_the_canonical_preimage() -> Bool {
+  let expected = "sha256:3f3d732486089ae8bb1e1a22f3e2a7dc81a94dad93087c0f58d3b7c1adcb0a01"
+  let address_wire = store_address_wire(req: independent_bundle_request(module_hex: "2222222222222222222222222222222222222222222222222222222222222222"))
+  let changed_wire = store_address_wire(req: independent_bundle_request(module_hex: "2222222222222222222222222222222222222222222222222222222222222223"))
+  address_wire == expected && (changed_wire == expected) == false && starts_with(s: changed_wire, prefix: "sha256:")
+}
+
+fn store_address_wire(req: ArtifactRequest) -> String {
+  match evaluation_store_address(req: req) {
+    Admitted { address: a } => serialize_content_hash(hash: evaluation_store_address_digest(address: a)) as String
+    FamilyRefused { components: _, scope: _ } => "refused"
+  }
 }
 
 fn component_arm_canonical(c: IdentityComponent) -> String {

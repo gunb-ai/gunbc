@@ -160,6 +160,13 @@ fn store_path_cases() -> List<StoreClosureCase> {
 // that outside derivation; a field dropped, reordered or re-tagged gives a different digest. The
 // reds: one component changed moves the digest off the literal; the same request carrying
 // structural fingerprints has no address, and the refusal names every refused component.
+//
+// NOT YET EXECUTED AS EMITTED CODE. This instrument's closure does not build: on main the emitted
+// std.list fails to typecheck, and with this module's provider import the closure holds two types
+// spelled Word64 (std.bit and std.bitwise), whose derives the emitter picks by spelling
+// (gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). The
+// first identity case is executed today on the interpreter route by
+// test.claim.materialization_provider_witness; these cases become evidence when the closure builds.
 fn identity_fixture_sha256(hex: String) -> ContentHash {
   match sha256_hex_digest(hex: hex) {
     Present { value: digest } => as_content_hash_cryptographic(digest: digest)
