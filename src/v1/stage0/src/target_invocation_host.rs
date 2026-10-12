@@ -1654,12 +1654,14 @@ fn run_native_claim_program(
     InvocationOutcome {
         termination,
         message: format!(
-            "{}{label_name}: entry={entry} closure={} binary={} seed={} warning_count={} status={status} -- {verdict}\n{}",
+            "{}{label_name}: entry={entry} closure={} binary={} seed={} warning_count={} status={status} child_wall_ms={} deadline_ms={} -- {verdict}\n{}",
             run.stdout,
             run.closure_identity,
             run.binary_identity,
             run.seed_identity,
             run.warning_count,
+            run.child_wall.as_millis(),
+            run.deadline.as_millis(),
             run.stderr.trim_end(),
         ),
     }

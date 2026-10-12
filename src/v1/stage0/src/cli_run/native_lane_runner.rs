@@ -2852,6 +2852,8 @@ pub struct NativeClaimProgramRun {
     pub seed_identity: String,
     pub warning_count: i64,
     pub status: Option<i32>,
+    pub child_wall: std::time::Duration,
+    pub deadline: std::time::Duration,
     pub stdout: String,
     pub stderr: String,
 }
@@ -2970,6 +2972,8 @@ pub fn run_native_claim_program(
             seed_identity: prepared.seed_identity,
             warning_count: prepared.build.warning_count,
             status: status.code(),
+            child_wall: started.elapsed(),
+            deadline,
             stdout: String::from_utf8_lossy(&stdout).into_owned(),
             stderr: String::from_utf8_lossy(&stderr).into_owned(),
         },

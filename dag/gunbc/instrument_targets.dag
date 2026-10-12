@@ -627,9 +627,13 @@ fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
 
-// EXPLICIT POLICY BUDGET (DESIGN section 5) for NativeClaimDriver children other than the
-// value-position nest control: ten minutes of wall after emit and build. Tightened to a measured
-// child wall plus stated margin when a cgroup-bounded green of that binding records one.
+// EXPLICIT POLICY BUDGET, dated 2026-10-12 (DESIGN section 5): 600000 ms wall after emit and
+// build, shared by the five NativeClaimDriver bindings that are not the nest control
+// (native-crypto-vectors, native-app-attest, native-emission-controls,
+// dag-emit-real-grammar-round-trips, native-materialization-store-closure). It is a policy
+// envelope, not a measured child wall. TRIGGER TO REPLACE: a cgroup-bounded green of that
+// binding that prints child_wall_ms= (the same Instant the deadline uses); then this helper
+// splits per binding to that wall plus a stated margin, and this 600 s row retires.
 fn native_claim_policy_child_deadline() -> Millisecond {
   millisecond(count: 600000)
 }
