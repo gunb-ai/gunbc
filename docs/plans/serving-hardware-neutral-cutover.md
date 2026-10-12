@@ -39,7 +39,7 @@ Witnesses under `dag/test/claim/spark/` that existed only to inhabit those modul
 | Consumer | Disposition |
 |---|---|
 | `gunbc.ci_spec` | receipt-path strings inlined; CI targets that named deleted apply entries are historical strings, not live modules |
-| `gunbc.fleet.fleet_workflow_steps` | image-build term inlined (180 minutes) |
+| `gunbc.fleet.fleet_workflow_steps` | Spark image-build timeout dropped from the job backstop (no remaining build step; not a transcribed 180) |
 | `gunbc.fabric_store_operation_admission` | still decodes **historical** pair-authority events (`pair_serving_authority_log`) — fleet store history, not serving production |
 | `gunbc.instruments.fabric_capacity_standing` | **deleted** (Spark capacity instrument) |
 | `product.fabric.node_qualification` | still uses `serving_rank_observe` GPUDirect receipt types |
