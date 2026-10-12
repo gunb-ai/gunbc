@@ -12,8 +12,9 @@ import extdeps.gpu_bench.kit_log {
   gpu_bench_capacity_ok_tokens,
   CapacityOkRead, CapacityOkAbsent, CapacityOkMalformed,
 }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 import extdeps.ninfer.replayed_tokens_total {
-  ninfer_replayed_tokens_total,
+  ninfer_replayed_tokens_total, ninfer_replayed_tokens_total_standing,
   NinferReplayedTokensRead, NinferReplayedTokensAbsent, NinferReplayedTokensMalformed,
 }
 
@@ -99,9 +100,9 @@ fn gpu_bench_warm_standing(records: List<GpuBenchRequestV2>, measured_kv: TokenC
   }
 }
 
-fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
+fn gpu_bench_warm_standing_from_cited_ninfer_replay(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
   match ninfer_replayed_tokens_total(log: log) {
-    NinferReplayedTokensAbsent => WarmRejected { cause: "ninfer_replayed_tokens_total was not observed" as NonEmptyStr }
+    NinferReplayedTokensAbsent => WarmCapacityUnread { cause: "ninfer_replayed_tokens_total was not observed" as NonEmptyStr }
     NinferReplayedTokensMalformed { cause: c } => WarmRejected { cause: c }
     NinferReplayedTokensRead { tokens: replayed } =>
       if token_count_value(t: replayed) > 0 {
@@ -113,5 +114,20 @@ fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log
           CapacityOkRead { tokens: kv } => gpu_bench_warm_standing(records: records, measured_kv: Present { value: kv })
         }
       }
+  }
+}
+
+fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
+  match ninfer_replayed_tokens_total_standing {
+    TranscribedUncited { read_obligation: o } =>
+      match ninfer_replayed_tokens_total(log: log) {
+        NinferReplayedTokensMalformed { cause: c } => WarmRejected { cause: c }
+        NinferReplayedTokensAbsent => WarmCapacityUnread {
+          cause: join(["ninfer_replayed_tokens_total was not observed; ", o as String], "") as NonEmptyStr
+        }
+        NinferReplayedTokensRead { tokens: _ } => WarmCapacityUnread { cause: o }
+      }
+    CitedToAuthority { authority: _ } =>
+      gpu_bench_warm_standing_from_cited_ninfer_replay(records: records, log: log)
   }
 }

@@ -11,6 +11,8 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 
 // NINFER'S REPLAYED-TOKEN COUNTER LINE, not a gpu-bench kit schema. The metric name is
 // ninfer_replayed_tokens_total; later snapshots overwrite earlier ones (phase counter).
+// A candidate line STARTS WITH the marker prefix. A `# TYPE …` comment does not; guessing
+// "skip any line containing #" is undeclared and would drop a real counter that carries `#`.
 
 data ninfer_replayed_tokens_total_marker: NonEmptyStr = "ninfer_replayed_tokens_total" as NonEmptyStr
 
@@ -44,7 +46,7 @@ fn ninfer_replayed_tokens_line_prefix() -> String {
 }
 
 fn ninfer_replayed_tokens_from_line(line: String) -> NinferReplayedTokensRead? {
-  if string_contains(s: line, pattern: ninfer_replayed_tokens_line_prefix()) && !string_contains(s: line, pattern: "#") {
+  if starts_with(s: line, prefix: ninfer_replayed_tokens_line_prefix()) {
     match nat_from_last_space_token(line: line) {
       Absent => Present {
         value: NinferReplayedTokensMalformed {

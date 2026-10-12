@@ -41,18 +41,17 @@ test fn committed_auto_log_capacity_is_1920000() -> Bool {
   }
 }
 
-test fn first_v2_ninfer_warm_run_is_valid() -> Bool {
+test fn first_v2_ninfer_warm_run_is_unread_until_the_counter_is_cited() -> Bool {
   let body = filesystem_read(path: gpu_bench_v2_warm_ninfer_jsonl_path).content
   let log = filesystem_read(path: gpu_bench_v2_auto_log_path).content
   match gpu_bench_parse_jsonl(text: body) {
     GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
     GpuBenchRequestV2Parsed { records: rs } =>
       match gpu_bench_warm_standing_with_ninfer_log(records: rs, log: log) {
-        WarmValid { working_set_tokens: w, measured_kv_tokens: k } =>
-          token_count_value(t: w) > 0 && token_count_value(t: k) == 1920000 && token_count_value(t: w) <= 1920000
+        WarmCapacityUnread { cause: c } => string_contains(s: c as String, pattern: "not an upstream-published contract")
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
         WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
         WarmRejected { cause: _ } => false
-        WarmCapacityUnread { cause: _ } => false
       }
   }
 }
