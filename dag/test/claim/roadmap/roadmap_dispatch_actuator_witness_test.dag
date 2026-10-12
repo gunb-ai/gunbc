@@ -1095,6 +1095,7 @@ test fn witness_inner_argv_carries_pinned_model_for_codex() -> Bool {
       worktree_path: "/opt/gunbc/dispatch-worktrees/node-inner",
       brief: "brief",
       alignment_chain_fingerprint: "fp",
+      supervision_prompt: "the rendered chain",
       credential_snapshot: NoCredentialSnapshot,
     ),
   )
@@ -1244,6 +1245,7 @@ test fn a_harness_spawn_hands_the_rendered_chain_to_supervision_and_not_to_the_b
         effort: ReasoningMedium,
         model: ProviderAccountDefaultModel,
         resolution: resolution,
+        credential_snapshot: NoCredentialSnapshot,
       ) {
         DispatchSpawnRefused { step: _, detail: _ } => false
         DispatchSpawnReady { commands } =>
