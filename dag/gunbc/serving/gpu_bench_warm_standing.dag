@@ -106,7 +106,7 @@ type GpuBenchCapacityOkRead
   | CapacityOkMalformed { cause: NonEmptyStr }
 
 type GpuBenchReplayCountRead
-  = ReplayCountRead { tokens: Nat }
+  = ReplayCountRead { tokens: TokenCount }
   | ReplayCountAbsent
   | ReplayCountMalformed { cause: NonEmptyStr }
 
@@ -152,7 +152,7 @@ fn gpu_bench_ninfer_replayed_tokens_total(log: String) -> GpuBenchReplayCountRea
           if string_contains(s: line, pattern: "ninfer_replayed_tokens_total ") && !string_contains(s: line, pattern: "#") {
             match gpu_bench_nat_from_last_token(line: line) {
               Absent => ReplayCountMalformed { cause: "ninfer_replayed_tokens_total last token is not a natural" as NonEmptyStr }
-              Present { value: n } => ReplayCountRead { tokens: n }
+              Present { value: n } => ReplayCountRead { tokens: token_count(count: n) }
             }
           } else {
             ReplayCountAbsent
@@ -167,7 +167,7 @@ fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log
     ReplayCountAbsent => WarmRejected { cause: "ninfer_replayed_tokens_total was not observed" as NonEmptyStr }
     ReplayCountMalformed { cause: c } => WarmRejected { cause: c }
     ReplayCountRead { tokens: replayed } =>
-      if replayed > 0 {
+      if token_count_value(t: replayed) > 0 {
         WarmRejected { cause: "ninfer replayed tokens; prefix restore was not a snapshot hit" as NonEmptyStr }
       } else {
         match gpu_bench_capacity_ok_tokens(log: log) {

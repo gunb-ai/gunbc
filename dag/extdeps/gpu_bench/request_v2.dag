@@ -61,7 +61,7 @@ type GpuBenchRequestV2 {
   n_active: Nat
   retained: Nat
   session: Nat
-  max_tokens: Nat
+  max_tokens: TokenCount
   prompt_tokens: TokenCount?
   completion_tokens: TokenCount?
   status: GpuBenchRequestStatus
@@ -161,7 +161,7 @@ fn gpu_bench_request_v2_from_json(obj: JsonValue) -> GpuBenchRequestV2Read {
                                                           n_active: n_active,
                                                           retained: retained,
                                                           session: session,
-                                                          max_tokens: max_tokens,
+                                                          max_tokens: token_count(count: max_tokens),
                                                           prompt_tokens: prompt_tokens,
                                                           completion_tokens: completion_tokens,
                                                           status: GpuBenchRequestOk,
@@ -179,7 +179,7 @@ fn gpu_bench_request_v2_from_json(obj: JsonValue) -> GpuBenchRequestV2Read {
                                                               n_active: n_active,
                                                               retained: retained,
                                                               session: session,
-                                                              max_tokens: max_tokens,
+                                                              max_tokens: token_count(count: max_tokens),
                                                               prompt_tokens: prompt_tokens,
                                                               completion_tokens: completion_tokens,
                                                               status: GpuBenchRequestError { detail: Absent },
@@ -193,7 +193,7 @@ fn gpu_bench_request_v2_from_json(obj: JsonValue) -> GpuBenchRequestV2Read {
                                                               n_active: n_active,
                                                               retained: retained,
                                                               session: session,
-                                                              max_tokens: max_tokens,
+                                                              max_tokens: token_count(count: max_tokens),
                                                               prompt_tokens: prompt_tokens,
                                                               completion_tokens: completion_tokens,
                                                               status: GpuBenchRequestError { detail: Present { value: e } },
