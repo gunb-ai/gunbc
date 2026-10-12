@@ -735,7 +735,8 @@ fn mbt_resolved() -> ResolvedTree {
     lexical_bindings: empty_map(),
     unavailable_providers: [],
     member_kinds: no_member_declaration_kinds(),
-    type_declaration_modifiers: type_declaration_modifiers_covering_no_modules()
+    type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
+    constructing_module: optional_absent()
   }
 }
 

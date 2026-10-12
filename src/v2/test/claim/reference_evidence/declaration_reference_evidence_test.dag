@@ -337,7 +337,8 @@ fn dre_same_leaf_resolved() -> ResolvedTree {
     lexical_bindings: call.lexical_bindings,
     unavailable_providers: call.unavailable_providers,
     member_kinds: no_member_declaration_kinds(),
-    type_declaration_modifiers: type_declaration_modifiers_covering_no_modules()
+    type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
+    constructing_module: optional_absent()
   }
 }
 

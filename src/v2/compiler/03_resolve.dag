@@ -280,6 +280,7 @@ type ResolvedTree {
   unavailable_providers: List<ClosureProviderRefusal>
   member_kinds: MemberKindChannel
   type_declaration_modifiers: TypeDeclarationModifierChannel
+  constructing_module: Optional<Symbol>
 }
 
 // A CLOSURE ROOT WHOSE OWN RESOLVE REFUSED, AND WHY. v2.compiler.name_resolve closure_declarations_demand
@@ -345,6 +346,14 @@ fn resolved_declarations_of(root: Node) -> SymbolIndex {
 // ResolutionContext.symbol_index instead, which is filled from NORMALIZED roots: it would have made
 // imported field typing appear to work off AUTHORED declarations rather than resolved ones, which is the
 // authored/resolved fork this carrier exists to keep apart (see the resolved_declarations header above).
+fn resolved_tree_constructing_module_of(root: Node) -> Optional<Symbol> {
+  match qualified_name_from_module_node(root: root) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: module_qn, diagnostics: _ } =>
+      optional_present(value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: module_qn)))
+  }
+}
+
 fn resolved_tree_of(
   root: Node,
   symbol_index: SymbolIndex,
@@ -361,7 +370,8 @@ fn resolved_tree_of(
     lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
     unavailable_providers: unavailable_providers,
     member_kinds: member_kinds,
-    type_declaration_modifiers: type_declaration_modifiers
+    type_declaration_modifiers: type_declaration_modifiers,
+    constructing_module: resolved_tree_constructing_module_of(root: root)
   }
 }
 

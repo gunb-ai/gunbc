@@ -50,7 +50,8 @@ fn wall_tree(channel: TypeDeclarationModifierChannel) -> ResolvedTree {
     lexical_bindings: empty_map(),
     unavailable_providers: [],
     member_kinds: no_member_declaration_kinds(),
-    type_declaration_modifiers: channel
+    type_declaration_modifiers: channel,
+    constructing_module: optional_absent()
   }
 }
 

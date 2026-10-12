@@ -8772,10 +8772,12 @@ fn infer_caller_admission_diags(tree: ResolvedTree, entries: List<InferredFactsE
 // Forms: record literal, `as` cast, variant construction of a sealed coproduct, and
 // parameter-default expressions (BinderDefaultEdge is walked with the rest of the tree).
 // A match-arm PATTERN is not construction: MatchArmPatternEdge subtrees are skipped
-// (destructure of a received value does not mint one). Unreadable modifier provenance
-// or ownership refuses (fail-closed). The channel is always Captured: a declaring
-// module outside `covered` is unreadable, not open. A hand-built tree must name the
-// modules it claims; `covered` Empty claims none.
+// (destructure of a received value does not mint one). The constructing MODULE is
+// ResolvedTree.constructing_module, captured when the tree was resolved from a module
+// root and copied through extraction (attempt_joined); it is not re-read from the
+// current root. Unreadable modifier provenance or missing owner refuses (fail-closed).
+// The channel is always Captured: a declaring module outside `covered` is unreadable,
+// not open. A hand-built tree must name the modules it claims; `covered` Empty claims none.
 type InferSoleCtorCtx {
   constructing_module: Optional<Symbol>
   in_pattern: Bool
@@ -8797,7 +8799,7 @@ fn infer_sole_constructor_diags(tree: ResolvedTree) -> Diagnostics {
   fold_node_topdown(
     n: tree.root,
     ctx: InferSoleCtorCtx {
-      constructing_module: infer_admission_root_module_symbol(root: tree.root),
+      constructing_module: tree.constructing_module,
       in_pattern: false
     },
     algebra: NodeFoldTopDown {

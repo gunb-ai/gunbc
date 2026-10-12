@@ -278,6 +278,9 @@ fn phase_for_reason(reason: Symbol, fallback: RealizationPhase) -> RealizationPh
 }
 
 // decl is a subtree of the resolved program, resolved under the program's own index.
+// The extracted root is the function, not the module; constructing_module is copied from
+// the program so sole_constructor still names the declaring module (re-deriving it from
+// `decl` would lose the owner).
 fn attempt_joined(program: ResolvedTree, fn_name: Symbol, entry: String) -> EntryRealizationAttempt {
   let joined = decl_edges_named(root: program.root, fn_name: fn_name, acc: [])
   if length(xs: joined) == 0 {
@@ -288,7 +291,7 @@ fn attempt_joined(program: ResolvedTree, fn_name: Symbol, entry: String) -> Entr
     match list_at_optional(xs: joined, index: 0) {
       Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
       Present { value: decl } =>
-        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations, lexical_bindings: program.lexical_bindings, unavailable_providers: program.unavailable_providers, member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: program.type_declaration_modifiers }) {
+        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations, lexical_bindings: program.lexical_bindings, unavailable_providers: program.unavailable_providers, member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: program.type_declaration_modifiers, constructing_module: program.constructing_module }) {
           Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>
