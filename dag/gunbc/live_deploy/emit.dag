@@ -238,6 +238,8 @@ import gunbc.membership_reconcile {
 import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv }
 import gunbc.live_deploy.operations {
   deploy_stage_dir_var,
+  deploy_cap_stage_dir_var,
+  deploy_apply_stage_dirs_exit_trap_command,
   deploy_stage_write_command,
   deploy_stage_write_expansion_command,
   deploy_stage_install_command,
@@ -461,11 +463,19 @@ fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
 // already carries Let with an ExprCmdSubst value, so the name, the callee and its argument are
 // three modeled parts instead of one quoted line an author assembled — and the variable name is
 // the same single authority the staged-path word reads (operations.deploy_stage_dir_var).
-fn deploy_stage_directory_let_step() -> PipelineStep {
+fn deploy_mktemp_dir_let_step(name: String) -> PipelineStep {
   Let {
-    name: deploy_stage_dir_var,
+    name: name,
     value: ExprCmdSubst { callee: "mktemp", args: ["-d"] },
   }
+}
+
+fn deploy_stage_directory_let_step() -> PipelineStep {
+  deploy_mktemp_dir_let_step(name: deploy_stage_dir_var)
+}
+
+fn deploy_cap_stage_directory_let_step() -> PipelineStep {
+  deploy_mktemp_dir_let_step(name: deploy_cap_stage_dir_var)
 }
 
 // The end-of-fold receipt line, named once for both folds. Its fields are argv elements rather
@@ -3713,7 +3723,8 @@ fn deploy_apply_frame_decide_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 fn deploy_apply_frame_mutate_steps() -> List<PipelineStep> {
   [
     deploy_stage_directory_let_step(),
-    deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
+    deploy_cap_stage_directory_let_step(),
+    deploy_raw(command: deploy_apply_stage_dirs_exit_trap_command()),
   ]
 }
 

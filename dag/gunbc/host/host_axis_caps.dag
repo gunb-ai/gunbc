@@ -47,7 +47,7 @@ import v2.extdeps.languages.bash_build {
 }
 import v2.std.node { Node }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
-import gunbc.live_deploy.operations { deploy_stage_path_word }
+import gunbc.live_deploy.operations { deploy_cap_stage_path_word }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.shell_command_text {
   shell_command_intent,
@@ -564,12 +564,12 @@ fn deploy_cap_upsert_staged_stmts(m: CapMember, stage_name: String) -> List<Node
   [
     cap_write_content_intent(
       content: m.content,
-      path: deploy_stage_path_word(stage_name: stage_name),
+      path: deploy_cap_stage_path_word(stage_name: stage_name),
     ),
     bash_build_command_with_words(words: concat(
       shell_literal_words(words: sudo_elevate_argv(command: ["install", "-m", "0644"])),
       [
-        deploy_stage_path_word(stage_name: stage_name),
+        deploy_cap_stage_path_word(stage_name: stage_name),
         bash_build_word_lit(text: m.dropin_path as String),
       ],
     )),

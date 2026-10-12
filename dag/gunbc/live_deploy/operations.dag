@@ -112,20 +112,44 @@ fn systemctl_unmask_command(unit: NonEmptyStr, privileged: Bool) -> String {
   }
 }
 
-// THE DEPLOY STAGING DIRECTORY IS ONE FACT. Apply and retract both create a temp directory and
-// hold it in this shell variable; every staged file is named relative to it. Spelled at each use
-// site it was a literal inside seven different quotations, each of which decided independently
-// how to quote the expansion.
+// THE APPLY-FOLD STAGING DIRECTORY. Apply and retract both create a temp directory and hold it
+// in this shell variable; sudoers, helper grants, unit files and tree-sync env are named
+// relative to it. The cap member does NOT share this directory: two members writing one mktemp
+// dir is the class that left the helpers readback competing with fleet-width drop-ins.
 data deploy_stage_dir_var: String = "_gunbc_stage"
+
+// THE CAP MEMBER'S PRIVATE STAGING DIRECTORY. deploy_cap_upsert_staged_stmts authors
+// 20-fleet-width.conf / 40-fleet-high.conf here, never under deploy_stage_dir_var.
+data deploy_cap_stage_dir_var: String = "_gunbc_cap_stage"
+
+fn deploy_path_word_in_dir(dir_var: String, stage_name: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [
+    bash_build_word_var(name: dir_var),
+    bash_build_word_lit(text: concat("/", stage_name)),
+  ])
+}
 
 // A staged path is a WORD — a variable reference and a literal suffix concatenated as two parts
 // of one word — so nothing here decides how the expansion is quoted. The grammar does, and it
 // does so identically at a redirection target and at an install argument, from the same word.
 fn deploy_stage_path_word(stage_name: String) -> Node {
-  bash_build_word_concat_from_nodes(parts: [
-    bash_build_word_var(name: deploy_stage_dir_var),
-    bash_build_word_lit(text: concat("/", stage_name)),
-  ])
+  deploy_path_word_in_dir(dir_var: deploy_stage_dir_var, stage_name: stage_name)
+}
+
+fn deploy_cap_stage_path_word(stage_name: String) -> Node {
+  deploy_path_word_in_dir(dir_var: deploy_cap_stage_dir_var, stage_name: stage_name)
+}
+
+// ONE EXIT TRAP REMOVES BOTH STAGING DIRS. Two traps would race on EXIT; one command names both
+// variables the apply frame binds.
+fn deploy_apply_stage_dirs_exit_trap_command() -> String {
+  join([
+    "trap 'rm -rf \"$",
+    deploy_stage_dir_var,
+    "\" \"$",
+    deploy_cap_stage_dir_var,
+    "\"' EXIT",
+  ], "")
 }
 
 // Writing a staged file is `printf %s <content> > <staged path>`, NOT a here-document. A

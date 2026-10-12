@@ -100,9 +100,12 @@ import gunbc.live_deploy.operations {
   rm_force_recursive_command,
   systemctl_disable_now_command,
   deploy_stage_install_command,
+  deploy_stage_write_command,
   deploy_stage_write_expansion_command,
   install_directory_owned_command,
   install_file_owned_command,
+  deploy_stage_dir_var,
+  deploy_cap_stage_dir_var,
 }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command,
@@ -183,6 +186,7 @@ import gunbc.host_axis_caps {
   deploy_memory_cap_shadow_revert_script,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   deploy_memory_cap_apply_script_from_authorization,
+  deploy_runner_memory_cap_author_script,
   derived_runner_memory_cap_members,
   cap_converge_decision,
   CapConvergeDecision, CapConvergeWithheld,
@@ -1705,6 +1709,22 @@ test fn withheld_cap_report_precedes_and_keeps_binary_tree_and_unit_steps() -> B
         && string_contains(s: text, pattern: "'cmp'")
         && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__ memory-cap apply WITHHELD")
   }
+}
+
+// HOLD on this head: cap authoring names the private cap stage and not the apply-fold stage.
+// RED on a cap script emitted from the c22acb7 spec: that producer used deploy_stage_path_word
+// (apply-fold $_gunbc_stage). The supplied c22acb7 spelling is the same word builder still used
+// by helpers, applied to the fleet-width basename the cap member authors.
+test fn cap_author_uses_a_private_stage_not_the_apply_fold_stage() -> Bool {
+  let current = deploy_runner_memory_cap_author_script()
+  let c22acb7_cap_script = deploy_stage_write_command(
+    stage_name: "20-fleet-width.conf",
+    content: "[Service]\n",
+  )
+  string_contains(s: current, pattern: concat("$", deploy_cap_stage_dir_var))
+    && !string_contains(s: current, pattern: concat("$", deploy_stage_dir_var))
+    && string_contains(s: c22acb7_cap_script, pattern: concat("$", deploy_stage_dir_var))
+    && !string_contains(s: c22acb7_cap_script, pattern: concat("$", deploy_cap_stage_dir_var))
 }
 
 // DECISIVE DIFF (parent, after the c22acb7 rerun): same spec, CapConvergeWithheld vs authorized.
