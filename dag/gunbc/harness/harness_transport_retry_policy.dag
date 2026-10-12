@@ -38,10 +38,11 @@ data harness_transport_retry_policy_now: TransportRetryPolicy = TransportRetryPo
 // THE nth WAIT, before its offset: first_delay doubled n times, never past max_delay.
 fn transport_retry_delay_seconds(policy: TransportRetryPolicy, retries_so_far: Int) -> Int {
   if retries_so_far <= 0 {
-    second_count(s: policy.first_delay)
+    second_count(s: policy.first_delay) as Int
   } else {
     let doubled = 2 * transport_retry_delay_seconds(policy: policy, retries_so_far: retries_so_far - 1)
-    if doubled > second_count(s: policy.max_delay) { second_count(s: policy.max_delay) } else { doubled }
+    let cap = second_count(s: policy.max_delay) as Int
+    if doubled > cap { cap } else { doubled }
   }
 }
 
@@ -57,5 +58,5 @@ fn transport_retry_offset_seconds(policy: TransportRetryPolicy, session_key: Str
 // WHETHER ONE MORE RETRY FITS, given how long this request has already waited: a retry is due only
 // while its whole wait still lands inside the budget.
 fn transport_retry_fits(policy: TransportRetryPolicy, waited_seconds: Int, retries_so_far: Int, offset_seconds: Int) -> Bool {
-  waited_seconds + transport_retry_delay_seconds(policy: policy, retries_so_far: retries_so_far) + offset_seconds <= second_count(s: policy.budget)
+  waited_seconds + transport_retry_delay_seconds(policy: policy, retries_so_far: retries_so_far) + offset_seconds <= second_count(s: policy.budget) as Int
 }
