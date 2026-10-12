@@ -2,7 +2,7 @@ module v2.test.claim.compiler.callback_argument_formal
 
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
 import v2.compiler.infer { infer, infer_type_equal_ignoring_provenance }
-import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, Suggested, Unavailable, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, Suggested, Unavailable, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -22,11 +22,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // BOUNDARY: source text in, through the production assembly route, then v2.compiler.infer infer.
 // Measured against main d935a9d2f9 before the repair: the monomorphic and generic positives REFUSE
-// application_argument_does_not_inhabit with produced type <type-variable@..:x>, and the Bool control
-// refuses with that same placeholder rather than Bool -- so all three claims are red there.
+// application_argument_does_not_inhabit with produced type <type-variable@..:x>, the Bool control
+// refuses with that same placeholder rather than Bool, and the wrong-return callback is ACCEPTED with
+// inhabitance_undecidable_argument_type_not_derived -- so all four claims are red there.
 //
-// MUTATION: removing the callback frame join (the callback subtree inheriting its parent's frame
-// unchanged) must turn the two positives red again with the compiler still runnable.
+// MUTATIONS, each leaving the compiler runnable: removing the callback frame join (the callback subtree
+// inheriting its parent's frame unchanged) turns the positives and the Bool control red again; removing
+// the callback's signature from the argument judgment (infer_entries_with_callback_signatures) turns
+// the monomorphic positive and the wrong-return refusal red again.
 
 data caf_prelude: String = "module p\n\ntype Res<T>\n  = Ok { value: T }\n  | Err\n\nfn h() -> Res<Int> {\n  Ok { value: 1 }\n}\n\nfn need_int(n: Int) -> Res<Int> {\n  Ok { value: n }\n}\n\n"
 
@@ -119,8 +122,21 @@ fn caf_same_type(a: Optional<Node>, b: Optional<Node>) -> Bool {
   }
 }
 
+// ACCEPTED AND DECIDED: the callback is judged at `f` against fn(Int) -> Res<Int>, so the call carries no
+// argument-type-not-derived obligation -- an accept on the undecidable frontier would not discriminate.
+fn caf_accepted_and_decided(src: String) -> Bool {
+  match fmi_assemble(src: caf_source(body: src)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } => !diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
+      }
+  }
+}
+
 test fn caf_a_monomorphic_callback_parameter_is_typed_from_its_formal() -> Bool {
-  caf_reason(src: caf_mono) == ^accepted
+  caf_accepted_and_decided(src: caf_mono)
 }
 
 test fn caf_a_generic_callback_parameter_is_typed_from_a_later_sibling() -> Bool {

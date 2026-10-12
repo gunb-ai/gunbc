@@ -102,6 +102,7 @@ import v2.std.arrow_signature {
   ArrowParameterOrderMalformed,
   application_actual_edges,
   application_binding_plan,
+  anonymous_signature_arrow,
   application_binding_plan_over,
   arrow_declared_parameter_order
 }
@@ -4402,17 +4403,18 @@ fn infer_application_argument_inhabitance(
       match infer_application_formal_args(node: node, formals: formals, entries: entries) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: pairs, diagnostics: _ } =>
+          let judged = infer_entries_with_callback_signatures(application: node, pairs: pairs, entries: entries, declarations: declarations)
           match infer_judge_formal_args(
             position: position_direct_call_argument(),
             site: JudgedAtApplication { application: node },
-            entries: entries,
+            entries: judged,
             declarations: declarations,
             pairs: pairs,
             type_params: infer_application_type_params(node: node, entries: entries)
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: instances, diagnostics: d } =>
-              match infer_application_structure_bounds(node: node, entries: entries, declarations: declarations, instances: instances) {
+              match infer_application_structure_bounds(node: node, entries: judged, declarations: declarations, instances: instances) {
                 Present { value: refusal } => outcome_rejected(refusal)
                 Absent => Accepted { value: instances, diagnostics: d }
               }
@@ -7354,29 +7356,42 @@ fn infer_node_is_function_literal(n: Node) -> Bool {
 // (infer_match_generic_formal_or_carrier). Knowing a formal's INPUT does not wait on its output: a type
 // parameter only the callback's own result could fix (U in `fn(T) -> Res<U>`) is simply left
 // uninstantiated, and only an input still mentioning an uninstantiated parameter is left unframed.
-// Every arm that cannot read the formal inherits the frame unchanged: the application row judges the
-// same actuals afterwards and owns every refusal, so nothing is decided here that it does not re-decide.
-fn infer_callback_argument_frame(application: Node, frame: InferFrame, acc: InferGatherFoldAcc, callback: Node, resolved: ResolvedTree) -> InferFrame {
-  match infer_application_formals(node: application, entries: acc.entries) {
-    FormalsUnresolved => frame
-    FormalsOrderRefused { reason: _ } => frame
+// Every arm that cannot read the formal is Absent: the frame is then inherited unchanged and the
+// callback keeps the counted frontier, and the application row judging the same actuals afterwards owns
+// every refusal. The frame (infer_callback_argument_frame) and the row's judgment of the callback
+// (infer_callback_signature) read this one expectation, so the type the body is checked with and the
+// type the callback is judged at are one fact.
+type InferCallbackExpectation {
+  expected: Node
+  type_params: List<Symbol>
+}
+
+fn infer_callback_expectation(application: Node, callback: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Optional<InferCallbackExpectation> {
+  match infer_application_formals(node: application, entries: entries) {
+    FormalsUnresolved => optional_absent()
+    FormalsOrderRefused { reason: _ } => optional_absent()
     FormalsInDeclaredOrder { formals: formals } =>
-      match infer_application_formal_args(node: application, formals: formals, entries: acc.entries) {
-        Rejected { diagnostics: _ } => frame
+      match infer_application_formal_args(node: application, formals: formals, entries: entries) {
+        Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: pairs, diagnostics: _ } =>
           match infer_callback_formal_arg(pairs: pairs, callback: callback) {
-            Absent => frame
+            Absent => optional_absent()
             Present { value: pair } =>
-              let type_params = infer_application_type_params(node: application, entries: acc.entries)
-              let instances = infer_settled_actual_instances(pairs: pairs, entries: acc.entries, type_params: type_params, declarations: resolved.resolved_declarations)
-              infer_callback_formal_frame(
-                frame: frame,
-                expected: infer_type_alias_normalized(t: infer_type_instantiated(t: pair.formal.declared, instances: instances), declarations: resolved.resolved_declarations),
-                callback: callback,
+              let type_params = infer_application_type_params(node: application, entries: entries)
+              let instances = infer_settled_actual_instances(pairs: pairs, entries: entries, type_params: type_params, declarations: declarations)
+              optional_present(value: InferCallbackExpectation {
+                expected: infer_type_alias_normalized(t: infer_type_instantiated(t: pair.formal.declared, instances: instances), declarations: declarations),
                 type_params: type_params
-              )
+              })
           }
       }
+  }
+}
+
+fn infer_callback_argument_frame(application: Node, frame: InferFrame, acc: InferGatherFoldAcc, callback: Node, resolved: ResolvedTree) -> InferFrame {
+  match infer_callback_expectation(application: application, callback: callback, entries: acc.entries, declarations: resolved.resolved_declarations) {
+    Absent => frame
+    Present { value: e } => infer_callback_formal_frame(frame: frame, expected: e.expected, callback: callback, type_params: e.type_params)
   }
 }
 
@@ -7452,20 +7467,146 @@ fn infer_callback_formal_instance(instances: List<TypeVariableInstance>, expecte
   match fold_step_formal_at(step: callback, position: position) {
     Absent => instances
     Present { value: own } =>
-      match fold_step_formal_at(step: expected, position: position) {
-        Absent => instances
-        Present { value: wanted } =>
-          match node_atom_identity_optional(node: own.formal.type_node) {
-            Absent => instances
-            Present { value: variable } =>
-              if own.fresh && !inhabitance_node_mentions_type_variable(n: wanted.formal.type_node, type_variables: type_params) {
-                list_snoc_item(xs: instances, item: TypeVariableInstance { binder: variable, instance: wanted.formal.type_node })
-              } else {
-                instances
+      if own.fresh {
+        match node_atom_identity_optional(node: own.formal.type_node) {
+          Absent => instances
+          Present { value: variable } =>
+            match infer_callback_expected_input(expected: expected, position: position, type_params: type_params) {
+              Absent => instances
+              Present { value: supplied } => list_snoc_item(xs: instances, item: TypeVariableInstance { binder: variable, instance: supplied })
+            }
+        }
+      } else {
+        instances
+      }
+  }
+}
+
+fn infer_callback_expected_input(expected: Node, position: Int, type_params: List<Symbol>) -> Optional<Node> {
+  match fold_step_formal_at(step: expected, position: position) {
+    Absent => optional_absent()
+    Present { value: wanted } =>
+      if inhabitance_node_mentions_type_variable(n: wanted.formal.type_node, type_variables: type_params) {
+        optional_absent()
+      } else {
+        optional_present(value: wanted.formal.type_node)
+      }
+  }
+}
+
+// THE CALLBACK'S TYPE AT THE POSITION THAT CONSUMES IT: a fresh input is the input its formal supplies
+// (infer_callback_expected_input, the same instance its frame gave the body), an authored input is as
+// written; an elided return is the body's derived type, an authored one as written. Assembled through
+// anonymous_signature_arrow -- the one bodiless signature encoding the Arrow arm of
+// v2.std.inhabitance declared_type_inhabitance re-reads both sides through -- so the callback is JUDGED
+// against its formal like any callable value. Absent when an input stays unsupplied or the body's type is
+// not derived: the callback then keeps the counted frontier, never a guessed type. This types the callback
+// at THIS position only; the lambda's own facts are not rewritten, so a lambda reached anywhere else keeps
+// gunbc.recurring_failure_mode lambda_value_has_no_derived_type_in_v2_infer's frontier.
+type InferCallbackSignatureWalk {
+  position: Int
+  domain_types: Optional<List<Node>>
+}
+
+fn infer_callback_signature(application: Node, callback: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Optional<Node> {
+  match infer_callback_expectation(application: application, callback: callback, entries: entries, declarations: declarations) {
+    Absent => optional_absent()
+    Present { value: e } =>
+      match arrow_declared_parameter_order(arrow: callback) {
+        ArrowParameterOrderAbsent => optional_absent()
+        ArrowParameterOrderMalformed => optional_absent()
+        ArrowParameterOrderDeclared { labels: labels } =>
+          let domain = fold(labels, init: InferCallbackSignatureWalk { position: 0, domain_types: optional_present(value: Empty) }, f: fn(walk, _) {
+            InferCallbackSignatureWalk {
+              position: walk.position + 1,
+              domain_types: match walk.domain_types {
+                Absent => optional_absent()
+                Present { value: types } =>
+                  match infer_callback_input_type(expectation: e, callback: callback, position: walk.position) {
+                    Absent => optional_absent()
+                    Present { value: t } => optional_present(value: list_snoc_item(xs: types, item: t))
+                  }
+              }
+            }
+          }).domain_types
+          match domain {
+            Absent => optional_absent()
+            Present { value: domain_types } =>
+              match infer_callback_return_type(callback: callback, entries: entries) {
+                Absent => optional_absent()
+                Present { value: codomain } => optional_present(value: anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: callback))
               }
           }
       }
   }
+}
+
+fn infer_callback_input_type(expectation: InferCallbackExpectation, callback: Node, position: Int) -> Optional<Node> {
+  match fold_step_formal_at(step: callback, position: position) {
+    Absent => optional_absent()
+    Present { value: own } =>
+      if own.fresh {
+        infer_callback_expected_input(expected: expectation.expected, position: position, type_params: expectation.type_params)
+      } else {
+        optional_present(value: own.formal.type_node)
+      }
+  }
+}
+
+fn infer_callback_return_type(callback: Node, entries: List<InferredFactsEntry>) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: callback), index: 1) {
+    Absent => optional_absent()
+    Present { value: codomain } =>
+      if infer_callback_type_is_fresh(t: codomain, callback: callback) {
+        match arrow_body_target_lookup(children: callback.children) {
+          Found { target: body } =>
+            match lookup_inferred_facts_in_entries(entries: entries, key: body) {
+              Absent => optional_absent()
+              Present { value: facts } =>
+                match inferred_facts_resolved_type(facts: facts) {
+                  Violates { diagnostic: _ } => optional_absent()
+                  Holds { value: t } => optional_present(value: t)
+                }
+            }
+          Ambiguous => optional_absent()
+          Absent => optional_absent()
+        }
+      } else {
+        optional_present(value: codomain)
+      }
+  }
+}
+
+fn infer_callback_type_is_fresh(t: Node, callback: Node) -> Bool {
+  match node_atom_identity_optional(node: t) {
+    Present { value: id } => fold(type_param_names(n: callback), init: false, f: fn(acc, v) { acc || (v == id) })
+    Absent => false
+  }
+}
+
+// The application's entries as its argument judgment reads them: each callback actual whose signature
+// assembles is seen at that signature (infer_callback_signature), ahead of the frontier entry its own
+// formation left, so lookup's first match is the callback's type at this position. Local to the
+// judgment: the row's facts are not rewritten.
+fn infer_entries_with_callback_signatures(application: Node, pairs: List<InhabitanceFormalArg>, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> List<InferredFactsEntry> {
+  fold(pairs, init: entries, f: fn(acc, pair) {
+    if infer_node_is_function_literal(n: pair.arg) {
+      match infer_callback_signature(application: application, callback: pair.arg, entries: entries, declarations: declarations) {
+        Absent => acc
+        Present { value: callable } =>
+          match inferred_facts_from_derived_type(node: pair.arg, derived_type: callable, descent: infer_descent_witness_for_node(n: pair.arg)) {
+            Rejected { diagnostics: _ } => acc
+            Accepted { value: facts, diagnostics: _ } =>
+              match admitted_inferred_facts_entry(node: pair.arg, facts: facts) {
+                Rejected { diagnostics: _ } => acc
+                Accepted { value: entry, diagnostics: _ } => Cons { head: entry, tail: acc }
+              }
+          }
+      }
+    } else {
+      acc
+    }
+  })
 }
 
 fn infer_append_binder_types(xs: List<InferBinderType>, ys: List<InferBinderType>) -> List<InferBinderType> {
