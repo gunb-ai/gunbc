@@ -285,6 +285,13 @@ import gunbc.roadmap.roadmap_verification_receipt {
   SelectionObserved,
 }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
+import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_addressing }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, dispatch_worktree_path_for_instance, dispatch_attempt_state_path_for_instance, DispatchSpawnReady, DispatchSpawnRefused }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
+import gunbc.dispatch_attempt { DispatchAttempt }
+import gunbc.dispatch_attempt_launch { SnapshotFreeLaunch, CodexWithoutSnapshot }
+import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
+import test.claim.roadmap.roadmap_dispatch_actuator_witness { fx_prepared_launch, sized_derivable, fixture_ready_resolution }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -3438,3 +3445,46 @@ test fn a_commit_settlement_binds_only_its_own_head_and_subject() -> Bool {
     && (match belt_commit_record_standing_of_text(content: at_h1, node_id: "other", attempt_key: "feedfacefeedface", head_sha: "h1") { CommitStepRefused { reason: _ } => true  _ => false })
 }
 
+// THE BELT'S STAGING ADDRESSES THE ATTEMPT ITS COMMANDS WERE BUILT FOR. The spawn plan builds the
+// worktree and attempt-state commands from the prepared launch (gunbc.roadmap.roadmap_dispatch_actuator
+// dispatch_spawn_commands_for_launch), and the belt's worktree observation, state initialization,
+// placement and persisted failure address the projection of that same launch
+// (gunbc.roadmap.roadmap_belt_actuate belt_spawn_addressing). Both name one worktree and one state directory,
+// shown with the codex spawn on its custody host, which needs no credential snapshot; a projection
+// that took its attempt from anywhere but the prepared launch would name another path here.
+test fn the_belt_addresses_the_attempt_its_spawn_commands_were_built_for() -> Bool {
+  let attempt = DispatchAttempt {
+    instance: srv2_lab_dashboard_instance(),
+    node: sized_derivable(id: "belt-addressing-node", prs: [], title: "Belt addressing"),
+    attempt_key: "feedfacefeedface",
+  }
+  match fx_prepared_launch(
+    requested: attempt,
+    launch: SnapshotFreeLaunch { attempt: attempt, executor: CodexWithoutSnapshot },
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+  ) {
+    none => false
+    Present { value: prepared } => {
+      let addressing = belt_spawn_addressing(prepared: prepared)
+      match dispatch_spawn_commands_for_launch(
+        prepared: prepared,
+        session_uuid: "00000000-0000-4000-8000-000000000009",
+        origin: FreshFromBase,
+        resolution: fixture_ready_resolution(node_id: "belt-addressing-node", project_ids: []),
+      ) {
+        DispatchSpawnRefused { step: _, detail: _ } => false
+        DispatchSpawnReady { commands } =>
+          (addressing.attempt_key == "feedfacefeedface")
+            && string_contains(
+              s: join(commands.worktree_add.args, separator: "\0"),
+              pattern: join(["\0", dispatch_worktree_path_for_instance(instance: addressing.instance, node_id: addressing.node.node, attempt_key: addressing.attempt_key)], ""),
+            )
+            && string_contains(
+              s: join(commands.attempt_state_prepare.args, separator: "\0"),
+              pattern: join(["\0", dispatch_attempt_state_path_for_instance(instance: addressing.instance, node_id: addressing.node.node, attempt_key: addressing.attempt_key)], ""),
+            )
+      }
+    }
+  }
+}

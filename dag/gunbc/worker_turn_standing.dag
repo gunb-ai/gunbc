@@ -44,6 +44,7 @@ import gunbc.codex_harness_credential {
   codex_harness_turn_busy_exit,
   codex_harness_credential_context,
 }
+import gunbc.dispatch_credential_snapshot { TakenCredentialSnapshot, taken_credential_snapshot_path }
 import gunbc.cursor_harness_credential {
   cursor_status_reading,
   CursorStatusReading,
@@ -53,7 +54,7 @@ import gunbc.cursor_harness_credential {
 }
 
 // THE CODEX AND CURSOR OFFERS ARE JUDGED ON THE CREDENTIAL THE SPAWN BINDS, the way the Claude draw
-// is (gunbc.roadmap.roadmap_dispatch_actuator claude_observed_standing_for_instance). Before this, both offers
+// is (gunbc.roadmap.roadmap_dispatch_actuator claude_observed_standing_from_snapshot). Before this, both offers
 // carried the declared inventory's unobserved standing, so creating the secrets and converging their
 // custody could not change selection: a declared row admits no draw. Each observation here runs on
 // the custody host against the custody credential and nothing ambient, so a login someone made by hand
@@ -142,16 +143,18 @@ fn cursor_standing_from_status(reading: CursorStatusReading) -> ProviderStanding
   }
 }
 
-// The status probe reads the attempt's credential snapshot and keeps it for the spawn
-// (PosixShKeepFile); the snapshot is taken by the caller (gunbc.roadmap.roadmap_dispatch_actuator).
-fn cursor_observed_standing_from_snapshot(snapshot: NonEmptyStr) -> ProviderStanding {
+// The status probe BORROWS the attempt's credential snapshot: it reads the sealed value the take
+// returned and keeps the file for the spawn (PosixShKeepFile); the snapshot is taken by the caller
+// (gunbc.roadmap.roadmap_dispatch_actuator cursor_selection_observed).
+fn cursor_observed_standing_from_snapshot(snapshot: TakenCredentialSnapshot) -> ProviderStanding {
+  let path = taken_credential_snapshot_path(snapshot: snapshot)
   match admit_posix_shell_name(spelling: cursor_api_key_env_var as String) {
     PosixShellNameRefused { spelling } =>
       ProviderStandingUnobserved { reason: join(["the cursor credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr }
     PosixShellNameAdmitted { name } =>
       match posix_sh_export_from_file_then_exec_command(
         name: name,
-        path: snapshot,
+        path: path,
         command: [cursor_cli_program, "status", "--format", "json"],
         disposition: PosixShKeepFile,
       ) {
@@ -161,7 +164,7 @@ fn cursor_observed_standing_from_snapshot(snapshot: NonEmptyStr) -> ProviderStan
           let run = run_shell_command_observe(command: command, transport: LocalExec)
           if run.exit_code == posix_sh_export_from_file_unreadable_exit {
             ProviderStandingUnobserved {
-              reason: join(["the cursor credential snapshot ", snapshot as String, " is unreadable: ", run.stderr], "") as NonEmptyStr,
+              reason: join(["the cursor credential snapshot ", path as String, " is unreadable: ", run.stderr], "") as NonEmptyStr,
             }
           } else {
             cursor_standing_from_status(reading: cursor_status_reading(stdout: run.stdout))

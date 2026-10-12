@@ -57,6 +57,8 @@ import extdeps.llm.cli {
   CodexApprovalNever,
   ReasoningHigh,
   ReasoningMedium,
+  ReasoningEffort,
+  ProviderModelSelection,
   reasoning_effort_label,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -77,7 +79,12 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchActuatorSelection,
   DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,
-  dispatch_provider_inner_argv_for_instance,
+  dispatch_provider_inner_argv_for_launch,
+  attempt_selection_launching,
+  attempt_launch_provider,
+  DispatchAttemptPrepared,
+  DispatchAttemptSelectionRefused,
+  DispatchSpawnPlan,
   provider_kind_to_dispatch_cli,
   DispatchProviderInnerArgv,
   DispatchProviderInnerArgvReady,
@@ -85,8 +92,6 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   CursorProviderCredentialUnbound,
   CodexProviderOffCustodyHost,
   CodexProviderExecutableAbsent,
-  CredentialSnapshotNotConsumed,
-  CredentialSnapshotForAnotherAttempt,
   ClaudeProviderCredentialUnbound,
   ClaudeCodeProvider,
   CodexDispatchProvider,
@@ -101,7 +106,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   codex_spawn_argv,
   dispatch_codex_home,
   dispatch_codex_exec_spec,
-  dispatch_spawn_commands_for_resolved_instance,
+  dispatch_spawn_commands_for_launch,
   dispatch_brief_for_origin,
   dispatch_brief_fields_for_environment,
   dispatch_brief_with_centering,
@@ -176,7 +181,14 @@ import gunbc.provider_standing_probe_bridge {
   provider_standing_bundle_from_codex_dashboard_probes,
 }
 import gunbc.provider_account { codex_roadmap_account_selection }
-import gunbc.dispatch_credential_snapshot { NoCredentialSnapshot }
+import gunbc.dispatch_attempt { DispatchAttempt }
+import gunbc.dispatch_attempt_launch {
+  AttemptLaunch,
+  SnapshotFreeExecutor,
+  SnapshotFreeLaunch,
+  CodexWithoutSnapshot,
+  PreparedAttemptLaunch,
+}
 import gunbc.dispatch_pipe_pane_emit {
   PipeEmitted,
   PipeEmitRefused,
@@ -190,7 +202,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_provider_executable,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  ContinueFromAttempt, FreshFromBase,
+  AttemptOrigin, ContinueFromAttempt, FreshFromBase,
   continuation_alignment_l0_pointer, continuation_alignment_ask,
 }
 import gunbc.roadmap.roadmap_alignment {
@@ -219,6 +231,53 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     signoff: Unsigned,
     parent: none,
     centering: none,
+  }
+}
+
+// A PREPARED LAUNCH, minted through the production producer the mint admits
+// (gunbc.roadmap.roadmap_dispatch_actuator attempt_selection_launching), with the selection's resolved effort,
+// model and fingerprint supplied as values: the subject of these claims is the spawn fold, not the
+// selection. A launch holding an attempt snapshot needs the real take, so it lives in
+// test.claim.dispatch_credential_snapshot_wet_witness.
+fn fx_prepared_launch(
+  requested: DispatchAttempt,
+  launch: AttemptLaunch,
+  effort: ReasoningEffort,
+  model: ProviderModelSelection,
+) -> PreparedAttemptLaunch? {
+  match attempt_selection_launching(
+    requested: requested,
+    selection: DispatchActuatorSelectionOk {
+      provider: attempt_launch_provider(launch: launch),
+      effort: effort,
+      model: model,
+      process_fingerprint: "fixture-process-fingerprint" as NonEmptyStr,
+    },
+    launch: launch,
+  ) {
+    DispatchAttemptPrepared { prepared } => Present { value: prepared }
+    DispatchAttemptSelectionRefused { reason: _ } => none
+  }
+}
+
+// The spawn fold for an attempt whose executor reads no attempt snapshot. A launch the fixture could
+// not prepare answers a refusal the claims never expect, so it can only turn a claim red.
+fn fx_snapshot_free_plan(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  session_uuid: String,
+  attempt_key: String,
+  executor: SnapshotFreeExecutor,
+  effort: ReasoningEffort,
+  model: ProviderModelSelection,
+  origin: AttemptOrigin,
+  resolution: AlignmentResolution,
+) -> DispatchSpawnPlan {
+  let attempt = DispatchAttempt { instance: instance, node: node, attempt_key: attempt_key }
+  match fx_prepared_launch(requested: attempt, launch: SnapshotFreeLaunch { attempt: attempt, executor: executor }, effort: effort, model: model) {
+    Present { value: prepared } =>
+      dispatch_spawn_commands_for_launch(prepared: prepared, session_uuid: session_uuid, origin: origin, resolution: resolution)
+    none => DispatchSpawnRefused { step: "fixture-preparation" as NonEmptyStr, detail: "the fixture launch was not prepared" }
   }
 }
 
@@ -401,7 +460,7 @@ test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
     sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchActuatorSelectionRefused { reason: _ } => true
-    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => false
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
   }
 }
 
@@ -465,7 +524,8 @@ fn codex_tmux_arm_shape_holds(spawn: HostExecArgv, provider_start: HostExecArgv,
 }
 
 // SELECTION THEN SPAWN, through the route the belt takes: the selection resolves over the inventory,
-// and the resolved provider, effort and model reach dispatch_spawn_commands_for_resolved_instance.
+// the producer the mint admits prepares the codex launch from the receipt's effort and model, and the
+// spawn fold builds the command from that prepared launch.
 // (The instance-less inventory route this claim used to drive was deleted with no production caller.)
 test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
   let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
@@ -483,18 +543,25 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
     sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason: _ } => false
-    DispatchSelectionResolved { receipt } =>
-  match dispatch_spawn_commands_for_resolved_instance(
-    instance: srv2_lab_dashboard_instance(),
-    node: node,
+    DispatchSelectionResolved { receipt } => {
+  let attempt = DispatchAttempt { instance: srv2_lab_dashboard_instance(), node: node, attempt_key: "feedfacefeedface" }
+  match attempt_selection_launching(
+    requested: attempt,
+    selection: DispatchActuatorSelectionOk {
+      provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+      effort: receipt.applied_effort,
+      model: resolved_model_selection(resolved: receipt.resolved_selection),
+      process_fingerprint: "fixture-process-fingerprint" as NonEmptyStr,
+    },
+    launch: SnapshotFreeLaunch { attempt: attempt, executor: CodexWithoutSnapshot },
+  ) {
+    DispatchAttemptSelectionRefused { reason: _ } => false
+    DispatchAttemptPrepared { prepared } =>
+  match dispatch_spawn_commands_for_launch(
+    prepared: prepared,
     session_uuid: "uuid-unused-by-codex",
-    attempt_key: "feedfacefeedface",
-    provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
-    effort: receipt.applied_effort,
-    model: resolved_model_selection(resolved: receipt.resolved_selection),
     origin: FreshFromBase,
     resolution: fixture_ready_resolution(node_id: "codex-selected", project_ids: []),
-    credential_snapshot: NoCredentialSnapshot,
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands: cmds } =>
@@ -509,6 +576,8 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
       )
   }
   }
+  }
+  }
 }
 
 // THE LAB INSTANCE DOES NOT CARRY A CODEX STATE ROOT: codex worker turns run on the one credential
@@ -520,17 +589,16 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
 test fn witness_lab_instance_refuses_a_codex_spawn_at_the_custody_host() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let node = sized_derivable(id: "ts-dispatch-provider-events", prs: [], title: "Provider execution facts")
-  match dispatch_spawn_commands_for_resolved_instance(
+  match fx_snapshot_free_plan(
     instance: lab,
     node: node,
     session_uuid: "00000000-0000-4000-8000-000000000001",
     attempt_key: "feedfacefeedface",
-    provider: CodexDispatchProvider,
+    executor: CodexWithoutSnapshot,
     effort: ReasoningMedium,
     model: dispatch_codex_default_model,
     origin: FreshFromBase,
     resolution: fixture_ready_resolution(node_id: "ts-dispatch-provider-events", project_ids: []),
-    credential_snapshot: NoCredentialSnapshot,
   ) {
     DispatchSpawnRefused { step, detail: _ } => step as String == "codex-credential-custody-host"
     DispatchSpawnReady { commands: _ } => false
@@ -757,7 +825,7 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   match selection {
     DispatchActuatorSelectionRefused { reason } =>
       reason == dispatch_selection_standing_ineligible_reason
-    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => false
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
   }
     && count(dispatch_live_sessions_from_entries(entries: [entry], selection: selection)) == 0
     && match classify_dispatch_request(
@@ -1065,7 +1133,7 @@ test fn witness_codex_account_default_passes_no_model_flag() -> Bool {
   !string_contains(s: join(argv, separator: "\0"), pattern: "--model")
 }
 
-// THE ACTUATOR ARM, not just the argv row. dispatch_provider_inner_argv_for_instance is the fold the
+// THE ACTUATOR ARM, not just the argv row. dispatch_provider_inner_argv_for_launch is the fold the
 // spawn plan routes every vendor provider through, and it is where the model was dropped a second
 // time: the fold carried effort and process fingerprint from the receipt and nothing for the model.
 // This witness fails if a future edit re-drops the field between the fold and the codex argv row,
@@ -1080,8 +1148,6 @@ fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
     CursorProviderCredentialUnbound { reason: r } => r as String
     CodexProviderOffCustodyHost { reason: r } => r as String
     CodexProviderExecutableAbsent { reason: r } => r as String
-    CredentialSnapshotNotConsumed { reason: r } => r as String
-    CredentialSnapshotForAnotherAttempt { reason: r } => r as String
     ClaudeProviderCredentialUnbound { reason: r } => r as String
   }
 }
@@ -1089,22 +1155,27 @@ fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
 test fn witness_inner_argv_carries_pinned_model_for_codex() -> Bool {
   let pinned = ProviderModelPinned { model: witness_pinned_dispatch_model }
   let expected = concat("\0--model\0", witness_pinned_dispatch_model as String)
-  let codex_wire = witness_inner_argv_wire(
-    inner: dispatch_provider_inner_argv_for_instance(
-      instance: srv2_lab_dashboard_instance(),
-      provider: CodexDispatchProvider,
-      effort: ReasoningHigh,
-      model: pinned,
-      session_uuid: "uuid-inner",
-      node_id: roadmap_dispatch_actuator_nid(s: "node-inner"),
-      attempt_key: "feedfacefeedface",
-      worktree_path: "/opt/gunbc/dispatch-worktrees/node-inner",
-      brief: "brief",
-      alignment_chain_fingerprint: "fp",
-      credential_snapshot: NoCredentialSnapshot,
-    ),
-  )
-  string_contains(s: codex_wire, pattern: expected)
+  let attempt = DispatchAttempt {
+    instance: srv2_lab_dashboard_instance(),
+    node: sized_derivable(id: "node-inner", prs: [], title: "Inner argv"),
+    attempt_key: "feedfacefeedface",
+  }
+  match fx_prepared_launch(requested: attempt, launch: SnapshotFreeLaunch { attempt: attempt, executor: CodexWithoutSnapshot }, effort: ReasoningHigh, model: pinned) {
+    none => false
+    Present { value: prepared } =>
+      string_contains(
+        s: witness_inner_argv_wire(
+          inner: dispatch_provider_inner_argv_for_launch(
+            prepared: prepared,
+            session_uuid: "uuid-inner",
+            worktree_path: "/opt/gunbc/dispatch-worktrees/node-inner",
+            brief: "brief",
+            alignment_chain_fingerprint: "fp",
+          ),
+        ),
+        pattern: expected,
+      )
+  }
 }
 
 
@@ -1175,12 +1246,12 @@ test fn witness_verdict_path_bearing_attempt_identity_refuses() -> Bool {
 // silently discard the lineage the decision just chose to continue. The origin is provider-blind, so
 // this is shown with the codex spawn on its custody host, which needs no credential snapshot.
 test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt_branch() -> Bool {
-  match dispatch_spawn_commands_for_resolved_instance(
+  match fx_snapshot_free_plan(
     instance: srv2_lab_dashboard_instance(),
     node: sized_derivable(id: "ts-continuation-origin", prs: [], title: "Continuation origin wiring"),
     session_uuid: "00000000-0000-4000-8000-000000000002",
     attempt_key: "feedfacefeedface",
-    provider: CodexDispatchProvider,
+    executor: CodexWithoutSnapshot,
     effort: ReasoningMedium,
     model: dispatch_codex_default_model,
     origin: ContinueFromAttempt {
@@ -1190,7 +1261,6 @@ test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt
       verdict_detail: "the prior turn's submission declared blocked: the acceptance run was still in flight",
     },
     resolution: fixture_ready_resolution(node_id: "ts-continuation-origin", project_ids: ["arc-fixture"]),
-    credential_snapshot: NoCredentialSnapshot,
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands: cmds } => {
@@ -1356,17 +1426,16 @@ test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() ->
 // worktree add, no state prepare, no session container. The rooted twin (see the lineage claim)
 // resolves Ready, so removing the unrooted refusal turns this control red.
 test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands() -> Bool {
-  match dispatch_spawn_commands_for_resolved_instance(
+  match fx_snapshot_free_plan(
     instance: srv1_lab_dashboard_instance(),
     node: unrooted_specimen(),
     session_uuid: "00000000-0000-4000-8000-000000000004",
     attempt_key: "feedfacefeedface",
-    provider: CodexDispatchProvider,
+    executor: CodexWithoutSnapshot,
     effort: ReasoningMedium,
     model: dispatch_codex_default_model,
     origin: FreshFromBase,
     resolution: unrooted_specimen_resolution(),
-    credential_snapshot: NoCredentialSnapshot,
   ) {
     DispatchSpawnRefused { step, detail } =>
       step as String == "alignment"
