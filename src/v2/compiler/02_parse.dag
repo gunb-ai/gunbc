@@ -115,6 +115,7 @@ import v2.std.compilers.lexing {
   token_stream_layout,
 }
 import v2.std.parse_refusal_reason { LayoutUnknownWithoutSource, NonAssociativeOperatorChain, ParseRefusalReason, TokenStartsNotIncreasing, parse_refusal_reason_symbol }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 import v2.std.grammar {
   parse_production_emitted_identity_optional,
   AfterLineBreak,
@@ -212,6 +213,8 @@ fn authored_parse_annotations(artifact: AuthoredParseArtifact) -> SourceAnnotati
   artifact.annotations
 }
 
+data authored_parse_artifact_v2_roster_disposition: String = "FRONTIER — parse_module_authored projects the region roster from SpanIndex extents (parser scaffolding transparent), the capture row carries the adjacency bits, and it calls attach_annotations, the SAME fold v1 calls. Not yet done: no production path calls parse_module_authored (parse_module stays annotation-blind), and the v1/v2 agreement control (v2.test.manual.annotation_gap_v1_v2_agreement) is manual, so CI never runs it. DISSOLVE-ON: a production consumer of the authored v2 parse lands, and the agreement control is enrolled in a gated row."
+
 // THE REGION ROSTER OF A v2 PARSE (std.source_annotation AnnotationRegion). A region is a grammar
 // production or an infix application (parse_node_is_source_region). Everything between two regions
 // -- sequence and repeat spines, projection edges, the identity atom, terminals -- is parser
@@ -232,11 +235,15 @@ type AuthoredRegionWalk {
 // grammar emitted as its marker) or an infix application (it carries the infix-left edge -- the node
 // parse_stamp_infix_application builds for `a op b`, which no production wraps). Without the second,
 // `1 + 2 * 3` would have no region for `2 * 3`, and a comment before it would get `2` as its neighbour.
+// Presence is all the walk reads. A node carrying the edge twice is ambiguous, but it is still a
+// node the grammar emitted that projection for, so it remains a region; refusing malformed
+// projections is the grammar's job, not attachment's.
 fn parse_node_has_authored_edge(node: Node, name: Symbol) -> Bool {
-  node.children |> any(e => match e.label {
-    Authored { name: nm } => nm == name
-    _ => false
-  })
+  match named_child_lookup(root: node, name: name) {
+    NamedChildFound { target: _ } => true
+    NamedChildAmbiguous => true
+    NamedChildMissing => false
+  }
 }
 
 fn parse_node_is_source_region(node: Node) -> Bool {
