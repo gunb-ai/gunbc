@@ -138,7 +138,7 @@ fn known_hosts_anchor_seal(
   attempt: FleetSshAttemptIdentity,
 ) -> KnownHostsAnchor
   admit_callers: [
-    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "materialize_fleet_known_hosts_anchor"),
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "materialize_known_hosts_anchor"),
     decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "known_hosts_anchor_hermetic_witness_fixture"),
   ]
   = KnownHostsAnchor {
@@ -216,12 +216,19 @@ fn fleet_known_hosts_registry_identity() -> ContentHash {
   canonical_known_hosts_identity(rows: fleet_known_hosts_rows())
 }
 
-// The filename carries the registry digest, so the path is a claim the readback then verifies.
-fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
+// The filename carries the registry digest, so the path is a claim the readback then verifies. The
+// digest is a parameter because the registry is: the fleet's enrolled rows are one registry and a
+// rented inventory's host keys are another, and a path that named only the fleet's would let two
+// registries share a file.
+fn known_hosts_anchor_path(attempt: FleetSshAttemptIdentity, registry_identity: ContentHash) -> NonEmptyStr {
   join([
     "target/fleet-ssh-attempt-", attempt as String,
-    "-known-hosts-", serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String,
+    "-known-hosts-", serialize_content_hash(hash: registry_identity) as String,
   ], "") as NonEmptyStr
+}
+
+fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
+  known_hosts_anchor_path(attempt: attempt, registry_identity: fleet_known_hosts_registry_identity())
 }
 
 // THREE THINGS THE BODY DOES THAT ARE NOT OBVIOUS FROM ITS SHAPE, stated here because DESIGN 4c
@@ -239,22 +246,22 @@ fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptySt
 // never read as enrolled), writes the fragment, then READS THE FILE BACK and mints only on digest
 // agreement. The readback is the success criterion; the write's exit code is not, because a
 // successful write to the wrong place is exactly the failure mode this replaces.
-fn materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
+fn materialize_known_hosts_anchor(attempt: FleetSshAttemptIdentity, rows: List<KnownHostKeyRow>) -> KnownHostsMaterializationOutcome
 {
-  if length(fleet_known_hosts_rows()) == 0 {
+  if length(rows) == 0 {
     KnownHostsRefused {
       first: "known-hosts materialization refused: the enrollment registry is empty, so there is no host key to anchor to and every fleet SSH leg would be unverified",
       more: [],
     }
-  } else { match known_hosts_endpoint_conflict(rows: fleet_known_hosts_rows()) {
+  } else { match known_hosts_endpoint_conflict(rows: rows) {
     Present { value: conflict } => KnownHostsRefused {
       first: join(["known-hosts materialization refused: ", conflict], ""),
       more: [],
     }
     Absent => {
-    let fragment = fleet_known_hosts_fragment()
-    let path = fleet_known_hosts_anchor_path(attempt: attempt)
-    let registry_identity = fleet_known_hosts_registry_identity()
+    let fragment = canonical_known_hosts_fragment(rows: rows)
+    let registry_identity = canonical_known_hosts_identity(rows: rows)
+    let path = known_hosts_anchor_path(attempt: attempt, registry_identity: registry_identity)
     let existing = Filesystem.Read(path: path as String)
     let already = existing.success && existing.content == fragment
     let written = if already { true } else {
@@ -278,9 +285,9 @@ fn materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> Kno
                 [join([
                   "known-hosts-anchor path=", path as String,
                   " attempt=", attempt as String, " identity=", serialize_content_hash(hash: registry_identity) as String,
-                  " rows=", to_string(length(fleet_host_key_enrollments)), "\n",
+                  " rows=", to_string(length(rows)), "\n",
                 ], "")],
-                map(fleet_host_key_enrollments, k => join([
+                map(rows, k => join([
                   "  enrolled host=", k.host as String, " endpoint=", k.endpoint,
                   " provenance=", host_key_provenance_label(p: k.provenance), "\n",
                 ], "")),
@@ -322,6 +329,10 @@ fn materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> Kno
       }
     }
   } } }
+}
+
+fn materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome {
+  materialize_known_hosts_anchor(attempt: attempt, rows: fleet_known_hosts_rows())
 }
 
 // The one projection consumers need: the anchor path, reachable ONLY from an outcome that carries an
