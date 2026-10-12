@@ -100,14 +100,6 @@ fn gpu_bench_warm_standing(records: List<GpuBenchRequestV2>, measured_kv: TokenC
   }
 }
 
-fn gpu_bench_warm_standing_from_kit_log(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
-  match ninfer_replayed_tokens_total(log: log) {
-    NinferReplayedTokensMalformed { cause: c } => WarmRejected { cause: c }
-    NinferReplayedTokensAbsent => gpu_bench_warm_standing_from_capacity_ok(records: records, log: log)
-    NinferReplayedTokensRead { tokens: _ } => gpu_bench_warm_standing_from_capacity_ok(records: records, log: log)
-  }
-}
-
 fn gpu_bench_warm_standing_from_capacity_ok(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
   match gpu_bench_capacity_ok_tokens(log: log) {
     CapacityOkMalformed { cause: c } => WarmRejected { cause: c }
@@ -116,28 +108,12 @@ fn gpu_bench_warm_standing_from_capacity_ok(records: List<GpuBenchRequestV2>, lo
   }
 }
 
-fn gpu_bench_warm_standing_from_cited_ninfer_replay(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
-  match gpu_bench_warm_standing_from_kit_log(records: records, log: log) {
-    WarmRejected { cause: c } => WarmRejected { cause: c }
-    WarmOverCapacity { working_set_tokens: w, measured_kv_tokens: k } =>
-      WarmOverCapacity { working_set_tokens: w, measured_kv_tokens: k }
-    WarmCapacityUnread { cause: c } => WarmCapacityUnread { cause: c }
-    WarmValid { working_set_tokens: w, measured_kv_tokens: k } =>
-      match ninfer_replayed_tokens_total(log: log) {
-        NinferReplayedTokensMalformed { cause: c } => WarmRejected { cause: c }
-        NinferReplayedTokensAbsent => WarmCapacityUnread { cause: "ninfer_replayed_tokens_total was not observed" as NonEmptyStr }
-        NinferReplayedTokensRead { tokens: replayed } =>
-          if token_count_value(t: replayed) > 0 {
-            WarmRejected { cause: "ninfer replayed tokens; prefix restore was not a snapshot hit" as NonEmptyStr }
-          } else {
-            WarmValid { working_set_tokens: w, measured_kv_tokens: k }
-          }
-      }
-  }
-}
-
-fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
-  match gpu_bench_warm_standing_from_kit_log(records: records, log: log) {
+fn gpu_bench_warm_standing_after_replay(
+  records: List<GpuBenchRequestV2>,
+  log: String,
+  replayed: NinferReplayedTokensRead,
+) -> GpuBenchWarmStanding {
+  match gpu_bench_warm_standing_from_capacity_ok(records: records, log: log) {
     WarmRejected { cause: c } => WarmRejected { cause: c }
     WarmOverCapacity { working_set_tokens: w, measured_kv_tokens: k } =>
       WarmOverCapacity { working_set_tokens: w, measured_kv_tokens: k }
@@ -145,7 +121,7 @@ fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log
     WarmValid { working_set_tokens: w, measured_kv_tokens: k } =>
       match ninfer_replayed_tokens_total_standing {
         TranscribedUncited { read_obligation: o } =>
-          match ninfer_replayed_tokens_total(log: log) {
+          match replayed {
             NinferReplayedTokensMalformed { cause: c } => WarmRejected { cause: c }
             NinferReplayedTokensAbsent => WarmCapacityUnread {
               cause: join(["ninfer_replayed_tokens_total was not observed; ", o as String], "") as NonEmptyStr
@@ -153,7 +129,27 @@ fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log
             NinferReplayedTokensRead { tokens: _ } => WarmCapacityUnread { cause: o }
           }
         CitedToAuthority { authority: _ } =>
-          gpu_bench_warm_standing_from_cited_ninfer_replay(records: records, log: log)
+          match replayed {
+            NinferReplayedTokensMalformed { cause: c } => WarmRejected { cause: c }
+            NinferReplayedTokensAbsent => WarmCapacityUnread {
+              cause: "ninfer_replayed_tokens_total was not observed" as NonEmptyStr
+            }
+            NinferReplayedTokensRead { tokens: n } =>
+              if token_count_value(t: n) > 0 {
+                WarmRejected { cause: "ninfer replayed tokens; prefix restore was not a snapshot hit" as NonEmptyStr }
+              } else {
+                WarmValid { working_set_tokens: w, measured_kv_tokens: k }
+              }
+          }
       }
+  }
+}
+
+fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
+  let replayed = ninfer_replayed_tokens_total(log: log)
+  match replayed {
+    NinferReplayedTokensMalformed { cause: c } => WarmRejected { cause: c }
+    NinferReplayedTokensAbsent => gpu_bench_warm_standing_after_replay(records: records, log: log, replayed: replayed)
+    NinferReplayedTokensRead { tokens: _ } => gpu_bench_warm_standing_after_replay(records: records, log: log, replayed: replayed)
   }
 }
