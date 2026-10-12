@@ -796,8 +796,27 @@ fn local_store_doomed_bytes(doomed: List<LocalStoreDoomedRow>) -> ByteSize {
   byte_size(count: fold(doomed, init: 0, f: (acc, d) => acc + measure_count(m: d.bytes)))
 }
 
+// THE ROW KEY IS THE OBJECT'S OWN ADDRESS, READ BACK FROM ITS NAME. An object name is a serialized
+// content hash plus the format suffix (local_store_is_object_name), so the address is recoverable
+// from the name exactly. The key used to be a structural fingerprint OF the name: two names sharing
+// that fingerprint were one occupancy row, and committing one replaced the other's accounting -- an
+// unnecessary eviction, never a wrong serve, but a reduction of an identity the name already
+// carried whole. A store that holds records of both address families (fingerprint-named records
+// from before the address became SHA-256, and SHA-256 ones) keys each by its own family, which is
+// why std.artifact_store compares row keys with the family-aware equality. The fallback arm is for
+// a name that is not an object name; the index decoder refuses those before a row is built.
 fn local_store_row_key(name: String) -> ContentHash {
-  content_hash_of_value(value: name as NonEmptyStr)
+  let suffix = local_store_object_suffix()
+  let n = string_length(s: name)
+  let k = string_length(s: suffix)
+  if n <= k || !ends_with(s: name, suffix: suffix) {
+    content_hash_of_value(value: name as NonEmptyStr)
+  } else {
+    match parse_content_hash(wire: substring(s: name, start: 0, end: n - k)) {
+      Present { value: address } => address
+      Absent => content_hash_of_value(value: name as NonEmptyStr)
+    }
+  }
 }
 
 // The index as the std.artifact_store fold sees it, with the budget from the family's provider row.
