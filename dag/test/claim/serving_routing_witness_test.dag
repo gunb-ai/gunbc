@@ -57,7 +57,7 @@ fn w_endpoint(group: FabricGroup) -> String {
   }
 }
 
-test fn group_b_is_enrolled_and_its_route_has_its_own_front_door() -> Bool {
+test fn sold_group_b_is_not_enrolled_and_has_no_serving_route() -> Bool {
   length(serving_enrolled_groups) == 0
     && w_endpoint(group: FabricGroupB {}) == "unresolved"
 }

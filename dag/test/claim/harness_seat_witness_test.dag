@@ -27,7 +27,7 @@ import gunbc.harness.harness_cli {
 // seat-ceiling algebra is still the subject of these claims, so the route is supplied here — the
 // same pattern as test.claim.spark.spark_host_commitment_witness fixture_group_b_units (rung drop
 // serving_fixtures_name_sold_group_b_hosts). The inhabitance that production no longer enrolls the
-// group is test.claim.serving_routing_witness group_b_is_enrolled_and_its_route_has_its_own_front_door.
+// group is test.claim.serving_routing_witness sold_group_b_is_not_enrolled_and_has_no_serving_route.
 fn fixture_group_b_route() -> ServingRoute {
   match serving_route_ceiling(group: FabricGroupB {}) {
     RouteCeilingUnresolved { cause: c } =>
