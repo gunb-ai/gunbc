@@ -158,7 +158,7 @@ import gunbc.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, da
 import gunbc.live_deploy.spec {
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
-  deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
+  deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
   deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
@@ -170,7 +170,7 @@ import gunbc.live_deploy.spec {
   deployment_directory_demands,
   DeploymentArtifactStep,
   ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
-  deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_function_suffix,
+  deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
@@ -1449,53 +1449,20 @@ fn apply_systemd_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisio
   }
 }
 
-fn apply_oidc_readback_refuse_step(cause: NonEmptyStr) -> PipelineStep {
-  deploy_raw(command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""))
-}
-
 fn apply_oidc_config_steps(spec: DeploymentSpec, oidc_now: Second?) -> List<PipelineStep> {
-  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
-    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
-    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
-    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => []
-    TrackerWebOidcServeReady { config: _ } =>
-      match oidc_now {
-        Absent => []
-        Present { value: now } => apply_oidc_config_steps_at(spec: spec, now_epoch: now, should_write: true)
-      }
-  }
+  host_script_fragment_mutate_steps(fragments: apply_oidc_fragments_over(
+    spec: spec,
+    oidc_now: oidc_now,
+    should_write: true,
+  ))
 }
 
 fn apply_oidc_config_steps_at(spec: DeploymentSpec, now_epoch: Second, should_write: Bool) -> List<PipelineStep> {
-  match tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now_epoch) {
-    TrackerWebOidcServeConfigured { config: cfg } =>
-      if !(should_write) {
-        []
-      } else {
-        [
-          deploy_raw(command: install_directory_command(
-            mode: install_d_shared_mode,
-            path: path_parent_dir(path: cfg.config_path as String),
-            privileged: true,
-          )),
-          deploy_raw(command: deploy_stage_write_command(
-            stage_name: "gunbc-oidc-config.json",
-            content: tracker_web_oidc_config_document(cfg: cfg),
-          )),
-          deploy_raw(command: deploy_stage_install_owned_command(
-            stage_name: "gunbc-oidc-config.json",
-            mode: install_file_owner_only_mode,
-            owner: spec.service.service_user,
-            group: spec.service.service_user,
-            dest: cfg.config_path as String,
-          )),
-        ]
-      }
-    TrackerWebOidcInstanceUnassigned { instance_id: _ } => []
-    TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } => []
-    TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } => []
-    TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause: _ } => []
-  }
+  host_script_fragment_mutate_steps(fragments: apply_oidc_fragments_over(
+    spec: spec,
+    oidc_now: Present { value: now_epoch },
+    should_write: should_write,
+  ))
 }
 
 // THE SAME PER-INSTANCE ONESHOT CHANGES REALIZATION AFTER ITS TWO INPUTS EXIST. GunbcSourceTree
@@ -3414,40 +3381,9 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     )
     FleetConvergeTimerUnit => []
     TailscaleServeMapping => tailscale_serve_mapping_apply_steps(spec: spec)
-    FabricStorageServeUnit => match deployment_fabric_storage_door_socket(spec: spec) {
-     Absent => []
-     Present { value: door_socket } => [
-      apply_fabric_storage_unit_write_step(spec: spec, revision: revision, door_socket: door_socket),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_fabric_storage_unit_name(names: spec.names) as String,
-        mode: install_file_shared_mode,
-        dest: art.path as String,
-      )),
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_restart_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
-     ]
-    }
-    FabricStorageServeMapping => match deployment_fabric_storage_door_socket(spec: spec) {
-      Absent => []
-      Present { value: door_socket } => [
-        deploy_raw(command: shell_privileged_command_text_of_argv(
-          argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket))),
-        )),
-      ]
-    }
-    TailnetDoorServeUnit => concat(
-      apply_tailnet_door_unit_write_steps(spec: spec, revision: revision, oidc_now: oidc_now),
-      [
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
-        mode: install_file_shared_mode,
-        dest: art.path as String,
-      )),
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_restart_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
-    ])
+    FabricStorageServeUnit => host_script_fragment_mutate_steps(fragments: fabric_storage_fragments(spec: spec, revision: revision))
+    FabricStorageServeMapping => []
+    TailnetDoorServeUnit => host_script_fragment_mutate_steps(fragments: tailnet_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision))
     ApprovalBrokerFrontDoor => map(
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e)))),
@@ -3770,15 +3706,81 @@ fn deploy_apply_frame_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 }
 
 fn apply_oidc_fragments(spec: DeploymentSpec, oidc_now: Second?) -> List<HostScriptFragment> {
-  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
-    LiveDeployOidcEnvAdmitted { directives: _ } =>
-      host_script_member_proceed(member: "oidc" as NonEmptyStr, mutate_steps: [])
-    LiveDeployOidcEnvRefused { cause } =>
+  apply_oidc_fragments_over(spec: spec, oidc_now: oidc_now, should_write: true)
+}
+
+// ONE match on placement and standing: refusal is Decide; admitted config writes are Mutate.
+fn apply_oidc_fragments_over(
+  spec: DeploymentSpec,
+  oidc_now: Second?,
+  should_write: Bool,
+) -> List<HostScriptFragment> {
+  let member = "oidc" as NonEmptyStr
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } =>
+      host_script_member_proceed(member: member, mutate_steps: [])
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } =>
+      host_script_member_proceed(member: member, mutate_steps: [])
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } =>
       host_script_member_refused(
-        member: "oidc" as NonEmptyStr,
-        cause: cause as String,
-        command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
+        member: member,
+        cause: "tracker-web OIDC realization missing",
+        command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", "tracker-web OIDC realization missing"], ""),
       )
+    TrackerWebOidcServeReady { config: _ } =>
+      match oidc_now {
+        Absent =>
+          host_script_member_refused(
+            member: member,
+            cause: "observer clock unreadable",
+            command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", "observer clock unreadable"], ""),
+          )
+        Present { value: now } =>
+          match tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now) {
+            TrackerWebOidcServeConfigured { config: cfg } =>
+              host_script_member_proceed(
+                member: member,
+                mutate_steps: if !(should_write) {
+                  []
+                } else {
+                  [
+                    deploy_raw(command: install_directory_command(
+                      mode: install_d_shared_mode,
+                      path: path_parent_dir(path: cfg.config_path as String),
+                      privileged: true,
+                    )),
+                    deploy_raw(command: deploy_stage_write_command(
+                      stage_name: "gunbc-oidc-config.json",
+                      content: tracker_web_oidc_config_document(cfg: cfg),
+                    )),
+                    deploy_raw(command: deploy_stage_install_owned_command(
+                      stage_name: "gunbc-oidc-config.json",
+                      mode: install_file_owner_only_mode,
+                      owner: spec.service.service_user,
+                      group: spec.service.service_user,
+                      dest: cfg.config_path as String,
+                    )),
+                  ]
+                },
+              )
+            TrackerWebOidcInstanceUnassigned { instance_id: _ } =>
+              host_script_member_proceed(member: member, mutate_steps: [])
+            TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } =>
+              host_script_member_proceed(member: member, mutate_steps: [])
+            TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } =>
+              host_script_member_refused(
+                member: member,
+                cause: "tracker-web OIDC realization missing",
+                command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", "tracker-web OIDC realization missing"], ""),
+              )
+            TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause } =>
+              host_script_member_refused(
+                member: member,
+                cause: cause as String,
+                command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
+              )
+          }
+      }
   }
 }
 
@@ -3848,13 +3850,36 @@ fn spec_has_tailnet_door_step(spec: DeploymentSpec) -> Bool {
 
 data tailnet_door_unknown_poison: String = "__GUNBC_TAILNET_DOOR_REFUSED__ TailnetDoorServeUnit step on a deployment whose serve route targets no unix socket"
 
+fn tailnet_door_admitted_mutate_steps(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  oidc_now: Second?,
+) -> List<PipelineStep> {
+  concat(
+    apply_tailnet_door_unit_write_steps(spec: spec, revision: revision, oidc_now: oidc_now),
+    [
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
+        mode: install_file_shared_mode,
+        dest: deployment_tailnet_door_unit_path(names: spec.names) as String,
+      )),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
+    ],
+  )
+}
+
 fn tailnet_door_fragments(spec: DeploymentSpec, oidc_now: Second?, revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
   if !(spec_has_tailnet_door_step(spec: spec)) {
     []
   } else {
     match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
       Present { value: _ } =>
-        host_script_member_proceed(member: "tailnet-door" as NonEmptyStr, mutate_steps: [])
+        host_script_member_proceed(
+          member: "tailnet-door" as NonEmptyStr,
+          mutate_steps: tailnet_door_admitted_mutate_steps(spec: spec, revision: revision, oidc_now: oidc_now),
+        )
       Absent =>
         match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
           LiveDeployOidcEnvRefused { cause: _ } => []
@@ -3869,13 +3894,37 @@ fn tailnet_door_fragments(spec: DeploymentSpec, oidc_now: Second?, revision: Rel
   }
 }
 
-fn fabric_storage_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
+fn fabric_storage_admitted_mutate_steps(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  door_socket: NonEmptyStr,
+) -> List<PipelineStep> {
+  [
+    apply_fabric_storage_unit_write_step(spec: spec, revision: revision, door_socket: door_socket),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: deployment_fabric_storage_unit_name(names: spec.names) as String,
+      mode: install_file_shared_mode,
+      dest: deployment_fabric_storage_unit_path(names: spec.names) as String,
+    )),
+    deploy_effect(inv: systemctl_daemon_reload_effect()),
+    deploy_effect(inv: systemctl_enable_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
+    deploy_effect(inv: systemctl_restart_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
+    deploy_raw(command: shell_privileged_command_text_of_argv(
+      argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket))),
+    )),
+  ]
+}
+
+fn fabric_storage_fragments(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
   if !(spec_has_fabric_storage_apply_step(spec: spec)) {
     []
   } else {
     match deployment_fabric_storage_door_socket(spec: spec) {
-      Present { value: _ } =>
-        host_script_member_proceed(member: "fabric-storage" as NonEmptyStr, mutate_steps: [])
+      Present { value: door_socket } =>
+        host_script_member_proceed(
+          member: "fabric-storage" as NonEmptyStr,
+          mutate_steps: fabric_storage_admitted_mutate_steps(spec: spec, revision: revision, door_socket: door_socket),
+        )
       Absent =>
         host_script_member_refused(
           member: "fabric-storage" as NonEmptyStr,
@@ -3897,6 +3946,20 @@ fn fleet_converge_timer_fragments(spec: DeploymentSpec) -> List<HostScriptFragme
     )
   } else {
     []
+  }
+}
+
+fn apply_member_fragment_owns_step(step: DeploymentStep) -> Bool {
+  match step {
+    ArtifactStep { step: art } => match art.kind {
+      OidcConfigArtifact => true
+      FabricStorageServeUnit => true
+      FabricStorageServeMapping => true
+      TailnetDoorServeUnit => true
+      FleetConvergeTimerUnit => true
+      _ => false
+    }
+    Dependency { step: _ } => false
   }
 }
 
@@ -3922,13 +3985,20 @@ fn apply_intent_fragments(
     ),
     concat(
       concat(
-        apply_oidc_fragments(spec: spec, oidc_now: oidc_now),
+        apply_oidc_fragments_over(
+          spec: spec,
+          oidc_now: oidc_now,
+          should_write: plan_writes_oidc_config(plan: plan),
+        ),
         apply_helper_grant_fragments(spec: spec, plan: plan),
       ),
       concat(
         concat(
           concat(
-            fabric_storage_fragments(spec: spec),
+            fabric_storage_fragments(
+              spec: spec,
+              revision: RevisionBoundAtEmission { revision: plan.target.revision },
+            ),
             fleet_converge_timer_fragments(spec: spec),
           ),
           tailnet_door_fragments(
@@ -3941,7 +4011,11 @@ fn apply_intent_fragments(
           Mutate {
             member: "spec-steps" as NonEmptyStr,
             steps: flat_map(spec.steps, step =>
-              apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
+              if apply_member_fragment_owns_step(step: step) {
+                []
+              } else {
+                apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)
+              }),
           },
           Mutate { member: "receipt" as NonEmptyStr, steps: deploy_apply_receipt_steps(spec: spec) },
         ],
