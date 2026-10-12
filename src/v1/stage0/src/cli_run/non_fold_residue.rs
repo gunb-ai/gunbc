@@ -760,6 +760,47 @@ mod nfr_typed_tests {
         );
     }
 
+    // DISCRIMINATING RED (D2 local_tidy): the OLD shape of
+    // dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger was a one-special-variant
+    // dispatch -- `LocalTidyCargoFmtCheck => <special>`, `_ => <glob fallback>` -- a wildcard over
+    // the closed coproduct `LocalTidyCheck` whose other variant is a STRUCT variant. The fixture
+    // mirrors that shape (a named struct variant `W { entry: _, check_fns: _ }` + a bare `_`).
+    // The walk must flag the site: the `_` arm is exactly the glob fallback that silently swallowed
+    // the struct variant, so a variant misrouted there is caught by the ratchet.
+    #[test]
+    fn red_control_wildcard_over_struct_variant_coproduct_is_residue() {
+        let got = sites("module m\ntype Tidy = W { entry: String, check_fns: List<String> } | C\nfn f(x: Tidy) -> Bool {\n  match x {\n    C => true\n    _ => false\n  }\n}\n");
+        assert!(
+            got.contains("m.dag::f"),
+            "a wildcard fallback over a closed coproduct with a struct variant must be flagged; got {got:?}"
+        );
+    }
+
+    // POSITIVE CONTROL (D2 local_tidy): the NEW totalized shape -- one explicit arm per variant, the
+    // struct variant matched by its pattern `W { entry: _, check_fns: _ }`, no wildcard/else
+    // fallback -- must NOT be flagged, i.e. the dissolved site is no longer a residue site.
+    #[test]
+    fn green_control_total_struct_variant_dispatch_is_not_residue() {
+        let got = sites("module m\ntype Tidy = W { entry: String, check_fns: List<String> } | C\nfn f(x: Tidy) -> Bool {\n  match x {\n    C => true\n    W { entry: _, check_fns: _ } => false\n  }\n}\n");
+        assert!(
+            !got.contains("m.dag::f"),
+            "one explicit arm per variant (no wildcard) must NOT be flagged; got {got:?}"
+        );
+    }
+
+    // DISCRIMINATING RED 2 (D2 local_tidy): the failure the totalization removes. Under the OLD
+    // one-special-variant dispatch a THIRD variant added to `Tidy` would be silently swallowed by
+    // the `_` glob fallback; the walk must flag that wildcard as a residue site. This is the
+    // "adding/misrouting a variant is caught" case: the wildcard, not the type, is the residue.
+    #[test]
+    fn red_control_third_variant_silently_swallowed_by_wildcard_is_residue() {
+        let got = sites("module m\ntype Tidy = W { entry: String, check_fns: List<String> } | C | D\nfn f(x: Tidy) -> Bool {\n  match x {\n    C => true\n    _ => false\n  }\n}\n");
+        assert!(
+            got.contains("m.dag::f"),
+            "a wildcard that swallows a newly-added variant must be flagged; got {got:?}"
+        );
+    }
+
     const WILDCARD_MODULE: &str = "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n";
     const TOTAL_MODULE: &str = "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n  }\n}\n";
 
