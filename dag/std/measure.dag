@@ -375,6 +375,11 @@ type Hertz = Measure<Frequency, One, Nat>
 // The alias carries the transfer semantics; the scale carries the Mega.
 type MegatransfersPerSecond = Measure<Frequency, Mega, Nat>
 
+// A count of the host's scheduler clock ticks (the unit /proc reports process start times in). The tick
+// is not a fixed scale: its length is the Hertz the same host reports, so the count converts to time
+// only against that Hertz and never to a bare seconds or jiffies integer.
+type ClockTickCount = Measure<Count, One, Nat>
+
 type HardwareThreadCount = Measure<Count, One, Nat>
 
 // Allocated hardware-thread count times elapsed time, distinct from unweighted Time and CPU
@@ -1225,6 +1230,14 @@ fn hertz(count: Nat) -> Hertz {
   Measure { count: count }
 }
 
+fn clock_tick_count(count: Nat) -> ClockTickCount {
+  Measure { count: count }
+}
+
+fn clock_tick_count_value(t: ClockTickCount) -> Nat {
+  t.count
+}
+
 fn megatransfers_per_second(count: Nat) -> MegatransfersPerSecond {
   Measure { count: count }
 }
@@ -1437,7 +1450,7 @@ fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
 // The same token rate at Milli: a count of N is N/1000 tokens per second, so a client figure quoted
 // to three decimals ("17.39 tok/s") is carried exactly as 17390 without a bare Nat whose scale lives
 // only in its field name. Same Frequency axis as TokensPerSecond; the scale marker, not a suffix,
-// says milli. First consumer: gunbc.spark.serving_load_probe client throughput.
+// says milli. First consumer: retired gunbc.spark.serving_load_probe (deleted #13779) client throughput.
 type MilliTokensPerSecond = Measure<Frequency, Milli, Nat>
 
 fn milli_tokens_per_second(count: Nat) -> MilliTokensPerSecond {

@@ -211,8 +211,8 @@ fn compiler_gate_fleet_job_condition() -> String {
 }
 
 // A pull-request run judges the pull request HEAD, not GitHub's merge result; the composed revision
-// is the merge_group run's subject. On merge_group and dispatch the expression is empty and checkout
-// falls back to the triggering ref.
+// is the merge_group run's subject. On push, merge_group and dispatch the expression is empty and
+// checkout falls back to the triggering sha.
 fn compiler_gate_fleet_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout the commit this lane judges" },

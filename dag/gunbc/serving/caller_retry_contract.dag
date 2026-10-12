@@ -7,7 +7,7 @@ import v2.std.algebra { length }
 // ── THE BACKLOG IS THE CALLER'S, AND WHAT THAT OWES IS A CONTRACT (operator ruling, 2026-10-02) ────────
 //
 // A turn the route cannot take now is refused, not queued: there is no server-side queue, and the route
-// offer (gunbc.spark.group_b_serving_capacity group_b_route_offer) never exceeds the engine's ceiling, so
+// offer (retired gunbc.spark.group_b_serving_capacity (deleted #13779) group_b_route_offer) never exceeds the engine's ceiling, so
 // no turn waits inside the engine either. What waits is the caller's. The ruling declares that backlog
 // caller-owned and names what makes it DURABLE rather than merely retried: each property below. Until
 // every one is established, the honest name for what exists is an EXTERNAL RETRY OBLIGATION -- the caller

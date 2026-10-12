@@ -2,6 +2,7 @@ module v2.compiler.ingest
 
 import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
+import std.optional { optional_absent }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.algebra { Empty, list_append }
@@ -39,6 +40,7 @@ import v2.compiler.target_serialize { target_bundle_child }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
 import v2.std.node { Edge, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, Conj }
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
+import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -332,13 +334,16 @@ fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) 
 
 // The bridge infers the emitted node directly: it never passed through resolve, so it is
 // supplied with an index that holds no declarations (a declaration lookup through it finds
-// nothing and refuses, never fabricates one).
+// nothing and refuses, never fabricates one). The modifier channel covers no modules: this
+// CoreNode is not a `.dag` declaration population (no sole_constructor type to seal). A
+// construct-shaped node would refuse modifiers_unreadable; enrolled fixtures are
+// anonymous_signature_arrow and never consult the wall.
 fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<CoreNode> {
   bind_outcome(
     o: parse_tree_to_emitted_node(parse_tree: parse_tree, source_model: source_model),
     f: fn(emitted) {
       bind_outcome(
-        o: infer_and_discharge(tree: ResolvedTree { root: emitted, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [], member_kinds: no_member_declaration_kinds() }),
+        o: infer_and_discharge(tree: ResolvedTree { root: emitted, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }),
         f: fn(inferred) {
           bind_outcome(
             o: coerce_grounded_node(source: emitted, tree: inferred, target: source_model),
@@ -350,7 +355,9 @@ fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: Target
   )
 }
 
-// Not resolved either (neutralized from the bridge's core): no declarations indexed.
+// Not resolved either (neutralized from the bridge's core): no declarations indexed, and
+// the same covering-no-modules channel as the bridge. Foreign-language trees have no `.dag`
+// type declarations to seal.
 fn cross_language_compile(
   parse_tree: ParseTree,
   source_model: TargetModel,
@@ -363,7 +370,7 @@ fn cross_language_compile(
         o: neutralize_core_for_target(core: core, target: target_model),
         f: fn(neutralized) {
           bind_outcome(
-            o: infer_and_discharge(tree: ResolvedTree { root: neutralized, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [], member_kinds: no_member_declaration_kinds() }),
+            o: infer_and_discharge(tree: ResolvedTree { root: neutralized, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }),
             f: fn(inferred) {
               emit(tree: inferred, target: target_model)
             }

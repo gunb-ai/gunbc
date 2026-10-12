@@ -95,6 +95,10 @@ data ar_partial_source: String = "module v2.test.ar_partial\n\nimport std.types 
 
 data ar_cycle_source: String = "module v2.test.ar_cycle\n\nimport std.types { Bool }\nimport v2.test.arseq { ArCycA }\n\ndata ar_y: ArCycA = { first: true }\n"
 
+data ar_key_bare_source: String = "module v2.test.ar_key_bare\n\ndata ar_k: Bool = { n: true }\n"
+
+data ar_key_quoted_source: String = "module v2.test.ar_key_quoted\n\ndata ar_k: Bool = { \"n\": true }\n"
+
 data ar_list_headed_source: String = "module v2.test.ar_list_headed\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\nfn ar_list() -> FreeMonoid<ArB> { [ArB { n: true, m: false }, ArB { n: false, m: false }] }\n"
 
 data ar_list_headless_source: String = "module v2.test.ar_list_headless\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\nfn ar_list() -> FreeMonoid<ArB> { [{ n: true, m: false }, { n: false, m: false }] }\n"
@@ -126,7 +130,8 @@ data ar_ingest: SourceRootIngest = [
   ar_read(source: ar_reorder_source, id: ^ar_reorder_read, unit: ^ar_reorder_cu, path: "src/v2/test/fixture/anonymous_record/reorder.dag"),
   ar_read(source: ar_constant_source, id: ^ar_constant_read, unit: ^ar_constant_cu, path: "src/v2/test/fixture/anonymous_record/constant.dag"),
   ar_read(source: ar_partial_source, id: ^ar_partial_read, unit: ^ar_partial_cu, path: "src/v2/test/fixture/anonymous_record/partial.dag"),
-  ar_read(source: ar_cycle_source, id: ^ar_cycle_read, unit: ^ar_cycle_cu, path: "src/v2/test/fixture/anonymous_record/cycle.dag")
+  ar_read(source: ar_cycle_source, id: ^ar_cycle_read, unit: ^ar_cycle_cu, path: "src/v2/test/fixture/anonymous_record/cycle.dag"),
+  ar_read(source: ar_key_quoted_source, id: ^ar_key_quoted_read, unit: ^ar_key_quoted_cu, path: "src/v2/test/fixture/anonymous_record/key_quoted.dag")
 ]
 
 fn ar_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
@@ -162,6 +167,7 @@ fn ar_resolved_reorder() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: 
 fn ar_resolved_constant() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_constant") }
 fn ar_resolved_partial() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_partial") }
 fn ar_resolved_cycle() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_cycle") }
+fn ar_resolved_key_quoted() -> Outcome<ResolvedTree> { ar_resolve_subject(subject: "v2.test.ar_key_quoted") }
 
 // Every construct under the root, authored or elided, in tree order.
 fn ar_constructs(root: Node) -> List<Node> {
@@ -312,9 +318,6 @@ test fn ar_an_alias_cycle_refuses_holds() -> Bool {
 // and a bare key with the same spelling parse through DIFFERENT productions: only the quoted one
 // carries ^dag_surface_field_init_string_key. A grammar that merged the two alternatives back into
 // one production -- or classified the key by its text -- makes both counts equal and reds this.
-data ar_key_bare_source: String = "module v2.test.ar_key_bare\n\ndata ar_k: Bool = { n: true }\n"
-
-data ar_key_quoted_source: String = "module v2.test.ar_key_quoted\n\ndata ar_k: Bool = { \"n\": true }\n"
 
 // Each fixture's parse and normalize is a shared producer (enrolled warm), run once on the real route.
 fn ar_key_bare_subject() -> ReferenceConservationSubject { conservation_subject(id_tail: "ar_key_bare", source: ar_key_bare_source) }
@@ -338,10 +341,18 @@ test fn ar_a_quoted_key_takes_the_string_key_production_holds() -> Bool {
     && (ar_string_key_production_count(subject: ar_key_quoted_subject()) == 1)
 }
 
-// And the record arm refuses the quoted key at the item, never reading it as field `n`.
+// A quoted key is a map-literal entry, never a record field named `n`. After the map arm
+// (gunbc#12758) lowering keeps the string-key production as MapLiteralEntryEdge rather than
+// refusing at the item; resolve then refuses a brace whose expected head is not Map
+// (`data ar_k: Bool = { "n": true }`) as resolve_anonymous_map_expected_type_not_map, which is
+// the reason only a STRING-KEYED brace takes. A reader that still treated `"n"` as field `n`
+// would refuse as a record (resolve_anonymous_record_expected_type_not_record) or accept a
+// Bool-headed construct. Lowering of this specimen stays Accepted (the sibling production
+// claim already pins the grammar); the wall is at resolve.
 test fn ar_a_quoted_key_is_not_a_record_field_holds() -> Bool {
   match ar_key_quoted_subject().normalized {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_field_init_unlowered
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } =>
+      ar_refuses_with(o: ar_resolved_key_quoted(), reason: ^resolve_anonymous_map_expected_type_not_map)
   }
 }

@@ -1,5 +1,7 @@
 module gunbc.compute.work_provider_local
 
+import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
@@ -69,8 +71,7 @@ import gunbc.compute.host_capacity {
   compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
 }
 import std.measure { kibibyte }
-import std.content_hash { serialize_content_hash }
-import std.materialization_provider { ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_judgment_contract, compute_work_binary_output }
+import std.materialization_provider { ArtifactRequest, ComputeWorkRequest, refused_identity_components_text, request_canonical_digest, request_kind, request_judgment_contract, compute_work_binary_output }
 import std.cache_identity { ArtifactKindId }
 import std.judgment_contract { output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs }
 import std.materialization_ladder {
@@ -83,9 +84,9 @@ import std.materialization_object {
   ArtifactPayload, ArtifactBlobPart, StoreLookup, StoreLookupHit, StoreLookupMiss, StoreLookupRefused, StoreLookupRefusal,
   StoreLookupObjectUnavailable, StoreLookupObjectMalformed, StoreLookupManifestUninterpretable, StoreLookupPayloadMissing,
   StoreLookupPayloadUndeclared, StoreLookupPayloadRepeated, StoreLookupContractRefused, StoreLookupEvaluationPreimageMismatch,
-  StoreLookupStoreFamilyRefused, StoreCommitSettled, StoreCommitRefused, StoreCommitRefusal,
+  StoreLookupAddressRefused, StoreCommitSettled, StoreCommitRefused, StoreCommitRefusal,
   StoreCommitManifestUninterpretable, StoreCommitContractRefused, StoreCommitPublishRefused, StoreCommitReadBackRefused,
-  StoreCommitStoreFamilyRefused, StoreCommitResultContentConflict, StoreCommitResultHashFamilyIncomparable,
+  StoreCommitAddressRefused, StoreCommitResultContentConflict, StoreCommitResultHashFamilyIncomparable,
   StoreCommitResultIdentityUnverifiable, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
   StoreCommitCleanupOutstanding,
   StoreFault, store_lookup_payload,
@@ -216,16 +217,20 @@ fn compute_toolchain_decide(rustc: ComputeExec, cargo: ComputeExec, cache: Compu
                   match rustc_verbose_host_triple(verbose: verbose) {
                     Absent => ToolchainObservationRefused { detail: "rustc -vV reported no host: line, so the target triple is unobserved" }
                     Present { value: triple } =>
-                      if trim(s: verbose) == "" || triple == "" || trim(s: cargo_line) == "" || trim(s: cache_line) == "" || trim(s: provider_tree) == "" {
-                        ToolchainObservationRefused { detail: "an execution-identity reading was empty (rustc -vV, its host triple, cargo, sccache or the provider revision)" }
+                      if trim(s: verbose) == "" || triple == "" || trim(s: cargo_line) == "" || trim(s: cache_line) == "" {
+                        ToolchainObservationRefused { detail: "an execution-identity reading was empty (rustc -vV, its host triple, cargo or sccache)" }
                       } else {
-                        ToolchainObserved { toolchain: work_toolchain_observed(
-                          rustc_verbose: trim(s: verbose) as NonEmptyStr,
-                          target_triple: triple as NonEmptyStr,
-                          cargo_version: trim(s: cargo_line) as NonEmptyStr,
-                          cache_release: trim(s: cache_line) as NonEmptyStr,
-                          provider_revision: trim(s: provider_tree) as NonEmptyStr,
-                        ) }
+                        match git_object_id_from_untagged_hex(hex: trim(s: provider_tree)) {
+                          Absent => ToolchainObservationRefused { detail: join(["the provider's source revision is not a git object id: ", trim(s: provider_tree)], "") }
+                          Present { value: provider_oid } =>
+                            ToolchainObserved { toolchain: work_toolchain_observed(
+                              rustc_verbose: trim(s: verbose) as NonEmptyStr,
+                              target_triple: triple as NonEmptyStr,
+                              cargo_version: trim(s: cargo_line) as NonEmptyStr,
+                              cache_release: trim(s: cache_line) as NonEmptyStr,
+                              provider_revision: provider_oid,
+                            ) }
+                        }
                       }
                   }
               }
@@ -252,7 +257,7 @@ fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> S
 }
 
 fn compute_ensure_dir(instance: HostDashboardInstance, path: String) -> Bool {
-  match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: instance.repo_root as String, args: ["-d", "-m", "0755", path]) {
+  match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: instance.repo_root as String, args: coreutils_install_directories_arguments(mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse), paths: [path])) {
     ComputeExecOk { stdout: _, stderr: _ } => true
     ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
   }
@@ -1936,7 +1941,7 @@ fn compute_store_lookup_refusal_detail(r: StoreLookupRefusal) -> String {
     StoreLookupPayloadRepeated { part } => join(["payload repeated: ", part as String], "")
     StoreLookupContractRefused { lookup: _ } => "the provider contract refused the stored artifact"
     StoreLookupEvaluationPreimageMismatch { expected: _, found: _ } => "evaluation preimage mismatch (a different computation under this bucket)"
-    StoreLookupStoreFamilyRefused { family: _, scope: _ } => "hash family refused for the persistent store"
+    StoreLookupAddressRefused { components: cs, scope: _ } => join(["the request has no persistent address: ", refused_identity_components_text(components: cs)], "")
   }
 }
 
@@ -1946,7 +1951,7 @@ fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
     StoreCommitContractRefused { binding: _ } => "the provider contract refused the offered artifact"
     StoreCommitPublishRefused { fault } => join(["publish refused: ", compute_store_fault_detail(f: fault)], "")
     StoreCommitReadBackRefused { read_back: _ } => "the published record did not read back"
-    StoreCommitStoreFamilyRefused { family: _, scope: _ } => "hash family refused for the persistent store"
+    StoreCommitAddressRefused { components: cs, scope: _ } => join(["the request has no persistent address: ", refused_identity_components_text(components: cs)], "")
     StoreCommitResultContentConflict { binding: _, observed: _ } => "a different result is already committed under this identity"
     StoreCommitResultHashFamilyIncomparable { left: _, right: _ } => "result hash families are incomparable"
     StoreCommitResultIdentityUnverifiable { cause } => join(["result identity unverifiable: ", cause], "")
@@ -1957,13 +1962,15 @@ fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
   }
 }
 
-// THE WORK'S IDENTITY IS THE MATERIALIZATION PROVIDER'S KEY, not a second one. It is derived from
-// the ComputeWorkRequest family's judgment contract (std.materialization_provider), so the tree,
-// the operation and the observed execution identity are the only things that move it, and the key a
-// store will be asked for at the cutover is byte-for-byte the name this provider already files the
-// work under.
+// THE WORK'S IDENTITY IS THE MATERIALIZATION PROVIDER'S DIGEST OF THE REQUEST, not a second one. It
+// is the SHA-256 of the ComputeWorkRequest family's canonical preimage
+// (std.materialization_provider request_canonical_digest), so the tree, the operation and the
+// observed execution identity are the only things that move it, and it is the same digest the
+// store address carries when the request is admitted to a store. It names work that is never
+// stored too -- a windowed claim run is a fresh effect with no persistent address -- which is why
+// it is the request's digest and not the admission's.
 fn compute_work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> String {
-  serialize_content_hash(hash: request_key(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain })) as String
+  request_canonical_digest(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }).hex as String
 }
 
 // THE DEMAND IDENTITY AND THE EXECUTION IDENTITY ARE TWO FACTS (ruling on gunbc#13072, item 2). The
@@ -1981,7 +1988,12 @@ fn compute_execution_identity(identity: String, plan: ComputeMaterializationPlan
   }
 }
 
+// WHICH STORE IS POLICY, SO IT ARRIVES AS A PARAMETER (DESIGN section 3: an operation carrying a literal
+// it should receive has leaked policy). The production caller names compute_durable_store once, in
+// compute_provide_admitted; the serve-or-produce decision below is the same code for any store, which
+// is what lets its inhabitance claim execute it against a scratch root.
 fn compute_provide_leaf(
+  store: ComputeStore,
   instance: HostDashboardInstance,
   commit: String,
   subject: WorkSubject,
@@ -1996,7 +2008,7 @@ fn compute_provide_leaf(
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
     ComputeMaterializationPlanned { plan } => {
       let layout = compute_layout(instance: instance, identity_hex: compute_execution_identity(identity: identity, plan: plan, occurrence: clock_now_probed_at_or_unknown() as String))
-      let materialization = ComputeMaterialization { store: compute_durable_store, request: request, plan: plan }
+      let materialization = ComputeMaterialization { store: store, request: request, plan: plan }
       match compute_read_stored_outcome(materialization: materialization) {
         ComputeStoreServed { ending, identity: stored_identity, document } =>
           ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
@@ -2432,9 +2444,9 @@ fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op:
         SubjectResolved { subject } =>
           match op {
             BuildGunbcBinaries { profile: _, bins: _ } =>
-              compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-            CompileEntry { entry: _ } => compute_provide_dependent(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
-            RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+              compute_provide_leaf(store: compute_durable_store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+            CompileEntry { entry: _ } => compute_provide_dependent(store: compute_durable_store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+            RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: compute_durable_store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
           }
       }
   }
@@ -2445,19 +2457,19 @@ fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op:
 // the fact that the BUILD failed to record its side facts -- the stuck lease or the lost consumption
 // reading vanished at exactly the seam where nobody was left to report it (side-chat review at
 // f5344b28). The work contract is untouched; only the host-record fact is joined.
-fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> ProvideResult {
-  let build = compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
+fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstance, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> ProvideResult {
+  let build = compute_provide_leaf(store: store, instance: instance, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
   if provide_result_succeeded(r: build) {
     let build_identity = provide_result_identity(r: build)
     let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
-    match compute_dependency_read(store: compute_durable_store, build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
+    match compute_dependency_read(store: store, build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
       ComputeDependencyRefused { detail } =>
         provide_result_with_host_record(
           r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: build_identity, ending: join(["succeeded, but ", detail], "") } }, subject: subject, op: op),
           carried: provide_result_host_record(r: build))
       ComputeDependencyResolved { dependency } =>
         provide_result_with_host_record(
-          r: compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: dependency),
+          r: compute_provide_leaf(store: store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: dependency),
           carried: provide_result_host_record(r: build))
     }
   } else {

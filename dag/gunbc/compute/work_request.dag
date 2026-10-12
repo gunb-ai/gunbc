@@ -137,17 +137,16 @@ fn work_declared_outputs(op: WorkOperation) -> List<DeclaredOutput> {
 //                        repository the provider runs from, which decides how an operation becomes a
 //                        command without changing the subject tree
 //
-// THE PROVENANCE WALL IS NOT YET STRUCTURAL ON THE NATIVE ROUTE, and this says so rather than claiming
-// a seal. sole_constructor and admit_callers are enforced by the seed; on the native route both are
-// standing rung drops (gunbc.rung_drop admit_callers_discarded_on_the_native_route and
-// g0_type_decl_modifier_parse_without_sealing_property), so there the mint below is callable by any
-// declaration. The provider's observation fold is its only production caller.
+// THE PROVENANCE WALL. sole_constructor and admit_callers are enforced on the native route
+// (v2.compiler.infer infer_sole_constructor_diags and infer_caller_admission_diags) and on the
+// seed for the forms the seed covers. The provider's observation fold is the mint's production
+// caller. Seed residual: coproduct variants (f13) and parameter defaults (f19).
 type WorkToolchainIdentity sole_constructor {
   rustc_verbose: NonEmptyStr
   target_triple: NonEmptyStr
   cargo_version: NonEmptyStr
   cache_release: NonEmptyStr
-  provider_revision: NonEmptyStr
+  provider_revision: GitObjectId
 }
 
 fn work_toolchain_observed(
@@ -155,7 +154,7 @@ fn work_toolchain_observed(
   target_triple: NonEmptyStr,
   cargo_version: NonEmptyStr,
   cache_release: NonEmptyStr,
-  provider_revision: NonEmptyStr,
+  provider_revision: GitObjectId,
 ) -> WorkToolchainIdentity
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_toolchain_decide"),

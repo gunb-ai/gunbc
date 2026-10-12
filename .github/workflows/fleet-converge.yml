@@ -596,7 +596,7 @@ jobs:
   fleet-converge:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
-    timeout-minutes: 295
+    timeout-minutes: 115
     if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'workspace_allocation_plan' || github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'org_actions_observe' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'microvm_slot_reserve' || github.event.inputs.mode == 'microvm_slot_start' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'org_runner_roster_observe' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'approval_device_enrolment_code_issue' || github.event.inputs.mode == 'mtcollins1_fan_observe' || github.event.inputs.mode == 'mtcollins1_kvm_observer_observe' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'mtcollins1_census_qemu_host_observe' || github.event.inputs.mode == 'mtcollins1_census_qemu_toolchain_converge' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'app_key_version_verify' || github.event.inputs.mode == 'r2_bucket_ensure' || github.event.inputs.mode == 'r2_bucket_admin_mint' || github.event.inputs.mode == 'r2_workspace_object_read_mint' || github.event.inputs.mode == 'r2_workspace_object_write_mint' || github.event.inputs.mode == 'r2_cache_object_read_mint' || github.event.inputs.mode == 'r2_cache_object_write_mint' || github.event.inputs.mode == 'r2_conditional_put_race_probe' || github.event.inputs.mode == 'workspace_source_pack' || github.event.inputs.mode == 'workspace_checkpoint_measure' || github.event.inputs.mode == 'workspace_checkpoint_restore' || github.event.inputs.mode == 'workspace_transcript_rate_observe' || github.event.inputs.mode == 'fabric_writer_identity_observe' || github.event.inputs.mode == 'microvm_runner_group_ensure' || github.event.inputs.mode == 'hetzner_cloud_server_read'
     permissions:
       contents: read
@@ -1892,27 +1892,8 @@ jobs:
       - name: Spark pair serving apply (promoted fabric groups' vLLM units over the password session, workers before heads)
         id: spark_serving_apply
         run: |-
-          set -euo pipefail
-          umask 077
-          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
-          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
-          HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
-          trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
-          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          case "${SPARK_CONVERGE_TARGET:-}" in *) echo "SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='${SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host" >&2; exit 1 ;; esac
-          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "$SM_URL" || echo 000)"
-          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: $SM_RES answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
-          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: $SM_RES answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
-          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from $SM_RES; contacting NO host." >&2; exit 1; fi
-          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
-          rm -f "$RESP_FILE"
-          chmod 600 "$CRED_FILE"
-          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: $SM_RES returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
-          export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
-          echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/pair_serving_apply.dag --function spark_pair_serving_apply_wet
-          cat "$ROOT/target/spark-pair-apply-receipt.txt"
+          echo 'refused: DGX Spark serving path retired; all units sold (gunbc.spark.dgx_procurement dgx_spark_disposed_units)' >&2
+          exit 1
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
@@ -1921,27 +1902,8 @@ jobs:
       - name: "Spark native serving apply (group B's native four-rank arm as one bounded transaction over the password session: all-host preflight that mutates nothing, the incumbent unit preserved, head before workers, a readback of the complete realization bound to each rank's own incarnation, then commit or roll the whole arm back)"
         id: spark_native_serving_apply
         run: |-
-          set -euo pipefail
-          umask 077
-          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
-          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
-          HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
-          trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
-          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          case "${SPARK_CONVERGE_TARGET:-}" in *) echo "SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='${SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host" >&2; exit 1 ;; esac
-          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "$SM_URL" || echo 000)"
-          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: $SM_RES answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
-          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: $SM_RES answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
-          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from $SM_RES; contacting NO host." >&2; exit 1; fi
-          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
-          rm -f "$RESP_FILE"
-          chmod 600 "$CRED_FILE"
-          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: $SM_RES returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
-          export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
-          echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/native_serving_apply.dag --function spark_native_serving_apply_wet
-          cat "$ROOT/target/spark-native-apply-receipt.txt"
+          echo 'refused: DGX Spark serving path retired; all units sold (gunbc.spark.dgx_procurement dgx_spark_disposed_units)' >&2
+          exit 1
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
@@ -1950,27 +1912,8 @@ jobs:
       - name: Spark runtime image probe (pull the pinned image on the selected Spark and ask it, inside its own digest, what it registers and what it admits)
         id: spark_runtime_image_probe
         run: |-
-          set -euo pipefail
-          umask 077
-          CRED_FILE="$RUNNER_TEMP/spark-administrator-credential"
-          RESP_FILE="$RUNNER_TEMP/spark-administrator-response.json"
-          HDR_FILE="$RUNNER_TEMP/spark-administrator-auth-header"
-          trap 'rm -f "$CRED_FILE" "$RESP_FILE" "$HDR_FILE"' EXIT
-          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          case "${SPARK_CONVERGE_TARGET:-}" in *) echo "SparkAdministratorCredentialHostUnrostered: SPARK_CONVERGE_TARGET='${SPARK_CONVERGE_TARGET:-}' names no host in the administrator credential roster; contacting NO host" >&2; exit 1 ;; esac
-          HTTP_CODE="$(curl -sS -o "$RESP_FILE" -w '%{http_code}' -H @"$HDR_FILE" "$SM_URL" || echo 000)"
-          if [ "$HTTP_CODE" = 403 ]; then echo "SparkAdministratorCredentialUnreadable: $SM_RES answered 403 to serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com. Secret Manager returns 403 both when a version exists and is not readable AND when it does not exist, so this run cannot tell those apart -- REMEDY EITHER WAY: confirm the version exists and grant that principal roles/secretmanager.secretAccessor on it. Contacting NO host." >&2; exit 1; fi
-          if [ "$HTTP_CODE" = 404 ]; then echo "SparkAdministratorCredentialAbsent: $SM_RES answered 404; the modeled reference names a version Secret Manager does not hold. Contacting NO host." >&2; exit 1; fi
-          if [ "$HTTP_CODE" != 200 ]; then echo "SparkAdministratorCredentialFetchFailed: HTTP $HTTP_CODE from $SM_RES; contacting NO host." >&2; exit 1; fi
-          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$CRED_FILE"
-          rm -f "$RESP_FILE"
-          chmod 600 "$CRED_FILE"
-          if [ ! -s "$CRED_FILE" ]; then echo "SparkAdministratorCredentialEmpty: $SM_RES returned 200 with an empty payload, which is an enrolled-but-blank secret and never a blank password; contacting NO host" >&2; exit 1; fi
-          export GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE="$CRED_FILE"
-          echo "spark-admin-credential: materialized from $SM_RES to a 0600 run-local file, consumed and removed within this one step"
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/spark/v41_runtime_image_probe.dag --function v41_published_image_probe_ci_wet
-          cat "$ROOT/target/v41-published-image-probe-receipt.txt"
+          echo 'refused: DGX Spark serving path retired; all units sold (gunbc.spark.dgx_procurement dgx_spark_disposed_units)' >&2
+          exit 1
         env:
           SPARK_CONVERGE_TARGET: ${{ github.event.inputs.target }}
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
@@ -2358,7 +2301,7 @@ jobs:
   host-reset-return:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.reset_observer)) }}
     needs: [build]
-    timeout-minutes: 295
+    timeout-minutes: 115
     if: github.event.inputs.mode == 'host_reset_return'
     concurrency:
       group: "gunbc-host-mutation-${{ fromJSON('{\"srv1\": \"mtcollins1\", \"srv2\": \"mtcollins1\", \"srv3\": \"mtcollins1\", \"srv4\": \"mtcollins1\"}')[github.event.inputs.reset_observer] }}"

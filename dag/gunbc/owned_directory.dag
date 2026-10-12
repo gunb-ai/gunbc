@@ -304,12 +304,12 @@ fn owned_directory_satisfied(t: OwnedDirectoryTarget, o: EnsureObservation<Owned
 type OwnedDirectoryInstallPlan {
   path: FilePath
   owner: PosixOwnerNames
-  mode_octal: NonEmptyStr
+  mode: FileMode
 }
 
 fn owned_directory_install_argv(plan: OwnedDirectoryInstallPlan) -> List<String> {
   coreutils_install_directory_owned_argv(
-    mode: plan.mode_octal,
+    mode: plan.mode,
     owner: plan.owner.user,
     group: plan.owner.group,
     path: plan.path as String,
@@ -364,7 +364,7 @@ fn owned_directory_install_plan_of(t: OwnedDirectoryTarget) -> EnsurePlan<OwnedD
         plan: OwnedDirectoryInstallPlan {
           path: owned_directory_path(t: t),
           owner: owned_directory_owner(t: t),
-          mode_octal: file_mode_octal(mode: mode) as NonEmptyStr,
+          mode: mode,
         },
       }
   }
@@ -378,7 +378,7 @@ fn owned_directory_mismatch_reason(t: OwnedDirectoryTarget, o: EnsureObservation
         EnsureObserved { evidence } =>
           join([
             "owned directory ", owned_directory_path(t: t) as String, " is at mode ",
-            file_mode_octal(mode: evidence.mode), ", not ", plan.mode_octal as String,
+            file_mode_octal(mode: evidence.mode), ", not ", file_mode_octal(mode: plan.mode),
           ], "")
         EnsureAbsent { reason } => reason
         EnsureInaccessible { reason } => reason

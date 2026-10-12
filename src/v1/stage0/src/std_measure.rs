@@ -468,6 +468,8 @@ pub type Hertz = Rc<Measure<Frequency, One, Nat>>;
 
 pub type MegatransfersPerSecond = Rc<Measure<Frequency, Mega, Nat>>;
 
+pub type ClockTickCount = Rc<Measure<Count, One, Nat>>;
+
 pub type HardwareThreadCount = Rc<Measure<Count, One, Nat>>;
 
 pub type HardwareThreadMinute =
@@ -1248,6 +1250,17 @@ pub fn hertz(count: Nat) -> Hertz {
     })
 }
 
+pub fn clock_tick_count(count: Nat) -> ClockTickCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn clock_tick_count_value(t: ClockTickCount) -> Nat {
+    t.count.clone()
+}
+
 pub fn megatransfers_per_second(count: Nat) -> MegatransfersPerSecond {
     Rc::new(Measure {
         count: count.clone(),
@@ -1720,6 +1733,13 @@ pub fn minute_to_millisecond(m: Minute) -> Millisecond {
 pub fn second_to_millisecond(s: Second) -> Millisecond {
     millisecond(v1_rt::int_mul(
         second_count(s.clone()),
+        milliseconds_per_second(),
+    ))
+}
+
+pub fn millisecond_to_second_floor(m: Millisecond) -> Second {
+    second(v1_rt::int_div(
+        millisecond_count(m.clone()),
         milliseconds_per_second(),
     ))
 }

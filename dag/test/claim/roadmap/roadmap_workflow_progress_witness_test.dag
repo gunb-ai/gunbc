@@ -1,7 +1,8 @@
 module test.claim.roadmap_workflow_progress_witness_test
 
 import gunbc.roadmap_session_placement { SessionPlacementAbsent }
-import gunbc.roadmap.roadmap_submission { CaptureAbsent }
+import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureAbsent, CaptureNotAttempted }
+import gunbc.roadmap.roadmap_belt_obligation { belt_attempt_obligation_outstanding, CaptureObligation }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
 import gunbc.roadmap.roadmap_review_function { review_report_absent, review_plan, review_aggregate, review_subject_id, ReviewSubject, ReviewObservation }
@@ -1024,3 +1025,53 @@ test fn an_empty_readable_stream_is_no_round_yet_and_a_legacy_attempt_is_unobser
     RoundsObserved { rounds: _ } => false
   })
 }
+
+fn evidence_with_capture(base: WorkflowAttemptEvidence, capture: SubmissionCaptureObservation) -> WorkflowAttemptEvidence {
+  WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state: base.modeled_state,
+    worktree: base.worktree,
+    admission_receipt_readable: base.admission_receipt_readable,
+    admission_receipt: base.admission_receipt,
+    spawn_failure_present: base.spawn_failure_present,
+    spawn_failure: base.spawn_failure,
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+    verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
+    verification_source: base.verification_source,
+    publication_subject: base.publication_subject,
+    publication_source: base.publication_source,
+    submission_capture: capture,
+    integration: base.integration,
+    review: base.review,
+    goal_audit: base.goal_audit,
+    session_placement: base.session_placement,
+  }
+}
+
+// AN ENDED WORKER IS OWED ITS CAPTURE UNTIL THE COMMIT STEP HAS SETTLED IT (srv1 lab, 2026-10-12: every
+// ended worker read "yielded" before anything had captured it, the capture gate -- terminal and the
+// submission segment unsettled -- never fired, and no attempt was ever captured). With no capture
+// because nothing has run, the submission segment is pending and the gate owes the capture; with no
+// capture after the commit step settled it, the segment is the yield and the gate owes nothing. The
+// fold, the segment and the gate are the real ones; only the capture observation is supplied.
+test fn an_ended_worker_is_owed_its_capture_until_the_commit_step_settles_it() -> Bool {
+  let ended = fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessExited { exit_code: 0, last_command: "node" },
+  )
+  let owed = workflow_attempt_progress(evidence: evidence_with_capture(base: ended, capture: CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }))
+  let settled = workflow_attempt_progress(evidence: evidence_with_capture(base: ended, capture: CaptureAbsent))
+  segment_state(owed.segments, "submission") == "pending"
+    && segment_detail(owed.segments, "submission").contains("has not run")
+    && belt_attempt_obligation_outstanding(kind: CaptureObligation, provider: owed.provider, segments: owed.segments)
+    && segment_state(settled.segments, "submission") == "failed"
+    && !belt_attempt_obligation_outstanding(kind: CaptureObligation, provider: settled.provider, segments: settled.segments)
+}
+

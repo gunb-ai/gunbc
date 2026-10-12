@@ -11,7 +11,7 @@ import product.fabric.work {
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import std.measure { hardware_thread_count }
-import gunbc.serving.turn_demand {
+import gunbc.serving.turn_demand { serving_token_capability,
   ServingTurnRequest, serving_turn_contract, serving_turn_steps, serving_turn_output_obligations,
   serving_turn_work, serving_turn_requirements, serving_turn_satisfaction,
 }
@@ -19,7 +19,6 @@ import gunbc.harness.harness_seat {
   ServingModelRequirement, AnyAdmittedModel, ExactServingUnit, harness_model_requirement_ref, harness_requirement_admits,
 }
 import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm, Glm53FlashOnVllm }
-import gunbc.spark.serving_offer { spark_serving_capability }
 
 // ── A TURN'S WORK IS WHAT THE CALLER ASKED FOR, NOT WHAT A SUPPLIER LOADED ─────────────────────
 //
@@ -35,7 +34,7 @@ import gunbc.spark.serving_offer { spark_serving_capability }
 fn t_requirements() -> ExecutionRequirements {
   serving_turn_requirements(
     capacity_class: ControlPlaneCapacity,
-    capabilities: spark_serving_capability(),
+    capabilities: serving_token_capability(),
     trust_domain: "gunbc.trust.spark-fleet" as TrustDomainRef,
     isolation: IsolationProfile { guarantees: [] },
     shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() },

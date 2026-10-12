@@ -66,6 +66,8 @@ import gunbc.runner_microvm_network_converge {
   StagedFile, converge_staged_files, microvm_network_converge_operations,
   runner_microvm_staging_dir,
 }
+import extdeps.access.posix { FileMode }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly }
 
 // THE MICROVM NETWORK'S MUTATING HALF, EXECUTED BY THE HOST'S ADMINISTRATOR AND BY NOBODY ELSE.
 //
@@ -126,7 +128,7 @@ import gunbc.runner_microvm_network_converge {
 // be two different facts.
 data runner_microvm_admin_staging_scope: FileTreeScope = FileTreeScope { root_path: runner_microvm_staging_dir }
 
-data runner_microvm_admin_staging_dir_mode: NonEmptyStr = "0700" as NonEmptyStr
+data runner_microvm_admin_staging_dir_mode: FileMode = declared_directory_mode(m: DirectoryOwnerOnly)
 
 data runner_microvm_admin_staging_owner: NonEmptyStr = "root" as NonEmptyStr
 

@@ -20,8 +20,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_spark_grants_observe_step_if, fleet_converge_fleet_ssh_key_step_if,
 }
 import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer, SparkGrantOutcome, GrantEnumerated, GrantProbeRefused, spark_managed_grant_sudoers_command }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name }
-import gunbc.spark.serving_arm_launch { glm_native_container_name, glm53_staircase_container_name }
+import gunbc.spark.retired_serving_container_names { spark_pair_container_name, glm_native_container_name, glm53_staircase_container_name }
 import gunbc.spark.grant_privileged_operation {
   spark_retired_dropin_removal_lease, admit_retired_dropin_removal, retired_dropin_removal_receipts_missing,
   spark_confirmed_installs_of, SparkGrantInstallStep, SparkGrantInstallExecuted, GrantReadbackConfirmed,
