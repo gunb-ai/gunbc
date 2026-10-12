@@ -84,7 +84,7 @@ type ProcessStartReading {
 }
 
 type ProcessJoin
-  = ProcessJoined { pid: Int }
+  = ProcessJoined { process: ProcessStartReading }
   | ProcessJoinNone { candidates: Int }
   | ProcessJoinAmbiguous { pids: List<Int> }
 
@@ -97,7 +97,7 @@ fn join_exported_start(candidates: List<ProcessStartReading>, exported: ExactDec
     ProcessJoinAmbiguous { pids: map(hits, h => h.pid) }
   } else {
     match first(hits) {
-      Present { value: h } => ProcessJoined { pid: h.pid }
+      Present { value: h } => ProcessJoined { process: h }
       Absent => ProcessJoinNone { candidates: count(candidates) }
     }
   }
@@ -137,7 +137,24 @@ fn read_candidate_starts(transport: HostEffectTransport, pids: List<Int>) -> Can
     })
 }
 
-fn bind_executable(transport: HostEffectTransport, launch: ReplicaEndpointLaunch, pid: Int) -> ReplicaIncarnationStanding {
+// THE SAME GENERATION: the start ticks read again after the digest must be the ones joined. An unread
+// re-read or a different generation is not continuity.
+fn same_generation(joined: ProcessStartReading, reread: ProcessStartReading?) -> Bool {
+  match reread {
+    Absent => false
+    Present { value: r } => r.pid == joined.pid && r.start_ticks == joined.start_ticks
+  }
+}
+
+fn reread_start(transport: HostEffectTransport, pid: Int) -> ProcessStartReading? {
+  match read_candidate_starts(transport: transport, pids: [pid]) {
+    CandidateUnread { cause: _ } => none
+    CandidatesRead { readings: rs } => first(rs)
+  }
+}
+
+fn bind_executable(transport: HostEffectTransport, launch: ReplicaEndpointLaunch, joined: ProcessStartReading) -> ReplicaIncarnationStanding {
+  let pid = joined.pid
   match host_read_text(transport: transport, operation: Sha256SumFile { path: join(["/proc/", to_string(pid), "/exe"], "") as NonEmptyStr }) {
     HostTextRefused { cause: c } => replica_incarnation_unread(cause: join(["the executable of pid ", to_string(pid), " could not be digested: ", c], ""))
     HostTextObserved { stdout: line } =>
@@ -147,8 +164,12 @@ fn bind_executable(transport: HostEffectTransport, launch: ReplicaEndpointLaunch
           match sha256_digest_content_hash(digest: d) {
             Absent => replica_incarnation_unread(cause: "the executable digest is not a sha256")
             Present { value: h } =>
+              if !same_generation(joined: joined, reread: reread_start(transport: transport, pid: pid)) {
+                replica_incarnation_unread(cause: join(["pid ", to_string(pid), " did not keep the generation joined to the exported instant across the executable read, so the digest cannot be attributed to the answering process"], ""))
+              } else {
               ReplicaIncarnationBound {
                 incarnation: ReplicaIncarnation { launch: launch, pid: pid, executable_digest: h, receipt: replica_incarnation_receipt },
+              }
               }
           }
       }
@@ -174,7 +195,7 @@ fn after_host_facts(transport: HostEffectTransport, launch: ReplicaEndpointLaunc
                       match join_exported_start(candidates: rs, exported: exported, boot: boot, ticks: ticks) {
                         ProcessJoinNone { candidates: n } => replica_incarnation_unread(cause: join([to_string(n), " engine process(es) found and none started at the exported instant ", launch.process_start_field as String], ""))
                         ProcessJoinAmbiguous { pids: ps } => replica_incarnation_unread(cause: join(["pids ", join(map(ps, p => to_string(p)), ","), " all started at the exported instant"], ""))
-                        ProcessJoined { pid: pid } => bind_executable(transport: transport, launch: launch, pid: pid)
+                        ProcessJoined { process: joined } => bind_executable(transport: transport, launch: launch, joined: joined)
                       }
                   }
               }

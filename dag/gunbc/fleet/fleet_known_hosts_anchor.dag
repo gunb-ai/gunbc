@@ -140,6 +140,7 @@ fn known_hosts_anchor_seal(
   admit_callers: [
     decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "materialize_known_hosts_anchor"),
     decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "known_hosts_anchor_hermetic_witness_fixture"),
+    decl_ref(module_path: "test.claim.typed_remote_file_write_fleet_ssh_fixture", decl_name: "rental_known_hosts_anchor_hermetic_witness_fixture"),
   ]
   = KnownHostsAnchor {
     path: path,

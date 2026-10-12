@@ -14,7 +14,7 @@ import gunbc.serving.turn_admission {
 }
 import gunbc.serving.replica_incarnation {
   ProcessStartReading, ProcessJoined, ProcessJoinNone, ProcessJoinAmbiguous, join_exported_start,
-  ReplicaIncarnationStanding, replica_incarnation_witness_fixture, exported_start_equals_process_start,
+  ReplicaIncarnationStanding, replica_incarnation_witness_fixture, same_generation, exported_start_equals_process_start,
 }
 import gunbc.harness.harness_seat { HarnessCandidates, harness_add_serving_candidate }
 import test.claim.serving.serving_session_attachment_witness {
@@ -61,7 +61,7 @@ test fn the_process_started_at_the_exported_instant_is_the_one_joined() -> Bool 
     candidates: [ProcessStartReading { pid: 10, start_ticks: 5 }, ProcessStartReading { pid: 11, start_ticks: 71392591 }],
     exported: w_exported(), boot: 1788630958, ticks: hertz(count: 100),
   ) {
-    ProcessJoined { pid: p } => p == 11
+    ProcessJoined { process: p } => p.pid == 11
     _ => false
   }
 }
@@ -121,4 +121,13 @@ test fn a_bound_incarnation_of_another_launch_leaves_the_owner_unread() -> Bool 
         _ => false
       }
   }
+}
+
+// PID REUSE BETWEEN THE STAT READ AND THE EXE READ: stat matched start S, the pid was then replaced, and
+// the later read is the successor's S2. That is not continuity, and an unread re-read is not either.
+test fn a_pid_replaced_between_the_reads_is_not_the_same_generation() -> Bool {
+  let joined = ProcessStartReading { pid: 11, start_ticks: 71392591 }
+  same_generation(joined: joined, reread: Present { value: ProcessStartReading { pid: 11, start_ticks: 71392591 } })
+    && !same_generation(joined: joined, reread: Present { value: ProcessStartReading { pid: 11, start_ticks: 71399999 } })
+    && !same_generation(joined: joined, reread: none)
 }
