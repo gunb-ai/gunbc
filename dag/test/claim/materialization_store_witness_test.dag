@@ -19,7 +19,7 @@ import std.materialization_provider {
   request_key, request_kind, request_required_outputs, request_declared_inputs,
   request_judgment_contract, evaluation_store_address, evaluation_store_admitted_address,
   AddressedRequest, AddressedRequestAdmission, RequestAddressed, RequestAddressRefused, EvaluationStoreAddress,
-  evaluation_store_address_digest, request_evaluation_identity, evaluation_store_refused_component_refs, PersistentStoreScope,
+  evaluation_store_address_digest, evaluation_store_refused_components, PersistentStoreScope,
   addressed_request_with_supplied_digest,
   evaluation_store_address_preimage,
   evaluation_identity_canonical, ResultContentIdentity, result_content_identity,
@@ -127,16 +127,16 @@ fn witness_supplied_addressed(req: ArtifactRequest) -> AddressedRequestAdmission
 fn witness_lookup_decide(store: OpenedMaterializationStore, req: ArtifactRequest, read: StoreObjectRead) -> StoreLookup {
   match witness_supplied_addressed(req: req) {
     RequestAddressed { addressed: a } => store_lookup_from_address(store: store, addressed: a, read: read)
-    RequestAddressRefused { family: f, scope: sc } =>
-      StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc } }
+    RequestAddressRefused { components: f, scope: sc } =>
+      StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupStoreFamilyRefused { components: f, scope: sc } }
   }
 }
 
 fn witness_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>, blobs: List<ArtifactBlobPart>) -> StoreCommitPreparation {
   match witness_supplied_addressed(req: req) {
     RequestAddressed { addressed: a } => store_commit_prepare_addressed(addressed: a, payloads: payloads, blobs: blobs)
-    RequestAddressRefused { family: f, scope: sc } =>
-      StoreCommitNotPrepared { commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc } } }
+    RequestAddressRefused { components: f, scope: sc } =>
+      StoreCommitNotPrepared { commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitStoreFamilyRefused { components: f, scope: sc } } }
   }
 }
 
@@ -145,14 +145,14 @@ fn witness_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>,
 fn witness_store_key(req: ArtifactRequest) -> ContentHash {
   match witness_supplied_addressed(req: req) {
     RequestAddressed { addressed: a } => evaluation_store_address_digest(address: a.address)
-    RequestAddressRefused { family: _, scope: _ } => request_key(req: req)
+    RequestAddressRefused { components: _, scope: _ } => request_key(req: req)
   }
 }
 
 fn witness_admitted_address(req: ArtifactRequest) -> EvaluationStoreAddress? {
   match witness_supplied_addressed(req: req) {
     RequestAddressed { addressed: a } => Present { value: a.address }
-    RequestAddressRefused { family: _, scope: _ } => none
+    RequestAddressRefused { components: _, scope: _ } => none
   }
 }
 
@@ -668,15 +668,14 @@ test fn the_declared_input_projection_carries_the_required_lens_contract() -> Bo
 // that the compiler's key ignored which store served it, which held only while a fingerprint
 // could key a store; it returns with the generation identity's migration (demand-m1c).
 test fn a_compiler_request_has_no_persistent_address_while_its_generation_axes_are_fingerprints() -> Bool {
-  let identity = request_evaluation_identity(req: compiler_req())
-  let refused = evaluation_store_refused_component_refs(identity: identity, scope: PersistentStoreScope)
+  let refused = evaluation_store_refused_components(req: compiler_req(), scope: PersistentStoreScope)
   let payloads = [
     ArtifactPayload { id: output_native_compiler_executable, content: "ELF-bytes-fixture" },
     ArtifactPayload { id: output_native_compiler_build_diagnostics, content: "" },
   ]
   (refused |> count()) == 7
-    && (refused |> any(r => (r as String) == "generation.source_closure"))
-    && (refused |> any(r => (r as String) == "generation.producer_compiler"))
+    && (refused |> any(r => (r.ref as String) == "generation.source_closure"))
+    && (refused |> any(r => (r.ref as String) == "generation.producer_compiler"))
     && store_lookup_refusal_tag(l: witness_lookup_decide(store: witness_store(), req: compiler_req(), read: StoreObjectAbsent)) == "store_family_refused"
     && preparation_tag(p: witness_commit_prepare(req: compiler_req(), payloads: payloads, blobs: [])) == "store_family_refused"
     && store_lookup_is_miss(l: witness_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectAbsent))

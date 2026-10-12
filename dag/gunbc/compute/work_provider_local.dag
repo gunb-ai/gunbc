@@ -69,7 +69,7 @@ import gunbc.compute.host_capacity {
   compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root,
 }
 import std.measure { kibibyte }
-import std.materialization_provider { ArtifactRequest, ComputeWorkRequest, request_canonical_digest, request_kind, request_judgment_contract, compute_work_binary_output }
+import std.materialization_provider { ArtifactRequest, ComputeWorkRequest, refused_identity_components_text, request_canonical_digest, request_kind, request_judgment_contract, compute_work_binary_output }
 import std.cache_identity { ArtifactKindId }
 import std.judgment_contract { output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs }
 import std.materialization_ladder {
@@ -1939,7 +1939,7 @@ fn compute_store_lookup_refusal_detail(r: StoreLookupRefusal) -> String {
     StoreLookupPayloadRepeated { part } => join(["payload repeated: ", part as String], "")
     StoreLookupContractRefused { lookup: _ } => "the provider contract refused the stored artifact"
     StoreLookupEvaluationPreimageMismatch { expected: _, found: _ } => "evaluation preimage mismatch (a different computation under this bucket)"
-    StoreLookupStoreFamilyRefused { family: _, scope: _ } => "hash family refused for the persistent store"
+    StoreLookupStoreFamilyRefused { components: cs, scope: _ } => join(["the request has no persistent address: ", refused_identity_components_text(components: cs)], "")
   }
 }
 
@@ -1949,7 +1949,7 @@ fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
     StoreCommitContractRefused { binding: _ } => "the provider contract refused the offered artifact"
     StoreCommitPublishRefused { fault } => join(["publish refused: ", compute_store_fault_detail(f: fault)], "")
     StoreCommitReadBackRefused { read_back: _ } => "the published record did not read back"
-    StoreCommitStoreFamilyRefused { family: _, scope: _ } => "hash family refused for the persistent store"
+    StoreCommitStoreFamilyRefused { components: cs, scope: _ } => join(["the request has no persistent address: ", refused_identity_components_text(components: cs)], "")
     StoreCommitResultContentConflict { binding: _, observed: _ } => "a different result is already committed under this identity"
     StoreCommitResultHashFamilyIncomparable { left: _, right: _ } => "result hash families are incomparable"
     StoreCommitResultIdentityUnverifiable { cause } => join(["result identity unverifiable: ", cause], "")

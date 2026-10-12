@@ -1789,7 +1789,7 @@ fn local_store_record_recency(capability: LocalStoreCapability, served: List<Art
   capability.binding.budgets |> flat_map(b => {
     let names = served |> filter(q => request_kind(req: q) == b.family) |> flat_map(q => match evaluation_store_address(req: q) {
       Admitted { address: addr } => [store_object_name(address: addr)]
-      FamilyRefused { family: _, scope: _ } => []
+      FamilyRefused { components: _, scope: _ } => []
     })
     if count(names) == 0 { [] } else {
       [match local_store_with_family_of(binding: capability.binding, family: b.family, run: h => local_store_record_recency_held(held: h, served: names)) {
@@ -1904,9 +1904,9 @@ fn local_store_check_part(root_path: String, record: String, part: ArtifactBlobP
 
 fn local_store_lookup_parts(capability: LocalStoreCapability, req: ArtifactRequest) -> LocalStorePartsLookup {
   match addressed_request(req: req) {
-    RequestAddressRefused { family: f, scope: sc } =>
+    RequestAddressRefused { components: f, scope: sc } =>
       LocalStorePartsLookup {
-        lookup: StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc } },
+        lookup: StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupStoreFamilyRefused { components: f, scope: sc } },
         parts: []
       }
     RequestAddressed { addressed: a } => local_store_lookup_parts_addressed(capability: capability, addressed: a)
@@ -1954,8 +1954,8 @@ fn local_store_lookup_parts_bound(binding: LocalStoreBinding, addressed: Address
 // refused here too, so every caller -- including a commit's read-back -- judges the whole artifact.
 fn local_store_lookup(capability: LocalStoreCapability, req: ArtifactRequest) -> StoreLookup {
   match addressed_request(req: req) {
-    RequestAddressRefused { family: f, scope: sc } =>
-      StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupStoreFamilyRefused { family: f, scope: sc } }
+    RequestAddressRefused { components: f, scope: sc } =>
+      StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupStoreFamilyRefused { components: f, scope: sc } }
     RequestAddressed { addressed: a } => local_store_lookup_addressed(capability: capability, addressed: a)
   }
 }
@@ -2322,8 +2322,8 @@ fn local_store_parts_bytes(parts: List<ArtifactBlobPart>) -> ByteSize {
 // parts included. Any part refusal refuses the commit before the record appears.
 fn local_store_commit(capability: LocalStoreCapability, req: ArtifactRequest, payloads: List<ArtifactPayload>, parts: List<LocalStoreStagedPart>) -> LocalStoreCommit {
   match addressed_request(req: req) {
-    RequestAddressRefused { family: f, scope: sc } =>
-      local_store_commit_refused(commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc } })
+    RequestAddressRefused { components: f, scope: sc } =>
+      local_store_commit_refused(commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitStoreFamilyRefused { components: f, scope: sc } })
     RequestAddressed { addressed: a } => local_store_commit_addressed(capability: capability, addressed: a, payloads: payloads, parts: parts)
   }
 }
@@ -2345,8 +2345,8 @@ fn local_store_commit_under_request(
   parts: List<LocalStoreStagedPart>
 ) -> LocalStoreCommit {
   match addressed_request(req: req) {
-    RequestAddressRefused { family: f, scope: sc } =>
-      local_store_commit_refused(commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitStoreFamilyRefused { family: f, scope: sc } })
+    RequestAddressRefused { components: f, scope: sc } =>
+      local_store_commit_refused(commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitStoreFamilyRefused { components: f, scope: sc } })
     RequestAddressed { addressed: a } => local_store_commit_under(held: held, addressed: a, payloads: payloads, parts: parts)
   }
 }

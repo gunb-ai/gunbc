@@ -370,7 +370,7 @@ type EvaluationStoreAddress sole_constructor {
 
 type EvaluationStoreAddressAdmission
   = Admitted { address: EvaluationStoreAddress }
-  | FamilyRefused { family: HashFamily, scope: KeyingScope }
+  | FamilyRefused { components: List<RefusedIdentityComponent>, scope: KeyingScope }
 
 fn evaluation_identity_canonical(evaluation: EvaluationIdentity) -> NonEmptyStr {
   concat(
@@ -428,6 +428,8 @@ type EvaluationBucket sole_constructor {
   identity: EvaluationIdentity
   digest: ContentHash
   canonical_preimage: NonEmptyStr
+  persistent_refusals: List<RefusedIdentityComponent>
+  upstream_object_identity_refs: List<NonEmptyStr>
 }
 
 fn evaluation_bucket_for_request(req: ArtifactRequest) -> EvaluationBucket admit_callers: [
@@ -441,7 +443,9 @@ fn evaluation_bucket_for_request(req: ArtifactRequest) -> EvaluationBucket admit
   EvaluationBucket {
     identity: identity,
     digest: request_evaluation_bucket(identity: identity, req: req),
-    canonical_preimage: evaluation_identity_canonical(evaluation: identity)
+    canonical_preimage: evaluation_identity_canonical(evaluation: identity),
+    persistent_refusals: evaluation_store_refused_components(req: req, scope: PersistentStoreScope),
+    upstream_object_identity_refs: evaluation_store_upstream_object_refs(req: req)
   }
 }
 
@@ -455,49 +459,6 @@ type IdentityComponentScopeStanding
   | ComponentUpstreamObjectIdentity
   | ComponentStructuralFingerprintRefused
   | ComponentFamilyNotAdmitted
-
-fn identity_component_persistent_standing(component: IdentityComponent) -> IdentityComponentScopeStanding {
-  match component {
-    IdentityText { content: _ } => ComponentAdmittedForScope
-    IdentityDigest { hash: h } =>
-      match content_hash_family(hash: h) {
-        Sha256Family => ComponentAdmittedForScope
-        Sha512Family => ComponentAdmittedForScope
-        Sha1Family => ComponentFamilyNotAdmitted
-        Fnv1a64StructuralFamily => ComponentStructuralFingerprintRefused
-      }
-    IdentityUpstreamObject { relation: r, hash: h } =>
-      if (r as String) == (git_object_identity_relation as String) {
-        match content_hash_family(hash: h) {
-          Sha256Family => ComponentUpstreamObjectIdentity
-          Sha1Family => ComponentUpstreamObjectIdentity
-          Sha512Family => ComponentFamilyNotAdmitted
-          Fnv1a64StructuralFamily => ComponentStructuralFingerprintRefused
-        }
-      } else {
-        ComponentFamilyNotAdmitted
-      }
-  }
-}
-
-// GIT'S OBJECT IDENTITY, ADMITTED AS GIT'S AND AS NOTHING WIDER. The one production mint takes a
-// GitObjectId, which extdeps.git.object_store constructs only through its validating readers, so
-// the relation name is attached where the value is known to be a git object id. The arm is not
-// sealed: a caller that labels some other digest with this relation has made a false statement
-// about provenance in so many words, which a reviewer can find by the relation's name.
-data git_object_identity_relation: NonEmptyStr = "git.object_id"
-
-fn git_object_identity_component(oid: GitObjectId) -> IdentityComponent {
-  identity_upstream_object_component(relation: git_object_identity_relation, hash: git_object_id_content_hash(oid: oid))
-}
-
-fn identity_component_scope_standing(component: IdentityComponent, scope: KeyingScope) -> IdentityComponentScopeStanding {
-  match scope {
-    InProcessIndexScope => ComponentAdmittedForScope
-    PersistentStoreScope => identity_component_persistent_standing(component: component)
-    CrossRunScope => identity_component_persistent_standing(component: component)
-  }
-}
 
 type EvaluationIdentityComponentRow {
   ref: NonEmptyStr
@@ -513,8 +474,87 @@ fn evaluation_identity_component_rows(identity: EvaluationIdentity) -> List<Eval
   )
 }
 
-fn identity_component_refused_for_scope(component: IdentityComponent, scope: KeyingScope) -> Bool {
-  match identity_component_scope_standing(component: component, scope: scope) {
+// GIT'S OBJECT IDENTITY, ADMITTED AS GIT'S AND AS NOTHING WIDER -- AND THE STANDING COMES FROM THE TYPED
+// REQUEST, NEVER FROM THE COMPONENT'S OWN LABEL. An IdentityUpstreamObject says which relation it
+// belongs to, and that spelling is part of its canonical encoding; but anyone can write the
+// spelling, so reading it would let a caller grant an arbitrary SHA-1 git's standing by naming git.
+// The admission instead asks the request: request_git_object_rows lists, for the request family at
+// hand, each component that IS a GitObjectId field of that request -- a value extdeps.git.object_store
+// constructs only through its validating readers -- together with the component that field mints.
+// A component is admitted as an upstream object identity only when that list holds the same ref
+// with the same canonical encoding. A relabelled digest matches no typed field and is refused.
+data git_object_identity_relation: NonEmptyStr = "git.object_id"
+
+fn git_object_identity_component(oid: GitObjectId) -> IdentityComponent {
+  identity_upstream_object_component(relation: git_object_identity_relation, hash: git_object_id_content_hash(oid: oid))
+}
+
+fn request_git_object_rows(req: ArtifactRequest) -> List<EvaluationIdentityComponentRow> {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => [],
+    typecheck_module: (sd, ii, c) => [],
+    resolve_closure: (cd, c) => [],
+    native_compiler: g => [],
+    universe: (tt, rb) => [],
+    module_verdict_bundle: s => [],
+    compute_work: (sj, op, tc) => [
+      EvaluationIdentityComponentRow { ref: evaluation_identity_subject_ref, component: compute_work_subject_component(subject: sj) },
+      EvaluationIdentityComponentRow { ref: compute_work_provider_revision_ref, component: git_object_identity_component(oid: tc.provider_revision) }
+    ]
+  )
+}
+
+fn component_row_is_typed_git_object(row: EvaluationIdentityComponentRow, git_rows: List<EvaluationIdentityComponentRow>) -> Bool {
+  git_rows |> any(g => (g.ref as String) == (row.ref as String)
+    && identity_component_canonical(component: g.component) == identity_component_canonical(component: row.component))
+}
+
+fn identity_component_persistent_standing(
+  row: EvaluationIdentityComponentRow,
+  git_rows: List<EvaluationIdentityComponentRow>
+) -> IdentityComponentScopeStanding {
+  match row.component {
+    IdentityText { content: _ } => ComponentAdmittedForScope
+    IdentityDigest { hash: h } =>
+      match content_hash_family(hash: h) {
+        Sha256Family => ComponentAdmittedForScope
+        Sha512Family => ComponentAdmittedForScope
+        Sha1Family => ComponentFamilyNotAdmitted
+        Fnv1a64StructuralFamily => ComponentStructuralFingerprintRefused
+      }
+    IdentityUpstreamObject { relation: _, hash: h } =>
+      match content_hash_family(hash: h) {
+        Fnv1a64StructuralFamily => ComponentStructuralFingerprintRefused
+        Sha512Family => ComponentFamilyNotAdmitted
+        Sha256Family => if component_row_is_typed_git_object(row: row, git_rows: git_rows) { ComponentUpstreamObjectIdentity } else { ComponentFamilyNotAdmitted }
+        Sha1Family => if component_row_is_typed_git_object(row: row, git_rows: git_rows) { ComponentUpstreamObjectIdentity } else { ComponentFamilyNotAdmitted }
+      }
+  }
+}
+
+fn identity_component_scope_standing(
+  row: EvaluationIdentityComponentRow,
+  git_rows: List<EvaluationIdentityComponentRow>,
+  scope: KeyingScope
+) -> IdentityComponentScopeStanding {
+  match scope {
+    InProcessIndexScope => ComponentAdmittedForScope
+    PersistentStoreScope => identity_component_persistent_standing(row: row, git_rows: git_rows)
+    CrossRunScope => identity_component_persistent_standing(row: row, git_rows: git_rows)
+  }
+}
+
+// A REFUSAL NAMES WHAT IT REFUSED AND WHY. One row per component the scope does not admit, carrying
+// the component's ref and the standing that refused it, so a caller is told "the subject is a
+// structural fingerprint" or "this input is a bare SHA-1" rather than a family it has to guess at.
+type RefusedIdentityComponent {
+  ref: NonEmptyStr
+  standing: IdentityComponentScopeStanding
+}
+
+fn component_standing_refuses(standing: IdentityComponentScopeStanding) -> Bool {
+  match standing {
     ComponentAdmittedForScope => false
     ComponentUpstreamObjectIdentity => false
     ComponentStructuralFingerprintRefused => true
@@ -522,8 +562,8 @@ fn identity_component_refused_for_scope(component: IdentityComponent, scope: Key
   }
 }
 
-fn identity_component_is_upstream_object_identity(component: IdentityComponent) -> Bool {
-  match identity_component_persistent_standing(component: component) {
+fn component_standing_is_upstream_object(standing: IdentityComponentScopeStanding) -> Bool {
+  match standing {
     ComponentAdmittedForScope => false
     ComponentUpstreamObjectIdentity => true
     ComponentStructuralFingerprintRefused => false
@@ -531,23 +571,35 @@ fn identity_component_is_upstream_object_identity(component: IdentityComponent) 
   }
 }
 
-fn evaluation_store_refused_component_refs(identity: EvaluationIdentity, scope: KeyingScope) -> List<NonEmptyStr> {
-  let rows = evaluation_identity_component_rows(identity: identity)
-  rows |> filter(r => identity_component_refused_for_scope(component: r.component, scope: scope)) |> map(r => r.ref)
+fn evaluation_store_refused_components(req: ArtifactRequest, scope: KeyingScope) -> List<RefusedIdentityComponent> {
+  let git_rows = request_git_object_rows(req: req)
+  let judged = evaluation_identity_component_rows(identity: request_evaluation_identity(req: req))
+    |> map(r => RefusedIdentityComponent { ref: r.ref, standing: identity_component_scope_standing(row: r, git_rows: git_rows, scope: scope) })
+  judged |> filter(j => component_standing_refuses(standing: j.standing))
 }
 
-fn evaluation_store_upstream_object_refs(identity: EvaluationIdentity) -> List<NonEmptyStr> {
-  let rows = evaluation_identity_component_rows(identity: identity)
-  rows |> filter(r => identity_component_is_upstream_object_identity(component: r.component)) |> map(r => r.ref)
+fn evaluation_store_upstream_object_refs(req: ArtifactRequest) -> List<NonEmptyStr> {
+  let git_rows = request_git_object_rows(req: req)
+  let rows = evaluation_identity_component_rows(identity: request_evaluation_identity(req: req))
+  rows |> filter(r => component_standing_is_upstream_object(standing: identity_component_persistent_standing(row: r, git_rows: git_rows))) |> map(r => r.ref)
+}
+
+fn refused_identity_components_text(components: List<RefusedIdentityComponent>) -> String {
+  join(components |> map(c => join([c.ref as String, match c.standing {
+    ComponentAdmittedForScope => " (admitted)"
+    ComponentUpstreamObjectIdentity => " (upstream object identity)"
+    ComponentStructuralFingerprintRefused => " is a structural fingerprint"
+    ComponentFamilyNotAdmitted => " is a digest whose family or relation this scope does not admit"
+  }], "")), "; ")
 }
 
 fn persist_evaluation_store_address(bucket: EvaluationBucket) -> EvaluationStoreAddressAdmission admit_callers: [
   decl_ref(module_path: "std.materialization_provider", decl_name: "evaluation_store_address"),
   decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve")
 ] {
-  let refused = evaluation_store_refused_component_refs(identity: bucket.identity, scope: PersistentStoreScope)
+  let refused = bucket.persistent_refusals
   if count(refused) > 0 {
-    FamilyRefused { family: Fnv1a64StructuralFamily, scope: PersistentStoreScope }
+    FamilyRefused { components: refused, scope: PersistentStoreScope }
   } else {
     Admitted {
       address: EvaluationStoreAddress {
@@ -556,7 +608,7 @@ fn persist_evaluation_store_address(bucket: EvaluationBucket) -> EvaluationStore
         canonical_preimage: bucket.canonical_preimage,
         standing: EvaluationStoreAddressStanding {
           family: Sha256Family,
-          upstream_object_identity_refs: evaluation_store_upstream_object_refs(identity: bucket.identity)
+          upstream_object_identity_refs: bucket.upstream_object_identity_refs
         }
       }
     }
@@ -594,12 +646,12 @@ type AddressedRequest sole_constructor {
 
 type AddressedRequestAdmission
   = RequestAddressed { addressed: AddressedRequest }
-  | RequestAddressRefused { family: HashFamily, scope: KeyingScope }
+  | RequestAddressRefused { components: List<RefusedIdentityComponent>, scope: KeyingScope }
 
 fn addressed_request(req: ArtifactRequest) -> AddressedRequestAdmission {
   match evaluation_store_address(req: req) {
     Admitted { address: a } => RequestAddressed { addressed: AddressedRequest { request: req, address: a } }
-    FamilyRefused { family: f, scope: sc } => RequestAddressRefused { family: f, scope: sc }
+    FamilyRefused { components: f, scope: sc } => RequestAddressRefused { components: f, scope: sc }
   }
 }
 
@@ -610,8 +662,9 @@ fn addressed_request(req: ArtifactRequest) -> AddressedRequestAdmission {
 // The identity and preimage are still derived from the request, and every component is still
 // judged: a request the persistent scope refuses is refused here too, so this mint is not a way
 // around the admission. What it leaves unexecuted is the digest computation, and the pairing
-// obligation is discharged by the inhabitance claim that derives a real address through
-// addressed_request and compares it with the published SHA-256 of its preimage.
+// obligation is discharged where the real derivation runs: gunbc.instruments
+// native_materialization_store_closure compares a real address with a digest derived outside this
+// corpus, and the wet store witnesses commit and read back under real addresses.
 fn addressed_request_with_supplied_digest(req: ArtifactRequest, digest: Sha256Digest) -> AddressedRequestAdmission admit_callers: [
   decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "witness_supplied_addressed"),
   decl_ref(module_path: "test.claim.materialization_store_witness", decl_name: "witness_supplied_addressed"),
@@ -619,9 +672,9 @@ fn addressed_request_with_supplied_digest(req: ArtifactRequest, digest: Sha256Di
   decl_ref(module_path: "test.claim.materialization_store_local_immutable_pin_wet_witness", decl_name: "witness_supplied_addressed")
 ] {
   let bucket = evaluation_bucket_for_request(req: req)
-  let refused = evaluation_store_refused_component_refs(identity: bucket.identity, scope: PersistentStoreScope)
+  let refused = bucket.persistent_refusals
   if count(refused) > 0 {
-    RequestAddressRefused { family: Fnv1a64StructuralFamily, scope: PersistentStoreScope }
+    RequestAddressRefused { components: refused, scope: PersistentStoreScope }
   } else {
     RequestAddressed {
       addressed: AddressedRequest {
@@ -632,7 +685,7 @@ fn addressed_request_with_supplied_digest(req: ArtifactRequest, digest: Sha256Di
           canonical_preimage: bucket.canonical_preimage,
           standing: EvaluationStoreAddressStanding {
             family: Sha256Family,
-            upstream_object_identity_refs: evaluation_store_upstream_object_refs(identity: bucket.identity)
+            upstream_object_identity_refs: bucket.upstream_object_identity_refs
           }
         }
       }
@@ -651,7 +704,7 @@ fn evaluation_store_address_preimage(address: EvaluationStoreAddress) -> NonEmpt
 fn evaluation_store_admitted_address(admission: EvaluationStoreAddressAdmission) -> EvaluationStoreAddress? {
   match admission {
     Admitted { address: a } => Present { value: a }
-    FamilyRefused { family: _, scope: _ } => none
+    FamilyRefused { components: _, scope: _ } => none
   }
 }
 
@@ -851,6 +904,8 @@ fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSub
   }
 }
 
+data compute_work_provider_revision_ref: NonEmptyStr = "compute_work.execution.provider_revision"
+
 fn compute_work_subject_component(subject: WorkSubject) -> IdentityComponent {
   match subject {
     ExactTree { tree } => git_object_identity_component(oid: tree)
@@ -942,7 +997,7 @@ fn compute_work_judgment_contract(
         DeclaredInput { ref: "compute_work.execution.target_triple", component: identity_text_component(content: toolchain.target_triple) },
         DeclaredInput { ref: "compute_work.execution.cargo_version", component: identity_text_component(content: toolchain.cargo_version) },
         DeclaredInput { ref: "compute_work.execution.cache_release", component: identity_text_component(content: toolchain.cache_release) },
-        DeclaredInput { ref: "compute_work.execution.provider_revision", component: git_object_identity_component(oid: toolchain.provider_revision) }
+        DeclaredInput { ref: compute_work_provider_revision_ref, component: git_object_identity_component(oid: toolchain.provider_revision) }
       ]
     },
     result: ResultContract {
@@ -1032,7 +1087,7 @@ fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
 // is witnessed by execution rather than asserted.
 
 fn request_key(req: ArtifactRequest) -> ContentHash {
-  evaluation_bucket_for_request(req: req).digest
+  request_evaluation_bucket(identity: request_evaluation_identity(req: req), req: req)
 }
 
 // Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape
@@ -1540,7 +1595,11 @@ fn request_artifact_binding_at(
   key: ContentHash,
   artifact: MaterializedArtifact,
   observed_digest: ContentHash
-) -> RequestArtifactBinding {
+) -> RequestArtifactBinding admit_callers: [
+  decl_ref(module_path: "std.materialization_provider", decl_name: "request_artifact_binding"),
+  decl_ref(module_path: "std.materialization_provider", decl_name: "provider_binding_lookup"),
+  decl_ref(module_path: "std.materialization_object", decl_name: "store_commit_prepare_admitted")
+] {
   let kind = request_kind(req: req)
   if (artifact_kind(artifact: artifact) == kind) == false {
     BindingKindMismatch { requested: kind, found: artifact_kind(artifact: artifact) }
@@ -1634,7 +1693,7 @@ type ProviderLookup
   | ProviderRefusedCrossFamilyContentHash { key: ContentHash, family: HashFamily }
   | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
   | ProviderRefusedEvaluationPreimageMismatch { key: ContentHash, expected: NonEmptyStr, found: NonEmptyStr }
-  | ProviderRefusedStoreFamily { key: ContentHash, family: HashFamily, scope: KeyingScope }
+  | ProviderRefusedStoreFamily { key: ContentHash, components: List<RefusedIdentityComponent>, scope: KeyingScope }
   | ProviderRefusedUnqualifiedPersistedFormat { key: ContentHash }
 
 data resolved_graph_disk_format_unqualified_frontier: DissolutionCondition = unbound_dissolution(
@@ -1673,7 +1732,10 @@ fn persisted_probe(
   }
 }
 
-fn provider_binding_lookup(req: ArtifactRequest, key: ContentHash, artifact: MaterializedArtifact, observed_digest: ContentHash) -> ProviderLookup {
+fn provider_binding_lookup(req: ArtifactRequest, key: ContentHash, artifact: MaterializedArtifact, observed_digest: ContentHash) -> ProviderLookup admit_callers: [
+  decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve"),
+  decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve_persisted")
+] {
   match request_artifact_binding_at(req: req, key: key, artifact: artifact, observed_digest: observed_digest) {
     BindingOk =>
       ProviderHit {
@@ -1691,14 +1753,21 @@ fn provider_binding_lookup(req: ArtifactRequest, key: ContentHash, artifact: Mat
   }
 }
 
+// THE PERSISTED DOOR TAKES THE PAIR, NOT ITS HALVES. The request, the key an artifact is bound
+// against and the preimage a stored object must carry are all read off one AddressedRequest, so a
+// caller cannot present request A beside B's address and B's object and be served B's result as
+// A's answer. The functions below this one that still take a request and a key separately
+// (provider_binding_lookup, request_artifact_binding_at) are sealed to the callers that derive both
+// from one value: this door for a persisted artifact, provider_serve for an in-process one.
 fn provider_serve_persisted(
-  req: ArtifactRequest,
-  key: ContentHash,
+  addressed: AddressedRequest,
   artifact: MaterializedArtifact,
   observed_digest: ContentHash,
-  observed: ObservedEvaluationPreimage,
-  expected_preimage: NonEmptyStr
+  observed: ObservedEvaluationPreimage
 ) -> ProviderLookup {
+  let req = addressed.request
+  let key = addressed.address.digest
+  let expected_preimage = addressed.address.canonical_preimage
   if (observed.encoded as String) == (expected_preimage as String) {
     provider_binding_lookup(req: req, key: key, artifact: artifact, observed_digest: observed_digest)
   } else {
@@ -1734,10 +1803,10 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
     }
     PersistedProbe { artifact: a, observed_digest: obs, observed_evaluation_preimage: observed } =>
       match persist_evaluation_store_address(bucket: bucket) {
-        FamilyRefused { family: f, scope: sc } =>
-          ProviderRefusedStoreFamily { key: key, family: f, scope: sc }
+        FamilyRefused { components: f, scope: sc } =>
+          ProviderRefusedStoreFamily { key: key, components: f, scope: sc }
         Admitted { address: addr } =>
-          provider_serve_persisted(req: req, key: addr.digest, artifact: a, observed_digest: obs, observed: observed, expected_preimage: addr.canonical_preimage)
+          provider_serve_persisted(addressed: AddressedRequest { request: req, address: addr }, artifact: a, observed_digest: obs, observed: observed)
       }
   }
 }
@@ -2108,7 +2177,7 @@ fn lookup_fold<T>(
     ProviderRefusedCrossFamilyContentHash { key: k, family: f } => cross_family(k, f)
     ProviderRefusedIncomplete { key: k, missing: m } => incomplete(k, m)
     ProviderRefusedEvaluationPreimageMismatch { key: k, expected: e, found: f } => evaluation_preimage_mismatch(k, e, f)
-    ProviderRefusedStoreFamily { key: k, family: f, scope: sc } => store_family_refused(k, f, sc)
+    ProviderRefusedStoreFamily { key: k, components: f, scope: sc } => store_family_refused(k, f, sc)
     ProviderRefusedUnqualifiedPersistedFormat { key: k } => unqualified_persisted_format(k)
   }
 }

@@ -49,7 +49,8 @@ import std.materialization_provider {
   InProcessIndexScope, PersistentStoreScope, CrossRunScope,
   HashFamilyAdmittedForScope, StructuralFingerprintRefusedAsStoreKey, FamilyNotAdmittedForRelation,
   Admitted, FamilyRefused, identity_component_index_fingerprint,
-  evaluation_store_refused_component_refs, evaluation_store_upstream_object_refs, evaluation_identity_subject_ref,
+  evaluation_store_refused_components, evaluation_store_upstream_object_refs, evaluation_identity_subject_ref,
+  RefusedIdentityComponent, EvaluationIdentityComponentRow, git_object_identity_component,
   identity_component_persistent_standing, ComponentAdmittedForScope, ComponentUpstreamObjectIdentity,
   ComponentStructuralFingerprintRefused, ComponentFamilyNotAdmitted, git_object_identity_relation,
   demand_identity_canonical, demand_identity_decode,
@@ -865,41 +866,59 @@ fn demand_identity_canonical_c1_lossy(demand: DemandIdentity) -> NonEmptyStr {
   ) as NonEmptyStr
 }
 
-fn string_list_has(xs: List<NonEmptyStr>, wanted: NonEmptyStr) -> Bool {
-  xs |> any(x => (x as String) == (wanted as String))
+fn refused_has(xs: List<RefusedIdentityComponent>, wanted: NonEmptyStr) -> Bool {
+  xs |> any(x => (x.ref as String) == (wanted as String))
 }
 
-// THE STRICT RULE, AT THE FAMILIES THAT STILL CARRY FINGERPRINTS. A parse request's subject and its
-// compiler input are structural fingerprints, so the persistent scope refuses the request an
-// address and names both components; the in-process scope, where a collision costs a preimage
-// comparison, refuses neither. The second half is the positive control: a rule that refused every
-// scope would pass the first half alone.
+fn refused_is_fingerprint(xs: List<RefusedIdentityComponent>, wanted: NonEmptyStr) -> Bool {
+  xs |> any(x => (x.ref as String) == (wanted as String) && match x.standing {
+    ComponentStructuralFingerprintRefused => true
+    ComponentAdmittedForScope => false
+    ComponentUpstreamObjectIdentity => false
+    ComponentFamilyNotAdmitted => false
+  })
+}
+
+// THE STRICT RULE, AT THE FAMILIES THAT STILL CARRY FINGERPRINTS, READ OFF THE REFUSAL ITSELF. A parse
+// request's subject and its compiler input are structural fingerprints, so the persistent scope
+// refuses the request an address -- and the value evaluation_store_address RETURNS carries both
+// components with the standing that refused each. The in-process scope, where a collision costs a
+// preimage comparison, refuses neither: a rule that refused every scope would pass the first half
+// alone.
 test fn a_structural_fingerprint_component_is_refused_a_persistent_address_by_name() -> Bool {
-  let identity = request_evaluation_identity(req: witness_parse_request())
-  let refused = evaluation_store_refused_component_refs(identity: identity, scope: PersistentStoreScope)
-  let cross_run = evaluation_store_refused_component_refs(identity: identity, scope: CrossRunScope)
-  let in_process = evaluation_store_refused_component_refs(identity: identity, scope: InProcessIndexScope)
-  (refused |> count()) == 2
-    && string_list_has(xs: refused, wanted: evaluation_identity_subject_ref)
-    && string_list_has(xs: refused, wanted: "compiler_binary_identity")
+  let in_process = evaluation_store_refused_components(req: witness_parse_request(), scope: InProcessIndexScope)
+  let cross_run = evaluation_store_refused_components(req: witness_parse_request(), scope: CrossRunScope)
+  (in_process |> count()) == 0
     && (cross_run |> count()) == 2
-    && (in_process |> count()) == 0
     && (match evaluation_store_address(req: witness_parse_request()) {
       Admitted { address: _ } => false
-      FamilyRefused { family: f, scope: _ } => f == Fnv1a64StructuralFamily
+      FamilyRefused { components: refused, scope: _ } =>
+        (refused |> count()) == 2
+          && refused_is_fingerprint(xs: refused, wanted: evaluation_identity_subject_ref)
+          && refused_is_fingerprint(xs: refused, wanted: "compiler_binary_identity")
     })
     && (match evaluation_store_address(req: witness_typecheck_request()) {
       Admitted { address: _ } => false
-      FamilyRefused { family: _, scope: _ } => true
+      FamilyRefused { components: refused, scope: _ } => refused_has(xs: refused, wanted: evaluation_identity_subject_ref)
     })
 }
 
-// WHICH COMPONENTS A PERSISTENT SCOPE ADMITS, ONE NAMED MEMBER PER ARM. Text is carried whole and
-// admitted. A SHA-256 digest is admitted. A bare SHA-1 digest is NOT -- its family alone does not
-// say whose identity it is -- while the same digest under git's relation is admitted as git's
-// object identity, and under any other relation name is refused. A structural fingerprint is
-// refused whether bare or wearing git's relation.
-test fn persistent_component_standing_is_decided_by_relation_and_family() -> Bool {
+fn standing_tag(row: EvaluationIdentityComponentRow, git_rows: List<EvaluationIdentityComponentRow>) -> String {
+  match identity_component_persistent_standing(row: row, git_rows: git_rows) {
+    ComponentAdmittedForScope => "admitted"
+    ComponentUpstreamObjectIdentity => "upstream"
+    ComponentStructuralFingerprintRefused => "fingerprint"
+    ComponentFamilyNotAdmitted => "not_admitted"
+  }
+}
+
+// WHICH COMPONENTS A PERSISTENT SCOPE ADMITS, ONE NAMED MEMBER PER ARM -- AND A LABEL IS NOT PROVENANCE.
+// Text and a SHA-256 digest are admitted. A bare SHA-1 digest is not. A git object identity is
+// admitted ONLY when the typed request lists that same component under that same ref: the list here
+// is what request_git_object_rows derives from a request's GitObjectId fields. The same SHA-1
+// wearing git's relation name but absent from that list -- a relabelled digest -- is refused; so is
+// one listed under a different ref. A fingerprint is refused whatever it is wearing.
+test fn persistent_component_standing_is_decided_by_the_typed_request_and_the_family() -> Bool {
   let sha1 = match sha1_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
     Present { value: d } => as_content_hash_sha1(digest: d)
     Absent => as_content_hash_structural(structural: content_hash_atom(value: "unreachable-sha1-fixture"))
@@ -909,13 +928,18 @@ test fn persistent_component_standing_is_decided_by_relation_and_family() -> Boo
     Absent => as_content_hash_structural(structural: content_hash_atom(value: "unreachable-sha256-fixture"))
   }
   let fingerprint = as_content_hash_structural(structural: content_hash_atom(value: "a-fingerprint"))
-  (match identity_component_persistent_standing(component: identity_text_component(content: "rustc 1.90.0")) { ComponentAdmittedForScope => true  ComponentUpstreamObjectIdentity => false  ComponentStructuralFingerprintRefused => false  ComponentFamilyNotAdmitted => false })
-    && (match identity_component_persistent_standing(component: identity_digest_component(hash: sha256)) { ComponentAdmittedForScope => true  ComponentUpstreamObjectIdentity => false  ComponentStructuralFingerprintRefused => false  ComponentFamilyNotAdmitted => false })
-    && (match identity_component_persistent_standing(component: identity_digest_component(hash: sha1)) { ComponentAdmittedForScope => false  ComponentUpstreamObjectIdentity => false  ComponentStructuralFingerprintRefused => false  ComponentFamilyNotAdmitted => true })
-    && (match identity_component_persistent_standing(component: identity_upstream_object_component(relation: git_object_identity_relation, hash: sha1)) { ComponentAdmittedForScope => false  ComponentUpstreamObjectIdentity => true  ComponentStructuralFingerprintRefused => false  ComponentFamilyNotAdmitted => false })
-    && (match identity_component_persistent_standing(component: identity_upstream_object_component(relation: "some.other.relation", hash: sha1)) { ComponentAdmittedForScope => false  ComponentUpstreamObjectIdentity => false  ComponentStructuralFingerprintRefused => false  ComponentFamilyNotAdmitted => true })
-    && (match identity_component_persistent_standing(component: identity_digest_component(hash: fingerprint)) { ComponentAdmittedForScope => false  ComponentUpstreamObjectIdentity => false  ComponentStructuralFingerprintRefused => true  ComponentFamilyNotAdmitted => false })
-    && (match identity_component_persistent_standing(component: identity_upstream_object_component(relation: git_object_identity_relation, hash: fingerprint)) { ComponentAdmittedForScope => false  ComponentUpstreamObjectIdentity => false  ComponentStructuralFingerprintRefused => true  ComponentFamilyNotAdmitted => false })
+  let git_component = identity_upstream_object_component(relation: git_object_identity_relation, hash: sha1)
+  let typed = [EvaluationIdentityComponentRow { ref: "tree", component: git_component }]
+  let none_typed: List<EvaluationIdentityComponentRow> = []
+  standing_tag(row: EvaluationIdentityComponentRow { ref: "t", component: identity_text_component(content: "rustc 1.90.0") }, git_rows: none_typed) == "admitted"
+    && standing_tag(row: EvaluationIdentityComponentRow { ref: "d", component: identity_digest_component(hash: sha256) }, git_rows: none_typed) == "admitted"
+    && standing_tag(row: EvaluationIdentityComponentRow { ref: "d", component: identity_digest_component(hash: sha1) }, git_rows: typed) == "not_admitted"
+    && standing_tag(row: EvaluationIdentityComponentRow { ref: "tree", component: git_component }, git_rows: typed) == "upstream"
+    && standing_tag(row: EvaluationIdentityComponentRow { ref: "tree", component: git_component }, git_rows: none_typed) == "not_admitted"
+    && standing_tag(row: EvaluationIdentityComponentRow { ref: "other", component: git_component }, git_rows: typed) == "not_admitted"
+    && standing_tag(row: EvaluationIdentityComponentRow { ref: "tree", component: identity_upstream_object_component(relation: "some.other.relation", hash: sha1) }, git_rows: typed) == "not_admitted"
+    && standing_tag(row: EvaluationIdentityComponentRow { ref: "d", component: identity_digest_component(hash: fingerprint) }, git_rows: none_typed) == "fingerprint"
+    && standing_tag(row: EvaluationIdentityComponentRow { ref: "tree", component: identity_upstream_object_component(relation: git_object_identity_relation, hash: fingerprint) }, git_rows: typed) == "fingerprint"
 }
 
 fn component_arm_canonical(c: IdentityComponent) -> String {

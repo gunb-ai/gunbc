@@ -195,7 +195,7 @@ test fn the_provider_identity_is_the_admitted_store_address_digest() -> Bool {
   let subject = tree(hex: tree_a)
   let request = req(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
   match evaluation_store_address(req: request) {
-    FamilyRefused { family: _, scope: _ } => false
+    FamilyRefused { components: _, scope: _ } => false
     Admitted { address } =>
       content_hash_equal(
         left: evaluation_store_address_digest(address: address),
