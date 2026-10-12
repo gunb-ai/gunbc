@@ -47,7 +47,7 @@ fn collision_sharing_of(would_share: List<Bool>) -> CollisionSharing {
   match would_share |> first {
     Absent => SameSharing
     Present { value: first_share } =>
-      if would_share |> any(s => s != first_share) { DifferentSharing } else { SameSharing }
+      if (would_share |> any(s => s != first_share)) { DifferentSharing } else { SameSharing }
   }
 }
 
@@ -157,20 +157,7 @@ fn would_share_cell(b: Bool) -> String {
 }
 
 fn collision_report_line(subject: String, row: LeafCollisionRow) -> String {
-  [
-    "collision subject=",
-    subject,
-    " leaf=",
-    row.leaf,
-    " declarers=",
-    row.declarers |> join(separator: ","),
-    " would_share=",
-    row.would_share |> map(b => would_share_cell(b: b)) |> join(separator: ","),
-    " sharing=",
-    sharing_label(sharing: row.sharing),
-    " rustc=",
-    rustc_label(grade: row.rustc)
-  ] |> join(separator: "")
+  concat(concat(concat(concat(concat("collision subject=", subject), concat(" leaf=", row.leaf)), concat(" declarers=", row.declarers |> join(separator: ","))), concat(" would_share=", row.would_share |> map(b => would_share_cell(b: b)) |> join(separator: ","))), concat(concat(" sharing=", sharing_label(sharing: row.sharing)), concat(" rustc=", rustc_label(grade: row.rustc))))
 }
 
 fn subject_summary_line(kind: String, name: String, rows: List<LeafCollisionRow>) -> String {
@@ -186,22 +173,11 @@ fn subject_summary_line(kind: String, name: String, rows: List<LeafCollisionRow>
       SameSharing => false
     }
   ) |> count
-  [
-    "subject kind=",
-    kind,
-    " name=",
-    name,
-    " colliding_leaves=",
-    to_string(rows |> count),
-    " same_sharing=",
-    to_string(same),
-    " different_sharing=",
-    to_string(different)
-  ] |> join(separator: "")
+  concat(concat(concat(concat("subject kind=", kind), concat(" name=", name)), concat(" colliding_leaves=", to_string(rows |> count))), concat(concat(" same_sharing=", to_string(same)), concat(" different_sharing=", to_string(different))))
 }
 
 fn control_line(name: String, held: Bool) -> String {
-  ["control ", name, " ", if held { "held" } else { "unmet" }] |> join(separator: "")
+  concat(concat(concat("control ", name), " "), if held { "held" } else { "unmet" })
 }
 
 fn fixture_standing(red_rows: List<LeafCollisionRow>, green_rows: List<LeafCollisionRow>) -> String {
