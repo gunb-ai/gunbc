@@ -1,5 +1,7 @@
 module test.claim.live_deploy.apply_emission_projection
 
+import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_principal }
+
 import std.types { String, List }
 import std.measure { Second }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentStep }
@@ -144,6 +146,6 @@ fn apply_emitted_steps_text(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> St
   let effects = apply_empty_host_effects(spec: spec)
   pipeline_steps_text(steps: flat_map(
     spec.steps,
-    st => apply_step_effects(step: st, effects: effects, spec: spec, plan: plan, oidc_now: claim_oidc_now()),
+    st => apply_step_effects(principal: fleet_posix_ci_runner_principal(), step: st, effects: effects, spec: spec, plan: plan, oidc_now: claim_oidc_now()),
   ))
 }

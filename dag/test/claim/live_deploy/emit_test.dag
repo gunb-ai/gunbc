@@ -166,7 +166,7 @@ import gunbc.ci_deploy_access {
   deploy_access_job_principal_refused_emit_poison,
   ci_deploy_srv1_access_or_refusal, DeployAccessReady, DeployAccessJobPrincipalRefused,
 }
-import gunbc.fleet_posix_accounts { DeployRunnerPrincipal, ci_runner_sudo_binary_path, SudoVisudo }
+import gunbc.fleet_posix_accounts { DeployRunnerPrincipal, ci_runner_sudo_binary_path, SudoVisudo, fleet_posix_ci_runner_principal }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_shadow_revert_script,
@@ -221,12 +221,12 @@ data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
   observation: SurplusSlotsObserved { retired: [], still_present: [] },
 )
 
-data witness_apply_script_text: String = live_deploy_apply_script_for(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization, oidc_now: claim_oidc_now())
+data witness_apply_script_text: String = live_deploy_apply_script_for(principal: fleet_posix_ci_runner_principal(), spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization, oidc_now: claim_oidc_now())
 
 data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1())
 
 // ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER: THE ADDITIVE INSTALL ────────────────────────────
-data witness_approval_broker_dark_script_text: String = approval_broker_dark_install_script(
+data witness_approval_broker_dark_script_text: String = approval_broker_dark_install_script(principal: fleet_posix_ci_runner_principal(), 
   spec: deployment_spec_srv1(),
   revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
 )
@@ -425,7 +425,7 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessReady { access: a } =>
       let pre = deploy_apply_preamble_steps(access: a, spec: spec)
-      let p = apply_intent_from_effects(
+      let p = apply_intent_from_effects(principal: fleet_posix_ci_runner_principal(), 
         spec: spec,
         effects: apply_empty_host_effects(spec: spec),
         access: a,
@@ -1091,7 +1091,7 @@ data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN 
 // broker's two mounts are pinned byte-for-byte by test.claim.approval_broker_front_door_member_witness.
 test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
   let spec = deployment_spec_srv1()
-  let own = pipeline_steps_text(steps: emit_artifact_upsert(
+  let own = pipeline_steps_text(steps: emit_artifact_upsert(principal: fleet_posix_ci_runner_principal(), 
     art: DeploymentArtifactStep {
       kind: TailscaleServeMapping,
       path: tailscale_serve_route_member_path(endpoint: spec.names.tailscale_serve_endpoint),
@@ -1315,7 +1315,7 @@ test fn the_preamble_ensures_the_publication_principal_as_a_nologin_system_accou
 fn member_fragment_text(member: ConvergedMember, plan: ReleaseEffectPlan) -> String {
   join(
     map(
-      emit_release_member_effects(member: member, plan: plan, spec: deployment_spec_srv1(), oidc_now: claim_oidc_now()),
+      emit_release_member_effects(principal: fleet_posix_ci_runner_principal(), member: member, plan: plan, spec: deployment_spec_srv1(), oidc_now: claim_oidc_now()),
       st => match st {
         Do { run } => run.command
         Comment { text: _ } => ""
@@ -1671,7 +1671,7 @@ test fn the_dark_install_execstart_carries_the_admitted_revision() -> Bool {
 
 test fn a_twin_apply_neither_writes_nor_restarts_the_host_broker() -> Bool {
   let twin = srv1_twin_spec()
-  count(apply_approval_broker_unit_write_steps(
+  count(apply_approval_broker_unit_write_steps(principal: fleet_posix_ci_runner_principal(), 
     spec: twin,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )) == 0
@@ -1682,7 +1682,7 @@ test fn a_twin_apply_neither_writes_nor_restarts_the_host_broker() -> Bool {
 // the broker at all -- a different defect with the same green.
 test fn the_owning_apply_does_write_and_restart_the_host_broker() -> Bool {
   let live = deployment_spec_srv1()
-  count(apply_approval_broker_unit_write_steps(
+  count(apply_approval_broker_unit_write_steps(principal: fleet_posix_ci_runner_principal(), 
     spec: live,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )) > 0
@@ -1722,7 +1722,7 @@ fn service_has_execstart_containing(file: SystemdUnitFile, fragment: String) -> 
 // being told a stage completed. This one DOES render, because the refusal marker is a property of
 // the emitted text and there is nothing cheaper that observes it.
 test fn a_twin_dark_install_refuses_rather_than_emitting_an_empty_stage() -> Bool {
-  let script = approval_broker_dark_install_script(
+  let script = approval_broker_dark_install_script(principal: fleet_posix_ci_runner_principal(), 
     spec: srv1_twin_spec(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )

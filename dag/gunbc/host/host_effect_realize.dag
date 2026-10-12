@@ -150,6 +150,7 @@ import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_token_path,
 }
 import std.access { AccessDecision, Permit, Deny, access_policy_refusal }
+import gunbc.fleet_posix_accounts { GroundedPosixPrincipal }
 import gunbc.ci_deploy_access {
   DeployAccess,
   DeployAccessActor,
@@ -4474,6 +4475,7 @@ fn realize_live_deploy_apply_on_host(
   plan: ReleaseEffectPlan,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  principal: GroundedPosixPrincipal,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let locus_refusal = live_deploy_apply_candidate_locus_refusal(transport: transport)
   if locus_refusal != "" {
@@ -4490,6 +4492,7 @@ fn realize_live_deploy_apply_on_host(
         body: live_deploy_apply_script_for_wet(
           spec: spec,
           plan: plan,
+          principal: principal,
           cap_authorization: match admission {
             RunnerHostDeployRefused { host: rh, cause: rc } =>
               CapConvergeWithheld {
@@ -4549,12 +4552,14 @@ fn realize_approval_broker_dark_install_on_host(
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  principal: GroundedPosixPrincipal,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   realize_shell_on_host(
     script: retained_srvn(
       body: approval_broker_dark_install_script(
         spec: spec,
         revision: RevisionBoundAtEmission { revision: candidate.revision },
+        principal: principal,
       ),
       reason: "approval broker dark install (additive; does not restart the roadmap unit)",
     ),
@@ -4628,6 +4633,11 @@ fn realize_live_deploy_digest_readback_on_host(
   )
 }
 
+// THE UNGATED DISPATCHER HAS NO DEPLOY PRINCIPAL, so it cannot emit a live-deploy apply or a broker
+// dark install: their scripts name the applying principal (the helper sudoers readback is owned by it).
+// Production reaches both only through host_effect_apply_gated, whose DeployAccess carries it.
+data ungated_live_deploy_emission_refusal: String = "host_effect_apply: a live-deploy apply or approval-broker dark install needs the applying principal, which only host_effect_apply_gated carries (its DeployAccess); the ungated dispatcher refuses rather than naming one"
+
 fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: IdempotencyEvidence, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let intent = HostEffectIntent {
     target: target,
@@ -4672,12 +4682,12 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_sudo_nopasswd_execute_probe_on_host(probe: p, transport: transport, intent: intent)
     SudoNopasswdGrantListProbeOnHost { node: _, probe: p } =>
       realize_sudo_nopasswd_grant_list_probe_on_host(probe: p, transport: transport, intent: intent)
-    LiveDeployApplyOnHost { node: _, spec: s, candidate: c, plan: p } =>
-      realize_live_deploy_apply_on_host(spec: s, candidate: c, plan: p, transport: transport, intent: intent)
+    LiveDeployApplyOnHost { node: _, spec: _, candidate: _, plan: _ } =>
+      NotConverged { reason: ungated_live_deploy_emission_refusal, applied: intent }
     LiveDeployRetractOnHost { node: _, spec: s } =>
       realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
-    LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: s, candidate: c } =>
-      realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent)
+    LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: _, candidate: _ } =>
+      NotConverged { reason: ungated_live_deploy_emission_refusal, applied: intent }
     LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c } =>
       realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
     LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
@@ -4878,11 +4888,11 @@ fn host_effect_apply_gated(
         SudoNopasswdGrantListProbeOnHost { node: _, probe: p } =>
           realize_sudo_nopasswd_grant_list_probe_on_host(probe: p, transport: transport, intent: intent)
         LiveDeployApplyOnHost { node: _, spec: s, candidate: c, plan: p } =>
-          realize_live_deploy_apply_on_host(spec: s, candidate: c, plan: p, transport: transport, intent: intent)
+          realize_live_deploy_apply_on_host(spec: s, candidate: c, plan: p, transport: transport, intent: intent, principal: access.principal)
         LiveDeployRetractOnHost { node: _, spec: s } =>
           realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
         LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: s, candidate: c } =>
-          realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent)
+          realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent, principal: access.principal)
         LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c } =>
           realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
         LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>

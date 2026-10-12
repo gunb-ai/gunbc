@@ -1,5 +1,7 @@
 module test.claim.belt_tick_receipt_home_witness
 
+import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_principal }
+
 import std.types { Bool, String, FilePath }
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance {
@@ -125,7 +127,7 @@ fn belt_upsert_commands() -> List<String> {
       names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
     ) as String as NonEmptyStr,
   }
-  step_commands(steps: emit_artifact_upsert(
+  step_commands(steps: emit_artifact_upsert(principal: fleet_posix_ci_runner_principal(), 
     art: art,
     spec: spec,
     revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha },

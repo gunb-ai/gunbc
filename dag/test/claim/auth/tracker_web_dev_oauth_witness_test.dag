@@ -1,5 +1,7 @@
 module test.claim.auth.tracker_web_dev_oauth_witness_test
 
+import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_principal }
+
 import std.types { Bool, String, CommitSha, NonEmptyStr, Int }
 import std.measure { second_count }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalAssessmentRefused }
@@ -280,7 +282,7 @@ test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
   }).first() {
     Absent => false
     Present { value: step } =>
-      let sh = pipeline_steps_text(steps: apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: claim_oidc_now()))
+      let sh = pipeline_steps_text(steps: apply_step_effects(principal: fleet_posix_ci_runner_principal(), step: step, effects: effects, spec: spec, plan: plan, oidc_now: claim_oidc_now()))
       string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
         && string_contains(s: sh, pattern: "0600")
         && string_contains(s: sh, pattern: "gunbc-oidc-config.json")
