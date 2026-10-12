@@ -471,10 +471,16 @@ type SubmissionObservation
   | SubmissionAbsent
   | SubmissionUndecodable { reason: String }
 
-// WHAT THE BELT OBSERVED IN THE ATTEMPT'S CAPTURE DIRECTORY for one head.
+// WHAT THE BELT OBSERVED IN THE ATTEMPT'S CAPTURE DIRECTORY for one head. NO CAPTURE IS TWO FACTS,
+// told apart by the commit step's own record: CaptureAbsent means the step that mints captures has
+// settled this attempt without one (preservation only -- the worker yielded), and CaptureNotAttempted
+// means it has not settled -- it has not run, or its last run failed or deferred -- so the capture is
+// still owed. Reading the second as the first is how an ended worker came to look yielded before
+// anything had captured it, and was never owed a capture (srv1 lab, 2026-10-12).
 type SubmissionCaptureObservation
   = CaptureForHead { capture: SubmissionCapture }
   | CaptureAbsent
+  | CaptureNotAttempted { reason: String }
   | CaptureUnreadable { reason: String }
 
 // THE CAPTURE FRESHNESS JUDGMENT, pure so a witness reaches every arm. A declaration whose digest
@@ -552,6 +558,7 @@ fn submission_candidate_decision(
 // keeps a disabled helper truthful: the state is owed, never discharged.
 type CandidateHandoffState
   = HandoffAwaitingWorker
+  | HandoffAwaitingCapture { reason: String }
   | HandoffYielded { reason: String }
   | HandoffEvidenceRefused { reason: String }
   | HandoffDeclaredBlocked { head_sha: String, readiness: SubmissionReadiness, explanation: String }
@@ -598,8 +605,8 @@ fn candidate_handoff_state(
     ProviderNotStarted => HandoffAwaitingWorker
     ProviderStarting { activity: _ } => HandoffAwaitingWorker
     ProviderAwaitingSeat { detail: _ } => HandoffAwaitingWorker
-    ProviderAwaitingAcceptance { handin: _ } =>
-      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
+    ProviderAwaitingAcceptance { handin } =>
+      candidate_handoff_state_for_handin(handin: handin, capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderRunning { activity: _ } => HandoffAwaitingWorker
     ProviderEventsRefused { activity: _, detail: _ } => HandoffAwaitingWorker
     ProviderCompleted { activity: _ } =>
@@ -607,6 +614,34 @@ fn candidate_handoff_state(
     ProviderFailed { activity: _, detail: _ } =>
       candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderBudgetSpent { activity: _, detail: _ } =>
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
+  }
+}
+
+// A HANDED-IN WORKER'S CANDIDATE IS THE CAPTURE THAT NAMES ITS CURRENT HAND-IN (gunbc.plans.
+// harness_session_lifecycle, slice S2). A revision hands in again from the same worktree, so the head
+// can still carry the capture of the hand-in it revises: that capture is not this hand-in's, and the
+// stages that judged it say nothing about the revision, so the capture is owed. The commit step's record
+// is attempt-grain, so a capture it settled without minting (CaptureAbsent) reads as the yield it
+// recorded, never as owed again.
+fn candidate_handoff_state_for_handin(
+  handin: String,
+  capture: SubmissionCaptureObservation,
+  verification: HandoffVerificationStanding,
+  integration: HandoffIntegrationStanding,
+  publication: HandoffPublicationStanding,
+) -> CandidateHandoffState {
+  match capture {
+    CaptureForHead { capture: c } =>
+      if submission_capture_answers_handin(c: c, handin: handin) {
+        candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
+      } else {
+        HandoffAwaitingCapture { reason: join(["hand-in ", handin, " has not been captured; the head still carries an earlier capture"], "") }
+      }
+    CaptureNotAttempted { reason } => HandoffAwaitingCapture { reason: join(["hand-in ", handin, " has not been captured: ", reason], "") }
+    CaptureAbsent =>
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
+    CaptureUnreadable { reason: _ } =>
       candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
   }
 }
@@ -622,6 +657,7 @@ fn candidate_handoff_state_for_terminal(
       HandoffYielded {
         reason: "terminal without a captured submission: the belt's commit was preservation only, and no candidate advances to verification",
       }
+    CaptureNotAttempted { reason } => HandoffAwaitingCapture { reason: reason }
     CaptureUnreadable { reason } =>
       HandoffEvidenceRefused {
         reason: join(["the submission capture for this head cannot be established: ", reason], ""),
@@ -665,6 +701,7 @@ fn candidate_handoff_state_for_terminal(
 fn candidate_handoff_state_key(state: CandidateHandoffState) -> String {
   match state {
     HandoffAwaitingWorker => "awaiting-worker"
+    HandoffAwaitingCapture { reason: _ } => "awaiting-capture"
     HandoffYielded { reason: _ } => "yielded"
     HandoffEvidenceRefused { reason: _ } => "evidence-refused"
     HandoffDeclaredBlocked { head_sha: _, readiness, explanation: _ } =>

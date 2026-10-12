@@ -23,10 +23,10 @@ import gunbc.roadmap.roadmap_submission {
   submission_capture_text, submission_capture_decode, CaptureDecoded, CaptureNotDecodable,
   submission_capture_binding_refusal, CaptureBindingMismatch, CaptureBindingUnverifiable,
   SubmissionObservation, SubmissionDeclared, SubmissionAbsent, SubmissionUndecodable,
-  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
+  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
   CandidateDecision, CandidateFresh, CandidateCheckpoint, submission_candidate_decision,
   CandidateHandoffState,
-  HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
+  HandoffAwaitingWorker, HandoffAwaitingCapture, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
   HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration, HandoffPublicationOwed,
   HandoffBlockedOnPublication, HandoffPublished,
   HandoffVerificationStanding, VerificationOutstanding, VerificationPassed, VerificationDidNotPass, VerificationStandingRefused,
@@ -35,7 +35,7 @@ import gunbc.roadmap.roadmap_submission {
   candidate_handoff_state,
 }
 import gunbc.roadmap_provider_events {
-  ProviderRunning, ProviderCompleted, ProviderBudgetSpent,
+  ProviderRunning, ProviderCompleted, ProviderBudgetSpent, ProviderAwaitingAcceptance,
 }
 import gunbc.roadmap_publication_helper { publication_helper_publish_if_unpublished }
 import gunbc.roadmap_publish_observe { CredentialSourceAbsent }
@@ -260,6 +260,29 @@ test fn a_new_hand_in_with_repeated_wording_is_fresh_and_a_captured_one_is_not()
     CandidateCheckpoint { note } => note.contains("hand-in h1 was already captured")
   }
   fresh && swept
+}
+
+fn handoff_for_handin(handin: String, capture: SubmissionCaptureObservation) -> CandidateHandoffState {
+  candidate_handoff_state(
+    provider: ProviderAwaitingAcceptance { handin: handin },
+    capture: capture,
+    verification: VerificationOutstanding,
+    integration: IntegrationOutstanding,
+    publication: PublicationReceiptOwed,
+  )
+}
+
+// A REVISION IS OWED ITS OWN CAPTURE (slice S2): handed in again from the same worktree, its head can
+// still carry the capture of the hand-in it revises, and reading that capture as the revision's would
+// judge the old code and answer the new hand-in with it. Only a capture naming the current hand-in
+// advances; one naming an earlier hand-in, or none yet attempted, leaves the capture owed.
+test fn a_revision_is_owed_its_own_capture_not_the_one_it_revises() -> Bool {
+  let head = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  let earlier = CaptureForHead { capture: capture_answering(head: head, submission: ready_submission(), handin: "h1") }
+  let current = CaptureForHead { capture: capture_answering(head: head, submission: ready_submission(), handin: "h2") }
+  (match handoff_for_handin(handin: "h2", capture: earlier) { HandoffAwaitingCapture { reason } => reason.contains("h2")  _ => false })
+    && (match handoff_for_handin(handin: "h2", capture: CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }) { HandoffAwaitingCapture { reason: _ } => true  _ => false })
+    && (match handoff_for_handin(handin: "h2", capture: current) { HandoffSubmitted { head_sha } => head_sha == head  _ => false })
 }
 
 // ------------------------------------------------------------------------------------------------

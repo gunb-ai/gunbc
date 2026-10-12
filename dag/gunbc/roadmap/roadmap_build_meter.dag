@@ -22,7 +22,7 @@ import gunbc.roadmap_workflow_stage {
 }
 import gunbc.workflow_reconcile { WorkflowFactKey }
 import gunbc.roadmap.roadmap_submission {
-  CandidateHandoffState, HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
+  CandidateHandoffState, HandoffAwaitingWorker, HandoffAwaitingCapture, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
   HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration,
   HandoffPublicationOwed, HandoffBlockedOnPublication, HandoffPublished, candidate_handoff_state_key,
 }
@@ -131,6 +131,7 @@ fn handoff_block_detail(handoff: CandidateHandoffState) -> String? {
     HandoffBlockedOnIntegration { head_sha: _, cause } => Present { value: cause }
     HandoffBlockedOnPublication { head_sha: _, cause } => Present { value: cause }
     HandoffAwaitingWorker => none
+    HandoffAwaitingCapture { reason: _ } => none
     HandoffEvidenceRefused { reason: _ } => none
     HandoffSubmitted { head_sha: _ } => none
     HandoffVerificationFailed { head_sha: _, verdict_key: _ } => none
@@ -290,6 +291,7 @@ fn build_meter_is_published(handoff: CandidateHandoffState) -> Bool {
   match handoff {
     HandoffPublished { head_sha: _, pr_number: _, url: _ } => true
     HandoffAwaitingWorker => false
+    HandoffAwaitingCapture { reason: _ } => false
     HandoffYielded { reason: _ } => false
     HandoffEvidenceRefused { reason: _ } => false
     HandoffDeclaredBlocked { head_sha: _, readiness: _, explanation: _ } => false
@@ -448,6 +450,7 @@ fn build_meter_handoff_json(h: CandidateHandoffState) -> JsonValue {
       HandoffPublished { head_sha: _, pr_number, url: _ } => json_int(n: pr_number)
       HandoffVerificationFailed { head_sha: _, verdict_key } => json_string(s: verdict_key)
       HandoffAwaitingWorker => json_null()
+      HandoffAwaitingCapture { reason: _ } => json_null()
       HandoffYielded { reason: _ } => json_null()
       HandoffEvidenceRefused { reason: _ } => json_null()
       HandoffDeclaredBlocked { head_sha: _, readiness: _, explanation: _ } => json_null()

@@ -524,14 +524,15 @@ import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionCapture,
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
   SubmissionObservation, SubmissionDeclared, SubmissionAbsent, SubmissionUndecodable,
-  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
+  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
   SubmissionDecoded, SubmissionNotDecodable, CaptureDecoded, CaptureNotDecodable,
   submission_artifact_name, submission_digest, submission_decode,
-  submission_capture_basename, submission_capture_text, submission_capture_decode, submission_capture_answers_handin,
+  submission_capture_basename, submission_capture_text, submission_capture_decode,
   submission_readiness_key,
   SubmissionCandidacy, SubmissionIsCandidate, SubmissionNotCandidate, submission_candidacy,
   SubmissionCaptureRootBound,
   submission_capture_binding_refusal, CaptureBindingMismatch, CaptureBindingUnverifiable,
+  CandidateHandoffState, HandoffAwaitingCapture, HandoffYielded, HandoffEvidenceRefused,
 }
 import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
@@ -543,6 +544,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_worker_attempt_identity,
 }
 import gunbc.roadmap.roadmap_acceptance_outcome {
+  AcceptanceOutcome, AcceptanceUnavailable,
   AcceptanceOutcomeRecord, acceptance_outcome_of_stages, acceptance_outcome_record_text, acceptance_outcome_key, acceptance_outcome_basename,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
@@ -2376,7 +2378,7 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
       belt_submission_capture_for_head(
         instance: instance,
         worktree: worktree,
-        dir: belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+        node_id: node_id, attempt_key: attempt_key,
         head_sha: revision as String,
       )
   }
@@ -5502,11 +5504,7 @@ fn belt_workflow_attempt_evidence_for_key(
       belt_submission_capture_for_head(
         instance: instance,
         worktree: worktree,
-        dir: belt_attempt_submission_dir_for_instance(
-          instance: instance,
-          node_id: node_id,
-          attempt_key: current_key,
-        ),
+        node_id: node_id, attempt_key: current_key,
         head_sha: revision as String,
       )
   }
@@ -5835,7 +5833,8 @@ fn belt_submission_captures_observe(instance: HostDashboardInstance, worktree: S
 // THE HEAD-GRAIN CAPTURE LOOKUP: the one read both the verify gate and the dashboard projection
 // make. Absence is listing-established; a record at the head's own address that decodes but names
 // a different head is unexplained state, refused rather than read as this head's binding.
-fn belt_submission_capture_for_head(instance: HostDashboardInstance, worktree: String, dir: String, head_sha: String) -> SubmissionCaptureObservation {
+fn belt_submission_capture_for_head(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> SubmissionCaptureObservation {
+  let dir = belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
     ExecFailed { program, exit_code, stderr } =>
       CaptureUnreadable {
@@ -5858,7 +5857,7 @@ fn belt_submission_capture_for_head(instance: HostDashboardInstance, worktree: S
       ], ""),
     }
   } else if !filesystem_listing_names_entry(listing: listing.entries, name: submission_capture_basename(head_sha: head_sha)) {
-    CaptureAbsent
+    belt_capture_absence_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)
   } else {
     let read = Filesystem.Read(path: join([dir, "/", submission_capture_basename(head_sha: head_sha)], ""))
     match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -7244,7 +7243,7 @@ fn belt_commit_outcome_receipt(o: BeltCommitOutcome, attempt_key: String) -> Bel
 
 fn belt_commit_outcome_receipt_json(r: BeltCommitOutcomeReceipt) -> JsonValue {
   json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "roadmap-commit-outcome/v1")),
+    json_kv(key: "schema", value: json_string(s: belt_commit_outcome_schema)),
     json_kv(key: "node_id", value: json_string(s: r.node_id)),
     json_kv(key: "attempt_key", value: json_string(s: r.attempt_key)),
     json_kv(key: "outcome", value: json_string(s: r.outcome)),
@@ -7254,6 +7253,76 @@ fn belt_commit_outcome_receipt_json(r: BeltCommitOutcomeReceipt) -> JsonValue {
 
 // THE PERSISTED OUTCOME'S NAME IS SPELLED ONCE, here, for the persist pass that writes it.
 data belt_commit_outcome_last_basename: NonEmptyStr = "commit-outcome-last.json" as NonEmptyStr
+
+// WHETHER THE COMMIT STEP HAS SETTLED THE ATTEMPT'S CAPTURE, read from its own persisted outcome --
+// the fact that separates "no capture because the worker yielded" from "no capture because nothing has
+// captured it yet" (gunbc.roadmap.roadmap_submission SubmissionCaptureObservation). An outcome that
+// decided -- a commit recorded, a candidate captured, nothing to commit -- settles it. A failed or
+// deferred one leaves the capture owed, so the next event or discovery runs it again. A poisoned capture
+// or an unaddressable subject is a refusal, and a record this reader cannot decode refuses too: neither
+// is read as either settled or owed.
+type BeltCommitRecordStanding
+  = CommitStepSettled
+  | CommitStepOwed { reason: String }
+  | CommitStepRefused { reason: String }
+
+data belt_commit_outcome_schema: String = "roadmap-commit-outcome/v1"
+
+fn belt_commit_record_standing_of_text(content: String) -> BeltCommitRecordStanding {
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap } =>
+      CommitStepRefused { reason: join(["the commit step's record is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match publication_receipt_member(doc: doc, key: "schema") {
+        ReceiptMemberUnreadable { reason: _ } => CommitStepRefused { reason: "the commit step's record names no schema" }
+        ReceiptMemberRead { value: schema } =>
+          if schema != belt_commit_outcome_schema {
+            CommitStepRefused { reason: join(["the commit step's record is ", schema, ", not ", belt_commit_outcome_schema], "") }
+          } else {
+            match publication_receipt_member(doc: doc, key: "outcome") {
+              ReceiptMemberUnreadable { reason: _ } => CommitStepRefused { reason: "the commit step's record names no outcome" }
+              ReceiptMemberRead { value: outcome } => {
+                let detail = match publication_receipt_member(doc: doc, key: "detail") {
+                  ReceiptMemberRead { value: d } => d
+                  ReceiptMemberUnreadable { reason: _ } => ""
+                }
+                let said = join(["the commit step's last run ended ", outcome, ": ", detail], "")
+                if outcome == "recorded" || outcome == "candidate-captured" || outcome == "skipped" {
+                  CommitStepSettled
+                } else if outcome == "failed" || outcome == "deferred" {
+                  CommitStepOwed { reason: said }
+                } else if outcome == "capture-poisoned" || outcome == "subject-unaddressable" {
+                  CommitStepRefused { reason: said }
+                } else {
+                  CommitStepRefused { reason: join(["the commit step's record names outcome ", outcome, ", which the commit step does not write"], "") }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+// NO CAPTURE AT THIS HEAD: settled, owed or refused, as the commit step's own record says. The record is
+// observed listing-first, so an unlistable directory is never read as a missing record.
+fn belt_capture_absence_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SubmissionCaptureObservation {
+  let path = join([
+    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    "/", belt_commit_outcome_last_basename as String,
+  ], "")
+  match filesystem_file_observation_of_path(path: path) {
+    FilesystemFileAbsent(_) => CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }
+    FilesystemFileRead { path: _, content } =>
+      match belt_commit_record_standing_of_text(content: content) {
+        CommitStepSettled => CaptureAbsent
+        CommitStepOwed { reason } => CaptureNotAttempted { reason: reason }
+        CommitStepRefused { reason } => CaptureUnreadable { reason: reason }
+      }
+    FilesystemFileIndeterminate { cause } => CaptureUnreadable { reason: join(["whether the commit step has run is unknown: ", cause], "") }
+    FilesystemFileObservationsDisagree { path: _, cause } => CaptureUnreadable { reason: join(["whether the commit step has run is unknown: ", cause], "") }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => CaptureUnreadable { reason: join(["whether the commit step has run is unknown: ", cause], "") }
+  }
+}
 
 fn belt_commit_outcome_persist(
   instance: HostDashboardInstance,
@@ -8116,6 +8185,13 @@ fn belt_verify_capture_gate(node_id: String, capture: SubmissionCaptureObservati
           reason: "no submission capture binds this head: the belt's commit over it was a checkpoint (yielded, not ready), and only a captured candidate advances to authoritative verification",
         },
       }
+    CaptureNotAttempted { reason } =>
+      VerifyCaptureStops {
+        outcome: VerifyDeferred {
+          node_id: node_id,
+          reason: join(["no submission capture binds this head yet: ", reason, "; verification waits for the capture"], ""),
+        },
+      }
     CaptureForHead { capture: c } =>
       match submission_candidacy(submission: c.submission) {
         SubmissionNotCandidate { reason } =>
@@ -8170,11 +8246,7 @@ fn belt_verify_attempt_for_instance(
                 capture: belt_submission_capture_for_head(
                   instance: instance,
                   worktree: attempt_worktree,
-                  dir: belt_attempt_submission_dir_for_instance(
-                    instance: instance,
-                    node_id: node_id,
-                    attempt_key: progress.attempt_key,
-                  ),
+                  node_id: node_id, attempt_key: progress.attempt_key,
                   head_sha: revision as String,
                 ),
               ) {
@@ -11587,6 +11659,7 @@ fn belt_scm_recapture_capture_gate(observation: SubmissionCaptureObservation) ->
   match observation {
     CaptureForHead { capture } => RecaptureCaptureProceeds { capture: capture }
     CaptureAbsent => RecaptureCaptureRefused { detail: recapture_capture_absent_detail }
+    CaptureNotAttempted { reason } => RecaptureCaptureRefused { detail: join([recapture_capture_absent_detail, " (the attempt's capture is still owed: ", reason, ")"], "") }
     CaptureUnreadable { reason } => RecaptureCapturePoisoned { detail: reason }
   }
 }
@@ -11635,11 +11708,7 @@ fn belt_scm_recapture(
                 match belt_scm_recapture_capture_gate(observation: belt_submission_capture_for_head(
                   instance: instance,
                   worktree: worktree,
-                  dir: belt_attempt_submission_dir_for_instance(
-                    instance: instance,
-                    node_id: node_id as RoadmapNodeId,
-                    attempt_key: attempt_key,
-                  ),
+                  node_id: node_id as RoadmapNodeId, attempt_key: attempt_key,
                   head_sha: head_sha,
                 )) {
                   RecaptureCaptureRefused { detail } => RecaptureRefused { detail: detail }
@@ -11898,6 +11967,10 @@ fn belt_integration_capture_gate(capture: SubmissionCaptureObservation) -> BeltI
       IntegrationCaptureStops {
         step: IntegrationCoreDeferred { reason: "no submission capture binds this head, so there is no candidate to integrate" },
       }
+    CaptureNotAttempted { reason } =>
+      IntegrationCaptureStops {
+        step: IntegrationCoreDeferred { reason: join(["no submission capture binds this head yet, so there is no candidate to integrate: ", reason], "") },
+      }
     CaptureUnreadable { reason } =>
       IntegrationCaptureStops { step: IntegrationCoreUnreadable { detail: reason } }
     CaptureForHead { capture: c } =>
@@ -11951,11 +12024,7 @@ fn belt_integrate_candidate_core_for_instance(
       match belt_integration_capture_gate(capture: belt_submission_capture_for_head(
         instance: instance,
         worktree: worktree,
-        dir: belt_attempt_submission_dir_for_instance(
-          instance: instance,
-          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
-          attempt_key: attempt_key,
-        ),
+        node_id: node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: attempt_key,
         head_sha: revision as String,
       )) {
         IntegrationCaptureStops { step } => step
@@ -13278,23 +13347,46 @@ fn belt_acceptance_outcome_path_for_instance(instance: HostDashboardInstance, no
   join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", acceptance_outcome_basename as String], "")
 }
 
+// WHETHER THE CURRENT HAND-IN STILL AWAITS ITS CAPTURE: the handoff the progress row carries, so the
+// outcome is never computed from the stages of a capture this hand-in did not make.
+fn belt_handoff_awaits_capture(handoff: CandidateHandoffState) -> Bool {
+  match handoff {
+    HandoffAwaitingCapture { reason: _ } => true
+    _ => false
+  }
+}
+
+// THE OUTCOME FOR A CAPTURED HAND-IN, pure over the progress row: a hand-in the commit step settled
+// without capturing, or whose capture cannot be established, is acceptance unavailable -- written, so
+// the session learns it at once rather than at its deadline; otherwise the stages decide.
+fn belt_acceptance_outcome_of_progress(handin: String, progress: WorkflowAttemptProgress) -> AcceptanceOutcome? {
+  match progress.handoff {
+    HandoffYielded { reason } =>
+      Present { value: AcceptanceUnavailable { cause: join(["hand-in ", handin, " was not captured: ", reason], "") } }
+    HandoffEvidenceRefused { reason } =>
+      Present { value: AcceptanceUnavailable { cause: join(["hand-in ", handin, "'s capture cannot be established: ", reason], "") } }
+    _ =>
+      acceptance_outcome_of_stages(
+        verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
+        review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
+        goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
+      )
+  }
+}
+
 fn belt_acceptance_outcome_for_instance(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> BeltAcceptanceOutcomeResult {
   let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
   let handin = belt_provider_handed_in(provider: progress.provider)
   if handin == "" {
     AcceptanceOutcomeRefused { reason: "the attempt is not awaiting acceptance under a readable hand-in id, so no outcome can be addressed" }
-  } else if belt_capture_owed(instance: instance, progress: progress) {
+  } else if belt_handoff_awaits_capture(handoff: progress.handoff) {
     AcceptanceOutcomeUndecided { reason: join(["hand-in ", handin, " is not captured yet, so no stage has judged its code"], "") }
   } else {
     match belt_worktree_head_observe(instance: instance, worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)) {
       WorktreeHeadUnobserved { reason } =>
         AcceptanceOutcomeRefused { reason: join(["the handed-in candidate's head cannot be observed, so an outcome could not name the code it judged: ", reason], "") }
       WorktreeHeadObserved { revision } =>
-        match acceptance_outcome_of_stages(
-          verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
-          review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
-          goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
-        ) {
+        match belt_acceptance_outcome_of_progress(handin: handin, progress: progress) {
           Absent => AcceptanceOutcomeUndecided { reason: join(["acceptance is still running for hand-in ", handin], "") }
           Present { value: outcome } => {
             let final_path = belt_acceptance_outcome_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)
@@ -13385,42 +13477,11 @@ type BeltAttemptObligationRun
 // for the next kind reads what the previous one wrote. Each kind is visited once, so the run is
 // bounded by the number of kinds and never re-runs a kind it already ran (the strictly-downstream
 // rule of gunbc.roadmap.roadmap_belt_obligation belt_attempt_next_after, by construction here).
-// WHETHER A CAPTURE IS OWED, READ FROM THE ATTEMPT'S OWN RECORDS. The Submission segment cannot say it:
-// a worker that has ended and is not yet captured projects as yielded -- settled -- exactly like one
-// whose commit already found no candidate, so a gate on "submission unsettled" alone never owed the
-// FIRST capture, and the srv1 lab captured nothing (2026-10-12: every worker exit's obligation run
-// recorded no steps). The two facts are told apart here:
-//   - a handed-in worker (gunbc.plans.harness_session_lifecycle, slice S2) is owed a capture until one
-//     names its hand-in -- which also covers a revision whose head still carries the previous capture;
-//   - an ended worker is owed one until the commit step has recorded an outcome for the attempt.
-// A record that cannot be read counts as owed: the commit step then runs and refuses loudly, rather than
-// the gap staying silent.
-fn belt_capture_owed(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> Bool {
-  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
-  let handin = belt_provider_handed_in(provider: progress.provider)
-  if handin != "" {
-    match belt_submission_captures_observe(
-      instance: instance,
-      worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
-      dir: belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
-    ) {
-      CaptureRosterUnobservable { reason: _ } => true
-      CaptureRosterObserved { captures } => !any(captures, c => submission_capture_answers_handin(c: c, handin: handin))
-    }
-  } else {
-    !Filesystem.Read(path: join([
-      dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
-      "/", belt_commit_outcome_last_basename as String,
-    ], "")).success
-  }
-}
-
 fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltAttemptObligationRun {
   let folded = fold(belt_attempt_obligation_order, init: BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: [] }, f: fn(acc, kind) {
     match acc.read {
       BeltAttemptProgressFound { progress } =>
-        if belt_attempt_obligation_outstanding(kind: kind, provider: progress.provider, segments: progress.segments)
-          || (match kind { CaptureObligation => belt_provider_candidate_ready(provider: progress.provider) && belt_capture_owed(instance: instance, progress: progress)  _ => false }) {
+        if belt_attempt_obligation_outstanding(kind: kind, provider: progress.provider, segments: progress.segments) {
           let step = belt_attempt_obligation_step(instance: instance, progress: progress, kind: kind)
           BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: concat(acc.steps, [step]) }
         } else {
@@ -13685,18 +13746,16 @@ type BeltDiscovery
   = BeltDiscovered { owed: Int, enqueues: List<BeltObligationEnqueue> }
   | BeltDiscoveryRefused { reason: String }
 
-// PURE OVER ITS INPUTS: which attempts are owed something, in observation order, and the bounded prefix
-// to queue. Whether a capture is owed is read from the attempt's own records (belt_capture_owed), so it
-// arrives as a supplied predicate.
-fn belt_discovery_owed(attempts: List<WorkflowAttemptProgress>, capture_owed: fn(WorkflowAttemptProgress) -> Bool) -> List<WorkflowAttemptProgress> {
-  attempts |> filter(p => count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0 || (belt_provider_candidate_ready(provider: p.provider) && capture_owed(p)))
+// PURE: which attempts are owed something, in observation order, and the bounded prefix to queue.
+fn belt_discovery_owed(attempts: List<WorkflowAttemptProgress>) -> List<WorkflowAttemptProgress> {
+  attempts |> filter(p => count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0)
 }
 
 fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } => BeltDiscoveryRefused { reason: join(["the attempts ledger is unobservable, so no outstanding obligation can be discovered: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
-      let owed = belt_discovery_owed(attempts: attempts, capture_owed: p => belt_capture_owed(instance: instance, progress: p))
+      let owed = belt_discovery_owed(attempts: attempts)
       BeltDiscovered {
         owed: count(owed),
         enqueues: concat(
