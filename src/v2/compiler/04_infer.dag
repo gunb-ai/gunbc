@@ -99,7 +99,7 @@ import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
-import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
+import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -175,7 +175,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { integer_int_type_node }
-import v2.std.logic { bool_node }
+import v2.std.logic { Bool, bool_node }
 import v2.std.node {
   StructuralLabel,
   symbol_intern_lexeme,
@@ -8771,18 +8771,44 @@ fn infer_caller_admission_diags(tree: ResolvedTree, entries: List<InferredFactsE
 // sole_constructor type whose constructing MODULE is not the declaring module.
 // Forms: record literal, `as` cast, variant construction of a sealed coproduct, and
 // parameter-default expressions (BinderDefaultEdge is walked with the rest of the tree).
-// Unreadable modifier provenance or ownership refuses (fail-closed). The channel is always
-// Captured: a declaring module outside `covered` is unreadable, not open. A hand-built tree
-// must name the modules it claims; `covered` Empty claims none.
+// A match-arm PATTERN is not construction: MatchArmPatternEdge subtrees are skipped
+// (destructure of a received value does not mint one). Unreadable modifier provenance
+// or ownership refuses (fail-closed). The channel is always Captured: a declaring
+// module outside `covered` is unreadable, not open. A hand-built tree must name the
+// modules it claims; `covered` Empty claims none.
+type InferSoleCtorCtx {
+  constructing_module: Optional<Symbol>
+  in_pattern: Bool
+}
+
+fn infer_sole_constructor_child_context(ctx: InferSoleCtorCtx, edge: Edge) -> InferSoleCtorCtx {
+  if ctx.in_pattern {
+    ctx
+  } else {
+    if edge_is_core(e: edge, marker: MatchArmPatternEdge) {
+      InferSoleCtorCtx { constructing_module: ctx.constructing_module, in_pattern: true }
+    } else {
+      ctx
+    }
+  }
+}
+
 fn infer_sole_constructor_diags(tree: ResolvedTree) -> Diagnostics {
   fold_node_topdown(
     n: tree.root,
-    ctx: infer_admission_root_module_symbol(root: tree.root),
+    ctx: InferSoleCtorCtx {
+      constructing_module: infer_admission_root_module_symbol(root: tree.root),
+      in_pattern: false
+    },
     algebra: NodeFoldTopDown {
       init: fn(self, ctx) {
-        infer_sole_constructor_node_diags(node: self, constructing_module: ctx, tree: tree)
+        if ctx.in_pattern {
+          None
+        } else {
+          infer_sole_constructor_node_diags(node: self, constructing_module: ctx.constructing_module, tree: tree)
+        }
       },
-      child_context: fn(_self, ctx, _edge) { ctx },
+      child_context: fn(_self, ctx, edge) { infer_sole_constructor_child_context(ctx: ctx, edge: edge) },
       step: fn(acc, _edge, sub) { diagnostics_merge(outer: acc, inner: sub) }
     }
   )
