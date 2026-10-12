@@ -1,0 +1,23 @@
+module v2.test.claim.parse.record_pun_probe
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn parsed_ok(tag: String, text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data top_source: String = "module probe.pun\n\nfn f(s: Int) -> X {\n  X { s }\n}\n"
+data nested_source: String = "module probe.pun\n\nfn f(s: Int) -> W {\n  W { a: A, b: X { s } }\n}\n"
+data if_source: String = "module probe.pun\n\nfn f(flag: Bool, x: Int, y: Int) -> Int {\n  if flag { x } else { y }\n}\n"
+
+test fn probe_top_holds() -> Bool { parsed_ok(tag: "top", text: top_source) }
+test fn probe_nested_holds() -> Bool { parsed_ok(tag: "nested", text: nested_source) }
+test fn probe_if_holds() -> Bool { parsed_ok(tag: "if", text: if_source) }
