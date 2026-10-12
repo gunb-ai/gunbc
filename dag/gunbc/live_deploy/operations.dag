@@ -41,6 +41,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var,
 }
 import v2.std.node { Node }
+import extdeps.access.posix { FileMode }
 
 // Package-ensure and systemd unit-upsert argv spellings are derived from extdeps operation transport rows (dpkg.Package.Status, apt.PackageManager.Install, systemd.Systemctl daemon-reload/enable/restart/disable) — not hand-concatenated shell in emit.dag. Per shell-emission-model CUT: no minted EnsurePackage/UnitUpsert verb; emit composes inline If-Not-ExitZero(dpkg -s) then apt-install intent from these authorities. Privileged ops prefix sudo -n at the orchestration leaf (deploy access grant), never a root shell.
 // The argv -> text step is gunbc.shell_command_text, a modeled bash command serialized by
@@ -301,7 +302,7 @@ fn pwd_file_install_privileged_command(
   )
 }
 
-fn install_directory_command(mode: NonEmptyStr, path: String, privileged: Bool) -> String {
+fn install_directory_command(mode: FileMode, path: String, privileged: Bool) -> String {
   if privileged {
     shell_privileged_command_text_of_argv(argv: coreutils_install_directory_argv(mode: mode, path: path))
   } else {
@@ -345,7 +346,7 @@ fn install_file_owned_command(
 }
 
 fn install_directory_owned_command(
-  mode: NonEmptyStr,
+  mode: FileMode,
   owner: NonEmptyStr,
   group: NonEmptyStr,
   path: String,

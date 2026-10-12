@@ -99,10 +99,6 @@ data nfr_reason_content_hash_structural_refusal: String = "ContentHash family st
 
 data nfr_dissolve_content_hash_structural_refusal: DissolutionCondition = unbound_dissolution(description: "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)")
 
-data nfr_reason_arrow_body_form_eval_runtime_equals: String = "arrow_body_form_eval_runtime_int_equals matches RuntimeValue with an off-variant wildcard arm returning false for witness-side integer equality checks against eval output; landed with ArrowBodyForm semantic helpers; declared at landing so the ratchet re-arms"
-
-data nfr_dissolve_arrow_body_form_eval_runtime_equals: DissolutionCondition = unbound_dissolution(description: "RuntimeValue projection for eval witnesses becomes a total match over inhabited primitive carriers and the wildcard arm deletes with that fold")
-
 data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
 
 data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
@@ -111,10 +107,6 @@ data nfr_dissolve_release_identity_absent_split: DissolutionCondition = unbound_
 
 data nfr_dissolve_class_b_binding_projection: DissolutionCondition = unbound_dissolution(description: "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows")
 
-data nfr_reason_pool_independence_projection: String = "ReferenceDerivedDependencyProjection pool-independence comparison harness (match on Ready vs BindingRefused vs FileRefused with off-variant wildcard arms returning RefusalOutcomeMismatch or false) landed with N3-C #7996; the outer match partitions the clause-(e) carrier for baseline-vs-perturbed equality, not business policy; declared at landing so the ratchet re-arms"
-
-data nfr_dissolve_pool_independence_projection: DissolutionCondition = unbound_dissolution(description: "ReferenceDerivedDependencyProjection carrier equality becomes derived from inhabitance (total match over Ready, BindingRefused, and FileRefused with named refusal arms, or a single std projection-equality carrier) and the wildcard arms delete with their rows")
-
 
 
 data nfr_reason_collision_population_predicate: String = "subset predicate over CollisionPopulation (PoolMeasured answers true; the off-variant wildcard answers false for WholeTreeUpperBound, the coproduct's only other arm) — the same shape as the resolve-realization predicate rows; landed with the emit-summary-map consumer partition (#8850, 2026-08-22) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
@@ -122,10 +114,6 @@ data nfr_reason_collision_population_predicate: String = "subset predicate over 
 data nfr_reason_git_text_observation_projection: String = "one-variant extraction over GitTextObservation: GitTextObserved yields its text and the wildcard arm is GitTextUnreadable, projected to the empty string (git_text_or_empty) or to none (git_text_value), dropping the refusal's operation, exit code and stderr at the helper. git_text_value is the discriminator repository_prestate_fault and the post-state fold use to REFUSE an unreadable head or reflog with git_text_refusal_detail, so at repository_convergence_compare the empty arm is construction-unreachable; at the observed_head receipt site it renders an unreadable head as empty text. Landed with the convergence-correctness slice (#9555, 2026-08-28) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
 data nfr_dissolve_git_text_observation_projection: DissolutionCondition = unbound_dissolution(description: "the convergence fold carries a refined observed-text carrier past the pre-state fault check (a String proven present by construction, never a GitTextObservation re-projected), so git_text_or_empty has no caller and deletes, and git_text_value becomes a total two-arm match or a std optional projection derived from the coproduct — the rows delete with that fold")
-
-data nfr_reason_build_projection_fold_step: String = "accumulator fold step over a Derived | Empty | Refused projection coproduct (CashProjection, BasisProjection, ConstructibleCeiling): the outer match on the accumulator short-circuits the Refused arm and the wildcard is the two non-refused arms continuing the fold; a nested match on the same accumulator separates the running-Derived arm from the first derivation with a second wildcard. Enumerating the non-refused arms would clone the fold body once per arm (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with I-3 inventory-aware build fulfillment (#8543, 2026-08-19) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_build_projection_partition: DissolutionCondition = unbound_dissolution(description: "the three projection coproducts carry a derived refused-vs-open partition from inhabitance (dag/std/algebra, DESIGN §3/§4 — the same move as derived terminality), or the folds run over a std short-circuiting refusal carrier, so each step matches on the partition rather than the variant list, the wildcard arms become named cases, and the rows delete")
 
 data nfr_reason_build_axis_reading_unreachable_arm: String = "axis-reading projection over CashProjection and ConstructibleCeiling: the Derived arm yields its magnitude and the wildcard answers a zero magnitude for the empty arm (CashNoPurchaseLines is a genuine zero; CeilingUnconstrainedByAnyLine is declared a missing input by ceiling_missing) and for the Refused arm, which candidate_missing_inputs has already declared missing, so the refused reading is construction-unreachable at the only caller (per the in-file note above cash_reading) rather than a fabricated zero. Landed with I-3 inventory-aware build fulfillment (#8543, 2026-08-19) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
@@ -144,10 +132,6 @@ data nfr_reason_acceptance_obligation_partition: String = "front-end-vs-back-end
 data nfr_dissolve_acceptance_obligation_partition: DissolutionCondition = unbound_dissolution(description: "DagStageObligation carries a derived front-end/back-end partition from inhabitance — a total projection onto staged_front_end.FrontEndStage? that is the single authority for which obligations the front-end fold owns — so the three matches fold over the partition rather than the variant list, the wildcard arms become named cases, and the rows delete")
 
 data nfr_reason_acceptance_obligation_eq: String = "structural equality over DagStageObligation (obligation_eq): the three claim-carrying arms compare their claim identities through nested matches with off-variant wildcard false arms, and the outer wildcard compares discriminants for the five unit arms — the eq-row class the structural-equality rows above name, landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_reason_acceptance_row_projection: String = "one-variant label extraction over StageExecution (five arms): each projection names the arm it reads (StageRejected, StagePassedWithFrontier, or StageUndecided plus StageNotRun) and gives every other arm one wildcard Absent; row_unfinished_label additionally matches StageNotRunReason with NotRequiredByContract absent and every other reason present through a nested wildcard. Enumerating the off-variant arms would clone Absent per arm (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_acceptance_row_projection: DissolutionCondition = unbound_dissolution(description: "StageExecution carries a derived outcome partition from inhabitance (passed / rejected / unfinished, with StageNotRunReason partitioned into not-required vs unfinished) so each label projection folds over the partition with a named arm per class, and the rows delete with the wildcard arms")
 
 data nfr_reason_acceptance_verdict_append: String = "one-variant append over DagAcceptanceVerdict (three arms): verdict_with_further_rejection extends AcceptanceContractRejected and verdict_with_further_unfinished extends AcceptanceContractIncomplete, each returning the other two verdicts unchanged through one wildcard identity arm. Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
@@ -200,16 +184,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_binding_outcome_resolution_wildcard,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/namespace/namespace_pool_independence.dag::assess_file_dependencies_only_equality" },
-    reason: nfr_reason_pool_independence_projection,
-    dissolution: nfr_dissolve_pool_independence_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/namespace/namespace_pool_independence.dag::assess_pool_independent_projection_equality" },
-    reason: nfr_reason_pool_independence_projection,
-    dissolution: nfr_dissolve_pool_independence_projection,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_dispatch_actuator.dag::live_session_row_with_process" },
     reason: nfr_reason_provider_terminal_absorb,
     dissolution: nfr_dissolve_provider_terminal_absorb,
@@ -240,22 +214,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_local_tidy,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_remedy_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_verdict_authority_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/lens/vacuity.dag::vacuity_evidence_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/effect_reach.dag::sink_kind_eq" },
     reason: nfr_reason_structural_eq_backfill,
     dissolution: nfr_dissolve_derived_equality,
   },
@@ -288,16 +247,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step" },
     reason: nfr_reason_orch_emit,
     dissolution: nfr_dissolve_orch_emit,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/live_read_classification.dag::live_read_carrier_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/live_read_classification.dag::path_pattern_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/extdeps/git/git.dag::git_diff_name_status_pending_after_status" },
@@ -405,21 +354,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_derived_equality,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/test/claim/body_lowering/arrow_body_form_semantic_helpers.dag::arrow_body_form_eval_runtime_int_equals" },
-    reason: nfr_reason_arrow_body_form_eval_runtime_equals,
-    dissolution: nfr_dissolve_arrow_body_form_eval_runtime_equals,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/enforcement/complexity_contract_subject.dag::complexity_derived_kernel_claim_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/enforcement/complexity_contract_subject.dag::complexity_optimality_claim_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/lens/cost/valuation.dag::multiply_evaluations" },
     reason: nfr_reason_cost_valuation_zero_annihilator,
     dissolution: nfr_dissolve_wildcard_total,
@@ -470,11 +404,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row"),
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/host/host_standup.dag::assimilation_complete_input_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_listed_import" },
     reason: nfr_reason_class_b_binding_projection,
     dissolution: nfr_dissolve_class_b_binding_projection,
@@ -510,21 +439,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_git_text_observation_projection,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/product/build_fulfillment.dag::basis_step" },
-    reason: nfr_reason_build_projection_fold_step,
-    dissolution: nfr_dissolve_build_projection_partition,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/product/build_fulfillment.dag::cash_step" },
-    reason: nfr_reason_build_projection_fold_step,
-    dissolution: nfr_dissolve_build_projection_partition,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/product/build_fulfillment.dag::ceiling_step" },
-    reason: nfr_reason_build_projection_fold_step,
-    dissolution: nfr_dissolve_build_projection_partition,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/product/build_selection.dag::cash_reading" },
     reason: nfr_reason_build_axis_reading_unreachable_arm,
     dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
@@ -545,11 +459,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_process_port_upsert_refusal_split,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::acceptance_first_rejection" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::execute_obligation" },
     reason: nfr_reason_acceptance_obligation_partition,
     dissolution: nfr_dissolve_acceptance_obligation_partition,
@@ -568,21 +477,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::obligation_front_end_depth" },
     reason: nfr_reason_acceptance_obligation_partition,
     dissolution: nfr_dissolve_acceptance_obligation_partition,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::row_frontier_label" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::row_rejection_label" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::row_unfinished_label" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::verdict_with_further_rejection" },

@@ -41,7 +41,7 @@ import gunbc.spark.collective_memory_path_standing {
 // row was deleted as a transcribed instrument output (review 67496), and nothing replaced it here.
 //
 // WHERE THE REAL PATH RUNS, AND WHERE IT DOES NOT. The live acquisition leg -- docker exec of the probe
-// in a rank's container, then these folds -- executes only in gunbc.spark.glm_group_b_relaunch_cli
+// in a rank's container, then these folds -- executes only in retired gunbc.spark.glm_group_b_relaunch_cli (deleted #13779)
 // glm_group_b_observe_wet, against a running Group B arm, and writes its receipt to
 // glm_group_b_observe_receipt_path. No CI lane runs it, because no runner has a GB10 container. So
 // the fold is established by these claims and the route's inhabitance is NOT: a change to what the
@@ -212,7 +212,7 @@ test fn w_a_gdr_line_with_an_unknown_state_is_unreadable_not_absent() -> Bool {
 
 // ── 3b. THE WHOLE-CAPTURE FOLD THE LIVE ROUTE CALLS ───────────────────────────────────────────
 //
-// gunbc.spark.glm_group_b_relaunch_cli rank_memory_path_text reads a captured log through
+// retired gunbc.spark.glm_group_b_relaunch_cli (deleted #13779) rank_memory_path_text reads a captured log through
 // `nccl_gpu_memory_path_of_text`, not the per-line reader, so the fold is claimed directly: agreement,
 // disagreement, an unreadable line and a capture with no GDR line are four different answers.
 data gdr_disabled_ib: String = "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'"

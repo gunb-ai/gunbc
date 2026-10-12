@@ -39,7 +39,13 @@ import v2.compiler.reference_closure {
   reference_closure_neighbours,
   reference_derived_closure
 }
-import v2.compiler.resolve { ResolvedTree, resolved_tree_outcome }
+import v2.compiler.resolve {
+  ResolvedTree,
+  resolved_tree_outcome,
+  type_declaration_modifier_channel_of_tree,
+  type_declaration_modifier_channel_of_trees
+}
+import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
@@ -363,14 +369,17 @@ fn closure_file_of(files: FreeMonoid<ClosureIngestFile>, member_module: Qualifie
 
 // ONE MEMBER RESOLVED IN A CONTEXT WHOSE ONLY ROOT IS THE MEMBER: the default NamespaceOnlyY policy
 // never admits imports through other roots (imports bind through the index's alias rows), so no
-// other member's full tree is needed to resolve this one.
+// other member's full tree is needed to resolve this one. The modifier channel is the CLOSURE's
+// (every member NormalizedTree), not this tree alone: an imported unsealed type is covered as
+// not-sealed, and an imported sealed type still refuses.
 fn closure_resolve_member(
   lm: LanguageModel,
   tree: NormalizedTree,
   member_module: QualifiedName,
   symbol_index: SymbolIndex,
   index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>
+  active_roots: FreeMonoid<SourceRootRef>,
+  type_declaration_modifiers: TypeDeclarationModifierChannel
 ) -> Outcome<ResolvedTree> {
   bind_outcome(
     o: validate_module_roots(roots: Cons { head: tree, tail: Empty }),
@@ -385,7 +394,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [], member_kinds: no_member_declaration_kinds())
+      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
     }
   )
 }
@@ -426,7 +435,8 @@ fn closure_member_for_fold(
               member_module: member_module,
               symbol_index: census_index,
               index: ingested.index,
-              active_roots: active_roots
+              active_roots: active_roots,
+              type_declaration_modifiers: type_declaration_modifier_channel_of_tree(tree: tree)
             ),
             f: fn(resolved) {
               outcome_accepted(value: ReferenceClosureMember {
@@ -475,7 +485,8 @@ fn closure_member_emission(
   emission_index: SymbolIndex,
   index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>,
-  target: TargetModel
+  target: TargetModel,
+  type_declaration_modifiers: TypeDeclarationModifierChannel
 ) -> ClosureMemberEmission {
   let emitted = bind_outcome(
     o: closure_resolve_member(
@@ -484,7 +495,8 @@ fn closure_member_emission(
       member_module: visit.module,
       symbol_index: emission_index,
       index: index,
-      active_roots: active_roots
+      active_roots: active_roots,
+      type_declaration_modifiers: type_declaration_modifiers
     ),
     f: fn(resolved) {
       match reference_closure_neighbours(
@@ -574,6 +586,10 @@ fn closure_emission_from_census(
           f: fn(visits) {
             let members = reference_closure_modules(visits: visits)
             let emission_index = closure_emission_index(visits: visits, files: ingested.files)
+            let member_trees = fold_list(xs: visits, empty: Empty, cons: fn(acc, v) {
+              list_snoc_item(xs: acc, item: v.member.payload)
+            })
+            let type_declaration_modifiers = type_declaration_modifier_channel_of_trees(trees: member_trees)
             outcome_accepted(value: ClosureEmission {
               entry: entry,
               members: members,
@@ -586,7 +602,8 @@ fn closure_emission_from_census(
                   emission_index: emission_index,
                   index: ingested.index,
                   active_roots: active_roots,
-                  target: target
+                  target: target,
+                  type_declaration_modifiers: type_declaration_modifiers
                 ))
               })
             })

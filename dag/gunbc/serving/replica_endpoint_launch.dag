@@ -10,7 +10,7 @@ import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire
 // joined on the process that exported it, never on the replica alone: a restart is the event that
 // invalidates each outstanding observation, and an identity that cannot name its process cannot be
 // fenced against one. This is the replica-keyed home of the identity the Spark serving group used to
-// carry (gunbc.spark.vllm_endpoint_process_launch, retained only as an offline oracle).
+// carry (former Spark endpoint-process launch identity; that module is deleted with the sold path).
 //
 // THE VALUE IS THE EXPORTED PROCESS-START FIELD, BYTE FOR BYTE, AND IS NEVER PARSED. The only
 // operation on it is equality between two readings of one endpoint. It identifies the process that

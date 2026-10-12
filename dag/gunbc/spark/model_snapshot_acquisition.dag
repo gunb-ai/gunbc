@@ -18,8 +18,8 @@ import gunbc.artifact_acquisition {
 // modelled way to bring it there.
 //
 // WHAT THIS REPLACES IS NOTHING, WHICH IS THE POINT. Until this module, no desired row materialised a
-// vLLM group's weights. gunbc.spark.pair_serving_realization binds the operator's Hub cache into the
-// container read-only and assumes what is inside it; group B's weights arrived on 2026-09-05 by a
+// vLLM group's weights. The retired Spark pair-serving realization bound the operator's Hub cache
+// into the container read-only and assumed what is inside it; group B's weights arrived on 2026-09-05 by a
 // hand-run copy over the fabric rail. gunbc.rung_drop spark_serving_local_artifact_not_reproducible
 // has carried that gap since 2026-09-02 and was re-anchored to this exact population on 2026-09-06.
 // The Ollama-era materializer that DID fetch and verify was deleted with its tree.
@@ -45,7 +45,7 @@ type ModelSnapshotDesired
   | ModelSnapshotUnpinned { identity: NonEmptyStr, repo: HubRepoId, cause: NonEmptyStr }
 
 // THE DEEPSEEK SNAPSHOT, whose revision this repository has held all along in two places that never
-// knew about each other: gunbc.spark.pair_serving_observed first_pair_model_snapshot read it off the
+// knew about each other: retired gunbc.spark.pair_serving_observed (deleted #13779) first_pair_model_snapshot read it off the
 // disk, and extdeps.deepseek.deepseek_v4 deepseek_v4_encoder_revision cites the same commit as the
 // pinned revision of the encoder file. They agree, which is why this is a pin and not a guess.
 data deepseek_v4_flash_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
@@ -53,7 +53,7 @@ data deepseek_v4_flash_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
   repo: HubRepoId { kind: HubModelRepo, path: "deepseek-ai/DeepSeek-V4-Flash" as NonEmptyStr },
   revision: "60d8d70770c6776ff598c94bb586a859a38244f1" as NonEmptyStr,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
-  revision_provenance: "read off the first pair's hub cache on 2026-09-03 (gunbc.spark.pair_serving_observed first_pair_model_snapshot) and independently cited as the encoder revision in extdeps.deepseek.deepseek_v4; the two agree" as NonEmptyStr,
+  revision_provenance: "read off the first pair's hub cache on 2026-09-03 (retired gunbc.spark.pair_serving_observed (deleted #13779) first_pair_model_snapshot) and independently cited as the encoder revision in extdeps.deepseek.deepseek_v4; the two agree" as NonEmptyStr,
 }
 
 // THE DEEPSEEK SERVING IDENTITY AND PARSER, carried beside its snapshot so the production route has
@@ -90,9 +90,8 @@ fn model_snapshot_identity(snapshot: ModelSnapshotDesired) -> NonEmptyStr {
 // snapshot pins should read it here rather than re-spelling the hash. It is OPTIONAL and that is
 // the arm doing the work: an unpinned snapshot has no revision at all, and answering with a
 // plausible-looking string there would be the fabricated default this module's own pin/unpin split
-// exists to make impossible. gunbc.spark.prefill_batch_sweep and
-// gunbc.spark.tensor_parallel_comparison are the consumers -- each had minted its own copy of the
-// commit while correctly consuming the pinned image reference on the adjacent line.
+// exists to make impossible. Live consumers of the pin are gunbc.spark.model_snapshot_materialize
+// and test.claim.spark.snapshot_rail_replica_witness_test.
 fn model_snapshot_revision(snapshot: ModelSnapshotDesired) -> NonEmptyStr? {
   match snapshot {
     ModelSnapshotPinned { identity: _, repo: _, revision: r, placement: _, revision_provenance: _ } => Present { value: r }

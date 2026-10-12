@@ -91,37 +91,10 @@ fn lens_module_gate_string_member(xs: List<String>, x: String) -> Bool {
   contains(xs: xs, item: x, eq: string_eq)
 }
 
-fn lens_module_gate_verdict_authority_eq(a: LensVerdictAuthority, b: LensVerdictAuthority) -> Bool {
-  match a {
-    VerdictLensVerdict => match b { VerdictLensVerdict => true _ => false }
-    VerdictLadderVerdict => match b { VerdictLadderVerdict => true _ => false }
-    VerdictVacuityEvidence => match b { VerdictVacuityEvidence => true _ => false }
-    VerdictFidelityVerdict => match b { VerdictFidelityVerdict => true _ => false }
-    VerdictGroundingVerdict => match b { VerdictGroundingVerdict => true _ => false }
-    VerdictDeterminismFact => match b { VerdictDeterminismFact => true _ => false }
-    VerdictEffectFact => match b { VerdictEffectFact => true _ => false }
-    VerdictIdempotencyFact => match b { VerdictIdempotencyFact => true _ => false }
-    VerdictOwnershipFact => match b { VerdictOwnershipFact => true _ => false }
-    VerdictParallelismFact => match b { VerdictParallelismFact => true _ => false }
-    VerdictAsymptoticCost => match b { VerdictAsymptoticCost => true _ => false }
-  }
-}
-
-fn lens_module_gate_remedy_eq(a: LensInvariantRemedy, b: LensInvariantRemedy) -> Bool {
-  match a {
-    RemedyShare => match b { RemedyShare => true _ => false }
-    RemedyDelete => match b { RemedyDelete => true _ => false }
-    RemedyReport => match b { RemedyReport => true _ => false }
-    RemedyIndependentOracle => match b { RemedyIndependentOracle => true _ => false }
-    RemedyConstructionWall => match b { RemedyConstructionWall => true _ => false }
-    RemedySuggestedFix => match b { RemedySuggestedFix => true _ => false }
-  }
-}
-
 fn lens_module_gate_verdict_remedy_pair_eq(a: VerdictRemedyPair, b: VerdictRemedyPair) -> Bool {
   a.lens_id == b.lens_id
-    && lens_module_gate_verdict_authority_eq(a: a.verdict_authority, b: b.verdict_authority)
-    && lens_module_gate_remedy_eq(a: a.remedy, b: b.remedy)
+    && (a.verdict_authority == b.verdict_authority)
+    && (a.remedy == b.remedy)
 }
 
 fn lens_module_gate_verdict_remedy_pair(surface: LensInvariantSurface) -> VerdictRemedyPair {
