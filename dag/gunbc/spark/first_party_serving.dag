@@ -6,7 +6,6 @@ import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.placement_supply { SiteIdentity }
 import product.host_identity { HostIdentity, host_identity_eq }
-import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated,
@@ -15,8 +14,8 @@ import product.fabric.provider_route {
   PermittedJurisdictionsEnumerated, JurisdictionDropEnrollment,
 }
 import product.fabric.provider_admission {
-  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
-  DispositionStanding, DispositionNotEngaged, admit_provider_use,
+  RouteScopeSanction,
+  DispositionStanding, DispositionNotEngaged,
 }
 import gunbc.spark.fabric_switch_observed { fabric_lane_observations }
 import gunbc.spark.vllm_observed {
@@ -183,10 +182,13 @@ fn spark_first_party_route() -> ProviderRoute {
 // staleness_condition field, and the sentence here claimed "every consumer of this row reads this",
 // which was false: nothing folded it (review 64033). It was a comment moved into a NonEmptyStr slot
 // so that it could be described as executed, which is the §4c shape exactly -- and worse than an
-// annotation, because an annotation does not claim to be read. The field is deleted; what enforces
-// "for now" is spark_first_party_posture's revision, the roster row bound to it, and the RED in
-// test.claim.spark.spark_first_party_serving_witness_test that drives a superseded revision through
-// admit_provider_use and requires PostureRevisionStale.
+// annotation, because an annotation does not claim to be read. The field is deleted. The Spark
+// first-party admission witness that drove a superseded revision through admit_provider_use
+// (`spark_first_party_serving_witness_test`) was deleted with the sold serving path (#13779).
+// Live consumers of this module are posture *types* (`runner_fleet_ci_posture`,
+// `workspace_demo_preparation_policy`) and `spark_first_party_posture` via
+// `test.claim.fabric.jurisdiction_drop_accounting_witness`. There is no remaining
+// `harness_admit_bound_offer` and no remaining caller of `spark_first_party_admission`.
 //
 // THE REMAINING FIELDS ARE NOT IN THAT CLASS AND ARE KEPT. They are the evidence an auditor reaches
 // by following a DeclarationRef out of the permit -- what the route serves, whose material it
@@ -833,51 +835,8 @@ fn spark_first_party_route_facts(realization: SparkServingRealization) -> Provid
   }
 }
 
-// ── THE SCOPE AND THE ADMISSION ───────────────────────────────────────────────────────────────
-//
-// The demand and the work are PARAMETERS, never literals here. admit_provider_use seals them into
-// the permit and product.fabric.selection compares the permit against the demand and work the
-// candidate is being bound for, so a work key transcribed beside the call would refuse every real
-// placement -- and, worse, would be a work identity this module invented.
-fn spark_first_party_use_scope<P>(
-  demand: FabricIdentity<P, DemandKey>,
-  work: FabricIdentity<P, WorkKey>,
-) -> ProviderUseScope<P> {
-  ProviderUseScope {
-    demand: demand,
-    work: work,
-    customer_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_customer_profile"),
-    data_handling_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_own_data_handling_profile"),
-    agreement: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_operator_owned_hardware_agreement"),
-    prohibited_use_disposition: spark_prohibited_use_disposition(),
-    sanctions_disposition: spark_sanctions_disposition(),
-    export_disposition: spark_export_disposition(),
-  }
-}
-
-// THE SCOPE IS A PARAMETER RATHER THAN BUILT INSIDE, which is what makes the refusal path
-// executable: a caller bringing a scope this posture does not sanction -- another customer profile,
-// another data class -- reaches the same producer and is refused by it, instead of the refusal being
-// a state only a fixture could construct.
-//
-// CONSUMED. The production consumer is gunbc.harness.harness_seat harness_admit_bound_offer, which
-// calls this with spark_first_party_use_scope over the turn subject's Demand and Work id -- both
-// constructed once by harness_turn_subject before candidate enumeration -- and hands the result to
-// product.fabric.selection bind_candidate as its admission. Only CandidateBound becomes a harness
-// candidate; a refusal here surfaces as OfferNotAdmittedForUse carrying this producer's
-// refusal_reason unchanged.
-// test.claim.spark.spark_first_party_serving_witness_test exercises both arms directly.
-fn spark_first_party_admission<P>(
-  realization: SparkServingRealization,
-  scope: ProviderUseScope<P>,
-  offer: FabricIdentity<P, OfferKey>,
-) -> ProviderUseAdmission<P> {
-  admit_provider_use(
-    roster: spark_first_party_sanction_roster(),
-    facts: spark_first_party_route_facts(realization: realization),
-    active: spark_first_party_posture,
-    scope: scope,
-    offer: offer,
-    decision_receipt: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
-  )
-}
+// Spark first-party *seat admission* retired with the sold serving path (#13779).
+// `spark_first_party_admission` / `spark_first_party_use_scope` had no remaining caller
+// (`harness_admit_bound_offer` does not exist; the inhabitance witness was deleted).
+// FRONTIER: rented first-party seats admit through `gunbc.harness.harness_seat` `harness_bind_seat`
+// / `gunbc.serving.*`, not by restoring a Spark realization admission. Posture types stay.
