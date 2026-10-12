@@ -13,7 +13,7 @@ Some work outlives the request or the process that created it: an attempt that n
 
 Today each service answers these with its own mechanism and its own vocabulary (§7). The belt is the most complete, and on 2026-10-12 it failed all four questions in one afternoon (§3). This document proposes one model, realized once per execution substrate and inhabited by every service, so the four answers are the same everywhere. It also proposes a conformance row so that a change which hands work across a boundary is reviewed against that model.
 
-This is not a proposal to queue every local function call. The 2026-09-21 ruling draws that line: the contract applies where responsibility crosses an execution boundary, meaning a process, a unit, a host or a principal.
+This is not a proposal to queue every local function call. The 2026-09-21 ruling draws that line: the contract applies where responsibility crosses an execution boundary, meaning a process, a unit, a host or a principal. Nor does a request being synchronous put it out of scope (owner, 2026-10-12). Most requests are synchronous at their interface. Whether one is answered in-process or handed off durably and awaited is a realization choice this corpus owns. The contract governs that realization, and the caller's interface stays synchronous.
 
 ## 2. What is already ruled (not re-decided here)
 
@@ -78,11 +78,12 @@ Every item, at every moment, has exactly one standing. The set is closed, so the
 | `Running { hold }` | Claimed by a worker that holds the exclusive hold | the worker settling it, or its hold being recovered |
 | `RetryDue { at, cause, attempt }` | A transient failure under a declared retry law | the due time |
 | `Stopped { cause, owner }` | The line stops: a refusal that needs a decision, or retries exhausted | an owner's action, recorded |
-| `Settled` | Nothing outstanding | (terminal) |
+| `Settled { Completed }` | Nothing outstanding: the work is done | (terminal) |
+| `Settled { Cancelled { by } }` | Nothing outstanding: an attributable cancellation ended it | (terminal) |
 
 - **`Waiting` vs `Stopped` is the distinction the `install-owned` specimen lacked.** A cause meaning "not yet" (no verification window selected, no capacity, no upstream answer) must name the event it waits on, and that event must be one of the wake-up sources in §5.3. A `Stopped` cause must name an owner. A cause that can name neither is a modeling gap, and the model refuses to construct it.
 - **`Stopped` is the dead letter.** The manual-resume ruling keeps it operator-owned. What changes is that it is listed, attributed and counted on the queue, never silent.
-- The standing names line up with the demand engine's availability states (waiting, ready, lease pending, running, suspended, refused, blocked), and the model shares them rather than re-coining them (§8, open question 2).
+- The standing names line up with the demand engine's availability states (waiting, ready, lease pending, running, suspended, refused, blocked), and the model shares them rather than re-coining them: M0 factors the standings and the dispatch rule into one std home that both import (owner, 2026-10-12; §11).
 
 ### 5.3 Wake-ups: hints from a closed set of sources
 
@@ -116,16 +117,16 @@ A worker does the same thing every time:
 
 1. **Claim** the item under the hold.
 2. **Re-derive** what is outstanding from evidence.
-3. **Run the next eligible obligation** as an ensure, with that obligation's own retry law.
+3. **Run the next eligible obligation** as an ensure, with that obligation's own retry law. Where the obligation involves a choice, the loop is select, then ensure, then independent observation (DESIGN §3d): `std.decision` makes the choice, and the queue only wakes the loop and records its settlement. The queue never selects.
 4. **Persist the result** at the moment it is produced (the 2026-09-21 ruling, clause 1).
 5. **Settle** with exactly one outcome:
 
 | Outcome | Then |
 | --- | --- |
 | `Advanced` | Enqueue a `Completion` wake-up for the same key and its dependents |
-| `Settled` | Done |
+| `Settled { Completed }` / `Settled { Cancelled { by } }` | Done; a cancellation names who cancelled |
 | `Waiting { on }` | Park until that event or time |
-| `RetryAfter { at, cause }` | Only when the obligation's retry law admits a retry; the law declares the backoff and the attempt bound. Without a law, this becomes `Stopped`. |
+| `RetryAfter { at, cause }` | Only when the obligation's retry law admits a retry. Without a law, this becomes `Stopped`. See the retry law below. |
 | `Stopped { cause, owner }` | The line stops, visibly |
 | `Transferred { to, ref }` | Responsibility moves durably to another queue: for example, the belt hands a publication request to the publication helper |
 
@@ -136,6 +137,15 @@ The three facts from the 2026-09-21 ruling stay separate:
 - retention (receipts and history stay).
 
 A settled step may release its hold. It never erases what recovery would need.
+
+**The retry law.** A retry law is declared per obligation implementation (ensure closure). It has one shape everywhere, taken from `gunbc.serving.caller_backlog` (#13789):
+
+- The backoff is exponential with jitter, and an upstream delay hint (a provider's retry-after) lengthens it but never shortens it.
+- The bound runs over the item's whole history. A resume, a restart or a new endpoint does not reset it.
+- Only outcomes of the real work count toward the bound. A succeeding probe never resets a failing series of real requests.
+- Exhaustion is a persisted `Stopped`, and cancellation a persisted `Settled { Cancelled }`. Neither is ever inferred from silence.
+
+**An unread observation is unknown, never empty.** A standing is derived from evidence. When the evidence cannot be read (an unreadable record, an inventory not observed), the item is not `Ready` and not `Settled`: it is `Waiting` on that observation, or `Stopped` if the unreadability is itself the defect. An empty fleet and an unobserved fleet are different facts.
 
 ### 5.6 Transfer between queues
 
@@ -176,7 +186,7 @@ It composes existing authorities rather than restating them (§3b, conformance):
 | Retry safety | `std.effects` `IdempotencyEvidence`; per-implementation retry law (ensure closure) |
 | Convergence | `std.upsert_decision`, `std.realization_reconcile`, `std.goal_assessment` |
 | Reporting | `std.observation` (`ProducerLiveness`, `observation_watchdog`) |
-| Standings and dispatch | shared with `v2.std.demand_engine` (§8, open question 2) |
+| Standings and dispatch | one std home shared with `v2.std.demand_engine`, factored in M0 (§11) |
 
 **Host realization: one module, shared by every host service.** It generalizes what the belt already built:
 
@@ -242,7 +252,7 @@ The survey found each queue concept spelled several ways across services. Under 
   - `RetryAfter` without a retry law refuses;
   - the resync cursor advances past a prefix that stays owed.
 - Delete `gunbc.workflow.types`.
-- Decide the shared vocabulary with `v2.std.demand_engine` (open question 2).
+- Factor the standings and dispatch rule that `v2.std.demand_engine` already uses into one std home, imported by both it and `std.durable_handoff` (owner, 2026-10-12).
 
 **M1: the belt is the first consumer, on the lab first.**
 
@@ -259,7 +269,7 @@ The survey found each queue concept spelled several ways across services. Under 
 
 **M3: the conformance row lands (§10), and the remaining services migrate one at a time.**
 
-- Order of migration: compute recovery (`gunbc.compute.attempt_lifecycle`), approved-action execution (`gunbc.auth.approval_broker` `ExecutionObligation`), the workspace consumer (`gunbc.workspace_request_consumer`), runner cells, and fleet converge.
+- Order of migration: compute recovery (`gunbc.compute.attempt_lifecycle`), approved-action execution (`gunbc.auth.approval_broker` `ExecutionObligation`), the workspace consumer (`gunbc.workspace_request_consumer`), runner cells, and fleet converge. `gunbc.serving.caller_backlog` (#13789) inhabits the model by projection from its first landing: `CallerWorkRecord` is the item, its grant generation (`product.fabric.budget` `fence_admits`) is the hold fence, `WorkWaiting` derives `Ready`, `Waiting` or `Running`, `WorkCompleted` and `WorkCancelled` are the two `Settled` terminals, and `WorkRecoveryBoundExceeded` is `Stopped` (agreed with its owner, deep-otter-797, 2026-10-12).
 - Each migration is a replacement migration under the doctrine:
   - delete the service's own hold, retry and anti-entropy spellings;
   - fix forward onto the shared model;
@@ -303,12 +313,12 @@ The row is added to `gunbc.design_argument` `conformance_domains` once M0's home
 - Recovery by age.
 - A new spelling of hold, dedup, dead letter or due time.
 
-## 11. Open questions for the owner
+## 11. Owner decisions and open questions
 
-1. **Home names.** The ruling named `gunbc.workflow.durable_handoff`. This proposes `std.durable_handoff` for the agnostic model plus a `gunbc` module for the host realization, following DESIGN §3's interface/realization split. Is that acceptable, or should the ruled name stand?
-2. **Shared vocabulary with the demand engine.** Factor the standings and dispatch rule into one std home both import (M0), or let `std.durable_handoff` land first and have the demand engine adopt it at its M3a cut?
-3. **Automatic retry.** The manual-resume ruling stops the line on Failed or Refused. This proposal admits `RetryAfter` only for transient causes under a declared retry law, with exhaustion going to `Stopped`. Does that refine the ruling, or contradict it?
-4. **Scope edge.** Which boundaries are deliberately not queues? The ruling excludes local calls. Should synchronous request/response across a process (serving turns, `gunbc.serving.caller_retry_contract`) be in scope, given its stance that there is no server-side queue?
+1. **Home names. Open.** The ruling named `gunbc.workflow.durable_handoff`. This proposes `std.durable_handoff` for the agnostic model plus a `gunbc` module for the host realization, following DESIGN §3's interface/realization split. The candidate module list went to the owner on 2026-10-12.
+2. **Shared vocabulary with the demand engine. Decided (owner, 2026-10-12): now.** M0 factors the standings and the dispatch rule into one std home that `v2.std.demand_engine` and `std.durable_handoff` both import.
+3. **Automatic retry. Open, pending the convergence process.** The manual-resume ruling stops the line on Failed or Refused. This proposal admits `RetryAfter` only for transient causes under a declared retry law, with exhaustion going to `Stopped`. The owner (2026-10-12) expects most complex state-based work to move onto a convergence process, so retry and stop semantics are aligned with that process rather than decided here. No lane is building that process yet. The flex-inference lane (deep-otter-797) supplied the retry law's shape (§5.5) and the boundary between the two (the queue wakes select, ensure, observe and never decides). What remains open: whether stopping the line stays the default for a failure whose obligation declares no retry law.
+4. **Scope. Decided (owner, 2026-10-12).** Synchronous requests are always valid, and most requests are logically synchronous. How one is processed mechanically, whether in-process or durably handed off and awaited, is an implementation detail this corpus owns. So the serving path is in scope as a realization question: `gunbc.serving.caller_retry_contract`'s stance that there is no server-side queue is a realization choice to revisit under this contract, not a scope exclusion. Local function calls stay out of scope.
 
 ## Dissolution trigger (DESIGN §6)
 
