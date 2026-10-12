@@ -2,10 +2,15 @@ module test.claim.host_custody_export_receipt_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
+import std.dissolution { UnboundDissolution, BoundDissolution }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
-import gunbc.host_custody_export_receipt { host_custody_export_receipt_path, host_custody_export_receipt_suffix }
+import gunbc.host_custody_export_receipt {
+  host_custody_export_receipt_path,
+  host_custody_export_receipt_suffix,
+  host_custody_export_receipt_reader_frontier,
+}
 import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path }
 import gunbc.claude_code_credential { claude_code_oauth_harness_host_path }
 import gunbc.typed_remote_file_write { TypedRemoteFileConvergenceRefused }
@@ -16,7 +21,8 @@ import gunbc.fleet.host_credential_custody_converge {
   CodexWorkerTurnAuth,
   ControllerAppKey,
   host_credential_custody_row,
-  host_custody_stores_an_export_receipt,
+  CustodyExportReceiptOwed,
+  CustodyExportReceiptNotOwed,
   host_custody_export_receipt_from_row,
   host_custody_export_receipt_wire,
   host_custody_export_generation_standing,
@@ -25,10 +31,9 @@ import gunbc.fleet.host_credential_custody_converge {
   CustodyExportWithheld,
   CustodyExportPublication,
   classify_host_custody_export,
-  CustodyExportPublished,
   CustodyExportRefused,
   CustodyExportNotOwedStanding,
-  custody_export_reports_success,
+  custody_export_does_not_block_settled,
   custody_file_legs,
   custody_dir_legs,
 }
@@ -52,16 +57,37 @@ test fn the_export_receipt_path_is_the_placed_path_plus_the_one_suffix() -> Bool
     && (claude_path as String) == concat(claude_code_oauth_harness_host_path as String, host_custody_export_receipt_suffix)
 }
 
+test fn the_receipt_path_names_its_later_consumer() -> Bool {
+  match host_custody_export_receipt_reader_frontier {
+    UnboundDissolution { description: d } =>
+      string_contains(s: d as String, pattern: "dispatch_credential_snapshot_take")
+        && string_contains(s: d as String, pattern: "no receipt-free fallback")
+    BoundDissolution { trigger: _ } => false
+  }
+}
+
 test fn only_cursor_and_claude_owe_an_export_receipt() -> Bool {
-  host_custody_stores_an_export_receipt(c: CursorWorkerTurnApiKey)
-    && host_custody_stores_an_export_receipt(c: ClaudeCodeOauthHarnessToken)
-    && !host_custody_stores_an_export_receipt(c: CodexWorkerTurnAuth)
-    && !host_custody_stores_an_export_receipt(c: ControllerAppKey)
+  let cursor_owed = match cursor_row.export_receipt {
+    CustodyExportReceiptOwed => true
+    CustodyExportReceiptNotOwed => false
+  }
+  let claude_owed = match claude_row.export_receipt {
+    CustodyExportReceiptOwed => true
+    CustodyExportReceiptNotOwed => false
+  }
+  let codex_not = match host_credential_custody_row(c: CodexWorkerTurnAuth).export_receipt {
+    CustodyExportReceiptNotOwed => true
+    CustodyExportReceiptOwed => false
+  }
+  let controller_not = match host_credential_custody_row(c: ControllerAppKey).export_receipt {
+    CustodyExportReceiptNotOwed => true
+    CustodyExportReceiptOwed => false
+  }
+  cursor_owed && claude_owed && codex_not && controller_not
 }
 
 test fn an_identical_settled_placement_plans_a_publication() -> Bool {
   match plan_host_custody_export(
-    credential: CursorWorkerTurnApiKey,
     placement_settled: true,
     row: cursor_row,
     host: "srv2" as HostIdentity,
@@ -86,7 +112,6 @@ test fn an_identical_settled_placement_plans_a_publication() -> Bool {
 
 test fn a_run_that_is_not_settled_publishes_nothing() -> Bool {
   match plan_host_custody_export(
-    credential: CursorWorkerTurnApiKey,
     placement_settled: false,
     row: cursor_row,
     host: "srv2" as HostIdentity,
@@ -94,14 +119,14 @@ test fn a_run_that_is_not_settled_publishes_nothing() -> Bool {
     placed_material: placed_material,
   ) {
     CustodyExportWithheld { reason: r } =>
-      string_contains(s: r, pattern: "not settled") && !custody_export_reports_success(s: classify_host_custody_export(plan: CustodyExportWithheld { reason: r }, convergence: none, owner_refusal: none))
+      string_contains(s: r, pattern: "not settled")
+        && custody_export_does_not_block_settled(s: classify_host_custody_export(plan: CustodyExportWithheld { reason: r }, convergence: none, owner_refusal: none))
     _ => false
   }
 }
 
 test fn a_failed_or_interrupted_publication_reports_no_successful_export() -> Bool {
   let planned = plan_host_custody_export(
-    credential: ClaudeCodeOauthHarnessToken,
     placement_settled: true,
     row: claude_row,
     host: "srv1" as HostIdentity,
@@ -117,11 +142,11 @@ test fn a_failed_or_interrupted_publication_reports_no_successful_export() -> Bo
     owner_refusal: none,
   )
   let interrupted_red = match interrupted {
-    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "interrupted") && !custody_export_reports_success(s: interrupted)
+    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "interrupted") && !custody_export_does_not_block_settled(s: interrupted)
     _ => false
   }
   let failed_red = match failed {
-    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "rename") && !custody_export_reports_success(s: failed)
+    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "rename") && !custody_export_does_not_block_settled(s: failed)
     _ => false
   }
   interrupted_red && failed_red
@@ -156,7 +181,6 @@ test fn the_receipt_directory_owner_is_root_not_the_reader() -> Bool {
 
 test fn a_codex_row_does_not_plan_an_export() -> Bool {
   match plan_host_custody_export(
-    credential: CodexWorkerTurnAuth,
     placement_settled: true,
     row: host_credential_custody_row(c: CodexWorkerTurnAuth),
     host: "srv2" as HostIdentity,
@@ -165,7 +189,7 @@ test fn a_codex_row_does_not_plan_an_export() -> Bool {
   ) {
     CustodyExportNotOwed =>
       match classify_host_custody_export(plan: CustodyExportNotOwed, convergence: none, owner_refusal: none) {
-        CustodyExportNotOwedStanding => !custody_export_reports_success(s: CustodyExportNotOwedStanding)
+        CustodyExportNotOwedStanding => custody_export_does_not_block_settled(s: CustodyExportNotOwedStanding)
         _ => false
       }
     _ => false
