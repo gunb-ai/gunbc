@@ -1,18 +1,25 @@
 module test.claim.serving_caller_backlog_wet_witness
 
 import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { cas_generation_first }
 import product.fabric.execution { ReservationRef }
+import gunbc.durable_cas_file_store { cas_file_slot_path }
 import gunbc.serving.caller_backlog {
-  LogicalWorkId, empty_caller_backlog,
+  LogicalWorkId, empty_caller_backlog, waiting_record, encode_waiting, decode_waiting,
   DurableWaitingPersisted, DurablePersistIdempotent, DurablePersistRefusedTerminal,
   DurablePersistStoreRefused, DurablePersistKeyNotSlotAddressable,
   ResumedWaiting, ResumedTerminal, ResumeUnknownWork,
   persist_waiting_durable, resume_waiting_durable,
 }
 
-// Persist, drop the in-memory snapshot, read the same LogicalWorkId back from the CAS slot.
-// Enrolled on the local-repo wet lane (throwaway temp directory, no network).
+// Persist, overwrite the slot bytes independently, resume through a freshly minted root handle.
+// If resume returned the in-memory persist record it would keep reservation A / generation 2 and
+// fail against the bytes Filesystem.Read just observed. Enrolled on local_repo_wet_schedule
+// (exclusion LocalRepoWetLane, floor_route_gap DirWithTemplate). Not on the required witnesses
+// job (self-host / v2-native-cli); the floor's local-repo wet lane is the executing consumer.
 
 fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_caller_backlog.XXXXXX").path
@@ -20,38 +27,69 @@ fn fresh_root() -> String {
 
 test fn persist_then_fresh_process_reads_the_same_waiting_work_by_real_execution() -> Bool {
   let root_path = fresh_root()
-  let root = root_path as NonEmptyStr
+  let persist_root = root_path as NonEmptyStr
   let work = "logical-work-a" as LogicalWorkId
-  let reservation = "grant-work-a" as ReservationRef
+  let reservation_written = "grant-work-a" as ReservationRef
   let persisted = persist_waiting_durable(
-    root: root,
+    root: persist_root,
     snapshot: empty_caller_backlog,
     work: work,
-    reservation: reservation,
+    reservation: reservation_written,
     generation: 2,
   )
-  let wrote = match persisted {
-    DurableWaitingPersisted { record: r } => (r.work as String) == (work as String) && r.generation == 2
-    DurablePersistIdempotent { record: _ } => false
-    DurablePersistRefusedTerminal { phase: _ } => false
-    DurablePersistStoreRefused { detail: _ } => false
-    DurablePersistKeyNotSlotAddressable { work: _ } => false
+  let persist_record = match persisted {
+    DurableWaitingPersisted { record: r } => Present { value: r }
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
   }
-  let resumed = resume_waiting_durable(root: root, work: work)
-  let same_after_memory_drop = match resumed {
+  let disk_record = waiting_record(
+    work: work,
+    reservation: "grant-work-b" as ReservationRef,
+    generation: 9,
+  )
+  let disk_payload = encode_waiting(record: disk_record)
+  let slot = cas_file_slot_path(root: persist_root, key: work as NonEmptyStr, generation: cas_generation_first())
+  let planted = Filesystem.Write(path: slot, content: disk_payload as String)
+  let bytes = Filesystem.Read(path: slot)
+  let from_bytes = if bytes.success {
+    decode_waiting(payload: bytes.content as NonEmptyStr)
+  } else {
+    none
+  }
+  let resume_root = root_path as NonEmptyStr
+  let resumed = resume_waiting_durable(root: resume_root, work: work)
+  let resume_matches_bytes = match resumed {
     ResumedWaiting { record: r } =>
-      (r.work as String) == (work as String)
-        && (r.reservation as String) == (reservation as String)
-        && r.generation == 2
+      match from_bytes {
+        Absent => false
+        Present { value: expected } =>
+          (r.work as String) == (expected.work as String)
+            && (r.reservation as String) == (expected.reservation as String)
+            && r.generation == expected.generation
+            && (r.reservation as String) != (reservation_written as String)
+            && r.generation != 2
+      }
     ResumedTerminal { phase: _ } => false
     ResumeUnknownWork => false
   }
-  let missing = resume_waiting_durable(root: root, work: "logical-work-other" as LogicalWorkId)
-  let other_absent = match missing {
-    ResumeUnknownWork => true
-    ResumedWaiting { record: _ } => false
-    ResumedTerminal { phase: _ } => false
+  let not_the_persist_snapshot = match persist_record {
+    Absent => false
+    Present { value: in_memory } =>
+      match resumed {
+        ResumedWaiting { record: r } =>
+          (r.reservation as String) != (in_memory.reservation as String)
+            && r.generation != in_memory.generation
+        ResumedTerminal { phase: _ } => false
+        ResumeUnknownWork => false
+      }
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
-  wrote && same_after_memory_drop && other_absent && removed.success
+  planted.success
+    && bytes.success
+    && bytes.content == (disk_payload as String)
+    && resume_matches_bytes
+    && not_the_persist_snapshot
+    && removed.success
 }
