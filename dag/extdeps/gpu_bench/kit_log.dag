@@ -6,21 +6,15 @@ import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.uri { Uri, File }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.gpu_bench.request_v2 { extdeps_external_authority_anchor }
 
 // THE GPU-BENCH KIT'S PROCESS LOG, not the per-request JSONL and not a ninfer metric.
 // CAPACITY_OK <n> is printed by the kit when it records measured KV tokens. Independently
-// versioned with the kit on srv2:~/gpu-bench; cited with the request/v2 commit.
+// versioned with the kit on srv2:~/gpu-bench; the kit commit lives once on
+// extdeps.gpu_bench.request_v2.extdeps_external_authority_anchor.
 
 data gpu_bench_capacity_ok_marker: NonEmptyStr = "CAPACITY_OK" as NonEmptyStr
-
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: File
-    locator: "gpu-bench/longctx.py@1a128b28ffd3fd526fd4c347dd64b01aca9ad952" as NonEmptyStr
-  }
-}
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
