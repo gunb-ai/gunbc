@@ -1806,6 +1806,22 @@ fn dag_grammar_field_init_list_helper() -> GrammarExpr {
   )
 }
 
+// A TAGGED RECORD'S FIELD LIST ADMITS THE PUN `R { s }` BESIDE `R { s: e }`, and only a tagged record's.
+// The pun is its own production (dag_grammar_field_init_pun_expr) beside field_init, disjoint from it by a
+// not-predicate on the named head, so the field's kind is a production identity the lowering dispatches
+// on. The headless list (dag_grammar_field_init_list_helper) keeps `name: e` only: `{ x }` there is a
+// block, and reading it as an anonymous record `{ x: x }` would be a silent misread.
+fn dag_grammar_record_field_init_list_helper() -> GrammarExpr {
+  dag_grammar_optional(
+    element: dag_grammar_comma_list_expr(
+      item: dag_grammar_choice(
+        left: dag_grammar_nonterminal(production: ^dag_production_field_init),
+        right: dag_grammar_nonterminal(production: ^dag_production_field_init_pun)
+      )
+    )
+  )
+}
+
 fn dag_grammar_pattern_list_helper() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(
@@ -1904,7 +1920,7 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
         right: dag_grammar_sequence(
-          left: dag_grammar_field_init_list_helper(),
+          left: dag_grammar_record_field_init_list_helper(),
           right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
         )
       )
@@ -2094,6 +2110,21 @@ fn dag_grammar_field_init_expr() -> GrammarExpr {
       )
     ),
     right: dag_grammar_nonterminal(production: ^dag_production_field_init_string_key)
+  )
+}
+
+// THE PUN `s` IS THE FIELD `s: s`. Its name is the field's label and the reference that supplies the
+// value, so the pun is admitted only where no named head reads (a not-predicate over `name :`, the same
+// disjointness proof the positional argument uses) and where the name is not a keyword that ends the field
+// (`R { true }` would name a value no reference can name, so it refuses like every keyword;
+// dag_grammar_field_pattern_binder_guard, shared with the field pattern's pun).
+fn dag_grammar_field_init_pun_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: grammar_expr_not_predicate(element: dag_grammar_arg_named_head_expr()),
+    right: dag_grammar_sequence(
+      left: dag_grammar_field_pattern_binder_guard(admit_bool_literals: false),
+      right: dag_grammar_binding_name_terminal()
+    )
   )
 }
 
@@ -3273,9 +3304,12 @@ fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   )
 }
 
-// WHERE THE ITEMS END, AN IDENTIFIER FOLLOWED BY `fn` OR `data` IS A MARKER THAT IS NOT `test`, and
-// it refuses by name at the marker instead of leaving the rest of the module to the generic leftover
-// refusal. The guard follows the repeat, so it is not a choice alternative and adds no overlap; it is
+// WHERE THE ITEMS END, AN IDENTIFIER OTHER THAN `test` FOLLOWED BY `fn` OR `data` IS A MARKER THAT IS NOT
+// `test`. The word `test` is excluded by a not-predicate because it IS the marker: a marked declaration
+// whose own body fails to parse ends the items just before its `test`, and without the exclusion the guard
+// read that valid marker as a wrong one and reported the defect at the wrong place. Such a module now
+// takes the generic leftover refusal, located at the furthest failure. Any other word refuses by name at the marker instead of leaving the rest
+// of the module to the generic leftover refusal. The guard follows the repeat, so it is not a choice alternative and adds no overlap; it is
 // a not-predicate, so it captures nothing and the module's tree is the items'.
 fn dag_grammar_module_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -3285,10 +3319,15 @@ fn dag_grammar_module_expr() -> GrammarExpr {
       right: grammar_expr_not_predicate(
         element: grammar_expr_refuse_on_match(
           element: dag_grammar_sequence(
-            left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
-            right: dag_grammar_choice(
-              left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
-              right: dag_grammar_terminal(token_class: ^dag_token_kw_data)
+            left: grammar_expr_not_predicate(
+              element: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "test"))
+            ),
+            right: dag_grammar_sequence(
+              left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+              right: dag_grammar_choice(
+                left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
+                right: dag_grammar_terminal(token_class: ^dag_token_kw_data)
+              )
             )
           ),
           reason: DeclarationMarkerNotTest
@@ -3851,6 +3890,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_field_init_expr(),
     emitted: ^dag_surface_field_init
   )
+  let field_init_pun = dag_grammar_production(
+    name: ^dag_production_field_init_pun,
+    expression: dag_grammar_field_init_pun_expr(),
+    emitted: ^dag_surface_field_init_pun
+  )
   let field_init_string_key = dag_grammar_production(
     name: ^dag_production_field_init_string_key,
     expression: dag_grammar_field_init_string_key_expr(),
@@ -3999,6 +4043,7 @@ fn dag_grammar_root() -> GrammarRoot {
       block_expr,
       arg,
       field_init,
+      field_init_pun,
       field_init_string_key,
       match_expr,
       empty_block_body,
