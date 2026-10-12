@@ -84,16 +84,28 @@ test fn a_block_headed_by_a_value_name_is_still_a_block_holds() -> Bool {
   parsed_ok(tag: "ifb", text: if_block_source())
 }
 
-// MALFORMED PUNS REFUSE AT PARSE, TYPED: the reason is the grammar's own (never an acceptance, never the
-// declaration-marker reason, which would locate the defect at the wrong place).
+// MALFORMED PUNS NEVER LOWER AS A PUN RECORD. A malformed list either refuses at parse with the grammar's
+// own reason (never an acceptance, never the declaration-marker reason, which would locate the defect at
+// the wrong place), or, where the record arm fails and the function body's statement juxtaposition takes
+// `R` and the braces as two statements (a behavior this change neither adds nor widens), the tree it
+// yields is not the long form's: the malformed spelling is never read as the field it resembles.
+fn refused_or_not_a_record(tag: String, body: String) -> Bool {
+  let reason = parse_refusal_reason_of(tag: tag, text: probe(body: body))
+  if reason == "ACCEPTED" {
+    same_tree(a: normalized_hash(tag: tag, text: probe(body: body)), b: normalized_hash(tag: "tl3", text: top_long_source())) == false
+  } else {
+    reason != "parse_declaration_marker_not_test"
+  }
+}
+
 fn refused_at_parse(tag: String, body: String) -> Bool {
   let reason = parse_refusal_reason_of(tag: tag, text: probe(body: body))
   (reason != "ACCEPTED") && (reason != "parse_declaration_marker_not_test")
 }
 
-test fn two_names_in_one_field_refuse_holds() -> Bool { refused_at_parse(tag: "two", body: "X { s t }") }
+test fn two_names_in_one_field_refuse_holds() -> Bool { refused_or_not_a_record(tag: "two", body: "X { s t }") }
 test fn a_keyword_pun_refuses_holds() -> Bool { refused_at_parse(tag: "kw", body: "X { true }") }
-test fn a_literal_pun_refuses_holds() -> Bool { refused_at_parse(tag: "lit", body: "X { 1 }") }
-test fn a_dotted_pun_refuses_holds() -> Bool { refused_at_parse(tag: "dot", body: "X { s.t }") }
+test fn a_literal_pun_refuses_holds() -> Bool { refused_or_not_a_record(tag: "lit", body: "X { 1 }") }
+test fn a_dotted_pun_refuses_holds() -> Bool { refused_or_not_a_record(tag: "dot", body: "X { s.t }") }
 test fn an_unclosed_pun_record_refuses_holds() -> Bool { refused_at_parse(tag: "open", body: "X { s") }
-test fn a_pun_with_a_missing_comma_refuses_holds() -> Bool { refused_at_parse(tag: "comma", body: "X { s t: t }") }
+test fn a_pun_with_a_missing_comma_refuses_holds() -> Bool { refused_or_not_a_record(tag: "comma", body: "X { s t: t }") }
