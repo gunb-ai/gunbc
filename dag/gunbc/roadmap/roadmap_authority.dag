@@ -2237,14 +2237,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "namespace-unique-on-chain",
       owner: "namespace",
       carriers: carrier(path: "docs/plans/namespace-unique-on-chain-operational-plan.md"),
-      line: ticket(t: level_fields(
+      line: ticket(t: updated(t: level_fields(
           headline: "Decide every name one canonical way",
           boundary: "The namespace cut as gunbc.namespace_cut_stage stages it: F-0, XL-0 to XL-4 (evidence and the reference-derived graph), ACT-0 and XL-5 (waves), XL-6 (atomic cutover), XL-7 (grammar deletion). Rows are the stages that still have open work. The stage chain itself stays in the module.",
           approach: "XL-2 and XL-3 wait on frontend prerequisites (LoweringOccurrenceProjection, ServiceModuleLowering, ResolverBoundDeclaringIdentity). The declaration-identity switch-over is the XL-6 construction, built in shadow now. Per the 2026-09-12 interlock edge, XL-6 and XL-7 run after seed retirement.",
           red_control: "ACT-0 release stays blocked while gunbc.rung_drop namespace_wave_admission_wall_removed stands or any act0_release_milestones entry is OUTSTANDING. A name answered two ways after XL-6 is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
           handback: "XL-7 delivered: import is a typed, located parse error, and the legacy deciding mechanisms are deleted."
-        )),
+        ), on: "2026-10-12", note: "Status 2026-10-12. The XL-2 prerequisite list in this approach is now LoweringOccurrenceProjection, ServiceModuleLowering and UsesClauseCarrier (see xl2-body-lowering's 2026-10-12 update); XL-3 is NotDerivable (DeclaringIdentitySpellingCensus not built). Found on the native-seven route: the production lookup (v2.std.symbol_index symbol_index_lexical_selection) is KIND-BLIND -- a module importing both std.constructors' Cardinality variant `Optional` and std.optional's type `Optional` refuses every `Optional<..>` as resolve_ambiguous_on_lexical_chain, reproduced with the emitted compiler's census-resolve on a three-line module. namespace-binding-kernel's accepted rule excludes a candidate of the wrong kind before none/one/many; the production resolver does not apply it, and the expected kind of a reference (type, value, constructor pattern) is not yet a recorded fact. The kind-aware lookup is taken as its own change; v2.std.node_query was unblocked locally by spelling the variant std.constructors.Cardinality.Optional.")),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler must decide every name one way. Otherwise each proof it carries is about a program that may mean something other than what was written."),
     ),
 
@@ -2801,7 +2801,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "xl2-body-lowering",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/compiler_frontend_program_status.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Every lowered node keeps its occurrence, and service modules lower",
           boundary: "The two xl2_prerequisites still PrerequisiteOutstanding in gunbc.compiler_frontend_program_status: LoweringOccurrenceProjection (#12108 to #12793 largely landed) and ServiceModuleLowering (a carrier for interface members; gunbc.recurring_failure_mode service_interface_member_has_no_carrier).",
           displaced_cost: "Service modules refuse whole at normalize, so their references are outside the XL-2 residual instead of counted in it.",
@@ -2809,7 +2809,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A rebuilt atom without its occurrence, or a service module refused at normalize, keeps the prerequisite OUTSTANDING.",
           out_of_scope: "The rehearsal itself.",
           handback: "Both prerequisites PrerequisiteDelivered, with evidence rows."
-        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design.")),
+        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design."), on: "2026-10-12", note: "Status re-read 2026-10-12 against main 1d64eb5414. THREE prerequisites are outstanding, not two: UsesClauseCarrier (added to gunbc.compiler_frontend_program_status 2026-10-01) is blocked by ruling D13 -- no carrier until the resource-keyed DependencyDemand derivation names Network (gunbc.rung_drop network_requirement_unrepresented_after_uses_cut). ServiceModuleLowering no longer 'needs a new carrier design': the design was ruled in #12851 (option A: contract edges plus one binder carrying an optional default; the realization attaches as a MIRROR sibling) and is built through 3b-i (#12923, #12964, #12948, #12974, #13050, 2026-10-01..03). Remaining: 3b-ii, the transport fields (shell argv/stdin, rest method/path/query/headers/body, file path/verb; interpolated values carried as v2.std.template Template<OperationInputName> per the #13405 ruling); 3c, delete ServiceSetAside and give each stage that cannot yet consume the realization its own located cause; 4, flip the status rows. Its design doc, docs/plans/service-interface-and-uses-carriers.md, was deleted by #13641 and survives at fa44b98102^. LoweringOccurrenceProjection's readers landed (#12598, #12757) but its trigger measurement has not been recorded since #12849 (2026-10-01). No prerequisite arm changed 2026-10-05..12; that week's XL-2-labelled work (#13207, #13405, #13693, #13725, #13759) is the string-template track 3b-ii builds on. Delivering every prerequisite does NOT clear XL-2: gunbc.namespace_cut_stage clears it only on a held RehearsalInstrumentDelivered receipt from the whole-tree rehearsal producer (run_xl2_rehearsal_at), which compiler_frontend_program_status rehearsal_producer_standing reads NotDerivable and which no roadmap node tracks.")),
       parent: in_project(project: "v2-frontend", contribution: "The last two XL-2 prerequisites are lowering gaps; closing them puts every module's references into the census namespace XL-2 needs."),
     ),
     roadmap_node(
