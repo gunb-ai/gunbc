@@ -4409,7 +4409,7 @@ fn infer_application_argument_inhabitance(
             site: JudgedAtApplication { application: node },
             entries: judged,
             declarations: declarations,
-            pairs: pairs,
+            pairs: infer_pairs_callbacks_last(pairs: pairs),
             type_params: infer_application_type_params(node: node, entries: entries)
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -7436,8 +7436,8 @@ fn infer_settled_actual_instances(pairs: List<InhabitanceFormalArg>, entries: Li
 
 // POSITION BY POSITION, the callback's formal against the expected signature's formal at the same declared
 // position (fold_step_formal_at, the one positional formal reader). A fresh formal is instantiated by the
-// expected input; an authored one is left to the application row's judgment of the callback against its
-// formal, as is an arity disagreement. An expected input still naming an uninstantiated type parameter of
+// expected input; an authored one, and an arity disagreement, are decided by the application row's
+// judgment of the callback against its formal (infer_callback_signature). An expected input still naming an uninstantiated type parameter of
 // the callee instantiates nothing: binding the variable to the callee's bare parameter would type the body
 // with a name that means nothing in its scope.
 type InferCallbackFrameWalk {
@@ -7516,6 +7516,9 @@ fn infer_callback_signature(application: Node, callback: Node, entries: List<Inf
         ArrowParameterOrderAbsent => optional_absent()
         ArrowParameterOrderMalformed => optional_absent()
         ArrowParameterOrderDeclared { labels: labels } =>
+          if infer_callback_arity_differs(expected: e.expected, labels: labels) {
+            infer_callback_signature_of_other_arity(expectation: e, callback: callback, labels: labels, entries: entries)
+          } else {
           let domain = fold(labels, init: InferCallbackSignatureWalk { position: 0, domain_types: optional_present(value: Empty) }, f: fn(walk, _) {
             InferCallbackSignatureWalk {
               position: walk.position + 1,
@@ -7536,6 +7539,54 @@ fn infer_callback_signature(application: Node, callback: Node, entries: List<Inf
                 Absent => optional_absent()
                 Present { value: codomain } => optional_present(value: anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: callback))
               }
+          }
+          }
+      }
+  }
+}
+
+// A KNOWN PARAMETER-COUNT DISAGREEMENT IS DECIDED, NOT DROPPED. `apply_int(f: fn(x, y) { .. })` against
+// `fn(Int) -> ..`: there is no expected input for `y`, and abandoning the whole signature for that reason
+// would leave the call on the undecidable frontier although its arity alone refutes it. So when both
+// parameter counts are readable and differ, the signature is assembled anyway: each position the formal
+// supplies takes that input, every other keeps the callback's OWN declared type -- its fresh variable,
+// which asserts nothing -- and an underived body leaves the callback's own declared codomain. No type is
+// invented: the comparison then refuses on the domain's length, which those positions cannot change.
+fn infer_callback_arity_differs(expected: Node, labels: List<Symbol>) -> Bool {
+  match arrow_declared_parameter_order(arrow: expected) {
+    ArrowParameterOrderDeclared { labels: expected_labels } => length(xs: expected_labels) != length(xs: labels)
+    ArrowParameterOrderAbsent => false
+    ArrowParameterOrderMalformed => false
+  }
+}
+
+fn infer_callback_signature_of_other_arity(expectation: InferCallbackExpectation, callback: Node, labels: List<Symbol>, entries: List<InferredFactsEntry>) -> Optional<Node> {
+  let domain = fold(labels, init: InferCallbackSignatureWalk { position: 0, domain_types: optional_present(value: Empty) }, f: fn(walk, _) {
+    InferCallbackSignatureWalk {
+      position: walk.position + 1,
+      domain_types: match walk.domain_types {
+        Absent => optional_absent()
+        Present { value: types } =>
+          match infer_callback_input_type(expectation: expectation, callback: callback, position: walk.position) {
+            Present { value: t } => optional_present(value: list_snoc_item(xs: types, item: t))
+            Absent =>
+              match fold_step_formal_at(step: callback, position: walk.position) {
+                Absent => optional_absent()
+                Present { value: own } => optional_present(value: list_snoc_item(xs: types, item: own.formal.type_node))
+              }
+          }
+      }
+    }
+  }).domain_types
+  match domain {
+    Absent => optional_absent()
+    Present { value: domain_types } =>
+      match infer_callback_return_type(callback: callback, entries: entries) {
+        Present { value: codomain } => optional_present(value: anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: callback))
+        Absent =>
+          match list_at_optional(xs: node_positional_child_targets(node: callback), index: 1) {
+            Absent => optional_absent()
+            Present { value: own_codomain } => optional_present(value: anonymous_signature_arrow(domain_types: domain_types, codomain: own_codomain, source: callback))
           }
       }
   }
@@ -7582,6 +7633,19 @@ fn infer_callback_type_is_fresh(t: Node, callback: Node) -> Bool {
     Present { value: id } => fold(type_param_names(n: callback), init: false, f: fn(acc, v) { acc || (v == id) })
     Absent => false
   }
+}
+
+// THE JUDGMENT WALKS THE ACTUALS IN THE ORDER INFERENCE SETTLED THEM: every non-callback actual first, then
+// the callbacks, each group in written order (infer_gather_schedules_first). The walk accumulates the call's
+// instances, so a callback written before the actual that fixes its formal's type parameter
+// (`apply(f: fn(x) { .. }, o: h())`) is judged with that parameter already instantiated -- the instances its
+// frame was built from -- rather than before it, where the formal is still generic and the judgment can
+// only answer undecidable.
+fn infer_pairs_callbacks_last(pairs: List<InhabitanceFormalArg>) -> List<InhabitanceFormalArg> {
+  concat(
+    fold(pairs, init: [], f: fn(acc, pair) { if infer_node_is_function_literal(n: pair.arg) { acc } else { list_snoc_item(xs: acc, item: pair) } }),
+    fold(pairs, init: [], f: fn(acc, pair) { if infer_node_is_function_literal(n: pair.arg) { list_snoc_item(xs: acc, item: pair) } else { acc } })
+  )
 }
 
 // The application's entries as its argument judgment reads them: each callback actual whose signature

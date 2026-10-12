@@ -168,3 +168,20 @@ fn caf_refused_at(d: Optional<Diagnostic>, name: Symbol) -> Bool {
 test fn caf_a_callback_returning_the_wrong_result_refuses_at_its_formal() -> Bool {
   caf_refused_at(d: caf_fatal(src: caf_wrong_return), name: ^f)
 }
+
+// ARITY: the callback takes two parameters where the formal takes one. The count alone refutes it, so the
+// call refuses AT `f` rather than accepting on the undecidable frontier because `y` has no supplied type.
+data caf_arity_extra: String = "fn apply_int(f: fn(Int) -> Res<Int>) -> Res<Int> {\n  f(1)\n}\n\nfn use_it() -> Res<Int> {\n  apply_int(f: fn(x, y) { need_int(n: x) })\n}\n"
+
+test fn caf_a_callback_with_an_extra_parameter_refuses_at_its_formal() -> Bool {
+  caf_refused_at(d: caf_fatal(src: caf_arity_extra), name: ^f)
+}
+
+// ORDER: the callback is written BEFORE the argument fixing T, and its result (Res<Bool> from the body)
+// disagrees with the formal's concrete Res<Int>. It refuses at `f` exactly as the same call written in
+// the other order does: the judgment walks the actuals as inference settled them.
+data caf_generic_wrong_return: String = "fn wrong(n: Int) -> Res<Bool> {\n  Ok { value: true }\n}\n\nfn apply<T>(o: Res<T>, f: fn(T) -> Res<Int>) -> Res<Int> {\n  Ok { value: 1 }\n}\n\nfn use_it() -> Res<Int> {\n  apply(f: fn(x) { wrong(n: x) }, o: h())\n}\n"
+
+test fn caf_a_generic_callback_written_first_refuses_its_wrong_result_at_its_formal() -> Bool {
+  caf_refused_at(d: caf_fatal(src: caf_generic_wrong_return), name: ^f)
+}
