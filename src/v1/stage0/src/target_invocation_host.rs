@@ -1594,8 +1594,7 @@ fn native_claim_child_deadline_from_binding(
     };
     if ctx.sym_eq(*variant_name, "Absent") {
         return Err(ungrounded(
-            "no NativeClaimProgramProducer binding, or its count disagrees with the named *_child_deadline_count projection"
-                .to_string(),
+            "no NativeClaimProgramProducer binding for this entry".to_string(),
         ));
     }
     if !ctx.sym_eq(*variant_name, "Present") {
