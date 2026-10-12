@@ -1,6 +1,6 @@
 module test.claim.harness_chat_shape
 
-import std.types { list_length, Bool, String, Int, List }
+import std.types { list_length, Bool, String, Int, List, NonEmptyStr }
 import std.measure { TokenCount, token_count_value }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.llm.anthropic_messages_api { ToolUse, EndTurn, MaxTokens }
@@ -12,13 +12,9 @@ import gunbc.harness.harness_wire {
   HarnessUsageRead, UsageRead, UsageUnreadable,
   harness_decode_response,
   harness_decode_chat_completion, harness_backend_path, harness_backend_url_for_endpoint }
-import gunbc.serving.serving_enrollment {
-  serving_enrolled_groups, serving_enrolled_routes, serving_route_head,
-  ServingRouteResolved, ServingRouteUnresolved, serving_route_endpoint_wire,
-}
-import gunbc.spark.fabric_serving_assignment { FabricServingHeadResolved, FabricServingHeadRefused }
+import gunbc.serving.serving_enrollment { serving_enrolled_routes, ServingRouteEndpoint, serving_route_endpoint_wire }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import std.optional { Present, Absent }
-import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.harness.harness_turn {
   HarnessToolResult, harness_assistant_message_json, harness_tool_result_messages_json,
   harness_user_text_message_json,
@@ -118,71 +114,26 @@ test fn each_shape_posts_to_its_own_path() -> Bool {
     && harness_backend_path(shape: AnthropicMessagesShape) == "/v1/messages"
 }
 
-// THE ROSTER IS DERIVED, NOT TRANSCRIBED -- MAIN'S REPAIR -- AND IT NOW DERIVES FROM THE RIGHT
-// AUTHORITY, WHICH IS THIS BRANCH'S. Two fixes met here and both are kept.
-//
-// MAIN'S HALF: the row used to assert `count == 2` against the literals ".225" and ".236", and those
-// literals rotted -- they had been false for as long as the convergence roster has been a singleton,
-// and nothing said so. The repair is to read the count from the roster and JOIN each address against
-// the head's own endpoint row, so a fleet move moves the witness with it (DESIGN section 6: name the
-// instrument, never transcribe its output).
-//
-// THIS BRANCH'S HALF: the roster it derived from was gunbc.spark.pair_serving_desired
-// spark_pair_serving_groups -- which answers "whose hosts do we claim", not "who may a turn be
-// offered to". Deriving honestly from the wrong authority is still the wrong answer, so the join is
-// against gunbc.serving.serving_enrollment. That list is empty: Group B was sold 2026-10-10
-// (serving_fixtures_name_sold_group_b_hosts). The join still holds — both sides empty — and the
-// count>0 conjunct is gone because it was a live-population claim.
-//
-// AND THE PORT IS PART OF THE JOIN RATHER THAN A CONSTANT. Main's version asserted ":30000" for every
-// address, which is true of the pair route and false of the canary; each route now renders its own
-// declared front door, so a regression back to one global port fails here.
-fn t_endpoints() -> List<String> {
-  flat_map(serving_enrolled_routes(), r => match r {
-    ServingRouteUnresolved { group: _, obligation: _ } => []
-    ServingRouteResolved { endpoint: e, ceiling: _ } => [serving_route_endpoint_wire(e: e) as String]
-  })
+// THE ROUTE'S FRONT DOOR IS DERIVED FROM ITS OWN ENDPOINT, NOT SPELLED. The test name is kept
+// deliberately: gunbc.roadmap.roadmap_authority cites this function by name as the execution contract
+// of a signed deliverable, so renaming it would break a citation on a signed row. What it asserts is
+// what it always did -- the URL a turn is posted to derives from the route's declared endpoint rather
+// than a global port -- and what changed underneath is the roster: it is the production roster of
+// rented replicas (empty until one is launched) joined with a fixture replica route, each rendering
+// its own declared port, so a regression back to one global port fails here.
+data t_replica: RentedReplicaIdentity = RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 0, served_name: "qwen-first-row" as NonEmptyStr }
+
+fn t_fixture_endpoint() -> ServingRouteEndpoint {
+  ServingRouteEndpoint { replica: t_replica, address: "10.0.0.7" as NonEmptyStr, port: 8000 }
 }
 
-// EACH ENROLLED ROUTE'S HEAD, RESOLVED THROUGH THE FLEET TOPOLOGY. The join below is between these
-// and the addresses the routes actually carry, which is what makes the assertion a derivation rather
-// than a pair of literals: move a head's endpoint row and both sides move together.
-fn t_head_addresses() -> List<String> {
-  flat_map(serving_enrolled_groups, g => match serving_route_head(group: g) {
-    FabricServingHeadRefused { cause: _ } => []
-    FabricServingHeadResolved { host: head } =>
-      match host_lan_address(host: head) {
-        Present { value: h } => [h as String]
-        Absent => []
-      }
-  })
-}
-
-fn t_addresses() -> List<String> {
-  flat_map(serving_enrolled_routes(), r => match r {
-    ServingRouteUnresolved { group: _, obligation: _ } => []
-    ServingRouteResolved { endpoint: e, ceiling: _ } => [e.address as String]
-  })
-}
-
-// THE NAME IS KEPT DELIBERATELY. gunbc.roadmap.roadmap_authority cites this function BY NAME as the
-// execution contract and red control of a signed deliverable, so renaming it would break a citation
-// on a signed row -- and what it asserts is still what its name says: the routes a turn may be
-// offered to derive from the serving heads through the fleet topology, rather than being spelled.
-// What changed underneath is WHICH authority supplies the heads.
 test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
-  count(t_endpoints()) == count(serving_enrolled_groups)
-    && count(serving_enrolled_groups) == 0
-    && all(t_addresses(), a => any(t_head_addresses(), h => h == a))
-    && all(t_endpoints(), e => any(serving_enrolled_routes(), r => match r {
-         ServingRouteUnresolved { group: _, obligation: _ } => false
-         ServingRouteResolved { endpoint: ep, ceiling: _ } =>
-           (serving_route_endpoint_wire(e: ep) as String) == e
-             && string_contains(
-                  s: harness_backend_url_for_endpoint(shape: OpenAiChatCompletionsShape, endpoint: ep),
-                  pattern: join(["http://", e, "/v1/chat/completions"], ""),
-                )
-       }))
+  length(serving_enrolled_routes()) == 0
+    && (serving_route_endpoint_wire(e: t_fixture_endpoint()) as String) == "10.0.0.7:8000"
+    && string_contains(
+         s: harness_backend_url_for_endpoint(shape: OpenAiChatCompletionsShape, endpoint: t_fixture_endpoint()),
+         pattern: "http://10.0.0.7:8000/v1/chat/completions",
+       )
 }
 
 

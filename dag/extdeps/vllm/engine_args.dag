@@ -147,6 +147,13 @@ fn vllm_memory_request_key(r: VllmMemoryRequest) -> String {
   ], "")
 }
 
+// The `vllm serve <model>` command head: the CLI subcommand and its positional model argument are
+// vLLM's own interface, so the spelling lives here and not in each launching layer.
+// Consumer: gunbc.serving.rented_replica rented_replica_launch.
+fn vllm_serve_argv(model: String) -> List<String> {
+  ["vllm", "serve", model]
+}
+
 fn vllm_prefix_caching_argv(r: VllmPrefixCachingRequest) -> List<String> {
   match r {
     PrefixCachingOmitted => []

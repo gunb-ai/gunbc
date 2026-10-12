@@ -1,116 +1,24 @@
 module test.claim.harness_turn_admission_witness
 
 import std.types { Bool, NonEmptyStr, String }
-import std.decl_ref { decl_ref }
-import std.measure { token_count, second_count }
-import std.optional { Present, Absent }
-import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10 }
-import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
-import product.fabric.provider_route { ProviderRoute }
-import product.fabric.isolation { IsolationProfile }
-import product.fabric.work { TrustDomainRef, OfferedService, MaterializedProgram }
-import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.provider_admission { ProviderUseAdmitted, ProviderUseDenied, refusal_reason }
-import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
-import gunbc.serving.serving_availability { ServingFrontDoorAvailabilityVerdict, FrontDoorAnswered, serving_availability_bracketing_read }
+import std.measure { second_count }
+import product.fabric.work { OfferedService, MaterializedProgram }
 import gunbc.serving.turn_demand { serving_turn_work }
-import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch, LaunchObserved }
-import gunbc.spark.vllm_serving_launch { EndpointIncarnationUnobserved }
-import gunbc.spark.vllm_observed { ModelsRouteRead, vllm_models_route_readback }
-import gunbc.spark.pair_serving_realization { spark_pair_model_path_in_container, spark_pair_desired_snapshot }
-import gunbc.spark.first_party_serving { SparkServingRealization, spark_first_party_admission, spark_first_party_use_scope }
-import gunbc.spark.serving_offer {
-  SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused, ServingRouteObserved,
-  bind_spark_serving_offer, spark_serving_incarnation_unobserved_obligation,
-}
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape, AnthropicMessagesShape }
-import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
-import gunbc.harness.harness_seat {
-  HarnessCandidates, HarnessTurnSubject, AnyAdmittedModel, ExactServingUnit,
-  harness_turn_subject, harness_turn_request, harness_admit_bound_offer, harness_execution_requirements,
-  harness_bind_candidate, harness_serving_realization, harness_placement_grant_duration,
-}
 import gunbc.harness.harness_reasoning_wire { Glm53FlashOnVllm }
+import gunbc.harness.harness_seat {
+  HarnessTurnSubject, AnyAdmittedModel, ExactServingUnit,
+  harness_turn_subject, harness_turn_request, harness_execution_requirements, harness_placement_grant_duration,
+}
 import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape, harness_seat_policy }
 import product.fabric.supply { ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration }
 
-// ── A TURN IS PLACED AS ONE WORK AND ONE DEMAND, AND A BOUND OFFER PASSES ADMISSION OR NOTHING ──
+// ── A TURN IS PLACED AS ONE WORK AND ONE DEMAND ──
 //
-// The harness used to take a bound Spark offer straight to a refusal saying provider-use admission
-// had not run. It now builds the turn's subject once at harness_bind_seat and admits each bound offer
-// under that subject before the offer may enter the field. These witnesses pin the subject, the
-// factored admit step, AND the production route from harness_bind_candidate's bound arm into it
-// (a_bound_offer_reaches_admission_through_bind_candidate, over the route seam). The
-// admitted arm has no positive control yet, and that is stated rather than faked: first-party
-// admission refuses while the answering launch's usage-stats path is unread, on every fixture this
-// corpus can build. DECLARED FRONTIER (DESIGN 3c): the positive CandidateBound control lands when
-// spark_first_party_admission takes the narrow ServingUsageStatsObservation (gunbc#11441) and this
-// harness threads it through harness_admit_bound_offer -- a fixture Disabled observation on the
-// offered launch, a matching declared unit and an observed incarnation then reach the admitted arm.
-
-fn t_launch() -> VllmEndpointProcessLaunch {
-  vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
-}
-
-fn t_endpoint() -> ServingRouteEndpoint {
-  ServingRouteEndpoint { group: FabricGroupB {}, address: "10.0.0.1" as NonEmptyStr, port: 8000 }
-}
-
-fn t_ready() -> ServingFrontDoorAvailabilityVerdict {
-  serving_availability_bracketing_read(
-    endpoint: t_endpoint(),
-    before: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.harness-turn-admission" as ObservationReceiptRef },
-    front_door: FrontDoorAnswered,
-    after: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.harness-turn-admission" as ObservationReceiptRef },
-    now: "2026-09-14T00:00:00Z",
-  )
-}
-
-// FIXTURE ROUTE: an observed route, so the offer binds and the step under test is reached. No
-// production producer constructs ServingRouteObserved for a Spark group today.
-fn t_route() -> ProviderRoute {
-  ProviderRoute {
-    provider: decl_ref(module_path: "test.claim.harness_turn_admission_witness", decl_name: "t_route"),
-    service: decl_ref(module_path: "gunbc.spark.serving_offer", decl_name: "spark_serving_quote"),
-    region: decl_ref(module_path: "gunbc.spark.fabric_switch_observed", decl_name: "FabricGroupB"),
-  }
-}
-
-fn t_bound() -> SparkOfferBinding<NonEmptyStr> {
-  bind_spark_serving_offer(
-    principal: "gunbc" as NonEmptyStr,
-    executor: "spark-a" as NonEmptyStr,
-    launch: t_launch(),
-    served_model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
-    trust_domain: "gunbc.trust.spark" as TrustDomainRef,
-    isolation: IsolationProfile { guarantees: [] },
-    seats: 1,
-    availability: t_ready(),
-    route: ServingRouteObserved { route: t_route() },
-  )
-}
-
-fn t_declared_path() -> String {
-  match spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot) {
-    Present { value: p } => p
-    Absent => ""
-  }
-}
-
-fn t_realization() -> SparkServingRealization {
-  SparkServingRealization {
-    hosts: [operator_host_srv9, operator_host_srv10],
-    readback: ModelsRouteRead {
-      readback: vllm_models_route_readback(
-        served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
-        configured_model_path: t_declared_path() as NonEmptyStr,
-        max_model_len: token_count(count: 1048576)),
-    },
-    endpoint: t_launch(),
-    incarnation: EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation },
-    declared_model_path: Present { value: t_declared_path() },
-  }
-}
+// The harness builds the turn's subject once at harness_bind_seat. These witnesses pin the subject,
+// the factored work and demand, and the placement duration. The rented-replica offer and its
+// provider-use admission are a declared frontier (DESIGN 3c) owned by the warm-trace vertical: no
+// witness here claims an admitted candidate, because none can be produced until that offer exists.
 
 fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
   harness_turn_subject(
@@ -119,66 +27,8 @@ fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
   )
 }
 
-fn t_empty() -> HarnessCandidates {
-  HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: [], owner_standing: none }
-}
 
-// RED, THROUGH THE PRODUCTION ROUTE. harness_bind_candidate is the fold production calls; with a
-// fixture route that binds, its bound arm must take the offer INTO admission rather than refuse on
-// its own. The discriminator is the admission's refusal_reason in the note: the arm this replaced
-// refused with a sentence of its own and no producer had run, so restoring it turns this red.
-test fn a_bound_offer_reaches_admission_through_bind_candidate() -> Bool {
-  let subject = t_subject(prompt: "p", attempt: "a-1")
-  let placed = harness_bind_candidate(
-    acc: t_empty(), group: FabricGroupB {}, endpoint: t_endpoint(), launch: t_launch(), availability: t_ready(),
-    readback: t_realization().readback, incarnation: t_realization().incarnation, route: ServingRouteObserved { route: t_route() }, subject: subject,
-    model: "deepseek-v4-flash:iq3s-split" as NonEmptyStr, unit: DeepseekV4FlashOnVllm, seats: 1,
-  )
-  match t_bound() {
-    SparkOfferBindingRefused { group_wire: _, cause: _ } => false
-    SparkOfferBound { bound: projection } =>
-      match spark_first_party_admission(
-        realization: harness_serving_realization(group: FabricGroupB {}, launch: t_launch(), readback: t_realization().readback, incarnation: t_realization().incarnation),
-        scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
-        offer: projection.offer.id,
-      ) {
-        ProviderUseAdmitted { permit: _ } => false
-        ProviderUseDenied { decision: _, cause: why } =>
-          length(placed.candidates) == 0
-            && any(placed.notes, n => n.contains(refusal_reason(c: why)))
-      }
-  }
-}
 
-// RED, AND THE CAUSE IS THE ADMISSION'S OWN. A bound offer that first-party admission refuses never
-// becomes a candidate, and the note carries exactly the refusal the producer returns for the same
-// realization, scope and offer -- not a generic "not admitted" that a refusal for another reason
-// would also satisfy.
-test fn a_bound_offer_refused_by_admission_is_not_a_candidate_and_carries_the_cause() -> Bool {
-  let subject = t_subject(prompt: "p", attempt: "a-1")
-  match t_bound() {
-    SparkOfferBindingRefused { group_wire: _, cause: _ } => false
-    SparkOfferBound { bound: projection } => {
-      let placed = harness_admit_bound_offer(
-        acc: t_empty(), group: FabricGroupB {}, endpoint: t_endpoint(), launch: t_launch(),
-        realization: t_realization(), projection: projection, subject: subject,
-        unit: DeepseekV4FlashOnVllm, seats: 1,
-      )
-      match spark_first_party_admission(
-        realization: t_realization(),
-        scope: spark_first_party_use_scope(demand: subject.demand, work: subject.work.id),
-        offer: projection.offer.id,
-      ) {
-        ProviderUseAdmitted { permit: _ } => false
-        ProviderUseDenied { decision: _, cause: why } =>
-          length(placed.candidates) == 0
-            && !placed.retryable
-            && any(placed.notes, n => n.contains("provider-use admission refused this turn: ")
-              && n.contains(refusal_reason(c: why)))
-      }
-    }
-  }
-}
 
 // THE SUBJECT IS THE REQUEST'S. Its Work is serving_turn_work over the normalized request and the same
 // requirements select_supply ranks against, and its Demand is the caller's attempt.
