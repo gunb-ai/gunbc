@@ -52,7 +52,7 @@ import gunbc.spark.serving_subject {
 // WHICH OF THEM A GIVEN SERVING SUBJECT MAY THEREFORE USE.
 //
 // WHY THIS EXISTS, AND WHY IT IS A SAFETY REPAIR RATHER THAN A REFINEMENT.
-// gunbc.spark.serving_deployment_selection carried the fleet as `host_count: 8` and screened a
+// The retired Spark serving selector carried the fleet as `host_count: 8` and screened a
 // candidate with `hosts_consumed(c) <= fleet.host_count`. A scalar cannot tell eight free hosts from
 // eight of which five are spoken for -- and five of these eight WERE spoken for: the four hosts of the
 // one claimed serving group, and the host the GLM canary is placed on -- so the one screen whose whole
@@ -94,8 +94,9 @@ import gunbc.spark.serving_subject {
 // what lets the pair unit on group A see its own four hosts as available while everyone else sees
 // them as taken, and it is where a DECLARED cause enters: the operator's ruling that group B is
 // GLM's reserves srv9-srv12 for the canary's subject for SERVING, and for serving only. Its
-// projection is `spark_serving_admissible_hosts`, consumed by gunbc.spark.serving_deployment_selection
-// as the candidate domain and the fit. The scope difference is deliberate and is argued on the
+// projection is `spark_serving_admissible_hosts`, consumed by this module's live admission seam
+// (`admit_host_held_by_subject`) and by test.claim.spark.spark_host_commitment_witness_test.
+// The scope difference is deliberate and is argued on the
 // reservation row itself: a ruling about which model a cage serves says nothing about where a
 // container may be built, so widening it would refuse the build lanes for a reason the ruling never
 // gave.

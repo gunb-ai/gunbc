@@ -384,8 +384,8 @@ data glm53_radixark_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
 // 484 GiB across four GB10s and refused a launch that fits. What the tables DO cost the pool is their
 // page cache, and that is charged separately and honestly as resident_beyond_weights below -- not zero,
 // and not the whole table. The backbone rows are extdeps.deepseek.deepseek_v4_1_flash's own,
-// rounded up; the finer per-rank budget, Engram relief included, is
-// gunbc.spark.serving_deployment_selection candidate_component_budget.
+// rounded up; per-route resident memory standing lives in
+// gunbc.fabric.engram_materialization RouteResidentMemoryStanding.
 //
 // THE PARSERS AND TOKENIZER MODE ARE vLLM's RECIPE FOR THIS MODEL (extdeps.vllm.recipe_deepseek_v4_1_flash),
 // whose frontier rows name "DSV41-1 launch argv binds" them; the arm launch rendering from this row is

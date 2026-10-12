@@ -263,9 +263,8 @@ fn vllm_modality_argv(r: VllmModalityRequest) -> List<String> {
 // argument it sent, not the behaviour it got.
 // fp8_ds_mla is the DeepSeek MLA-specific fp8 KV layout; read back from the srv6 front door on
 // 2026-09-03 (gunbc.spark.vllm_observed) and the operator's pair tuple.
-// NVFP4 JOINED THE REQUEST VOCABULARY WHEN THE SELECTOR'S OWN KV VOCABULARY WAS DELETED
-// (gunbc.spark.serving_deployment_selection's KvLayoutPolicy carried a `KvFp4Layout` rendering "fp4",
-// which is not a value upstream accepts). The canonical spellings are upstream's: CacheDType at
+// NVFP4 JOINED THE REQUEST VOCABULARY WHEN A SELECTOR-SIDE KV SPELLING THAT RENDERED "fp4" WAS
+// DELETED (that rendering is not a value upstream accepts). The canonical spellings are upstream's: CacheDType at
 // revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/cache.py) lists both "nvfp4" and
 // "nvfp4_ds_mla". Whether a runtime, backend and device ADMIT either is a capability question with
 // its own refusals, never a property of the spelling.

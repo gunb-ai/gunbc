@@ -74,8 +74,7 @@ type EndpointIncarnationStanding
 // site identity, which belongs in the private fleet records and not in this repository.
 //
 // THE NEARBY NAME THAT IS NOT THIS ONE:
-// gunbc.spark.serving_deployment_selection serving_topology_region is a Pareto DecisionRegion -- a
-// region of a decision field, not a place a machine sits.
+// a Pareto DecisionRegion is a region of a decision field, not a place a machine sits.
 
 // SCOPED TO THE UNITS, NOT TO THE RACK. "Outside the rack" is a per-asset residence fact that
 // product.placement_supply RackResidence owns; what this row states is the SITE, which is the fact
