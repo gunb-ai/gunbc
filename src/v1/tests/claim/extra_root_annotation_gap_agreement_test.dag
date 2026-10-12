@@ -1,0 +1,68 @@
+module v1.tests.claim.extra_root_annotation_gap_agreement_test
+
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import std.types { String, List, Bool }
+import std.occurrence_identity { occurrence_id_allocator_initial }
+import std.source_annotation { KeyedAnnotationRow, keyed_annotation_rows_agree, source_annotation_graph_rows }
+import v1.compiler.tokenize { tokenize_artifact }
+import v1.compiler.parse { parse_with_table_in_occurrence_scope }
+import v1.compiler.annotation_bind { bind_annotations, keyed_annotation_rows }
+import v1.std.core { build_newline_index, empty_intern_table, pre_intern_tokens }
+
+// THE DISCRIMINATOR OF gunbc.recurring_failure_mode.extra_source_root_outside_workspace_refuses_annotations_as_unattached,
+// ENROLLED. The class: a file under an extra --source-root OUTSIDE the process workspace bound its
+// comments differently from the same bytes under an in-workspace root. This control binds the SAME
+// bytes twice, once under an in-workspace path spelling and once under an out-of-workspace one, and
+// requires the structural gap keys to agree; a negative arm shows the comparison can fail.
+//
+// THE ROUTE IS THE COMPILE FRONTEND'S OWN PER-FILE CALLS. v1.compiler.compile front_end_sources does,
+// per SourceFile: tokenize_artifact, build_newline_index, pre_intern_tokens into the shared table,
+// parse_with_table_in_occurrence_scope from occurrence_id_allocator_initial, then bind_annotations
+// on that parse's transport and extents. front_end_sources itself cannot be driven here because its
+// FrontendResult keeps the merged transport and the annotation graph but not the per-file
+// ParsedSourceExtents the structural keys are read from, so this control makes those same calls,
+// with the file path the only input that differs between the two arms.
+//
+// It imports v1.compiler.*, so it runs on no required path: direct execution is evidence it holds.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/extra_root_annotation_gap_agreement_test.dag
+
+// Comments above a data row, above a function, inside its body, and trailing a statement.
+data probe_source: String = "module gapprobe.main\n\n// above the data row\ndata gapprobe_value: Int = 7\n\n// above the function\nfn gapprobe_main() -> Int \{\n  // inside the body\n  let x = gapprobe_value // trailing\n  x\n\}\n"
+
+// The same bytes with ONE comment moved: `inside the body` now sits after the let, before `x`.
+data probe_source_moved: String = "module gapprobe.main\n\n// above the data row\ndata gapprobe_value: Int = 7\n\n// above the function\nfn gapprobe_main() -> Int \{\n  let x = gapprobe_value // trailing\n  // inside the body\n  x\n\}\n"
+
+data in_workspace_path: String = "_gapprobe_in/probe.dag"
+data out_of_workspace_path: String = "../_gapprobe_out/probe.dag"
+
+fn frontend_keyed_rows(path: String, source: String) -> List<KeyedAnnotationRow> {
+  let artifact = tokenize_artifact(source: source, file: path, env: dag_parse_environment)
+  let index = build_newline_index(file: path, source: source)
+  let parsed = parse_with_table_in_occurrence_scope(
+    tokens: artifact.tokens,
+    source_indices: map_insert(empty_map(), index.file, index),
+    intern_table: pre_intern_tokens(tokens: artifact.tokens, table: empty_intern_table()),
+    occurrence_allocator: occurrence_id_allocator_initial(),
+    env: dag_parse_environment
+  )
+  let graph = bind_annotations(transport: parsed.occurrence_transport, extents: parsed.source_extents, captures: artifact.annotations)
+  keyed_annotation_rows(transport: parsed.occurrence_transport, extents: parsed.source_extents, graph: graph)
+}
+
+// THE POSITIVE ARM: the same bytes bind the same structural gaps under both root spellings, and the
+// population is the probe's four comments, so an empty binding on both sides cannot pass.
+test fn in_and_out_of_workspace_roots_bind_identical_gaps_holds() -> Bool {
+  let inside = frontend_keyed_rows(path: in_workspace_path, source: probe_source)
+  let outside = frontend_keyed_rows(path: out_of_workspace_path, source: probe_source)
+  (inside |> count) == 4 && keyed_annotation_rows_agree(left: inside, right: outside)
+}
+
+// THE NEGATIVE ARM: the comparison discriminates. Moving one comment between two statements changes
+// that row's gap, and agreement must fail, across the same two root spellings.
+test fn a_moved_comment_disagrees_across_roots_holds() -> Bool {
+  let inside = frontend_keyed_rows(path: in_workspace_path, source: probe_source)
+  let moved = frontend_keyed_rows(path: out_of_workspace_path, source: probe_source_moved)
+  (moved |> count) == 4 && !keyed_annotation_rows_agree(left: inside, right: moved)
+}
