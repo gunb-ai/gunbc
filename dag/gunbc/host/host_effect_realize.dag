@@ -164,7 +164,7 @@ import gunbc.ci_deploy_access {
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import extdeps.tailscale.serve { TailscaleServeEndpoint }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
-import gunbc.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
+import gunbc.host_axis_caps { CapConvergeWithheld, CapConvergeAuthorized, cap_converge_decision }
 import gunbc.runner_host_deploy {
   runner_host_deploy_for,
   RunnerHostDeployFound,
@@ -197,6 +197,7 @@ import gunbc.live_deploy.emit {
   approval_broker_dark_install_script,
   microvm_controller_install_script,
 }
+import gunbc.live_deploy.apply_receipt { live_deploy_apply_withheld_reason }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -4485,43 +4486,52 @@ fn realize_live_deploy_apply_on_host(
     )
     let required_standing = transition_required_retiring(host: host)
     let admission = runner_host_deploy_for(host: host)
-    realize_shell_on_host(
-      script: retained_srvn(
-        body: live_deploy_apply_script_for_wet(
-          spec: spec,
-          plan: plan,
-          cap_authorization: match admission {
-            RunnerHostDeployRefused { host: rh, cause: rc } =>
-              CapConvergeWithheld {
-                cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
-              }
-            RunnerHostDeployUnmodeled { host: uh } =>
-              CapConvergeWithheld {
-                cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
-              }
-            RunnerHostDeployFound { deploy: _ } =>
-              match required_standing {
-                RetireesUnresolved { host: uh, cause: rc } =>
-                  CapConvergeWithheld {
-                    cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
-                  }
-                RetireesKnown { units: required } =>
-                  cap_converge_decision(
-                    host: host,
-                    required_retiring: required,
-                    observation: surplus_observation_from_census_and_retirement(
-                      census: census,
-                      standings: observe_retirement_standings(transport: transport, units: required),
-                    ),
-                  )
-              }
-          },
-        ),
-        reason: "live_deploy apply (unit install + start)",
-      ),
-      transport: transport,
-      intent: intent,
-    )
+    let cap_authorization = match admission {
+      RunnerHostDeployRefused { host: rh, cause: rc } =>
+        CapConvergeWithheld {
+          cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
+        }
+      RunnerHostDeployUnmodeled { host: uh } =>
+        CapConvergeWithheld {
+          cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
+        }
+      RunnerHostDeployFound { deploy: _ } =>
+        match required_standing {
+          RetireesUnresolved { host: uh, cause: rc } =>
+            CapConvergeWithheld {
+              cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
+            }
+          RetireesKnown { units: required } =>
+            cap_converge_decision(
+              host: host,
+              required_retiring: required,
+              observation: surplus_observation_from_census_and_retirement(
+                census: census,
+                standings: observe_retirement_standings(transport: transport, units: required),
+              ),
+            )
+        }
+    }
+    match cap_authorization {
+      CapConvergeWithheld { cause: why } =>
+        NotConverged {
+          reason: live_deploy_apply_withheld_reason(cause: why),
+          applied: intent,
+        }
+      CapConvergeAuthorized { host: _, authorized_retiring: _, target_units: _, desired: _ } =>
+        realize_shell_on_host(
+          script: retained_srvn(
+            body: live_deploy_apply_script_for_wet(
+              spec: spec,
+              plan: plan,
+              cap_authorization: cap_authorization,
+            ),
+            reason: "live_deploy apply (unit install + start)",
+          ),
+          transport: transport,
+          intent: intent,
+        )
+    }
   }
 }
 

@@ -185,6 +185,19 @@ type LiveDeployApplyOutcome
   = LiveDeployApplyConverged
   | LiveDeployApplyNotConverged { reason: String }
 
+// THE WITHHOLD SEAM FOR APPLY_RECEIPT (sibling v4). Schema stays v3: a withhold is
+// LiveDeployApplyNotConverged whose reason is minted here, so a later schema arm can rebind
+// the same prefix without a second cause string in the emitter.
+data live_deploy_apply_withheld_reason_prefix: String = "memory-cap apply withheld: "
+
+fn live_deploy_apply_withheld_reason(cause: String) -> String {
+  concat(live_deploy_apply_withheld_reason_prefix, cause)
+}
+
+fn live_deploy_apply_withheld_outcome(cause: String) -> LiveDeployApplyOutcome {
+  LiveDeployApplyNotConverged { reason: live_deploy_apply_withheld_reason(cause: cause) }
+}
+
 type LiveDeployReadinessOutcome
   = LiveDeployReadinessObserved { revision: String, surface: String }
   | LiveDeployReadinessRefused { detail: String }

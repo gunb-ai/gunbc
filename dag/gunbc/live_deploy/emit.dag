@@ -212,11 +212,13 @@ import gunbc.host_layout {
   publication_refused_dir,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
+import product.host_identity { HostIdentity }
 import gunbc.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
   CapAuthorizedForThisHost,
   CapConvergeDecision,
   CapConvergeWithheld,
+  CapMember,
   cap_authorization_for_host,
   deploy_memory_cap_apply_script_from_authorization,
   deploy_memory_cap_script_author_precedes_shadow_revert,
@@ -1912,6 +1914,70 @@ fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> 
   }
 }
 
+// THE EMITTED ORDER DERIVES FROM THIS PARTITION. Every apply fragment is Decide or Mutate.
+// compose_host_script concatenates every Decide, then every Mutate, and drops the Mutate list
+// when any Decide is Withheld or Refused. A future withholdable step cannot land after a mutation
+// by list position: it is a Decide, so it is composed before every Mutate, or it withholds and
+// there is no Mutate. Hiding a withhold inside a Mutate command is a classification error, not an
+// ordering choice.
+type HostScriptStanding
+  = HostScriptProceed
+  | HostScriptWithheld { cause: String }
+  | HostScriptRefused { cause: String }
+
+type HostScriptFragment
+  = Decide { standing: HostScriptStanding, steps: List<PipelineStep> }
+  | Mutate { steps: List<PipelineStep> }
+
+fn host_script_standing_join(left: HostScriptStanding, right: HostScriptStanding) -> HostScriptStanding {
+  match left {
+    HostScriptProceed => right
+    HostScriptWithheld { cause: c } => HostScriptWithheld { cause: c }
+    HostScriptRefused { cause: c } => HostScriptRefused { cause: c }
+  }
+}
+
+fn host_script_fragment_standing(f: HostScriptFragment) -> HostScriptStanding {
+  match f {
+    Decide { standing: s, steps: _ } => s
+    Mutate { steps: _ } => HostScriptProceed
+  }
+}
+
+fn compose_host_script_standing(fragments: List<HostScriptFragment>) -> HostScriptStanding {
+  fold(fragments, init: HostScriptProceed, f: (acc, frag) =>
+    host_script_standing_join(left: acc, right: host_script_fragment_standing(f: frag)))
+}
+
+fn compose_host_script_decide_steps(fragments: List<HostScriptFragment>) -> List<PipelineStep> {
+  flat_map(fragments, f => match f {
+    Decide { standing: _, steps: s } => s
+    Mutate { steps: _ } => []
+  })
+}
+
+fn compose_host_script_mutate_steps(fragments: List<HostScriptFragment>) -> List<PipelineStep> {
+  match compose_host_script_standing(fragments: fragments) {
+    HostScriptProceed =>
+      flat_map(fragments, f => match f {
+        Mutate { steps: s } => s
+        Decide { standing: _, steps: _ } => []
+      })
+    HostScriptWithheld { cause: _ } => []
+    HostScriptRefused { cause: _ } => []
+  }
+}
+
+fn compose_host_script(fragments: List<HostScriptFragment>) -> Pipeline {
+  Pipeline {
+    steps: concat(
+      compose_host_script_decide_steps(fragments: fragments),
+      compose_host_script_mutate_steps(fragments: fragments),
+    ),
+    on_failure: FailFast,
+  }
+}
+
 // THE CAP APPLY CONSUMES RETIREMENT AUTHORIZATION, AND WITHOUT ONE IT REFUSES.
 //
 // THIS IS THE PRODUCTION WRITER. `gunbc.host_axis_caps` authors the per-slot drop-in content and
@@ -1929,38 +1995,66 @@ fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> 
 // IT REFUSES BOTH HALVES. The withheld arm emits neither the authoring script NOR the per-unit
 // shadow reverts that follow it, because a revert is a change to the same subject and authorising
 // half a transaction is how the ordering hazard returns under a different name.
-// THE WITHHELD LINE IS A REPORT, NOT A FAILURE: the same __GUNBC_CONVERGE_WITHHELD__ spelling the
-// fleet plan's slot teardown uses (gunbc.runner_slot_provision slot_removal_withheld_line), so a
-// reader of the apply transcript sees one vocabulary for "this member was not performed and why".
-// Single quotes in the cause are dropped rather than escaped: the cause is prose for the operator,
-// and a quote inside a single-quoted echo would end the word and run the rest.
-fn memory_cap_withheld_line(host: HostIdentity, cause: String) -> String {
+// A WITHHOLD OR REFUSAL IS NOT A CONTINUING ECHO. bright-moth-475 ran the echo arm under set -e,
+// then mutated /opt/gunbc/bin, the tree and the unit file, then refused at the door. The marker is
+// not valid shell, so the decide fragment cannot be followed by a mutate fragment that still runs.
+// Withheld and refused stay distinct causes (gunbc.host_axis_caps cap_authorization_for_host);
+// compose_host_script drops every Mutate when either standing is not Proceed.
+fn memory_cap_withheld_refuse_command(host: HostIdentity, cause: String) -> String {
   join([
-    "echo '__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: ",
+    "__GUNBC_DEPLOY_REFUSED__ memory-cap apply WITHHELD: ",
     cause.replace(from: "'", to: ""),
-    "; existing caps left exactly as observed host=",
+    "; no host mutation emitted host=",
     host as String,
-    "' >&2",
   ], "")
 }
 
-fn deploy_memory_cap_apply_steps(
+fn memory_cap_host_refused_command(host: HostIdentity, cause: String) -> String {
+  concat(
+    concat("__GUNBC_DEPLOY_REFUSED__ memory-cap apply not authorized for this host: ", cause),
+    concat(" host=", host as String),
+  )
+}
+
+fn memory_cap_ordering_refused_command(host: HostIdentity) -> String {
+  concat("__GUNBC_DEPLOY_REFUSED__ memory-cap apply ordering gate failed host=", host as String)
+}
+
+fn deploy_memory_cap_authorized_mutate_steps(
+  spec: DeploymentSpec,
+  members: List<CapMember>,
+  units: List<NonEmptyStr>,
+) -> List<PipelineStep> {
+  let host = spec.target.host.identity
+  let script = deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
+  if host_axis_caps_author_before_revert_enforced
+    && deploy_memory_cap_script_author_precedes_shadow_revert(
+      script: script,
+      members: members,
+      units: units,
+    ) {
+    [deploy_raw(command: script)]
+  } else {
+    []
+  }
+}
+
+fn deploy_memory_cap_decide_fragment(
   spec: DeploymentSpec,
   authorization: CapConvergeDecision,
-) -> List<PipelineStep> {
+) -> HostScriptFragment {
   let host = spec.target.host.identity
   match cap_authorization_for_host(d: authorization, host: host) {
     CapAuthorizationWithheld { cause: why } =>
-      [deploy_raw(command: memory_cap_withheld_line(host: host, cause: why))]
+      Decide {
+        standing: HostScriptWithheld { cause: why },
+        steps: [deploy_raw(command: memory_cap_withheld_refuse_command(host: host, cause: why))],
+      }
     CapAuthorizationRefused { cause: why } =>
-      [
-        deploy_raw(
-          command: concat(
-            concat("__GUNBC_DEPLOY_REFUSED__ memory-cap apply not authorized for this host: ", why),
-            concat(" host=", host as String),
-          ),
-        ),
-      ]
+      Decide {
+        standing: HostScriptRefused { cause: why },
+        steps: [deploy_raw(command: memory_cap_host_refused_command(host: host, cause: why))],
+      }
     CapAuthorizedForThisHost { desired: members, authorized_retiring: _, target_units: units } => {
       let script = deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
       if host_axis_caps_author_before_revert_enforced
@@ -1969,18 +2063,40 @@ fn deploy_memory_cap_apply_steps(
           members: members,
           units: units,
         ) {
-        [deploy_raw(command: script)]
+        Decide { standing: HostScriptProceed, steps: [] }
       } else {
-        [
-          deploy_raw(
-            command: concat(
-              "__GUNBC_DEPLOY_REFUSED__ memory-cap apply ordering gate failed host=",
-              host as String,
-            ),
-          ),
-        ]
+        Decide {
+          standing: HostScriptRefused { cause: "memory-cap apply ordering gate failed" },
+          steps: [deploy_raw(command: memory_cap_ordering_refused_command(host: host))],
+        }
       }
     }
+  }
+}
+
+fn deploy_memory_cap_mutate_fragment(
+  spec: DeploymentSpec,
+  authorization: CapConvergeDecision,
+) -> HostScriptFragment {
+  let host = spec.target.host.identity
+  match cap_authorization_for_host(d: authorization, host: host) {
+    CapAuthorizationWithheld { cause: _ } => Mutate { steps: [] }
+    CapAuthorizationRefused { cause: _ } => Mutate { steps: [] }
+    CapAuthorizedForThisHost { desired: members, authorized_retiring: _, target_units: units } =>
+      Mutate { steps: deploy_memory_cap_authorized_mutate_steps(spec: spec, members: members, units: units) }
+  }
+}
+
+// THE MUTATE HALF ONLY. Withheld and refused write nothing here; their typed standing lives on
+// deploy_memory_cap_decide_fragment. Claims that this producer emits cap bytes still call it with
+// a matching authorization.
+fn deploy_memory_cap_apply_steps(
+  spec: DeploymentSpec,
+  authorization: CapConvergeDecision,
+) -> List<PipelineStep> {
+  match deploy_memory_cap_mutate_fragment(spec: spec, authorization: authorization) {
+    Mutate { steps: s } => s
+    Decide { standing: _, steps: _ } => []
   }
 }
 
@@ -3529,18 +3645,60 @@ fn deploy_apply_receipt_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "apply"))]
 }
 
-// THE APPLY FRAME: what the program carries before the sudoers preamble. A named producer so a
-// claim about what follows the frame derives the offset from this list rather than counting it.
-fn deploy_apply_frame_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+// THE APPLY FRAME: decide half is comments and set -e (no host effect). Mutate half is the
+// stage directory. compose_host_script, not this concat, is what the apply emits; this concat
+// remains so a claim can still name the frame's length as an offset when every Decide Proceeds.
+fn deploy_apply_frame_decide_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
     deploy_raw(command: deploy_shell_strict_options_command),
     Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
     Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
     Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
     Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation." },
+  ]
+}
+
+fn deploy_apply_frame_mutate_steps() -> List<PipelineStep> {
+  [
     deploy_stage_directory_let_step(),
     deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
   ]
+}
+
+fn deploy_apply_frame_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  concat(deploy_apply_frame_decide_steps(spec: spec), deploy_apply_frame_mutate_steps())
+}
+
+fn apply_intent_fragments(
+  spec: DeploymentSpec,
+  effects: List<MemberEffect<DeploymentStep>>,
+  access: DeployAccess,
+  plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
+  oidc_now: Second?,
+) -> List<HostScriptFragment> {
+  let decide = [
+    Decide { standing: HostScriptProceed, steps: deploy_apply_frame_decide_steps(spec: spec) },
+    deploy_memory_cap_decide_fragment(spec: spec, authorization: cap_authorization),
+  ]
+  match compose_host_script_standing(fragments: decide) {
+    HostScriptWithheld { cause: _ } => decide
+    HostScriptRefused { cause: _ } => decide
+    HostScriptProceed => concat(
+      decide,
+      [
+        Mutate { steps: deploy_apply_frame_mutate_steps() },
+        Mutate { steps: deploy_apply_preamble_steps(access: access, spec: spec) },
+        Mutate { steps: owned_directory_apply_steps(spec: spec, plan: plan) },
+        deploy_memory_cap_mutate_fragment(spec: spec, authorization: cap_authorization),
+        Mutate {
+          steps: flat_map(spec.steps, step =>
+            apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
+        },
+        Mutate { steps: deploy_apply_receipt_steps(spec: spec) },
+      ],
+    )
+  }
 }
 
 fn apply_intent_from_effects(
@@ -3551,25 +3709,14 @@ fn apply_intent_from_effects(
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
 ) -> Pipeline {
-  Pipeline {
-    steps: concat(
-      deploy_apply_frame_steps(spec: spec),
-      concat(
-        concat(
-          deploy_apply_preamble_steps(access: access, spec: spec),
-          owned_directory_apply_steps(spec: spec, plan: plan),
-        ),
-        concat(
-          deploy_memory_cap_apply_steps(spec: spec, authorization: cap_authorization),
-          concat(
-            flat_map(spec.steps, step => apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
-            deploy_apply_receipt_steps(spec: spec)
-          )
-        )
-      )
-    ),
-    on_failure: FailFast
-  }
+  compose_host_script(fragments: apply_intent_fragments(
+    spec: spec,
+    effects: effects,
+    access: access,
+    plan: plan,
+    cap_authorization: cap_authorization,
+    oidc_now: oidc_now,
+  ))
 }
 
 // THE PARTITION THAT PROTECTED SIBLING TEARDOWNS IS DELETED BECAUSE ITS SUBJECT IS GONE. review

@@ -424,13 +424,12 @@ type CapAuthorizationForHost
   | CapAuthorizationRefused { cause: String }
 
 // WITHHELD AND REFUSED ARE TWO ANSWERS AND THE WRITER MUST NOT COLLAPSE THEM (operator ruling,
-// 2026-09-17). Withheld is the decision's own arm: the retirement evidence is not yet there, and the
-// promise it carries is "existing caps are left exactly as observed" -- a zero-mutation member, the
-// same standing the fleet plan reports for a slot teardown it will not perform. Refused is a
-// decision that cannot be spent here at all: it names another host. Rendering both as the poison
-// that aborts the whole apply turned the deploy of every unrelated member (unit install, restart)
-// into a hostage of the slot-retirement lane, which was the earliest unjustified boundary in the
-// chain that left srv1 serving a stale release.
+// 2026-09-17). Withheld is the retirement evidence is not yet there; Refused names another host.
+// THE 2026-09-17 CONTINUATION (apply every other member after a cap withhold) IS RETRACTED:
+// bright-moth-475 withheld caps, then installed the candidate binary/tree/unit, then refused at
+// the door -- DESIGN §5 refusal after its effects. gunbc.live_deploy.emit compose_host_script now
+// drops every Mutate for either standing. The types stay distinct so a receipt can still name
+// withhold versus wrong-host refuse.
 
 fn cap_authorization_for_host(
   d: CapConvergeDecision,

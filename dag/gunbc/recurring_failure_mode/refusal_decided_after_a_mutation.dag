@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.refusal_decided_after_a_mutation
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data refusal_decided_after_a_mutation: RecurringFailureMode = RecurringFailureMode {
+  identity: "refusal_decided_after_a_mutation" as NonEmptyStr,
+
+  receipts: [
+    "**a withholdable decision that runs after a host mutation is a refusal after its effects** (INVALID STATE: a Decide that may withhold is sequenced after a Mutate, so the host already holds the candidate binary, tree or unit when the standing becomes Withheld or Refused. RECOGNITION RULE: the emit concatenates mutation commands, then a withhold/refuse that fail-fast or echo-continues; a restart would start the new bytes under the still-loaded old claim. DISTINCT FROM [[enforcement_gate_positioned_after_the_effect_it_guards]]: there the verdict is computed before the effect and not branched on; here the verdict is computed, then the effect runs, then a later step withholds.)",
+    "FOUND AT (bright-moth-475, srv1 PRODUCTION apply from clean main c22acb7, live_deploy_apply_prod_role_operator_local_wet; pre-apply probe InPlace global_unobservable=[srv2]). Exit 1. The host script's memory-cap step WITHHELD with 'surplus slots have not retired: actions-runner@srv1-12.service' (gunbc.host_axis_caps CapConvergeWithheld via cap_converge_decision_over_targets). Door cutover refused; srv1-live still served 19b12d88. By then /opt/gunbc/bin/gunbc was the c22acb7 binary, /opt/gunbc/gunbc was converged to c22acb7, and the unit file named --release-revision c22acb7 with NeedDaemonReload=yes, while the running process was the old, deleted binary. Cause: memory_cap_withheld_line was an echo that did not fail, after sudoers/owned-directory mutation and before spec.steps, and compose was an untyped concat.",
+    "RUNG FOUND AT: mitigatable (the harm occurred; fail-fast did not see an echo). CURRENT: mechanically preventable — gunbc.live_deploy.emit compose_host_script concatenates every Decide before every Mutate and returns an empty Mutate list when standing is Withheld or Refused; apply_intent_fragments does not construct Mutate fragments once a Decide has withheld; realize_live_deploy_apply_on_host returns NotConverged with live_deploy_apply_withheld_reason and does not realize the mutating shell. CEILING: structurally guaranteed once a Mutate fragment cannot be authored after a withholdable Decide except through compose_host_script (the partition type is the wall; a command hidden inside Mutate remains a classification error). NEXT-RUNG TRIGGER, a capability not an artifact: an emit claim that a Decide fragment listed after a Mutate still precedes it in the emitted script, and that Withheld yields zero mutation steps, enrolled on the production apply_intent_from_effects route — sufficient to go red on the echo-and-continue compositor of bright-moth-475.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "compose_host_script"),
+    decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "apply_intent_from_effects"),
+    decl_ref(module_path: "gunbc.host_axis_caps", decl_name: "cap_converge_decision_over_targets"),
+  ],
+}
