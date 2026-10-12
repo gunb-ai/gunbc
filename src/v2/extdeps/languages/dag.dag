@@ -1816,7 +1816,10 @@ fn dag_grammar_record_field_init_list_helper() -> GrammarExpr {
     element: dag_grammar_comma_list_expr(
       item: dag_grammar_choice(
         left: dag_grammar_nonterminal(production: ^dag_production_field_init),
-        right: dag_grammar_nonterminal(production: ^dag_production_field_init_pun)
+        right: dag_grammar_sequence(
+          left: grammar_expr_not_predicate(element: dag_grammar_arg_named_head_expr()),
+          right: dag_grammar_nonterminal(production: ^dag_production_field_init_pun)
+        )
       )
     )
   )
@@ -2114,17 +2117,14 @@ fn dag_grammar_field_init_expr() -> GrammarExpr {
 }
 
 // THE PUN `s` IS THE FIELD `s: s`. Its name is the field's label and the reference that supplies the
-// value, so the pun is admitted only where no named head reads (a not-predicate over `name :`, the same
-// disjointness proof the positional argument uses) and where the name is not a keyword that ends the field
+// value, so the list helper admits the pun only where no named head reads (a not-predicate over `name :` heading
+// the pun alternative AT THE CHOICE SITE, where the overlap proof reads it, as for the positional argument) and where the name is not a keyword that ends the field
 // (`R { true }` would name a value no reference can name, so it refuses like every keyword;
 // dag_grammar_field_pattern_binder_guard, shared with the field pattern's pun).
 fn dag_grammar_field_init_pun_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: grammar_expr_not_predicate(element: dag_grammar_arg_named_head_expr()),
-    right: dag_grammar_sequence(
-      left: dag_grammar_field_pattern_binder_guard(admit_bool_literals: false),
-      right: dag_grammar_binding_name_terminal()
-    )
+    left: dag_grammar_field_pattern_binder_guard(admit_bool_literals: false),
+    right: dag_grammar_binding_name_terminal()
   )
 }
 
