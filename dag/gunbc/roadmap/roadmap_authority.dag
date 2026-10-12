@@ -2985,7 +2985,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A key hit serves only after the canonical preimage compares equal; a SHA-only compiler identity refuses cross-push reuse.",
           out_of_scope: "Cross-run hit protocol (demand-m1c).",
           handback: "The keying relations landed with their controls."
-        ), on: "2026-09-30", note: "Not yet centered: design cut per keying-relation-design.")),
+        ), on: "2026-10-12", note: "Keying cut landed with compute work switched (gunbc#13756): identity components carried whole or family-tagged, strict persistent admission, SHA-256 store address, request and address minted together. STILL OPEN, so this node is not accepted: no producer derives a compiler identity from causal sources (the red control's cross-push refusal has no positive counterpart), and the two-parses qualification waits on the parser exposing its allocator (std.materialization_provider two_parses_occurrence_qualification_frontier).")),
       parent: in_project(project: "demand-engine", contribution: "M1.b gives every demand, evaluation and result a key, so later milestones reuse results by identity rather than by coincidence."),
     ),
     roadmap_node(
@@ -2995,13 +2995,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Cross-run hits for the native compiler artifact",
-          boundary: "M1.c: hit protocol for NativeCompilerArtifactRequest (#12596 open). Absorbs typed-store-cold-warm-measurement and the v1-materialization-kernel residue.",
+          boundary: "M1.c: hit protocol for NativeCompilerArtifactRequest. Absorbs typed-store-cold-warm-measurement and the v1-materialization-kernel residue.",
           displaced_cost: "Every run rebuilds the native compiler artifact from scratch.",
-          first_slice: "Land #12596.",
+          first_slice: "Carry real digests in v2.compiler.self_host.generation PreMaterializationIdentity: its six axes and their fold are structural fingerprints, so std.materialization_provider refuses the native compiler artifact a persistent address by name.",
           red_control: "A hit whose content fails verification refuses and is never served.",
           out_of_scope: "Dependency derivation (demand-m2).",
           handback: "The hit protocol landed with its cold/warm receipt."
-        ), on: "2026-09-30", note: "Not yet centered: #12596 in flight.")),
+        ), on: "2026-10-12", note: "Not yet centered. gunbc#12596 closed unmerged on 2026-10-06 and served no persistent hit. Since gunbc#13756 the request has no persistent address until the generation identity is migrated, which is this node's first slice.")),
       parent: in_project(project: "demand-engine", contribution: "M1.c makes the native compiler artifact reusable across runs, the first cross-run hit."),
     ),
     roadmap_node(
@@ -4396,7 +4396,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "typed-store-cold-warm-measurement",
       owner: "v1-performance",
       carriers: carrier(path: "docs/plans/typed-module-cross-run-materialization.md"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
         headline: "Measure the host-persisted typed-module store on the real route, or delete it",
         boundary: "One cold/warm receipt from the two sibling processes the provider row names -- the nominal witnesses fold and the generated-artifact drift gate, one job, one built binary. Report end-to-end wall, peak RSS, and the fold's subject digest, which must be EQUAL between armed and unarmed: a store that changes a verdict is a defect, not a saving. Read hits, misses, rejections, refusals, throughput and LIVE OCCUPANCY off the [typed-store-persist] line the floor receipt already emits.",
         displaced_cost: "The store is armed by nothing today, so it displaces nothing until this runs. Until then the tier is implemented and unmeasured, and the design's projected figures (8.3 min -> ~1 min preparation, 32 -> ~20 min per push) are withdrawn rather than carried, because they do not follow from the key the design proposed.",
@@ -4404,7 +4404,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An unarmed and an armed run of the same commit must print the SAME subject digest; a difference falsifies the store rather than the measurement. A second armed run over a warm store must show hits, or the store is not being reached and the whole tier is inert.",
         out_of_scope: "No widening of required_gate_prefixes, no seeding workflow, no scheduled verification job, and no parallelism work.",
         handback: "The cold/warm receipt with both wall times, both peak RSS figures, the two digests, and the decision it implies: keep and arm, or delete the tier."
-      )),
+      ), on: "2026-10-12", note: "The tier this row measures was DELETED on 2026-10-03 after measurement (gunbc.floor.floor_materialization records the receipt), so GUNBC_TYPED_STORE_PERSIST no longer exists to arm and the first slice cannot be run as written. The row stands until its steward retires it or re-aims it at the general materialization store; demand-m1c already absorbs it.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
     ),
