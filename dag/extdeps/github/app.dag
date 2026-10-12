@@ -1514,7 +1514,6 @@ service github.AppInstallations {
   operation ListInstallations {
     requires Network
     input {
-      auth_token: Secret
       per_page: Int = default_per_page
     }
     output {
