@@ -111,10 +111,6 @@ data nfr_dissolve_release_identity_absent_split: DissolutionCondition = unbound_
 
 data nfr_dissolve_class_b_binding_projection: DissolutionCondition = unbound_dissolution(description: "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows")
 
-data nfr_reason_pool_independence_projection: String = "ReferenceDerivedDependencyProjection pool-independence comparison harness (match on Ready vs BindingRefused vs FileRefused with off-variant wildcard arms returning RefusalOutcomeMismatch or false) landed with N3-C #7996; the outer match partitions the clause-(e) carrier for baseline-vs-perturbed equality, not business policy; declared at landing so the ratchet re-arms"
-
-data nfr_dissolve_pool_independence_projection: DissolutionCondition = unbound_dissolution(description: "ReferenceDerivedDependencyProjection carrier equality becomes derived from inhabitance (total match over Ready, BindingRefused, and FileRefused with named refusal arms, or a single std projection-equality carrier) and the wildcard arms delete with their rows")
-
 
 
 data nfr_reason_collision_population_predicate: String = "subset predicate over CollisionPopulation (PoolMeasured answers true; the off-variant wildcard answers false for WholeTreeUpperBound, the coproduct's only other arm) — the same shape as the resolve-realization predicate rows; landed with the emit-summary-map consumer partition (#8850, 2026-08-22) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
@@ -190,16 +186,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/namespace/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
     reason: nfr_reason_binding_outcome_resolution_wildcard,
     dissolution: nfr_dissolve_binding_outcome_resolution_wildcard,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/namespace/namespace_pool_independence.dag::assess_file_dependencies_only_equality" },
-    reason: nfr_reason_pool_independence_projection,
-    dissolution: nfr_dissolve_pool_independence_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/namespace/namespace_pool_independence.dag::assess_pool_independent_projection_equality" },
-    reason: nfr_reason_pool_independence_projection,
-    dissolution: nfr_dissolve_pool_independence_projection,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_dispatch_actuator.dag::live_session_row_with_process" },
