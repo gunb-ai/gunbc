@@ -7369,7 +7369,9 @@ fn infer_match_arm_formal_refused(frame: InferFrame, at: Node) -> InferFrame {
 
 // The scrutinee's arguments are not known (its type is not derived, or not a declared coproduct): the arm
 // is read against the arm's own declared coproduct with NO instances, so a payload binder that is a free
-// formal refuses and a concrete one is inherited untouched.
+// formal refuses and a concrete one is typed from the RESOLVED declaration with nothing to instantiate --
+// the same row a construction of the arm is judged at. Resolve no longer writes a concrete binder's type
+// (v2.compiler.resolve resolve_pattern_binder_declared_type), so this row is its only type.
 fn infer_match_arm_unpaid_frame(frame: InferFrame, arm: Node, resolved: ResolvedTree) -> InferFrame {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => infer_frame_inherited(frame: frame)
@@ -7388,7 +7390,12 @@ fn infer_match_arm_unpaid_frame(frame: InferFrame, arm: Node, resolved: Resolved
                     owed: symbol_index_declared_type_params_at(index: resolved.resolved_declarations, qualified_path: qualified_name_init(qn: arm_path))
                   ) {
                     MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
-                    MatchArmBinders { rows: _ } => infer_frame_inherited(frame: frame)
+                    MatchArmBinders { rows: rows } =>
+                      InferFrame {
+                        instances: frame.instances,
+                        binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
+                        entering: InferFrameEnteredPlain
+                      }
                   }
                 TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
                 ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
