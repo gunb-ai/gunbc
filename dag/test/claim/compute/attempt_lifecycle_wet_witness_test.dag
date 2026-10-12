@@ -1,7 +1,7 @@
 module test.claim.compute.attempt_lifecycle_wet_witness
 
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
 import std.types { Bool, Int, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
 import std.measure { kibibyte, kibibyte_count }
@@ -513,12 +513,15 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
 // against a scratch store. A build record committed through compute_store_commit is asked for again
 // by compute_provide_leaf, which must ATTACH to it -- the stored identity and document, the plain
 // host record of the first read -- and must not have entered production. Production's first act is
-// compute_ensure_dir on the work directory of this request's identity, so a create-new write beneath
-// that directory succeeds only if production was entered; it must fail.
+// compute_ensure_dir on the work directory of this request's identity, so that directory is read
+// before and after the call and must be POSITIVELY ABSENT both times: an ancestor listed without the
+// next component in it. A failed write was the earlier probe, and a leftover probe file or a
+// permission refusal failed it the same way (side-chat review at d660cb13); an unreadable ancestor
+// or a directory already present before the call now fails the claim instead of passing it.
 //
 // RED against a leaf that routes a served read to compute_provide_produce: where the compute root
 // cannot be made the answer is a refusal and not an attachment, and where it can the work directory
-// exists and the probe write lands. No absent request is asked here: on a host whose compute root
+// exists and the probe reads it present. No absent request is asked here: on a host whose compute root
 // exists that would reserve a seat and launch a real unit.
 //
 // WHAT THIS DOES NOT EXECUTE: the producer. The record is committed by the production commit function
@@ -564,14 +567,54 @@ fn reuse_commit_detail(root_path: String) -> String {
   }
 }
 
+type ReusePathReading
+  = ReusePathAbsent
+  | ReusePathPresent
+  | ReusePathUnreadable { at: String }
+
+// Walks the path from "/" down: each listed prefix either names the next component (descend) or
+// does not (absent). A prefix that cannot be listed is unreadable, never absent.
+type ReusePathWalk
+  = ReuseWalkListing { at: String }
+  | ReuseWalkDone { reading: ReusePathReading }
+
+fn reuse_path_step(walk: ReusePathWalk, part: String) -> ReusePathWalk {
+  match walk {
+    ReuseWalkDone { reading } => ReuseWalkDone { reading: reading }
+    ReuseWalkListing { at } => {
+      let l = Filesystem.List(path: at)
+      let next = if at == "/" { join(["/", part], "") } else { join([at, "/", part], "") }
+      if !l.success { ReuseWalkDone { reading: ReusePathUnreadable { at: at } } }
+      else if filesystem_listing_names_entry(listing: l.entries, name: part) { ReuseWalkListing { at: next } }
+      else { ReuseWalkDone { reading: ReusePathAbsent } }
+    }
+  }
+}
+
+fn reuse_path_reading(path: String) -> ReusePathReading {
+  match fold(path.split(sep: "/").filter(c => c != ""), init: ReuseWalkListing { at: "/" }, f: (acc, part) => reuse_path_step(walk: acc, part: part)) {
+    ReuseWalkDone { reading } => reading
+    ReuseWalkListing { at: _ } => ReusePathPresent
+  }
+}
+
+fn reuse_path_absent(r: ReusePathReading) -> Bool {
+  match r {
+    ReusePathAbsent => true
+    ReusePathPresent => false
+    ReusePathUnreadable { at: _ } => false
+  }
+}
+
 fn reuse_served_without_production(root_path: String) -> Bool {
   let instance = srv1_live_dashboard_instance()
   let subject = ExactTree { tree: reuse_tree() }
   let toolchain = fixture_toolchain(rustc: "rustc fixture")
-  let provided = compute_provide_leaf(store: reuse_store(root_path: root_path), instance: instance, commit: "fixture-commit", subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
   let work_dir = compute_layout(instance: instance, identity_hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: toolchain)).work_dir
-  let production_entered = Filesystem.WriteCreateNew(path: join([work_dir, "/reuse-probe"], ""), content: "x").success
-  !production_entered
+  let before = reuse_path_reading(path: work_dir)
+  let provided = compute_provide_leaf(store: reuse_store(root_path: root_path), instance: instance, commit: "fixture-commit", subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
+  let after = reuse_path_reading(path: work_dir)
+  reuse_path_absent(r: before) && reuse_path_absent(r: after)
     && (match provided {
       ProvideAttached { identity, ending, document, host_record } => identity == "fixture-identity" && ending == "succeeded" && string_contains(s: document, pattern: "fixture-identity") && (match host_record { HostRecordWritten => true  _ => false })
       ProvideFresh { outcome: _, document: _, host_record: _ } => false
