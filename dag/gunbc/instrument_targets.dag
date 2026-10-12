@@ -73,7 +73,7 @@ import gunbc.target_invocation {
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
 import std.measure { Millisecond, millisecond, millisecond_count }
-import std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 
 // THE REAL INSTRUMENT TARGETS, AND THEY ARE PRODUCTION ROWS RATHER THAN FIXTURE EXAMPLES.
 //
@@ -877,9 +877,9 @@ fn instrument_bindings() -> List<TargetBinding> {
 }
 
 fn native_claim_child_deadline_for_entry(entry: String) -> Optional<Millisecond> {
-  fold(instrument_bindings(), init: Absent, f: (acc, b) =>
+  fold(instrument_bindings(), init: optional_absent(), f: (acc, b) =>
     match acc {
-      Present { value: d } => Present { value: d }
+      Present { value: d } => optional_present(value: d)
       Absent => native_claim_deadline_if_entry(producer: b.producer, want: entry)
     }
   )
@@ -897,11 +897,11 @@ fn native_claim_named_deadline_count_agrees(entry: String, n: Int) -> Bool {
 // arithmetic of its own. Absent or non-positive is NativeClaimDeadlineUngrounded.
 fn native_claim_child_deadline_count(entry: String) -> Optional<Int> {
   match native_claim_child_deadline_for_entry(entry: entry) {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: d } =>
       match native_claim_named_deadline_count_agrees(entry: entry, n: millisecond_count(m: d)) {
-        true => Present { value: millisecond_count(m: d) }
-        false => Absent
+        true => optional_present(value: millisecond_count(m: d))
+        false => optional_absent()
       }
   }
 }
