@@ -37,9 +37,11 @@ import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
   FlexScreenedCandidate, FlexBidAdmission, FlexBidAdmitted, FlexBidRefused, FlexNoAcquisitionRemaining,
   FlexRateCapBelowMin, FlexRateCapOccupied, FlexExistingBidWouldRise, FlexMoneyRefused,
-  FlexSupplyNotSelected, FlexOnDemandFractionExceeded, FlexCurrencyMismatch,
-  FlexDecimalConversionRefused, FlexCandidateMachineMismatch, FlexNewAcquisition,
-  FlexExistingAcquisition, AcquisitionActive,
+  FlexSupplyNotSelected, FlexOnDemandReferenceUnobserved, FlexOnDemandRelativeCeilingExceeded,
+  FlexCurrencyMismatch, FlexDecimalConversionRefused, FlexCandidateMachineMismatch,
+  FlexNewAcquisition, FlexExistingAcquisition, AcquisitionActive,
+  FlexOnDemandReference, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
+  FlexOnDemandReferenceMissing,
   flex_floor_buffer, flex_bid_admission, flex_buffered_min,
 }
 import extdeps.cloud.vast_ai {
@@ -150,15 +152,6 @@ fn t_policy_eur(cap_micros: Nat) -> FlexPolicy {
   }
 }
 
-fn t_policy_no_on_demand(cap_micros: Nat) -> FlexPolicy {
-  FlexPolicy {
-    fleet_rate_cap: usd_hour(micros: cap_micros),
-    floor_buffer: flex_floor_buffer,
-    on_demand_fraction: NonzeroNatFraction { num: 0, denom_predecessor: 0 },
-    acquisition_horizon: second(count: 3600),
-  }
-}
-
 fn t_account(ceiling: Nat) -> MoneyAccount {
   MoneyAccount {
     account: "flex-fleet",
@@ -172,7 +165,21 @@ fn t_account(ceiling: Nat) -> MoneyAccount {
 }
 
 fn t_window(remaining: Nat) -> FlexAcquisitionWindow {
-  FlexAcquisitionWindow { remaining: remaining, on_demand_held: 0, interruptible_held: 0 }
+  FlexAcquisitionWindow { remaining: remaining }
+}
+
+fn t_on_demand_ref(rate: MoneyPerHour, key: OfferKey) -> FlexOnDemandReference<NonEmptyStr> {
+  fold(
+    t_bound(offer: t_offer(key: key, rate: rate), revocable: false),
+    init: FlexOnDemandReferenceMissing,
+    f: (acc, c) =>
+      match acc {
+        FlexOnDemandReferenceFresh { candidate: existing } =>
+          FlexOnDemandReferenceFresh { candidate: existing }
+        FlexOnDemandReferenceStale { candidate: s } => FlexOnDemandReferenceStale { candidate: s }
+        FlexOnDemandReferenceMissing => FlexOnDemandReferenceFresh { candidate: c }
+      },
+  )
 }
 
 fn t_attempt(
@@ -194,6 +201,37 @@ fn t_attempt(
       f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
     ),
     subject: FlexNewAcquisition,
+    on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "on-demand-ref"),
+    requirements: t_reqs(revocation: revocation),
+    reservation: reservation,
+    generation: 1,
+    delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+    tie: StableRosterOrder,
+    affinity: "test.flex" as PlacementAffinityKey,
+  }
+}
+
+fn t_attempt_ref(
+  machine: FlexMachineKey,
+  min_bid: ExactDecimal,
+  quote: MoneyPerHour,
+  key: OfferKey,
+  reservation: NonEmptyStr,
+  revocation: RevocationStanding,
+  revocable: Bool,
+  reference: FlexOnDemandReference<NonEmptyStr>,
+) -> FlexBidAttempt<NonEmptyStr> {
+  FlexBidAttempt {
+    machine: machine,
+    min_bid: min_bid,
+    quote_currency: vast_ai_quote_currency,
+    candidates: fold(
+      t_bound(offer: t_offer(key: key, rate: quote), revocable: revocable),
+      init: [],
+      f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
+    ),
+    subject: FlexNewAcquisition,
+    on_demand_reference: reference,
     requirements: t_reqs(revocation: revocation),
     reservation: reservation,
     generation: 1,
@@ -220,12 +258,13 @@ fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
     FlexBidRefused { cause: c } =>
       match c {
         FlexNoAcquisitionRemaining => "no-remaining"
-        FlexOnDemandFractionExceeded => "on-demand-fraction"
         FlexCurrencyMismatch { left: _, right: _ } => "currency"
         FlexDecimalConversionRefused { conversion: _ } => "decimal"
         FlexRateCapBelowMin { cap: _, min_bid: _ } => "rate-cap"
         FlexRateCapOccupied { cap: _, occupied: _, proposed: _ } => "rate-cap-occupied"
         FlexExistingBidWouldRise { current: _, min_bid: _ } => "existing-would-rise"
+        FlexOnDemandReferenceUnobserved => "on-demand-unobserved"
+        FlexOnDemandRelativeCeilingExceeded { ceiling: _, projected: _ } => "on-demand-ceiling"
         FlexSupplyNotSelected { selection: _ } => "supply"
         FlexCandidateMachineMismatch { named: _, observed: _ } => "machine-mismatch"
         FlexMoneyRefused { refusal: _ } => "money"
@@ -454,6 +493,7 @@ test fn an_existing_acquisition_bid_is_never_raised() -> Bool {
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
       ),
       subject: FlexExistingAcquisition { current_bid: usd_hour(micros: 1100000) },
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "on-demand-hold"),
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-hold",
       generation: 1,
@@ -570,6 +610,7 @@ test fn a_candidate_tagged_for_another_machine_is_refused() -> Bool {
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: other, candidate: c }]),
       ),
       subject: FlexNewAcquisition,
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "on-demand-mismatch"),
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-mismatch",
       generation: 1,
@@ -607,9 +648,9 @@ test fn a_usd_wire_min_bid_is_refused_against_a_eur_cap() -> Bool {
   )) == "currency"
 }
 
-test fn the_on_demand_fraction_follows_selected_availability() -> Bool {
-  let interruptible = flex_bid_admission(
-    policy: t_policy_no_on_demand(cap_micros: 5000000),
+test fn a_buffered_min_under_the_on_demand_relative_ceiling_admits() -> Bool {
+  let o = flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(ceiling: 10000000),
@@ -617,14 +658,80 @@ test fn the_on_demand_fraction_follows_selected_availability() -> Bool {
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
       quote: one_ten(),
-      key: "offer-int",
-      reservation: "res-int",
+      key: "offer-under-od",
+      reservation: "res-under-od",
       revocation: RevocationAccepted,
       revocable: true,
     ),
   )
-  let committed = flex_bid_admission(
-    policy: t_policy_no_on_demand(cap_micros: 5000000),
+  (refusal_label(o: o) == "admitted") && (admitted_bid(o: o) == 1100000)
+}
+
+test fn a_buffered_min_over_the_on_demand_relative_ceiling_refuses() -> Bool {
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt_ref(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar_wire(),
+      quote: one_ten(),
+      key: "offer-over-od",
+      reservation: "res-over-od",
+      revocation: RevocationAccepted,
+      revocable: true,
+      reference: t_on_demand_ref(rate: usd_hour(micros: 1000000), key: "od-cheap"),
+    ),
+  )) == "on-demand-ceiling"
+}
+
+test fn a_missing_on_demand_reference_refuses() -> Bool {
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt_ref(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar_wire(),
+      quote: one_ten(),
+      key: "offer-no-od",
+      reservation: "res-no-od",
+      revocation: RevocationAccepted,
+      revocable: true,
+      reference: FlexOnDemandReferenceMissing,
+    ),
+  )) == "on-demand-unobserved"
+}
+
+test fn a_stale_on_demand_reference_refuses() -> Bool {
+  match t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-stale") {
+    FlexOnDemandReferenceMissing => false
+    FlexOnDemandReferenceFresh { candidate: c } =>
+      refusal_label(o: flex_bid_admission(
+        policy: t_policy(cap_micros: 5000000),
+        occupancy: empty_occupancy(),
+        window: t_window(remaining: 1),
+        account: t_account(ceiling: 10000000),
+        attempt: t_attempt_ref(
+          machine: t_machine(id: "machine-a"),
+          min_bid: one_dollar_wire(),
+          quote: one_ten(),
+          key: "offer-stale-od",
+          reservation: "res-stale-od",
+          revocation: RevocationAccepted,
+          revocable: true,
+          reference: FlexOnDemandReferenceStale { candidate: c },
+        ),
+      )) == "on-demand-unobserved"
+    FlexOnDemandReferenceStale { candidate: _ } => false
+  }
+}
+
+test fn rediscovery_never_lifts_the_on_demand_relative_ceiling() -> Bool {
+  let first = flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(ceiling: 10000000),
@@ -632,18 +739,30 @@ test fn the_on_demand_fraction_follows_selected_availability() -> Bool {
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
       quote: one_ten(),
-      key: "offer-od",
-      reservation: "res-od",
+      key: "offer-first-od",
+      reservation: "res-first-od",
       revocation: RevocationAccepted,
-      revocable: false,
+      revocable: true,
     ),
   )
-  match interruptible {
-    FlexBidRefused { cause: _ } => false
-    FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: w } =>
-      (w.interruptible_held == 1) && (w.on_demand_held == 0)
-        && (refusal_label(o: committed) == "on-demand-fraction")
-  }
+  let lifted = flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: ExactDecimal { units: 19, fraction_digits: 1 },
+      quote: usd_hour(micros: 2090000),
+      key: "offer-rediscover-od",
+      reservation: "res-rediscover-od",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )
+  (refusal_label(o: first) == "admitted")
+    && (admitted_bid(o: first) == 1100000)
+    && (refusal_label(o: lifted) == "on-demand-ceiling")
 }
 
 test fn admission_converts_the_vast_wire_min_bid() -> Bool {

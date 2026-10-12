@@ -7,7 +7,8 @@ import std.decl_ref { DeclarationRef }
 import std.decimal { ExactDecimal }
 import std.measure {
   MoneyAmountMicro, MoneyPerHour, MoneyPerSecond,
-  money_amount_micro, money_per_hour_micros, measure_scale_fraction_ceil, Second, second_count,
+  money_amount_micro, money_amount_micro_count, money_per_hour_micros,
+  measure_scale_fraction_ceil, Second, second_count,
   DecimalMoneyConversion, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
   exact_decimal_to_money_per_hour_ceil,
 }
@@ -26,7 +27,10 @@ import product.fabric.budget {
 import product.fabric.selection {
   CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   AvailabilityObservation, AvailableRevocable, AvailableForInterval, AvailableIndefinitely,
-  AvailabilityUnobserved, SelectedOffer, select_supply,
+  AvailabilityUnobserved, SelectedOffer, select_supply, price_over_horizon,
+  OfferPriced, OfferNotPriceable, OfferNotFungible, OfferUnavailableForGrant,
+  OfferCannotHoldAnUnboundedGrant, OfferWrongCurrency, OfferUnaffordable,
+  OfferLiabilityOverBuyOrder, OfferRevocationNotAdmitted, selection_liability,
 }
 
 // Fleet interruptible-bid policy. In this change the executing consumer of flex_bid_admission is
@@ -73,15 +77,22 @@ type FlexBidSubject
 type FlexPolicy {
   fleet_rate_cap: MoneyPerHour
   floor_buffer: NonzeroNatFraction
+  // Fraction of comparable on-demand horizon cost (setup and transfer included).
+  // Not a mix of on-demand vs interruptible headcount.
   on_demand_fraction: NonzeroNatFraction
   acquisition_horizon: Second
 }
 
 type FlexAcquisitionWindow {
   remaining: Nat
-  on_demand_held: Nat
-  interruptible_held: Nat
 }
+
+// Comparable on-demand supply for the same work. Missing or stale refuses admission;
+// it is never treated as free or as the fleet cap.
+type FlexOnDemandReference<P>
+  = FlexOnDemandReferenceFresh { candidate: CandidateOffer<P> }
+  | FlexOnDemandReferenceStale { candidate: CandidateOffer<P> }
+  | FlexOnDemandReferenceMissing
 
 // min_bid is the wire ExactDecimal. quote_currency is the currency the wire is in (Vast:
 // vast_ai_quote_currency). Admission converts with exact_decimal_to_money_per_hour_ceil using
@@ -101,6 +112,7 @@ type FlexBidAttempt<P> {
   quote_currency: CurrencyCode
   candidates: List<FlexScreenedCandidate<P>>
   subject: FlexBidSubject
+  on_demand_reference: FlexOnDemandReference<P>
   requirements: ExecutionRequirements
   reservation: ReservationRef
   generation: Int
@@ -111,7 +123,8 @@ type FlexBidAttempt<P> {
 
 type FlexBidRefusal
   = FlexNoAcquisitionRemaining
-  | FlexOnDemandFractionExceeded
+  | FlexOnDemandReferenceUnobserved
+  | FlexOnDemandRelativeCeilingExceeded { ceiling: MoneyAmountMicro, projected: MoneyAmountMicro }
   | FlexCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
   | FlexDecimalConversionRefused { conversion: DecimalMoneyConversion }
   | FlexRateCapBelowMin { cap: MoneyPerHour, min_bid: MoneyPerHour }
@@ -215,39 +228,85 @@ fn flex_liability_for_horizon(rate: MoneyPerHour, horizon: Second) -> MoneyAmoun
   )
 }
 
-fn on_demand_fraction_holds(window: FlexAcquisitionWindow, on_demand: Bool, fraction: NonzeroNatFraction) -> Bool {
-  if !on_demand {
-    true
-  } else {
-    let frac = nonzero_nat_fraction_field(r: fraction)
-    let od = window.on_demand_held + 1
-    let total = window.on_demand_held + window.interruptible_held + 1
-    od * frac.denom <= total * frac.num
-  }
-}
-
 fn availability_is_on_demand(a: AvailabilityObservation) -> Bool {
   match a {
     AvailableRevocable { delay: _, receipt: _ } => false
     AvailableForInterval { delay: _, interval: _, receipt: _ } => true
     AvailableIndefinitely { delay: _, receipt: _ } => true
-    AvailabilityUnobserved { obligation: _ } => true
+    AvailabilityUnobserved { obligation: _ } => false
   }
 }
 
-fn selected_is_on_demand<P>(selected: SelectedOffer<P>) -> Bool {
-  availability_is_on_demand(a: selected.candidate.dispatch.availability)
-}
-
-fn advance_window(window: FlexAcquisitionWindow, on_demand: Bool) -> FlexAcquisitionWindow {
+fn advance_window(window: FlexAcquisitionWindow) -> FlexAcquisitionWindow {
   FlexAcquisitionWindow {
     remaining: match window.remaining {
       Zero => Zero
       Succ { prev: p } => p
     },
-    on_demand_held: if on_demand { window.on_demand_held + 1 } else { window.on_demand_held },
-    interruptible_held: if on_demand { window.interruptible_held } else { window.interruptible_held + 1 },
   }
+}
+
+fn flex_price_observation_bound() -> MoneyAmountMicro {
+  money_amount_micro(count: 1000000000000)
+}
+
+type FlexPricedHorizon
+  = FlexHorizonPriced { cost: MoneyAmountMicro }
+  | FlexHorizonUnobserved
+
+fn flex_price_candidate(
+  candidate: CandidateOffer<NonEmptyStr>,
+  policy: FlexPolicy,
+  attempt: FlexBidAttempt<NonEmptyStr>,
+  budget_currency: CurrencyCode,
+) -> FlexPricedHorizon {
+  match price_over_horizon(
+    offer: candidate.offer,
+    inputs: candidate.dispatch,
+    requirements: attempt.requirements,
+    duration: flex_horizon_duration(policy: policy),
+    maximum_buy_order: flex_price_observation_bound(),
+    budget_currency: budget_currency,
+    delay_valuation: attempt.delay_valuation,
+  ) {
+    OfferPriced { offer: _, cost: c, basis: _, horizon: _ } =>
+      FlexHorizonPriced { cost: selection_liability(c: c) }
+    OfferNotPriceable { offer: _, unpriced: _ } => FlexHorizonUnobserved
+    OfferNotFungible { offer: _, fungibility: _ } => FlexHorizonUnobserved
+    OfferUnavailableForGrant { offer: _, needed: _, available: _ } => FlexHorizonUnobserved
+    OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => FlexHorizonUnobserved
+    OfferWrongCurrency { offer: _, mismatch: _ } => FlexHorizonUnobserved
+    OfferUnaffordable { offer: _, affordability: _ } => FlexHorizonUnobserved
+    OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => FlexHorizonUnobserved
+    OfferRevocationNotAdmitted { offer: _ } => FlexHorizonUnobserved
+  }
+}
+
+fn flex_on_demand_reference_cost(
+  policy: FlexPolicy,
+  attempt: FlexBidAttempt<NonEmptyStr>,
+  budget_currency: CurrencyCode,
+) -> FlexPricedHorizon {
+  match attempt.on_demand_reference {
+    FlexOnDemandReferenceMissing => FlexHorizonUnobserved
+    FlexOnDemandReferenceStale { candidate: _ } => FlexHorizonUnobserved
+    FlexOnDemandReferenceFresh { candidate: c } =>
+      if !availability_is_on_demand(a: c.dispatch.availability) {
+        FlexHorizonUnobserved
+      } else {
+        flex_price_candidate(
+          candidate: c,
+          policy: policy,
+          attempt: attempt,
+          budget_currency: budget_currency,
+        )
+      }
+  }
+}
+
+fn flex_relative_ceiling(policy: FlexPolicy, on_demand_cost: MoneyAmountMicro) -> MoneyAmountMicro {
+  let frac = nonzero_nat_fraction_field(r: policy.on_demand_fraction)
+  measure_scale_fraction_ceil(m: on_demand_cost, num: frac.num, den: frac.denom)
 }
 
 fn refuse_currency(left: CurrencyCode, right: CurrencyCode) -> FlexBidAdmission {
@@ -446,32 +505,57 @@ fn flex_admit_at(
             if !selection_names_joined_offer(selected: selected, joined: joined) {
               FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
             } else {
-              let on_demand = selected_is_on_demand(selected: selected)
-              if !on_demand_fraction_holds(window: window, on_demand: on_demand, fraction: policy.on_demand_fraction) {
-                FlexBidRefused { cause: FlexOnDemandFractionExceeded }
-              } else {
-                match reserve_money(
-                  a: account,
-                  request: MoneyReservationRequest {
-                    reference: attempt.reservation,
-                    generation: attempt.generation,
-                    maximum_liability: liability,
-                    currency: bid.currency,
-                  },
-                ) {
-                  MoneyRefused { refusal: r } => FlexBidRefused { cause: FlexMoneyRefused { refusal: r } }
-                  AccountAdvanced { account: next } =>
-                    FlexBidAdmitted {
-                      bid: bid,
-                      selection: selection,
-                      account: next,
-                      occupancy: if append_standing {
-                        occupy_pending(occupancy: occupancy, bid: bid)
+              match flex_on_demand_reference_cost(
+                policy: policy,
+                attempt: attempt,
+                budget_currency: bid.currency,
+              ) {
+                FlexHorizonUnobserved =>
+                  FlexBidRefused { cause: FlexOnDemandReferenceUnobserved }
+                FlexHorizonPriced { cost: on_demand_cost } => {
+                  let ceiling = flex_relative_ceiling(policy: policy, on_demand_cost: on_demand_cost)
+                  match flex_price_candidate(
+                    candidate: selected.candidate,
+                    policy: policy,
+                    attempt: attempt,
+                    budget_currency: bid.currency,
+                  ) {
+                    FlexHorizonUnobserved =>
+                      FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
+                    FlexHorizonPriced { cost: projected } =>
+                      if money_amount_micro_count(m: projected) > money_amount_micro_count(m: ceiling) {
+                        FlexBidRefused {
+                          cause: FlexOnDemandRelativeCeilingExceeded {
+                            ceiling: ceiling,
+                            projected: projected,
+                          },
+                        }
                       } else {
-                        occupancy
-                      },
-                      window: advance_window(window: window, on_demand: on_demand),
-                    }
+                        match reserve_money(
+                          a: account,
+                          request: MoneyReservationRequest {
+                            reference: attempt.reservation,
+                            generation: attempt.generation,
+                            maximum_liability: liability,
+                            currency: bid.currency,
+                          },
+                        ) {
+                          MoneyRefused { refusal: r } => FlexBidRefused { cause: FlexMoneyRefused { refusal: r } }
+                          AccountAdvanced { account: next } =>
+                            FlexBidAdmitted {
+                              bid: bid,
+                              selection: selection,
+                              account: next,
+                              occupancy: if append_standing {
+                                occupy_pending(occupancy: occupancy, bid: bid)
+                              } else {
+                                occupancy
+                              },
+                              window: advance_window(window: window),
+                            }
+                        }
+                      }
+                  }
                 }
               }
             }

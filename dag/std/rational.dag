@@ -7,7 +7,7 @@ type Rational = Field<FieldOfFractions<Int>>
 
 // Nonzero denominator by construction: the written field is the predecessor of the FieldOfFractions
 // denom, so Zero cannot inhabit it (DESIGN §5). FieldOfFractions itself still admits denom 0.
-// Consumer: product.fabric.flex_policy flex_buffered_min and on_demand_fraction_holds, via
+// Consumer: product.fabric.flex_policy flex_buffered_min and flex_relative_ceiling, via
 // nonzero_nat_fraction_field.
 type NonzeroNatFraction {
   num: Nat
