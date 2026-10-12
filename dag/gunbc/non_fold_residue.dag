@@ -565,11 +565,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_process_port_upsert_refusal_split,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::acceptance_first_rejection" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::execute_obligation" },
     reason: nfr_reason_acceptance_obligation_partition,
     dissolution: nfr_dissolve_acceptance_obligation_partition,
@@ -588,21 +583,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::obligation_front_end_depth" },
     reason: nfr_reason_acceptance_obligation_partition,
     dissolution: nfr_dissolve_acceptance_obligation_partition,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::row_frontier_label" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::row_rejection_label" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::row_unfinished_label" },
-    reason: nfr_reason_acceptance_row_projection,
-    dissolution: nfr_dissolve_acceptance_row_projection,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::verdict_with_further_rejection" },
