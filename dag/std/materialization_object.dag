@@ -39,7 +39,7 @@ import std.materialization_provider {
   length_prefixed_encode, result_content_identity,
   provider_serve_persisted,
   observed_evaluation_preimage_from_object, ObservedEvaluationPreimage,
-  Admitted, FamilyRefused,
+  Admitted, IdentityComponentsRefused,
   HashFamily, KeyingScope,
   evaluation_result_binding_outcome,
   artifact_manifest, artifact_from_manifest, artifact_content_digest, artifact_kind, artifact_carried_outputs,
@@ -527,7 +527,7 @@ type StoreLookupRefusal
   | StoreLookupPayloadRepeated { part: ArtifactOutputId }
   | StoreLookupContractRefused { lookup: ProviderLookup }
   | StoreLookupEvaluationPreimageMismatch { expected: NonEmptyStr, found: NonEmptyStr }
-  | StoreLookupStoreFamilyRefused { components: List<RefusedIdentityComponent>, scope: KeyingScope }
+  | StoreLookupAddressRefused { components: List<RefusedIdentityComponent>, scope: KeyingScope }
 
 type StoreLookup
   = StoreLookupHit {
@@ -604,7 +604,7 @@ fn store_lookup_decide(
     RequestAddressRefused { components: f, scope: sc } =>
       StoreLookupRefused {
         key: request_key(req: req),
-        refusal: StoreLookupStoreFamilyRefused { components: f, scope: sc }
+        refusal: StoreLookupAddressRefused { components: f, scope: sc }
       }
     RequestAddressed { addressed: a } =>
       store_lookup_from_address(store: store, addressed: a, read: read)
@@ -672,9 +672,9 @@ fn store_lookup_from_address(
                           key: key,
                           refusal: StoreLookupEvaluationPreimageMismatch { expected: e, found: f }
                         },
-                        store_family_refused: (k, f, sc) => StoreLookupRefused {
+                        store_address_refused: (k, f, sc) => StoreLookupRefused {
                           key: key,
-                          refusal: StoreLookupStoreFamilyRefused { components: f, scope: sc }
+                          refusal: StoreLookupAddressRefused { components: f, scope: sc }
                         },
                         unqualified_persisted_format: k => StoreLookupRefused { key: key, refusal: StoreLookupContractRefused { lookup: served } }
                       )
@@ -709,7 +709,7 @@ type StoreCommitRefusal
   | StoreCommitContractRefused { binding: RequestArtifactBinding }
   | StoreCommitPublishRefused { fault: StoreFault }
   | StoreCommitReadBackRefused { read_back: StoreLookup }
-  | StoreCommitStoreFamilyRefused { components: List<RefusedIdentityComponent>, scope: KeyingScope }
+  | StoreCommitAddressRefused { components: List<RefusedIdentityComponent>, scope: KeyingScope }
   | StoreCommitResultContentConflict { binding: EvaluationResultBinding, observed: ResultContentIdentity }
   | StoreCommitResultHashFamilyIncomparable { left: HashFamily, right: HashFamily }
   | StoreCommitResultIdentityUnverifiable { cause: String }
@@ -737,7 +737,7 @@ fn store_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>, b
       StoreCommitNotPrepared {
         commit: StoreCommitRefused {
           key: request_key(req: req),
-          refusal: StoreCommitStoreFamilyRefused { components: f, scope: sc }
+          refusal: StoreCommitAddressRefused { components: f, scope: sc }
         }
       }
     RequestAddressed { addressed: a } => store_commit_prepare_addressed(addressed: a, payloads: payloads, blobs: blobs)
@@ -927,7 +927,7 @@ fn store_lookup_refusal_tag(l: StoreLookup) -> String {
       StoreLookupPayloadRepeated { part: _ } => "payload_repeated"
       StoreLookupContractRefused { lookup: pl } => concat("contract_", provider_lookup_outcome_tag(l: pl))
       StoreLookupEvaluationPreimageMismatch { expected: _, found: _ } => "evaluation_preimage_mismatch"
-      StoreLookupStoreFamilyRefused { components: _, scope: _ } => "store_family_refused"
+      StoreLookupAddressRefused { components: _, scope: _ } => "store_address_refused"
     }
   )
 }
@@ -956,7 +956,7 @@ fn store_commit_refusal_tag(c: StoreCommit) -> String {
       StoreCommitContractRefused { binding: _ } => "contract_refused"
       StoreCommitPublishRefused { fault: _ } => "publish_refused"
       StoreCommitReadBackRefused { read_back: _ } => "read_back_refused"
-      StoreCommitStoreFamilyRefused { components: _, scope: _ } => "store_family_refused"
+      StoreCommitAddressRefused { components: _, scope: _ } => "store_address_refused"
       StoreCommitResultContentConflict { binding: _, observed: _ } => "result_content_conflict"
       StoreCommitResultHashFamilyIncomparable { left: _, right: _ } => "result_hash_family_incomparable"
       StoreCommitResultIdentityUnverifiable { cause: _ } => "result_identity_unverifiable"

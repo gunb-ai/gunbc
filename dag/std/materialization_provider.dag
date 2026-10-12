@@ -370,7 +370,7 @@ type EvaluationStoreAddress sole_constructor {
 
 type EvaluationStoreAddressAdmission
   = Admitted { address: EvaluationStoreAddress }
-  | FamilyRefused { components: List<RefusedIdentityComponent>, scope: KeyingScope }
+  | IdentityComponentsRefused { components: List<RefusedIdentityComponent>, scope: KeyingScope }
 
 fn evaluation_identity_canonical(evaluation: EvaluationIdentity) -> NonEmptyStr {
   concat(
@@ -609,7 +609,7 @@ fn persist_evaluation_store_address(bucket: EvaluationBucket) -> EvaluationStore
 ] {
   let refused = bucket.persistent_refusals
   if count(refused) > 0 {
-    FamilyRefused { components: refused, scope: PersistentStoreScope }
+    IdentityComponentsRefused { components: refused, scope: PersistentStoreScope }
   } else {
     Admitted {
       address: EvaluationStoreAddress {
@@ -661,7 +661,7 @@ type AddressedRequestAdmission
 fn addressed_request(req: ArtifactRequest) -> AddressedRequestAdmission {
   match evaluation_store_address(req: req) {
     Admitted { address: a } => RequestAddressed { addressed: AddressedRequest { request: req, address: a } }
-    FamilyRefused { components: f, scope: sc } => RequestAddressRefused { components: f, scope: sc }
+    IdentityComponentsRefused { components: f, scope: sc } => RequestAddressRefused { components: f, scope: sc }
   }
 }
 
@@ -714,7 +714,7 @@ fn evaluation_store_address_preimage(address: EvaluationStoreAddress) -> NonEmpt
 fn evaluation_store_admitted_address(admission: EvaluationStoreAddressAdmission) -> EvaluationStoreAddress? {
   match admission {
     Admitted { address: a } => Present { value: a }
-    FamilyRefused { components: _, scope: _ } => none
+    IdentityComponentsRefused { components: _, scope: _ } => none
   }
 }
 
@@ -1703,7 +1703,7 @@ type ProviderLookup
   | ProviderRefusedCrossFamilyContentHash { key: ContentHash, family: HashFamily }
   | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
   | ProviderRefusedEvaluationPreimageMismatch { key: ContentHash, expected: NonEmptyStr, found: NonEmptyStr }
-  | ProviderRefusedStoreFamily { key: ContentHash, components: List<RefusedIdentityComponent>, scope: KeyingScope }
+  | ProviderRefusedStoreAddress { key: ContentHash, components: List<RefusedIdentityComponent>, scope: KeyingScope }
   | ProviderRefusedUnqualifiedPersistedFormat { key: ContentHash }
 
 data resolved_graph_disk_format_unqualified_frontier: DissolutionCondition = unbound_dissolution(
@@ -1813,8 +1813,8 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
     }
     PersistedProbe { artifact: a, observed_digest: obs, observed_evaluation_preimage: observed } =>
       match persist_evaluation_store_address(bucket: bucket) {
-        FamilyRefused { components: f, scope: sc } =>
-          ProviderRefusedStoreFamily { key: key, components: f, scope: sc }
+        IdentityComponentsRefused { components: f, scope: sc } =>
+          ProviderRefusedStoreAddress { key: key, components: f, scope: sc }
         Admitted { address: addr } =>
           provider_serve_persisted(addressed: AddressedRequest { request: req, address: addr }, artifact: a, observed_digest: obs, observed: observed)
       }
@@ -2175,7 +2175,7 @@ fn lookup_fold<T>(
   cross_family: fn(ContentHash, HashFamily) -> T,
   incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T,
   evaluation_preimage_mismatch: fn(ContentHash, NonEmptyStr, NonEmptyStr) -> T,
-  store_family_refused: fn(ContentHash, HashFamily, KeyingScope) -> T,
+  store_address_refused: fn(ContentHash, List<RefusedIdentityComponent>, KeyingScope) -> T,
   unqualified_persisted_format: fn(ContentHash) -> T
 ) -> T {
   match l {
@@ -2187,7 +2187,7 @@ fn lookup_fold<T>(
     ProviderRefusedCrossFamilyContentHash { key: k, family: f } => cross_family(k, f)
     ProviderRefusedIncomplete { key: k, missing: m } => incomplete(k, m)
     ProviderRefusedEvaluationPreimageMismatch { key: k, expected: e, found: f } => evaluation_preimage_mismatch(k, e, f)
-    ProviderRefusedStoreFamily { key: k, components: f, scope: sc } => store_family_refused(k, f, sc)
+    ProviderRefusedStoreAddress { key: k, components: f, scope: sc } => store_address_refused(k, f, sc)
     ProviderRefusedUnqualifiedPersistedFormat { key: k } => unqualified_persisted_format(k)
   }
 }
@@ -2203,7 +2203,7 @@ fn lookup_is_hit(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -2219,7 +2219,7 @@ fn lookup_is_miss(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -2235,7 +2235,7 @@ fn lookup_is_refused_kind_mismatch(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -2251,7 +2251,7 @@ fn lookup_is_refused_wrong_artifact(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -2267,7 +2267,7 @@ fn lookup_is_refused_wrong_content(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -2283,7 +2283,7 @@ fn lookup_is_refused_cross_family_content_hash(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => true,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -2299,7 +2299,7 @@ fn lookup_served_identity(l: ProviderLookup) -> ComputationIdentity {
     cross_family: (k, f) => IdentityUnknown { cause: MissingEnforcement { detail: "content hash family is incompatible with the fnv1a64 structural seam" } },
     incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } },
     evaluation_preimage_mismatch: (k, e, f) => IdentityUnknown { cause: MissingEnforcement { detail: "stored evaluation preimage disagrees with the request" } },
-    store_family_refused: (k, f, sc) => IdentityUnknown { cause: MissingEnforcement { detail: "hash family is refused for persistent store admission" } },
+    store_address_refused: (k, f, sc) => IdentityUnknown { cause: MissingEnforcement { detail: join(["identity components are refused a persistent store address: ", refused_identity_components_text(components: f)], "") } },
     unqualified_persisted_format: k => IdentityUnknown { cause: MissingEnforcement { detail: "persisted format carries no evaluation or result preimage" } }
   )
 }
@@ -2315,7 +2315,7 @@ fn lookup_refused_incomplete_missing(l: ProviderLookup) -> List<ArtifactOutputId
     cross_family: (k, f) => no_output_ids,
     incomplete: (k, m) => m,
     evaluation_preimage_mismatch: (k, e, f) => no_output_ids,
-    store_family_refused: (k, f, sc) => no_output_ids,
+    store_address_refused: (k, f, sc) => no_output_ids,
     unqualified_persisted_format: k => no_output_ids
   )
 }
@@ -2331,7 +2331,7 @@ fn provider_lookup_outcome_tag(l: ProviderLookup) -> String {
     cross_family: (k, f) => "cross_family_hash",
     incomplete: (k, m) => "incomplete",
     evaluation_preimage_mismatch: (k, e, f) => "evaluation_preimage_mismatch",
-    store_family_refused: (k, f, sc) => "store_family_refused",
+    store_address_refused: (k, f, sc) => "store_address_refused",
     unqualified_persisted_format: k => "unqualified_persisted_format"
   )
 }

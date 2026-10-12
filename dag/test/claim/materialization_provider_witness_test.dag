@@ -49,7 +49,7 @@ import std.materialization_provider {
   EvaluationResultUnverifiable,
   InProcessIndexScope, PersistentStoreScope, CrossRunScope,
   HashFamilyAdmittedForScope, StructuralFingerprintRefusedAsStoreKey, FamilyNotAdmittedForRelation,
-  Admitted, FamilyRefused, identity_component_index_fingerprint,
+  Admitted, IdentityComponentsRefused, identity_component_index_fingerprint,
   evaluation_store_refused_components, evaluation_store_upstream_object_refs, evaluation_identity_subject_ref,
   RefusedIdentityComponent, EvaluationIdentityComponentRow, git_object_identity_component,
   identity_component_persistent_standing, ComponentAdmittedForScope, ComponentUpstreamObjectIdentity,
@@ -101,7 +101,7 @@ fn lookup_is_refused_evaluation_preimage_mismatch(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => true,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -117,7 +117,7 @@ fn lookup_is_refused_unqualified_persisted_format(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => true
   )
 }
@@ -891,14 +891,14 @@ test fn a_structural_fingerprint_component_is_refused_a_persistent_address_by_na
     && (cross_run |> count()) == 2
     && (match evaluation_store_address(req: witness_parse_request()) {
       Admitted { address: _ } => false
-      FamilyRefused { components: refused, scope: _ } =>
+      IdentityComponentsRefused { components: refused, scope: _ } =>
         (refused |> count()) == 2
           && refused_is_fingerprint(xs: refused, wanted: evaluation_identity_subject_ref)
           && refused_is_fingerprint(xs: refused, wanted: "compiler_binary_identity")
     })
     && (match evaluation_store_address(req: witness_typecheck_request()) {
       Admitted { address: _ } => false
-      FamilyRefused { components: refused, scope: _ } => refused_has(xs: refused, wanted: evaluation_identity_subject_ref)
+      IdentityComponentsRefused { components: refused, scope: _ } => refused_has(xs: refused, wanted: evaluation_identity_subject_ref)
     })
 }
 
@@ -981,7 +981,7 @@ test fn the_store_address_is_the_independently_derived_sha256_of_the_canonical_p
 fn store_address_wire(req: ArtifactRequest) -> String {
   match evaluation_store_address(req: req) {
     Admitted { address: a } => serialize_content_hash(hash: evaluation_store_address_digest(address: a)) as String
-    FamilyRefused { components: _, scope: _ } => "refused"
+    IdentityComponentsRefused { components: _, scope: _ } => "refused"
   }
 }
 
@@ -1024,7 +1024,7 @@ test fn persist_sha1_bucket_is_typed_family_refused() -> Bool {
   match admit_hash_family_for_scope(family: Sha1Family, scope: PersistentStoreScope) {
     FamilyNotAdmittedForRelation { family: _, scope: _ } =>
       (request_key(req: witness_parse_request()) == as_content_hash_structural(
-        structural: content_hash_atom(value: "evaluation_store_family_refused")
+        structural: content_hash_atom(value: "evaluation_store_address_refused")
       )) == false
     HashFamilyAdmittedForScope { family: _, scope: _ } => false
     StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } => false

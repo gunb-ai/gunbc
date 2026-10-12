@@ -82,9 +82,9 @@ import std.materialization_object {
   ArtifactPayload, ArtifactBlobPart, StoreLookup, StoreLookupHit, StoreLookupMiss, StoreLookupRefused, StoreLookupRefusal,
   StoreLookupObjectUnavailable, StoreLookupObjectMalformed, StoreLookupManifestUninterpretable, StoreLookupPayloadMissing,
   StoreLookupPayloadUndeclared, StoreLookupPayloadRepeated, StoreLookupContractRefused, StoreLookupEvaluationPreimageMismatch,
-  StoreLookupStoreFamilyRefused, StoreCommitSettled, StoreCommitRefused, StoreCommitRefusal,
+  StoreLookupAddressRefused, StoreCommitSettled, StoreCommitRefused, StoreCommitRefusal,
   StoreCommitManifestUninterpretable, StoreCommitContractRefused, StoreCommitPublishRefused, StoreCommitReadBackRefused,
-  StoreCommitStoreFamilyRefused, StoreCommitResultContentConflict, StoreCommitResultHashFamilyIncomparable,
+  StoreCommitAddressRefused, StoreCommitResultContentConflict, StoreCommitResultHashFamilyIncomparable,
   StoreCommitResultIdentityUnverifiable, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
   StoreCommitCleanupOutstanding,
   StoreFault, store_lookup_payload,
@@ -1939,7 +1939,7 @@ fn compute_store_lookup_refusal_detail(r: StoreLookupRefusal) -> String {
     StoreLookupPayloadRepeated { part } => join(["payload repeated: ", part as String], "")
     StoreLookupContractRefused { lookup: _ } => "the provider contract refused the stored artifact"
     StoreLookupEvaluationPreimageMismatch { expected: _, found: _ } => "evaluation preimage mismatch (a different computation under this bucket)"
-    StoreLookupStoreFamilyRefused { components: cs, scope: _ } => join(["the request has no persistent address: ", refused_identity_components_text(components: cs)], "")
+    StoreLookupAddressRefused { components: cs, scope: _ } => join(["the request has no persistent address: ", refused_identity_components_text(components: cs)], "")
   }
 }
 
@@ -1949,7 +1949,7 @@ fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
     StoreCommitContractRefused { binding: _ } => "the provider contract refused the offered artifact"
     StoreCommitPublishRefused { fault } => join(["publish refused: ", compute_store_fault_detail(f: fault)], "")
     StoreCommitReadBackRefused { read_back: _ } => "the published record did not read back"
-    StoreCommitStoreFamilyRefused { components: cs, scope: _ } => join(["the request has no persistent address: ", refused_identity_components_text(components: cs)], "")
+    StoreCommitAddressRefused { components: cs, scope: _ } => join(["the request has no persistent address: ", refused_identity_components_text(components: cs)], "")
     StoreCommitResultContentConflict { binding: _, observed: _ } => "a different result is already committed under this identity"
     StoreCommitResultHashFamilyIncomparable { left: _, right: _ } => "result hash families are incomparable"
     StoreCommitResultIdentityUnverifiable { cause } => join(["result identity unverifiable: ", cause], "")

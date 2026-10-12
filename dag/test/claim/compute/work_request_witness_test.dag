@@ -33,7 +33,7 @@ import std.judgment_contract { ArtifactOutputId, output_compute_work_outcome, ou
 import std.materialization_ladder { DemandNature, IdempotentEffect, FreshEffect, PureComputation, WorldRead }
 import std.materialization_provider {
   ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_required_outputs, request_judgment_contract,
-  evaluation_store_address, evaluation_store_address_digest, Admitted, FamilyRefused,
+  evaluation_store_address, evaluation_store_address_digest, Admitted, IdentityComponentsRefused,
   ArtifactManifest, ArtifactPart, ComputeWorkArtifact, CarriedOutput, artifact_manifest, artifact_from_manifest, artifact_request_key,
   ManifestDecoded, ManifestKindUndeclared, ManifestPartUndeclared, ManifestPartRepeated, LegacyIncompleteArtifact,
 }
@@ -195,7 +195,7 @@ test fn the_provider_identity_is_the_admitted_store_address_digest() -> Bool {
   let subject = tree(hex: tree_a)
   let request = req(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
   match evaluation_store_address(req: request) {
-    FamilyRefused { components: _, scope: _ } => false
+    IdentityComponentsRefused { components: _, scope: _ } => false
     Admitted { address } =>
       content_hash_equal(
         left: evaluation_store_address_digest(address: address),

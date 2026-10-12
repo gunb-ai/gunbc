@@ -9,7 +9,7 @@ import std.content_hash { ContentHash, content_hash_atom, sha256_hex_digest, as_
 import std.judgment_contract { demand_identity_canonical, demand_identity_decode }
 import std.materialization_provider {
   ArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
-  evaluation_store_address, evaluation_store_address_digest, Admitted, FamilyRefused,
+  evaluation_store_address, evaluation_store_address_digest, Admitted, IdentityComponentsRefused,
   refused_identity_components_text, request_evaluation_identity,
 }
 import extdeps.realization.materialization_store_local { store_path }
@@ -197,7 +197,7 @@ fn identity_fingerprint_bundle_request() -> ArtifactRequest {
 fn identity_address_text(req: ArtifactRequest) -> String {
   match evaluation_store_address(req: req) {
     Admitted { address: a } => serialize_content_hash(hash: evaluation_store_address_digest(address: a)) as String
-    FamilyRefused { components: cs, scope: _ } => concat("refused: ", refused_identity_components_text(components: cs))
+    IdentityComponentsRefused { components: cs, scope: _ } => concat("refused: ", refused_identity_components_text(components: cs))
   }
 }
 

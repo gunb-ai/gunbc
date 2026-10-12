@@ -39,7 +39,7 @@ import std.materialization_object {
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared, StoreCommitSettled, StoreCommitRefused,
   StoreObjectPublish,
   store_commit_prepare, store_commit_settle, store_lookup_decide,
-  store_commit_prepare_addressed, store_lookup_from_address, StoreLookupStoreFamilyRefused, StoreCommitStoreFamilyRefused,
+  store_commit_prepare_addressed, store_lookup_from_address, StoreLookupAddressRefused, StoreCommitAddressRefused,
   StoreObjectRead, ArtifactBlobPart,
   store_lookup_is_hit, store_lookup_is_miss, store_lookup_payload, store_lookup_refusal_tag,
   store_commit_refusal_tag, store_lookup_fold,
@@ -77,7 +77,7 @@ fn lookup_is_refused_evaluation_preimage_mismatch(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => true,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -128,7 +128,7 @@ fn witness_lookup_decide(store: OpenedMaterializationStore, req: ArtifactRequest
   match witness_supplied_addressed(req: req) {
     RequestAddressed { addressed: a } => store_lookup_from_address(store: store, addressed: a, read: read)
     RequestAddressRefused { components: f, scope: sc } =>
-      StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupStoreFamilyRefused { components: f, scope: sc } }
+      StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupAddressRefused { components: f, scope: sc } }
   }
 }
 
@@ -136,7 +136,7 @@ fn witness_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>,
   match witness_supplied_addressed(req: req) {
     RequestAddressed { addressed: a } => store_commit_prepare_addressed(addressed: a, payloads: payloads, blobs: blobs)
     RequestAddressRefused { components: f, scope: sc } =>
-      StoreCommitNotPrepared { commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitStoreFamilyRefused { components: f, scope: sc } } }
+      StoreCommitNotPrepared { commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitAddressRefused { components: f, scope: sc } } }
   }
 }
 
@@ -676,8 +676,8 @@ test fn a_compiler_request_has_no_persistent_address_while_its_generation_axes_a
   (refused |> count()) == 7
     && (refused |> any(r => (r.ref as String) == "generation.source_closure"))
     && (refused |> any(r => (r.ref as String) == "generation.producer_compiler"))
-    && store_lookup_refusal_tag(l: witness_lookup_decide(store: witness_store(), req: compiler_req(), read: StoreObjectAbsent)) == "store_family_refused"
-    && preparation_tag(p: witness_commit_prepare(req: compiler_req(), payloads: payloads, blobs: [])) == "store_family_refused"
+    && store_lookup_refusal_tag(l: witness_lookup_decide(store: witness_store(), req: compiler_req(), read: StoreObjectAbsent)) == "store_address_refused"
+    && preparation_tag(p: witness_commit_prepare(req: compiler_req(), payloads: payloads, blobs: [])) == "store_address_refused"
     && store_lookup_is_miss(l: witness_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectAbsent))
 }
 
