@@ -11,6 +11,7 @@ import std.types { List, String }
 fn layout_namespaces() -> List<String> {
   [
     "examples",
+    "examples.blackjack",
     "extdeps",
     "extdeps.access",
     "extdeps.accessibility",
@@ -311,6 +312,7 @@ fn layout_namespaces() -> List<String> {
     "test.claim.contract_identity",
     "test.claim.deepseek",
     "test.claim.emit",
+    "test.claim.examples",
     "test.claim.extdeps",
     "test.claim.fabric",
     "test.claim.fleet",
