@@ -120,57 +120,11 @@ fn heal_publisher_checkout_step() -> Step {
 // A PATTERN RATHER THAN A NAME, because a name that matches nothing is an ERROR in the download
 // action and "nothing to publish" is this workflow's ordinary case. The run id is the triggering
 // run's, so the artifact read is bound to the run whose facts the publisher validates against.
-// ABSENCE AND FAILURE ARE DIFFERENT ANSWERS, and conflating them loses repairs silently. A run that
-// found no drift seals no candidate, so the publisher must tolerate there being nothing to fetch; a
-// download that fails transiently, or against an artifact it may not read, must NOT look like that.
-// Tolerating both on one step is what made a real repair indistinguishable from a clean tree.
-//
-// So the run is ASKED first -- one artifacts listing, which is a read the job's `actions: read`
-// grant already covers -- and the answer decides whether the download runs at all. The download
-// itself then carries no continue-on-error, so its failure is a failure.
-// The shell of the two forge-facing steps below is hand-spelled strings. The marker rides in the
-// emitted run text, as the toolchain prelude's does, so a reader of the YAML sees the trigger.
-data heal_publisher_forge_shell_dissolve_marker: String = "# dissolve-on: heal_publisher_forge_shell -- hand-spelled gh api / gh pr comment shell in the publisher job; delete when these steps render from typed forge effects through the bash emit capability (docs/plans/shell-intent-emit-realization-design.md, shell-to-intent). The artifact listing and name-membership test, and the receipt comment, are typed data a forge extdeps interface can own."
-
-data heal_publisher_candidate_probe_step_id: String = "candidate_probe"
-data heal_publisher_candidate_present_output: String = "present"
-
-fn heal_publisher_candidate_probe_step() -> Step {
-  RunStep {
-    name: Present { value: "Ask the triggering run whether it sealed a candidate" },
-    id: Present { value: heal_publisher_candidate_probe_step_id },
-    run: join([
-      heal_publisher_forge_shell_dissolve_marker,
-      "set -euo pipefail",
-      concat("NAMES=$(gh api --paginate \"repos/$GITHUB_REPOSITORY/actions/runs/$TRIGGERING_RUN_ID/artifacts\" --jq '.artifacts[].name')", ""),
-      concat("if printf '%s\\n' \"$NAMES\" | grep -qx \"", concat(heal_repair_candidate_artifact_name as String, "\"; then")),
-      concat("  echo \"", concat(heal_publisher_candidate_present_output, "=true\" >> \"$GITHUB_OUTPUT\"")),
-      "else",
-      concat("  echo \"", concat(heal_publisher_candidate_present_output, "=false\" >> \"$GITHUB_OUTPUT\"")),
-      "  echo \"::notice::the triggering run sealed no repair candidate, so there is nothing to publish\"",
-      "fi"
-    ], "\n"),
-    shell: none,
-    env: Present {
-      value: [
-        kv(key: "GH_TOKEN", value: yaml_string(s: "${{ github.token }}")),
-        kv(key: "TRIGGERING_RUN_ID", value: yaml_string(s: "${{ github.event.workflow_run.id }}"))
-      ]
-    },
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-fn heal_publisher_candidate_present_condition() -> String {
-  join([
-    "steps.", heal_publisher_candidate_probe_step_id, ".outputs.",
-    heal_publisher_candidate_present_output, " == 'true'"
-  ], "")
-}
-
+// ABSENCE AND FAILURE ARE STILL DIFFERENT ANSWERS, AND THE ACTION ALREADY KEEPS THEM APART. With a
+// pattern (no name) the action treats "matched nothing" as zero artifacts downloaded and a transient
+// or unauthorized download as a failure, so this step carries no probe and no continue-on-error: a
+// run that sealed nothing leaves the candidate directory empty, every later step gates on the blob
+// files being present, and a failed download is a failed job.
 fn heal_publisher_download_step() -> Step {
   UsesStep {
     name: Present { value: "Download the candidate the triggering heal run produced" },
@@ -186,7 +140,7 @@ fn heal_publisher_download_step() -> Step {
       ]
     },
     env: none,
-    if_condition: Present { value: heal_publisher_candidate_present_condition() },
+    if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -232,7 +186,7 @@ fn heal_publisher_candidate_directory_env_row() -> YamlKeyValue {
 // THE CREDENTIAL-FREE GATE. It reads the event, the candidate and the forge with the job's own
 // read-only token, and refuses before anything can be minted. It runs only when the candidate names
 // paths: since gunbc#11791 the question "did the triggering run seal a candidate at all" is the
-// probe step's (heal_publisher_candidate_probe_step), which separates absence from a failed read,
+// download step's, which separates absence from a failed read,
 // so a clean tree and a lost candidate no longer share one quiet green here.
 fn heal_publisher_admit_step() -> Step {
   heal_publisher_gated(
@@ -278,31 +232,8 @@ fn heal_publisher_publish_step() -> Step {
     env: Present {
       value: [
         heal_publisher_candidate_directory_env_row(),
+        kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
         kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", heal_publisher_wif_step_id, ".outputs.access_token }}"], "")))
-      ]
-    },
-    id: none,
-    if_condition: Present { value: heal_publisher_candidate_has_entries_condition() }
-  )
-}
-
-// THE RECEIPT NAMES EACH ARTIFACT THE BOT COMMIT CHANGED, ON THE PULL REQUEST, so a reader of the PR
-// learns what the repair touched without opening a run. The text is the publication's own readback
-// receipt (gunbc.heal_publication receipt_text), posted only after it has been read back from the
-// forge. A comment failure fails the job on purpose: a repair nobody was told about is the silent
-// state this job exists to end.
-fn heal_publisher_receipt_comment_step() -> Step {
-  heal_publisher_gated(
-    step_name: "Post the publication receipt on the pull request",
-    run: join([
-      heal_publisher_forge_shell_dissolve_marker,
-      "set -euo pipefail",
-      concat("gh pr comment \"$PR_NUMBER\" --repo \"$GITHUB_REPOSITORY\" --body-file ", heal_publication_receipt_path)
-    ], "\n"),
-    env: Present {
-      value: [
-        kv(key: "GH_TOKEN", value: yaml_string(s: "${{ github.token }}")),
-        kv(key: "PR_NUMBER", value: yaml_string(s: "${{ github.event.workflow_run.pull_requests[0].number }}"))
       ]
     },
     id: none,
@@ -342,10 +273,6 @@ type HealPublisherBoundStep {
 fn heal_publisher_bound_steps() -> List<HealPublisherBoundStep> {
   [
     HealPublisherBoundStep {
-      step: heal_publisher_candidate_probe_step(),
-      role: capability_neutral,
-    },
-    HealPublisherBoundStep {
       step: heal_publisher_checkout_step(),
       role: capability_neutral,
     },
@@ -379,10 +306,6 @@ fn heal_publisher_bound_steps() -> List<HealPublisherBoundStep> {
     },
     HealPublisherBoundStep {
       step: heal_publisher_publish_step(),
-      role: capability_neutral,
-    },
-    HealPublisherBoundStep {
-      step: heal_publisher_receipt_comment_step(),
       role: capability_neutral,
     },
   ]

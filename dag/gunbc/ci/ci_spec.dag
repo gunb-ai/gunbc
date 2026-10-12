@@ -3915,19 +3915,13 @@ fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
   )
 }
 
-// THE PUBLISHER MINTS ITS OWN TOKEN IN-RUN, down-scoped to contents:write on this repository alone.
-// An earlier revision matched on a registration coproduct here and emitted a deliberately invalid
-// shell marker on its Pending arm; that arm is gone with the coproduct, because the App is
-// gunbai-bot -- already registered, already installed, and its key already in Secret Manager
-// labelled for exactly this purpose -- so no arm of that match was reachable any more.
+// THE PUBLISHER'S ENTRY MINTS ITS OWN TOKEN, in the .dag: gunbc.github_effect_perform
+// mint_publisher_installation_token reads the App key under the workflow's WIF access token, signs,
+// and exchanges for a contents:write token on this repository alone. This step therefore carries only
+// the cgroup prelude; no credential is rendered into shell.
 fn gunbc_ci_heal_publication_publish_invoke() -> String {
   gunbc_run_step_script_with_prelude(
-    prelude: concat(
-      heal_publisher_cgroup_prelude(),
-      github_app_installation_token_prelude(
-        spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id, f: public_heal_publisher_federation())
-      )
-    ),
+    prelude: heal_publisher_cgroup_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_heal_publication_publish_target.entry,
     function: gunbc_ci_heal_publication_publish_target.function,
