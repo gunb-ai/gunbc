@@ -240,6 +240,26 @@ test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
   }
 }
 
+// POSITIVE CONTROL for the nameless-arm refusal, paired with the malformed negative control above
+// and run the same real path (tokenize -> parse -> normalize over the real parser's tree, not a
+// hand-built one). The refusal is read from the arm's TYPE BODY (the leading type_expr) being a
+// field_decl_block / fn_type production, never from the name's spelling -- so a coproduct whose
+// constructor is NAMED dag_token_lbrace (a spelling that is also a lex token class) is a legitimate
+// arm and must normalize. The former spelling-based gate refused this arm, which is what the
+// production-identity check exists to rule out.
+data cwc_src_named_lbrace_coproduct: String = "module probe\ntype T = dag_token_lbrace | B\n"
+
+test fn cwc_named_lbrace_coproduct_normalize_accepts() -> Bool {
+  match cwc_parse_of(src: cwc_src_named_lbrace_coproduct) {
+    Accepted { value: p, diagnostics: _ } =>
+      match normalize(parse_tree: p) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // ---- resolve on the single-tree door, over supplied roots -------------------------------------
 
 // A variant in value position binds to the module's own declaration. Red before gunbc#13333, where
