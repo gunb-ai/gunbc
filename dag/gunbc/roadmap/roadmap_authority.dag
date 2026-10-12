@@ -2769,7 +2769,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "native-seven",
       owner: "self-host",
       carriers: carrier(path: "src/v2/compiler/04_infer.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "v2 parses and types its native test target end to end",
           boundary: "The target is the test label //v2/test/parse/expression_bodied_fn_decl_parse:all, taken through ingest, lowering, resolve and infer on the native route. The population is derived from the label, not counted: there is no list of seven to keep in sync. Every refusal is removed at its root.",
           displaced_cost: "Until the target's members type end to end, no v2 frontend claim has a real subject behind it.",
@@ -2777,7 +2777,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "Any member of the target refusing before type inference, or refusing by blaming an import target (native_import_target_attribution), keeps this red.",
           out_of_scope: "Whole-corpus refusals; emission. The type_env cycle-time investigation is a regression investigation, not this node's wall.",
           handback: "Every member of the target typed, with the run receipt for the label."
-        ), on: "2026-10-06", note: "Rewritten to the successor chain: the blocker chain to the typed endpoint, then execution as a required check; the N7-0 to N7-5 ledger text is replaced.")),
+        ), on: "2026-10-06", note: "Rewritten to the successor chain: the blocker chain to the typed endpoint, then execution as a required check; the N7-0 to N7-5 ledger text is replaced."), on: "2026-10-12", note: "Re-measured by gunbc test //v2/test/parse/expression_bodied_fn_decl_parse:all. At 1f25232cdc every member refused at prepare with application_argument_does_not_inhabit at parse_module_prepared(tokens: token_stream): the bind_outcome callback parameter was typed by its lowering placeholder (gunbc.recurring_failure_mode infer_child_context_cannot_depend_on_a_sibling_result). At a0c17c753d (n7/callback-argument-frame, on main c22acb7681) that refusal is cleared for every member, and the first refusal is record_field_value_does_not_inhabit at `Rejected { diagnostics: r }` in the same test: the match payload binder r reaches the construction as the bare NonEmptyDiagnostics while the field is declared v2.std.diagnostic.NonEmptyDiagnostics. dag/extdeps/filesystem/filesystem_io.dag still refuses at lowering (service_realization_unreachable, XL-2).")),
       parent: in_project(project: "v2-frontend", contribution: "The native test target is the smallest real subject v2 must read and type end to end."),
     ),
     roadmap_node(
