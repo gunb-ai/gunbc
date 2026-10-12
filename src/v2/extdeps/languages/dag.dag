@@ -1811,6 +1811,10 @@ fn dag_grammar_field_init_list_helper() -> GrammarExpr {
 // not-predicate on the named head, so the field's kind is a production identity the lowering dispatches
 // on. The headless list (dag_grammar_field_init_list_helper) keeps `name: e` only: `{ x }` there is a
 // block, and reading it as an anonymous record `{ x: x }` would be a silent misread.
+// The tagged list has the same ambiguity at a lowercase head: in `if flag { x } else { y }` the condition
+// `flag` is followed by a block, not by the record `flag { x }`. v1 separates them by an uppercase head,
+// which v2's grammar cannot read; a record is never directly followed by `else` except as the
+// then-branch of `if c then R { .. } else d`, so the closing brace is not followed by `else`.
 fn dag_grammar_record_field_init_list_helper() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(
@@ -1924,7 +1928,10 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
         left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
         right: dag_grammar_sequence(
           left: dag_grammar_record_field_init_list_helper(),
-          right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+          right: dag_grammar_sequence(
+            left: dag_grammar_terminal(token_class: ^dag_token_rbrace),
+            right: grammar_expr_not_predicate(element: dag_grammar_terminal(token_class: ^dag_token_kw_else))
+          )
         )
       )
     )
