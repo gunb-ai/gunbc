@@ -3,7 +3,6 @@ module gunbc.roadmap_task_form
 import std.types { String, NonEmptyStr, FilePath, List, Bool }
 import std.optional { Present, Absent }
 import std.algebra { trim }
-import v2.std.algebra { filter }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, Dispatchable, PrsMerged, MemberOf }
 import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
 import gunbc.roadmap_execution_contract { gunbc_claims_execution_contract }

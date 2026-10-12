@@ -42,7 +42,7 @@ import std.realization_schedule {
   schedule_witness_entry_eq,
   string_list_eq
 }
-import v2.std.algebra { any, contains, fold_list, length, Empty }
+import v2.std.algebra { contains, fold_list, length, Empty }
 import std.algebra { list_snoc_item }
 import gunbc.commit_workflow {
   commit_gate_roster,

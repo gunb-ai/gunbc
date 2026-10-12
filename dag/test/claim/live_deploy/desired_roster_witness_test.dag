@@ -48,6 +48,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.emit {
   live_deploy_systemd_unit_for,
 }
+import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
 import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
 }
@@ -161,8 +162,8 @@ test fn selecting_lab_changes_emitted_unit_bytes() -> Bool {
   let live = selected_deployment_spec(row: live_row)
   let lab = selected_deployment_spec(row: lab_row)
   let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
-  let live_unit = live_deploy_systemd_unit_for(spec: live, revision: rev)
-  let lab_unit = live_deploy_systemd_unit_for(spec: lab, revision: rev)
+  let live_unit = live_deploy_systemd_unit_for(spec: live, revision: rev, now_epoch: claim_oidc_now())
+  let lab_unit = live_deploy_systemd_unit_for(spec: lab, revision: rev, now_epoch: claim_oidc_now())
   let live_unit_path = deployment_systemd_unit_path(names: live.names) as String
   let live_slice = deployment_slice_unit_name(names: live.names) as String
   let lab_slice = deployment_slice_unit_name(names: lab.names) as String

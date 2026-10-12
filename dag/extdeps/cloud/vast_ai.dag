@@ -1,0 +1,107 @@
+module extdeps.cloud.vast_ai
+
+import std.resources { Network }
+import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// VAST.AI, THE GPU MARKETPLACE INTERFACE: what its REST API returns for rentable offers. Read
+// 2026-10-11 from docs.vast.ai (search-offers, create-instance). Vast is a marketplace of
+// independently operated hosts, so an offer is a host's ask, not a catalog SKU: price, reliability
+// and verification vary per machine. This module owns the wire SHAPE only. Which offers this
+// repository will rent, and for what role, is supplier policy in product.supplier.vast_ai.
+//
+// gpu_arch is the host machine's GPU architecture as a string (docs.vast.ai search-offers: "Host machine
+// GPU architecture (e.g. nvidia, amd)"). It is optional here because an offer that omits it states no
+// architecture; absence is an unread fact, not NVIDIA.
+//
+// gpu_arch AND verification STAY String ON PURPOSE: the cited text gives gpu_arch as "(e.g. nvidia, amd)",
+// an example list rather than a closed set, and the documents read name no verification enumeration. A
+// closed enum here would assert a set the upstream does not state; the supplier layer therefore matches
+// only the one word it can ground ("nvidia" yields Cuda) and refuses every other or absent value by name.
+//
+// is_bid marks an interruptible (bid-priced) offer: search-offers `type` is ondemand | bid | reserved and
+// bid "may be interrupted if outbid", so an interruptible offer is a different availability fact from an
+// on-demand one. Absence is an unread fact.
+//
+// FLOAT WIRE FIELDS ARE NOT MODELED: dph_total (dollars per hour, a total per machine), gpu_ram, gpu_mem_bw
+// and the rest arrive as JSON numbers, and nothing reads them: the supplier receives the rate as an
+// explicit parameter. Dissolve-on: a declared lossy Float->MoneyPerHour / Float->HardwareThreadCount
+// conversion plan in std (DESIGN section 4: not a coercion); only then may a consumed float be added.
+// num_gpus is an Int and IS a request axis: an offer is a machine with that many GPUs, rented whole.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/search/search-offers" }
+}
+
+data vast_ai_create_instance_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/instances/create-instance" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.vast_ai",
+      decl_name: "vast_ai_api_base",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [vast_ai_create_instance_page]
+}
+
+data vast_ai_api_base: NonEmptyStr = "https://console.vast.ai/api/v0"
+
+type VastAiApiError {
+  success: Bool
+  error: String
+  msg: String
+}
+
+// ONE OFFER from POST /bundles: id is the ask contract a rental names (PUT /asks/{id}).
+type VastAiOffer {
+  id: Int
+  machine_id: Int
+  gpu_name: String
+  num_gpus: Int
+  compute_cap: Int
+  gpu_arch: String?
+  verification: String
+  geolocation: String
+  rentable: Bool
+  rented: Bool
+  is_bid: Bool?
+}
+
+type VastAiOffers {
+  offers: List<VastAiOffer>
+}
+
+service vast_ai.SearchOffers {
+  config {
+    endpoint: vast_ai_api_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Search {
+    requires Network
+    input {
+      api_key: Secret
+    }
+    output {
+      offers: List<VastAiOffer> from "offers"
+    }
+    readonly
+    transport rest {
+      method: POST,
+      path: "/bundles/"
+    }
+    response {
+      200 => VastAiOffers
+      401 => VastAiApiError
+      429 => VastAiApiError
+      5xx => VastAiApiError
+    }
+  }
+}
