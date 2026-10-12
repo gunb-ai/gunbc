@@ -196,11 +196,9 @@ import gunbc.host_layout { belt_spawn_workdir_env_var, attempt_exit_inbox_dir, p
 // climb` wearing the label `can climb after one event`, and it would have sent a later session
 // waiting on an apply that cannot deliver.
 //
-// WHAT IS ACTUALLY TRUE: gunbc.live_deploy.emit emit_fleet_converge_service_unit_doc and
-// emit_fleet_converge_timer_unit_doc now have no member, no spec consumer, and no oracle. They are
-// orphaned emitters, and under delete-first they are the NEXT root to cut rather than evidence to
-// re-arm. This is recorded as an observation for that cut, not as an obligation on this one — no
-// trigger is declared here, because there is no event that would discharge it.
+// WHAT IS ACTUALLY TRUE: the fleet-converge service and timer emitters had no member, no spec
+// consumer and no oracle, so under delete-first they were the next root to cut. They are deleted,
+// with the timer's cadence and jitter rows that only they read; fleet convergence runs on demand.
 //
 fn live_spec() -> DeploymentSpec {
   deployment_spec_srv1()

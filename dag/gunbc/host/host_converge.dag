@@ -1,7 +1,7 @@
 module gunbc.host_converge
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
-import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
+import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, second_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
@@ -128,17 +128,10 @@ data gunbc_ctrl_green_place_marker_ts_prefix: String = "first_green_at="
 
 data gunbc_ctrl_quiescent_reload_hook: String = "scripts/session-dashboard/bin/gunbc-pin-quiescent-reload.mjs"
 
-data gunbc_spawn_retry_backstop_cadence: Second = second(count: 600)
-
 type GreenPlaceReadinessMarker {
   path: String
   pin_prefix: String
   timestamp_prefix: String
-}
-
-type SpawnRetryBackstop {
-  cadence: Second
-  role: String
 }
 
 type GunbcPinnedTreeDriftReceipt {
@@ -214,7 +207,6 @@ type ConvergeDoneCondition
 type ConvergeLiveApplyPolicy {
   restart: String
   quiescent_window: Bool
-  backstop: SpawnRetryBackstop
   reload_hook: String
 }
 
@@ -389,10 +381,6 @@ fn gunbc_dashboard_live_apply_policy() -> ConvergeLiveApplyPolicy {
   ConvergeLiveApplyPolicy {
     restart: "quiescent_window_systemd",
     quiescent_window: true,
-    backstop: SpawnRetryBackstop {
-      cadence: gunbc_spawn_retry_backstop_cadence,
-      role: "acknowledged_auto_spawn_retry",
-    },
     reload_hook: gunbc_ctrl_quiescent_reload_hook,
   }
 }

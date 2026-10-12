@@ -2,7 +2,6 @@ module gunbc.auth.approval_broker
 
 import std.types { NonEmptyStr, String, Timestamp }
 import std.logic { Bool }
-import std.scoped_authorization { AttemptIdentity }
 import extdeps.tailscale.identity {
   TailnetIdentity, IdentityMatch, IdentityMatches, IdentityMismatch, IdentityMissing,
   match_tailnet_identity, identity_match_reason,
@@ -216,38 +215,6 @@ data approval_and_obligation_commit_together_note: NonEmptyStr = "The decision a
 // idempotency key, a resource lock. The broker cannot do it, because it does not know what
 // resource two requests share.
 data request_exclusion_is_not_resource_exclusion_note: NonEmptyStr = "A CAS on one escalation prevents that request's approve and deny both winning. It does not serialize two separately approved requests mutating the same provider resource -- they hold different slots and conflict at the resource. That exclusion belongs to the authority adapter and must use the provider's own concurrency control; the broker has no way to know two requests overlap."
-
-// A work claim names WHO is executing. It is a lease, and the honest limit is stated with it.
-type WorkClaim
-  = WorkUnclaimed
-  | WorkClaimedBy { attempt: AttemptIdentity, claimed_at: Timestamp, lease_until: Timestamp }
-  | WorkCompletedBy { attempt: AttemptIdentity, completed_at: Timestamp }
-  | WorkAbandoned { attempt: AttemptIdentity, at: Timestamp, cause: NonEmptyStr }
-
-// LEASE EXPIRY IS NOT FENCING, and treating it as if it were is the classic distributed-systems
-// error this codebase should not have to learn twice.
-//
-// An expired lease means the holder STOPPED REPORTING. It does not mean the holder stopped: a
-// paused process, a long GC, a partitioned network and a hung syscall all produce an expired lease
-// held by a worker that is still alive and may resume mid-effect the instant it is scheduled
-// again. If a second worker takes the lease on expiry alone, both may be executing.
-//
-// Real fencing requires the EXTERNAL effect to reject the stale worker -- a monotonic token the
-// provider checks, or a precondition (an etag, a generation) that the first worker's own write
-// would have invalidated. Where the provider offers that, takeover is safe. Where it does not,
-// expiry alone must not authorize automatic takeover, and the honest arm is to stop for a person.
-type TakeoverAdmission
-  = TakeoverFencedByProvider { fence: NonEmptyStr }
-  | TakeoverUnfencedAndRefused { holder: AttemptIdentity, lease_until: Timestamp }
-
-data lease_expiry_is_not_fencing_note: NonEmptyStr = "An expired lease establishes that the holder stopped REPORTING, not that it stopped executing: a paused, GC-stalled, partitioned or syscall-hung worker resumes mid-effect when scheduled. Automatic takeover is safe only where the external effect itself rejects the stale worker -- a provider-checked fence token or a precondition the first worker's write invalidates. Without one, expiry authorizes nothing and the correct arm is to stop for adjudication rather than to run the effect a second time."
-
-fn takeover_is_admissible(t: TakeoverAdmission) -> Bool {
-  match t {
-    TakeoverFencedByProvider { fence: _ } => true
-    TakeoverUnfencedAndRefused { holder: _, lease_until: _ } => false
-  }
-}
 
 // ── Submission is authorized separately from approval ────────────────────────────────────────
 // A NAMED REFUSAL MAY NOMINATE A REQUEST; IT MAY NOT ESTABLISH THAT THE REQUESTER MAY ASK.

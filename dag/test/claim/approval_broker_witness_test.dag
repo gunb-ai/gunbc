@@ -11,8 +11,6 @@ import gunbc.auth.approval_broker {
   redeem_capability, redemption_refusal_reason,
   SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled,
   SubmissionAuthorityNotPermittedForRequester, admit_submission,
-  TakeoverAdmission, TakeoverFencedByProvider, TakeoverUnfencedAndRefused,
-  takeover_is_admissible,
 }
 import gunbc.auth.approval_capability {
   ApprovalCapability, ApprovalCapabilityClaims, CapabilityExpectation,
@@ -259,20 +257,6 @@ test fn a_permitted_requester_and_authority_is_admitted() -> Bool {
     SubmissionAdmitted { requester: _, authority: _ } => true
     _ => false
   }
-}
-
-// ── Lease expiry is not fencing ──────────────────────────────────────────────────────────────
-// An expired lease means the holder stopped REPORTING, not that it stopped executing. Without a
-// fence the external effect itself checks, takeover may run the effect twice, so the unfenced arm
-// refuses rather than proceeding.
-test fn an_unfenced_takeover_is_refused_and_a_fenced_one_is_not() -> Bool {
-  !takeover_is_admissible(
-    t: TakeoverUnfencedAndRefused {
-      holder: "attempt-1" as AttemptIdentity,
-      lease_until: "2026-09-06T00:05:00Z",
-    }
-  )
-  && takeover_is_admissible(t: TakeoverFencedByProvider { fence: "etag-observed" as NonEmptyStr })
 }
 
 // AN UNATTRIBUTED HEADER NEVER BECOMES A LOGIN ON THE RECORD: the redemption is admitted on the

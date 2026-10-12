@@ -40,10 +40,6 @@ import gunbc.live_deploy.release_locus {
   helper_locus_dir,
   approval_broker_ntfy_runtime_observe_operation_at,
 }
-import gunbc.fleet_converge_timer {
-  fleet_converge_timer_on_calendar,
-  fleet_converge_timer_randomized_delay,
-}
 import std.measure { ByteSize, byte_size, second_count, positive_millisecond_count, Second }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 
@@ -100,7 +96,7 @@ import gunbc.executor_privileged_operation {
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_rm_binary_path }
 import gunbc.cli_invoke { NamedArgumentAdmission, admit_named_argument }
 import extdeps.systemd.unit_file {
-  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
+  SystemdUnitFile, ServiceUnitFile, SliceUnitFile, PathUnitFile,
   SystemdPathDirective, PathUnit, DirectoryNotEmpty, PathChanged,
   TriggerLimitIntervalSec, TriggerLimitBurst,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
@@ -109,8 +105,6 @@ import extdeps.systemd.unit_file {
   SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
   Environment, EnvironmentFile, EnvironmentFileIfPresent, WorkingDirectory, ServiceUser, ServiceGroup,
   TimeoutStartSec,
-  SystemdTimerDirective, TimerUnit, OnCalendar, OnBootSec, OnUnitInactiveSec,
-  AccuracySec, RandomizedDelaySec, Persistent,
   SystemdInstallDirective, WantedBy,
   serialize_systemd_unit_file,
 }
@@ -185,7 +179,6 @@ import gunbc.live_deploy.spec {
   deployment_publication_timer_unit_path,
   deployment_retired_belt_timer_unit_path,
   deployment_credential_env_path,
-  deployment_fleet_converge_service_unit_name,
   deployment_fleet_converge_timer_unit_name,
   deployment_fleet_converge_service_unit_path,
   deployment_plan_listen_port,
@@ -1229,72 +1222,6 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: deploy_stage_write_command(
     stage_name: deployment_belt_service_unit_name(names: spec.names) as String,
     content: render(doc: emit_belt_service_unit_doc(spec: spec), proto: live_deploy_protocol),
-  ))
-}
-
-// b1 fix (CONVERGE close): the fleet-converge unit runs `gunbc converge --host self`, whose
-// first act is `git ls-remote origin refs/heads/main` inside WorkingDirectory=svc.repo_root
-// (/opt/gunbc/gunbc on srv1). That tree is owned by svc.service_user (briansrls), and the
-// private-remote credential exists ONLY under that principal on srv1 (live_deploy_serve_unit_file's
-// annotation: "claude auth exists only under briansrls"). A root run therefore hits git dubious-ownership
-// AND has no credential, so the desired ref is never observed and every cadence renders
-// verdict=absent (fleet_converge_cli converge_cli_revision_verdict RevisionUnobserved). Running
-// as the repo owner is exactly what the sibling serve/belt/tree-sync units already do
-// (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user).
-// Receipt *publication* (superseding a stale root-owned file) is atomic rename in
-// gunbc.fleet_converge_cli (gunbc.host_layout fleet_converge_receipt_atomic_publish_note).
-// Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
-// here: this member's apply arm is a retirement poison (the cadence is on-demand via
-// fleet-converge.yml plan/apply, sleek-heron-218), so the bootstrap it used to carry has not run
-// on any fresh instance root since that retirement. It rides BeltEventPathUnit apply against the
-// per-instance receipts directory instead — see the annotation on emit_artifact_upsert. Publication and
-// bootstrap remain orthogonal problems; only the bootstrap's home moved.
-fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
-  let svc = spec.service
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
-    unit: [
-      Description { text: "gunbc fleet converge (self)" as NonEmptyStr },
-      After { target: "network-online.target" as NonEmptyStr },
-      Wants { target: "network-online.target" as NonEmptyStr },
-    ],
-    service: [
-      ServiceType { mode: OneshotMode },
-      ServiceUser { name: svc.service_user },
-      ServiceGroup { name: svc.service_user },
-      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
-      WorkingDirectory { path: svc.repo_root },
-      ExecStart { command: join([svc.serve_binary as String, " converge --host self"], "") as NonEmptyStr },
-    ],
-    install: NotInstallable,
-  }))
-}
-
-fn emit_fleet_converge_timer_unit_doc(spec: DeploymentSpec) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
-    unit: [Description { text: "gunbc fleet converge cadence" as NonEmptyStr }],
-    timer: [
-      TimerUnit { target: deployment_fleet_converge_service_unit_name(names: spec.names) },
-      OnCalendar { expression: fleet_converge_timer_on_calendar as NonEmptyStr },
-      Persistent { enabled: true },
-      RandomizedDelaySec {
-        duration: to_string(second_count(s: fleet_converge_timer_randomized_delay)) as NonEmptyStr,
-      },
-    ],
-    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
-  }))
-}
-
-fn apply_fleet_converge_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_fleet_converge_service_unit_name(names: spec.names) as String,
-    content: render(doc: emit_fleet_converge_service_unit_doc(spec: spec), proto: live_deploy_protocol),
-  ))
-}
-
-fn apply_fleet_converge_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: deploy_stage_write_command(
-    stage_name: deployment_fleet_converge_timer_unit_name(names: spec.names) as String,
-    content: render(doc: emit_fleet_converge_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
   ))
 }
 
