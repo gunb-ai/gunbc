@@ -1490,25 +1490,6 @@ fn apply_oidc_config_steps_at(spec: DeploymentSpec, now_epoch: Second, should_wr
   }
 }
 
-fn apply_oidc_config_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  match tracker_web_oidc_serve_config(instance_id: spec.instance_id) {
-    Absent => []
-    Present { value: cfg } => [
-      deploy_raw(command: deploy_stage_write_command(
-        stage_name: "gunbc-oidc-config.json",
-        content: tracker_web_oidc_config_document(cfg: cfg),
-      )),
-      deploy_raw(command: deploy_stage_install_owned_command(
-        stage_name: "gunbc-oidc-config.json",
-        mode: install_file_owner_only_mode,
-        owner: spec.service.service_user,
-        group: spec.service.service_user,
-        dest: cfg.config_path as String,
-      )),
-    ]
-  }
-}
-
 // THE SAME PER-INSTANCE ONESHOT CHANGES REALIZATION AFTER ITS TWO INPUTS EXIST. GunbcSourceTree
 // first installs the owner-run working-byte sync; ServeBinary then installs the admitted binary and
 // replaces that unit document with Git-native convergence. There is no second unit name, lifecycle,
@@ -3144,7 +3125,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-    ], concat(apply_oidc_config_steps(spec: spec), apply_approval_broker_unit_write_steps(spec: spec, revision: revision))), concat([
+    ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)), concat([
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
