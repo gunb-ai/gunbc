@@ -1934,7 +1934,6 @@ fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> 
 // composer emits no Mutate. Hiding a refuse inside a Mutate command is a classification error.
 type HostScriptStanding
   = HostScriptProceed
-  | HostScriptWithheld { cause: String }
   | HostScriptRefused { cause: String }
 
 type HostScriptFragment
@@ -1969,11 +1968,6 @@ fn host_script_trace_steps(kind: String, member: NonEmptyStr, steps: List<Pipeli
 fn host_script_standing_join(left: HostScriptStanding, right: HostScriptStanding) -> HostScriptStanding {
   match left {
     HostScriptRefused { cause: c } => HostScriptRefused { cause: c }
-    HostScriptWithheld { cause: c } =>
-      match right {
-        HostScriptRefused { cause: r } => HostScriptRefused { cause: r }
-        _ => HostScriptWithheld { cause: c }
-      }
     HostScriptProceed => right
   }
 }
@@ -2001,11 +1995,6 @@ fn compose_host_script_mutate_steps(fragments: List<HostScriptFragment>) -> List
   match compose_host_script_standing(fragments: fragments) {
     HostScriptRefused { cause: _ } => []
     HostScriptProceed =>
-      flat_map(fragments, f => match f {
-        Mutate { member: m, steps: s } => host_script_trace_steps(kind: "Mutate", member: m, steps: s)
-        Decide { member: _, standing: _, steps: _ } => []
-      })
-    HostScriptWithheld { cause: _ } =>
       flat_map(fragments, f => match f {
         Mutate { member: m, steps: s } => host_script_trace_steps(kind: "Mutate", member: m, steps: s)
         Decide { member: _, standing: _, steps: _ } => []
