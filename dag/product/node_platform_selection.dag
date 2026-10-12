@@ -415,11 +415,13 @@ fn assembly_memory(a: SuperchipAssembly) -> MemoryReadings {
 fn route_memory(r: NodeRoute) -> MemoryReadings {
   match r {
     RetainIncumbentSpark { candidate: _, row: row, standing: _ } => MemoryReadings {
-      readings: [
-        bytes_reading(axis: gpu_local_capacity_axis, b: row.gpu.memory.capacity),
-        to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: row.memory_bandwidth } }),
-        bytes_reading(axis: coherent_capacity_axis, b: row.memory.capacity),
-      ],
+      readings: concat(
+        [bytes_reading(axis: gpu_local_capacity_axis, b: row.gpu.memory.capacity)],
+        concat(
+          gpu_local_bandwidth_readings(gpu_bandwidth: row.memory_bandwidth),
+          [bytes_reading(axis: coherent_capacity_axis, b: row.memory.capacity)],
+        ),
+      ),
       gaps: [],
     }
     ModuleOnDevCarrier { candidate: _, assembly: a, supply: _ } => assembly_memory(a: a)
