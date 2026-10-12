@@ -5,7 +5,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat }
-import std.decimal { ExactDecimal, decimal_pow10 }
+import std.decimal { ExactDecimal, checked_decimal_pow10 }
 import std.checked_arithmetic {
   IntegerOverflow, IntegerAdd, IntegerMultiply, BinaryOperands, int_inclusive_max,
   checked_int_multiply, checked_int_to_nat, CheckedIntReady, CheckedIntOverflow,
@@ -1152,29 +1152,37 @@ fn exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal) -> DecimalMoneyConv
   } else if d.units < 0 {
     DecimalMoneyNegativeRefused { units: d.units }
   } else if d.fraction_digits <= money_micro_fraction_digits {
-    match checked_int_multiply(a: d.units, b: decimal_pow10(exponent: money_micro_fraction_digits - d.fraction_digits)) {
+    match checked_decimal_pow10(exponent: money_micro_fraction_digits - d.fraction_digits) {
       CheckedIntOverflow { cause: c } => DecimalMoneyUnrepresentable { cause: c }
-      CheckedIntReady { value: scaled } =>
-        match checked_int_to_nat(n: scaled) {
-          Absent => DecimalMoneyUnrepresentable {
-            cause: IntegerOverflow {
-              operation: IntegerMultiply,
-              operands: BinaryOperands { lhs: d.units, rhs: decimal_pow10(exponent: money_micro_fraction_digits - d.fraction_digits) },
+      CheckedIntReady { value: factor } =>
+        match checked_int_multiply(a: d.units, b: factor) {
+          CheckedIntOverflow { cause: c } => DecimalMoneyUnrepresentable { cause: c }
+          CheckedIntReady { value: scaled } =>
+            match checked_int_to_nat(n: scaled) {
+              Absent => DecimalMoneyUnrepresentable {
+                cause: IntegerOverflow {
+                  operation: IntegerMultiply,
+                  operands: BinaryOperands { lhs: d.units, rhs: factor },
+                }
+              }
+              Present { value: micros } => DecimalMoneyConverted { amount: money_amount_micro(count: micros) }
             }
-          }
-          Present { value: micros } => DecimalMoneyConverted { amount: money_amount_micro(count: micros) }
         }
     }
   } else {
-    let grain = decimal_pow10(exponent: d.fraction_digits - money_micro_fraction_digits)
-    let q = d.units / grain
-    let r = d.units - (q * grain)
-    let ceiled = if r == 0 { q } else { q + 1 }
-    match checked_int_to_nat(n: ceiled) {
-      Absent => DecimalMoneyUnrepresentable {
-        cause: IntegerOverflow { operation: IntegerAdd, operands: BinaryOperands { lhs: q, rhs: 1 } }
+    match checked_decimal_pow10(exponent: d.fraction_digits - money_micro_fraction_digits) {
+      CheckedIntOverflow { cause: c } => DecimalMoneyUnrepresentable { cause: c }
+      CheckedIntReady { value: grain } => {
+        let q = d.units / grain
+        let r = d.units - (q * grain)
+        let ceiled = if r == 0 { q } else { q + 1 }
+        match checked_int_to_nat(n: ceiled) {
+          Absent => DecimalMoneyUnrepresentable {
+            cause: IntegerOverflow { operation: IntegerAdd, operands: BinaryOperands { lhs: q, rhs: 1 } }
+          }
+          Present { value: micros } => DecimalMoneyConverted { amount: money_amount_micro(count: micros) }
+        }
       }
-      Present { value: micros } => DecimalMoneyConverted { amount: money_amount_micro(count: micros) }
     }
   }
 }

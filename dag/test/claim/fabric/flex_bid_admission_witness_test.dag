@@ -245,6 +245,15 @@ fn vast_min_sample() -> VastAiOffer {
   }
 }
 
+test fn an_unrepresentable_money_scale_refuses_instead_of_wrapping() -> Bool {
+  match exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal { units: 1, fraction_digits: 40 }) {
+    DecimalMoneyUnrepresentable { cause: _ } => true
+    DecimalMoneyConverted { amount: _ } => false
+    DecimalMoneyNegativeRefused { units: _ } => false
+    DecimalMoneyScaleRefused { fraction_digits: _ } => false
+  }
+}
+
 test fn vast_min_bid_rounds_up_a_seventh_fraction_digit() -> Bool {
   match exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal { units: 1111111, fraction_digits: 7 }) {
     DecimalMoneyConverted { amount: a } => money_amount_micro_count(m: a) == 111112

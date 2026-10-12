@@ -40,7 +40,7 @@ pub use crate::std_checked_arithmetic::{
 pub use crate::std_checked_arithmetic::{
     CheckedInt, CheckedIntOperands, IntegerArithmeticOperation, IntegerOverflow,
 };
-pub use crate::std_decimal::decimal_pow10;
+pub use crate::std_decimal::checked_decimal_pow10;
 pub use crate::std_decimal::ExactDecimal;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
@@ -1164,13 +1164,10 @@ pub fn exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal) -> Rc<DecimalMo
             })
         } else {
             if (d.fraction_digits.clone() <= money_micro_fraction_digits()) {
-                match (*crate::std_checked_arithmetic::checked_int_multiply(
-                    d.units.clone(),
-                    crate::std_decimal::decimal_pow10(v1_rt::int_sub(
-                        money_micro_fraction_digits(),
-                        d.fraction_digits.clone(),
-                    )),
-                ))
+                match (*crate::std_decimal::checked_decimal_pow10(v1_rt::int_sub(
+                    money_micro_fraction_digits(),
+                    d.fraction_digits.clone(),
+                )))
                 .clone()
                 {
                     CheckedInt::CheckedIntOverflow { cause: c, .. } => {
@@ -1178,18 +1175,77 @@ pub fn exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal) -> Rc<DecimalMo
                             cause: c.clone(),
                         })
                     }
-                    CheckedInt::CheckedIntReady { value: scaled, .. } => {
-                        match crate::std_checked_arithmetic::checked_int_to_nat(scaled.clone()) {
+                    CheckedInt::CheckedIntReady { value: factor, .. } => {
+                        match (*crate::std_checked_arithmetic::checked_int_multiply(
+                            d.units.clone(),
+                            factor.clone(),
+                        ))
+                        .clone()
+                        {
+                            CheckedInt::CheckedIntOverflow { cause: c, .. } => {
+                                Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
+                                    cause: c.clone(),
+                                })
+                            }
+                            CheckedInt::CheckedIntReady { value: scaled, .. } => {
+                                match crate::std_checked_arithmetic::checked_int_to_nat(
+                                    scaled.clone(),
+                                ) {
+                                    std::option::Option::None => {
+                                        Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
+                                            cause: Rc::new(IntegerOverflow {
+                                                operation:
+                                                    IntegerArithmeticOperation::IntegerMultiply,
+                                                operands: Rc::new(
+                                                    CheckedIntOperands::BinaryOperands {
+                                                        lhs: d.units.clone(),
+                                                        rhs: factor.clone(),
+                                                    },
+                                                ),
+                                            }),
+                                        })
+                                    }
+                                    Some(micros) => {
+                                        Rc::new(DecimalMoneyConversion::DecimalMoneyConverted {
+                                            amount: money_amount_micro(micros.clone()),
+                                        })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                match (*crate::std_decimal::checked_decimal_pow10(v1_rt::int_sub(
+                    d.fraction_digits.clone(),
+                    money_micro_fraction_digits(),
+                )))
+                .clone()
+                {
+                    CheckedInt::CheckedIntOverflow { cause: c, .. } => {
+                        Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
+                            cause: c.clone(),
+                        })
+                    }
+                    CheckedInt::CheckedIntReady { value: grain, .. } => {
+                        let q = v1_rt::int_div(d.units.clone(), grain.clone());
+                        let r = v1_rt::int_sub(
+                            d.units.clone(),
+                            v1_rt::int_mul(q.clone(), grain.clone()),
+                        );
+                        let ceiled = if (r.clone() == 0) {
+                            q.clone()
+                        } else {
+                            v1_rt::int_add(q.clone(), 1)
+                        };
+                        match crate::std_checked_arithmetic::checked_int_to_nat(ceiled.clone()) {
                             std::option::Option::None => {
                                 Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
                                     cause: Rc::new(IntegerOverflow {
-                                        operation: IntegerArithmeticOperation::IntegerMultiply,
+                                        operation: IntegerArithmeticOperation::IntegerAdd,
                                         operands: Rc::new(CheckedIntOperands::BinaryOperands {
-                                            lhs: d.units.clone(),
-                                            rhs: crate::std_decimal::decimal_pow10(v1_rt::int_sub(
-                                                money_micro_fraction_digits(),
-                                                d.fraction_digits.clone(),
-                                            )),
+                                            lhs: q.clone(),
+                                            rhs: 1,
                                         }),
                                     }),
                                 })
@@ -1200,37 +1256,6 @@ pub fn exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal) -> Rc<DecimalMo
                                 })
                             }
                         }
-                    }
-                }
-            } else {
-                {
-                    let grain = crate::std_decimal::decimal_pow10(v1_rt::int_sub(
-                        d.fraction_digits.clone(),
-                        money_micro_fraction_digits(),
-                    ));
-                    let q = v1_rt::int_div(d.units.clone(), grain.clone());
-                    let r =
-                        v1_rt::int_sub(d.units.clone(), v1_rt::int_mul(q.clone(), grain.clone()));
-                    let ceiled = if (r.clone() == 0) {
-                        q.clone()
-                    } else {
-                        v1_rt::int_add(q.clone(), 1)
-                    };
-                    match crate::std_checked_arithmetic::checked_int_to_nat(ceiled.clone()) {
-                        std::option::Option::None => {
-                            Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
-                                cause: Rc::new(IntegerOverflow {
-                                    operation: IntegerArithmeticOperation::IntegerAdd,
-                                    operands: Rc::new(CheckedIntOperands::BinaryOperands {
-                                        lhs: q.clone(),
-                                        rhs: 1,
-                                    }),
-                                }),
-                            })
-                        }
-                        Some(micros) => Rc::new(DecimalMoneyConversion::DecimalMoneyConverted {
-                            amount: money_amount_micro(micros.clone()),
-                        }),
                     }
                 }
             }
