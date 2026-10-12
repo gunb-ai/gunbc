@@ -14,7 +14,7 @@ import product.fabric.selection { DispatchInputs }
 import extdeps.gpu.types { Cuda }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.rented_offer_admission { RentedOfferReading, RentedOfferRead, RentedOfferNotRead }
-import gunbc.serving.rented_instance_offer { rented_replica_offer_reading }
+import gunbc.serving.rented_instance_offer { rented_replica_offer_reading, rented_instance_gpu_count_unusable_obligation }
 import test.claim.fabric.spill_candidate_field_witness { s_request, s_hetzner_route }
 import test.claim.serving.serving_session_attachment_witness { w_replica }
 
@@ -145,4 +145,14 @@ test fn dispatch_observations_for_the_same_key_under_another_principal_are_refus
     availability: d.availability, commitment: d.commitment, start: d.start,
     transition: d.transition, operating: d.operating, opportunity: d.opportunity,
   }))
+}
+
+test fn a_replica_slot_outside_the_instance_gpu_count_reads_nothing_with_the_gpu_count_cause() -> Bool {
+  i_unread(r: i_read(instance: i_instance(gpus: 2), device: 2)) &&
+  i_unread(r: i_read(instance: i_instance(gpus: 2), device: 5)) &&
+  !i_unread(r: i_read(instance: i_instance(gpus: 2), device: 1)) &&
+  (match i_read(instance: i_instance(gpus: 0), device: 0) {
+    RentedOfferNotRead { replica: _, obligation: o } => o == rented_instance_gpu_count_unusable_obligation
+    RentedOfferRead { replica: _, request: _ } => false
+  })
 }

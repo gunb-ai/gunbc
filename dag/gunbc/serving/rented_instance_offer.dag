@@ -126,6 +126,9 @@ fn rented_replica_offer_reading(
       match checked_int_to_nat(n: gpu.count) {
         Absent => rented_replica_not_read(replica: replica, obligation: rented_instance_gpu_count_unusable_obligation)
         Present { value: gpus } =>
+          if gpus == 0 || replica.device_index >= gpus {
+            rented_replica_not_read(replica: replica, obligation: rented_instance_gpu_count_unusable_obligation)
+          } else {
           match rented_per_gpu_hourly(quote: instance.quote, gpus: gpus) {
             RentedPerGpuUnpriceable => rented_replica_not_read(replica: replica, obligation: rented_instance_not_per_gpu_priced_obligation)
             RentedPerGpuQuoted { quote: quote } =>
@@ -163,6 +166,7 @@ fn rented_replica_offer_reading(
                     },
                   }
               }
+          }
           }
       }
   }
