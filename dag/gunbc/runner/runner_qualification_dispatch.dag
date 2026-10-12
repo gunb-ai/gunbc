@@ -211,7 +211,7 @@ fn workflow_declares_dispatch_input(workflow: Workflow, input: DispatchInput) ->
     match t {
       WorkflowDispatch { inputs: ins } => dispatch_inputs_declare(inputs: ins, input: input)
       Push { branches: _, paths: _ } => false
-      PullRequest { branches: _, types: _ } => false
+      PullRequest { branches: _, types: _, paths: _ } => false
       Schedule { cron: _ } => false
       WorkflowCall { inputs: _ } => false
       WorkflowRunCompleted { workflows: _, branches: _ } => false
