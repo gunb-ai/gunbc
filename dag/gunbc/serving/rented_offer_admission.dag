@@ -46,9 +46,6 @@ type OperatorPostureAttestation {
   customer_profile: DeclarationRef
   data_handling_profile: DeclarationRef
   agreement: DeclarationRef
-  prohibited_use_disposition: DispositionStanding
-  sanctions_disposition: DispositionStanding
-  export_disposition: DispositionStanding
   terms_relied_on: DeclarationRef
   further_terms_relied_on: List<DeclarationRef>
 }
@@ -84,16 +81,39 @@ fn rented_attestation_sanction(a: OperatorPostureAttestation) -> RouteScopeSanct
   }
 }
 
-fn rented_attestation_scope(a: OperatorPostureAttestation, demand: FabricIdentity<NonEmptyStr, DemandKey>, work: FabricIdentity<NonEmptyStr, WorkKey>) -> ProviderUseScope<NonEmptyStr> {
+// THE WORK'S PROVIDER-USE SCOPE IS A WORK-SIDE FACT, independent of the offer and of the attestation.
+// What the workload is -- which customer profile its data belongs to, which data handling it needs,
+// which agreement it is performed under, and whether its use is prohibited, sanctioned or export
+// controlled -- is declared by the party that owns the workload. Deriving it from the attestation
+// made the sanction/scope comparison in admit_capacity compare a value with itself and so always
+// succeed; here the attestation is what the PROVIDER was judged to offer, this is what the WORK
+// requires, and a mismatch in profile, handling or agreement refuses. Until the operator declares the
+// scope of the internal warm-session workload it is unread, and an unread scope admits nothing.
+type RentedWorkScope {
+  customer_profile: DeclarationRef
+  data_handling_profile: DeclarationRef
+  agreement: DeclarationRef
+  prohibited_use_disposition: DispositionStanding
+  sanctions_disposition: DispositionStanding
+  export_disposition: DispositionStanding
+}
+
+type RentedWorkScopeReading
+  = RentedWorkScopeDeclared { scope: RentedWorkScope }
+  | RentedWorkScopeUnread { obligation: NonEmptyStr }
+
+data rented_work_scope_unread_obligation: NonEmptyStr = "the provider-use scope of the internal warm-session workload (customer profile, data handling, agreement and the prohibited-use, sanctions and export dispositions) has not been declared by the operator, so no rented offer can be compared against it" as NonEmptyStr
+
+fn rented_work_scope(scope: RentedWorkScope, demand: FabricIdentity<NonEmptyStr, DemandKey>, work: FabricIdentity<NonEmptyStr, WorkKey>) -> ProviderUseScope<NonEmptyStr> {
   ProviderUseScope {
     demand: demand,
     work: work,
-    customer_profile: a.customer_profile,
-    data_handling_profile: a.data_handling_profile,
-    agreement: a.agreement,
-    prohibited_use_disposition: a.prohibited_use_disposition,
-    sanctions_disposition: a.sanctions_disposition,
-    export_disposition: a.export_disposition,
+    customer_profile: scope.customer_profile,
+    data_handling_profile: scope.data_handling_profile,
+    agreement: scope.agreement,
+    prohibited_use_disposition: scope.prohibited_use_disposition,
+    sanctions_disposition: scope.sanctions_disposition,
+    export_disposition: scope.export_disposition,
   }
 }
 
@@ -105,7 +125,7 @@ fn rented_attestation_scope(a: OperatorPostureAttestation, demand: FabricIdentit
 // warm-trace qualification vertical (it runs against a real rental). Until then production reads
 // RentedOfferNotRead for every replica, which is the typed refusal this seam ends in.
 type RentedOfferReading
-  = RentedOfferRead { request: FieldRequest<NonEmptyStr> }
+  = RentedOfferRead { replica: RentedReplicaIdentity, request: FieldRequest<NonEmptyStr> }
   | RentedOfferNotRead { replica: RentedReplicaIdentity, obligation: NonEmptyStr }
 
 data rented_rental_record_unread_obligation: NonEmptyStr = "no provider rental record has been read for this replica, so no supplier offer exists to bind it; read the rental from the provider and bind its offer" as NonEmptyStr
@@ -122,6 +142,7 @@ data rented_route_exercises: List<RouteExercise> = []
 
 type RentedAdmissionSources {
   reading: RentedOfferReading
+  work_scope: RentedWorkScopeReading
   roster: List<OfferRouteRow<NonEmptyStr>>
   attestations: List<OperatorPostureAttestation>
   exercises: List<RouteExercise>
@@ -130,6 +151,7 @@ type RentedAdmissionSources {
 fn rented_production_sources(replica: RentedReplicaIdentity) -> RentedAdmissionSources {
   RentedAdmissionSources {
     reading: rented_offer_reading(replica: replica),
+    work_scope: RentedWorkScopeUnread { obligation: rented_work_scope_unread_obligation },
     roster: rented_route_roster,
     attestations: rented_posture_attestations,
     exercises: rented_route_exercises,
@@ -179,6 +201,7 @@ fn rented_entry_admission(entry: FieldEntry<NonEmptyStr>) -> RentedAdmission {
 // capacity. Readiness is always RequireExercisedRoute: the exercise of a route is a scheduler's work,
 // never a customer turn's.
 fn admit_rented_offer(
+  replica: RentedReplicaIdentity,
   sources: RentedAdmissionSources,
   at: EpochSecs,
   requirements: ExecutionRequirements,
@@ -188,7 +211,13 @@ fn admit_rented_offer(
   match sources.reading {
     RentedOfferNotRead { replica: _, obligation: o } =>
       RentedAdmissionRefused { detail: o as String }
-    RentedOfferRead { request: request } =>
+    RentedOfferRead { replica: read_for, request: request } =>
+      if rented_replica_wire(id: read_for) != rented_replica_wire(id: replica) {
+        RentedAdmissionRefused { detail: join(["wiring fault: the rental record read for replica ", rented_replica_wire(id: read_for), " cannot place replica ", rented_replica_wire(id: replica)], "") }
+      } else {
+      match sources.work_scope {
+      RentedWorkScopeUnread { obligation: o } => RentedAdmissionRefused { detail: o as String }
+      RentedWorkScopeDeclared { scope: work_scope } =>
       match rented_posture_standing(attestations: sources.attestations, route: request.offer.route) {
         PostureUnattested { route: _, obligation: o } =>
           RentedAdmissionRefused { detail: join(["offer ", request.offer.id.key as String, ": ", o as String], "") }
@@ -199,7 +228,7 @@ fn admit_rented_offer(
             routes: sources.roster,
             sanctions: [rented_attestation_sanction(a: a)],
             active: a.posture,
-            scope: rented_attestation_scope(a: a, demand: demand, work: work),
+            scope: rented_work_scope(scope: work_scope, demand: demand, work: work),
             decision_receipt: a.attestation,
             exercises: sources.exercises,
             readiness: RequireExercisedRoute,
@@ -207,6 +236,8 @@ fn admit_rented_offer(
             requirements: requirements,
             request: request,
           ))
+      }
+      }
       }
   }
 }

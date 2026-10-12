@@ -709,8 +709,11 @@ fn harness_add_serving_candidate(
   )
   match admission {
     AdmissibleForClass { class: _, receipt: _ } =>
-      match admit_rented_offer(sources: sources, at: now, requirements: subject.work.requirements, demand: subject.demand, work: subject.work.id) {
+      match admit_rented_offer(replica: replica, sources: sources, at: now, requirements: subject.work.requirements, demand: subject.demand, work: subject.work.id) {
         RentedCandidateAdmitted { candidate: c } =>
+          if any(acc.candidates, e => (e.key as String) == (c.offer.id.key as String)) {
+            harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: join(["offer ", c.offer.id.key as String, " already names another candidate; two replicas may not share one offer identity"], "")), retryable: false)
+          } else {
           HarnessCandidates {
             candidates: concat(acc.candidates, [HarnessCandidate {
               key: c.offer.id.key, replica: replica, endpoint: endpoint, launch: launch,
@@ -719,6 +722,7 @@ fn harness_add_serving_candidate(
             notes: acc.notes,
             retryable: acc.retryable,
             owner_standing: acc.owner_standing,
+          }
           }
         RentedAdmissionRefused { detail: why } =>
           harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: why), retryable: false)
@@ -841,7 +845,8 @@ fn harness_observe_incarnation(endpoint: ServingRouteEndpoint, launch: ReplicaEn
 }
 
 fn harness_candidate_for_key(candidates: List<HarnessCandidate>, key: NonEmptyStr) -> HarnessCandidate? {
-  first(filter(candidates, c => (c.key as String) == (key as String)))
+  let named = filter(candidates, c => (c.key as String) == (key as String))
+  if count(named) > 1 { none } else { first(named) }
 }
 
 // THE ACQUISITION REFERENCE MUST BE UNIQUE FOR THE LIFE OF THE PARTITION, not merely unlikely to
