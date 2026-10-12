@@ -214,7 +214,7 @@ checkout_is_clean(checkout) @ srv5/deploy-runner/gunbc-deploy.service
 
 Rebinding `packages` to image-only removes the apt subtree; rebinding `principals` to image-entailed removes the useradd subtree; neither touches `checkout_is_clean`. Four consumers of `PresentPrincipal(deploy-runner)` -- the service's User=, the execute-permission readback, safe.directory's owner comparison, and the login-shell PATH when the launch context is a shell -- reach one node, because identity deduplicates it.
 
-The exec boundary cut that makes the whole thing load-bearing, landable in the corpus before any compiler change on the route that enforces `sole_constructor` and `admit_callers` today, the seed. The native route checks `admit_callers` and carries `sole_constructor` without checking it (`gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property`), so the cut's structural rung holds on the seed route until the native construction judgment lands:
+The exec boundary cut that makes the whole thing load-bearing. `admit_callers` and `sole_constructor` are checked on the native route (`v2.compiler.infer` `infer_caller_admission_diags` and `infer_sole_constructor_diags`); the seed still misses coproduct-variant and parameter-default construction (f13/f19). The cut's structural rung:
 
 ```
 type MaterializedProgram sole_constructor { target: ProgramRuntime, executable: AbsolutePath, facts: RuntimeFacts }   -- minted by ensure_mint only
