@@ -2,6 +2,7 @@ module test.claim.serving_caller_backlog_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.nat { Nat }
+import v2.std.algebra { length }
 import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd }
 import extdeps.accounting.budget { Appropriation }
@@ -19,7 +20,9 @@ import gunbc.serving.caller_backlog {
   RetryComeBack, RetryTerminal,
   empty_caller_backlog, persist_waiting, snapshot_after_persist, offer_persisted,
   resume_from_snapshot, view_after_controller_restart, resume_after_restart,
-  waiting_survives_ready_supply, commit_attempt, snapshot_after_commit,
+  waiting_survives_ready_supply, apply_ready_supply, offer_against_ready_supply,
+  SupplyReady, SupplyAbsentWaiting, SupplyUnknownWork, SupplyTerminal,
+  commit_attempt, snapshot_after_commit,
   cancel_work, snapshot_after_cancel, note_recovery, caller_retry_disposition, lookup_record,
   persist_before_offer_basis, retriable_refusal_basis, stable_turn_identity_basis, idempotent_retry_basis,
   no_expiry_on_long_wait_basis, durable_cancellation_basis, no_double_execution_basis,
@@ -27,7 +30,7 @@ import gunbc.serving.caller_backlog {
 import std.optional { Present, Absent }
 import gunbc.serving.caller_retry_contract {
   DurableRetryProperty, PersistBeforeOffer, RetriableRefusal, StableTurnIdentity, IdempotentRetryDuplicateSuppression,
-  NoExpiryOnLongWait, DurableCancellation, NoDoubleExecution, serving_route_caller_retry_rows,
+  NoExpiryOnLongWait, DurableCancellation, NoDoubleExecution, serving_route_caller_retry_rows, modeled_caller_retry_rows, modeled_caller_backlog,
   DurableCallerBacklog, ExternalRetryObligation, CallerBacklogRosterMalformed, caller_backlog_standing,
   RetryPropertyEstablished, RetryPropertyUnestablished, durable_retry_property_eq,
 }
@@ -99,7 +102,11 @@ test fn w_waiting_survives_ready_supply_drop_and_controller_restart_without_nudg
   let supplies = [2, 0, 1, 2] as List<Nat>
   let after_supply = waiting_survives_ready_supply(snapshot: durable, work: work_a, supplies: supplies)
   let view = view_after_controller_restart(durable: durable)
+  let after_zero = apply_ready_supply(snapshot: durable, work: work_a, ready: 0)
   (match after_supply { ResumedWaiting { record: r } => (r.work as String) == (work_a as String)  ResumedTerminal { phase: _ } => false  ResumeUnknownWork => false })
+    && is_waiting(s: after_zero)
+    && (match offer_against_ready_supply(snapshot: after_zero, work: work_a, ready: 0) { SupplyAbsentWaiting { record: r } => (r.work as String) == (work_a as String)  SupplyReady { record: _ } => false  SupplyUnknownWork => false  SupplyTerminal { phase: _ } => false })
+    && (match offer_against_ready_supply(snapshot: durable, work: work_a, ready: 2) { SupplyReady { record: r } => (r.work as String) == (work_a as String)  SupplyAbsentWaiting { record: _ } => false  SupplyUnknownWork => false  SupplyTerminal { phase: _ } => false })
     && (match resume_from_snapshot(snapshot: view.memory, work: work_a) { ResumeUnknownWork => true  ResumedWaiting { record: _ } => false  ResumedTerminal { phase: _ } => false })
     && (match resume_after_restart(view: view, work: work_a) { ResumedWaiting { record: r } => (r.work as String) == (work_a as String)  ResumedTerminal { phase: _ } => false  ResumeUnknownWork => false })
 }
@@ -191,7 +198,7 @@ test fn w_cancellation_is_terminal() -> Bool {
 // Production rows are established against the executing bases; standing is DurableCallerBacklog.
 // A router-local queue remains forbidden — that is not the backlog.
 fn established_basis(p: DurableRetryProperty) -> String {
-  match filter(serving_route_caller_retry_rows, r => durable_retry_property_eq(a: r.property, b: p)).first() {
+  match filter(modeled_caller_retry_rows, r => durable_retry_property_eq(a: r.property, b: p)).first() {
     Absent => ""
     Present { value: r } =>
       match r.standing {
@@ -201,12 +208,17 @@ fn established_basis(p: DurableRetryProperty) -> String {
   }
 }
 
-test fn w_serving_route_rows_establish_durable_backlog_without_a_router_queue() -> Bool {
-  (match caller_backlog_standing(rows: serving_route_caller_retry_rows) {
+test fn w_modeled_rows_are_durable_and_the_serving_route_is_not_and_has_no_router_queue() -> Bool {
+  (match modeled_caller_backlog() {
     DurableCallerBacklog => true
     ExternalRetryObligation { unmet: _ } => false
     CallerBacklogRosterMalformed { duplicated: _ } => false
   })
+    && (match caller_backlog_standing(rows: serving_route_caller_retry_rows) {
+      DurableCallerBacklog => false
+      ExternalRetryObligation { unmet: us } => length(us) == 7
+      CallerBacklogRosterMalformed { duplicated: _ } => false
+    })
     && established_basis(p: PersistBeforeOffer) == (persist_before_offer_basis as String)
     && established_basis(p: RetriableRefusal) == (retriable_refusal_basis as String)
     && established_basis(p: StableTurnIdentity) == (stable_turn_identity_basis as String)

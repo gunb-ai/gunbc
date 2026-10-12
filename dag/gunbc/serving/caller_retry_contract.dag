@@ -13,15 +13,17 @@ import gunbc.serving.caller_backlog {
 // A turn the route cannot take now is refused, not queued: there is no server-side queue, and the route
 // offer (retired gunbc.spark.group_b_serving_capacity (deleted #13779) group_b_route_offer) never exceeds the engine's ceiling, so
 // no turn waits inside the engine either. What waits is the caller's. The ruling declares that backlog
-// caller-owned and names what makes it DURABLE rather than merely retried: each property below. The
-// seven properties are established by gunbc.serving.caller_backlog; caller_backlog_standing derives
-// DurableCallerBacklog from those rows. An EXTERNAL RETRY OBLIGATION remains the name for any roster
-// that has not established every property.
+// caller-owned and names what makes it DURABLE rather than merely retried: each property below.
+// gunbc.serving.caller_backlog is the executing model of those properties. caller_backlog_standing
+// derives DurableCallerBacklog only from a roster that has established every row. The SERVING ROUTE
+// has not consumed those folds (harness_placement_pending_exit, harness_turn_subject, harness_bind_seat
+// still mint attempts and share exit status 1), so serving_route_caller_backlog remains an
+// EXTERNAL RETRY OBLIGATION. Declaring the route durable while those gaps remain would be a meaning
+// fork (DESIGN §3) and rung inflation (DESIGN §4b).
 //
-// THE STANDING IS DERIVED, NEVER AUTHORED. caller_backlog_standing folds the property rows, and a
-// "durable caller backlog" exists only when every row is established with its basis. Adding a server
-// queue is not the trigger; the executing basis is the caller's persisted snapshot, not a router-local
-// queue.
+// THE STANDING IS DERIVED, NEVER AUTHORED. Adding a server queue is not the trigger; the executing
+// basis is the caller's persisted snapshot, not a router-local queue, and the route names DurableCallerBacklog
+// only when it actually calls those folds.
 type DurableRetryProperty
   = PersistBeforeOffer
   | RetriableRefusal
@@ -85,13 +87,14 @@ data durable_retry_properties: List<DurableRetryProperty> = [
   NoExpiryOnLongWait, DurableCancellation, NoDoubleExecution,
 ]
 
-// ── WHAT THE SERVING ROUTE'S CALLERS ESTABLISH ──────────────────────────────────────────────────
+// ── THE MODEL'S OWN ROSTER: every property established against the executing folds ─────────────
 //
-// Each row names the gunbc.serving.caller_backlog fold that executes the property. The standing is
-// derived: caller_backlog_standing yields DurableCallerBacklog only because every row is established
-// against those folds. A router-local queue is not the basis (gunbc.serving.router_realization
-// forbids MaintainAuthoritativeBindingLedger); the caller's persisted snapshot is.
-data serving_route_caller_retry_rows: List<DurableRetryPropertyRow> = [
+// This is the roster caller_backlog_standing folds to DurableCallerBacklog. It is not the serving
+// route. DECLARED FRONTIER (DESIGN §3c): harness_bind_seat / harness_placement_pending_exit consume
+// persist_waiting, offer_persisted, commit_attempt, cancel_work and caller_retry_disposition, at
+// which point serving_route_caller_retry_rows switch to these bases. Until then a router-local
+// queue is still forbidden (gunbc.serving.router_realization MaintainAuthoritativeBindingLedger).
+data modeled_caller_retry_rows: List<DurableRetryPropertyRow> = [
   DurableRetryPropertyRow { property: PersistBeforeOffer, standing: RetryPropertyEstablished { basis: persist_before_offer_basis } },
   DurableRetryPropertyRow { property: RetriableRefusal, standing: RetryPropertyEstablished { basis: retriable_refusal_basis } },
   DurableRetryPropertyRow { property: StableTurnIdentity, standing: RetryPropertyEstablished { basis: stable_turn_identity_basis } },
@@ -99,6 +102,32 @@ data serving_route_caller_retry_rows: List<DurableRetryPropertyRow> = [
   DurableRetryPropertyRow { property: NoExpiryOnLongWait, standing: RetryPropertyEstablished { basis: no_expiry_on_long_wait_basis } },
   DurableRetryPropertyRow { property: DurableCancellation, standing: RetryPropertyEstablished { basis: durable_cancellation_basis } },
   DurableRetryPropertyRow { property: NoDoubleExecution, standing: RetryPropertyEstablished { basis: no_double_execution_basis } },
+]
+
+fn modeled_caller_backlog() -> CallerBacklogStanding {
+  caller_backlog_standing(rows: modeled_caller_retry_rows)
+}
+
+// ── WHAT THE SERVING ROUTE'S CALLERS ESTABLISH TODAY ─────────────────────────────────────────────
+//
+// One row per property. The executing model exists; this route has not called it. The pending
+// placement still shares exit status 1 with a refusal, and harness_turn_subject still mints demand
+// identity per attempt. Trigger: the frontier on modeled_caller_retry_rows.
+data serving_route_caller_retry_rows: List<DurableRetryPropertyRow> = [
+  DurableRetryPropertyRow { property: PersistBeforeOffer, standing: RetryPropertyUnestablished {
+    obligation: "the caller records a turn durably before offering it; gunbc.serving.caller_backlog persist_waiting executes that, and nothing on this route calls it, so a caller that dies between a pending answer and its retry loses the turn" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: RetriableRefusal, standing: RetryPropertyUnestablished {
+    obligation: "a pending placement exits with the same status as a refusal (gunbc.harness.harness_cli harness_placement_pending_exit); gunbc.serving.caller_backlog caller_retry_disposition is the typed arm, unused on this path" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: StableTurnIdentity, standing: RetryPropertyUnestablished {
+    obligation: "the demand key is the attempt each entry point mints (gunbc.harness.harness_seat harness_turn_subject), so a retry arrives as a new demand; gunbc.serving.caller_backlog LogicalWorkId is the turn identity that is not yet carried" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: IdempotentRetryDuplicateSuppression, standing: RetryPropertyUnestablished {
+    obligation: "no seat or route keys a retried turn to its earlier attempt; persist_waiting is idempotent for a waiting LogicalWorkId and is not called here" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: NoExpiryOnLongWait, standing: RetryPropertyUnestablished {
+    obligation: "nothing on this route keeps a waiting turn across a zero-supply interval; gunbc.serving.caller_backlog apply_ready_supply is the fold that would" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: DurableCancellation, standing: RetryPropertyUnestablished {
+    obligation: "a turn withdrawn by its caller has no durable record a later retry would honour; gunbc.serving.caller_backlog cancel_work is unused on this path" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: NoDoubleExecution, standing: RetryPropertyUnestablished {
+    obligation: "a turn whose response was lost after the engine ran it is indistinguishable from one that never ran; gunbc.serving.caller_backlog commit_attempt fences by grant generation and is unused on this path" as NonEmptyStr } },
 ]
 
 fn caller_backlog_wire(s: CallerBacklogStanding) -> String {

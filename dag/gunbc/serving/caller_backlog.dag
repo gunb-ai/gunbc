@@ -172,14 +172,57 @@ fn resume_after_restart(view: ControllerView, work: LogicalWorkId) -> ResumeStan
 }
 
 // Ready supply oscillating (2 -> 0 -> 1 -> 2) does not expire a waiting turn and does not mint a
-// new identity. The snapshot is unchanged; resume is enough. NoExpiryOnLongWait is this fact:
-// waiting is not a timer, and a zero-supply interval is not a deletion.
+// new identity. apply_ready_supply is the step that WOULD delete on zero if expiry were a law;
+// it keeps the waiting record for every reading, including zero. offer_against_ready_supply is
+// what a controller does with that reading: zero supply is not unpersisted work, it is waiting
+// with no replica ready to take it.
+type ReadyOffer
+  = SupplyReady { record: CallerWorkRecord }
+  | SupplyAbsentWaiting { record: CallerWorkRecord }
+  | SupplyUnknownWork
+  | SupplyTerminal { phase: CallerWorkPhase }
+
+fn offer_against_ready_supply(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  ready: Nat,
+) -> ReadyOffer {
+  match lookup_record(snapshot: snapshot, work: work) {
+    Absent => SupplyUnknownWork
+    Present { value: head } =>
+      match head.phase {
+        WorkWaiting =>
+          if ready == 0 {
+            SupplyAbsentWaiting { record: head }
+          } else {
+            SupplyReady { record: head }
+          }
+        WorkCompleted => SupplyTerminal { phase: head.phase }
+        WorkCancelled => SupplyTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => SupplyTerminal { phase: head.phase }
+      }
+  }
+}
+
+fn apply_ready_supply(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  ready: Nat,
+) -> CallerBacklogSnapshot {
+  match offer_against_ready_supply(snapshot: snapshot, work: work, ready: ready) {
+    SupplyReady { record: _ } => snapshot
+    SupplyAbsentWaiting { record: _ } => snapshot
+    SupplyUnknownWork => snapshot
+    SupplyTerminal { phase: _ } => snapshot
+  }
+}
+
 fn waiting_survives_ready_supply(
   snapshot: CallerBacklogSnapshot,
   work: LogicalWorkId,
   supplies: List<Nat>,
 ) -> ResumeStanding {
-  let still = fold(supplies, init: snapshot, f: (acc, n) => if n == n { acc } else { acc })
+  let still = fold(supplies, init: snapshot, f: (acc, n) => apply_ready_supply(snapshot: acc, work: work, ready: n))
   resume_from_snapshot(snapshot: still, work: work)
 }
 
