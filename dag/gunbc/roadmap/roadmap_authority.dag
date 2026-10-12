@@ -1477,7 +1477,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       execution: bound(contract: v2_emitter_direct_rust_door_execution_contract()),
       parent: in_project(project: "v2-emitter-production", contribution: "Carrying the real inferred tree through translation and writing Rust with the old generator deciding nothing is the capability this lane exists to name: the new compiler writes the source the factory is built from."),
-      centering: plan(text: "Run the named test process with pattern selecting src/v2/test/claim/long:direct_rust_door_production_group_test. Confirm direct_rust_door_production_group_closing_expectation_holds is green at head. Change nothing. Hand back the run receipt (head sha, verdict) for an operator acceptance event. If red, stop and hand back diagnostics."),
+      centering: plan(text: "Returned at the operator acceptance review on 2026-10-12. Keep direct_rust_door_production_group_closing_expectation_holds as regression evidence for the in-memory route. Extend that same production route to write its Rust source to a file, run rustc on it, and execute the missing-rule refusal there, retaining producer identity and proof the seed emitter was not called. Extend the closing validation to execute these obligations. Hand back the written source, compile result, producer evidence and refusal receipt at a named head. A green in-memory receipt alone does not close this node; if blocked, return the missing capability and diagnostics."),
     ),
     roadmap_node(
       identity: "rn_7QF2XN5BJH0K3VDPMWR8CZT6AY",
