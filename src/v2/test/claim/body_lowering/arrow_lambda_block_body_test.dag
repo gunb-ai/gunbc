@@ -15,9 +15,9 @@ import std.optional { Absent, Optional, Present }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_language_model,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional
+  parse_production_captured_child_optional
 }
+import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.language_model { LanguageModel }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
