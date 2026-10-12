@@ -899,6 +899,13 @@ fn serving_subject_axis_delta(
 // merge two subjects. The digest is std.content_hash content_hash_of_value over the preimage, carried for
 // display and indexing only. An unread axis is part of the preimage as unread, so a receipt taken with an
 // axis unread does not stand for a subject that has it read.
+//
+// NESTED KNOWN PARTS ARE IN THE PREIMAGE. Join treats a present NInfer kv_dtype (or a cited SKU) as
+// known even when a sibling field is unread. The standing reading still collapses that axis to
+// AxisUnread so Incomparable/Partial stay honest. The key must not use that collapse: it embeds
+// serving_engine_request_wire / serving_accelerator_realization_wire, which already spell the nested
+// present and unread fragments. Two Partials that differ on a nested known part therefore cannot share
+// a ServingSubjectKey.
 type ServingSubjectKey sole_constructor {
   preimage: NonEmptyStr
   digest: ContentHash
@@ -908,10 +915,39 @@ fn length_prefixed(text: String) -> String {
   join([to_string(string_length(s: text)), ":", text], "")
 }
 
+fn serving_subject_key_axis_fragment(s: ServingPerformanceSubject, a: ServingSubjectAxis) -> NonEmptyStr {
+  match a {
+    AxisEngine => serving_engine_request_wire(e: s.engine)
+    AxisAccelerator =>
+      match s.accelerator {
+        AcceleratorUnread => axis_value_unread_marker
+        AcceleratorSparkGb10 => "spark-gb10" as NonEmptyStr
+        AcceleratorCited { realization: r } => serving_accelerator_realization_wire(a: r)
+      }
+    AxisCheckpoint => serving_subject_axis_value(s: s, a: a)
+    AxisCheckpointRevision => serving_subject_axis_value(s: s, a: a)
+    AxisRuntime => serving_subject_axis_value(s: s, a: a)
+    AxisRuntimeImageReference => serving_subject_axis_value(s: s, a: a)
+    AxisTopology => serving_subject_axis_value(s: s, a: a)
+    AxisRankPopulation => serving_subject_axis_value(s: s, a: a)
+    AxisContextCeiling => serving_subject_axis_value(s: s, a: a)
+    AxisBatchBudget => serving_subject_axis_value(s: s, a: a)
+    AxisMaxNumSeqs => serving_subject_axis_value(s: s, a: a)
+    AxisKvCacheDtype => serving_subject_axis_value(s: s, a: a)
+    AxisSpeculativePolicy => serving_subject_axis_value(s: s, a: a)
+    AxisCollectiveTransport => serving_subject_axis_value(s: s, a: a)
+    AxisWeightQuantization => serving_subject_axis_value(s: s, a: a)
+    AxisIndexerKvDtype => serving_subject_axis_value(s: s, a: a)
+    AxisSchedulerAdmission => serving_subject_axis_value(s: s, a: a)
+    AxisLaunchProfile => serving_subject_axis_value(s: s, a: a)
+    AxisDeploymentEnv => serving_subject_axis_value(s: s, a: a)
+  }
+}
+
 fn serving_subject_key(s: ServingPerformanceSubject) -> ServingSubjectKey {
   let pre = join(map(serving_subject_axes, a => join([
     length_prefixed(text: serving_subject_axis_wire(a: a) as String),
-    length_prefixed(text: serving_subject_axis_value(s: s, a: a) as String),
+    length_prefixed(text: serving_subject_key_axis_fragment(s: s, a: a) as String),
   ], "")), "") as NonEmptyStr
   ServingSubjectKey { preimage: pre, digest: content_hash_of_value(value: pre) }
 }
