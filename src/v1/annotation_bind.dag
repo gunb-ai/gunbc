@@ -4,7 +4,6 @@ module v1.compiler.annotation_bind
 // It is a PURE DOWNSTREAM READER of the parse result. No allocator is in scope, so the identities it reads were all minted by the semantic parser before it ran, and no edit to a comment can shift one.
 
 import std.types { Bool, Int, String, SourceSpan, List }
-import std.algebra { FreeMonoid, Empty, Cons }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIndexEntry,
@@ -27,121 +26,67 @@ import std.source_annotation {
   source_annotation_graph_rows
 }
 import v1.compiler.parse {
-  ParsedSourceExtents,
-  ErasedSourceScope,
-  ErasedScopeEncloses,
-  ErasedScopeInside
+  ParsedSourceExtents
 }
 
-// THE REGION ROSTER IS THE PARSER'S PUBLISHED SOURCE STRUCTURE, read, never rebuilt. Every occurrence the index carries contributes its RECORDED extent (v1.compiler.parse ParsedSourceExtents, roadmap parse-node-source-extent) and its parent from its containment path; every erased scope the parser published -- the parentheses of `(x)`, the braces of a one-statement block -- contributes its own region. Nothing here derives a range from descendants: an occurrence without a recorded extent contributes no region.
+// THE REGION ROSTER IS THE PARSER'S PUBLISHED SOURCE STRUCTURE, read, never rebuilt. Every occurrence the index carries contributes its RECORDED extent (v1.compiler.parse ParsedSourceExtents, roadmap parse-node-source-extent), and every erased scope the parser published -- the parentheses of `(x)`, the braces of a one-statement block -- contributes its own region. Nothing here derives a range from descendants: an occurrence without a recorded extent contributes no region.
 //
-// ERASED SCOPES ARE RE-PARENTED, because the semantic tree lost them. `((x))` publishes two scopes enclosing `x`, innermost first; as source they sit BETWEEN x and x's parent, so the outermost takes x's parent, each inner one takes the next outer, and x takes the innermost. A scope lying INSIDE an occurrence that absorbed what it enclosed -- `(f)` in `(f)(x)` -- has no surviving child; it chains under that occurrence the same way.
-fn ancestors_last(xs: FreeMonoid<OccurrenceId>, last: OccurrenceId?) -> OccurrenceId? {
-  match xs {
-    Empty => last
-    Cons { head: h, tail: t } => ancestors_last(xs: t, last: Present { value: h })
+// THE PARENTS COME FROM CONTAINMENT, in one interval sweep, because the semantic tree cannot supply them for erased scopes. An erased scope may sit between a node and its parent (`((x))`), inside an occurrence that absorbed what it enclosed while that occurrence kept other children (`(a.b)(x)` keeps the receiver `a`, which lies INSIDE the parentheses), or beside another erased scope absorbed by the same occurrence (`g((1), (2))()`). The parser's extents nest -- the whole-population control in v1.tests.claim.parse_source_extent_control_test holds every occurrence inside its parent -- so sorting all regions by start, then by end descending, and keeping a stack of the regions still open gives each region the innermost one containing it. Two regions of EQUAL extent are a wrapper and what it wraps (an argument and its expression, a property and its value): the shallower occurrence, by containment depth, is the outer one, and an erased scope is never narrower than what it encloses. One sort and one pass: O(n log n) per source.
+fn ancestor_depth(entry: OccurrenceIndexEntry) -> Int {
+  count(entry.containment.ancestors)
+}
+
+type SweptRegion {
+  scope: AnnotationScope
+  extent: SourceSpan
+  depth: Int
+}
+
+type RegionSweepAcc {
+  open: List<SweptRegion>
+  regions: List<AnnotationRegion>
+}
+
+// The order the sweep reads regions in: by start; at one start the wider first; at one extent the
+// shallower first. Depth is -1 for an erased scope, which encloses what shares its start.
+fn swept_region_order(r: SweptRegion) -> Int {
+  (r.extent.start * 4294967296 + (2147483647 - r.extent.end)) * 1024 + (r.depth + 1)
+}
+
+fn close_regions_ending_by(open: List<SweptRegion>, at: Int) -> List<SweptRegion> {
+  match open |> last {
+    Present { value: top } =>
+      if top.extent.end <= at { close_regions_ending_by(open: open |> take(count(open) - 1), at: at) } else { open }
+    Absent => open
   }
 }
 
-fn occurrence_base_parent(entry: OccurrenceIndexEntry) -> AnnotationScope {
-  match ancestors_last(xs: entry.containment.ancestors, last: none) {
-    Present { value: parent } => OccurrenceScope { occurrence: parent }
+fn region_sweep_step(acc: RegionSweepAcc, region: SweptRegion) -> RegionSweepAcc {
+  let open = close_regions_ending_by(open: acc.open, at: region.extent.start)
+  let parent = match open |> last {
+    Present { value: top } => top.scope
     Absent => FileScope
   }
-}
-
-
-// One anchor's erased scopes, innermost first, and whether they enclose the anchor or lie inside it.
-type ErasedChain {
-  encloses: Bool
-  scopes: List<SourceSpan>
-}
-
-fn erased_chains(extents: ParsedSourceExtents) -> Map<Int, ErasedChain> {
-  fold(
-    extents.erased_scopes,
-    init: empty_map(),
-    f: (acc, scope) =>
-      let anchor = match scope.relation {
-        ErasedScopeEncloses { occurrence: o } => o.value
-        ErasedScopeInside { container: c } => 0 - c.value - 1
-      }
-      let encloses = match scope.relation {
-        ErasedScopeEncloses { occurrence: _ } => true
-        ErasedScopeInside { container: _ } => false
-      }
-      match map_get(acc, anchor) {
-        Present { value: chain } => map_insert(acc, anchor, ErasedChain { encloses: chain.encloses, scopes: list_push(chain.scopes, scope.extent) })
-        Absent => map_insert(acc, anchor, ErasedChain { encloses: encloses, scopes: [scope.extent] })
-      }
-  )
-}
-
-fn erased_scope_region(extent: SourceSpan) -> AnnotationScope {
-  ErasedSourceRegion { extent: extent }
-}
-
-// The regions of one chain: scope i's parent is scope i+1, the outermost's parent is `outer`.
-fn erased_chain_regions(scopes: List<SourceSpan>, outer: AnnotationScope) -> List<AnnotationRegion> {
-  let n = count(scopes)
-  scopes
-    |> enumerate
-    |> map(pair =>
-      AnnotationRegion {
-        scope: erased_scope_region(extent: pair.second),
-        extent: pair.second,
-        parent: if pair.first + 1 < n {
-          match scopes |> get(pair.first + 1) {
-            Present { value: next } => erased_scope_region(extent: next)
-            Absent => outer
-          }
-        } else { outer },
-      })
+  RegionSweepAcc {
+    open: list_push(open, region),
+    regions: list_push(acc.regions, AnnotationRegion { scope: region.scope, extent: region.extent, parent: parent }),
+  }
 }
 
 fn annotation_regions(transport: OccurrenceTransport, extents: ParsedSourceExtents) -> List<AnnotationRegion> {
   let recorded = fold(extents.extents, init: empty_map(), f: (acc, row) => map_insert(acc, row.occurrence.value, row.extent))
-  let chains = erased_chains(extents: extents)
-  let base_parents = fold(transport.index.entries, init: empty_map(), f: (acc, entry) =>
-    map_insert(acc, entry.projection.occurrence.value, occurrence_base_parent(entry: entry)))
-  let occurrence_regions = fold(
-    transport.index.entries,
-    init: [],
-    f: (acc, entry) =>
-      let id = entry.projection.occurrence
-      match map_get(recorded, id.value) {
-        Absent => acc
-        Present { value: extent } =>
-          let parent = match map_get(chains, id.value) {
-            Present { value: chain } =>
-              match first(chain.scopes) {
-                Present { value: innermost } => erased_scope_region(extent: innermost)
-                Absent => occurrence_base_parent(entry: entry)
-              }
-            Absent => occurrence_base_parent(entry: entry)
-          }
-          list_push(acc, AnnotationRegion { scope: OccurrenceScope { occurrence: id }, extent: extent, parent: parent })
-      }
+  let occurrences = fold(transport.index.entries, init: [], f: (acc, entry) =>
+    match map_get(recorded, entry.projection.occurrence.value) {
+      Present { value: extent } => list_push(acc, SweptRegion { scope: OccurrenceScope { occurrence: entry.projection.occurrence }, extent: extent, depth: ancestor_depth(entry: entry) })
+      Absent => acc
+    })
+  let erased = extents.erased_scopes |> map(scope => SweptRegion { scope: ErasedSourceRegion { extent: scope.extent }, extent: scope.extent, depth: 0 - 1 })
+  let swept = fold(
+    concat(occurrences, erased) |> sort_by(r => swept_region_order(r: r)),
+    init: RegionSweepAcc { open: [], regions: [] },
+    f: (acc, region) => region_sweep_step(acc: acc, region: region)
   )
-  let erased_regions = fold(
-    map_keys(chains),
-    init: [],
-    f: (acc, anchor) =>
-      match map_get(chains, anchor) {
-        Absent => acc
-        Present { value: chain } =>
-          let outer = if chain.encloses {
-            match map_get(base_parents, anchor) {
-              Present { value: p } => p
-              Absent => FileScope
-            }
-          } else {
-            OccurrenceScope { occurrence: OccurrenceId { value: 0 - anchor - 1 } }
-          }
-          concat(acc, erased_chain_regions(scopes: chain.scopes, outer: outer))
-      }
-  )
-  concat(occurrence_regions, erased_regions)
+  swept.regions
 }
 
 // THE SPELLING HALF: the delimiter is stripped and rendered here, once. render_annotation_block's consumer is the round trip in v1.tests.claim.annotation_gap_round_trip_test, which renders a parsed graph back into source and re-parses it. No production .dag-source renderer exists yet; one that rewrites authored .dag from the semantic graph must write prose back through this spelling or it drops it.

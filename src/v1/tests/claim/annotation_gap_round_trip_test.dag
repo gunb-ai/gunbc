@@ -339,3 +339,53 @@ fn identity_ordinals(p: GapParse) -> List<Int> {
   p.parsed.occurrence_transport.index.entries |> map(e => e.projection.occurrence.value)
 }
 
+
+// ---- Scope controls for erased regions the semantic tree absorbed. Each resolves the row's scope
+// and neighbours to the SOURCE TEXT of their recorded extents, so the assertion is about where the
+// comment sits, not about a row count or a round trip that would agree on the same wrong answer.
+
+fn text_of_key(p: GapParse, key: String?) -> String {
+  match key {
+    Absent => "<none>"
+    Present { value: k } =>
+      if k == "/" { "<file>" } else {
+        match keyed_annotation_regions(transport: p.parsed.occurrence_transport, extents: p.parsed.source_extents) |> filter(r => r.key == k) |> first {
+          Present { value: r } => substring(s: p.source, start: r.extent.start, end: r.extent.end)
+          Absent => "<unresolved>"
+        }
+      }
+  }
+}
+
+// [scope, before, after] of the row carrying `text`, as source text.
+fn gap_texts(p: GapParse, text: String) -> List<String> {
+  match key_of(p: p, text: text) {
+    Absent => ["<no row>"]
+    Present { value: k } => [text_of_key(p: p, key: Present { value: k.scope_key }), text_of_key(p: p, key: k.before_key), text_of_key(p: p, key: k.after_key)]
+  }
+}
+
+// `(a.b)(x)`: the call absorbs the field access but KEEPS the receiver `a` as its child. The comment
+// is inside the parentheses, after `b`: its scope is the erased parentheses, with `a` -- which lies
+// inside them -- before it and nothing after. A roster placing the parentheses beside `a` under the
+// call lands it in the call between `a` and the argument.
+data absorbed_receiver_source: String = "module zqxgap.recv\n\nfn zqx_f(zqx_a: Int, zqx_x: Int) -> Int \{\n  (zqx_a.zqx_b // inside callee\n  )(zqx_x)\n\}\n"
+
+test fn a_comment_inside_absorbed_callee_parentheses_lands_in_them_holds() -> Bool {
+  let p = gap_parse(source: absorbed_receiver_source)
+  parsed_ok(p: p)
+    && gap_texts(p: p, text: "inside callee") == ["(zqx_a.zqx_b // inside callee\n  )", "zqx_a", "<none>"]
+}
+
+// `g((1), (2))()`: the final call absorbs the first call and both its arguments, and both
+// parentheses survive as DISJOINT regions inside it. The comment is inside the first; its scope is
+// those parentheses, and with `1` absorbed it has no neighbours. Chaining the two scopes would hand
+// it to the final call before the second parentheses.
+data absorbed_siblings_source: String = "module zqxgap.sib\n\nfn zqx_f() -> Int \{\n  zqx_g(( // in first argument\n    1), (2))()\n\}\n"
+
+test fn disjoint_absorbed_parentheses_stay_siblings_holds() -> Bool {
+  let p = gap_parse(source: absorbed_siblings_source)
+  parsed_ok(p: p)
+    && gap_texts(p: p, text: "in first argument") == ["( // in first argument\n    1)", "<none>", "<none>"]
+}
+

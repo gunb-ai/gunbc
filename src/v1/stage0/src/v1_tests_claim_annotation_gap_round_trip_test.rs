@@ -766,3 +766,95 @@ pub fn identity_ordinals(p: Rc<GapParse>) -> Rc<Vec<i64>> {
         __result
     })
 }
+
+pub fn text_of_key(p: Rc<GapParse>, key: Option<String>) -> String {
+    match key.clone() {
+        std::option::Option::None => "<none>".to_string(),
+        Some(k) => {
+            if (k.clone() == "/".to_string()) {
+                "<file>".to_string()
+            } else {
+                match Rc::new({
+                    let mut __result = Vec::new();
+                    for r in crate::v1_compiler_annotation_bind::keyed_annotation_regions(
+                        p.parsed.clone().occurrence_transport.clone(),
+                        p.parsed.clone().source_extents.clone(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        if (r.key.clone() == k.clone()) {
+                            __result.push(r);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(r) => v1_rt::substring(
+                        &p.source.clone(),
+                        r.extent.clone().start.clone(),
+                        r.extent.clone().end.clone(),
+                    ),
+                    std::option::Option::None => "<unresolved>".to_string(),
+                }
+            }
+        }
+    }
+}
+
+pub fn gap_texts(p: Rc<GapParse>, text: String) -> Rc<Vec<String>> {
+    match key_of(p.clone(), text.clone()) {
+        std::option::Option::None => Rc::new(vec!["<no row>".to_string()]),
+        Some(k) => Rc::new(vec![
+            text_of_key(p.clone(), Some(k.scope_key.clone())),
+            text_of_key(p.clone(), k.before_key.clone()),
+            text_of_key(p.clone(), k.after_key.clone()),
+        ]),
+    }
+}
+
+pub fn absorbed_receiver_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module zqxgap.recv\n\nfn zqx_f(zqx_a: Int, zqx_x: Int) -> Int {\n  (zqx_a.zqx_b // inside callee\n  )(zqx_x)\n}\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn a_comment_inside_absorbed_callee_parentheses_lands_in_them_holds() -> bool {
+    {
+        let p = gap_parse(absorbed_receiver_source());
+        (parsed_ok(p.clone())
+            && (gap_texts(p.clone(), "inside callee".to_string())
+                == Rc::new(vec![
+                    "(zqx_a.zqx_b // inside callee\n  )".to_string(),
+                    "zqx_a".to_string(),
+                    "<none>".to_string(),
+                ])))
+    }
+}
+
+pub fn absorbed_siblings_source() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module zqxgap.sib\n\nfn zqx_f() -> Int {\n  zqx_g(( // in first argument\n    1), (2))()\n}\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn disjoint_absorbed_parentheses_stay_siblings_holds() -> bool {
+    {
+        let p = gap_parse(absorbed_siblings_source());
+        (parsed_ok(p.clone())
+            && (gap_texts(p.clone(), "in first argument".to_string())
+                == Rc::new(vec![
+                    "( // in first argument\n    1)".to_string(),
+                    "<none>".to_string(),
+                    "<none>".to_string(),
+                ])))
+    }
+}
