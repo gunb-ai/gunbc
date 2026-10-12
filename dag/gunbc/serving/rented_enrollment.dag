@@ -7,8 +7,6 @@ import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint, ServingRouteTurnCeiling,
 }
-import std.scoped_authorization { ScopedAuthorization }
-import gunbc.serving.rented_host_grant { RentedHostSubject, RentedHostClock, RentedHostPermitted, RentedHostNotPermitted, rented_host_permit }
 import gunbc.serving.rented_host_access {
   RentedHostAccessDeclaration, RentedHostAccessReady, RentedHostAccessRefused, rented_host_access,
 }
@@ -136,28 +134,17 @@ fn rented_enrollment_for(index: RentedEnrollmentIndex, replica: RentedReplicaIde
 // and the observation is gunbc.serving.replica_incarnation observe_replica_incarnation unchanged. A
 // replica with no row, a launch naming another replica, a refused host access or an unreadable fact is
 // Unread with its cause, which keeps the session pinned and never calls it warm.
-fn rented_incarnation_standing(
-  index: RentedEnrollmentIndex,
-  authorizations: List<ScopedAuthorization<RentedHostSubject>>,
-  clock: RentedHostClock,
-  endpoint: ServingRouteEndpoint,
-  launch: ReplicaEndpointLaunch,
-  attempt_raw: String,
-) -> ReplicaIncarnationStanding {
+fn rented_incarnation_standing(index: RentedEnrollmentIndex, endpoint: ServingRouteEndpoint, launch: ReplicaEndpointLaunch, attempt_raw: String) -> ReplicaIncarnationStanding {
   if rented_replica_wire(id: launch.replica) != rented_replica_wire(id: endpoint.replica) {
     replica_incarnation_unread(cause: "the launch read names another replica than the endpoint it is observed at")
   } else {
     match rented_enrollment_for(index: index, replica: endpoint.replica) {
       RentedEnrollmentNotFound { replica: _, obligation: o } => replica_incarnation_unread(cause: o as String)
       RentedEnrollmentFound { enrollment: e } =>
-        match rented_host_permit(authorizations: authorizations, declaration: e.access, attempt_raw: attempt_raw, clock: clock) {
-          RentedHostNotPermitted { cause: why } => replica_incarnation_unread(cause: why)
-          RentedHostPermitted =>
-            match rented_host_access(declaration: e.access, attempt_raw: attempt_raw) {
-              RentedHostAccessRefused { node: _, cause: why } => replica_incarnation_unread(cause: why)
-              RentedHostAccessReady { node: _, transport: t, receipt: _ } =>
-                observe_replica_incarnation(transport: t, launch: launch, engine_pattern: e.engine_pattern)
-            }
+        match rented_host_access(declaration: e.access, attempt_raw: attempt_raw) {
+          RentedHostAccessRefused { node: _, cause: why } => replica_incarnation_unread(cause: why)
+          RentedHostAccessReady { node: _, transport: t, receipt: _ } =>
+            observe_replica_incarnation(transport: t, launch: launch, engine_pattern: e.engine_pattern)
         }
     }
   }
