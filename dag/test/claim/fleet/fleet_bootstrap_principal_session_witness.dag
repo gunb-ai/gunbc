@@ -24,8 +24,13 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, portable_remote_words }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, portable_remote_words, FleetOpenSshTrustPolicy }
+import std.optional { Present, Absent }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture {
+  fixture_attempt,
+  known_hosts_anchor_hermetic_witness_fixture,
+  rental_known_hosts_anchor_hermetic_witness_fixture,
+  fleet_openssh_trust_policy_hermetic_witness_fixture,
   fleet_ssh_execution_context_hermetic_witness_fixture,
 }
 
@@ -47,7 +52,21 @@ fn session_is_password(session: FleetSshPrincipalSession) -> Bool {
 // RED ON THE OLD CODE: the bootstrap principal resolved to whatever shaper each call site named, and
 // two of them named the key session. There was no declaration this could even be asked of.
 test fn the_bootstrap_principal_resolves_to_the_password_session() -> Bool {
-  session_is_password(session: fleet_ssh_session_for_principal(principal: fleet_bootstrap_principal_login()))
+  with_trust(rental: false, f: t => session_is_password(session: fleet_ssh_session_for_principal(principal: fleet_bootstrap_principal_login(), trust: t)))
+}
+
+fn with_trust(rental: Bool, f: fn(FleetOpenSshTrustPolicy) -> Bool) -> Bool {
+  match fixture_attempt() {
+    Absent => false
+    Present { value: a } =>
+      f(fleet_openssh_trust_policy_hermetic_witness_fixture(anchor: if rental { rental_known_hosts_anchor_hermetic_witness_fixture(attempt: a) } else { known_hosts_anchor_hermetic_witness_fixture(attempt: a) }))
+  }
+}
+
+// A RENTED HOST THAT LOGS IN UNDER THE BOOTSTRAP NAME IS NOT THE FLEET'S ACCOUNT: it keeps the key
+// session its declared credential names, and is never diverted onto the fleet administrator password.
+test fn a_rental_logging_in_as_the_bootstrap_name_keeps_its_declared_key_session() -> Bool {
+  with_trust(rental: true, f: t => !session_is_password(session: fleet_ssh_session_for_principal(principal: fleet_bootstrap_principal_login(), trust: t)))
 }
 
 // THE LOGIN IS NOT SPELLED TWICE, AND THERE IS NOW EXACTLY ONE SPELLING TO CHECK. The second literal
@@ -65,10 +84,14 @@ test fn the_bootstrap_login_is_the_operator_account_from_the_account_model() -> 
 // in gunbc.spark.managed_access_apply is the one that establishes key-only authentication. If this
 // went password-only, that proof would be testing something else entirely.
 test fn the_managed_executor_resolves_to_the_key_session() -> Bool {
-  !session_is_password(session: fleet_ssh_session_for_principal(principal: "gunbc-automation" as NonEmptyStr))
-    && !session_is_password(session: fleet_ssh_session_for_principal(principal: "gunbc-inference" as NonEmptyStr))
-    && !session_is_password(session: fleet_ssh_session_for_principal(principal: "ghrunner" as NonEmptyStr))
-    && !session_is_password(session: fleet_ssh_session_for_principal(principal: "root" as NonEmptyStr))
+  with_trust(rental: false, f: t => managed_executor_is_key(t: t))
+}
+
+fn managed_executor_is_key(t: FleetOpenSshTrustPolicy) -> Bool {
+  !session_is_password(session: fleet_ssh_session_for_principal(principal: "gunbc-automation" as NonEmptyStr, trust: t))
+    && !session_is_password(session: fleet_ssh_session_for_principal(principal: "gunbc-inference" as NonEmptyStr, trust: t))
+    && !session_is_password(session: fleet_ssh_session_for_principal(principal: "ghrunner" as NonEmptyStr, trust: t))
+    && !session_is_password(session: fleet_ssh_session_for_principal(principal: "root" as NonEmptyStr, trust: t))
 }
 
 // A HELD FILE IS THE PATH THAT WAS HELD, unchanged. The operator-workstation entry materializes its own

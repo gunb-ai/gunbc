@@ -19,6 +19,7 @@ import gunbc.serving.turn_admission {
   PlacementFree, OwnedByAnotherReplica,
 }
 import gunbc.harness.harness_backend { HarnessEngineReading }
+import gunbc.serving.replica_incarnation { ReplicaIncarnationUnread }
 import gunbc.harness.harness_seat { HarnessCandidates, harness_add_serving_candidate, harness_apply_session_attachment }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -56,6 +57,7 @@ fn w_place_session(session: ServingSessionRecord) -> HarnessCandidates {
     seats: 4,
     seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
     session: session,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
   )
 }
 

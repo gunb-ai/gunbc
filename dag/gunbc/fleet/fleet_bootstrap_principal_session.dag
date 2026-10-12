@@ -2,6 +2,7 @@ module gunbc.fleet.fleet_bootstrap_principal_session
 
 import std.types { String, Bool, Int, NonEmptyStr }
 import std.algebra { trim }
+import std.content_hash { serialize_content_hash }
 import extdeps.shell
 
 import extdeps.ssh.session {
@@ -20,6 +21,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   shape_fleet_ssh_password_exec_trusting,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet.fleet_known_hosts_anchor { fleet_known_hosts_registry_identity }
 import gunbc.host.host_cli_dependency {
   HostCliDependencyAbsence,
   first_absent_password_session_host_cli_dependency,
@@ -66,8 +68,15 @@ type FleetSshPrincipalSession
 // gunbc.spark.managed_access_apply), so the key session is what reaches those. That is why this is a
 // total function with no Unobserved arm: it is not an observation of a host, it is a consequence of
 // which account model created the account.
-fn fleet_ssh_session_for_principal(principal: NonEmptyStr) -> FleetSshPrincipalSession {
-  if (principal as String) == (fleet_bootstrap_principal_login() as String) {
+//
+// THE BOOTSTRAP PASSWORD IS SCOPED TO THE ACCESS AUTHORITY THAT REQUIRES IT, NOT TO A USERNAME. The
+// account model above describes the FLEET's hosts; a rented host that happens to log in as the same
+// name is not that account and declares its own key, so it must not be diverted onto the fleet's
+// administrator password. The authority is read from the trust policy the leg already holds: the
+// fleet's hosts are anchored by the fleet's registry, a rental's by its own rows.
+fn fleet_ssh_session_for_principal(principal: NonEmptyStr, trust: FleetOpenSshTrustPolicy) -> FleetSshPrincipalSession {
+  if (principal as String) == (fleet_bootstrap_principal_login() as String)
+    && (serialize_content_hash(hash: trust.anchor.registry_identity) as String) == (serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String) {
     FleetSshPasswordSession
   } else {
     FleetSshKeySession
@@ -276,7 +285,7 @@ fn exec_as_fleet_principal_with_stdin_observed(
   credential: FleetBootstrapCredentialLocus,
   absence: HostCliDependencyAbsence?,
 ) -> FleetPrincipalLegOutcome {
-  let session = fleet_ssh_session_for_principal(principal: target.principal)
+  let session = fleet_ssh_session_for_principal(principal: target.principal, trust: context.trust)
   match session {
     FleetSshKeySession =>
       FleetPrincipalLegRan {
@@ -317,7 +326,7 @@ fn exec_as_fleet_principal(
   words: PortableRemoteWords,
   credential: FleetBootstrapCredentialLocus,
 ) -> FleetPrincipalLegOutcome {
-  let session = fleet_ssh_session_for_principal(principal: target.principal)
+  let session = fleet_ssh_session_for_principal(principal: target.principal, trust: context.trust)
   match session {
     FleetSshKeySession =>
       FleetPrincipalLegRan {
@@ -350,7 +359,7 @@ fn exec_as_fleet_principal_trusting_with_stdin(
   stdin_payload: String,
   credential: FleetBootstrapCredentialLocus,
 ) -> FleetPrincipalLegOutcome {
-  let session = fleet_ssh_session_for_principal(principal: target.principal)
+  let session = fleet_ssh_session_for_principal(principal: target.principal, trust: trust)
   match session {
     FleetSshKeySession =>
       FleetPrincipalLegRefused {

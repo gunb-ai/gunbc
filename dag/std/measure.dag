@@ -375,6 +375,11 @@ type Hertz = Measure<Frequency, One, Nat>
 // The alias carries the transfer semantics; the scale carries the Mega.
 type MegatransfersPerSecond = Measure<Frequency, Mega, Nat>
 
+// A count of the host's scheduler clock ticks (the unit /proc reports process start times in). The tick
+// is not a fixed scale: its length is the Hertz the same host reports, so the count converts to time
+// only against that Hertz and never to a bare seconds or jiffies integer.
+type ClockTickCount = Measure<Count, One, Nat>
+
 type HardwareThreadCount = Measure<Count, One, Nat>
 
 // Allocated hardware-thread count times elapsed time, distinct from unweighted Time and CPU
@@ -1223,6 +1228,14 @@ fn square_foot_count(a: SquareFoot) -> Nat {
 
 fn hertz(count: Nat) -> Hertz {
   Measure { count: count }
+}
+
+fn clock_tick_count(count: Nat) -> ClockTickCount {
+  Measure { count: count }
+}
+
+fn clock_tick_count_value(t: ClockTickCount) -> Nat {
+  t.count
 }
 
 fn megatransfers_per_second(count: Nat) -> MegatransfersPerSecond {

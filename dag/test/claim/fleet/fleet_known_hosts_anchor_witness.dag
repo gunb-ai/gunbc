@@ -14,6 +14,8 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity,
   fleet_ssh_attempt_identity,
   fleet_known_hosts_anchor_path,
+  known_hosts_anchor_path,
+  fleet_known_hosts_registry_identity,
 }
 import std.content_hash { compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 
@@ -137,4 +139,17 @@ test fn w_ordinary_attempt_identity_is_admitted() -> Bool {
     Present { value: _ } => true
     Absent => false
   }
+}
+
+// THE REGISTRY IS A PARAMETER OF THE PATH: two registries under one attempt must land on different
+// files, or a rented inventory's anchor could be read as the fleet's. The fleet path is exactly the
+// generalized path at the fleet's own registry, so the generalization removed no fleet behavior.
+test fn w_two_registries_under_one_attempt_do_not_share_an_anchor_path() -> Bool {
+  known_hosts_anchor_path(attempt: attempt(raw: "attempt-a"), registry_identity: canonical_known_hosts_identity(rows: [row(host: "r1", endpoint: "r1", key: "AAAA")]))
+    != known_hosts_anchor_path(attempt: attempt(raw: "attempt-a"), registry_identity: canonical_known_hosts_identity(rows: [row(host: "r2", endpoint: "r2", key: "BBBB")]))
+}
+
+test fn w_the_fleet_path_is_the_generalized_path_at_the_fleet_registry() -> Bool {
+  fleet_known_hosts_anchor_path(attempt: attempt(raw: "attempt-a"))
+    == known_hosts_anchor_path(attempt: attempt(raw: "attempt-a"), registry_identity: fleet_known_hosts_registry_identity())
 }

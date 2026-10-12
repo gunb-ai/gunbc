@@ -1,6 +1,7 @@
 module test.claim.typed_remote_file_write_fleet_ssh_fixture
 
 import std.types { NonEmptyStr }
+import std.content_hash { content_hash_of_value }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity,
   FleetSshExecutionContext,
@@ -9,6 +10,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   fleet_ssh_attempt_identity,
   fleet_known_hosts_anchor_path,
   fleet_known_hosts_registry_identity,
+  known_hosts_anchor_path,
   known_hosts_anchor_seal,
   fleet_openssh_trust_policy_seal,
   fleet_ssh_execution_context_seal,
@@ -35,6 +37,20 @@ fn known_hosts_anchor_hermetic_witness_fixture(
   let registry_identity = fleet_known_hosts_registry_identity()
   known_hosts_anchor_seal(
     path: fleet_known_hosts_anchor_path(attempt: attempt),
+    registry_identity: registry_identity,
+    materialized_content_identity: registry_identity,
+    attempt: attempt,
+  )
+}
+
+// A rented host's anchor: a registry that is NOT the fleet's, which is the only fact the session
+// derivation reads from it.
+fn rental_known_hosts_anchor_hermetic_witness_fixture(
+  attempt: FleetSshAttemptIdentity,
+) -> KnownHostsAnchor {
+  let registry_identity = content_hash_of_value(value: "rental-registry-witness" as NonEmptyStr)
+  known_hosts_anchor_seal(
+    path: known_hosts_anchor_path(attempt: attempt, registry_identity: registry_identity),
     registry_identity: registry_identity,
     materialized_content_identity: registry_identity,
     attempt: attempt,
