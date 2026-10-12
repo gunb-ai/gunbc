@@ -1,7 +1,8 @@
 module test.claim.harness_turn_admission_witness
 
-import std.types { Bool, NonEmptyStr, String }
-import std.measure { second_count }
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.measure { second_count, money_rate_micros, money_amount_micro }
+import std.decl_ref { declaration_ref_eq }
 import product.fabric.work { OfferedService, MaterializedProgram }
 import gunbc.serving.turn_demand { serving_turn_work }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape, AnthropicMessagesShape }
@@ -9,9 +10,15 @@ import gunbc.harness.harness_reasoning_wire { Glm53FlashOnVllm }
 import gunbc.harness.harness_seat {
   HarnessTurnSubject, AnyAdmittedModel, ExactServingUnit,
   harness_turn_subject, harness_turn_request, harness_execution_requirements, harness_placement_grant_duration,
+  harness_priced_selection_inputs, HarnessPricedSelectionReady, HarnessPricedSelectionRefused,
 }
 import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape, harness_seat_policy }
 import product.fabric.supply { ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration }
+import product.fabric.demand {
+  AdmissionTerms, BuyTerms, DemandObjective,
+  debt_payoff_objective, latency_sensitive_objective, demand_delay_valuation,
+}
+import extdeps.currency.currency { Usd }
 
 // ── A TURN IS PLACED AS ONE WORK AND ONE DEMAND ──
 //
@@ -20,10 +27,29 @@ import product.fabric.supply { ExactGrantDuration, EstimatedGrantDuration, Unobs
 // provider-use admission are a declared frontier (DESIGN 3c) owned by the warm-trace vertical: no
 // witness here claims an admitted candidate, because none can be produced until that offer exists.
 
+fn t_buy() -> BuyTerms {
+  BuyTerms {
+    budget_account: "witness",
+    currency: Usd,
+    reservation_price: money_amount_micro(count: 0),
+    maximum_buy_order: money_amount_micro(count: 0),
+  }
+}
+
+fn t_admission(objective: DemandObjective) -> AdmissionTerms {
+  AdmissionTerms {
+    deadline: none,
+    maximum_wait: none,
+    buy: t_buy(),
+    objective: objective,
+  }
+}
+
 fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
   harness_turn_subject(
     request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", prompt]),
     attempt: attempt as NonEmptyStr,
+    admission: t_admission(objective: debt_payoff_objective),
   )
 }
 
@@ -34,7 +60,7 @@ fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
 // requirements select_supply ranks against, and its Demand is the caller's attempt.
 test fn the_turn_subject_is_the_offered_service_work_and_the_attempt_demand() -> Bool {
   let request = harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"])
-  let subject = harness_turn_subject(request: request, attempt: "a-1" as NonEmptyStr)
+  let subject = harness_turn_subject(request: request, attempt: "a-1" as NonEmptyStr, admission: t_admission(objective: debt_payoff_objective))
   let direct = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request, requirements: harness_execution_requirements())
   (subject.work.id.key as String) == (direct.id.key as String)
     && (subject.demand.key as String) == "a-1"
@@ -77,6 +103,7 @@ fn t_worker_subject(gunbc_program: String, attempt: String) -> HarnessTurnSubjec
   harness_turn_subject(
     request: harness_turn_request(shape: harness_default_wire_shape, requirement: AnyAdmittedModel, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: prompt, user_input: "brief")),
     attempt: attempt as NonEmptyStr,
+    admission: t_admission(objective: debt_payoff_objective),
   )
 }
 
@@ -87,10 +114,12 @@ test fn the_rendered_request_is_the_work_and_the_attempt_is_the_demand() -> Bool
   let exact = harness_turn_subject(
     request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, inputs: ["witness", "p"]),
     attempt: "a-1" as NonEmptyStr,
+    admission: t_admission(objective: debt_payoff_objective),
   )
   let any = harness_turn_subject(
     request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]),
     attempt: "a-1" as NonEmptyStr,
+    admission: t_admission(objective: debt_payoff_objective),
   )
   (a.work.id.key as String) != (b.work.id.key as String)
     && (a.work.id.key as String) == (a2.work.id.key as String)
@@ -101,8 +130,8 @@ test fn the_rendered_request_is_the_work_and_the_attempt_is_the_demand() -> Bool
 
 // RED: THE WIRE SHAPE IS THE INTERFACE, so one prompt spoken over two interfaces is two Works.
 test fn the_wire_shape_is_the_interface() -> Bool {
-  let openai = harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr)
-  let anthropic = harness_turn_subject(request: harness_turn_request(shape: AnthropicMessagesShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr)
+  let openai = harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr, admission: t_admission(objective: debt_payoff_objective))
+  let anthropic = harness_turn_subject(request: harness_turn_request(shape: AnthropicMessagesShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr, admission: t_admission(objective: debt_payoff_objective))
   (openai.work.id.key as String) != (anthropic.work.id.key as String)
 }
 
@@ -116,5 +145,74 @@ test fn the_placement_duration_carries_the_policy_seconds_as_a_second() -> Bool 
     EstimatedGrantDuration { seconds: sc } => second_count(s: sc) == harness_seat_policy.maximum_duration_seconds
     ExactGrantDuration { seconds: _ } => false
     UnobservedGrantDuration { obligation: _ } => false
+  }
+}
+
+fn delay_micros(admission: AdmissionTerms) -> Int? {
+  match harness_priced_selection_inputs(admission: admission) {
+    HarnessPricedSelectionRefused { cause: _ } => none
+    HarnessPricedSelectionReady { delay_valuation: v, maximum_buy_order: _, objective_profile: _ } =>
+      Present { value: money_rate_micros(q: v) as Int }
+  }
+}
+
+// RED: a selector that ignores the demand and always reads latency_sensitive_objective returns
+// the same delay for both profiles. The wall is harness_priced_selection_inputs.
+fn red_hardcoded_latency_delay(_admission: AdmissionTerms) -> Int? {
+  match demand_delay_valuation(objective: latency_sensitive_objective) {
+    Absent => none
+    Present { value: v } => Present { value: money_rate_micros(q: v) as Int }
+  }
+}
+
+test fn a_hardcoded_profile_cannot_discriminate_serving_demands() -> Bool {
+  let wait = t_admission(objective: debt_payoff_objective)
+  let move = t_admission(objective: latency_sensitive_objective)
+  match red_hardcoded_latency_delay(admission: wait) {
+    Absent => false
+    Present { value: a } =>
+      match red_hardcoded_latency_delay(admission: move) {
+        Absent => false
+        Present { value: b } => a == b
+      }
+  }
+}
+
+test fn debt_and_latency_demands_reach_select_supply_with_different_delay_valuations() -> Bool {
+  let wait = t_admission(objective: debt_payoff_objective)
+  let move = t_admission(objective: latency_sensitive_objective)
+  let wait_subject = harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]),
+    attempt: "a-1" as NonEmptyStr,
+    admission: wait,
+  )
+  let move_subject = harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]),
+    attempt: "a-1" as NonEmptyStr,
+    admission: move,
+  )
+  match delay_micros(admission: wait_subject.admission) {
+    Absent => false
+    Present { value: wait_rate } =>
+      match delay_micros(admission: move_subject.admission) {
+        Absent => false
+        Present { value: move_rate } =>
+          wait_rate == 0
+            && move_rate > wait_rate
+            && declaration_ref_eq(a: wait_subject.admission.objective.profile, b: debt_payoff_objective.profile)
+            && declaration_ref_eq(a: move_subject.admission.objective.profile, b: latency_sensitive_objective.profile)
+      }
+  }
+}
+
+test fn a_demand_without_delay_valuation_refuses_priced_selection() -> Bool {
+  match harness_priced_selection_inputs(admission: AdmissionTerms {
+    deadline: none,
+    maximum_wait: none,
+    buy: t_buy(),
+    objective: DemandObjective { profile: debt_payoff_objective.profile, valuations: [] },
+  }) {
+    HarnessPricedSelectionRefused { cause: _ } => true
+    HarnessPricedSelectionReady { delay_valuation: _, maximum_buy_order: _, objective_profile: _ } => false
   }
 }

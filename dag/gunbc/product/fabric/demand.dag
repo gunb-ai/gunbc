@@ -233,8 +233,9 @@ data debt_payoff_objective: DemandObjective = DemandObjective {
   valuations: closed_valuations(money: 1, delay: 0, interruption: 0, accepted_work: 1),
 }
 
-// Positive delay valuation. CONSUMER: harness_seat select_supply delay_valuation;
-// test.claim.fabric.valued_objective_witness (a)(c)(d).
+// Positive delay valuation. Fixture and declared profile only — production reads
+// admission.objective, never this row. CONSUMER: test.claim.fabric.valued_objective_witness
+// (a)(c)(d); test.claim.harness_turn_admission_witness (serving-path profile switch).
 data latency_sensitive_objective: DemandObjective = DemandObjective {
   profile: id_latency_sensitive,
   valuations: closed_valuations(money: 1, delay: 1, interruption: 0, accepted_work: 1),
