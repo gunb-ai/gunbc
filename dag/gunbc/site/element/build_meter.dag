@@ -23,7 +23,7 @@ import gunbc.roadmap_workflow_stage {
 }
 import gunbc.workflow_reconcile { WorkflowFactKey }
 import gunbc.roadmap.roadmap_submission {
-  CandidateHandoffState, HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
+  CandidateHandoffState, HandoffAwaitingWorker, HandoffAwaitingCapture, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
   HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration,
   HandoffPublicationOwed, HandoffBlockedOnPublication, HandoffPublished, submission_readiness_key,
 }
@@ -445,6 +445,7 @@ fn build_meter_is_published(handoff: CandidateHandoffState) -> Bool {
   match handoff {
     HandoffPublished { head_sha: _, pr_number: _, url: _ } => true
     HandoffAwaitingWorker => false
+    HandoffAwaitingCapture { reason: _ } => false
     HandoffYielded { reason: _ } => false
     HandoffEvidenceRefused { reason: _ } => false
     HandoffDeclaredBlocked { head_sha: _, readiness: _, explanation: _ } => false
@@ -463,6 +464,7 @@ fn build_meter_is_published(handoff: CandidateHandoffState) -> Bool {
 fn build_meter_handoff_words(state: CandidateHandoffState) -> String? {
   match state {
     HandoffAwaitingWorker => none
+    HandoffAwaitingCapture { reason: _ } => Present { value: "Ended, awaiting capture" }
     HandoffYielded { reason: _ } => Present { value: "Yielded without a submission" }
     HandoffEvidenceRefused { reason: _ } => Present { value: "Submission evidence refused" }
     HandoffDeclaredBlocked { head_sha: _, readiness, explanation: _ } =>

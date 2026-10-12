@@ -108,6 +108,7 @@ import gunbc.roadmap_belt_actuate {
   BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
   CommitSubjectUnaddressable, CandidateCaptured, CommitCapturePoisoned,
   belt_commit_outcome_receipt, belt_commit_outcome_receipt_json,
+  BeltCommitRecordStanding, CommitStepSettled, CommitStepOwed, CommitStepRefused, belt_commit_record_standing_of_text,
   belt_commit_outcome_is_failure, belt_commit_outcome_is_recorded,
   belt_commit_pass_outcome_from, belt_commit_outcome_json_value,
   belt_tick_result_json_value,
@@ -3374,3 +3375,28 @@ test fn a_refused_metering_write_fails_the_metering_pass() -> Bool {
       _ => false
     })
 }
+
+fn commit_record_standing_key(o: BeltCommitOutcome) -> String {
+  match belt_commit_record_standing_of_text(content: serialize_json(v: belt_commit_outcome_receipt_json(r: belt_commit_outcome_receipt(o: o, attempt_key: "feedfacefeedface")))) {
+    CommitStepSettled => "settled"
+    CommitStepOwed { reason: _ } => "owed"
+    CommitStepRefused { reason: _ } => "refused"
+  }
+}
+
+// THE COMMIT STEP'S OWN RECORD DECIDES WHETHER A MISSING CAPTURE IS A YIELD OR STILL OWED, read back from
+// what the writer actually writes, for every outcome it can write: a decided outcome settles the capture,
+// a failed or deferred one leaves it owed so it runs again, and a poisoned capture or unaddressable
+// subject refuses. A record this reader cannot decode is never read as settled.
+test fn the_commit_record_settles_owes_or_refuses_the_capture_for_every_outcome() -> Bool {
+  commit_record_standing_key(o: CommitRecorded { node_id: "n", message: "dispatch checkpoint" }) == "settled"
+    && commit_record_standing_key(o: CandidateCaptured { node_id: "n", head_sha: "abc", message: "candidate" }) == "settled"
+    && commit_record_standing_key(o: CommitSkipped { node_id: "n", reason: "worktree clean" }) == "settled"
+    && commit_record_standing_key(o: CommitFailed { node_id: "n", detail: "git add failed" }) == "owed"
+    && commit_record_standing_key(o: CommitDeferred { node_id: "n", reason: "seat busy" }) == "owed"
+    && commit_record_standing_key(o: CommitCapturePoisoned { node_id: "n", detail: "capture names another head" }) == "refused"
+    && commit_record_standing_key(o: CommitSubjectUnaddressable { node_id: "n", reason: "no key" }) == "refused"
+    && (match belt_commit_record_standing_of_text(content: "not json") { CommitStepRefused { reason: _ } => true  _ => false })
+    && (match belt_commit_record_standing_of_text(content: "\{\"schema\": \"roadmap-commit-outcome/v0\", \"outcome\": \"recorded\"}") { CommitStepRefused { reason } => reason.contains("v0")  _ => false })
+}
+
