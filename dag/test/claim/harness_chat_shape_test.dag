@@ -12,7 +12,8 @@ import gunbc.harness.harness_wire {
   HarnessUsageRead, UsageRead, UsageUnreadable,
   harness_decode_response,
   harness_decode_chat_completion, harness_backend_path, harness_backend_url_for_endpoint }
-import gunbc.serving.serving_enrollment { serving_enrolled_routes, ServingRouteEndpoint, serving_route_endpoint_wire }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint, serving_route_endpoint_wire }
+import gunbc.serving.rented_enrollment { rented_cohort_enrollments, rented_enrolled_routes }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import std.optional { Present, Absent }
 import gunbc.harness.harness_turn {
@@ -128,7 +129,7 @@ fn t_fixture_endpoint() -> ServingRouteEndpoint {
 }
 
 test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
-  length(serving_enrolled_routes()) == 0
+  length(rented_enrolled_routes(rows: rented_cohort_enrollments)) == 0
     && (serving_route_endpoint_wire(e: t_fixture_endpoint()) as String) == "10.0.0.7:8000"
     && string_contains(
          s: harness_backend_url_for_endpoint(shape: OpenAiChatCompletionsShape, endpoint: t_fixture_endpoint()),

@@ -28,8 +28,9 @@ import gunbc.serving.turn_admission {
 }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
-  serving_enrolled_routes, serving_route_endpoint_wire,
+  serving_route_endpoint_wire,
 }
+import gunbc.serving.rented_enrollment { rented_cohort_enrollments, rented_enrolled_routes }
 import gunbc.serving.admitted_model {
   ServingModelAdmitted, ServingModelNotAdmitted, serving_admit_advertised,
 }
@@ -384,7 +385,7 @@ fn harness_roster_of(folded: HarnessRosterFold) -> HarnessBackendRoster {
 }
 
 fn harness_observe_roster() -> HarnessBackendRoster {
-  let folded = fold(serving_enrolled_routes(), init: HarnessRosterFold { serving: [], declined: [], unresolved: [] }, f: (acc, r) =>
+  let folded = fold(rented_enrolled_routes(rows: rented_cohort_enrollments), init: HarnessRosterFold { serving: [], declined: [], unresolved: [] }, f: (acc, r) =>
     harness_observe_route(acc: acc, route: r))
   let standing = operator_route_standing(route: harness_operator_route, reading: harness_observe_operator_reading(route: harness_operator_route))
   harness_roster_of(folded: harness_operator_roster_step(acc: folded, route: harness_operator_route, standing: standing))

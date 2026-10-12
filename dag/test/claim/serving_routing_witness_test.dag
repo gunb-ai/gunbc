@@ -3,7 +3,7 @@ module test.claim.serving_routing_witness
 import std.types { Bool, String, NonEmptyStr }
 import std.nat { Nat }
 import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
-import gunbc.serving.serving_enrollment { serving_enrolled_routes }
+import gunbc.serving.rented_enrollment { rented_cohort_enrollments, rented_enrolled_routes }
 import gunbc.serving.admitted_model {
   serving_admits_id, serving_admit_advertised, ServingModelAdmitted, ServingModelNotAdmitted,
 }
@@ -35,7 +35,7 @@ import std.measure { token_count_value }
 data w_replica: RentedReplicaIdentity = RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 0, served_name: "qwen-first-row" as NonEmptyStr }
 
 test fn no_replica_is_enrolled_until_one_is_rented() -> Bool {
-  length(serving_enrolled_routes()) == 0
+  length(rented_enrolled_routes(rows: rented_cohort_enrollments)) == 0
 }
 
 // ── 3. THE ADMITTED SET TAKES WHAT A ROUTE ADVERTISES ─────────────────────────────────────────
