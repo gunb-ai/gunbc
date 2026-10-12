@@ -757,6 +757,36 @@ mod nfr_typed_tests {
         );
     }
 
+    // THE A6 (build_projection_partition) SHAPE, RED: an accumulator fold whose outer match
+    // wildcard-shadows the non-refused arms of a closed coproduct, with a second wildcard over
+    // the same accumulator nested in the open arm (running vs. first derivation). Both arms sit
+    // in `step`'s body, so the single function is the site.
+    const A6_SHAPE_RED: &str = "module m\ntype P = Derived { v: Int } | Empty | Refused { c: Int }\nfn step(acc: P, x: Int) -> P {\n  match acc {\n    Refused { c: c } => Refused { c: c }\n    _ =>\n      match acc {\n        Derived { v: v } => Derived { v: v }\n        _ => Derived { v: x }\n      }\n  }\n}\n";
+
+    // THE A6 SHAPE, POSITIVE CONTROL: the same fold totalized by a derived refused-vs-open
+    // partition the accumulator is projected to (open side carries the running fact), so the
+    // fold matches on the partition and the carried value -- no wildcard over the closed
+    // coproduct anywhere, and no fabricated arm for the excluded refused state.
+    const A6_SHAPE_GREEN: &str = "module m\ntype Opt = OptAbsent | OptPresent { value: Int }\ntype P = Derived { v: Int } | Empty | Refused { c: Int }\ntype PPart = PPartOpen { running: Opt } | PPartRefused { c: Int }\nfn p_part(p: P) -> PPart {\n  match p {\n    Derived { v: v } => PPartOpen { running: OptPresent { value: v } }\n    Empty => PPartOpen { running: OptAbsent }\n    Refused { c: c } => PPartRefused { c: c }\n  }\n}\nfn step(acc: P, x: Int) -> P {\n  match p_part(p: acc) {\n    PPartRefused { c: c } => Refused { c: c }\n    PPartOpen { running: r } =>\n      match r {\n        OptPresent { value: v } => Derived { v: v }\n        OptAbsent => Derived { v: x }\n      }\n  }\n}\n";
+
+    #[test]
+    fn red_control_a6_projection_fold_shape_is_residue() {
+        let got = sites(A6_SHAPE_RED);
+        assert!(
+            got.contains("m.dag::step"),
+            "the accumulator fold with wildcard over the closed projection coproduct must be flagged; got {got:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_a6_partition_carried_total_fold_is_not_residue() {
+        let got = sites(A6_SHAPE_GREEN);
+        assert!(
+            !got.contains("m.dag::step") && !got.contains("m.dag::p_part"),
+            "the partition-carried total fold must NOT be flagged; got {got:?}"
+        );
+    }
+
     const WILDCARD_MODULE: &str = "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n";
     const TOTAL_MODULE: &str = "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n  }\n}\n";
 

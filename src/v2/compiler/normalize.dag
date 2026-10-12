@@ -4,7 +4,7 @@ import v2.std.algebra { fold_list }
 import std.algebra { Empty, FreeMonoid, list_snoc_item }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.collection { Absent, Present, optional_absent, optional_present }
-import v2.std.grammar { ParseTree }
+import v2.std.grammar { ParseTree, parse_production_emitted_identity_optional }
 
 import v2.std.diagnostic {
   Correction,
@@ -93,8 +93,7 @@ import v2.extdeps.languages.dag {
   alias_binding_row_from_decl_node,
   import_binding_rows_from_decl_node,
   namespace_graft_unwrap_module_working_root,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional
+  parse_production_captured_child_optional
 }
 import std.types { List }
 

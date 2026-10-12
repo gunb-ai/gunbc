@@ -63,7 +63,8 @@ import v2.std.diagnostic {
   rejected_with_pending,
   textual_whole_file_diagnostic
 }
-import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+
+import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.node {
   Conj,

@@ -11,7 +11,14 @@ import v2.lens.effect_reach {
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
 import v2.std.data_index { DataInitDecl }
-import v2.std.effect_reach { EffectReachClassification }
+import v2.std.effect_reach {
+  EffectReachClassification,
+  FilesystemReadSink,
+  WitnessBinRunSink,
+  ShellExecRunSink,
+  GunbcCompileEntrySink,
+  UnknownHostEffectSink
+}
 import v2.std.fn_index { FnArrowDecl }
 import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme }
 import v2.std.text { String }
@@ -256,4 +263,21 @@ fn witness_frontier_concat_built_path_not_classified() -> Bool {
 
 test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool {
   witness_frontier_concat_built_path_not_classified()
+}
+
+// ---- derived equality for HostEffectSinkKind (nfr_dissolve_derived_equality payoff) ---------
+// sink_kind_eq (hand structural equality over the 5 nullary arms) dissolved to the derived ==:
+// operator_realization.dag -- every structural declaration realizes equality structurally.
+// RED: adjacent-variant pair must compare unequal (a non-structural == collapsing the arms
+// would turn this false).
+test fn effect_reach_sink_kind_structural_eq_distinguishes() -> Bool {
+  FilesystemReadSink != WitnessBinRunSink
+    && WitnessBinRunSink != ShellExecRunSink
+    && ShellExecRunSink != GunbcCompileEntrySink
+    && GunbcCompileEntrySink != UnknownHostEffectSink
+}
+
+// POSITIVE CONTROL, paired with the distinguishing red above: identical arms compare equal.
+test fn effect_reach_sink_kind_structural_eq_equal_control() -> Bool {
+  FilesystemReadSink == FilesystemReadSink && UnknownHostEffectSink == UnknownHostEffectSink
 }

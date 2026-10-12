@@ -132,48 +132,8 @@ fn path_pattern_from_lexeme(text: String, param_names: List<String>) -> PathPatt
   }
 }
 
-fn path_pattern_eq(a: PathPattern, b: PathPattern) -> Bool {
-  match a {
-    LiteralPath { path: pa } =>
-      match b {
-        LiteralPath { path: pb } => pa == pb
-        _ => false
-      }
-    ParamRef { name: na } =>
-      match b {
-        ParamRef { name: nb } => na == nb
-        _ => false
-      }
-    UnknownPath =>
-      match b {
-        UnknownPath => true
-        _ => false
-      }
-  }
-}
-
-fn live_read_carrier_eq(a: LiveReadCarrier, b: LiveReadCarrier) -> Bool {
-  match a {
-    FilesystemReadPath { path_pattern: pa } =>
-      match b {
-        FilesystemReadPath { path_pattern: pb } => path_pattern_eq(a: pa, b: pb)
-        _ => false
-      }
-    ModuleDeclarationFactsScan =>
-      match b {
-        ModuleDeclarationFactsScan => true
-        _ => false
-      }
-    DeclFactsReflection { home: ha } =>
-      match b {
-        DeclFactsReflection { home: hb } => ha == hb
-        _ => false
-      }
-  }
-}
-
 fn carrier_already_present(carriers: List<LiveReadCarrier>, candidate: LiveReadCarrier) -> Bool {
-  any(xs: carriers, predicate: fn(c) { live_read_carrier_eq(a: c, b: candidate) })
+  any(xs: carriers, predicate: fn(c) { c == candidate })
 }
 
 fn merge_carriers(left: List<LiveReadCarrier>, right: List<LiveReadCarrier>) -> List<LiveReadCarrier> {

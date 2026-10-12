@@ -40,7 +40,8 @@ import v2.std.grammar {
   GrammarExprFold,
   GrammarProduction,
   fold_grammar_expr,
-  node_atom_identity_optional
+  node_atom_identity_optional,
+  parse_production_emitted_identity_optional
 }
 import v2.extdeps.languages.dag {
   dag_named_edge,
@@ -56,7 +57,6 @@ import v2.extdeps.languages.dag {
   namespace_graft_spine_body_optional,
   namespace_graft_unwrap_module_working_root,
   parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional,
   parse_subtree_locate_production,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_kw_then_ident_from_captured,

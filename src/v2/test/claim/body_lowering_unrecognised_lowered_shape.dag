@@ -16,13 +16,12 @@ import v2.compiler.body_lowering_fold {
 }
 import v2.test.claim.parse.expression_bodied_fn_decl_parse { g_tokenize_parse }
 import v2.extdeps.languages.dag {
-  dag_int_literal_node_from_lexeme,
-  parse_production_emitted_identity_optional
+  dag_int_literal_node_from_lexeme
 }
 import v2.std.compilers.body_lowering { BodyTerm, Lowered, RawLeaf, RawParse }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, node_locus }
 import std.types { Bool }
-import v2.std.grammar { node_atom_identity_optional }
+import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node {
   Atom,

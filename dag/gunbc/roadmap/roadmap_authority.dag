@@ -1232,12 +1232,30 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "src/v2/compiler/parse.dag"),
       line: ticket(t: fields(
         headline: "The v2 parser attaches comments by the same gap rule as v1",
-        boundary: "v2 projects a std.source_annotation AnnotationRegion roster from its parse: each composite's extent from v2.std.provenance span_index_extent (an Unrepresentable extent contributes no region and is reported, never read as empty) and its parent from the parse tree, with parser scaffolding -- production markers, sequence and repeat spines, projection edges -- projected transparently so a region's children are its ORDERED DIRECT SOURCE-SYNTAX CHILDREN. The v2 capture row gains the preceded_by_blank_line and preceded_by_annotation_line bits the walk can observe from the line-prefix state it already threads. The lexer's final source position is retained in its artifact rather than dropped. parse_module gains an authored sibling that calls attach_annotations, the same fold v1 calls, producing AuthoredParseArtifact.",
+        boundary: "v2 projects a std.source_annotation AnnotationRegion roster from its parse: each composite's extent from v2.std.provenance span_index_extent (an Unrepresentable extent contributes no region and is reported, never read as empty) and its parent from the parse tree, with parser scaffolding -- production markers, sequence and repeat spines, projection edges -- projected transparently so a region's children are its ORDERED DIRECT SOURCE-SYNTAX CHILDREN. The v2 capture row gains the preceded_by_blank_line and preceded_by_annotation_line bits the walk can observe from the line-prefix state it already threads. The lexer's final source position is NOT needed: under the gap rule file scope is the residual scope, chosen when no region contains a capture, so it carries no extent. parse_module gains an authored sibling that calls attach_annotations, the same fold v1 calls, producing AuthoredParseArtifact.",
         displaced_cost: "v2 drops every comment at the lexer, so a v2-built tool cannot see, keep or write back authored prose, and the AuthoredParseArtifact carrier has no producer.",
         first_slice: "A roster projected from one parsed module, with the argument-list control: a comment between two arguments lands before = a, after = b in the call's scope.",
-        red_control: "A comment inside f's body never attaches to the next declaration g; a comment in a sequence-spine position attaches to the source children, not the spine; v1 and v2 agree, by structural key, on the gaps of one corpus file.",
+        red_control: "A comment inside f's body never attaches to the next declaration g; a comment between call arguments lands between the argument productions, not on spine nodes; v1 and v2 name the same neighbour SOURCE TEXT for every comment between siblings both trees retain (structural keys are not comparable across the two trees: v1 keys name authored identifiers, v2 keys name productions), with the places the trees differ asserted rather than dropped.",
         out_of_scope: "The attachment rule and the v1 realization (parse-comment-gap-attachment).",
-        handback: "v2 attaches every capture of the corpus, the roster disposition note on AuthoredParseArtifact is deleted, and the v1/v2 agreement control is green."
+        handback: "parse_module_authored attaches every capture of a parsed module through attach_annotations, the roster disposition note on AuthoredParseArtifact is deleted, and the v1/v2 neighbour-text agreement control is green; its production consumer and gating are parse-comment-gap-attachment-v2-consumed."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "The v2 compiler keeps authored prose under the same gap rule as the seed."),
+    ),
+
+    roadmap_node(
+      identity: "rn_K7QW3M9TZP4XH2D6VB8NRC5JYE",
+      id: "parse-comment-gap-attachment-v2-consumed",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/parse.dag"),
+      line: ticket(t: fields(
+        headline: "The authored v2 parse has a production consumer and a gated agreement control",
+        boundary: "parse_module_authored attaches comments by the shared gap rule but nothing in the production parse path calls it, and the v1/v2 neighbour-text agreement control (v2.test.claim.manual.annotation_gap_v1_v2_agreement) sits under manual/, so no gated row executes it. A v2-built consumer of AuthoredParseArtifact lands, and the agreement control joins a row the required gate judges.",
+        displaced_cost: "Until consumed, the authored v2 parse is executed only by claims, and a v1/v2 divergence in attachment goes unseen by CI.",
+        first_slice: "One production caller of parse_module_authored, exercised by a gated row.",
+        red_control: "Breaking the v2 roster (dropping infix applications as regions) turns the gated agreement control red.",
+        out_of_scope: "The roster and the gap rule (parse-comment-gap-attachment-v2).",
+        handback: "A production route calls parse_module_authored and the agreement control runs under the required gate."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "The v2 compiler keeps authored prose under the same gap rule as the seed."),
@@ -2125,6 +2143,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "DRAFT: per member, its acceptance receipt."
         )),
       parent: in_project(project: "fabric-bringup", contribution: "The fabric's state, checkpointed workspaces and customer storage are what make a VM service recoverable rather than volatile."),
+    ),
+    roadmap_node(
+      identity: "rn_FABRIC0DEMAND0OBJECTIVE0A",
+      id: "fabric-demand-objective",
+      owner: "fleet",
+      carriers: carrier(path: "dag/product/fabric/demand.dag"),
+      line: ticket(t: fields(
+        headline: "The demand's own objective decides every resource choice made for it, and switching that objective changes the choices",
+        boundary: "A demand states once what it values: accepted work, cost, delay and interruption, each with its valuation, under hard spending limits. Every resource choice made for that demand reads this one statement: acquire or release supply, place, wait or move, keep or evict KV, batch or serve now, recover. No layer may put a local preference in its place (warm caches, even session counts, fast responses, bids that keep winning). Choices that affect each other, by sharing budget, memory or GPU throughput, are selected together as one std.decision subject. Choices that do not are carried out independently. Per DESIGN section 3d, a repeating loop selects with std.decision under the demand's objective, carries the choice out per resource, observes the result, and selects again.",
+        displaced_cost: "Today BuyTerms carries no delay or interruption valuation (product.fabric.demand records why it is absent: no carrier at the time). gunbc.serving.turn_admission fills the gap with one placeholder serving_delay_valuation for all work. So the operator has to restate, decision by decision, that debt-payoff work values latency and interruption at zero, and suggestions like keeping a spare or moving a session because it waited a few minutes slip in a preference that work never had.",
+        first_slice: "Add a delay valuation (MoneyPerSecond, which std.measure now has) and an interruption stance (product.fabric.work revocation acceptance, from flex M0) to the demand's terms. Supply selection and serving admission read them, and the placeholder serving_delay_valuation is deleted. One choice uses them end to end: when admission is blocked, wait for the current replica or move elsewhere, priced with real supplier cost and an explicit reconstruction estimate.",
+        red_control: "The policy switch. With the work and supply held fixed, two cases where the options genuinely trade off: (1) debt-payoff waits and latency-sensitive pays to move; (2) debt-payoff also moves, because moving raises accepted work per dollar. In both, the spending limits refuse an over-cap move for either profile. RED: a selector that ignores the demand's valuation picks the same option for both profiles in case 1. A third case where one option is both cheaper and faster must give the same answer under both profiles, so the test cannot pass just by flipping every answer.",
+        out_of_scope: "KV transfer and spill, until an engine supports them; they then join the candidate set with no change to this model. Searching for an optimal operating point over the whole fleet. Learning the valuations: they are declared authority, and only consequence estimates such as interruption rate or reconstruction cost are observed and updated.",
+        handback: "The objective carried on the demand, its consumers in selection and admission, the placeholder deleted, and the three-case policy-switch receipt."
+      )),
+      parent: in_project(project: "fabric-bringup", contribution: "Fabric decisions follow the declared objective of the work they serve, so one fabric serves both cost-sensitive batch work and latency-sensitive work without being re-tuned for each."),
     ),
     roadmap_node(
       identity: "rn_HARNESS0RECURSIVE0ALIGN0A",

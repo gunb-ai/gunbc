@@ -324,7 +324,17 @@ fn assess_pool_independent_projection_equality(
               failure: BoundReferencePopulationMismatch,
             }
           }
-        _ => PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
+        ReferenceDerivedDependencyProjectionReady {
+          binding_provenance: _,
+          file_dependencies: _,
+          bound_population: _,
+        } =>
+          PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
+        ReferenceDerivedDependencyProjectionFileRefused {
+          first_failure: _,
+          more_failures: _,
+        } =>
+          PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
       }
     ReferenceDerivedDependencyProjectionFileRefused {
       first_failure: baseline_first,
@@ -340,7 +350,14 @@ fn assess_pool_independent_projection_equality(
           } else {
             PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
           }
-        _ => PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
+        ReferenceDerivedDependencyProjectionReady {
+          binding_provenance: _,
+          file_dependencies: _,
+          bound_population: _,
+        } =>
+          PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
+        ReferenceDerivedDependencyProjectionBindingRefused { population: _ } =>
+          PoolIndependenceRefused { failure: RefusalOutcomeMismatch }
       }
   }
 }
@@ -366,10 +383,19 @@ fn assess_file_dependencies_only_equality(
             right: perturbed_dependencies,
           ) {
             ListsAgree => true
-            _ => false
+            ListsDisagree => false
+            ListStructureBroken => false
           }
-        _ => false
+        ReferenceDerivedDependencyProjectionBindingRefused { population: _ } => false
+        ReferenceDerivedDependencyProjectionFileRefused {
+          first_failure: _,
+          more_failures: _,
+        } => false
       }
-    _ => false
+    ReferenceDerivedDependencyProjectionBindingRefused { population: _ } => false
+    ReferenceDerivedDependencyProjectionFileRefused {
+      first_failure: _,
+      more_failures: _,
+    } => false
   }
 }
