@@ -356,12 +356,27 @@ type Shape { hard: HardRequirements, envelope: ResourceEnvelope }
 // WHAT THIS FIELD IS NOT: it is not the executor's class. It is what THIS WORK
 // REQUIRES. What a given executor is sanctioned for is our own fleet knowledge,
 // never a supplier claim, and it is joined against this at admission.
+// Whether the work's contract can complete if the executor is taken away. Warm residency
+// (weights in GPU RAM, a live KV cache) refuses revocable marketplace bids; interruptible
+// training/eval admits them. Consumer: product.fabric.selection price_over_horizon.
+type RevocationStanding
+  = RevocationAccepted
+  | WarmResidencyRequired
+
+fn revocation_standing_wire(s: RevocationStanding) -> NonEmptyStr {
+  match s {
+    RevocationAccepted => "revocation-accepted"
+    WarmResidencyRequired => "warm-residency-required"
+  }
+}
+
 type ExecutionRequirements {
   capacity_class: CapacityClass
   shape: Shape
   capabilities: CapabilityManifestRef
   trust_domain: TrustDomainRef
   isolation: IsolationProfile
+  revocation: RevocationStanding
 }
 
 type Work<P> {
@@ -469,9 +484,9 @@ fn resolve_output_obligations(
 // (WorkKeyDoesNotMatchContract, AttemptWorkOutsideSubject, the grant_issue permit and attempt
 // mismatches), never a silent match.
 data work_identity_schema: WorkIdentitySchema = WorkIdentitySchema {
-  version: 2,
-  tag: "product.fabric.work/identity/2" as NonEmptyStr,
-  supersedes: "a U+001F-joined preimage of the same fields, program first, which was not injective and carried no schema tag" as NonEmptyStr,
+  version: 3,
+  tag: "product.fabric.work/identity/3" as NonEmptyStr,
+  supersedes: "product.fabric.work/identity/2, which omitted revocation standing from the preimage" as NonEmptyStr,
   transition: "keys derived under the joined preimage are not comparable with keys derived here. Census of WorkKey carriers at the transition: derive_work_key is the only mint; work_for the only constructor; no production `as WorkKey` rehydration exists, so no persisted key re-enters a comparison; publications (gunbc.fabric.fabric_m0_publication), attempt graphs (product.training.attempt_graph), grants (product.fabric.grant_issue) and completion (gunbc.fabric.fabric_m0_completion) compare keys derived in the same process and refuse a foreign one with a typed cause" as NonEmptyStr,
 }
 
@@ -516,6 +531,7 @@ fn work_identity_material(contract: WorkContract, requirements: ExecutionRequire
     identity_frame(label: "capabilities", value: requirements.capabilities as String),
     identity_frame(label: "trust-domain", value: requirements.trust_domain as String),
     identity_frame(label: "isolation", value: isolation_material(profile: requirements.isolation) as String),
+    identity_frame(label: "revocation", value: revocation_standing_wire(s: requirements.revocation) as String),
     identity_frame(label: "shape", value: shape_material(shape: requirements.shape) as String),
   )
 }

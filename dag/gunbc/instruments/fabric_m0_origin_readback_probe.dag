@@ -16,6 +16,7 @@ import product.fabric.work { MaterializedProgram,
   resolve_output_obligations, ObligationsJudgedAtJobStart,
   OutputObligationsResolution,
   Work, work_for,
+ WarmResidencyRequired,
 }
 import std.durable_compare_and_set { CasStoreRefused, CasSlotObservationRefused, CasUnreadableReadRefused }
 import gunbc.fabric_m0_completion {
@@ -178,6 +179,7 @@ fn fixture_requirements() -> ExecutionRequirements {
     capabilities: "linux-arm64",
     trust_domain: "fleet-owned",
     isolation: shared_kernel_sandbox_profile(),
+    revocation: WarmResidencyRequired,
   }
 }
 

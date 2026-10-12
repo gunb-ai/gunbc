@@ -3,6 +3,12 @@ module extdeps.cloud.vast_ai
 import std.resources { Network }
 import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decimal { ExactDecimal }
+import std.measure {
+  DecimalMoneyConversion, DecimalMoneyPerHourConversion,
+  exact_decimal_to_money_amount_micro_ceil, exact_decimal_to_money_per_hour_ceil,
+}
+import extdeps.currency.currency { CurrencyCode, Usd }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -25,10 +31,10 @@ import extdeps.uri { Uri, Https }
 // bid "may be interrupted if outbid", so an interruptible offer is a different availability fact from an
 // on-demand one. Absence is an unread fact.
 //
-// FLOAT WIRE FIELDS ARE NOT MODELED: dph_total (dollars per hour, a total per machine), gpu_ram, gpu_mem_bw
-// and the rest arrive as JSON numbers, and nothing reads them: the supplier receives the rate as an
-// explicit parameter. Dissolve-on: a declared lossy Float->MoneyPerHour / Float->HardwareThreadCount
-// conversion plan in std (DESIGN section 4: not a coercion); only then may a consumed float be added.
+// MONEY WIRE FIELDS ARE ExactDecimal, NEVER Float: search-offers min_bid, dph_total, storage_cost,
+// inet_up_cost and inet_down_cost arrive as JSON numbers. The declared conversion is
+// std.measure exact_decimal_to_money_amount_micro_ceil / exact_decimal_to_money_per_hour_ceil
+// (round up for bids and liabilities). gpu_ram / gpu_mem_bw remain unmodeled: nothing reads them.
 // num_gpus is an Int and IS a request axis: an offer is a machine with that many GPUs, rented whole.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/search/search-offers" }
@@ -71,6 +77,33 @@ type VastAiOffer {
   rentable: Bool
   rented: Bool
   is_bid: Bool?
+  min_bid: ExactDecimal
+  dph_total: ExactDecimal
+  storage_cost: ExactDecimal
+  inet_up_cost: ExactDecimal
+  inet_down_cost: ExactDecimal
+}
+
+data vast_ai_quote_currency: CurrencyCode = Usd
+
+fn vast_ai_min_bid_money_per_hour(offer: VastAiOffer) -> DecimalMoneyPerHourConversion {
+  exact_decimal_to_money_per_hour_ceil(d: offer.min_bid, currency: vast_ai_quote_currency)
+}
+
+fn vast_ai_dph_total_money_per_hour(offer: VastAiOffer) -> DecimalMoneyPerHourConversion {
+  exact_decimal_to_money_per_hour_ceil(d: offer.dph_total, currency: vast_ai_quote_currency)
+}
+
+fn vast_ai_storage_cost_money(offer: VastAiOffer) -> DecimalMoneyConversion {
+  exact_decimal_to_money_amount_micro_ceil(d: offer.storage_cost)
+}
+
+fn vast_ai_inet_up_cost_money(offer: VastAiOffer) -> DecimalMoneyConversion {
+  exact_decimal_to_money_amount_micro_ceil(d: offer.inet_up_cost)
+}
+
+fn vast_ai_inet_down_cost_money(offer: VastAiOffer) -> DecimalMoneyConversion {
+  exact_decimal_to_money_amount_micro_ceil(d: offer.inet_down_cost)
 }
 
 type VastAiOffers {

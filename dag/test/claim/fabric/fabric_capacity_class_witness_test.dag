@@ -9,6 +9,7 @@ import product.fabric.work { MaterializedProgram,
   ExecutionRequirements, Shape, HardRequirements,
   capacity_class_eq, capacity_class_wire, work_identity_material, WorkContract, WorkStep,
   declared_artifact_obligations,
+ WarmResidencyRequired,
 }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
@@ -31,6 +32,7 @@ fn cc_requirements(class: CapacityClass) -> ExecutionRequirements {
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
     isolation: IsolationProfile { guarantees: [] },
+    revocation: WarmResidencyRequired,
   }
 }
 

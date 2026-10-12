@@ -18,6 +18,7 @@ import product.fabric.envelope { MemoryRequirement, StorageRequirement, Resource
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work {
   ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity, TrustDomainRef,
+ WarmResidencyRequired,
 }
 
 data floor_demand_disposition: ConstructionMechanism = SingleAuthority
@@ -1881,6 +1882,7 @@ fn floor_execution_requirements() -> ExecutionRequirements {
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: gunbc_internal_fleet_trust_domain,
     isolation: floor_isolation_requirement(),
+    revocation: WarmResidencyRequired,
   }
 }
 

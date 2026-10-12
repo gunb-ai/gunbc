@@ -23,7 +23,7 @@ import std.measure {
   MoneyAmountMicro, MoneyOnce, MoneyPerSecond, money_amount_micro,
   Second, second, hardware_thread_count,
 }
-import product.fabric.work { Shape, HardRequirements, ExecutionRequirements, ControlPlaneCapacity }
+import product.fabric.work { Shape, HardRequirements, ExecutionRequirements, ControlPlaneCapacity , WarmResidencyRequired }
 import product.fabric.envelope { unstated_envelope }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
 import product.fabric.isolation { IsolationProfile }
@@ -1735,6 +1735,7 @@ fn cp_probe_requirements() -> ExecutionRequirements {
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
     isolation: IsolationProfile { guarantees: [] },
+    revocation: WarmResidencyRequired,
   }
 }
 

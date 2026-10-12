@@ -15,6 +15,7 @@ import product.fabric.work { MaterializedProgram,
   DeclaredOutputObligations,
   resolve_output_obligations, ObligationsJudgedAtJobStart,
   OutputObligationsResolution,
+ WarmResidencyRequired,
 }
 import gunbc.fabric_m0_origin_readback {
   OriginReading,
@@ -83,6 +84,7 @@ fn fixture_requirements() -> ExecutionRequirements {
     capabilities: "linux-arm64",
     trust_domain: "fleet-owned",
     isolation: shared_kernel_sandbox_profile(),
+    revocation: WarmResidencyRequired,
   }
 }
 

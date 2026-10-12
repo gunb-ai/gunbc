@@ -17,7 +17,7 @@ import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat, nat_min }
 import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
 import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.work { ExecutionRequirements }
+import product.fabric.work { ExecutionRequirements, RevocationAccepted, WarmResidencyRequired }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, content_hash_atom, content_hash_combine_structural }
 import product.fabric.capacity_admission { AdmittedCapacity, RouteExercisePlacement }
 import product.fabric.supply {
@@ -118,6 +118,7 @@ fn selection_input_axis_wire(axis: SelectionInputAxis) -> String {
 type AvailabilityObservation
   = AvailableForInterval { delay: Second, interval: Second, receipt: ObservationReceiptRef }
   | AvailableIndefinitely { delay: Second, receipt: ObservationReceiptRef }
+  | AvailableRevocable { delay: Second, receipt: ObservationReceiptRef }
   | AvailabilityUnobserved { obligation: NonEmptyStr }
 
 // AXIS 2 -- THE PAID-THROUGH COMMITMENT STATE.
@@ -759,6 +760,7 @@ type OfferCandidacy<P>
       liability: MoneyAmountMicro,
       maximum: MoneyAmountMicro,
     }
+  | OfferRevocationNotAdmitted { offer: FabricIdentity<P, OfferKey> }
 
 fn candidacy_offer<P>(c: OfferCandidacy<P>) -> FabricIdentity<P, OfferKey> {
   match c {
@@ -770,6 +772,7 @@ fn candidacy_offer<P>(c: OfferCandidacy<P>) -> FabricIdentity<P, OfferKey> {
     OfferWrongCurrency { offer: o, mismatch: _ } => o
     OfferUnaffordable { offer: o, affordability: _ } => o
     OfferLiabilityOverBuyOrder { offer: o, liability: _, maximum: _ } => o
+    OfferRevocationNotAdmitted { offer: o } => o
   }
 }
 
@@ -807,6 +810,7 @@ fn price_candidate<P>(
     Fungible => price_available_candidate(
       offer: offer,
       inputs: inputs,
+      requirements: requirements,
       duration: duration,
       maximum_buy_order: maximum_buy_order,
       budget_currency: budget_currency,
@@ -822,6 +826,7 @@ fn price_candidate<P>(
 fn price_available_candidate<P>(
   offer: SupplierOffer<P>,
   inputs: DispatchInputs<P>,
+  requirements: ExecutionRequirements,
   duration: GrantDuration,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
@@ -836,6 +841,7 @@ fn price_available_candidate<P>(
     PayAsYouGo => price_over_horizon(
       offer: offer,
       inputs: inputs,
+      requirements: requirements,
       duration: duration,
       maximum_buy_order: maximum_buy_order,
       budget_currency: budget_currency,
@@ -844,6 +850,7 @@ fn price_available_candidate<P>(
     PaidThrough { remaining: _, receipt: _ } => price_over_horizon(
       offer: offer,
       inputs: inputs,
+      requirements: requirements,
       duration: duration,
       maximum_buy_order: maximum_buy_order,
       budget_currency: budget_currency,
@@ -875,6 +882,7 @@ fn price_available_candidate<P>(
 fn price_over_horizon<P>(
   offer: SupplierOffer<P>,
   inputs: DispatchInputs<P>,
+  requirements: ExecutionRequirements,
   duration: GrantDuration,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
@@ -926,6 +934,21 @@ fn price_over_horizon<P>(
               delay_valuation: delay_valuation,
             )
           }
+      }
+    AvailableRevocable { delay: d, receipt: _ } =>
+      match requirements.revocation {
+        WarmResidencyRequired => OfferRevocationNotAdmitted { offer: offer.id }
+        RevocationAccepted =>
+          price_screened_candidate(
+            offer: offer,
+            inputs: inputs,
+            duration: duration,
+            horizon: horizon,
+            delay: d,
+            maximum_buy_order: maximum_buy_order,
+            budget_currency: budget_currency,
+            delay_valuation: delay_valuation,
+          )
       }
   }
 }
@@ -1196,6 +1219,7 @@ fn rank_candidate<P>(
     OfferWrongCurrency { offer: _, mismatch: _ } => PricedRanking { considered: considered, priced: acc.priced }
     OfferUnaffordable { offer: _, affordability: _ } => PricedRanking { considered: considered, priced: acc.priced }
     OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => PricedRanking { considered: considered, priced: acc.priced }
+    OfferRevocationNotAdmitted { offer: _ } => PricedRanking { considered: considered, priced: acc.priced }
   }
 }
 
@@ -1471,6 +1495,7 @@ fn select_resource_budget_supply<P>(
           AvailableIndefinitely { delay, receipt: _ } => second_count(s: delay) == 0
           AvailableForInterval { delay, interval, receipt: _ } =>
             second_count(s: delay) == 0 && second_count(s: interval) >= second_count(s: seconds)
+          AvailableRevocable { delay: _, receipt: _ } => false
           AvailabilityUnobserved { obligation: _ } => false
         }))
       match eligible.first() {

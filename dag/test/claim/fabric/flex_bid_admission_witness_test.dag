@@ -1,0 +1,367 @@
+module test.claim.fabric.flex_bid_admission_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, List, Bool }
+import std.nat { Nat }
+import std.decl_ref { decl_ref }
+import std.decimal { ExactDecimal }
+import std.measure {
+  MoneyRate, MoneyPerHour, money_amount_micro, money_amount_micro_count, money_per_hour_micros,
+  second, hardware_thread_count, DecimalMoneyConverted, DecimalMoneyNegativeRefused,
+  DecimalMoneyScaleRefused, DecimalMoneyUnrepresentable, exact_decimal_to_money_amount_micro_ceil,
+  DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
+}
+import extdeps.currency.currency { Usd }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.work {
+  Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
+  ControlPlaneCapacity, WarmResidencyRequired, RevocationAccepted, RevocationStanding,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply {
+  SupplierOffer, QuotedPerHour, ObservedSupply, StableRosterOrder, PlacementAffinityKey,
+}
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound,
+  DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse, PermitNamesAnotherOffer,
+  PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
+  AvailableIndefinitely, AvailableRevocable, PayAsYouGo, StartCostMeasured, NoTransitionRequired,
+  OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
+}
+import product.fabric.budget { MoneyAccount }
+import product.fabric.flex_policy {
+  ExactRatio, FlexPolicy, FlexBidLedger, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
+  FlexBidAdmission, FlexBidAdmitted, FlexBidRefused, FlexNoAcquisitionRemaining,
+  FlexRetainedLimitWouldRise, FlexRateCapBelowMin, FlexMoneyRefused, FlexSupplyNotSelected,
+  FlexBufferDenominatorZero, FlexOnDemandFractionExceeded,
+  flex_floor_buffer, flex_bid_admission, flex_rebid_at_buffer_of_new_min, flex_buffered_min,
+}
+import extdeps.cloud.vast_ai {
+  VastAiOffer, vast_ai_min_bid_money_per_hour,
+}
+import test.claim.fabric.provider_use_fixture {
+  fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn t_caps() -> CapabilityManifestRef { "gunbc.capabilities.linux-rust-toolchain" }
+fn t_trust() -> TrustDomainRef { "gunbc.trust.internal-fleet" }
+
+fn t_reqs(revocation: RevocationStanding) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) }, envelope: unstated_envelope() },
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    revocation: revocation,
+  }
+}
+
+fn usd_hour(micros: Nat) -> MoneyPerHour {
+  MoneyPerHour { amount: money_amount_micro(count: micros), currency: Usd }
+}
+
+fn t_offer(key: OfferKey, rate: MoneyPerHour) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: key },
+    executor: "gunbc",
+    route: fixture_route(),
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 64) }, envelope: unstated_envelope() },
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    quantity_bound: 1,
+    ready_at: "2026-10-12T00:00:00Z",
+    quote: QuotedPerHour(rate),
+    billing_quantum: second(count: 3600),
+    evidence: ObservedSupply { observed_at: "2026-10-12T00:00:00Z", receipt: "obs-1" },
+  }
+}
+
+fn t_bound(offer: SupplierOffer<NonEmptyStr>, revocable: Bool) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: DispatchInputs {
+      offer: offer.id,
+      availability: if revocable {
+        AvailableRevocable { delay: second(count: 0), receipt: "avail-revocable" }
+      } else {
+        AvailableIndefinitely { delay: second(count: 0), receipt: "avail-1" }
+      },
+      commitment: PayAsYouGo,
+      start: StartCostMeasured {
+        amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+        receipt: "start-1",
+      },
+      transition: NoTransitionRequired,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: NoFeasibleAlternativeUse { receipt: "opp-1" },
+    },
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
+  }
+}
+
+fn t_machine(id: NonEmptyStr) -> FlexMachineKey {
+  FlexMachineKey {
+    provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"),
+    account: "vast-account-1",
+    machine: id,
+  }
+}
+
+fn t_policy(cap_micros: Nat) -> FlexPolicy {
+  FlexPolicy {
+    fleet_rate_cap: usd_hour(micros: cap_micros),
+    floor_buffer: flex_floor_buffer,
+    on_demand_fraction: ExactRatio { numerator: 1, denominator: 1 },
+    acquisition_horizon: second(count: 3600),
+  }
+}
+
+fn t_account(ceiling: Nat) -> MoneyAccount {
+  MoneyAccount {
+    account: "flex-fleet",
+    currency: Usd,
+    ledger: EncumbranceLedger {
+      appropriation: Appropriation { ceiling: money_amount_micro(count: ceiling) },
+      entries: [],
+    },
+    leases: [],
+  }
+}
+
+fn t_window(remaining: Nat) -> FlexAcquisitionWindow {
+  FlexAcquisitionWindow { remaining: remaining, on_demand_held: 0, interruptible_held: 0 }
+}
+
+fn t_attempt(
+  machine: FlexMachineKey,
+  min_bid: MoneyPerHour,
+  quote: MoneyPerHour,
+  key: OfferKey,
+  reservation: NonEmptyStr,
+  revocation: RevocationStanding,
+  revocable: Bool,
+) -> FlexBidAttempt<NonEmptyStr> {
+  FlexBidAttempt {
+    machine: machine,
+    min_bid: min_bid,
+    on_demand: false,
+    candidates: t_bound(offer: t_offer(key: key, rate: quote), revocable: revocable),
+    requirements: t_reqs(revocation: revocation),
+    reservation: reservation,
+    generation: 1,
+    delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+    tie: StableRosterOrder,
+    affinity: "test.flex" as PlacementAffinityKey,
+  }
+}
+
+fn admitted_bid(o: FlexBidAdmission) -> Nat {
+  match o {
+    FlexBidAdmitted { bid: b, selection: _, account: _, ledger: _, window: _ } => money_per_hour_micros(q: b)
+    FlexBidRefused { cause: _ } => 0
+  }
+}
+
+fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
+  match o {
+    FlexBidAdmitted { bid: _, selection: _, account: _, ledger: _, window: _ } => "admitted"
+    FlexBidRefused { cause: c } =>
+      match c {
+        FlexNoAcquisitionRemaining => "no-remaining"
+        FlexBufferDenominatorZero => "zero-denominator"
+        FlexOnDemandFractionExceeded => "on-demand-fraction"
+        FlexRateCapBelowMin { cap: _, min_bid: _ } => "rate-cap"
+        FlexRetainedLimitWouldRise { retained: _, min_bid: _ } => "retained-would-rise"
+        FlexSupplyNotSelected { selection: _ } => "supply"
+        FlexMoneyRefused { refusal: _ } => "money"
+      }
+  }
+}
+
+// Dollar amounts as ExactDecimal: 1.00 = 100 cents at 2 fraction digits → 1_000_000 micros.
+fn one_dollar() -> MoneyPerHour { usd_hour(micros: 1000000) }
+fn one_ten() -> MoneyPerHour { usd_hour(micros: 1100000) }
+
+fn vast_min_sample() -> VastAiOffer {
+  VastAiOffer {
+    id: 1, machine_id: 9, gpu_name: "x", num_gpus: 1, compute_cap: 1,
+    gpu_arch: Present { value: "nvidia" }, verification: "verified", geolocation: "US",
+    rentable: true, rented: false, is_bid: Present { value: true },
+    min_bid: ExactDecimal { units: 1111111, fraction_digits: 7 },
+    dph_total: ExactDecimal { units: 2, fraction_digits: 0 },
+    storage_cost: ExactDecimal { units: 1, fraction_digits: 2 },
+    inet_up_cost: ExactDecimal { units: 1, fraction_digits: 3 },
+    inet_down_cost: ExactDecimal { units: 1, fraction_digits: 3 },
+  }
+}
+
+test fn vast_min_bid_rounds_up_a_seventh_fraction_digit() -> Bool {
+  match exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal { units: 1111111, fraction_digits: 7 }) {
+    DecimalMoneyConverted { amount: a } => money_amount_micro_count(m: a) == 111112
+    DecimalMoneyNegativeRefused { units: _ } => false
+    DecimalMoneyScaleRefused { fraction_digits: _ } => false
+    DecimalMoneyUnrepresentable { cause: _ } => false
+  } && match vast_ai_min_bid_money_per_hour(offer: vast_min_sample()) {
+    DecimalMoneyPerHourConverted { rate: r } => money_per_hour_micros(q: r) == 111112
+    DecimalMoneyPerHourRefused { conversion: _ } => false
+  }
+}
+
+test fn two_acquisitions_race_one_allowance_and_the_second_is_refused() -> Bool {
+  let policy = t_policy(cap_micros: 5000000)
+  let first = flex_bid_admission(
+    policy: policy,
+    ledger: FlexBidLedger { limits: [] },
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar(),
+      quote: one_ten(),
+      key: "offer-a",
+      reservation: "res-a",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )
+  match first {
+    FlexBidRefused { cause: _ } => false
+    FlexBidAdmitted { bid: _, selection: _, account: next_account, ledger: next_ledger, window: next_window } =>
+      refusal_label(o: flex_bid_admission(
+        policy: policy,
+        ledger: next_ledger,
+        window: next_window,
+        account: next_account,
+        attempt: t_attempt(
+          machine: t_machine(id: "machine-b"),
+          min_bid: one_dollar(),
+          quote: one_ten(),
+          key: "offer-b",
+          reservation: "res-b",
+          revocation: RevocationAccepted,
+          revocable: true,
+        ),
+      )) == "no-remaining"
+  }
+}
+
+// RED: after outbid, rebidding at 1.1× the new min. The wall keeps the retained ceiling.
+test fn the_red_rebid_at_one_point_one_times_new_min_is_not_what_admission_does() -> Bool {
+  let policy = t_policy(cap_micros: 5000000)
+  let first = flex_bid_admission(
+    policy: policy,
+    ledger: FlexBidLedger { limits: [] },
+    window: t_window(remaining: 2),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar(),
+      quote: one_ten(),
+      key: "offer-a",
+      reservation: "res-a",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )
+  let new_min = usd_hour(micros: 1200000)
+  let red = flex_rebid_at_buffer_of_new_min(new_min: new_min, buffer: flex_floor_buffer)
+  match first {
+    FlexBidRefused { cause: _ } => false
+    FlexBidAdmitted { bid: first_bid, selection: _, account: next_account, ledger: next_ledger, window: next_window } => {
+      let second = flex_bid_admission(
+        policy: policy,
+        ledger: next_ledger,
+        window: next_window,
+        account: next_account,
+        attempt: t_attempt(
+          machine: t_machine(id: "machine-a"),
+          min_bid: new_min,
+          quote: red,
+          key: "offer-a2",
+          reservation: "res-a2",
+          revocation: RevocationAccepted,
+          revocable: true,
+        ),
+      )
+      (money_per_hour_micros(q: red) > money_per_hour_micros(q: first_bid))
+        && (refusal_label(o: second) == "retained-would-rise")
+        && (admitted_bid(o: second) != money_per_hour_micros(q: red))
+    }
+  }
+}
+
+test fn rate_cap_and_cash_invariants_are_both_enforced() -> Bool {
+  let cap_refuse = flex_bid_admission(
+    policy: t_policy(cap_micros: 500000),
+    ledger: FlexBidLedger { limits: [] },
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar(),
+      quote: one_ten(),
+      key: "offer-cap",
+      reservation: "res-cap",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )
+  let cash_refuse = flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    ledger: FlexBidLedger { limits: [] },
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 1000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar(),
+      quote: one_ten(),
+      key: "offer-cash",
+      reservation: "res-cash",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )
+  (refusal_label(o: cap_refuse) == "rate-cap") && (refusal_label(o: cash_refuse) == "money")
+}
+
+test fn a_revocable_offer_is_refused_for_warm_residency() -> Bool {
+  let o = flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    ledger: FlexBidLedger { limits: [] },
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar(),
+      quote: one_ten(),
+      key: "offer-warm",
+      reservation: "res-warm",
+      revocation: WarmResidencyRequired,
+      revocable: true,
+    ),
+  )
+  refusal_label(o: o) == "supply"
+}
+
+test fn floor_buffer_is_the_exact_tenth_ratio() -> Bool {
+  flex_floor_buffer.numerator == 1
+    && flex_floor_buffer.denominator == 10
+    && money_per_hour_micros(q: flex_buffered_min(min_bid: one_dollar(), buffer: flex_floor_buffer)) == 1100000
+}

@@ -102,7 +102,7 @@ import std.measure {
   hardware_thread_count_value, hardware_thread_count, byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size,
   mebibyte, mebibyte_count, mebibyte_to_byte_size, events_per_minute_count,
 }
-import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity }
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity , WarmResidencyRequired }
 import product.fabric.envelope { ResourceEnvelope, MemoryRequirement, StorageRequirement, memory_envelope, unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import extdeps.storage.types { Ephemeral }
@@ -964,6 +964,7 @@ fn work_with(threads: Int, envelope: ResourceEnvelope) -> ExecutionRequirements 
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
     isolation: IsolationProfile { guarantees: [] },
+    revocation: WarmResidencyRequired,
   }
 }
 
