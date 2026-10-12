@@ -343,6 +343,8 @@ data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_
 // producer, and keeps the two folds from drifting apart on the option set they set.
 data deploy_shell_strict_options_command: String = "set -euo pipefail"
 
+data deploy_shell_merge_stderr_command: String = "exec 2>&1"
+
 fn deploy_raw(command: String) -> PipelineStep {
   Do {
     run: Run {
@@ -1942,7 +1944,7 @@ fn host_script_step_marker(kind: String, member: NonEmptyStr, index: Int) -> Pip
     member as String,
     " ",
     to_string(index),
-    "' >&2",
+    "'",
   ], ""))
 }
 
@@ -2031,16 +2033,20 @@ fn compose_host_script(fragments: List<HostScriptFragment>) -> Pipeline {
 // THE WITHHELD LINE IS A REPORT, NOT A FAILURE: the same __GUNBC_CONVERGE_WITHHELD__ spelling the
 // fleet plan's slot teardown uses (gunbc.runner_slot_provision slot_removal_withheld_line), so a
 // reader of the apply transcript sees one vocabulary for "this member was not performed and why".
-// Single quotes in the cause are dropped rather than escaped: the cause is prose for the operator,
-// and a quote inside a single-quoted echo would end the word and run the rest.
+// It is `echo` of one argv word (exit 0), not a poison and not a redirect onto a second stream:
+// deploy_apply_frame_decide_steps merges stderr onto stdout (`exec 2>&1`) so a capture that splits
+// the two fds cannot hide this report's order relative to visudo. Single quotes in the cause are
+// dropped rather than escaped so a quote cannot end the word.
 fn memory_cap_withheld_line(host: HostIdentity, cause: String) -> String {
-  join([
-    "echo '__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: ",
-    cause.replace(from: "'", to: ""),
-    "; existing caps left exactly as observed host=",
-    host as String,
-    "' >&2",
-  ], "")
+  shell_command_text_of_argv(argv: [
+    "echo",
+    join([
+      "__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: ",
+      cause.replace(from: "'", to: ""),
+      "; existing caps left exactly as observed host=",
+      host as String,
+    ], ""),
+  ])
 }
 
 fn memory_cap_host_refused_command(host: HostIdentity, cause: String) -> String {
@@ -3696,6 +3702,7 @@ fn deploy_apply_receipt_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 fn deploy_apply_frame_decide_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
     deploy_raw(command: deploy_shell_strict_options_command),
+    deploy_raw(command: deploy_shell_merge_stderr_command),
     Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
     Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
     Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },

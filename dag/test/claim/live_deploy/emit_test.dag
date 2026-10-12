@@ -160,6 +160,8 @@ import gunbc.live_deploy.emit {
   leftover_systemd_timer_retire_dissolution,
   live_deploy_publication_path_unit_file,
   deploy_memory_cap_apply_steps,
+  approval_broker_helper_sudoers_stage_name,
+  approval_broker_helper_sudoers_readback_stage_name,
 }
 import gunbc.live_deploy.release_locus {
   approval_broker_tree_receipt_path_for,
@@ -1683,8 +1685,53 @@ test fn withheld_cap_report_precedes_and_keeps_binary_tree_and_unit_steps() -> B
         && string_contains(s: text, pattern: "/opt/gunbc/bin")
         && string_contains(s: text, pattern: "repository_converge")
         && string_contains(s: text, pattern: spec.service.unit_name as String)
+        && string_contains(s: text, pattern: approval_broker_helper_sudoers_stage_name)
+        && string_contains(s: text, pattern: approval_broker_helper_sudoers_readback_stage_name)
+        && string_contains(s: text, pattern: "'cmp'")
         && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__ memory-cap apply WITHHELD")
   }
+}
+
+// DECISIVE DIFF (parent, after the c22acb7 rerun): same spec, CapConvergeWithheld vs authorized.
+// apply_intent_from_effects threads cap_authorization only into deploy_memory_cap_apply_steps, so
+// the full-script unique commands ARE this pair. Withheld-only: the CONVERGE_WITHHELD echo (exit 0).
+// Authorized-only: fleet-width author + revert. No grep/cmp/exit/false on the withheld side.
+// Position: the report is a Decide; unit install and daemon-reload are Mutate (and on c22acb7 the
+// echo sat before spec.steps). host_effect_apply maps only a nonzero shell exit.
+test fn withheld_only_prod_apply_commands_are_the_report() -> Bool {
+  let spec = deployment_spec_srv1()
+  let cause = "surplus slots have not retired: actions-runner@srv1-12.service"
+  let w_steps = deploy_memory_cap_apply_steps(
+    spec: spec,
+    authorization: CapConvergeWithheld { cause: cause },
+  )
+  let a_steps = deploy_memory_cap_apply_steps(spec: spec, authorization: srv1_authorization())
+  let w_texts = map(w_steps, st => pipeline_step_text(st: st))
+  let a_texts = map(a_steps, st => pipeline_step_text(st: st))
+  let w_only = filter(w_texts, t => !any(a_texts, x => x == t))
+  let a_only = filter(a_texts, t => !any(w_texts, x => x == t))
+  all(
+    w_only,
+    t =>
+      string_contains(s: t, pattern: "__GUNBC_CONVERGE_WITHHELD__")
+        && !string_contains(s: t, pattern: "grep")
+        && !string_contains(s: t, pattern: "cmp")
+        && !string_contains(s: t, pattern: "exit ")
+        && !string_contains(s: t, pattern: "false"),
+  )
+    && w_only.length() == 1
+    && any(a_only, t => string_contains(s: t, pattern: "20-fleet-width.conf"))
+    && any(
+      w_only,
+      t => t == memory_cap_withheld_line(host: spec.target.host.identity, cause: cause),
+    )
+}
+
+test fn apply_frame_merges_stderr_onto_stdout() -> Bool {
+  string_contains(
+    s: pipeline_steps_text(steps: deploy_apply_frame_decide_steps(spec: deployment_spec_srv1())),
+    pattern: "exec 2>&1",
+  )
 }
 
 // MEASURED HOLE (bright-moth-475 srv1:~/bm475-prod-apply-c22acb7-2026-10-12.log): no
