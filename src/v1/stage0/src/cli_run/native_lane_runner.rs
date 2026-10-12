@@ -129,8 +129,10 @@ const CLI_DOOR_ENTRY_MODULE: &str = "gunbc.native_cli_door_probe";
 const NATIVE_PROJECTION_ROOT: &str = "fixtures/native_acquisition_projection/dag";
 const NATIVE_PROJECTION_SAME_NAMED_FILE: &str = "product/y.dag";
 const NATIVE_PROJECTION_PROJECTED_ENTRY: &str = "fixture.native_projection.projected";
-const NATIVE_PROJECTION_PROJECTED_WITNESS: &str = "native_projection_projected_value";
-const NATIVE_PROJECTION_PROJECTED_VALUE: &str = "707070";
+/// The projection entry's emitted function and the field access its body must carry: `product.y` rendered
+/// as the parameter's field, where a module reference would render a call into the same-named module.
+const NATIVE_PROJECTION_PROJECTED_WITNESS: &str = "native_projection_read";
+const NATIVE_PROJECTION_PROJECTED_VALUE: &str = "product.y";
 const NATIVE_PROJECTION_QUALIFIED_ENTRY: &str = "fixture.native_projection.qualified";
 const NATIVE_PROJECTION_QUALIFIED_WITNESS: &str = "native_projection_qualified_value";
 const NATIVE_PROJECTION_SAME_NAMED_WITNESS: &str = "projection_same_named_value";
@@ -2786,7 +2788,7 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
 /// letting acquisition probe `product.y` for the projection `product.y`, makes this control fail. The subject is the
 /// module `product.y`, a two-segment name stored at `product/y.dag` under the root, and the two entries below it:
 ///
-/// - `projected` spells `product.y` where `product` is a module-level value: a field projection, no module reference. It is
+/// - `projected` spells `product.y` where `product` is a parameter the function binds: a field projection, no module reference. It is
 ///   emitted from three trees that differ only in whether `product/y.dag` is absent, malformed or well-formed,
 ///   and the status and the emitted text must be the same in all three. A malformed file that was read would
 ///   refuse; a well-formed one that was read would put its declaration in the closure.
