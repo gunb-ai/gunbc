@@ -888,6 +888,14 @@ fn sized_verdicts(module: String, n: Int) -> List<ArtifactPayload> {
 // cleared. The same request Y is retried with a LARGER result: it must be charged at its current size
 // -- which no longer fits beside W, so W is evicted -- and disk stays within budget. Admitting the
 // retry on the first attempt's smaller row would publish Y beside W and settle over the ceiling.
+//
+// THE SIZES ARE DERIVED FROM THE OBJECT ENVELOPE, NOT CHOSEN. A stored verdict-bundle object is its
+// envelope E plus about fourteen bytes per repetition (the payload is written percent-encoded and
+// again inside the result preimage). E is about 1,170 bytes now that the evaluation preimage
+// carries five family-tagged digests where it carried one fingerprint. With X=30, W=20, small Y=40
+// and large Y=190 repetitions against the 4,096-byte budget: X and W fit together; adding small Y
+// does not, and W with small Y does, so exactly X is evicted; W with large Y does not fit and large
+// Y alone does, so exactly W is evicted. Each inequality holds for any E between 950 and 1,430.
 test fn a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
@@ -898,12 +906,12 @@ test fn a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_exec
       let rx = bundle_req(module: "x")
       let rw = bundle_req(module: "w")
       let ry = bundle_req(module: "y")
-      let cx = local_store_commit(capability: store, req: rx, payloads: sized_verdicts(module: "x", n: 70), parts: [])
-      let cw = local_store_commit(capability: store, req: rw, payloads: sized_verdicts(module: "w", n: 50), parts: [])
+      let cx = local_store_commit(capability: store, req: rx, payloads: sized_verdicts(module: "x", n: 30), parts: [])
+      let cw = local_store_commit(capability: store, req: rw, payloads: sized_verdicts(module: "w", n: 20), parts: [])
       let x_path = object_path(root_path: root_path, req: rx)
       let unlinked = Filesystem.Delete(path: x_path).success
       let blocked = shell.Mkdir.NewOwnerOnly(path: x_path).success
-      let small = local_store_commit(capability: store, req: ry, payloads: sized_verdicts(module: "y", n: 100), parts: [])
+      let small = local_store_commit(capability: store, req: ry, payloads: sized_verdicts(module: "y", n: 40), parts: [])
       let cleared = shell.Remove.RecursiveForce(path: x_path).success
       let large = local_store_commit(capability: store, req: ry, payloads: sized_verdicts(module: "y", n: 190), parts: [])
       commit_tag(c: cx.commit) == "committed" && commit_tag(c: cw.commit) == "committed" && unlinked && blocked
@@ -1177,7 +1185,7 @@ test fn an_identical_retry_of_a_verified_record_copies_nothing_by_real_execution
     Absent => false
     Present { value: store } => {
       let rp = bundle_req(module: "v")
-      let bytes = repeat_string(s: "v", n: 2800)
+      let bytes = repeat_string(s: "v", n: 2600)
       let first = local_store_commit(capability: store, req: rp, payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: "staging-v1", bytes: bytes))
       let trap = shell.Mkdir.NewOwnerOnly(path: copy_path_of(root_path: root_path, req: rp)).success
       let again = local_store_commit(capability: store, req: rp, payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: "staging-v2", bytes: bytes))
@@ -1391,9 +1399,11 @@ fn session_commit_ok(c: LocalStoreCommit) -> Bool {
 // advances the slot by 2; N per-commit brackets advance it by 2N. If the session were secretly
 // the per-commit path, the two deltas would match and this claim would fail. Lookups run under
 // the same session. This measures hold-acquire count, not root-List count: occupancy writes still
-// list the store.
+// list the store. N is three because three of these objects fit the 4,096-byte
+// fixture budget together and six do not: an eviction inside the session would turn a commit's
+// earlier hit into a miss for a reason this claim is not about.
 test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution() -> Bool {
-  let n = 6
+  let n = 3
   let session_root_path = fresh_root_path()
   let bracket_root_path = fresh_root_path()
   let session_root = WitnessScratchRoot { root: session_root_path }
@@ -1403,8 +1413,8 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
     Present { value: store } => {
       let before = hold_slot_head_generation(root_path: session_root_path)
       match local_store_held_session(capability: store, family: native_module_verdict_bundle_artifact_kind, run: h => {
-        let writes = [1, 2, 3, 4, 5, 6] |> map(i => local_store_commit_under_request(held: h, req: bundle_req(module: concat("s", i as String)), payloads: verdicts(text: "s pass"), parts: []))
-        let hits = [1, 2, 3, 4, 5, 6] |> map(i => store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: concat("s", i as String)))))
+        let writes = [1, 2, 3] |> map(i => local_store_commit_under_request(held: h, req: bundle_req(module: concat("s", i as String)), payloads: verdicts(text: "s pass"), parts: []))
+        let hits = [1, 2, 3] |> map(i => store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: concat("s", i as String)))))
         writes |> all(c => session_commit_ok(c: c)) && hits |> all(x => x)
       }) {
         LocalStoreBracketRefused { refusal: _ } => false
@@ -1417,7 +1427,7 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
     Absent => false
     Present { value: store } => {
       let before = hold_slot_head_generation(root_path: bracket_root_path)
-      let writes = [1, 2, 3, 4, 5, 6] |> map(i => local_store_commit(capability: store, req: bundle_req(module: concat("b", i as String)), payloads: verdicts(text: "b pass"), parts: []))
+      let writes = [1, 2, 3] |> map(i => local_store_commit(capability: store, req: bundle_req(module: concat("b", i as String)), payloads: verdicts(text: "b pass"), parts: []))
       writes |> all(c => session_commit_ok(c: c)) && (hold_slot_head_generation(root_path: bracket_root_path) - before) == (2 * n)
     }
   }
