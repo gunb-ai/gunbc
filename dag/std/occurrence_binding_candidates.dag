@@ -28,7 +28,6 @@ import std.occurrence_identity {
   OccurrenceCategoryClauseEDependencyNotInducing,
   OccurrenceContainmentPath,
   occurrence_containment_path_is_prefix_of,
-  occurrence_containment_paths_equal,
   ValidatedOccurrenceTransport,
   occurrence_transport_validate,
   AuthoredTokenOrdinal,
@@ -201,30 +200,6 @@ type DeclarationExposureIndexBuild {
   refusal: DeclarationExposureIndexRefusal?
 }
 
-fn declaration_exposure_eq(
-  left: DeclarationExposure,
-  right: DeclarationExposure
-) -> Bool {
-  match left {
-    LexicalExposure { exposing_scope: left_scope } =>
-      match right {
-        LexicalExposure { exposing_scope: right_scope } =>
-          occurrence_containment_paths_equal(left: left_scope, right: right_scope)
-        _ => false
-      }
-    ModuleExposure { module: left_module } =>
-      match right {
-        ModuleExposure { module: right_module } => left_module == right_module
-        _ => false
-      }
-    RootExposure =>
-      match right {
-        RootExposure => true
-        _ => false
-      }
-  }
-}
-
 data declaration_exposure_from_containment_note: String = "Single authority for declaration exposure from containment prefix shape and module path. OccurrenceCategory is never consulted. DeclarationExposureGrounding selects how module-root and direct-module-child shapes map to DeclarationExposure: NamespaceStructuralRootExposure (N2 resolve path — empty ancestors => RootExposure); ModuleLocalMemberExposure (in-module binding walk — module-root and direct-module-child => ModuleExposure); CrossFileProviderExportedExposure (cross-file provider declarations exported to consumers — module-root and direct-module-child => RootExposure at derivation, never via a post-hoc upgrade). Nested declarations always derive LexicalExposure via occurrence_containment_parent_scope."
 
 type DeclarationExposureGrounding
@@ -323,7 +298,7 @@ fn declaration_exposure_fold_step(
     Absent =>
       match map_get(build.exposure_by_occurrence, row.occurrence.value) {
         Present { value: existing } =>
-          if declaration_exposure_eq(left: existing, right: row.exposure) {
+          if existing == row.exposure {
             build
           } else {
             DeclarationExposureIndexBuild {

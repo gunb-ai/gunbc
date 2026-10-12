@@ -4,7 +4,6 @@ import std.types { Bool, String, List }
 import std.effect_grant {
   NamespaceTree, FilesystemPathTree, UriTree,
   LifecycleByConstruction, LifecycleByConvention,
-  namespace_tree_eq,
 }
 import std.frame_boundary {
   BoundaryAdmission, BoundaryMaterialized, BoundaryUnmaterialized,
@@ -29,7 +28,7 @@ fn is_materialized_convention(a: BoundaryAdmission) -> Bool {
 fn is_unmaterialized_for(a: BoundaryAdmission, tree: NamespaceTree) -> Bool {
   match a {
     BoundaryMaterialized { grade: g } => false
-    BoundaryUnmaterialized { tree: t } => namespace_tree_eq(a: t, b: tree)
+    BoundaryUnmaterialized { tree: t } => t == tree
   }
 }
 

@@ -4,7 +4,7 @@ import std.types { Bool, String, List }
 import std.effects {
   KeySource,
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
-  key_source_eq, create_double_init_collapsible
+  create_double_init_collapsible
 }
 import std.realization_schedule {
   RealizationPlan,
@@ -73,9 +73,9 @@ fn independence_from_effect_shapes(left: EffectShape<KeySource>, right: EffectSh
     UpsertEffect { key_source: lk } => match right {
       ReadEffect => Unknown
       UpsertEffect { key_source: rk } =>
-        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+        if lk == rk { Dependent } else { Independent }
       DeleteEffect { key_source: rk } =>
-        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+        if lk == rk { Dependent } else { Independent }
       CreateEffect { cause: _ } => Unknown
       AppendEffect => Unknown
       ExecuteEffect => Unknown
@@ -83,9 +83,9 @@ fn independence_from_effect_shapes(left: EffectShape<KeySource>, right: EffectSh
     DeleteEffect { key_source: lk } => match right {
       ReadEffect => Unknown
       UpsertEffect { key_source: rk } =>
-        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+        if lk == rk { Dependent } else { Independent }
       DeleteEffect { key_source: rk } =>
-        if key_source_eq(left: lk, right: rk) { Dependent } else { Independent }
+        if lk == rk { Dependent } else { Independent }
       CreateEffect { cause: _ } => Unknown
       AppendEffect => Unknown
       ExecuteEffect => Unknown

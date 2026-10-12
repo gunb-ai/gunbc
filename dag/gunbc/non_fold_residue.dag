@@ -46,8 +46,6 @@ data nfr_dissolve_legacy_slice1: DissolutionCondition = unbound_dissolution(desc
 
 data nfr_reason_reaper_oracle: String = "two-axis discriminating predicate (occupant by action) with off-variant wildcard arms returning false — the reaper witnesses' oracle, same shape as the structural-equality rows; landed with #7026, surfaced by the scheduled cold falsifier (alert #7032)"
 
-data nfr_reason_namespace_tree_eq: String = "NamespaceTree structural equality residue (nested off-variant wildcard arm returning false), landed unrostered with effect_grant.dag in #6817 and surfaced when a later branch brought the file into the affected set"
-
 data nfr_reason_structural_eq_mint: String = "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor"
 
 data nfr_reason_mint_era: String = "match over a closed-coproduct param carrying a top-level wildcard arm — un-migrated modeling declared before per-row landing receipts were required (no dated receipt recorded; DESIGN §6: a named irreducible kernel or un-migrated modeling, there is no third)"
@@ -254,11 +252,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_owning_fold,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/extdeps/linux/proc_self_cgroup.dag::unified_membership_outcome_tag_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_body_not_located" },
     reason: nfr_reason_land_red_era,
     dissolution: nfr_dissolve_owning_fold,
@@ -321,16 +314,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/host/host_hygiene_reaper.dag::action_kills_build_cache_server" },
     reason: nfr_reason_reaper_oracle,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/std/effect_grant.dag::namespace_tree_eq" },
-    reason: nfr_reason_namespace_tree_eq,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/std/effects.dag::key_source_eq" },
-    reason: nfr_reason_structural_eq_mint,
     dissolution: nfr_dissolve_derived_equality,
   },
   FrontierRow {
@@ -402,11 +385,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
     reason: nfr_reason_trait_derive_shape_table,
     dissolution: unbound_dissolution(description: "DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row"),
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::declaration_exposure_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::section13_population_law_id_eq" },
