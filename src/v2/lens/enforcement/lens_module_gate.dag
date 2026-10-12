@@ -6,7 +6,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.lens.registry {
-  Bound, LensIdV0, Unbound, lens_registry_v0, lens_id_v0_eq,
+  Bound, LensIdV0, Unbound, lens_registry_v0,
   ComplexityDerivedKernel, ComplexityOptimality, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
   ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
   DocReachability, DuplicateComputation, EffectReach, EmittedBinaryEffectConfinement, FallbackArmCensus, MandatoryTag, ExtdepsShapeTransportPolicy,
@@ -119,7 +119,7 @@ fn lens_module_gate_remedy_eq(a: LensInvariantRemedy, b: LensInvariantRemedy) ->
 }
 
 fn lens_module_gate_verdict_remedy_pair_eq(a: VerdictRemedyPair, b: VerdictRemedyPair) -> Bool {
-  lens_id_v0_eq(left: a.lens_id, right: b.lens_id)
+  a.lens_id == b.lens_id
     && lens_module_gate_verdict_authority_eq(a: a.verdict_authority, b: b.verdict_authority)
     && lens_module_gate_remedy_eq(a: a.remedy, b: b.remedy)
 }

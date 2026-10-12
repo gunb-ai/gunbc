@@ -482,7 +482,7 @@ fn derive_lens_enforcement_inventory(
 }
 
 fn lens_id_eq_inventory_row(row: LensEnforcementInventoryRow, id: LensIdV0) -> Bool {
-  lens_id_v0_eq(left: row.lens_id, right: id)
+  row.lens_id == id
 }
 
 fn inventory_contains_lens_id(inventory: List<LensEnforcementInventoryRow>, id: LensIdV0) -> Bool {
@@ -494,7 +494,7 @@ fn inventory_row_count(inventory: List<LensEnforcementInventoryRow>) -> Int {
 }
 
 fn registry_contains_lens_id(contracts: List<LensContract>, id: LensIdV0) -> Bool {
-  any(xs: contracts, predicate: fn(c) { lens_id_v0_eq(left: c.entry.lens_id, right: id) })
+  any(xs: contracts, predicate: fn(c) { c.entry.lens_id == id })
 }
 
 fn inventory_row_registry_member(
