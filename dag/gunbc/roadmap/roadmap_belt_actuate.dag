@@ -13420,7 +13420,7 @@ fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String
     match acc.read {
       BeltAttemptProgressFound { progress } =>
         if belt_attempt_obligation_outstanding(kind: kind, provider: progress.provider, segments: progress.segments)
-          || (belt_attempt_obligation_kind_key(kind: kind) == "capture" && belt_provider_candidate_ready(provider: progress.provider) && belt_capture_owed(instance: instance, progress: progress)) {
+          || (match kind { CaptureObligation => belt_provider_candidate_ready(provider: progress.provider) && belt_capture_owed(instance: instance, progress: progress)  _ => false }) {
           let step = belt_attempt_obligation_step(instance: instance, progress: progress, kind: kind)
           BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: concat(acc.steps, [step]) }
         } else {
