@@ -48,19 +48,31 @@ type RegionSweepAcc {
 }
 
 // The order the sweep reads regions in: by start; at one start the wider first; at one extent the
-// shallower first. Three STABLE sorts, least significant key first, so no key is packed into a
-// shared integer that a large offset could overflow. An erased scope sorts after every occurrence of
-// the same extent: when an argument `(x)` and its parentheses share an extent, the argument wraps
-// the parentheses, which wrap x.
+// shallower first. ONE sort over a fixed-width decimal key, compared as text: the sequence sort is
+// not stable (the realized list sorts by quicksort), so successive single-key sorts could undo one
+// another, and packing the components into one Int overflows at large offsets. Each component is a
+// non-negative Int below 10^12, zero-padded to twelve digits. An erased scope sorts after every
+// occurrence of the same extent: when an argument `(x)` and its parentheses share an extent, the
+// argument wraps the parentheses, which wrap x.
 fn erased_region_depth() -> Int {
   1000000000
 }
 
+fn zero_padded(n: Int, width: Int) -> String {
+  let digits = to_string(n)
+  if string_length(s: digits) >= width { digits } else { zero_padded_with(digits: concat("0", digits), width: width) }
+}
+
+fn zero_padded_with(digits: String, width: Int) -> String {
+  if string_length(s: digits) >= width { digits } else { zero_padded_with(digits: concat("0", digits), width: width) }
+}
+
+fn swept_region_key(r: SweptRegion) -> String {
+  concat(zero_padded(n: r.extent.start, width: 12), zero_padded(n: 999999999999 - r.extent.end, width: 12), zero_padded(n: r.depth, width: 12))
+}
+
 fn swept_region_order(regions: List<SweptRegion>) -> List<SweptRegion> {
-  regions
-    |> sort_by(r => r.depth)
-    |> sort_by(r => 0 - r.extent.end)
-    |> sort_by(r => r.extent.start)
+  regions |> sort_by(r => swept_region_key(r: r))
 }
 
 fn close_regions_ending_by(open: List<SweptRegion>, at: Int) -> List<SweptRegion> {

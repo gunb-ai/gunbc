@@ -44,38 +44,59 @@ pub fn erased_region_depth() -> i64 {
     1000000000
 }
 
+pub fn zero_padded(n: i64, width: i64) -> String {
+    {
+        let digits = (n.clone()).to_string();
+        if (v1_rt::string_length(&digits) >= width.clone()) {
+            digits.clone()
+        } else {
+            zero_padded_with(
+                v1_rt::concat("0".to_string(), digits.clone()),
+                width.clone(),
+            )
+        }
+    }
+}
+
+pub fn zero_padded_with(mut __tco_loop_digits: String, mut __tco_loop_width: i64) -> String {
+    loop {
+        #[allow(unused_mut)]
+        let mut digits = __tco_loop_digits;
+        #[allow(unused_mut)]
+        let mut width = __tco_loop_width;
+        if (v1_rt::string_length(&digits) >= width.clone()) {
+            break digits.clone();
+        } else {
+            {
+                let __tco_0 = v1_rt::concat("0".to_string(), digits);
+                let __tco_1 = width;
+                __tco_loop_digits = __tco_0;
+                __tco_loop_width = __tco_1;
+                continue;
+            }
+        }
+    }
+}
+
+pub fn swept_region_key(r: Rc<SweptRegion>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            zero_padded(r.extent.clone().start.clone(), 12),
+            zero_padded(
+                v1_rt::int_sub(999999999999, r.extent.clone().end.clone()),
+                12,
+            ),
+        ),
+        zero_padded(r.depth.clone(), 12),
+    )
+}
+
 pub fn swept_region_order(regions: Rc<Vec<Rc<SweptRegion>>>) -> Rc<Vec<Rc<SweptRegion>>> {
     Rc::new({
-        let mut __sorted: Vec<_> = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new({
-                let mut __sorted: Vec<_> = regions.iter().cloned().collect();
-                __sorted.sort_by(|a: &Rc<SweptRegion>, b: &Rc<SweptRegion>| {
-                    let __ka = (|r: Rc<SweptRegion>| r.depth.clone())(a.clone());
-                    let __kb = (|r: Rc<SweptRegion>| r.depth.clone())(b.clone());
-                    v1_rt::canonical_key_cmp(&__ka, &__kb)
-                });
-                __sorted
-            })
-            .iter()
-            .cloned()
-            .collect();
-            __sorted.sort_by(|a: &Rc<SweptRegion>, b: &Rc<SweptRegion>| {
-                let __ka = (|r: Rc<SweptRegion>| v1_rt::int_sub(0, r.extent.clone().end.clone()))(
-                    a.clone(),
-                );
-                let __kb = (|r: Rc<SweptRegion>| v1_rt::int_sub(0, r.extent.clone().end.clone()))(
-                    b.clone(),
-                );
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
-        })
-        .iter()
-        .cloned()
-        .collect();
+        let mut __sorted: Vec<_> = regions.iter().cloned().collect();
         __sorted.sort_by(|a: &Rc<SweptRegion>, b: &Rc<SweptRegion>| {
-            let __ka = (|r: Rc<SweptRegion>| r.extent.clone().start.clone())(a.clone());
-            let __kb = (|r: Rc<SweptRegion>| r.extent.clone().start.clone())(b.clone());
+            let __ka = (|r: Rc<SweptRegion>| swept_region_key(r.clone()))(a.clone());
+            let __kb = (|r: Rc<SweptRegion>| swept_region_key(r.clone()))(b.clone());
             v1_rt::canonical_key_cmp(&__ka, &__kb)
         });
         __sorted
