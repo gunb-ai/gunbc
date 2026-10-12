@@ -7058,10 +7058,10 @@ fn body_lower_postfix_steps_carry_cast_or_index(steps: List<PostfixStep>) -> Boo
 // AN INDEX READ IS THE EXISTING STD ELEMENT ACCESS, NOT A NEW OPERATION. `xs[i]` lowers to
 // v2.std.collection list_at_optional(xs: xs, index: i) -- an Optional<T>, because an index out of
 // range is a value and not a crash (the answer v2 already models). The head is the absolute path
-// to that declaration, so the lowering does not depend on what the authoring module imported. A
-// Map is NOT indexed by this: map_lookup is a different operation keyed by a different type, and
-// the index step does not decide which carrier its base is; infer judges the base against the
-// declared xs: List<T>, so a Map base refuses there rather than reading as a list.
+// to that declaration. What is established is that `xs[i]` normalizes to the same tree as the
+// qualified list_at_optional call (v2.test.claim.parse.index_suffix). Whether infer refuses a Map
+// base or a non-Int index is NOT established: no harness yet assembles source with its std import
+// closure (gunbc.recurring_failure_mode index_suffix_infer_verdict_unobserved).
 fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
   body_lower_transform_call(
     operator: qualified_name_spine_node(
