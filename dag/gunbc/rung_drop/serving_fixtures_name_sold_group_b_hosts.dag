@@ -18,7 +18,9 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 // gunbc.spark.glm_serving_load; nothing rostered reaches them.
 //
 // WHAT DOES NOT FALL. No fleet-converge target, host roster, enrolment, binding, reservation or LAN
-// endpoint list names a sold unit, so no mode can dispatch to one.
+// endpoint list names a sold unit, so no mode can dispatch to one. serving_enrolled_groups was the
+// leftover production roster that still named FabricGroupB after the sale; emptied 2026-10-12
+// (gunbc#13776): enrollment is who a turn may be offered to, and a sold cage is not that.
 data serving_fixtures_name_sold_group_b_hosts: RungDrop = RungDrop {
   identity: "serving_fixtures_name_sold_group_b_hosts" as NonEmptyStr,
 
@@ -35,7 +37,7 @@ data serving_fixtures_name_sold_group_b_hosts: RungDrop = RungDrop {
     population: [
       "witness fixtures under dag/test/claim that name FabricGroupB or operator_host_srv9 through operator_host_srv12 as inputs",
       "gunbc.spark.glm_serving_load, which still addresses srv9_host_lan_endpoint",
-      "no rostered fleet target, enrolment, binding, reservation or endpoint list: those are removed, not dropped",
+      "no rostered fleet target, enrolment, binding, reservation or endpoint list: those are removed, not dropped (serving_enrolled_groups emptied gunbc#13776)",
     ],
     restoration_trigger: "serving re-fixtured onto a live host population: the serving, harness and fabric witnesses and gunbc.spark.glm_serving_load take their hosts from a live roster (hosts that exist and are reachable) instead of the sold srv9-srv12 symbols, SUFFICIENT FOR the srv9-srv12 identity and endpoint data symbols to be deleted without a witness or serving module resolving them",
   },

@@ -246,12 +246,15 @@ fn serving_route(group: FabricGroup) -> ServingRoute {
 // machinery this feeds is the COMPUTE fabric sense (product.fabric.selection). They are two concepts
 // under one word and that fork is not this module's to resolve; every use above is the network one.
 
-// BOTH GROUPS ARE ENROLLED. This row is the whole of what "enrolled" means: these are the routes a
-// turn may be offered to, subject to every one of them answering a probe first. It says nothing
-// about whose hosts are claimed, which engine is desired, or what is converged -- those stay with
-// gunbc.spark.pair_serving_desired and gunbc.spark.fabric_serving_assignment respectively, and neither
-// is widened by this row.
-data serving_enrolled_groups: List<FabricGroup> = [FabricGroupB {}]
+// NO FABRIC GROUP IS ENROLLED. Operator-ruled 2026-10-10: every procured DGX Spark is sold, Group B
+// included (gunbc.spark.dgx_procurement dgx_spark_disposed_units; rung drop
+// serving_fixtures_name_sold_group_b_hosts). This row is the whole of what "enrolled" means: these
+// are the fleet-cage routes a turn may be offered to. Naming FabricGroupB here after the sale was
+// the leftover production roster #13641 did not empty — serving_route then asked host_lan_address
+// for a head that has no topology row, which is not a live front door. The operator-run ninfer
+// route is still not enrolled here (it is not a FabricGroup). Witnesses that still name Group B
+// supply it as a fixture population, the same pattern spark_host_commitment_witness uses.
+data serving_enrolled_groups: List<FabricGroup> = []
 
 fn serving_enrolled_routes() -> List<ServingRoute> {
   map(serving_enrolled_groups, g => serving_route(group: g))

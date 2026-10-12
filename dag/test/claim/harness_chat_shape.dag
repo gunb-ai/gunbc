@@ -130,7 +130,9 @@ test fn each_shape_posts_to_its_own_path() -> Bool {
 // THIS BRANCH'S HALF: the roster it derived from was gunbc.spark.pair_serving_desired
 // spark_pair_serving_groups -- which answers "whose hosts do we claim", not "who may a turn be
 // offered to". Deriving honestly from the wrong authority is still the wrong answer, so the join is
-// against gunbc.serving.serving_enrollment, where both routes are enrolled.
+// against gunbc.serving.serving_enrollment. That list is empty: Group B was sold 2026-10-10
+// (serving_fixtures_name_sold_group_b_hosts). The join still holds — both sides empty — and the
+// count>0 conjunct is gone because it was a live-population claim.
 //
 // AND THE PORT IS PART OF THE JOIN RATHER THAN A CONSTANT. Main's version asserted ":30000" for every
 // address, which is true of the pair route and false of the canary; each route now renders its own
@@ -170,7 +172,7 @@ fn t_addresses() -> List<String> {
 // What changed underneath is WHICH authority supplies the heads.
 test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
   count(t_endpoints()) == count(serving_enrolled_groups)
-    && count(t_endpoints()) > 0
+    && count(serving_enrolled_groups) == 0
     && all(t_addresses(), a => any(t_head_addresses(), h => h == a))
     && all(t_endpoints(), e => any(serving_enrolled_routes(), r => match r {
          ServingRouteUnresolved { group: _, obligation: _ } => false

@@ -2,24 +2,50 @@ module test.claim.harness_seat_witness
 
 import std.types { Bool, String, Int, NonEmptyStr }
 import std.measure { second_count }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.pair_serving_desired {
-  spark_pair_serving_unit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
+  spark_pair_serving_seq_capacity, SeqCapacityByOperatorPolicy, SeqCapacityMeasured, SeqCapacityUnmeasured,
 }
-import gunbc.spark.serving_engine { VllmServing, OllamaServing }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant }
 import product.capacity.lease { QuiescenceRequired, FencedResource }
 import gunbc.harness.harness_seat {
   harness_seat_partition, SeatCeilingByDeclaredPolicy, AdmissionCeilingUnestablished,
-  harness_seat_capacity, harness_interactive_quality_seats, harness_seat_reference,
+  harness_seat_capacity, harness_seat_capacity_for, harness_interactive_quality_seats, harness_seat_reference,
 }
-import gunbc.serving.serving_enrollment { serving_route_ceiling, serving_route_turn_ceiling_count, RouteCeilingStands, RouteCeilingUnresolved }
+import gunbc.serving.serving_enrollment {
+  ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
+  serving_route_ceiling, serving_route_turn_ceiling_count, RouteCeilingStands, RouteCeilingUnresolved,
+}
+import gunbc.fleet.fleet_intent_network { srv9_host_lan_endpoint }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_serve_port }
 import gunbc.harness.harness_cli {
   harness_seat_policy, harness_request_deadline, harness_seat_release_allowance_seconds,
 }
 
-fn w_ceiling(group: FabricGroup) -> Int {
-  match harness_seat_capacity(group: group, class: InteractiveQualitySensitive) {
+// GROUP B AS FIXTURE. srv9-srv12 were sold 2026-10-10, so production enrollment is empty and
+// serving_route(FabricGroupB) is unresolved (no LAN row in fleet_intent_network.endpoints). The
+// seat-ceiling algebra is still the subject of these claims, so the route is supplied here — the
+// same pattern as test.claim.spark.spark_host_commitment_witness fixture_group_b_units (rung drop
+// serving_fixtures_name_sold_group_b_hosts). The inhabitance that production no longer enrolls the
+// group is test.claim.serving_routing_witness sold_group_b_is_not_enrolled_and_has_no_serving_route.
+fn fixture_group_b_route() -> ServingRoute {
+  match serving_route_ceiling(group: FabricGroupB {}) {
+    RouteCeilingUnresolved { cause: c } =>
+      ServingRouteUnresolved { group: FabricGroupB {}, obligation: c }
+    RouteCeilingStands { ceiling: c } =>
+      ServingRouteResolved {
+        endpoint: ServingRouteEndpoint {
+          group: FabricGroupB {},
+          address: srv9_host_lan_endpoint.address as NonEmptyStr,
+          port: group_b_restoration_serve_port,
+        },
+        ceiling: c,
+      }
+  }
+}
+
+fn w_ceiling() -> Int {
+  match harness_seat_capacity_for(route: fixture_group_b_route(), class: InteractiveQualitySensitive) {
     SeatCeilingByDeclaredPolicy { class: _, pool: p, seats: _ } => p.ledger.appropriation.ceiling.count
     AdmissionCeilingUnestablished { group: _, cause: _ } => -1
   }
@@ -28,8 +54,8 @@ fn w_ceiling(group: FabricGroup) -> Int {
 // THE TOLERANT POOL'S CEILING, read the same way, so the two are compared as POOLS rather than as
 // the rows they came from: a pool built with the wrong ceiling is the defect, not a row that reads
 // differently.
-fn w_tolerant_ceiling(group: FabricGroup) -> Int {
-  match harness_seat_capacity(group: group, class: BatchQualityTolerant) {
+fn w_tolerant_ceiling() -> Int {
+  match harness_seat_capacity_for(route: fixture_group_b_route(), class: BatchQualityTolerant) {
     SeatCeilingByDeclaredPolicy { class: _, pool: p, seats: _ } => p.ledger.appropriation.ceiling.count
     AdmissionCeilingUnestablished { group: _, cause: _ } => -1
   }
@@ -37,23 +63,20 @@ fn w_tolerant_ceiling(group: FabricGroup) -> Int {
 
 // The route's own declared allocation, read from the row that owns it, so the claims below compare
 // the harness's reading against its authority rather than against a copy of it.
-fn w_route_ceiling(group: FabricGroup) -> Int {
-  match serving_route_ceiling(group: group) {
+fn w_route_ceiling() -> Int {
+  match serving_route_ceiling(group: FabricGroupB {}) {
     RouteCeilingStands { ceiling: c } => serving_route_turn_ceiling_count(c: c)
     RouteCeilingUnresolved { cause: _ } => 0
   }
 }
 
-// The engine's OWN scheduler count limit, read straight off the desired unit. This witness needs it
-// only to prove the seat ceiling is NOT it.
-fn w_engine_max_num_seqs(group: FabricGroup) -> Int {
-  match spark_pair_serving_unit(group: group) {
-    SparkPairServingUnitRefused { group: _, cause: _ } => -1
-    SparkPairServingUnitReady { group: _, engine: e, head: _, workers: _ } =>
-      match e {
-        VllmServing { args: a } => a.max_num_seqs
-        OllamaServing { profile: _ } => -1
-      }
+// The engine's OWN scheduler count limit, from the pair-serving policy row, not from constructing
+// a desired unit on the sold group. This witness needs it only to prove the seat ceiling is NOT it.
+fn w_engine_max_num_seqs() -> Int {
+  match spark_pair_serving_seq_capacity {
+    SeqCapacityByOperatorPolicy { max_num_seqs: n, basis: _ } => n
+    SeqCapacityMeasured { max_num_seqs: n, basis: _ } => n
+    SeqCapacityUnmeasured => -1
   }
 }
 
@@ -73,21 +96,25 @@ test fn each_group_has_its_own_partition() -> Bool {
 // the engine and happened to set max_num_seqs to one. Requiring them to disagree makes any
 // re-derivation red while the engine keeps its own limit.
 test fn the_seat_ceiling_is_a_quality_policy_and_never_the_engines_sequence_limit() -> Bool {
-  w_engine_max_num_seqs(group: FabricGroupB {}) == 32
+  w_engine_max_num_seqs() == 32
     && harness_interactive_quality_seats == 1
-    && w_ceiling(group: FabricGroupB {}) == harness_interactive_quality_seats
-    && w_ceiling(group: FabricGroupB {}) != w_engine_max_num_seqs(group: FabricGroupB {})
+    && w_ceiling() == harness_interactive_quality_seats
+    && w_ceiling() != w_engine_max_num_seqs()
 }
 
 // The interim arm SAYS declared policy in its own constructor, so no consumer can read a derived
 // capacity out of it, and the unestablished arm exists and is reachable by name.
 test fn the_interim_ceiling_names_itself_declared_policy_and_the_refusal_arm_exists() -> Bool {
-  (match harness_seat_capacity(group: FabricGroupB {}, class: InteractiveQualitySensitive) {
+  (match harness_seat_capacity_for(route: fixture_group_b_route(), class: InteractiveQualitySensitive) {
      SeatCeilingByDeclaredPolicy { class: _, pool: _, seats: n } => n == harness_interactive_quality_seats
      AdmissionCeilingUnestablished { group: _, cause: _ } => false
    })
     && (match AdmissionCeilingUnestablished { group: FabricGroupB {}, cause: "probe" as NonEmptyStr } {
           AdmissionCeilingUnestablished { group: _, cause: c } => (c as String) == "probe"
+          SeatCeilingByDeclaredPolicy { class: _, pool: _, seats: _ } => false
+        })
+    && (match harness_seat_capacity(group: FabricGroupB {}, class: InteractiveQualitySensitive) {
+          AdmissionCeilingUnestablished { group: _, cause: _ } => true
           SeatCeilingByDeclaredPolicy { class: _, pool: _, seats: _ } => false
         })
 }
@@ -113,9 +140,9 @@ test fn the_seat_policy_is_declared_from_the_request_deadline_and_requires_quies
 // re-read the ceiling off the engine.
 test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
   harness_interactive_quality_seats == 1
-    && w_ceiling(group: FabricGroupB {}) == 1
-    && w_engine_max_num_seqs(group: FabricGroupB {}) == 32
-    && w_ceiling(group: FabricGroupB {}) != w_engine_max_num_seqs(group: FabricGroupB {})
+    && w_ceiling() == 1
+    && w_engine_max_num_seqs() == 32
+    && w_ceiling() != w_engine_max_num_seqs()
 }
 
 // ── THE TOLERANT POOL IS A SECOND POOL, AND IT IS NOT THE ENGINE'S LIMIT EITHER ───────────────
@@ -136,10 +163,10 @@ test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
 // tolerant-differs-from-quality conjunct; the row moving no longer fails anything, which is the
 // point of not copying it.
 test fn the_tolerant_pool_is_a_separate_pool_whose_ceiling_is_not_the_engines_sequence_limit() -> Bool {
-  w_tolerant_ceiling(group: FabricGroupB {}) == w_route_ceiling(group: FabricGroupB {})
-    && w_tolerant_ceiling(group: FabricGroupB {}) != w_ceiling(group: FabricGroupB {})
-    && w_ceiling(group: FabricGroupB {}) == 1
-    && w_tolerant_ceiling(group: FabricGroupB {}) != w_engine_max_num_seqs(group: FabricGroupB {})
+  w_tolerant_ceiling() == w_route_ceiling()
+    && w_tolerant_ceiling() != w_ceiling()
+    && w_ceiling() == 1
+    && w_tolerant_ceiling() != w_engine_max_num_seqs()
 }
 
 // ── AN ACQUISITION REFERENCE IS UNIQUE FOR THE LIFE OF THE PARTITION ──────────────────────────
