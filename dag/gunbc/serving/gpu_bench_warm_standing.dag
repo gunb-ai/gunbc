@@ -4,10 +4,17 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
-import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.gpu_bench.request_v2 {
   GpuBenchRequestV2, GpuBenchPhase, GpuBenchPhasePrime, GpuBenchPhaseWarm, GpuBenchPhaseShort,
   GpuBenchRequestStatus, GpuBenchRequestOk, GpuBenchRequestError,
+}
+import extdeps.gpu_bench.kit_log {
+  gpu_bench_capacity_ok_tokens,
+  CapacityOkRead, CapacityOkAbsent, CapacityOkMalformed,
+}
+import extdeps.ninfer.replayed_tokens_total {
+  ninfer_replayed_tokens_total,
+  NinferReplayedTokensRead, NinferReplayedTokensAbsent, NinferReplayedTokensMalformed,
 }
 
 // WARM-PERFORMANCE ELIGIBILITY FROM A GPU-BENCH V2 RECEIPT, not a rate. A tokens-per-second field
@@ -100,73 +107,11 @@ fn gpu_bench_warm_standing(records: List<GpuBenchRequestV2>, measured_kv: TokenC
   }
 }
 
-type GpuBenchCapacityOkRead
-  = CapacityOkRead { tokens: TokenCount }
-  | CapacityOkAbsent
-  | CapacityOkMalformed { cause: NonEmptyStr }
-
-type GpuBenchReplayCountRead
-  = ReplayCountRead { tokens: TokenCount }
-  | ReplayCountAbsent
-  | ReplayCountMalformed { cause: NonEmptyStr }
-
-fn gpu_bench_nat_from_last_token(line: String) -> Nat? {
-  let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
-  match parse_int(s: last) {
-    Absent => none
-    Present { value: n } => checked_int_to_nat(n: n)
-  }
-}
-
-fn gpu_bench_capacity_ok_tokens(log: String) -> GpuBenchCapacityOkRead {
-  if log == "" {
-    CapacityOkAbsent
-  } else {
-    fold(split(s: log, delimiter: "\n"), init: CapacityOkAbsent, f: fn(acc, line) {
-      match acc {
-        CapacityOkRead { tokens: t } => CapacityOkRead { tokens: t }
-        CapacityOkMalformed { cause: c } => CapacityOkMalformed { cause: c }
-        CapacityOkAbsent =>
-          if string_contains(s: line, pattern: "CAPACITY_OK ") {
-            match gpu_bench_nat_from_last_token(line: line) {
-              Absent => CapacityOkMalformed { cause: "CAPACITY_OK last token is not a natural" as NonEmptyStr }
-              Present { value: cap } => CapacityOkRead { tokens: token_count(count: cap) }
-            }
-          } else {
-            CapacityOkAbsent
-          }
-      }
-    })
-  }
-}
-
-fn gpu_bench_ninfer_replayed_tokens_total(log: String) -> GpuBenchReplayCountRead {
-  if log == "" {
-    ReplayCountAbsent
-  } else {
-    fold(split(s: log, delimiter: "\n"), init: ReplayCountAbsent, f: fn(acc, line) {
-      match acc {
-        ReplayCountRead { tokens: t } => ReplayCountRead { tokens: t }
-        ReplayCountMalformed { cause: c } => ReplayCountMalformed { cause: c }
-        ReplayCountAbsent =>
-          if string_contains(s: line, pattern: "ninfer_replayed_tokens_total ") && !string_contains(s: line, pattern: "#") {
-            match gpu_bench_nat_from_last_token(line: line) {
-              Absent => ReplayCountMalformed { cause: "ninfer_replayed_tokens_total last token is not a natural" as NonEmptyStr }
-              Present { value: n } => ReplayCountRead { tokens: token_count(count: n) }
-            }
-          } else {
-            ReplayCountAbsent
-          }
-      }
-    })
-  }
-}
-
 fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
-  match gpu_bench_ninfer_replayed_tokens_total(log: log) {
-    ReplayCountAbsent => WarmRejected { cause: "ninfer_replayed_tokens_total was not observed" as NonEmptyStr }
-    ReplayCountMalformed { cause: c } => WarmRejected { cause: c }
-    ReplayCountRead { tokens: replayed } =>
+  match ninfer_replayed_tokens_total(log: log) {
+    NinferReplayedTokensAbsent => WarmRejected { cause: "ninfer_replayed_tokens_total was not observed" as NonEmptyStr }
+    NinferReplayedTokensMalformed { cause: c } => WarmRejected { cause: c }
+    NinferReplayedTokensRead { tokens: replayed } =>
       if token_count_value(t: replayed) > 0 {
         WarmRejected { cause: "ninfer replayed tokens; prefix restore was not a snapshot hit" as NonEmptyStr }
       } else {

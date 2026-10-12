@@ -1,0 +1,79 @@
+module extdeps.gpu_bench.kit_log
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, token_count_value }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, File }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+
+// THE GPU-BENCH KIT'S PROCESS LOG, not the per-request JSONL and not a ninfer metric.
+// CAPACITY_OK <n> is printed by the kit when it records measured KV tokens. Independently
+// versioned with the kit on srv2:~/gpu-bench; cited with the request/v2 commit.
+
+data gpu_bench_capacity_ok_marker: NonEmptyStr = "CAPACITY_OK" as NonEmptyStr
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "gpu-bench/longctx.py@1a128b28ffd3fd526fd4c347dd64b01aca9ad952" as NonEmptyStr
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gpu_bench.kit_log",
+      decl_name: "gpu_bench_capacity_ok_marker",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data gpu_bench_capacity_ok_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+type GpuBenchCapacityOkRead
+  = CapacityOkRead { tokens: TokenCount }
+  | CapacityOkAbsent
+  | CapacityOkMalformed { cause: NonEmptyStr }
+
+fn gpu_bench_nat_from_last_token(line: String) -> Nat? {
+  let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
+  match parse_int(s: last) {
+    Absent => none
+    Present { value: n } => checked_int_to_nat(n: n)
+  }
+}
+
+fn gpu_bench_capacity_ok_tokens(log: String) -> GpuBenchCapacityOkRead {
+  if log == "" {
+    CapacityOkAbsent
+  } else {
+    fold(split(s: log, delimiter: "\n"), init: CapacityOkAbsent, f: fn(acc, line) {
+      if string_contains(s: line, pattern: "CAPACITY_OK ") {
+        match gpu_bench_nat_from_last_token(line: line) {
+          Absent => CapacityOkMalformed { cause: "CAPACITY_OK last token is not a natural" as NonEmptyStr }
+          Present { value: cap } =>
+            match acc {
+              CapacityOkMalformed { cause: c } => CapacityOkMalformed { cause: c }
+              CapacityOkAbsent => CapacityOkRead { tokens: token_count(count: cap) }
+              CapacityOkRead { tokens: t } =>
+                if token_count_value(t: t) == cap {
+                  CapacityOkRead { tokens: t }
+                } else {
+                  CapacityOkMalformed { cause: "CAPACITY_OK snapshots disagree" as NonEmptyStr }
+                }
+            }
+        }
+      } else {
+        acc
+      }
+    })
+  }
+}

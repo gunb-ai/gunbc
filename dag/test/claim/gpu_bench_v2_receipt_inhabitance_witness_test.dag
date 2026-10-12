@@ -9,9 +9,11 @@ import extdeps.gpu_bench.request_v2 {
   gpu_bench_parse_jsonl, GpuBenchRequestV2Parsed, GpuBenchRequestV2StreamUnreadable,
 }
 import gunbc.serving.gpu_bench_warm_standing {
-  gpu_bench_warm_standing_with_ninfer_log, gpu_bench_capacity_ok_tokens,
+  gpu_bench_warm_standing_with_ninfer_log,
   WarmValid, WarmOverCapacity, WarmRejected, WarmCapacityUnread,
-  CapacityOkRead, CapacityOkAbsent, CapacityOkMalformed,
+}
+import extdeps.gpu_bench.kit_log {
+  gpu_bench_capacity_ok_tokens, CapacityOkRead, CapacityOkAbsent, CapacityOkMalformed,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

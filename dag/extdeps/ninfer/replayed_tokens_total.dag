@@ -1,0 +1,78 @@
+module extdeps.ninfer.replayed_tokens_total
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+
+// NINFER'S REPLAYED-TOKEN COUNTER LINE, not a gpu-bench kit schema. The metric name is
+// ninfer_replayed_tokens_total; later snapshots overwrite earlier ones (phase counter).
+
+data ninfer_replayed_tokens_total_marker: NonEmptyStr = "ninfer_replayed_tokens_total" as NonEmptyStr
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/Neroued/ninfer" as NonEmptyStr }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ninfer.replayed_tokens_total",
+      decl_name: "ninfer_replayed_tokens_total_marker",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data ninfer_replayed_tokens_total_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read ninfer's metric printer at github.com/Neroued/ninfer and cite the ninfer_replayed_tokens_total line as CitedToAuthority. Until then this is the observed process-log spelling, not an upstream-published contract." as NonEmptyStr
+}
+
+type NinferReplayedTokensRead
+  = NinferReplayedTokensRead { tokens: TokenCount }
+  | NinferReplayedTokensAbsent
+  | NinferReplayedTokensMalformed { cause: NonEmptyStr }
+
+fn ninfer_nat_from_last_token(line: String) -> Nat? {
+  let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
+  match parse_int(s: last) {
+    Absent => none
+    Present { value: n } => checked_int_to_nat(n: n)
+  }
+}
+
+fn ninfer_replayed_tokens_total(log: String) -> NinferReplayedTokensRead {
+  if log == "" {
+    NinferReplayedTokensAbsent
+  } else {
+    fold(split(s: log, delimiter: "\n"), init: NinferReplayedTokensAbsent, f: fn(acc, line) {
+      match acc {
+        NinferReplayedTokensMalformed { cause: c } => NinferReplayedTokensMalformed { cause: c }
+        NinferReplayedTokensAbsent =>
+          if string_contains(s: line, pattern: "ninfer_replayed_tokens_total ") && !string_contains(s: line, pattern: "#") {
+            match ninfer_nat_from_last_token(line: line) {
+              Absent => NinferReplayedTokensMalformed { cause: "ninfer_replayed_tokens_total last token is not a natural" as NonEmptyStr }
+              Present { value: n } => NinferReplayedTokensRead { tokens: token_count(count: n) }
+            }
+          } else {
+            NinferReplayedTokensAbsent
+          }
+        NinferReplayedTokensRead { tokens: t } =>
+          if string_contains(s: line, pattern: "ninfer_replayed_tokens_total ") && !string_contains(s: line, pattern: "#") {
+            match ninfer_nat_from_last_token(line: line) {
+              Absent => NinferReplayedTokensMalformed { cause: "ninfer_replayed_tokens_total last token is not a natural" as NonEmptyStr }
+              Present { value: n } => NinferReplayedTokensRead { tokens: token_count(count: n) }
+            }
+          } else {
+            NinferReplayedTokensRead { tokens: t }
+          }
+      }
+    })
+  }
+}

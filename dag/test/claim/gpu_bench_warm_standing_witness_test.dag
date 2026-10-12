@@ -10,9 +10,11 @@ import extdeps.gpu_bench.request_v2 {
   gpu_bench_request_v2_schema, GpuBenchRequestError, GpuBenchRequestOk,
 }
 import gunbc.serving.gpu_bench_warm_standing {
-  gpu_bench_warm_standing, gpu_bench_warm_standing_with_ninfer_log, gpu_bench_capacity_ok_tokens,
+  gpu_bench_warm_standing, gpu_bench_warm_standing_with_ninfer_log,
   WarmValid, WarmOverCapacity, WarmRejected, WarmCapacityUnread,
-  CapacityOkRead, CapacityOkAbsent, CapacityOkMalformed,
+}
+import extdeps.gpu_bench.kit_log {
+  gpu_bench_capacity_ok_tokens, CapacityOkRead, CapacityOkAbsent, CapacityOkMalformed,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -192,6 +194,27 @@ test fn malformed_replay_counter_rejects() -> Bool {
 test fn malformed_capacity_ok_is_not_unsupplied() -> Bool {
   match gpu_bench_capacity_ok_tokens(log: "CAPACITY_OK xyz\n") {
     CapacityOkMalformed { cause: c } => string_contains(s: c as String, pattern: "CAPACITY_OK")
+    CapacityOkAbsent => false
+    CapacityOkRead { tokens: _ } => false
+  }
+}
+
+test fn two_replay_snapshots_last_nonzero_rejects() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_ok_prime) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing_with_ninfer_log(records: rs, log: "CAPACITY_OK 1920000\nninfer_replayed_tokens_total 0\nninfer_replayed_tokens_total 12\n") {
+        WarmRejected { cause: c } => string_contains(s: c as String, pattern: "replayed")
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
+  }
+}
+
+test fn conflicting_capacity_ok_snapshots_refuse() -> Bool {
+  match gpu_bench_capacity_ok_tokens(log: "CAPACITY_OK 100\nCAPACITY_OK 200\n") {
+    CapacityOkMalformed { cause: c } => string_contains(s: c as String, pattern: "disagree")
     CapacityOkAbsent => false
     CapacityOkRead { tokens: _ } => false
   }
