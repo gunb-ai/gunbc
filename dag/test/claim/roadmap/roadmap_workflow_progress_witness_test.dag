@@ -1086,16 +1086,17 @@ test fn an_ended_worker_is_owed_its_capture_until_the_commit_step_settles_it() -
 // is_event_locked partition (locked keep themselves; everything else still owes a process
 // judgment, with ProviderNotStarted named by case); a new terminal state kind must name its
 // side of the partition here or the row goes red.
+data witness_processes: List<WorkerProcessEvidence> = [
+  WorkerProcessRunning { command: "codex" as NonEmptyStr },
+  WorkerProcessExited { exit_code: 0, last_command: "codex" },
+  WorkerProcessExited { exit_code: 1, last_command: "codex" },
+  WorkerProcessAbsent,
+  WorkerProcessUnobserved { reason: "no pane" as NonEmptyStr },
+]
+
 test fn a_reconciled_refused_terminal_state_keeps_itself_under_any_process() -> Bool {
-  let processes: List<WorkerProcessEvidence> = [
-    WorkerProcessRunning { command: "codex" as NonEmptyStr },
-    WorkerProcessExited { exit_code: 0, last_command: "codex" },
-    WorkerProcessExited { exit_code: 1, last_command: "codex" },
-    WorkerProcessAbsent,
-    WorkerProcessUnobserved { reason: "no pane" as NonEmptyStr },
-  ]
   count(
-    processes.filter(
+    witness_processes.filter(
       p => provider_execution_reconcile_process(
                provider: ProviderFailed { activity: "agent turn failed", detail: "d" },
                process: p,
@@ -1109,7 +1110,7 @@ test fn a_reconciled_refused_terminal_state_keeps_itself_under_any_process() -> 
                process: p,
              ) == ProviderEventsRefused { activity: "Agent complete", detail: "d" },
     ),
-  ) == count(processes) && count(processes) == 5
+  ) == count(witness_processes) && count(witness_processes) == 5
     && provider_execution_is_event_locked(state: ProviderCompleted { activity: "Agent complete" })
 }
 

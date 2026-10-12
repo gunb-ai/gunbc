@@ -700,6 +700,8 @@ data witness_terminal_states: List<ProviderExecutionState> = [
   ProviderEventsRefused { activity: "Agent complete", detail: "d" },
 ]
 
+data witness_fold_event: ProviderEvent = ProviderEvent { line_number: 1, raw: "x", kind: TurnStarted }
+
 test fn a_terminal_state_locks_event_folding() -> Bool {
   let locked = witness_terminal_states.filter(
     s => provider_execution_is_event_locked(state: s),
@@ -756,12 +758,11 @@ test fn a_reporting_activity_partition_names_only_reporting() -> Bool {
 }
 
 test fn a_fold_event_is_locked_for_every_terminal_state() -> Bool {
-  let event = ProviderEvent { line_number: 1, raw: "x", kind: TurnStarted }
   // A locked state folds to itself: its label survives the fold. The locked subset is exactly the
   // four terminal states.
   witness_terminal_states.filter(s => provider_execution_is_event_locked(state: s)).all(
     s => provider_execution_state_label(
-      state: provider_execution_fold_event(state: s, event: event),
+      state: provider_execution_fold_event(state: s, event: witness_fold_event),
     ) == provider_execution_state_label(state: s),
   ) && count(
     witness_terminal_states.filter(s => !provider_execution_is_event_locked(state: s)),
