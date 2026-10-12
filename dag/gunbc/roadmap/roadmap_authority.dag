@@ -1226,6 +1226,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     roadmap_node(
+      identity: "rn_J2HQNCTQJGT2X0MTR31TB6HE8F",
+      id: "parse-comment-gap-attachment-v2",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/02_parse.dag"),
+      line: ticket(t: fields(
+        headline: "The v2 parser attaches comments by the same gap rule as v1",
+        boundary: "v2 projects a std.source_annotation AnnotationRegion roster from its parse: each composite's extent from v2.std.provenance span_index_extent (an Unrepresentable extent contributes no region and is reported, never read as empty) and its parent from the parse tree, with parser scaffolding -- production markers, sequence and repeat spines, projection edges -- projected transparently so a region's children are its ORDERED DIRECT SOURCE-SYNTAX CHILDREN. The v2 capture row gains the preceded_by_blank_line and preceded_by_annotation_line bits the walk can observe from the line-prefix state it already threads. The lexer's final source position is retained in its artifact rather than dropped. parse_module gains an authored sibling that calls attach_annotations, the same fold v1 calls, producing AuthoredParseArtifact.",
+        displaced_cost: "v2 drops every comment at the lexer, so a v2-built tool cannot see, keep or write back authored prose, and the AuthoredParseArtifact carrier has no producer.",
+        first_slice: "A roster projected from one parsed module, with the argument-list control: a comment between two arguments lands before = a, after = b in the call's scope.",
+        red_control: "A comment inside f's body never attaches to the next declaration g; a comment in a sequence-spine position attaches to the source children, not the spine; v1 and v2 agree, by structural key, on the gaps of one corpus file.",
+        out_of_scope: "The attachment rule and the v1 realization (parse-comment-gap-attachment).",
+        handback: "v2 attaches every capture of the corpus, the roster disposition note on AuthoredParseArtifact is deleted, and the v1/v2 agreement control is green."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "The v2 compiler keeps authored prose under the same gap rule as the seed."),
+    ),
+
+    roadmap_node(
       identity: "rn_DCHDCNK5Z6GZP693VSZA6MC84T",
       id: "parse-prepared-grammar-analysis-carried",
       owner: "parse",
@@ -1447,7 +1465,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v2-emitter-direct-rust-door",
       owner: "self-host",
       carriers: carrier(path: "src/v2/compiler/self_host/candidate_generation.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "Have the new compiler write out Rust source itself",
         boundary: "Read the source, work out the types, translate, and write real Rust to disk without the old generator deciding any of it. The old runner may still be what executes this; it just stops making the decisions.",
         displaced_cost: "Until the new compiler can write Rust on its own, every improvement has to go through the generator we are trying to delete.",
@@ -1455,11 +1473,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A deliberately missing Rust rule must refuse rather than guess, and taking the old generator away must leave the written source unchanged.",
         out_of_scope: "Not building the new generator as a native program yet, and no second set of Rust rules beside the ones we already have.",
         handback: "The written source, the compile result, which generator made it, and proof the old one was never called."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: direct_rust_door_production_group_closing_expectation_holds (src/v2/test/claim/long/direct_rust_door_production_group_test.dag), reported green since 2026-09-06.")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: direct_rust_door_production_group_closing_expectation_holds (src/v2/test/claim/long/direct_rust_door_production_group_test.dag), reported green since 2026-09-06."), on: "2026-10-12", note: "Returned at the operator's acceptance review (2026-10-12), not accepted. direct_rust_door_production_group_closing_expectation_holds passes over the Rust source as an in-memory string; the handback promises the written source and its compile result, and neither is produced. Handback owed: the source written to a file, rustc's result on it, and the missing-rule refusal executed on that same route.")),
       dispatch: dispatchable(),
       execution: bound(contract: v2_emitter_direct_rust_door_execution_contract()),
       parent: in_project(project: "v2-emitter-production", contribution: "Carrying the real inferred tree through translation and writing Rust with the old generator deciding nothing is the capability this lane exists to name: the new compiler writes the source the factory is built from."),
-      centering: plan(text: "Run the named test process with pattern selecting src/v2/test/claim/long:direct_rust_door_production_group_test. Confirm direct_rust_door_production_group_closing_expectation_holds is green at head. Change nothing. Hand back the run receipt (head sha, verdict) for an operator acceptance event. If red, stop and hand back diagnostics."),
+      centering: plan(text: "Returned at the operator acceptance review on 2026-10-12. Keep direct_rust_door_production_group_closing_expectation_holds as regression evidence for the in-memory route. Extend that same production route to write its Rust source to a file, run rustc on it, and execute the missing-rule refusal there, retaining producer identity and proof the seed emitter was not called. Extend the closing validation to execute these obligations. Hand back the written source, compile result, producer evidence and refusal receipt at a named head. A green in-memory receipt alone does not close this node; if blocked, return the missing capability and diagnostics."),
     ),
     roadmap_node(
       identity: "rn_7QF2XN5BJH0K3VDPMWR8CZT6AY",
@@ -2751,7 +2769,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "native-seven",
       owner: "self-host",
       carriers: carrier(path: "src/v2/compiler/04_infer.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "v2 parses and types its native test target end to end",
           boundary: "The target is the test label //v2/test/parse/expression_bodied_fn_decl_parse:all, taken through ingest, lowering, resolve and infer on the native route. The population is derived from the label, not counted: there is no list of seven to keep in sync. Every refusal is removed at its root.",
           displaced_cost: "Until the target's members type end to end, no v2 frontend claim has a real subject behind it.",
@@ -2759,7 +2777,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "Any member of the target refusing before type inference, or refusing by blaming an import target (native_import_target_attribution), keeps this red.",
           out_of_scope: "Whole-corpus refusals; emission. The type_env cycle-time investigation is a regression investigation, not this node's wall.",
           handback: "Every member of the target typed, with the run receipt for the label."
-        ), on: "2026-10-06", note: "Rewritten to the successor chain: the blocker chain to the typed endpoint, then execution as a required check; the N7-0 to N7-5 ledger text is replaced.")),
+        ), on: "2026-10-06", note: "Rewritten to the successor chain: the blocker chain to the typed endpoint, then execution as a required check; the N7-0 to N7-5 ledger text is replaced."), on: "2026-10-12", note: "Re-measured by gunbc test //v2/test/parse/expression_bodied_fn_decl_parse:all. At 1f25232cdc every member refused at prepare with application_argument_does_not_inhabit at parse_module_prepared(tokens: token_stream): the bind_outcome callback parameter was typed by its lowering placeholder (gunbc.recurring_failure_mode infer_child_context_cannot_depend_on_a_sibling_result). At a0c17c753d (n7/callback-argument-frame, on main c22acb7681) that refusal is cleared for every member, and the first refusal is record_field_value_does_not_inhabit at `Rejected { diagnostics: r }` in the same test: the match payload binder r reaches the construction as the bare NonEmptyDiagnostics while the field is declared v2.std.diagnostic.NonEmptyDiagnostics. dag/extdeps/filesystem/filesystem_io.dag still refuses at lowering (service_realization_unreachable, XL-2).")),
       parent: in_project(project: "v2-frontend", contribution: "The native test target is the smallest real subject v2 must read and type end to end."),
     ),
     roadmap_node(
@@ -2985,7 +3003,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A key hit serves only after the canonical preimage compares equal; a SHA-only compiler identity refuses cross-push reuse.",
           out_of_scope: "Cross-run hit protocol (demand-m1c).",
           handback: "The keying relations landed with their controls."
-        ), on: "2026-09-30", note: "Not yet centered: design cut per keying-relation-design.")),
+        ), on: "2026-10-12", note: "Keying cut landed with compute work switched (gunbc#13756): identity components carried whole or family-tagged, strict persistent admission, SHA-256 store address, request and address minted together. STILL OPEN, so this node is not accepted: no producer derives a compiler identity from causal sources (the red control's cross-push refusal has no positive counterpart), and the two-parses qualification waits on the parser exposing its allocator (std.materialization_provider two_parses_occurrence_qualification_frontier).")),
       parent: in_project(project: "demand-engine", contribution: "M1.b gives every demand, evaluation and result a key, so later milestones reuse results by identity rather than by coincidence."),
     ),
     roadmap_node(
@@ -2995,13 +3013,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Cross-run hits for the native compiler artifact",
-          boundary: "M1.c: hit protocol for NativeCompilerArtifactRequest (#12596 open). Absorbs typed-store-cold-warm-measurement and the v1-materialization-kernel residue.",
+          boundary: "M1.c: hit protocol for NativeCompilerArtifactRequest. Absorbs typed-store-cold-warm-measurement and the v1-materialization-kernel residue.",
           displaced_cost: "Every run rebuilds the native compiler artifact from scratch.",
-          first_slice: "Land #12596.",
+          first_slice: "Carry real digests in v2.compiler.self_host.generation PreMaterializationIdentity: its six axes and their fold are structural fingerprints, so std.materialization_provider refuses the native compiler artifact a persistent address by name.",
           red_control: "A hit whose content fails verification refuses and is never served.",
           out_of_scope: "Dependency derivation (demand-m2).",
           handback: "The hit protocol landed with its cold/warm receipt."
-        ), on: "2026-09-30", note: "Not yet centered: #12596 in flight.")),
+        ), on: "2026-10-12", note: "Not yet centered. gunbc#12596 closed unmerged on 2026-10-06 and served no persistent hit. Since gunbc#13756 the request has no persistent address until the generation identity is migrated, which is this node's first slice.")),
       parent: in_project(project: "demand-engine", contribution: "M1.c makes the native compiler artifact reusable across runs, the first cross-run hit."),
     ),
     roadmap_node(
@@ -4396,7 +4414,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "typed-store-cold-warm-measurement",
       owner: "v1-performance",
       carriers: carrier(path: "docs/plans/typed-module-cross-run-materialization.md"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
         headline: "Measure the host-persisted typed-module store on the real route, or delete it",
         boundary: "One cold/warm receipt from the two sibling processes the provider row names -- the nominal witnesses fold and the generated-artifact drift gate, one job, one built binary. Report end-to-end wall, peak RSS, and the fold's subject digest, which must be EQUAL between armed and unarmed: a store that changes a verdict is a defect, not a saving. Read hits, misses, rejections, refusals, throughput and LIVE OCCUPANCY off the [typed-store-persist] line the floor receipt already emits.",
         displaced_cost: "The store is armed by nothing today, so it displaces nothing until this runs. Until then the tier is implemented and unmeasured, and the design's projected figures (8.3 min -> ~1 min preparation, 32 -> ~20 min per push) are withdrawn rather than carried, because they do not follow from the key the design proposed.",
@@ -4404,7 +4422,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An unarmed and an armed run of the same commit must print the SAME subject digest; a difference falsifies the store rather than the measurement. A second armed run over a warm store must show hits, or the store is not being reached and the whole tier is inert.",
         out_of_scope: "No widening of required_gate_prefixes, no seeding workflow, no scheduled verification job, and no parallelism work.",
         handback: "The cold/warm receipt with both wall times, both peak RSS figures, the two digests, and the decision it implies: keep and arm, or delete the tier."
-      )),
+      ), on: "2026-10-12", note: "The tier this row measures was DELETED on 2026-10-03 after measurement (gunbc.floor.floor_materialization records the receipt), so GUNBC_TYPED_STORE_PERSIST no longer exists to arm and the first slice cannot be run as written. The row stands until its steward retires it or re-aims it at the general materialization store; demand-m1c already absorbs it.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
     ),
@@ -5837,7 +5855,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       id: "v2-self-grounding-frontier",
       owner: "compiler-guarantee",
       carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
         headline: "v2 self-grounding slice — LANDED (gunbc#7485, merged; acceptance receipt recorded 2026-08-01)",
         boundary: "ACCEPTED against its handback (operator spine verdict): exact self-evidence left solve_constraints' generic arm; underived facts are typed, located, counted GroundingNotDerived diagnostics inside an accepted InferredTree — the FrontierAccepted disposition's live specimen. Identity admission reads the authored declared-inhabitant roster, never caller-supplied candidates. The documented residue is the NEXT node's whole scope: Translate can still swallow the refusal and proceed.",
         displaced_cost: "Silent self-certification became a counted frontier: the deficit ranks for fixing instead of reading as green.",
@@ -5845,7 +5863,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         red_control: "The claims carrier's v2 self-grounding path flips BelowFloor-to-FrontierAccepted exactly here; the identity path refuses caller-supplied candidate sets.",
         out_of_scope: "Translate propagation; carrier completeness; target realization (each its own node downstream).",
         handback: "The merged receipts and the frontier diagnostic counts by class."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall_test.dag."), on: "2026-09-30", note: "Not yet centered: awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall_test.dag.")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall_test.dag."), on: "2026-09-30", note: "Not yet centered: awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall_test.dag."), on: "2026-10-12", note: "Returned at the operator's acceptance review (2026-10-12), not accepted. src/v2/test/claim/infer_self_grounding_wall_test.dag shows underived facts as counted diagnostics, but neither red_control clause is executed by any witness: the claims carrier's self-grounding path flipping BelowFloor to FrontierAccepted, and the identity path refusing a caller-supplied candidate set. The headline's 'acceptance receipt recorded 2026-08-01' has no entry in roadmap_acceptance_event_history. Handback owed: those two controls, executed.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-shared-type-check", contribution: "v2 infer refuses a self-certified fact."),
     ),
@@ -5854,7 +5872,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       id: "v2-translate-underived-refusal",
       owner: "compiler-guarantee",
       carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
         headline: "Translate propagates the refusal: an underived fact cannot be swallowed downstream",
         boundary: "ACTIVE — the containment workstream, authorized to run parallel with the spine (operator spine verdict 2026-08-01: not another optional wall; it closes the one documented fail-open the merged frontier split created). gunbc#7485 records that Translate can swallow the new GroundingNotDerived rejection and continue — the frontier diagnostic exists but the emission path proceeds. Make Translate refuse or thread the typed frontier so Eval and Translate agree: compile-time refusal on both is the class minimum. The per-path grain is exactly why the carrier models paths separately.",
         displaced_cost: "Closes the path split where the same underived fact refuses in one phase and ships in another — the subject-grain failure mode measured on the call-shape class.",
@@ -5862,7 +5880,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         red_control: "A source tree with an underived fact refuses translation naming the fact; every derived corpus module still translates.",
         out_of_scope: "New derivation rules; realization.",
         handback: "The refusal arm, probe flip, per-path disposition receipts."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event once its witness is located: the 06_translate GroundingNotDerived refusal (src/v2/compiler/06_translate.dag) with its paired probe; any expecting-red enrolment flips to a regression control."), on: "2026-09-30", note: "Not yet centered: witness not yet located by name; find it before dispatch.")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event once its witness is located: the 06_translate GroundingNotDerived refusal (src/v2/compiler/06_translate.dag) with its paired probe; any expecting-red enrolment flips to a regression control."), on: "2026-09-30", note: "Not yet centered: witness not yet located by name; find it before dispatch."), on: "2026-10-12", note: "Returned at the operator's acceptance review (2026-10-12), not accepted. translate_refuses_underived_bodied_arrow_holds (src/v2/test/claim/translate_underived_refusal_test.dag) fails on main because infer itself rejects its specimen (v2.test.complexity_gate.table_fixture_add_subject_producer table_fixture_add_arrow_with_body, fatal infer_grounding_not_derived), so translation is never reached. Handback owed: a specimen whose underived fact reaches translate and is refused there, or a ruling that the infer refusal is the boundary, with the red_control and its witness changed to say so.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-shared-type-check", contribution: "Translate refusing an underived fact keeps a typing gap from being swallowed downstream."),
     ),
@@ -6120,6 +6138,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "extended-admission-cardinality", parent: "accepted-floor-obligation-closure"),
     edge(child: "extended-admission-cardinality", parent: "cardinality-vertical-slice"),
     edge(child: "parse-comment-gap-attachment", parent: "parse-node-source-extent"),
+    edge(child: "parse-comment-gap-attachment-v2", parent: "parse-comment-gap-attachment"),
     edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
   ]
 }

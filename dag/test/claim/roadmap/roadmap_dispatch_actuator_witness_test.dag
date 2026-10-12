@@ -75,18 +75,19 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchActuatorSelection,
   DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,
-  dispatch_provider_inner_argv,
+  dispatch_provider_inner_argv_for_instance,
+  provider_kind_to_dispatch_cli,
   DispatchProviderInnerArgv,
   DispatchProviderInnerArgvReady,
   CursorProviderOffCustodyHost,
   CursorProviderCredentialUnbound,
   CodexProviderOffCustodyHost,
   CodexProviderExecutableAbsent,
-  GunbcHarnessSpawnNeedsInstance,
+  CredentialSnapshotNotConsumed,
+  CredentialSnapshotForAnotherAttempt,
   ClaudeProviderCredentialUnbound,
   ClaudeCodeProvider,
   GunbcHarnessProvider,
-  dispatch_credential_snapshot_path_for_instance,
   CodexDispatchProvider,
   dispatch_tmux_session_name,
   dispatch_tmux_session_prefix,
@@ -99,8 +100,6 @@ import gunbc.roadmap_dispatch_actuator {
   codex_spawn_argv,
   dispatch_codex_home,
   dispatch_codex_exec_spec,
-  dispatch_spawn_commands_for_instance,
-  dispatch_spawn_commands_for_inventory,
   dispatch_spawn_commands_for_resolved_instance,
   dispatch_brief_fields_for_environment,
   dispatch_brief_with_centering,
@@ -157,6 +156,7 @@ import gunbc.dispatch_selection {
   SelectCodex,
   dispatch_codex_default_model,
   resolved_process_fingerprint,
+  resolved_model_selection,
   NoDerivedSizingExpectation,
   DerivedSizingExpectation,
 }
@@ -172,6 +172,7 @@ import gunbc.provider_standing_probe_bridge {
   provider_standing_bundle_from_codex_dashboard_probes,
 }
 import gunbc.provider_account { codex_roadmap_account_selection }
+import gunbc.dispatch_credential_snapshot { NoCredentialSnapshot }
 import gunbc.dispatch_pipe_pane_emit {
   PipeEmitted,
   PipeEmitRefused,
@@ -392,7 +393,7 @@ test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
     sizing_expectation: NoDerivedSizingExpectation,
   ) {
     DispatchActuatorSelectionRefused { reason: _ } => true
-    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => false
   }
 }
 
@@ -455,16 +456,15 @@ fn codex_tmux_arm_shape_holds(spawn: HostExecArgv, provider_start: HostExecArgv,
     && !string_contains(s: provider_wire, pattern: "\0claude\0")
 }
 
+// SELECTION THEN SPAWN, through the route the belt takes: the selection resolves over the inventory,
+// and the resolved provider, effort and model reach dispatch_spawn_commands_for_resolved_instance.
+// (The instance-less inventory route this claim used to drive was deleted with no production caller.)
 test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
   let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
-  match dispatch_spawn_commands_for_inventory(
-    instance: srv2_lab_dashboard_instance(),
+  match resolve_dispatch_selection(
     inventory: fixture_inventory_codex_only_available(
       instance: srv2_lab_dashboard_instance(),
     ),
-    node: node,
-    session_uuid: "uuid-unused-by-codex",
-    attempt_key: "feedfacefeedface",
     request: SelectCodex {
       profile: ProfileAutomatic,
       account: codex_roadmap_account_selection(),
@@ -472,7 +472,20 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
       effort: ReasoningMedium,
       operator_asserted_native_limit_bucket: Absent,
     },
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason: _ } => false
+    DispatchSelectionResolved { receipt } =>
+  match dispatch_spawn_commands_for_resolved_instance(
+    instance: srv2_lab_dashboard_instance(),
+    node: node,
+    session_uuid: "uuid-unused-by-codex",
+    attempt_key: "feedfacefeedface",
+    provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+    effort: receipt.applied_effort,
+    model: resolved_model_selection(resolved: receipt.resolved_selection),
     resolution: fixture_ready_resolution(node_id: "codex-selected", project_ids: []),
+    credential_snapshot: NoCredentialSnapshot,
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands: cmds } =>
@@ -486,83 +499,19 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
         },
       )
   }
-}
-
-fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance) -> Bool {
-  match commands.session_container {
-    SystemdUnitContainer { plan: _ } => false
-    TmuxSessionContainer { spawn, default_shell: _, remain_on_exit: _, event_pipe, provider_start } =>
-      lab_instance_tmux_shape_holds(commands: commands, lab: lab, spawn: spawn, event_pipe: event_pipe, provider_start: provider_start)
   }
 }
 
-fn lab_instance_tmux_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance, spawn: HostExecArgv, event_pipe: HostExecArgv, provider_start: HostExecArgv) -> Bool {
-  let git_wire = join(commands.worktree_add.args, separator: "\0")
-  let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
-  let pointer_wire = join(commands.attempt_current_pointer.args, separator: "\0")
-  let tmux_wire = join(spawn.args, separator: "\0")
-  let pipe_wire = join(event_pipe.args, separator: "\0")
-  let provider_wire = join(provider_start.args, separator: "\0")
-  string_contains(
-    s: git_wire,
-    pattern: "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempts/ts-dispatch-provider-events-afeedfacefeedface",
-    )
-    && string_contains(s: git_wire, pattern: "\0origin/main")
-    && commands.attempt_state_prepare.program == "/usr/bin/install"
-    && string_contains(
-      s: state_wire,
-      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/ts-dispatch-provider-events-afeedfacefeedface",
-    )
-    && string_contains(
-      s: state_wire,
-      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/ts-dispatch-provider-events-afeedfacefeedface/publication",
-    )
-    && commands.attempt_current_pointer.program == "/usr/bin/ln"
-    && string_contains(
-      s: pointer_wire,
-      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/ts-dispatch-provider-events-current",
-    )
-    && starts_with(
-      s: tmux_wire,
-      prefix: "-L\0srv1-lab-codex-feedback-v0\0new-session\0-d\0-s\0gunbc-dispatch-ts-dispatch-provider-events",
-    )
-    && string_contains(
-      s: pipe_wire,
-      pattern: "provider-events.jsonl",
-    )
-    && string_contains(
-      s: provider_wire,
-      pattern: dispatch_credential_snapshot_path_for_instance(
-        instance: lab,
-        node_id: "ts-dispatch-provider-events" as NonEmptyStr as RoadmapNodeId,
-        attempt_key: "feedfacefeedface",
-        provider: ClaudeCodeProvider,
-      ) as String,
-    )
-}
-
-// THE LAB INSTANCE MOVES ITS REPO, TMUX SERVER AND ATTEMPT STATE TOGETHER, shown with the Claude
-// spawn (its credential is held on srv1). It no longer moves a codex state root with it: codex worker
-// turns run on the one credential held on its custody host (gunbc.codex_harness_credential, operator
-// ruling 2026-10-05), so the same lab refuses a codex spawn at the custody-host step -- the control
-// that a codex turn cannot fall back to the lab's ambient codex login.
-test fn witness_lab_instance_moves_repo_tmux_and_attempt_state_together() -> Bool {
+// THE LAB INSTANCE DOES NOT CARRY A CODEX STATE ROOT: codex worker turns run on the one credential
+// held on its custody host (gunbc.codex_harness_credential, operator ruling 2026-10-05), so the lab
+// refuses a codex spawn at the custody-host step -- the control that a codex turn cannot fall back to
+// the lab's ambient codex login. The positive half -- the lab moves its repo, tmux server and attempt
+// state together, shown with a Claude spawn -- needs a credential snapshot a real take wrote, so it
+// lives in test.claim.dispatch_credential_snapshot_wet_witness.
+test fn witness_lab_instance_refuses_a_codex_spawn_at_the_custody_host() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let node = sized_derivable(id: "ts-dispatch-provider-events", prs: [], title: "Provider execution facts")
-  let claude_moves = match dispatch_spawn_commands_for_resolved_instance(
-    instance: lab,
-    node: node,
-    session_uuid: "00000000-0000-4000-8000-000000000001",
-    attempt_key: "feedfacefeedface",
-    provider: ClaudeCodeProvider,
-    effort: ReasoningMedium,
-    model: ProviderAccountDefaultModel,
-    resolution: fixture_ready_resolution(node_id: "ts-dispatch-provider-events", project_ids: []),
-  ) {
-    DispatchSpawnRefused { step: _, detail: _ } => false
-    DispatchSpawnReady { commands } => lab_instance_command_shape_holds(commands: commands, lab: lab)
-  }
-  let codex_refused = match dispatch_spawn_commands_for_resolved_instance(
+  match dispatch_spawn_commands_for_resolved_instance(
     instance: lab,
     node: node,
     session_uuid: "00000000-0000-4000-8000-000000000001",
@@ -571,11 +520,11 @@ test fn witness_lab_instance_moves_repo_tmux_and_attempt_state_together() -> Boo
     effort: ReasoningMedium,
     model: dispatch_codex_default_model,
     resolution: fixture_ready_resolution(node_id: "ts-dispatch-provider-events", project_ids: []),
+    credential_snapshot: NoCredentialSnapshot,
   ) {
     DispatchSpawnRefused { step, detail: _ } => step as String == "codex-credential-custody-host"
     DispatchSpawnReady { commands: _ } => false
   }
-  claude_moves && codex_refused
 }
 
 test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
@@ -798,7 +747,7 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   match selection {
     DispatchActuatorSelectionRefused { reason } =>
       reason == dispatch_selection_standing_ineligible_reason
-    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _ } => false
+    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => false
   }
     && count(dispatch_live_sessions_from_entries(entries: [entry], selection: selection)) == 0
     && match classify_dispatch_request(
@@ -1110,11 +1059,13 @@ test fn witness_codex_account_default_passes_no_model_flag() -> Bool {
   !string_contains(s: join(argv, separator: "\0"), pattern: "--model")
 }
 
-// THE ACTUATOR ARM, not just the argv row. dispatch_provider_inner_argv is the fold the spawn plan
-// routes both vendor providers through, and it is where the model was dropped a second time: the
-// function carried effort and process fingerprint from the receipt and nothing for the model. This
-// witness fails if a future edit re-drops the field between the fold and either argv row, which
-// compilation alone would not catch once the parameter exists and could be ignored.
+// THE ACTUATOR ARM, not just the argv row. dispatch_provider_inner_argv_for_instance is the fold the
+// spawn plan routes every vendor provider through, and it is where the model was dropped a second
+// time: the fold carried effort and process fingerprint from the receipt and nothing for the model.
+// This witness fails if a future edit re-drops the field between the fold and the codex argv row,
+// which compilation alone would not catch once the parameter exists and could be ignored. The Claude
+// half needs a credential snapshot a real take wrote, so it lives in
+// test.claim.dispatch_credential_snapshot_wet_witness.
 
 fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
   match inner {
@@ -1123,38 +1074,31 @@ fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
     CursorProviderCredentialUnbound { reason: r } => r as String
     CodexProviderOffCustodyHost { reason: r } => r as String
     CodexProviderExecutableAbsent { reason: r } => r as String
-    GunbcHarnessSpawnNeedsInstance { reason: r } => r as String
+    CredentialSnapshotNotConsumed { reason: r } => r as String
+    CredentialSnapshotForAnotherAttempt { reason: r } => r as String
     ClaudeProviderCredentialUnbound { reason: r } => r as String
   }
 }
 
-test fn witness_inner_argv_carries_pinned_model_for_both_vendors() -> Bool {
+test fn witness_inner_argv_carries_pinned_model_for_codex() -> Bool {
   let pinned = ProviderModelPinned { model: witness_pinned_dispatch_model }
   let expected = concat("\0--model\0", witness_pinned_dispatch_model as String)
-  let claude_wire = witness_inner_argv_wire(
-    inner: dispatch_provider_inner_argv(
-      provider: ClaudeCodeProvider,
-      effort: ReasoningHigh,
-      model: pinned,
-      session_uuid: "uuid-inner",
-      node_id: roadmap_dispatch_actuator_nid(s: "node-inner"),
-      worktree_path: "/opt/gunbc/dispatch-worktrees/node-inner",
-      brief: "brief",
-    ),
-  )
   let codex_wire = witness_inner_argv_wire(
-    inner: dispatch_provider_inner_argv(
+    inner: dispatch_provider_inner_argv_for_instance(
+      instance: srv2_lab_dashboard_instance(),
       provider: CodexDispatchProvider,
       effort: ReasoningHigh,
       model: pinned,
       session_uuid: "uuid-inner",
       node_id: roadmap_dispatch_actuator_nid(s: "node-inner"),
+      attempt_key: "feedfacefeedface",
       worktree_path: "/opt/gunbc/dispatch-worktrees/node-inner",
       brief: "brief",
+      alignment_chain_fingerprint: "fp",
+      credential_snapshot: NoCredentialSnapshot,
     ),
   )
-  string_contains(s: claude_wire, pattern: expected)
-    && string_contains(s: codex_wire, pattern: expected)
+  string_contains(s: codex_wire, pattern: expected)
 }
 
 
@@ -1333,6 +1277,7 @@ test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands()
     effort: ReasoningMedium,
     model: dispatch_codex_default_model,
     resolution: unrooted_specimen_resolution(),
+    credential_snapshot: NoCredentialSnapshot,
   ) {
     DispatchSpawnRefused { step, detail } =>
       step as String == "alignment"
@@ -1412,25 +1357,3 @@ test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_ev
   }
 }
 
-// review 78389. The spawn fold used to emit the tmux tee/pipe payload before choosing a container, so
-// a Claude (systemd stdout) refusal was named tmux-event-pipe-emit. Pipe emission now lives only on
-// the tmux container arm; this spawn is the real producer, and a pipe-step refusal here is the defect.
-test fn witness_headless_claude_spawn_does_not_refuse_as_tmux_event_pipe() -> Bool {
-  match dispatch_spawn_commands_for_resolved_instance(
-    instance: srv1_live_dashboard_instance(),
-    node: sized_derivable(id: "claude-headless-spawn", prs: [], title: "Headless Claude spawn"),
-    session_uuid: "00000000-0000-4000-8000-000000000005",
-    attempt_key: "feedfacefeedface",
-    provider: ClaudeCodeProvider,
-    effort: ReasoningMedium,
-    model: ProviderAccountDefaultModel,
-    resolution: fixture_ready_resolution(node_id: "claude-headless-spawn", project_ids: []),
-  ) {
-    DispatchSpawnRefused { step, detail: _ } => (step as String) != "tmux-event-pipe-emit"
-    DispatchSpawnReady { commands } =>
-      match commands.session_container {
-        SystemdUnitContainer { plan: _ } => true
-        TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => false
-      }
-  }
-}

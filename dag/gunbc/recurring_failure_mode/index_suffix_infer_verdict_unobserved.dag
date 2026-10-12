@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.index_suffix_infer_verdict_unobserved
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data index_suffix_infer_verdict_unobserved: RecurringFailureMode = RecurringFailureMode {
+  identity: "index_suffix_infer_verdict_unobserved" as NonEmptyStr,
+
+  receipts: [
+    "An index suffix `xs[i]` lowers to the std element access v2.std.collection list_at_optional, so a Map base or a non-Int index SHOULD refuse at infer, but no executed claim establishes that verdict: it is below the claimed rung, and the claims in v2.test.claim.parse.index_suffix establish only parse, lowering identity with the explicit call, and the arity refusals.",
+
+    "FOUND 2026-10-12 while answering review of the index suffix: a production-route harness (source text through v2.compiler.program_assembly assemble_program_from_ingest, then v2.compiler.infer) rejects at assembly even the explicit `list_at_optional(xs: xs, index: i)` spelling, because the one-module admission carries no import closure, so neither List, Optional nor the std callee resolve. A Map-base or Bool-index refusal read through it would be vacuous (refusing for the missing closure, not for the type), so none is claimed.",
+
+    "ATTAINABLE CEILING: structurally guaranteed -- infer judges the lowered application against the callee's declared formals. NEXT-RUNG TRIGGER, at capability grain: a harness that assembles source text WITH its std import closure under a claim's budget (the multi-file admission of v2.test.claim.manual.program_assembly_multi_file) and infers a named-callee application, after which a List<Int> with an Int index accepts and a Map base and a non-Int index refuse as discriminating controls."
+  ],
+
+  evidence: [],
+}

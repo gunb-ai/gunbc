@@ -147,7 +147,7 @@ type WorkToolchainIdentity sole_constructor {
   target_triple: NonEmptyStr
   cargo_version: NonEmptyStr
   cache_release: NonEmptyStr
-  provider_revision: NonEmptyStr
+  provider_revision: GitObjectId
 }
 
 fn work_toolchain_observed(
@@ -155,7 +155,7 @@ fn work_toolchain_observed(
   target_triple: NonEmptyStr,
   cargo_version: NonEmptyStr,
   cache_release: NonEmptyStr,
-  provider_revision: NonEmptyStr,
+  provider_revision: GitObjectId,
 ) -> WorkToolchainIdentity
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_toolchain_decide"),
