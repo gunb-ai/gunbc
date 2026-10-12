@@ -10,7 +10,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { DispatchAttemptRef }
 import gunbc.roadmap.roadmap_submission {
-  CandidateHandoffState, HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
+  CandidateHandoffState, HandoffAwaitingWorker, HandoffAwaitingCapture, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
   HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration,
   HandoffPublicationOwed, HandoffBlockedOnPublication, HandoffPublished,
   candidate_handoff_state_key, submission_readiness_key,
@@ -70,6 +70,7 @@ type AttemptResultStanding
 fn attempt_result_standing(handoff: CandidateHandoffState) -> AttemptResultStanding {
   match handoff {
     HandoffAwaitingWorker => AttemptResultPending { handoff: candidate_handoff_state_key(state: handoff) }
+    HandoffAwaitingCapture { reason: _ } => AttemptResultPending { handoff: candidate_handoff_state_key(state: handoff) }
     HandoffSubmitted { head_sha: _ } => AttemptResultPending { handoff: candidate_handoff_state_key(state: handoff) }
     HandoffAwaitingIntegration { head_sha: _ } => AttemptResultPending { handoff: candidate_handoff_state_key(state: handoff) }
     HandoffPublicationOwed { head_sha: _ } => AttemptResultPending { handoff: candidate_handoff_state_key(state: handoff) }

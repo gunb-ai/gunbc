@@ -161,6 +161,7 @@ import gunbc.roadmap.roadmap_submission {
   PublicationReceiptRefused,
   CandidateHandoffState,
   HandoffAwaitingWorker,
+  HandoffAwaitingCapture,
   HandoffYielded,
   HandoffEvidenceRefused,
   HandoffDeclaredBlocked,
@@ -830,6 +831,12 @@ fn submission_segment_from_handoff(
         kind: SubmissionWorkflowSegment,
         state: WorkflowSegmentPending,
         detail: "the worker has not reached a terminal state, so there is no submission to capture",
+      }
+    HandoffAwaitingCapture { reason } =>
+      WorkflowSegment {
+        kind: SubmissionWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: join(["the worker has ended and its capture is owed: ", reason], ""),
       }
     HandoffYielded { reason } =>
       WorkflowSegment {

@@ -534,7 +534,7 @@ import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionCapture,
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
   SubmissionObservation, SubmissionDeclared, SubmissionAbsent, SubmissionUndecodable,
-  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
+  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
   SubmissionDecoded, SubmissionNotDecodable, CaptureDecoded, CaptureNotDecodable,
   submission_artifact_name, submission_digest, submission_decode,
   submission_capture_basename, submission_capture_text, submission_capture_decode,
@@ -2548,6 +2548,14 @@ fn belt_supervisor_checkpoint_lines(capture: SubmissionCaptureObservation, head_
         limitations: "",
         history_line: history_line,
       }
+    CaptureNotAttempted { reason } =>
+      SupervisorCheckpoint {
+        head_sha: head_sha,
+        capture_line: join(["no capture binds the head yet: ", reason], ""),
+        explanation: "(the worker's ending has not been captured, so whether it declared anything is not yet read)",
+        limitations: "",
+        history_line: history_line,
+      }
     CaptureUnreadable { reason } =>
       SupervisorCheckpoint {
         head_sha: head_sha,
@@ -2826,7 +2834,7 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
       belt_submission_capture_for_head(
         instance: instance,
         worktree: worktree,
-        dir: belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+        node_id: node_id, attempt_key: attempt_key,
         head_sha: revision as String,
       )
   }
@@ -6119,11 +6127,7 @@ fn belt_workflow_attempt_evidence_for_key(
       belt_submission_capture_for_head(
         instance: instance,
         worktree: worktree,
-        dir: belt_attempt_submission_dir_for_instance(
-          instance: instance,
-          node_id: node_id,
-          attempt_key: current_key,
-        ),
+        node_id: node_id, attempt_key: current_key,
         head_sha: revision as String,
       )
   }
@@ -6452,7 +6456,8 @@ fn belt_submission_captures_observe(instance: HostDashboardInstance, worktree: S
 // THE HEAD-GRAIN CAPTURE LOOKUP: the one read both the verify gate and the dashboard projection
 // make. Absence is listing-established; a record at the head's own address that decodes but names
 // a different head is unexplained state, refused rather than read as this head's binding.
-fn belt_submission_capture_for_head(instance: HostDashboardInstance, worktree: String, dir: String, head_sha: String) -> SubmissionCaptureObservation {
+fn belt_submission_capture_for_head(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> SubmissionCaptureObservation {
+  let dir = belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
     ExecFailed { program, exit_code, stderr } =>
       CaptureUnreadable {
@@ -6475,7 +6480,7 @@ fn belt_submission_capture_for_head(instance: HostDashboardInstance, worktree: S
       ], ""),
     }
   } else if !filesystem_listing_names_entry(listing: listing.entries, name: submission_capture_basename(head_sha: head_sha)) {
-    CaptureAbsent
+    belt_capture_absence_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)
   } else {
     let read = Filesystem.Read(path: join([dir, "/", submission_capture_basename(head_sha: head_sha)], ""))
     match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -7834,34 +7839,40 @@ fn belt_commit_capture_candidate(
 type BeltCommitOutcomeReceipt {
   node_id: String
   attempt_key: String
+  head_sha: String?
   outcome: String
   detail: String
 }
 
-fn belt_commit_outcome_receipt(o: BeltCommitOutcome, attempt_key: String) -> BeltCommitOutcomeReceipt {
+// THE RECORD NAMES THE HEAD THE STEP LEFT THE WORKTREE AT -- the commit it recorded, or the clean head it
+// skipped -- because a settlement is a fact about one head: the head-grain capture lookup reads it only
+// for the head it was asked about (belt_commit_record_standing_of_text). An unobserved head is recorded
+// as none, which settles nothing.
+fn belt_commit_outcome_receipt(o: BeltCommitOutcome, attempt_key: String, settled_head: String?) -> BeltCommitOutcomeReceipt {
   match o {
     CommitRecorded { node_id, message } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "recorded", detail: message }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: message }
     CandidateCaptured { node_id, head_sha, message } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "candidate-captured", detail: join([message, " at ", head_sha], "") }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: join([message, " at ", head_sha], "") }
     CommitSkipped { node_id, reason } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "skipped", detail: reason }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: reason }
     CommitFailed { node_id, detail } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "failed", detail: detail }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: detail }
     CommitCapturePoisoned { node_id, detail } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "capture-poisoned", detail: detail }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: detail }
     CommitDeferred { node_id, reason } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "deferred", detail: reason }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: reason }
     CommitSubjectUnaddressable { node_id, reason } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "subject-unaddressable", detail: reason }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: reason }
   }
 }
 
 fn belt_commit_outcome_receipt_json(r: BeltCommitOutcomeReceipt) -> JsonValue {
   json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "roadmap-commit-outcome/v1")),
+    json_kv(key: "schema", value: json_string(s: belt_commit_outcome_schema)),
     json_kv(key: "node_id", value: json_string(s: r.node_id)),
     json_kv(key: "attempt_key", value: json_string(s: r.attempt_key)),
+    json_kv(key: "head_sha", value: match r.head_sha { Present { value: h } => json_string(s: h)  Absent => JsonNull }),
     json_kv(key: "outcome", value: json_string(s: r.outcome)),
     json_kv(key: "detail", value: json_string(s: r.detail)),
   ])
@@ -7870,6 +7881,166 @@ fn belt_commit_outcome_receipt_json(r: BeltCommitOutcomeReceipt) -> JsonValue {
 // THE PERSISTED OUTCOME'S NAME IS SPELLED ONCE: the persist pass writes it and the supervisor's
 // history line reads it, so writer and reader cannot drift.
 data belt_commit_outcome_last_basename: NonEmptyStr = "commit-outcome-last.json" as NonEmptyStr
+
+// THE COMMIT STEP'S OUTCOME KINDS, spelled once. The persisted record carries an outcome's kind, never
+// its payload, so the writer (belt_commit_outcome_receipt, belt_commit_outcome_json_value) and the
+// reader (belt_commit_record_standing_of_text) meet at this one key table rather than each spelling
+// the strings.
+type BeltCommitOutcomeKind
+  = CommitKindRecorded
+  | CommitKindCandidateCaptured
+  | CommitKindSkipped
+  | CommitKindFailed
+  | CommitKindCapturePoisoned
+  | CommitKindDeferred
+  | CommitKindSubjectUnaddressable
+
+data belt_commit_outcome_kinds: List<BeltCommitOutcomeKind> = [
+  CommitKindRecorded, CommitKindCandidateCaptured, CommitKindSkipped, CommitKindFailed,
+  CommitKindCapturePoisoned, CommitKindDeferred, CommitKindSubjectUnaddressable,
+]
+
+fn belt_commit_outcome_kind(o: BeltCommitOutcome) -> BeltCommitOutcomeKind {
+  match o {
+    CommitRecorded { node_id: _, message: _ } => CommitKindRecorded
+    CandidateCaptured { node_id: _, head_sha: _, message: _ } => CommitKindCandidateCaptured
+    CommitSkipped { node_id: _, reason: _ } => CommitKindSkipped
+    CommitFailed { node_id: _, detail: _ } => CommitKindFailed
+    CommitCapturePoisoned { node_id: _, detail: _ } => CommitKindCapturePoisoned
+    CommitDeferred { node_id: _, reason: _ } => CommitKindDeferred
+    CommitSubjectUnaddressable { node_id: _, reason: _ } => CommitKindSubjectUnaddressable
+  }
+}
+
+fn belt_commit_outcome_kind_key(k: BeltCommitOutcomeKind) -> String {
+  match k {
+    CommitKindRecorded => "recorded"
+    CommitKindCandidateCaptured => "candidate-captured"
+    CommitKindSkipped => "skipped"
+    CommitKindFailed => "failed"
+    CommitKindCapturePoisoned => "capture-poisoned"
+    CommitKindDeferred => "deferred"
+    CommitKindSubjectUnaddressable => "subject-unaddressable"
+  }
+}
+
+fn belt_commit_outcome_key(o: BeltCommitOutcome) -> String {
+  belt_commit_outcome_kind_key(k: belt_commit_outcome_kind(o: o))
+}
+
+fn belt_commit_outcome_kind_of_key(key: String) -> BeltCommitOutcomeKind? {
+  (belt_commit_outcome_kinds |> filter(k => belt_commit_outcome_kind_key(k: k) == key)).first()
+}
+
+// WHAT EACH KIND MEANS FOR THE CAPTURE, decided on the kind itself: an outcome that decided -- a
+// commit recorded, a candidate captured, nothing to commit -- settles it; a failed or deferred one
+// leaves it owed, so the next event or discovery runs it again; a poisoned capture or an
+// unaddressable subject is a refusal.
+type BeltCommitCaptureDisposition
+  = CommitSettlesCapture
+  | CommitLeavesCaptureOwed
+  | CommitRefusesCapture
+
+fn belt_commit_outcome_kind_capture_disposition(k: BeltCommitOutcomeKind) -> BeltCommitCaptureDisposition {
+  match k {
+    CommitKindRecorded => CommitSettlesCapture
+    CommitKindCandidateCaptured => CommitSettlesCapture
+    CommitKindSkipped => CommitSettlesCapture
+    CommitKindFailed => CommitLeavesCaptureOwed
+    CommitKindDeferred => CommitLeavesCaptureOwed
+    CommitKindCapturePoisoned => CommitRefusesCapture
+    CommitKindSubjectUnaddressable => CommitRefusesCapture
+  }
+}
+
+// WHETHER THE COMMIT STEP HAS SETTLED THIS HEAD'S CAPTURE, read from its own persisted outcome --
+// the fact that separates "no capture because the worker yielded" from "no capture because nothing has
+// captured it yet" (gunbc.roadmap.roadmap_submission SubmissionCaptureObservation). The kind's own
+// disposition decides; a record this reader cannot decode refuses, and is read as neither settled nor
+// owed.
+type BeltCommitRecordStanding
+  = CommitStepSettled
+  | CommitStepOwed { reason: String }
+  | CommitStepRefused { reason: String }
+
+data belt_commit_outcome_schema: String = "roadmap-commit-outcome/v2"
+
+// The record before it named its head. Read, never written: which head it settled is unknown.
+data belt_commit_outcome_schema_v1: String = "roadmap-commit-outcome/v1"
+
+fn belt_commit_record_member(doc: JsonValue, key: String) -> String? {
+  match publication_receipt_member(doc: doc, key: key) {
+    ReceiptMemberRead { value: v } => Present { value: v }
+    ReceiptMemberUnreadable { reason: _ } => none
+  }
+}
+
+// THE RECORD SETTLES ONLY THE SUBJECT AND HEAD IT NAMES. A record for another attempt is unexplained
+// state and refuses; a record at another head, with no head, or from before the record named its head
+// settles nothing here, so the capture of this head is owed; at this head, the kind's disposition decides.
+fn belt_commit_record_standing_of_text(content: String, node_id: String, attempt_key: String, head_sha: String) -> BeltCommitRecordStanding {
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap } =>
+      CommitStepRefused { reason: join(["the commit step's record is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match belt_commit_record_member(doc: doc, key: "schema") {
+        Absent => CommitStepRefused { reason: "the commit step's record names no schema" }
+        Present { value: schema } =>
+          if schema == belt_commit_outcome_schema_v1 {
+            CommitStepOwed { reason: "the commit step's record predates its head binding, so which head it settled is unknown" }
+          } else if schema != belt_commit_outcome_schema {
+            CommitStepRefused { reason: join(["the commit step's record is ", schema, ", not ", belt_commit_outcome_schema], "") }
+          } else if belt_commit_record_member(doc: doc, key: "node_id") != Present { value: node_id }
+            || belt_commit_record_member(doc: doc, key: "attempt_key") != Present { value: attempt_key } {
+            CommitStepRefused { reason: join(["the commit step's record at attempt ", attempt_key, "'s address names another subject, which is unexplained state"], "") }
+          } else {
+            match belt_commit_record_member(doc: doc, key: "outcome") {
+              Absent => CommitStepRefused { reason: "the commit step's record names no outcome" }
+              Present { value: outcome } =>
+                match belt_commit_outcome_kind_of_key(key: outcome) {
+                  Absent => CommitStepRefused { reason: join(["the commit step's record names outcome ", outcome, ", which the commit step does not write"], "") }
+                  Present { value: kind } =>
+                    match belt_commit_record_member(doc: doc, key: "head_sha") {
+                      Absent => CommitStepOwed { reason: join(["the commit step's last run ended ", outcome, " at a head it could not observe"], "") }
+                      Present { value: settled } =>
+                        if settled != head_sha {
+                          CommitStepOwed { reason: join(["the commit step last ran at ", settled, ", not at this head"], "") }
+                        } else {
+                          let said = join(["the commit step's last run at this head ended ", outcome, ": ", match belt_commit_record_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" }], "")
+                          match belt_commit_outcome_kind_capture_disposition(k: kind) {
+                            CommitSettlesCapture => CommitStepSettled
+                            CommitLeavesCaptureOwed => CommitStepOwed { reason: said }
+                            CommitRefusesCapture => CommitStepRefused { reason: said }
+                          }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// NO CAPTURE AT THIS HEAD: settled, owed or refused, as the commit step's own record for this head says. The record is
+// observed listing-first, so an unlistable directory is never read as a missing record.
+fn belt_capture_absence_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> SubmissionCaptureObservation {
+  let path = join([
+    dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    "/", belt_commit_outcome_last_basename as String,
+  ], "")
+  match filesystem_file_observation_of_path(path: path) {
+    FilesystemFileAbsent(_) => CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }
+    FilesystemFileRead { path: _, content } =>
+      match belt_commit_record_standing_of_text(content: content, node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha) {
+        CommitStepSettled => CaptureAbsent
+        CommitStepOwed { reason } => CaptureNotAttempted { reason: reason }
+        CommitStepRefused { reason } => CaptureUnreadable { reason: reason }
+      }
+    FilesystemFileIndeterminate { cause } => CaptureUnreadable { reason: join(["whether the commit step has run is unknown: ", cause], "") }
+    FilesystemFileObservationsDisagree { path: _, cause } => CaptureUnreadable { reason: join(["whether the commit step has run is unknown: ", cause], "") }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => CaptureUnreadable { reason: join(["whether the commit step has run is unknown: ", cause], "") }
+  }
+}
 
 fn belt_commit_outcome_persist(
   instance: HostDashboardInstance,
@@ -7890,7 +8061,17 @@ fn belt_commit_outcome_persist(
         "/", belt_commit_outcome_last_basename as String,
       ], ""),
       content: serialize_json(v: belt_commit_outcome_receipt_json(
-        r: belt_commit_outcome_receipt(o: outcome, attempt_key: attempt_key),
+        r: belt_commit_outcome_receipt(
+          o: outcome,
+          attempt_key: attempt_key,
+          settled_head: match belt_worktree_head_observe(
+            instance: instance,
+            worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: attempt_key),
+          ) {
+            WorktreeHeadObserved { revision } => Present { value: revision as String }
+            WorktreeHeadUnobserved { reason: _ } => none
+          },
+        ),
       )),
     )
     outcome
@@ -8055,19 +8236,19 @@ fn belt_commit_attempt_compute_for_instance(
 fn belt_commit_outcome_json_value(o: BeltCommitOutcome) -> JsonValue {
   match o {
     CommitRecorded { node_id, message } =>
-      json_object(members: [json_kv(key: "outcome", value: json_string(s: "recorded")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "message", value: json_string(s: message))])
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: belt_commit_outcome_key(o: o))), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "message", value: json_string(s: message))])
     CandidateCaptured { node_id, head_sha, message } =>
-      json_object(members: [json_kv(key: "outcome", value: json_string(s: "candidate-captured")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "head_sha", value: json_string(s: head_sha)), json_kv(key: "message", value: json_string(s: message))])
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: belt_commit_outcome_key(o: o))), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "head_sha", value: json_string(s: head_sha)), json_kv(key: "message", value: json_string(s: message))])
     CommitSkipped { node_id, reason } =>
-      json_object(members: [json_kv(key: "outcome", value: json_string(s: "skipped")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: belt_commit_outcome_key(o: o))), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
     CommitFailed { node_id, detail } =>
-      json_object(members: [json_kv(key: "outcome", value: json_string(s: "failed")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "detail", value: json_string(s: detail))])
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: belt_commit_outcome_key(o: o))), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "detail", value: json_string(s: detail))])
     CommitCapturePoisoned { node_id, detail } =>
-      json_object(members: [json_kv(key: "outcome", value: json_string(s: "capture-poisoned")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "detail", value: json_string(s: detail))])
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: belt_commit_outcome_key(o: o))), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "detail", value: json_string(s: detail))])
     CommitDeferred { node_id, reason } =>
-      json_object(members: [json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: belt_commit_outcome_key(o: o))), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
     CommitSubjectUnaddressable { node_id, reason } =>
-      json_object(members: [json_kv(key: "outcome", value: json_string(s: "subject-unaddressable")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: belt_commit_outcome_key(o: o))), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
   }
 }
 
@@ -8731,6 +8912,13 @@ fn belt_verify_capture_gate(node_id: String, capture: SubmissionCaptureObservati
           reason: "no submission capture binds this head: the belt's commit over it was a checkpoint (yielded, not ready), and only a captured candidate advances to authoritative verification",
         },
       }
+    CaptureNotAttempted { reason } =>
+      VerifyCaptureStops {
+        outcome: VerifyDeferred {
+          node_id: node_id,
+          reason: join(["no submission capture binds this head yet: ", reason, "; verification waits for the capture"], ""),
+        },
+      }
     CaptureForHead { capture: c } =>
       match submission_candidacy(submission: c.submission) {
         SubmissionNotCandidate { reason } =>
@@ -8785,11 +8973,7 @@ fn belt_verify_attempt_for_instance(
                 capture: belt_submission_capture_for_head(
                   instance: instance,
                   worktree: attempt_worktree,
-                  dir: belt_attempt_submission_dir_for_instance(
-                    instance: instance,
-                    node_id: node_id,
-                    attempt_key: progress.attempt_key,
-                  ),
+                  node_id: node_id, attempt_key: progress.attempt_key,
                   head_sha: revision as String,
                 ),
               ) {
@@ -12300,6 +12484,7 @@ fn belt_scm_recapture_capture_gate(observation: SubmissionCaptureObservation) ->
   match observation {
     CaptureForHead { capture } => RecaptureCaptureProceeds { capture: capture }
     CaptureAbsent => RecaptureCaptureRefused { detail: recapture_capture_absent_detail }
+    CaptureNotAttempted { reason } => RecaptureCaptureRefused { detail: join([recapture_capture_absent_detail, " (the attempt's capture is still owed: ", reason, ")"], "") }
     CaptureUnreadable { reason } => RecaptureCapturePoisoned { detail: reason }
   }
 }
@@ -12348,11 +12533,7 @@ fn belt_scm_recapture(
                 match belt_scm_recapture_capture_gate(observation: belt_submission_capture_for_head(
                   instance: instance,
                   worktree: worktree,
-                  dir: belt_attempt_submission_dir_for_instance(
-                    instance: instance,
-                    node_id: node_id as RoadmapNodeId,
-                    attempt_key: attempt_key,
-                  ),
+                  node_id: node_id as RoadmapNodeId, attempt_key: attempt_key,
                   head_sha: head_sha,
                 )) {
                   RecaptureCaptureRefused { detail } => RecaptureRefused { detail: detail }
@@ -12611,6 +12792,10 @@ fn belt_integration_capture_gate(capture: SubmissionCaptureObservation) -> BeltI
       IntegrationCaptureStops {
         step: IntegrationCoreDeferred { reason: "no submission capture binds this head, so there is no candidate to integrate" },
       }
+    CaptureNotAttempted { reason } =>
+      IntegrationCaptureStops {
+        step: IntegrationCoreDeferred { reason: join(["no submission capture binds this head yet, so there is no candidate to integrate: ", reason], "") },
+      }
     CaptureUnreadable { reason } =>
       IntegrationCaptureStops { step: IntegrationCoreUnreadable { detail: reason } }
     CaptureForHead { capture: c } =>
@@ -12664,11 +12849,7 @@ fn belt_integrate_candidate_core_for_instance(
       match belt_integration_capture_gate(capture: belt_submission_capture_for_head(
         instance: instance,
         worktree: worktree,
-        dir: belt_attempt_submission_dir_for_instance(
-          instance: instance,
-          node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId,
-          attempt_key: attempt_key,
-        ),
+        node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: attempt_key,
         head_sha: revision as String,
       )) {
         IntegrationCaptureStops { step } => step

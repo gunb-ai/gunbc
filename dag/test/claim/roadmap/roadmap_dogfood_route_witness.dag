@@ -33,7 +33,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.github { Repository }
 import gunbc.roadmap.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentPending, WorkflowSegmentFailed }
 import gunbc.roadmap.roadmap_submission {
-  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
+  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
   SubmissionCapture, SubmissionCaptureRootBound, WorkerSubmission, SubmissionReady, submission_digest,
 }
 import gunbc.roadmap.roadmap_review_function { ReviewReport }
@@ -125,8 +125,12 @@ test fn the_submission_reader_carries_the_captures_head_and_digest() -> Bool {
     SubmissionEstablished { evidence } => evidence.head_sha == head && evidence.attempt_key == "k1" && evidence.digest != ""
     SubmissionGap { gap: _ } => false
   })
-    && (match dogfood_submission_reading(attempt_key: "k1", capture: CaptureAbsent) {
+    && (match dogfood_submission_reading(attempt_key: "k1", capture: CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }) {
       SubmissionGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }
+      SubmissionEstablished { evidence: _ } => false
+    })
+    && (match dogfood_submission_reading(attempt_key: "k1", capture: CaptureAbsent) {
+      SubmissionGap { gap } => match gap { StageRefused { reason } => reason.contains("yielded")  StageOwed { owed_by: _ } => false }
       SubmissionEstablished { evidence: _ } => false
     })
     && (match dogfood_submission_reading(attempt_key: "k1", capture: CaptureUnreadable { reason: "torn" }) {

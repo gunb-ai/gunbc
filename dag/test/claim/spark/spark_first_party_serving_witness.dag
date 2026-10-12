@@ -25,7 +25,6 @@ import gunbc.spark.vllm_serving_launch {
   EndpointIncarnationStanding, EndpointIncarnationUnobserved, EndpointIncarnationObserved,
   VllmServingLaunch, vllm_serving_launch, endpoint_incarnation_observation,
 }
-import gunbc.spark.serving_offer { spark_serving_incarnation_unobserved_obligation }
 import std.measure { token_count }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv9, operator_host_srv10 }
@@ -117,8 +116,10 @@ fn t_endpoint() -> VllmEndpointProcessLaunch {
   vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr)
 }
 
+data t_incarnation_obligation: NonEmptyStr = "fixture: the endpoint incarnation is not observed" as NonEmptyStr
+
 fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
-  EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
+  EndpointIncarnationUnobserved { obligation: t_incarnation_obligation }
 }
 
 fn t_pair_realization() -> SparkServingRealization {
