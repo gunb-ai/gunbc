@@ -1,0 +1,220 @@
+module v1.tests.claim.shared_type_leaf_collision_census
+
+import v1.compiler.compile { SourceFile, compile_to_resolved }
+import v1.compiler.infer { build_emit_graph_info }
+import v1.compiler.infer_items { ResolvedGraph }
+import v1.compiler.infer_emit_info {
+  EmitGraphInfo, TypeSummary,
+  TypeSummaryFound, TypeSummaryNotDeclared, TypeSummaryLeafAmbiguous,
+  type_decl_identities_of_leaf, type_summary_at_key
+}
+import v1.compiler.emit_rust { maybe_mark_shared_type }
+import v1.compiler.languages { sharing_for_target }
+import v1.compiler.artifact { Rust }
+import std.types { List, String, Bool }
+
+// THE SHARED-TYPE SET IS KEYED ON A TYPE'S BARE NAME (v1.compiler.emit_rust build_shared_types).
+// This module owns the GRADES of a leaf collision whose declarers are both in one emitted
+// closure: same independent sharing (benign for the shared-type set) versus different sharing.
+// rustc's answer on a different-sharing collision is a separate grade; the producer asks cargo
+// and splices that grade through rustc_grade_from_cargo_status_zero / apply_rustc_to_different_sharing.
+//
+// Independent sharing is the answer maybe_mark_shared_type would give ONE declaration if the set
+// were keyed on the declaration: a coproduct of Int fields would not share; a List field would.
+// The leaf-keyed set conflates those answers.
+//
+// compile_to_resolved over an authored source vector is called from the host (it does not run
+// under the interpreter). This module classifies a ResolvedGraph the host already holds.
+
+type CollisionSharing
+  = SameSharing
+  | DifferentSharing
+
+type RustcGrade
+  = RustcRefused
+  | RustcAccepted
+  | RustcNotAttempted
+
+type LeafCollisionRow {
+  leaf: String
+  declarers: List<String>
+  would_share: List<Bool>
+  sharing: CollisionSharing
+  rustc: RustcGrade
+}
+
+fn collision_sharing_of(would_share: List<Bool>) -> CollisionSharing {
+  match would_share |> first {
+    Absent => SameSharing
+    Present { value: first_share } =>
+      if would_share |> any(s => s != first_share) { DifferentSharing } else { SameSharing }
+  }
+}
+
+fn rustc_not_attempted() -> RustcGrade {
+  RustcNotAttempted
+}
+
+fn rustc_grade_from_cargo_status_zero(status_zero: Bool) -> RustcGrade {
+  if status_zero { RustcAccepted } else { RustcRefused }
+}
+
+fn leaf_collision_row(leaf: String, declarers: List<String>, would_share: List<Bool>, rustc: RustcGrade) -> LeafCollisionRow {
+  LeafCollisionRow {
+    leaf: leaf
+    declarers: declarers
+    would_share: would_share
+    sharing: collision_sharing_of(would_share: would_share)
+    rustc: rustc
+  }
+}
+
+fn red_fixture_flags_different_sharing(rows: List<LeafCollisionRow>) -> Bool {
+  rows |> any(r =>
+    match r.sharing {
+      DifferentSharing => true
+      SameSharing => false
+    }
+  )
+}
+
+fn green_fixture_has_no_collision(rows: List<LeafCollisionRow>) -> Bool {
+  (rows |> count) == 0
+}
+
+fn apply_rustc_to_different_sharing(rows: List<LeafCollisionRow>, grade: RustcGrade) -> List<LeafCollisionRow> {
+  rows |> map(r =>
+    match r.sharing {
+      SameSharing => r
+      DifferentSharing => leaf_collision_row(leaf: r.leaf, declarers: r.declarers, would_share: r.would_share, rustc: grade)
+    }
+  )
+}
+
+fn declaration_would_share(summary: TypeSummary, recursive_type_set: Set<String>, needs_sharing: Bool) -> Bool {
+  set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: needs_sharing), summary.name)
+}
+
+fn would_share_of_identity(info: EmitGraphInfo, identity: String, needs_sharing: Bool) -> Bool {
+  match type_summary_at_key(index: info.type_summaries, key: identity) {
+    TypeSummaryFound { summary: summary } =>
+      declaration_would_share(summary: summary, recursive_type_set: info.recursive_type_set, needs_sharing: needs_sharing)
+    TypeSummaryNotDeclared => false
+    TypeSummaryLeafAmbiguous { leaf: _ } => false
+  }
+}
+
+fn collision_row_of_leaf(info: EmitGraphInfo, leaf: String, needs_sharing: Bool) -> LeafCollisionRow? {
+  let declarers = type_decl_identities_of_leaf(index: info.type_decl_items, leaf: leaf) |> sort_by(i => i)
+  if (declarers |> count) < 2 {
+    none
+  } else {
+    let would_share = declarers |> map(identity => would_share_of_identity(info: info, identity: identity, needs_sharing: needs_sharing))
+    Present {
+      value: leaf_collision_row(leaf: leaf, declarers: declarers, would_share: would_share, rustc: rustc_not_attempted())
+    }
+  }
+}
+
+fn collisions_of_graph(graph: ResolvedGraph) -> List<LeafCollisionRow> {
+  let info = build_emit_graph_info(modules: graph.modules, registry: graph.item_registry)
+  let needs_sharing = sharing_for_target(target: Rust).needs_sharing
+  map_keys(info.type_decl_items.identities_by_leaf)
+    |> sort_by(k => k)
+    |> fold(init: [], f: (acc, leaf) =>
+      match collision_row_of_leaf(info: info, leaf: leaf, needs_sharing: needs_sharing) {
+        Absent => acc
+        Present { value: row } => list_push(acc, row)
+      }
+    )
+}
+
+fn collisions_from_sources(sources: List<SourceFile>) -> List<LeafCollisionRow>? {
+  let result = compile_to_resolved(sources: sources)
+  match result.graph {
+    Absent => none
+    Present { value: graph } => Present { value: collisions_of_graph(graph: graph) }
+  }
+}
+
+fn sharing_label(sharing: CollisionSharing) -> String {
+  match sharing {
+    SameSharing => "same"
+    DifferentSharing => "different"
+  }
+}
+
+fn rustc_label(grade: RustcGrade) -> String {
+  match grade {
+    RustcRefused => "refused"
+    RustcAccepted => "accepted"
+    RustcNotAttempted => "not_attempted"
+  }
+}
+
+fn would_share_cell(b: Bool) -> String {
+  if b { "share" } else { "copy" }
+}
+
+fn collision_report_line(subject: String, row: LeafCollisionRow) -> String {
+  concat([
+    "collision subject=",
+    subject,
+    " leaf=",
+    row.leaf,
+    " declarers=",
+    row.declarers |> join(separator: ","),
+    " would_share=",
+    row.would_share |> map(b => would_share_cell(b: b)) |> join(separator: ","),
+    " sharing=",
+    sharing_label(sharing: row.sharing),
+    " rustc=",
+    rustc_label(grade: row.rustc)
+  ])
+}
+
+fn subject_summary_line(kind: String, name: String, rows: List<LeafCollisionRow>) -> String {
+  let same = rows |> filter(r =>
+    match r.sharing {
+      SameSharing => true
+      DifferentSharing => false
+    }
+  ) |> count
+  let different = rows |> filter(r =>
+    match r.sharing {
+      DifferentSharing => true
+      SameSharing => false
+    }
+  ) |> count
+  concat([
+    "subject kind=",
+    kind,
+    " name=",
+    name,
+    " colliding_leaves=",
+    to_string(rows |> count),
+    " same_sharing=",
+    to_string(same),
+    " different_sharing=",
+    to_string(different)
+  ])
+}
+
+fn control_line(name: String, held: Bool) -> String {
+  concat(["control ", name, " ", if held { "held" } else { "unmet" }])
+}
+
+fn fixture_standing(red_rows: List<LeafCollisionRow>, green_rows: List<LeafCollisionRow>) -> String {
+  let red_held = red_fixture_flags_different_sharing(rows: red_rows)
+  let green_held = green_fixture_has_no_collision(rows: green_rows)
+  let held = red_held && green_held
+  [
+    concat("STANDING ", if held { "held" } else { "unmet" }),
+    control_line(name: "red_fixture_flags_different_sharing", held: red_held),
+    control_line(name: "green_fixture_has_no_collision", held: green_held)
+  ] |> join(separator: "\n")
+}
+
+fn fixture_controls_hold(red_rows: List<LeafCollisionRow>, green_rows: List<LeafCollisionRow>) -> Bool {
+  red_fixture_flags_different_sharing(rows: red_rows) && green_fixture_has_no_collision(rows: green_rows)
+}

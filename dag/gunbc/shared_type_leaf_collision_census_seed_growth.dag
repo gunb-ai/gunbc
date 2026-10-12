@@ -13,7 +13,7 @@ data shared_type_leaf_collision_census_seed_growth_justification: SeedGrowthJust
     }
   ],
 
-  reason: "The producer arm for gunbc.target_binding SharedTypeLeafCollisionCensusProducer. Its host part loads each measured closure, hands the sources to compile_to_resolved, reads independent sharing from v1.compiler.emit_rust maybe_mark_shared_type per declaration identity, and — only for a different-sharing collision — emits and asks cargo. The grades (SameSharing vs DifferentSharing, rustc refuse vs accept) are gunbc.instruments.shared_type_leaf_collision_census; the host maps control standing to a termination and adds no census verdict of its own. It sits in the host because compile_to_resolved and cargo over an authored source vector do not run under the interpreter.",
+  reason: "The producer arm for gunbc.target_binding SharedTypeLeafCollisionCensusProducer. Its host part is transport: read each measured closure and the fixture from disk, hand sources to compile_to_resolved, and — only when v1.tests.claim.shared_type_leaf_collision_census reports different sharing — emit and ask cargo, then splice rustc_grade_from_cargo_status_zero through apply_rustc_to_different_sharing. The sharing grade, rustc grade constructors, row construction, subject summaries, control lines and fixture standing are that .dag module; the host maps fixture_controls_hold to a termination and adds no census verdict of its own. It sits in the host because compile_to_resolved and cargo over an authored source vector do not run under the interpreter.",
 
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
 
