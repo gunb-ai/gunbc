@@ -89,3 +89,14 @@ test fn a_single_quoted_ts_string_lexes_as_one_string_token_holds() -> Bool {
         && fold_list(xs: ts.all, empty: true, cons: fn(acc, t) { acc && (t.class == ^ts_token_string_lit) && (t.lexeme == "'On'") })
   }
 }
+
+// A DOUBLE QUOTE IS ORDINARY TEXT INSIDE A SINGLE-QUOTED STRING: red while the body reused the
+// double-quoted class (StringTextChar excludes `"`), green once SingleQuotedStringTextChar owns it.
+test fn a_double_quote_inside_a_single_quoted_ts_string_stays_in_one_token_holds() -> Bool {
+  match tokenize(text: "'a\"b'", file: ^ts_parse_file, rules: ts_lex()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      (length(xs: ts.all) == 1)
+        && fold_list(xs: ts.all, empty: true, cons: fn(acc, t) { acc && (t.class == ^ts_token_string_lit) && (t.lexeme == "'a\"b'") })
+  }
+}
