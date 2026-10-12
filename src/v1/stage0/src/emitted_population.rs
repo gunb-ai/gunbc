@@ -58,6 +58,7 @@
 // src/std_computation.rs
 // src/std_constructors.rs
 // src/std_content_hash.rs
+// src/std_decimal.rs
 // src/std_decl_ref.rs
 // src/std_disposition.rs
 // src/std_dissolution.rs
@@ -88,6 +89,7 @@
 // src/std_process_termination.rs
 // src/std_realization_schedule.rs
 // src/std_reference_binding_observation.rs
+// src/std_render_repeat_string_bootstrap.rs
 // src/std_repair_input_origin.rs
 // src/std_roster_frontier.rs
 // src/std_serialization.rs

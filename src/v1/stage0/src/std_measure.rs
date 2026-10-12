@@ -1191,8 +1191,8 @@ pub fn exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal) -> Rc<DecimalMo
                                 match crate::std_checked_arithmetic::checked_int_to_nat(
                                     scaled.clone(),
                                 ) {
-                                    std::option::Option::None => {
-                                        Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
+                                    std::option::Option::None => Rc::new(
+                                        DecimalMoneyConversion::DecimalMoneyUnrepresentable {
                                             cause: Rc::new(IntegerOverflow {
                                                 operation:
                                                     IntegerArithmeticOperation::IntegerMultiply,
@@ -1203,8 +1203,8 @@ pub fn exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal) -> Rc<DecimalMo
                                                     },
                                                 ),
                                             }),
-                                        })
-                                    }
+                                        },
+                                    ),
                                     Some(micros) => {
                                         Rc::new(DecimalMoneyConversion::DecimalMoneyConverted {
                                             amount: money_amount_micro(micros.clone()),
