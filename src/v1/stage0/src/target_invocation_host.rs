@@ -4556,19 +4556,21 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     }
     let held = census::fixture_controls_hold(red_rows.clone(), green_rows.clone());
 
-    let mut subjects: Vec<(String, String)> = vec![
-        (
-            "self-host".to_string(),
-            "src/v2/compiler/00_compile.dag".to_string(),
-        ),
-        (
-            "v2-native-cli".to_string(),
-            "src/v2/cli/compile_cli.dag".to_string(),
-        ),
-    ];
+    let mut subjects: Vec<(String, String)> = Vec::new();
     for (label, producer) in instrument_registry() {
-        if let TargetProducer::NativeClaimProgram { entry } = producer {
-            subjects.push((label.target.clone(), entry.to_string()));
+        match producer {
+            TargetProducer::SelfHost => subjects.push((
+                label.target.clone(),
+                cli_run::native_compile_entry().to_string(),
+            )),
+            TargetProducer::V2NativeCli => subjects.push((
+                label.target.clone(),
+                cli_run::v2_native_cli_entry().to_string(),
+            )),
+            TargetProducer::NativeClaimProgram { entry } => {
+                subjects.push((label.target.clone(), entry.to_string()));
+            }
+            _ => {}
         }
     }
 

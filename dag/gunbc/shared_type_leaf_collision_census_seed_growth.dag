@@ -10,6 +10,16 @@ data shared_type_leaf_collision_census_seed_growth_justification: SeedGrowthJust
       module_path: "v1_compiler.target_invocation_host",
       decl_name: "run_shared_type_leaf_collision_census",
       field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "native_compile_entry",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "v2_native_cli_entry",
+      field: WholeDeclaration
     }
   ],
 

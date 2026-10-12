@@ -110,6 +110,7 @@ pub use native_lane_runner::{
     NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome, NativeServeProgramRun,
     SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
 };
+pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, floor_seam, make_eval_context,
