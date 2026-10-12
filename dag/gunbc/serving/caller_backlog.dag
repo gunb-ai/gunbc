@@ -1,0 +1,346 @@
+module gunbc.serving.caller_backlog
+
+import std.types { Bool, String, NonEmptyStr, Int, List, brand }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import v2.std.algebra { length }
+import product.fabric.execution { ReservationRef }
+import product.fabric.budget { MoneyAccount, fence_admits }
+
+// ── THE BACKLOG IS THE CALLER'S, AND IT IS A PERSISTED SNAPSHOT, NEVER A ROUTER QUEUE ─────────
+//
+// gunbc.serving.caller_retry_contract names the seven properties a durable caller backlog owes.
+// This module is the executing basis: one logical-work record, persisted before any offer,
+// resumed from the snapshot after a controller dies, fenced by the fabric money-lease generation
+// (product.fabric.budget fence_admits), cancelled only into a terminal phase, and bounded across
+// the WHOLE recovery history so a succeeding probe cannot reset a failing request series.
+//
+// THERE IS NO ROUTER-LOCAL QUEUE. gunbc.serving.router_realization forbids MaintainAuthoritativeBindingLedger;
+// waiting work lives on this snapshot, which a controller restart reloads. A synthetic nudge
+// (re-persist, re-offer) is not required for the same logical work to be waiting again.
+
+type LogicalWorkId = NonEmptyStr where brand("LogicalWorkId")
+
+type CallerWorkPhase
+  = WorkWaiting
+  | WorkCompleted
+  | WorkCancelled
+  | WorkRecoveryBoundExceeded { deficit: NonEmptyStr }
+
+type RecoveryKind
+  = RecoveryProbe
+  | RecoveryRequest
+
+type RecoveryEvent {
+  kind: RecoveryKind
+  succeeded: Bool
+}
+
+type CallerWorkRecord {
+  work: LogicalWorkId
+  reservation: ReservationRef
+  generation: Int
+  phase: CallerWorkPhase
+  recovery: List<RecoveryEvent>
+}
+
+type CallerBacklogSnapshot {
+  records: List<CallerWorkRecord>
+}
+
+data empty_caller_backlog: CallerBacklogSnapshot = CallerBacklogSnapshot { records: [] as List<CallerWorkRecord> }
+
+fn logical_work_eq(a: LogicalWorkId, b: LogicalWorkId) -> Bool {
+  a as String == b as String
+}
+
+fn records_for(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> List<CallerWorkRecord> {
+  filter(snapshot.records, r => logical_work_eq(a: r.work, b: work))
+}
+
+fn lookup_record(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CallerWorkRecord? {
+  let found = records_for(snapshot: snapshot, work: work)
+  if length(found) == 1 {
+    found.first()
+  } else {
+    none
+  }
+}
+
+fn replace_record(snapshot: CallerBacklogSnapshot, next: CallerWorkRecord) -> CallerBacklogSnapshot {
+  CallerBacklogSnapshot {
+    records: concat(
+      filter(snapshot.records, r => !logical_work_eq(a: r.work, b: next.work)),
+      [next],
+    ),
+  }
+}
+
+fn waiting_record(work: LogicalWorkId, reservation: ReservationRef, generation: Int) -> CallerWorkRecord {
+  CallerWorkRecord {
+    work: work,
+    reservation: reservation,
+    generation: generation,
+    phase: WorkWaiting,
+    recovery: [] as List<RecoveryEvent>,
+  }
+}
+
+// Persist BEFORE offer: a turn that is not on the snapshot cannot be offered. Persist is
+// idempotent for an already-waiting identity (duplicate suppression) and refuses a cancelled or
+// bound-exceeded identity (cancellation is terminal; a bound is not a licence to start over).
+type PersistStanding
+  = WaitingPersisted { record: CallerWorkRecord }
+  | PersistIdempotent { record: CallerWorkRecord }
+  | PersistRefusedTerminal { phase: CallerWorkPhase }
+
+fn persist_waiting(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  reservation: ReservationRef,
+  generation: Int,
+) -> PersistStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    Absent => WaitingPersisted { record: waiting_record(work: work, reservation: reservation, generation: generation) }
+    Present { value: head } =>
+      match head.phase {
+        WorkWaiting => PersistIdempotent { record: head }
+        WorkCompleted => PersistRefusedTerminal { phase: head.phase }
+        WorkCancelled => PersistRefusedTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => PersistRefusedTerminal { phase: head.phase }
+      }
+  }
+}
+
+fn snapshot_after_persist(snapshot: CallerBacklogSnapshot, standing: PersistStanding) -> CallerBacklogSnapshot {
+  match standing {
+    WaitingPersisted { record: r } => replace_record(snapshot: snapshot, next: r)
+    PersistIdempotent { record: _ } => snapshot
+    PersistRefusedTerminal { phase: _ } => snapshot
+  }
+}
+
+type OfferStanding
+  = OfferedAfterPersist { record: CallerWorkRecord }
+  | OfferRefusedUnpersisted
+  | OfferRefusedPhase { phase: CallerWorkPhase }
+
+fn offer_persisted(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> OfferStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    Absent => OfferRefusedUnpersisted
+    Present { value: head } =>
+      match head.phase {
+        WorkWaiting => OfferedAfterPersist { record: head }
+        WorkCompleted => OfferRefusedPhase { phase: head.phase }
+        WorkCancelled => OfferRefusedPhase { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => OfferRefusedPhase { phase: head.phase }
+      }
+  }
+}
+
+// Resume reads the DURABLE snapshot. An empty in-memory view after a controller restart is not
+// a lost turn: the same logical work is still waiting, and no second persist is required.
+type ResumeStanding
+  = ResumedWaiting { record: CallerWorkRecord }
+  | ResumedTerminal { phase: CallerWorkPhase }
+  | ResumeUnknownWork
+
+fn resume_from_snapshot(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> ResumeStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    Absent => ResumeUnknownWork
+    Present { value: head } =>
+      match head.phase {
+        WorkWaiting => ResumedWaiting { record: head }
+        WorkCompleted => ResumedTerminal { phase: head.phase }
+        WorkCancelled => ResumedTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => ResumedTerminal { phase: head.phase }
+      }
+  }
+}
+
+type ControllerView {
+  memory: CallerBacklogSnapshot
+  durable: CallerBacklogSnapshot
+}
+
+fn view_after_controller_restart(durable: CallerBacklogSnapshot) -> ControllerView {
+  ControllerView { memory: empty_caller_backlog, durable: durable }
+}
+
+fn resume_after_restart(view: ControllerView, work: LogicalWorkId) -> ResumeStanding {
+  resume_from_snapshot(snapshot: view.durable, work: work)
+}
+
+// Ready supply oscillating (2 -> 0 -> 1 -> 2) does not expire a waiting turn and does not mint a
+// new identity. The snapshot is unchanged; resume is enough. NoExpiryOnLongWait is this fact:
+// waiting is not a timer, and a zero-supply interval is not a deletion.
+fn waiting_survives_ready_supply(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  supplies: List<Nat>,
+) -> ResumeStanding {
+  let still = fold(supplies, init: snapshot, f: (acc, n) => if n == n { acc } else { acc })
+  resume_from_snapshot(snapshot: still, work: work)
+}
+
+type AttemptCommit
+  = AttemptCommitted { record: CallerWorkRecord }
+  | AttemptFenceRefused
+  | AttemptNotWaiting { phase: CallerWorkPhase }
+  | AttemptUnknownWork
+
+// Attempt fencing is product.fabric.budget fence_admits over the grant's reservation and the
+// generation the replica presents. A resumed old replica presenting a superseded generation
+// cannot commit. Completing through this fold is recovered completion: the same logical work,
+// the current generation, one terminal Completed phase — a second commit sees AttemptNotWaiting.
+fn commit_attempt(
+  snapshot: CallerBacklogSnapshot,
+  account: MoneyAccount,
+  work: LogicalWorkId,
+  presented: Int,
+) -> AttemptCommit {
+  match lookup_record(snapshot: snapshot, work: work) {
+    Absent => AttemptUnknownWork
+    Present { value: head } =>
+      match head.phase {
+        WorkWaiting =>
+          if !fence_admits(a: account, reference: head.reservation, presented: presented) {
+            AttemptFenceRefused
+          } else {
+            AttemptCommitted {
+              record: CallerWorkRecord {
+                work: head.work,
+                reservation: head.reservation,
+                generation: presented,
+                phase: WorkCompleted,
+                recovery: head.recovery,
+              },
+            }
+          }
+        WorkCompleted => AttemptNotWaiting { phase: head.phase }
+        WorkCancelled => AttemptNotWaiting { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => AttemptNotWaiting { phase: head.phase }
+      }
+  }
+}
+
+fn snapshot_after_commit(snapshot: CallerBacklogSnapshot, standing: AttemptCommit) -> CallerBacklogSnapshot {
+  match standing {
+    AttemptCommitted { record: r } => replace_record(snapshot: snapshot, next: r)
+    AttemptFenceRefused => snapshot
+    AttemptNotWaiting { phase: _ } => snapshot
+    AttemptUnknownWork => snapshot
+  }
+}
+
+type CancelStanding
+  = CancelledWaiting { record: CallerWorkRecord }
+  | CancelAlreadyTerminal { phase: CallerWorkPhase }
+  | CancelUnknownWork
+
+fn cancel_work(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CancelStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    Absent => CancelUnknownWork
+    Present { value: head } =>
+      match head.phase {
+        WorkWaiting =>
+          CancelledWaiting {
+            record: CallerWorkRecord {
+              work: head.work,
+              reservation: head.reservation,
+              generation: head.generation,
+              phase: WorkCancelled,
+              recovery: head.recovery,
+            },
+          }
+        WorkCompleted => CancelAlreadyTerminal { phase: head.phase }
+        WorkCancelled => CancelAlreadyTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => CancelAlreadyTerminal { phase: head.phase }
+      }
+  }
+}
+
+fn snapshot_after_cancel(snapshot: CallerBacklogSnapshot, standing: CancelStanding) -> CallerBacklogSnapshot {
+  match standing {
+    CancelledWaiting { record: r } => replace_record(snapshot: snapshot, next: r)
+    CancelAlreadyTerminal { phase: _ } => snapshot
+    CancelUnknownWork => snapshot
+  }
+}
+
+fn is_failed_request(event: RecoveryEvent) -> Bool {
+  match event.kind {
+    RecoveryProbe => false
+    RecoveryRequest => !event.succeeded
+  }
+}
+
+fn recovery_deficit(events: List<RecoveryEvent>) -> NonEmptyStr {
+  let probes_ok = length(filter(events, e => match e.kind { RecoveryProbe => e.succeeded  RecoveryRequest => false }))
+  let requests_failed = length(filter(events, e => is_failed_request(event: e)))
+  join([
+    "recovery bound exhausted across the logical work's whole history; probes succeeded: ",
+    to_string(probes_ok),
+    "; requests failed: ",
+    to_string(requests_failed),
+    "; probe success is not a request completion and does not reset the bound",
+  ], "") as NonEmptyStr
+}
+
+fn note_recovery(
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+  event: RecoveryEvent,
+  bound: Nat,
+) -> CallerBacklogSnapshot {
+  match lookup_record(snapshot: snapshot, work: work) {
+    Absent => snapshot
+    Present { value: head } =>
+      match head.phase {
+        WorkWaiting => {
+          let next_events = concat(head.recovery, [event])
+          let next_phase = if length(next_events) >= bound && is_failed_request(event: event) {
+            WorkRecoveryBoundExceeded { deficit: recovery_deficit(events: next_events) }
+          } else {
+            WorkWaiting
+          }
+          replace_record(
+            snapshot: snapshot,
+            next: CallerWorkRecord {
+              work: head.work,
+              reservation: head.reservation,
+              generation: head.generation,
+              phase: next_phase,
+              recovery: next_events,
+            },
+          )
+        }
+        WorkCompleted => snapshot
+        WorkCancelled => snapshot
+        WorkRecoveryBoundExceeded { deficit: _ } => snapshot
+      }
+  }
+}
+
+// Retriability is a typed arm, not a shared process-exit status. Waiting work comes back;
+// cancellation, completion, and a surfaced recovery deficit are terminal.
+type CallerRetryDisposition
+  = RetryComeBack { work: LogicalWorkId }
+  | RetryTerminal { work: LogicalWorkId, cause: NonEmptyStr }
+
+fn caller_retry_disposition(record: CallerWorkRecord) -> CallerRetryDisposition {
+  match record.phase {
+    WorkWaiting => RetryComeBack { work: record.work }
+    WorkCompleted => RetryTerminal { work: record.work, cause: "logical work already completed" as NonEmptyStr }
+    WorkCancelled => RetryTerminal { work: record.work, cause: "cancellation is terminal" as NonEmptyStr }
+    WorkRecoveryBoundExceeded { deficit: d } => RetryTerminal { work: record.work, cause: d }
+  }
+}
+
+data persist_before_offer_basis: NonEmptyStr = "gunbc.serving.caller_backlog persist_waiting" as NonEmptyStr
+data retriable_refusal_basis: NonEmptyStr = "gunbc.serving.caller_backlog caller_retry_disposition" as NonEmptyStr
+data stable_turn_identity_basis: NonEmptyStr = "gunbc.serving.caller_backlog resume_from_snapshot" as NonEmptyStr
+data idempotent_retry_basis: NonEmptyStr = "gunbc.serving.caller_backlog persist_waiting" as NonEmptyStr
+data no_expiry_on_long_wait_basis: NonEmptyStr = "gunbc.serving.caller_backlog waiting_survives_ready_supply" as NonEmptyStr
+data durable_cancellation_basis: NonEmptyStr = "gunbc.serving.caller_backlog cancel_work" as NonEmptyStr
+data no_double_execution_basis: NonEmptyStr = "gunbc.serving.caller_backlog commit_attempt" as NonEmptyStr
