@@ -10,7 +10,7 @@ import gunbc.roadmap_dashboard_instance {
 }
 import gunbc.roadmap_belt_actuate { belt_tick_receipt_path_for_instance }
 import gunbc.live_deploy.emit {
-  emit_artifact_upsert,
+  composed_artifact_upsert,
   install_d_owned_for_user,
 }
 import gunbc.live_deploy.release_locus {
@@ -108,7 +108,12 @@ test fn the_receipts_directory_derives_from_its_instance_root() -> Bool {
 
 fn step_commands(steps: List<PipelineStep>) -> List<String> {
   fold(steps, init: [], f: (acc, s) => match s {
-    Do { run: r } => concat(acc, [r.command])
+    Do { run: r } =>
+      if string_contains(s: r.command, pattern: "__GUNBC_HOST_SCRIPT_STEP__") {
+        acc
+      } else {
+        concat(acc, [r.command])
+      }
     _ => acc
   })
 }
@@ -125,12 +130,12 @@ fn belt_upsert_commands() -> List<String> {
       names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
     ) as String as NonEmptyStr,
   }
-  step_commands(steps: emit_artifact_upsert(
+  step_commands(steps: composed_artifact_upsert(
     art: art,
     spec: spec,
     revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha },
     oidc_now: Absent,
-  ))
+  ).steps)
 }
 
 // The bootstrap is emitted, it targets THIS instance's receipts directory, and it carries the

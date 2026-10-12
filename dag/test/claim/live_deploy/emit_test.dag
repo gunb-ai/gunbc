@@ -126,6 +126,8 @@ import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison, deployment_directory_demands }
 import gunbc.live_deploy.emit {
   emit_artifact_upsert,
+  composed_artifact_upsert,
+  retract_intent_fragments_for,
   approval_broker_tree_copy_steps,
   owned_directory_install_steps,
   owned_directory_apply_steps,
@@ -1123,7 +1125,7 @@ data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN 
 // broker's two mounts are pinned byte-for-byte by test.claim.approval_broker_front_door_member_witness.
 test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
   let spec = deployment_spec_srv1()
-  let own = pipeline_steps_text(steps: emit_artifact_upsert(
+  let own = pipeline_steps_text(steps: composed_artifact_upsert(
     art: DeploymentArtifactStep {
       kind: TailscaleServeMapping,
       path: tailscale_serve_route_member_path(endpoint: spec.names.tailscale_serve_endpoint),
@@ -1131,7 +1133,7 @@ test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
     spec: spec,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
     oidc_now: Absent,
-  ))
+  ).steps)
   let route = deployment_serve_route_script(endpoint: spec.names.tailscale_serve_endpoint, enabled: true)
   !string_contains(s: own, pattern: "tailscale")
     && string_contains(s: route, pattern: "'serve' '--bg' '--https=443' 'unix:")
@@ -1845,6 +1847,59 @@ test fn no_member_mutate_steps_carry_a_refused_marker() -> Bool {
         oidc_now: claim_oidc_now(),
       )
       !any(fragments, f => host_script_mutate_carries_refused_marker(f: f))
+  }
+}
+
+fn fragment_is_refused_member(f: HostScriptFragment, name: String) -> Bool {
+  match f {
+    Decide { member: m, standing: s, steps: _ } =>
+      (m as String) == name && match s {
+        HostScriptRefused { cause: _ } => true
+        HostScriptProceed => false
+      }
+    Mutate { member: _, steps: _ } => false
+  }
+}
+
+// RED at 414c595: SystemdUnit upsert still daemon-reloaded / enabled / restarted after an OIDC
+// refuse. GREEN: composed apply and retract carry that refuse as Decide; no Mutate of a refused
+// member; the upsert arm is unreachable poison, not a restart.
+test fn a_refused_serve_unit_is_not_reloaded_enabled_or_restarted() -> Bool {
+  match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessJobPrincipalRefused { refusal: _ } => false
+    DeployAccessReady { access: a } =>
+      let spec = srv1_twin_spec()
+      let unit = spec.service.unit_name as String
+      let apply_frags = apply_intent_fragments(
+        spec: spec,
+        effects: apply_empty_host_effects(spec: spec),
+        access: a,
+        plan: deploy_witness_full_install_plan(spec: spec),
+        cap_authorization: CapConvergeWithheld { cause: "refuse-then-restart" },
+        oidc_now: Absent,
+      )
+      let apply_mutate = pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: apply_frags))
+      let retract_frags = retract_intent_fragments_for(spec: spec, access: a)
+      let retract_pipe = compose_host_script(fragments: retract_frags)
+      let upsert = pipeline_steps_text(steps: emit_artifact_upsert(
+        art: DeploymentArtifactStep { kind: SystemdUnit, path: spec.service.unit_name },
+        spec: spec,
+        revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+        oidc_now: Absent,
+      ))
+      any(apply_frags, f => fragment_is_refused_member(f: f, name: "serve-unit"))
+        && any(apply_frags, f => fragment_is_refused_member(f: f, name: "oidc"))
+        && count(compose_host_script_mutate_steps(fragments: apply_frags)) == 0
+        && !string_contains(s: apply_mutate, pattern: "daemon-reload")
+        && !string_contains(s: apply_mutate, pattern: unit)
+        && !any(retract_frags, f => match f {
+          Mutate { member: m, steps: s } =>
+            count(s) > 0 && any(retract_frags, d => fragment_is_refused_member(f: d, name: m as String))
+          Decide { member: _, standing: _, steps: _ } => false
+        })
+        && string_contains(s: upsert, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
+        && !string_contains(s: upsert, pattern: "daemon-reload")
+        && !string_contains(s: pipeline_steps_text(steps: retract_pipe.steps), pattern: join(["restart ", unit], ""))
   }
 }
 
