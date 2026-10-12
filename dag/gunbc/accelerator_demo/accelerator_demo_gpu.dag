@@ -1,6 +1,7 @@
 module gunbc.accelerator_demo.accelerator_demo_gpu
 
 import std.optional { Present, Absent }
+import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_bandwidth_count }
 
 fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
   match contract {
@@ -147,11 +148,17 @@ fn witness_rtx5090_execution_lane_count_grounded() -> Bool {
 }
 
 fn witness_rtx5090_memory_bandwidth_grounded() -> Bool {
-  std.measure.bandwidth_count(b: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.memory_bandwidth) == 1792000000000
+  match gpu_catalog_bandwidth_count(row: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog) {
+    Present { value: n } => n == 1792000000000
+    Absent => false
+  }
 }
 
 fn witness_m5_memory_bandwidth_grounded() -> Bool {
-  std.measure.bandwidth_count(b: extdeps.gpu.apple.apple_m5_gpu_catalog.memory_bandwidth) == 153000000000
+  match gpu_catalog_bandwidth_count(row: extdeps.gpu.apple.apple_m5_gpu_catalog) {
+    Present { value: n } => n == 153000000000
+    Absent => false
+  }
 }
 
 fn witness_rtx5090_compute_capability_grounded() -> Bool {

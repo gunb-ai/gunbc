@@ -52,7 +52,7 @@ data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)),
     memory_kind: Dram,
   },
-  memory_bandwidth: bandwidth(count: 1792000000000),
+  memory_bandwidth: Present { value: bandwidth(count: 1792000000000) },
   boost_clock: hertz(count: 2410000000),
   tdp_watts: watt(count: 575),
   compute_capability: Present {
@@ -141,7 +141,7 @@ data nvidia_rtx_pro_6000_workstation_catalog: GpuModelCatalogRow = GpuModelCatal
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 96)),
     memory_kind: Dram,
   },
-  memory_bandwidth: bandwidth(count: 1792000000000),
+  memory_bandwidth: Present { value: bandwidth(count: 1792000000000) },
   boost_clock: none,
   tdp_watts: watt(count: 600),
   compute_capability: Present {
@@ -168,7 +168,7 @@ data nvidia_rtx_pro_6000_max_q_catalog: GpuModelCatalogRow = GpuModelCatalogRow 
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 96)),
     memory_kind: Dram,
   },
-  memory_bandwidth: bandwidth(count: 1792000000000),
+  memory_bandwidth: Present { value: bandwidth(count: 1792000000000) },
   boost_clock: none,
   tdp_watts: watt(count: 300),
   compute_capability: Present {
@@ -195,7 +195,7 @@ data nvidia_rtx_pro_6000_server_catalog: GpuModelCatalogRow = GpuModelCatalogRow
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 96)),
     memory_kind: Dram,
   },
-  memory_bandwidth: bandwidth(count: 1597000000000),
+  memory_bandwidth: Present { value: bandwidth(count: 1597000000000) },
   boost_clock: none,
   tdp_watts: watt(count: 600),
   compute_capability: Present {
@@ -296,7 +296,7 @@ data nvidia_rtx_pro_5000_48gb_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 48)),
     memory_kind: Dram,
   },
-  memory_bandwidth: bandwidth(count: 1344000000000),
+  memory_bandwidth: Present { value: bandwidth(count: 1344000000000) },
   boost_clock: none,
   tdp_watts: watt(count: 300),
   compute_capability: Present {
@@ -323,7 +323,7 @@ data nvidia_rtx_pro_5000_72gb_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 72)),
     memory_kind: Dram,
   },
-  memory_bandwidth: bandwidth(count: 1344000000000),
+  memory_bandwidth: Present { value: bandwidth(count: 1344000000000) },
   boost_clock: none,
   tdp_watts: watt(count: 300),
   compute_capability: Present {
@@ -403,6 +403,8 @@ data hgx_b300_authority: ExternalAuthority = ExternalAuthority {
 // B200/B300 are SXM modules on HGX trays with NVLink. interconnect stays Absent: a rental
 // listing's PCIe Gen5 label is the host link of that system, not an add-in-card endpoint.
 // CUDA-core counts are unpublished; execution_lane_count is none rather than a blog figure.
+// HGX pages state HBM bandwidth as "up to 8 TB/s" and B200 power as "configurable up to 1 kW";
+// those are ceilings, not exact TDP/rate, so memory_bandwidth and tdp_watts stay none.
 // CONSUMER: P4 treats these as references, not purchase candidates.
 data nvidia_b200_sxm_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   vendor: nvidia,
@@ -414,9 +416,9 @@ data nvidia_b200_sxm_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 180)),
     memory_kind: Hbm,
   },
-  memory_bandwidth: bandwidth(count: 8000000000000),
+  memory_bandwidth: none,
   boost_clock: none,
-  tdp_watts: watt(count: 1000),
+  tdp_watts: none,
   compute_capability: none,
   supported_runtimes: [Cuda],
   interconnect: none,
@@ -435,7 +437,7 @@ data nvidia_b300_sxm_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 288)),
     memory_kind: Hbm,
   },
-  memory_bandwidth: bandwidth(count: 8000000000000),
+  memory_bandwidth: none,
   boost_clock: none,
   tdp_watts: none,
   compute_capability: none,
@@ -451,23 +453,11 @@ data nvidia_b200_sxm_figure_citations: List<FactCitation> = [
     fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b200_sxm_catalog", field_name: "memory"),
     authority: hgx_b200_authority,
   },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b200_sxm_catalog", field_name: "memory_bandwidth"),
-    authority: hgx_b200_authority,
-  },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b200_sxm_catalog", field_name: "tdp_watts"),
-    authority: hgx_b200_authority,
-  },
 ]
 
 data nvidia_b300_sxm_figure_citations: List<FactCitation> = [
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b300_sxm_catalog", field_name: "memory"),
-    authority: hgx_b300_authority,
-  },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b300_sxm_catalog", field_name: "memory_bandwidth"),
     authority: hgx_b300_authority,
   },
 ]

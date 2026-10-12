@@ -1,7 +1,9 @@
 module test.claim.rtx_pro_6000_catalog_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Present, Absent }
 import std.measure { bandwidth_count }
+import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_bandwidth_count }
 import extdeps.gpu.nvidia {
   nvidia_rtx_pro_6000_workstation_catalog,
   nvidia_rtx_pro_6000_max_q_catalog,
@@ -11,7 +13,6 @@ import extdeps.pricing.hetzner_dedicated { hetzner_gex131_listed }
 import std.types { NonEmptyStr, String, List }
 import std.list { list_cover }
 import extdeps.external_authority { FactCitation }
-import extdeps.gpu.types { GpuModelCatalogRow }
 import std.decl_ref { decl_field_ref }
 import std.decl_ref { decl_ref, DeclarationRef }
 import std.measure { hardware_thread_count, byte_size, second, money_amount_micro, MoneyPerHour }
@@ -59,15 +60,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // NVIDIA publishes 1792 GB/s for Workstation and Max-Q and 1597 GB/s for Server Edition: two
 // correct figures for three editions, not a disagreement about one card.
 test fn w_workstation_bandwidth_is_1792() -> Bool {
-  bandwidth_count(b: nvidia_rtx_pro_6000_workstation_catalog.memory_bandwidth) == 1792000000000
+  match gpu_catalog_bandwidth_count(row: nvidia_rtx_pro_6000_workstation_catalog) {
+    Present { value: n } => n == 1792000000000
+    Absent => false
+  }
 }
 
 test fn w_max_q_bandwidth_is_1792() -> Bool {
-  bandwidth_count(b: nvidia_rtx_pro_6000_max_q_catalog.memory_bandwidth) == 1792000000000
+  match gpu_catalog_bandwidth_count(row: nvidia_rtx_pro_6000_max_q_catalog) {
+    Present { value: n } => n == 1792000000000
+    Absent => false
+  }
 }
 
 test fn w_server_bandwidth_is_1597() -> Bool {
-  bandwidth_count(b: nvidia_rtx_pro_6000_server_catalog.memory_bandwidth) == 1597000000000
+  match gpu_catalog_bandwidth_count(row: nvidia_rtx_pro_6000_server_catalog) {
+    Present { value: n } => n == 1597000000000
+    Absent => false
+  }
 }
 
 // The Hetzner listing names the card as a string; it must resolve to exactly one catalog row.

@@ -1,6 +1,7 @@
 module product.node_platform_selection
 
 import std.types { List, NonEmptyStr, String }
+import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.interval { degenerate_interval }
@@ -66,7 +67,7 @@ import extdeps.systems.types {
 }
 import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
 import extdeps.systems.gigabyte_xh23_vg0_aaj1 { gigabyte_xh23_vg0_aaj1 }
-import std.measure { Watt, ByteSize, byte_size, byte_size_count, watt_count, millimeter_count, celsius_count }
+import std.measure { Watt, ByteSize, Bandwidth, byte_size, byte_size_count, watt_count, millimeter_count, celsius_count }
 import std.nat { Nat }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog, dgx_spark_system_overview_authority }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog, extdeps_external_authority_anchor }
@@ -349,12 +350,23 @@ fn gh200_memory_gaps(row: CoherentSuperchipCatalogRow) -> List<AxisGap> {
   }
 }
 
+fn gpu_local_bandwidth_readings(gpu_bandwidth: Bandwidth?) -> List<AxisReading> {
+  match gpu_bandwidth {
+    Present { value: b } => [to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: b } })]
+    Absent => []
+  }
+}
+
 fn superchip_memory_readings(row: CoherentSuperchipCatalogRow) -> List<AxisReading> {
-  [
-    bytes_reading(axis: gpu_local_capacity_axis, b: row.gpu.memory.capacity),
-    to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: row.gpu.memory_bandwidth } }),
-    bytes_reading(axis: coherent_capacity_axis, b: coherent_superchip_coherent_capacity(row: row)),
-  ]
+  concat(
+    [
+      bytes_reading(axis: gpu_local_capacity_axis, b: row.gpu.memory.capacity),
+    ],
+    concat(
+      gpu_local_bandwidth_readings(gpu_bandwidth: row.gpu.memory_bandwidth),
+      [bytes_reading(axis: coherent_capacity_axis, b: coherent_superchip_coherent_capacity(row: row))],
+    )
+  )
 }
 
 type MemoryReadings {
@@ -387,7 +399,7 @@ fn assembly_memory(a: SuperchipAssembly) -> MemoryReadings {
       ]
       if byte_size_count(b: g) == byte_size_count(b: a.row.gpu.memory.capacity) {
         MemoryReadings {
-          readings: concat(capacities, [to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: a.row.gpu.memory_bandwidth } })]),
+          readings: concat(capacities, gpu_local_bandwidth_readings(gpu_bandwidth: a.row.gpu.memory_bandwidth)),
           gaps: [],
         }
       } else {

@@ -8,7 +8,7 @@ import std.measure {
   basis_point_count,
 }
 import extdeps.storage.types { PcieLink, Gen3, Gen4, Gen5 }
-import extdeps.gpu.types { GpuModelCatalogRow, GpuPackageForm, PcieAddInCard, SxmModule, IntegratedComputePackage, gpu_catalog_row_eq }
+import extdeps.gpu.types { GpuModelCatalogRow, GpuPackageForm, PcieAddInCard, SxmModule, IntegratedComputePackage, gpu_catalog_row_eq, gpu_catalog_bandwidth_count }
 import extdeps.gpu.nvidia {
   nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
   nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog,
@@ -62,8 +62,14 @@ test fn w_pro_5000_48_and_72_are_cited_add_in_cards() -> Bool {
     && package_is_add_in_card(p: nvidia_rtx_pro_5000_72gb_catalog.package)
     && byte_size_count(b: nvidia_rtx_pro_5000_48gb_catalog.memory.capacity) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 48)))
     && byte_size_count(b: nvidia_rtx_pro_5000_72gb_catalog.memory.capacity) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 72)))
-    && bandwidth_count(b: nvidia_rtx_pro_5000_48gb_catalog.memory_bandwidth) == 1344000000000
-    && bandwidth_count(b: nvidia_rtx_pro_5000_72gb_catalog.memory_bandwidth) == 1344000000000
+    && (match gpu_catalog_bandwidth_count(row: nvidia_rtx_pro_5000_48gb_catalog) {
+      Present { value: n } => n == 1344000000000
+      Absent => false
+    })
+    && (match gpu_catalog_bandwidth_count(row: nvidia_rtx_pro_5000_72gb_catalog) {
+      Present { value: n } => n == 1344000000000
+      Absent => false
+    })
     && (match nvidia_rtx_pro_5000_48gb_catalog.tdp_watts {
       Present { value: w } => watt_count(w: w) == 300
       Absent => false
@@ -92,6 +98,22 @@ test fn w_b200_b300_are_sxm_without_a_pcie_add_in_endpoint() -> Bool {
     && byte_size_count(b: nvidia_b200_sxm_catalog.memory.capacity) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 180)))
     && byte_size_count(b: nvidia_b300_sxm_catalog.memory.capacity) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 288)))
     && (match nvidia_b200_sxm_catalog.execution_lane_count {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && (match nvidia_b200_sxm_catalog.memory_bandwidth {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && (match nvidia_b300_sxm_catalog.memory_bandwidth {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && (match nvidia_b200_sxm_catalog.tdp_watts {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && (match nvidia_b300_sxm_catalog.tdp_watts {
       Absent => true
       Present { value: _ } => false
     })

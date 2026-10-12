@@ -13,6 +13,7 @@ import extdeps.gpu.types { GpuModelCatalogRow, Cuda, IntegratedComputePackage }
 import extdeps.memory.types { MemoryFacts, UnifiedShared }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.vendor.nvidia { nvidia }
+import std.optional { Present, Absent }
 import std.measure {
   hardware_thread_count,
   bandwidth,
@@ -67,7 +68,7 @@ data nvidia_gb10_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 128)),
     memory_kind: UnifiedShared,
   },
-  memory_bandwidth: bandwidth(count: 273000000000),
+  memory_bandwidth: Present { value: bandwidth(count: 273000000000) },
   boost_clock: none,
   tdp_watts: none,
   compute_capability: none,
@@ -106,7 +107,10 @@ fn dgx_spark_catalog_row(storage_capacity: ByteSize) -> IntegratedComputeSystemC
     memory: nvidia_gb10_gpu_catalog.memory,
     memory_bus_width: bit_width(count: 256),
     memory_data_rate: hertz(count: 4266000000),
-    memory_bandwidth: nvidia_gb10_gpu_catalog.memory_bandwidth,
+    memory_bandwidth: match nvidia_gb10_gpu_catalog.memory_bandwidth {
+      Present { value: b } => b
+      Absent => bandwidth(count: 0)
+    },
     storage_capacity: storage_capacity,
     network_ports: dgx_spark_network_ports,
     external_power_supply: watt(count: 240),

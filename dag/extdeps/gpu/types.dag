@@ -1,7 +1,9 @@
 module extdeps.gpu.types
 
 import std.types { Int, NonEmptyStr, String, List, Bool }
-import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth, bandwidth_count }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
@@ -104,6 +106,8 @@ type GpuPackageForm
 // execution_lane_count is absent when the cited datasheet does not state a CUDA-core / lane
 // count (NVIDIA unpublished B200/B300 SM counts); a consumer that needs lanes reads Present
 // or stops, never a fabricated zero.
+// memory_bandwidth is absent when the cited page only states a ceiling ("up to"), not an
+// exact rate; a consumer that needs bandwidth reads Present or stops.
 type GpuModelCatalogRow {
   vendor: Vendor<Hardware>
   model: NonEmptyStr
@@ -111,7 +115,7 @@ type GpuModelCatalogRow {
   package: GpuPackageForm
   execution_lane_count: HardwareThreadCount?
   memory: MemoryFacts
-  memory_bandwidth: Bandwidth
+  memory_bandwidth: Bandwidth?
   boost_clock: Hertz?
   tdp_watts: Watt?
   compute_capability: GpuComputeCapability?
@@ -128,4 +132,11 @@ type GpuModelCatalogRow {
 fn gpu_catalog_row_eq(a: GpuModelCatalogRow, b: GpuModelCatalogRow) -> Bool {
   (a.vendor.legal_name as String) == (b.vendor.legal_name as String)
     && (a.model as String) == (b.model as String)
+}
+
+fn gpu_catalog_bandwidth_count(row: GpuModelCatalogRow) -> Nat? {
+  match row.memory_bandwidth {
+    Present { value: b } => Present { value: bandwidth_count(b: b) }
+    Absent => none
+  }
 }

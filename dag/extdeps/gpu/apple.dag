@@ -35,7 +35,7 @@ data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)),
     memory_kind: UnifiedShared,
   },
-  memory_bandwidth: bandwidth(count: 153000000000),
+  memory_bandwidth: Present { value: bandwidth(count: 153000000000) },
   boost_clock: none,
   tdp_watts: none,
   compute_capability: none,

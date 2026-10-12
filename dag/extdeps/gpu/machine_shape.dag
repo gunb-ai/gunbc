@@ -39,7 +39,7 @@ fn memory_level_from_gpu_device_dram(level_id: LevelId, row: GpuModelCatalogRow)
     id: level_id
     capacity: row.memory.capacity
     transfer_grain: none
-    bandwidth: Present { value: row.memory_bandwidth }
+    bandwidth: row.memory_bandwidth
     latency: none
   }
 }

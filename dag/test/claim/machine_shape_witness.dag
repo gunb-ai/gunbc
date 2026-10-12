@@ -23,6 +23,7 @@ import std.measure {
 }
 import std.nat { Nat }
 import std.types { list_length }
+import std.optional { Present, Absent }
 import std.machine_shape {
   DomainId,
   LevelId,
@@ -84,7 +85,10 @@ test fn catalog_derivation_matches_row() -> Bool {
                 && byte_size_count(b: device.capacity) == byte_size_count(b: nvidia_rtx_5090_catalog.memory.capacity)
                 && match device.bandwidth {
                   Present { value: bw } =>
-                    bandwidth_count(b: bw) == bandwidth_count(b: nvidia_rtx_5090_catalog.memory_bandwidth)
+                    match nvidia_rtx_5090_catalog.memory_bandwidth {
+                      Present { value: cat } => bandwidth_count(b: bw) == bandwidth_count(b: cat)
+                      Absent => false
+                    }
                   Absent => false
                 }
             Absent => false
