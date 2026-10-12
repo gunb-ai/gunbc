@@ -1,0 +1,173 @@
+module test.claim.host_custody_export_receipt_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import gunbc.host_custody_export_receipt { host_custody_export_receipt_path, host_custody_export_receipt_suffix }
+import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path }
+import gunbc.claude_code_credential { claude_code_oauth_harness_host_path }
+import gunbc.typed_remote_file_write { TypedRemoteFileConvergenceRefused }
+import gunbc.fleet.host_credential_custody_converge {
+  HostCredentialCustodyRow,
+  CursorWorkerTurnApiKey,
+  ClaudeCodeOauthHarnessToken,
+  CodexWorkerTurnAuth,
+  ControllerAppKey,
+  host_credential_custody_row,
+  host_custody_stores_an_export_receipt,
+  host_custody_export_receipt_from_row,
+  host_custody_export_receipt_wire,
+  host_custody_export_generation_standing,
+  plan_host_custody_export,
+  CustodyExportNotOwed,
+  CustodyExportWithheld,
+  CustodyExportPublication,
+  classify_host_custody_export,
+  CustodyExportPublished,
+  CustodyExportRefused,
+  CustodyExportNotOwedStanding,
+  custody_export_reports_success,
+  custody_file_legs,
+  custody_dir_legs,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cursor_row: HostCredentialCustodyRow = host_credential_custody_row(c: CursorWorkerTurnApiKey)
+data claude_row: HostCredentialCustodyRow = host_credential_custody_row(c: ClaudeCodeOauthHarnessToken)
+data supplied_version: SmResolvedVersionIdentity = "projects/gunbai-secrets/secrets/cursor-api-key-harness/versions/1" as SmResolvedVersionIdentity
+data placed_material: String = "cursor-api-key-material"
+
+// INHABITANCE: the real Cursor and Claude rows' paths are the only inputs the leaf function
+// accepts from this producer. A second spelling of the suffix would redden the equality.
+
+test fn the_export_receipt_path_is_the_placed_path_plus_the_one_suffix() -> Bool {
+  let cursor_path = host_custody_export_receipt_path(placed_path: cursor_row.path)
+  let claude_path = host_custody_export_receipt_path(placed_path: claude_row.path)
+  (cursor_row.path as String) == (cursor_worker_turn_api_key_host_path as String)
+    && (claude_row.path as String) == (claude_code_oauth_harness_host_path as String)
+    && (cursor_path as String) == concat(cursor_worker_turn_api_key_host_path as String, host_custody_export_receipt_suffix)
+    && (claude_path as String) == concat(claude_code_oauth_harness_host_path as String, host_custody_export_receipt_suffix)
+}
+
+test fn only_cursor_and_claude_owe_an_export_receipt() -> Bool {
+  host_custody_stores_an_export_receipt(c: CursorWorkerTurnApiKey)
+    && host_custody_stores_an_export_receipt(c: ClaudeCodeOauthHarnessToken)
+    && !host_custody_stores_an_export_receipt(c: CodexWorkerTurnAuth)
+    && !host_custody_stores_an_export_receipt(c: ControllerAppKey)
+}
+
+test fn an_identical_settled_placement_plans_a_publication() -> Bool {
+  match plan_host_custody_export(
+    credential: CursorWorkerTurnApiKey,
+    placement_settled: true,
+    row: cursor_row,
+    host: "srv2" as HostIdentity,
+    sm_version: supplied_version,
+    placed_material: placed_material,
+  ) {
+    CustodyExportPublication { path: p, body: body, ownership: o, receipt: rec } =>
+      (p as String) == (host_custody_export_receipt_path(placed_path: cursor_row.path) as String)
+        && (rec.sm_version as String) == (supplied_version as String)
+        && (rec.host as String) == "srv2"
+        && rec.placement == cursor_row.path
+        && rec.reader == cursor_row.file_ownership.group
+        && rec.publisher == cursor_row.dir_ownership.user
+        && rec.content_sha256 == sha256_hex_of_text(text: placed_material)
+        && (o.user as String) == (cursor_row.dir_ownership.user as String)
+        && string_contains(s: body, pattern: host_custody_export_generation_standing)
+        && string_contains(s: host_custody_export_receipt_wire(receipt: rec), pattern: "reader=")
+        && string_contains(s: host_custody_export_receipt_wire(receipt: rec), pattern: "publisher=")
+    _ => false
+  }
+}
+
+test fn a_run_that_is_not_settled_publishes_nothing() -> Bool {
+  match plan_host_custody_export(
+    credential: CursorWorkerTurnApiKey,
+    placement_settled: false,
+    row: cursor_row,
+    host: "srv2" as HostIdentity,
+    sm_version: supplied_version,
+    placed_material: placed_material,
+  ) {
+    CustodyExportWithheld { reason: r } =>
+      string_contains(s: r, pattern: "not settled") && !custody_export_reports_success(s: classify_host_custody_export(plan: CustodyExportWithheld { reason: r }, convergence: none, owner_refusal: none))
+    _ => false
+  }
+}
+
+test fn a_failed_or_interrupted_publication_reports_no_successful_export() -> Bool {
+  let planned = plan_host_custody_export(
+    credential: ClaudeCodeOauthHarnessToken,
+    placement_settled: true,
+    row: claude_row,
+    host: "srv1" as HostIdentity,
+    sm_version: supplied_version,
+    placed_material: placed_material,
+  )
+  let interrupted = classify_host_custody_export(plan: planned, convergence: none, owner_refusal: none)
+  let failed = classify_host_custody_export(
+    plan: planned,
+    convergence: Present {
+      value: TypedRemoteFileConvergenceRefused { step: "rename", reason: "remote step failed" },
+    },
+    owner_refusal: none,
+  )
+  let interrupted_red = match interrupted {
+    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "interrupted") && !custody_export_reports_success(s: interrupted)
+    _ => false
+  }
+  let failed_red = match failed {
+    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "rename") && !custody_export_reports_success(s: failed)
+    _ => false
+  }
+  interrupted_red && failed_red
+}
+
+test fn the_cursor_row_is_root_owned_with_operator_group_read() -> Bool {
+  let f = custody_file_legs(row: cursor_row)
+  let d = custody_dir_legs(row: cursor_row)
+  f.exact_perm == "0640" && f.forbidden_perm == "/037"
+    && d.exact_perm == "0750" && d.forbidden_perm == "/027"
+    && (f.ownership.user as String) == "root"
+    && (f.ownership.group as String) == "briansrls"
+    && (d.ownership.user as String) == "root"
+    && (d.ownership.group as String) == "briansrls"
+}
+
+test fn the_receipt_directory_owner_is_root_not_the_reader() -> Bool {
+  let cursor_receipt = host_custody_export_receipt_from_row(
+    row: cursor_row, host: "srv2" as HostIdentity, sm_version: supplied_version, placed_material: placed_material,
+  )
+  let claude_receipt = host_custody_export_receipt_from_row(
+    row: claude_row, host: "srv1" as HostIdentity, sm_version: supplied_version, placed_material: placed_material,
+  )
+  (cursor_receipt.publisher as String) == "root"
+    && (cursor_receipt.reader as String) == "briansrls"
+    && (cursor_receipt.publisher as String) != (cursor_receipt.reader as String)
+    && (cursor_row.dir_ownership.user as String) == (cursor_receipt.publisher as String)
+    && (claude_receipt.publisher as String) == "root"
+    && (claude_receipt.reader as String) == "briansrls"
+    && (claude_receipt.publisher as String) != (claude_receipt.reader as String)
+}
+
+test fn a_codex_row_does_not_plan_an_export() -> Bool {
+  match plan_host_custody_export(
+    credential: CodexWorkerTurnAuth,
+    placement_settled: true,
+    row: host_credential_custody_row(c: CodexWorkerTurnAuth),
+    host: "srv2" as HostIdentity,
+    sm_version: supplied_version,
+    placed_material: placed_material,
+  ) {
+    CustodyExportNotOwed =>
+      match classify_host_custody_export(plan: CustodyExportNotOwed, convergence: none, owner_refusal: none) {
+        CustodyExportNotOwedStanding => !custody_export_reports_success(s: CustodyExportNotOwedStanding)
+        _ => false
+      }
+    _ => false
+  }
+}

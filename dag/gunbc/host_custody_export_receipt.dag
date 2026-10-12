@@ -1,0 +1,19 @@
+module gunbc.host_custody_export_receipt
+
+import std.types { NonEmptyStr, String }
+
+// THE RECEIPT PATH IS DERIVED FROM THE PLACED FILE, ONCE. The later snapshot take imports this
+// leaf rather than gunbc.fleet.host_credential_custody_converge: the path is a function of the custody
+// row's path, and the converge is the publisher, not the naming authority. A second spelling of the
+// suffix beside this function would be a fork the reader could miss.
+//
+// The sibling lives in the same directory as the placed file. For Cursor and Claude that directory
+// is root-owned with operator group traverse (not write), so the reader can open the receipt and
+// cannot replace it through directory permissions. Authority is the host access model being claimed
+// (root versus the operator account), not protection from privileges that model does not constrain.
+
+data host_custody_export_receipt_suffix: String = ".gunbc-export-receipt"
+
+fn host_custody_export_receipt_path(placed_path: NonEmptyStr) -> NonEmptyStr {
+  concat(placed_path as String, host_custody_export_receipt_suffix) as NonEmptyStr
+}

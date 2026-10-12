@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.export_receipt_digest_joined_to_a_different_generation
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data export_receipt_digest_joined_to_a_different_generation: RecurringFailureMode = RecurringFailureMode {
+  identity: "export_receipt_digest_joined_to_a_different_generation" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a custody export receipt names a Secret Manager version identity from the fetch that placed the file, and a sha256 digest taken from a later, unrelated reread of the same path. HARM: the snapshot take treats the pair as proof of WHICH generation it copied, and a matching digest then certifies the wrong generation. DISTINGUISHING FACTS: the digest must be of the same resolved material whose placement was established; publication is owed only after custody_run_settled of that placement, and a failed or interrupted publication must not report a successful export. RECOGNITION RULE: if a receipt's sm_version and its digest can be assembled from two observations, the join is fabricated. RUNG FOUND AT: structurally guaranteed for the writer once the digest is taken from the fetch payload already joined to SmResolvedVersionIdentity and the standing refuses an absent publication. CEILING: structurally impossible once no constructor can pair a version with a digest from another production. NEXT-RUNG TRIGGER: the snapshot take requires this receipt with no receipt-free fallback.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "plan_host_custody_export", field: WholeDeclaration },
+  ],
+}
