@@ -372,6 +372,13 @@ fn provider_execution_reconcile_process(
           ProviderStarting { activity: _ } => provider
           ProviderAwaitingSeat { detail: _ } => provider
           ProviderRunning { activity: _ } => provider
+          // The locked states cannot reach this branch (the is_event_locked guard keeps them
+          // in the process judgment above), but the match over the closed coproduct is
+          // exhaustive regardless of the guard, so they are named by case: identity.
+          ProviderCompleted { activity: _ } => provider
+          ProviderFailed { activity: _, detail: _ } => provider
+          ProviderBudgetSpent { activity: _, detail: _ } => provider
+          ProviderEventsRefused { activity: _, detail: _ } => provider
         }
       WorkerProcessExited { exit_code, last_command: _ } =>
         if exit_code == 0 {
