@@ -4037,8 +4037,8 @@ fn apply_intent_fragments(
           should_write: plan_writes_oidc_config(plan: plan),
         ),
         concat(
-          serve_unit_write_fragments(spec: spec, plan: plan, oidc_now: oidc_now),
           apply_helper_grant_fragments(spec: spec, plan: plan),
+          serve_unit_write_fragments(spec: spec, plan: plan, oidc_now: oidc_now),
         ),
       ),
       concat(
