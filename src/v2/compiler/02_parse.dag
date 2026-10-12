@@ -328,9 +328,8 @@ fn authored_parse_region_unrepresentable_diagnostic() -> Diagnostic {
 // extdeps.languages.dag.syntax strip_line_comment_delimiter); the parse itself names no annotation
 // syntax. It refuses only when a production consumed input no single range covers, because then the
 // comments inside it would have no region to land in.
-// The parameter is not named `normalize`: the Rust emitter resolves a call through that name to
-// v2.compiler.normalize normalize and writes a path from this module into a later stage, which the
-// crate plan refuses as EmitterReverseEdge.
+// The parameter is not named `normalize`: see gunbc.recurring_failure_mode
+// function_parameter_call_emitted_as_a_same_named_top_level_fn.
 fn parse_module_authored(artifact: LexArtifact, grammar: ParseGrammar, annotation_text: fn(String) -> String) -> Outcome<AuthoredParseArtifact> {
   match parse_module(tokens: artifact.tokens, grammar: grammar) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
