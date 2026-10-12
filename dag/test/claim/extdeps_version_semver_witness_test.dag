@@ -363,8 +363,8 @@ test fn w_numeric_field_constructor_refuses_forged_sequences() -> Bool {
 // of the three forged literals — a leading-zero run, a non-digit code point, an empty run —
 // must meet the SoleConstructorViolation refusal at compile time, and a module that goes
 // through the checking constructor must compile with no such refusal. The .dag route is what
-// this probe executes; the native route's modifier-parse gap is a separate known defect
-// (g0_type_decl_modifier_parse_without_sealing_property), cited not restated.
+// this probe executes (seed SoleConstructorViolation). Native v2 refuses the same forged
+// literals via v2.compiler.infer infer_sole_constructor_diags.
 fn sole_constructor_refusals(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
