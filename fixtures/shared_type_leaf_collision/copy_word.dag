@@ -1,0 +1,10 @@
+module stlc.copy_word
+
+type Word64 {
+  lo: Int
+  hi: Int
+}
+
+fn hold_copy() -> Word64 {
+  Word64 { lo: 0, hi: 0 }
+}

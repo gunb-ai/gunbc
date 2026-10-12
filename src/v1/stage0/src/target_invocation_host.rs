@@ -282,6 +282,7 @@ pub enum TargetProducer {
     DependencyDemandCensus,
     GenericIdentityCensus,
     InterpolationHoleCensus,
+    SharedTypeLeafCollisionCensus,
     RegenRoundCost,
     /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
     /// of the same shape is a registry row, never another variant. The Millisecond deadline is
@@ -475,6 +476,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("interpolation-hole-census"),
             TargetProducer::InterpolationHoleCensus,
+        ),
+        (
+            instrument_label("shared-type-leaf-collision-census"),
+            TargetProducer::SharedTypeLeafCollisionCensus,
         ),
         (
             instrument_label("regen-round-cost"),
@@ -902,6 +907,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         }
         TargetProducer::InterpolationHoleCensus => {
             run_interpolation_hole_census(&self_host_source_roots())
+        }
+        TargetProducer::SharedTypeLeafCollisionCensus => {
+            run_shared_type_leaf_collision_census(&self_host_source_roots())
         }
         TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
@@ -4387,6 +4395,305 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
             standing.lines().next().unwrap_or("STANDING absent"),
             receipt.lines().next().unwrap_or("CORPUS absent"),
             subjects.len()
+        ),
+    }
+}
+
+/// `gunbc.instrument_targets` `shared_type_leaf_collision_census_label`.
+///
+/// Controls compile the fixture closures under `fixtures/shared_type_leaf_collision`. The report
+/// walks the two required subjects and every `NativeClaimProgramProducer` entry, joining type
+/// leaves whose declarers are both in the closure. Independent sharing is
+/// `v1.compiler.emit_rust` `maybe_mark_shared_type` per declaration; rustc is asked only of a
+/// different-sharing collision, through the same emit-and-cargo writer the emit-compile probes
+/// use. Standing is the fixture controls; the live rows are the report.
+fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationOutcome {
+    use crate::v1_compiler_artifact::RenderTarget;
+    use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use crate::v1_compiler_emit_rust::{emit_rust, maybe_mark_shared_type};
+    use crate::v1_compiler_infer::build_emit_graph_info;
+    use crate::v1_compiler_infer_emit_info::{
+        type_decl_identities_of_leaf, type_summary_at_key, TypeSummaryLookup,
+    };
+    use crate::v1_compiler_languages::sharing_for_target;
+    use crate::v1_rt;
+    use std::rc::Rc;
+
+    const PREFIX: &str = "shared-type-leaf-collision-census";
+    const FIXTURE_DIR: &str = "fixtures/shared_type_leaf_collision";
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("{PREFIX}: subject unreached: {detail}"),
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return unreached(format!("could not anchor at the workspace root: {e}"));
+    }
+
+    fn load_dir(dir: &str) -> Result<Vec<Rc<SourceFile>>, String> {
+        let mut out = Vec::new();
+        let entries = std::fs::read_dir(dir).map_err(|e| format!("{dir}: {e}"))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("{dir}: {e}"))?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+                continue;
+            }
+            let content =
+                std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            out.push(Rc::new(SourceFile {
+                path: path.to_string_lossy().to_string(),
+                content,
+            }));
+        }
+        if out.is_empty() {
+            return Err(format!("{dir}: no .dag files"));
+        }
+        out.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(out)
+    }
+
+    #[derive(Clone)]
+    struct CollisionRow {
+        leaf: String,
+        declarers: Vec<String>,
+        would_share: Vec<bool>,
+        different: bool,
+        rustc: String,
+        rustc_detail: String,
+    }
+
+    fn would_share_of(
+        summary: Rc<crate::v1_compiler_infer_emit_info::TypeSummary>,
+        recursive: Rc<im::OrdSet<String>>,
+        needs_sharing: bool,
+    ) -> bool {
+        let marked = maybe_mark_shared_type(
+            v1_rt::rc_empty_set::<String>(),
+            summary.clone(),
+            recursive,
+            needs_sharing,
+        );
+        v1_rt::set_contains(&marked, summary.name.clone())
+    }
+
+    fn collisions_of_graph(
+        graph: &crate::v1_compiler_infer_items::ResolvedGraph,
+    ) -> Vec<CollisionRow> {
+        let info = build_emit_graph_info(graph.modules.clone(), graph.item_registry.clone());
+        let needs_sharing = sharing_for_target(RenderTarget::Rust).needs_sharing;
+        let mut leaves: Vec<String> = info
+            .type_decl_items
+            .identities_by_leaf
+            .keys()
+            .cloned()
+            .collect();
+        leaves.sort();
+        let mut rows = Vec::new();
+        for leaf in leaves {
+            let mut declarers =
+                (*type_decl_identities_of_leaf(info.type_decl_items.clone(), leaf.clone()))
+                    .clone()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+            if declarers.len() < 2 {
+                continue;
+            }
+            declarers.sort();
+            let mut would_share = Vec::new();
+            for identity in &declarers {
+                match (*type_summary_at_key(info.type_summaries.clone(), identity.clone())).clone()
+                {
+                    TypeSummaryLookup::TypeSummaryFound { summary } => would_share.push(
+                        would_share_of(summary, info.recursive_type_set.clone(), needs_sharing),
+                    ),
+                    _ => would_share.push(false),
+                }
+            }
+            let first = would_share.first().copied().unwrap_or(false);
+            let different = would_share.iter().any(|s| *s != first);
+            rows.push(CollisionRow {
+                leaf,
+                declarers,
+                would_share,
+                different,
+                rustc: if different {
+                    "pending".to_string()
+                } else {
+                    "not_attempted".to_string()
+                },
+                rustc_detail: String::new(),
+            });
+        }
+        rows
+    }
+
+    fn rustc_grade(
+        entry: &str,
+        graph: &crate::v1_compiler_infer_items::ResolvedGraph,
+    ) -> (String, String) {
+        let emit = emit_rust(Rc::new(graph.clone()));
+        match super::emitted_closure_compile_host::cargo_verdict_of_emit(entry, &emit) {
+            Err(cause) => ("unreached".to_string(), cause),
+            Ok(super::emitted_closure_compile_host::CargoVerdict::Completed {
+                status,
+                probe_diagnostic,
+                ..
+            }) => {
+                if status == 0 {
+                    ("accepted".to_string(), String::new())
+                } else {
+                    (
+                        "refused".to_string(),
+                        probe_diagnostic.unwrap_or_else(|| format!("cargo status {status}")),
+                    )
+                }
+            }
+            Ok(other) => ("unreached".to_string(), format!("{other:?}")),
+        }
+    }
+
+    fn print_rows(kind: &str, subject: &str, rows: &[CollisionRow]) {
+        let same = rows.iter().filter(|r| !r.different).count();
+        let different = rows.iter().filter(|r| r.different).count();
+        println!(
+            "{PREFIX}: subject kind={kind} name={subject} colliding_leaves={} same_sharing={same} different_sharing={different}",
+            rows.len()
+        );
+        for row in rows {
+            let sharing = if row.different { "different" } else { "same" };
+            let would = row
+                .would_share
+                .iter()
+                .map(|b| if *b { "share" } else { "copy" })
+                .collect::<Vec<_>>()
+                .join(",");
+            println!(
+                "{PREFIX}: collision subject={subject} leaf={} declarers={} would_share={would} sharing={sharing} rustc={} {}",
+                row.leaf,
+                row.declarers.join(","),
+                row.rustc,
+                row.rustc_detail
+            );
+        }
+    }
+
+    fn classify_sources(
+        label: &str,
+        sources: Vec<Rc<SourceFile>>,
+        rustc_when_different: bool,
+    ) -> Result<Vec<CollisionRow>, String> {
+        let compiled = compile_to_resolved(Rc::new(sources.into()));
+        let graph = compiled
+            .graph
+            .clone()
+            .ok_or_else(|| format!("{label}: compile_to_resolved produced no graph"))?;
+        let mut rows = collisions_of_graph(&graph);
+        if rustc_when_different && rows.iter().any(|r| r.different) {
+            let (grade, detail) = rustc_grade(label, &graph);
+            for row in &mut rows {
+                if row.different {
+                    row.rustc = grade.clone();
+                    row.rustc_detail = detail.clone();
+                }
+            }
+        }
+        Ok(rows)
+    }
+
+    let red_sources = match load_dir(FIXTURE_DIR) {
+        Ok(all) => all
+            .into_iter()
+            .filter(|s| {
+                let name = std::path::Path::new(&s.path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                matches!(name, "copy_word.dag" | "shared_word.dag" | "red_entry.dag")
+            })
+            .collect::<Vec<_>>(),
+        Err(e) => return unreached(e),
+    };
+    let green_sources = match load_dir(FIXTURE_DIR) {
+        Ok(all) => all
+            .into_iter()
+            .filter(|s| {
+                let name = std::path::Path::new(&s.path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                matches!(name, "green_a.dag" | "green_b.dag" | "green_entry.dag")
+            })
+            .collect::<Vec<_>>(),
+        Err(e) => return unreached(e),
+    };
+
+    let red_rows = match classify_sources("stlc.red_entry", red_sources, true) {
+        Ok(rows) => rows,
+        Err(e) => return unreached(e),
+    };
+    let green_rows = match classify_sources("stlc.green_entry", green_sources, false) {
+        Ok(rows) => rows,
+        Err(e) => return unreached(e),
+    };
+    print_rows("fixture", "stlc.red_entry", &red_rows);
+    print_rows("fixture", "stlc.green_entry", &green_rows);
+
+    let red_held = red_rows.iter().any(|r| r.different);
+    let green_held = green_rows.is_empty();
+    println!(
+        "{PREFIX}: control red_fixture_flags_different_sharing {}",
+        if red_held { "held" } else { "unmet" }
+    );
+    println!(
+        "{PREFIX}: control green_fixture_has_no_collision {}",
+        if green_held { "held" } else { "unmet" }
+    );
+
+    let mut subjects: Vec<(String, String)> = vec![
+        (
+            "self-host".to_string(),
+            "src/v2/compiler/00_compile.dag".to_string(),
+        ),
+        (
+            "v2-native-cli".to_string(),
+            "src/v2/cli/compile_cli.dag".to_string(),
+        ),
+    ];
+    for (label, producer) in instrument_registry() {
+        if let TargetProducer::NativeClaimProgram { entry } = producer {
+            subjects.push((label.target.clone(), entry.to_string()));
+        }
+    }
+
+    let mut reports_ok = true;
+    for (name, entry) in subjects {
+        match cli_run::load_sources_for_entry_with_pool_index(source_roots, &entry, false) {
+            Ok(sources) => match classify_sources(&name, sources, true) {
+                Ok(rows) => print_rows("closure", &name, &rows),
+                Err(e) => {
+                    reports_ok = false;
+                    println!("{PREFIX}: subject kind=closure name={name} unreached {e}");
+                }
+            },
+            Err(e) => {
+                reports_ok = false;
+                println!("{PREFIX}: subject kind=closure name={name} unreached {e}");
+            }
+        }
+    }
+
+    let held = red_held && green_held;
+    InvocationOutcome {
+        termination: if !held {
+            Termination::ObservationDidNotHold
+        } else if !reports_ok {
+            Termination::SubjectUnreached
+        } else {
+            Termination::ObservationHeld
+        },
+        message: format!(
+            "{PREFIX}: {} (controls over {FIXTURE_DIR}; report over required subjects and NativeClaimProgramProducer entries)",
+            if held { "STANDING held" } else { "STANDING unmet" }
         ),
     }
 }
