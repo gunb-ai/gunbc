@@ -1,7 +1,10 @@
 module test.claim.compute.attempt_lifecycle_wet_witness
 
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_entry_presence, filesystem_listing_observation,
+  FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed,
+}
 import std.types { Bool, Int, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
 import std.measure { kibibyte, kibibyte_count }
@@ -521,7 +524,7 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
 //
 // RED against a leaf that routes a served read to compute_provide_produce: where the compute root
 // cannot be made the answer is a refusal and not an attachment, and where it can the work directory
-// exists and the probe reads it present. No absent request is asked here: on a host whose compute root
+// exists and the walk reads it listed. No absent request is asked here: on a host whose compute root
 // exists that would reserve a seat and launch a real unit.
 //
 // WHAT THIS DOES NOT EXECUTE: the producer. The record is committed by the production commit function
@@ -567,42 +570,32 @@ fn reuse_commit_detail(root_path: String) -> String {
   }
 }
 
-type ReusePathReading
-  = ReusePathAbsent
-  | ReusePathPresent
-  | ReusePathUnreadable { at: String }
-
-// Walks the path from "/" down: each listed prefix either names the next component (descend) or
-// does not (absent). A prefix that cannot be listed is unreadable, never absent.
+// Walks the path from "/" down. Each step is the filesystem authority's own entry-presence reading
+// over an admitted listing: a listed component descends, and any other reading -- established
+// absence, an indeterminate listing, a refused subject -- ends the walk with that reading. Only an
+// established absence counts as absent.
 type ReusePathWalk
   = ReuseWalkListing { at: String }
-  | ReuseWalkDone { reading: ReusePathReading }
+  | ReuseWalkDone { presence: FilesystemEntryPresence }
 
 fn reuse_path_step(walk: ReusePathWalk, part: String) -> ReusePathWalk {
   match walk {
-    ReuseWalkDone { reading } => ReuseWalkDone { reading: reading }
+    ReuseWalkDone { presence } => ReuseWalkDone { presence: presence }
     ReuseWalkListing { at } => {
       let l = Filesystem.List(path: at)
-      let next = if at == "/" { join(["/", part], "") } else { join([at, "/", part], "") }
-      if !l.success { ReuseWalkDone { reading: ReusePathUnreadable { at: at } } }
-      else if filesystem_listing_names_entry(listing: l.entries, name: part) { ReuseWalkListing { at: next } }
-      else { ReuseWalkDone { reading: ReusePathAbsent } }
+      let presence = filesystem_entry_presence(listing: filesystem_listing_observation(directory: at, success: l.success, entries: l.entries, error: l.error), name: part)
+      match presence {
+        FilesystemEntryListed { directory: _, name: _ } => ReuseWalkListing { at: if at == "/" { join(["/", part], "") } else { join([at, "/", part], "") } }
+        _ => ReuseWalkDone { presence: presence }
+      }
     }
   }
 }
 
-fn reuse_path_reading(path: String) -> ReusePathReading {
+fn reuse_path_absent(path: String) -> Bool {
   match fold(path.split(sep: "/").filter(c => c != ""), init: ReuseWalkListing { at: "/" }, f: (acc, part) => reuse_path_step(walk: acc, part: part)) {
-    ReuseWalkDone { reading } => reading
-    ReuseWalkListing { at: _ } => ReusePathPresent
-  }
-}
-
-fn reuse_path_absent(r: ReusePathReading) -> Bool {
-  match r {
-    ReusePathAbsent => true
-    ReusePathPresent => false
-    ReusePathUnreadable { at: _ } => false
+    ReuseWalkDone { presence } => match presence { FilesystemEntryAbsent(_) => true  _ => false }
+    ReuseWalkListing { at: _ } => false
   }
 }
 
@@ -611,10 +604,10 @@ fn reuse_served_without_production(root_path: String) -> Bool {
   let subject = ExactTree { tree: reuse_tree() }
   let toolchain = fixture_toolchain(rustc: "rustc fixture")
   let work_dir = compute_layout(instance: instance, identity_hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: toolchain)).work_dir
-  let before = reuse_path_reading(path: work_dir)
+  let before = reuse_path_absent(path: work_dir)
   let provided = compute_provide_leaf(store: reuse_store(root_path: root_path), instance: instance, commit: "fixture-commit", subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
-  let after = reuse_path_reading(path: work_dir)
-  reuse_path_absent(r: before) && reuse_path_absent(r: after)
+  let after = reuse_path_absent(path: work_dir)
+  before && after
     && (match provided {
       ProvideAttached { identity, ending, document, host_record } => identity == "fixture-identity" && ending == "succeeded" && string_contains(s: document, pattern: "fixture-identity") && (match host_record { HostRecordWritten => true  _ => false })
       ProvideFresh { outcome: _, document: _, host_record: _ } => false
