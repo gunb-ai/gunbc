@@ -21,7 +21,7 @@ import gunbc.rust_item_identity {
 }
 import std.algebra { trim, list_snoc_item, freemonoid_empty }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.algebra { any, filter, fold_list, length, list_map }
+import v2.std.algebra { fold_list, length, list_map }
 
 // WHY THIS READER EXISTS, AND WHAT CAPABILITY IT RESTORES.
 //

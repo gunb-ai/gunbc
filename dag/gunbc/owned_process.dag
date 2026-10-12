@@ -6,7 +6,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.optional { Present, Absent }
-import v2.std.algebra { filter }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.proc_pid_stat { ProcPidStatStartTime, StartTimeObserved, proc_pid_stat_start_time }
 import gunbc.machine_intake_sol_hold

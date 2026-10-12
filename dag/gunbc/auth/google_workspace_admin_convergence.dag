@@ -9,7 +9,6 @@ import extdeps.google.workspace {
   RegisteredWebClient, InternalAudience, ExternalAudience, ClientAccess, AppSpecificGoogleData, AppTrusted, AppLimited, AppBlocked, DirectorySharing, RequesterBasicProfileOnly, OrganizationDirectoryData, PhotoEditing,
   workspace_admin_control, workspace_admin_value_control, workspace_admin_read_surface, ConsoleReadbackRequired, PolicyApiReadSupported,
 }
-import v2.std.algebra { any }
 
 // A manual action is an outstanding obligation. It is never an API mutation or a completed
 // convergence merely because a login or a profile fetch succeeded. Values and receipts contain

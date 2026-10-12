@@ -2,7 +2,7 @@ module gunbc.machine_intake_bmc_rotation_route
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.scoped_authorization { AttemptIdentity }
-import v2.std.algebra { any, filter, length }
+import v2.std.algebra { length }
 import std.disposition { Disposition, Terminal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq }

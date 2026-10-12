@@ -3,7 +3,7 @@ module tools.reference_derived_graph
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.types { Bool, List, String }
 import extdeps.filesystem.filesystem_io
-import v2.std.algebra { any, fold_list }
+import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.lens.module_graph {
   ImportResolutionFact,

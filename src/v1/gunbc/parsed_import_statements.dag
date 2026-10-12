@@ -1,7 +1,7 @@
 module v1.gunbc.parsed_import_statements
 
 import std.types { String, List }
-import std.import { ParsedImportObservation }
+import std.import_statement { ParsedImportObservation }
 import v1.compiler.parse { parse_import_statement_extents }
 import v1.std.core { empty_intern_table, NewlineIndex, Token }
 

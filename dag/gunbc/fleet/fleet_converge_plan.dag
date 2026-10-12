@@ -816,6 +816,7 @@ fn timer_retirement_desired() -> List<TimerRetirementMember> {
   []
 }
 
+// HOST FACT: retires the legacy timer units that existed on srv1 only; it names srv1 by design, not by prod placement.
 fn timer_retirement_observed_legacy_srv1() -> List<TimerRetirementMember> {
   let names = deployment_spec_srv1().names
   [

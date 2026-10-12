@@ -56,7 +56,14 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_tailnet_door_socket,
   dashboard_instance_tailnet_door_directory,
 }
-import gunbc.auth.tracker_web_oauth_client { tracker_web_test_lab_https_port }
+import gunbc.auth.tracker_web_oauth_client {
+  tracker_web_test_lab_https_port,
+  tracker_web_oidc_serve_placement,
+  TrackerWebOidcServeReady,
+  TrackerWebOidcPlacementUnassigned,
+  TrackerWebOidcPlacementUnbound,
+  TrackerWebOidcPlacementMissingRealization,
+}
 import extdeps.http.server { HttpServerListenConfig }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_confirm_front_door }
 import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed, approval_broker_front_door_endpoints }
@@ -112,6 +119,7 @@ type OwnedArtifactKind =
   | FabricStorageServeMapping
   | ApprovalBrokerFrontDoor
   | TailnetDoorServeUnit
+  | OidcConfigArtifact
 
 // AN ENSURED HOST RESOURCE: converged on every apply, never torn down, TeardownRefuses{
 // TeardownOutsideOwnership}. Only packages remain; the directory arms became owned-directory targets.
@@ -193,6 +201,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     FabricStorageServeMapping => TeardownActs
     ApprovalBrokerFrontDoor => TeardownActs
     TailnetDoorServeUnit => TeardownActs
+    OidcConfigArtifact => TeardownActs
   }
 }
 
@@ -1135,6 +1144,7 @@ fn deployment_owned_steps(
       kind: DeployedTreeRemoteUnit,
       path: deployment_tree_remote_unit_path(names: names),
     },
+  ], concat(deployment_oidc_config_steps(instance: instance), concat([
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep {
       kind: PublicationHelperPathUnit,
@@ -1149,7 +1159,25 @@ fn deployment_owned_steps(
   ], concat(
     deployment_fabric_storage_steps(holding: holding, names: names),
     deployment_approval_broker_front_door_steps(holding: holding),
-  ))))
+  ))))))
+}
+
+// THE OIDC CONFIG FILE IS A PLACEMENT-SCOPED MEMBER, not an instance-kind every twin must share.
+// tracker_web_oidc_serve_placement admits ServeReady only for the instances assigned a realized
+// Google login environment; production's assignment is unbound, so it owns none, and the lab
+// instance that is ServeReady owns the file. Same shape as fabric storage, the approval-broker
+// front door, and the tailnet door: presence is decided by a named function, the other twin owns
+// zero of them, and a_twin_deployment_on_one_host_collides_with_nothing subtracts them from the
+// kind join rather than demanding a mirror.
+fn deployment_oidc_config_steps(instance: HostDashboardInstance) -> List<DeploymentArtifactStep> {
+  match tracker_web_oidc_serve_placement(instance_id: instance.instance_id) {
+    TrackerWebOidcServeReady { config: cfg } => [
+      DeploymentArtifactStep { kind: OidcConfigArtifact, path: cfg.config_path },
+    ]
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => []
+  }
 }
 
 // THE BROKER'S TAILNET EXPOSURE IS ONE OWNED MEMBER OF THE DEPLOYMENT THAT OWNS THE BROKER, and its

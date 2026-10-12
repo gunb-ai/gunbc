@@ -34,6 +34,7 @@ module gunbc.auth.oidc_deployment_config
 import std.types { String, NonEmptyStr, Int, List, Secret }
 import std.algebra { trim }
 import std.nat { Nat }
+import std.measure { Second, second }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io {
@@ -50,9 +51,9 @@ data oidc_config_env_var: NonEmptyStr = "GUNBC_OIDC_CONFIG_FILE" as NonEmptyStr
 
 data oidc_config_schema: String = "gunbc-oidc-config/v1"
 
-data oidc_session_lifetime_seconds: Int = 43200
+data oidc_session_lifetime: Second = second(count: 43200)
 
-data oidc_login_transaction_lifetime_seconds: Int = 600
+data oidc_login_transaction_lifetime: Second = second(count: 600)
 
 data oidc_client_secret_file_member: String = "client_secret_file"
 

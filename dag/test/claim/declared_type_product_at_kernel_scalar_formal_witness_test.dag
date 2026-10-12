@@ -17,13 +17,13 @@ import std.types { String, Bool, Int }
 // EpochMs`) passed where `read_at_millis: EpochMs` is declared. std.types EpochMs is
 // `Int where range(min: 0)`.
 //
-// Two arms, measured separately because they fail differently. At the EpochMs formal and the EpochMs
-// declared return no arm of v1.compiler.infer declared_type_inhabitance judges the pair and it reaches
-// Inhabits by fallthrough, with no inhabitance diagnostic at all. At a plain Int formal
-// record_at_scalar_needs_identity answers UndecidableProducedIdentityErased, an advisory.
+// Two arms, measured separately because they failed differently before the repair. At the EpochMs
+// formal and the EpochMs declared return no arm of v1.compiler.infer declared_type_inhabitance judged
+// the pair and it reached Inhabits by fallthrough; at a plain Int formal the deleted
+// record_at_scalar_needs_identity answered UndecidableProducedIdentityErased, an advisory.
 //
-// The three RED claims assert the REQUIRED refusal and are carried in v2.workflow.floor_expected_red
-// while the seed accepts; when the wall lands they pass, the roster names them for removal, and they
+// The three RED claims assert the REQUIRED refusal. They were carried in v2.workflow.floor_expected_red
+// while the seed accepted; v1.compiler.infer product_at_scalar_declared_type (gunbc#13391) made them
 // stay here as permanent regression controls (DESIGN 4b(4)). The positive control keeps the wall from
 // over-refusing the record's own EpochMs field, and the harness control proves an Int at a Bool
 // argument refuses through this same census route, so a red here is the seam and not the harness.

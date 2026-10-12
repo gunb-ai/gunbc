@@ -41,6 +41,7 @@ type IsolationGuarantee
   | AttemptScopedSecrets
   | DefaultDenyEgress
   | DedicatedKernel
+  | DedicatedDevice
 
 fn isolation_guarantee_label(g: IsolationGuarantee) -> String {
   match g {
@@ -51,9 +52,16 @@ fn isolation_guarantee_label(g: IsolationGuarantee) -> String {
     AttemptScopedSecrets => "attempt-scoped-secrets"
     DefaultDenyEgress => "default-deny-egress"
     DedicatedKernel => "dedicated-kernel"
+    DedicatedDevice => "dedicated-device"
   }
 }
 
+// DedicatedDevice is the DEVICE tenancy boundary, a different axis from DedicatedKernel: a GPU
+// time-sliced or vGPU-partitioned among co-located tenants gives a dedicated kernel yet a measurement
+// that is not a guaranteed operating region (a neighbour's load moves it). A requirement states it
+// when the figure it buys must hold for the whole device (a qualification run); an offer lists it only
+// when the device is not shared with other workloads.
+//
 // ONE TYPE FOR BOTH SIDES, BECAUSE REQUIRED AND PROVIDED ARE THE SAME KIND OF FACT.
 //
 // A separate OfferIsolationCapability record would be a second spelling of one concept, and the
