@@ -638,11 +638,13 @@ fn native_claim_policy_child_deadline() -> Millisecond {
   millisecond(count: 600000)
 }
 
-// Wall budget for //gunbc/instruments:value-position-block-nests. MEASURED on this session's
-// cgroup (memory.max=25769803776): GREEN child completed both d14 nests (status=0 held) under
-// this 15 s bound; RED on body_lower_value_lowered reverted to pre-7617fdac85f1 was deadline
-// exceeded elapsed_ms=15017, gunbc test exit 1. Margin: GREEN strictly below 15 s; 15 s ≪ 80.6 s
-// defective census-infer d10 and hours at defective d14.
+// Wall budget for //gunbc/instruments:value-position-block-nests, set from the measured child
+// wall of this driver. Producer: `gunbc test //gunbc/instruments:value-position-block-nests`
+// on sunny-carp-272 at 1d1f4cf6d17, cgroup memory.max=25769803776, printed
+// child_wall_ms=1104 deadline_ms=15000 (same Instant). 15000 ms is 13.6× that green wall and
+// still BELOW the defective observation (srv1 RED elapsed_ms=15002 at this bound; census-infer
+// d10 was 80600 ms pre-fix; defective d14 is hours). Keep 15000 rather than a tighter multiple
+// so one noisy runner cannot false-RED a 1.1 s green.
 fn value_position_block_nests_child_deadline() -> Millisecond {
   millisecond(count: 15000)
 }
