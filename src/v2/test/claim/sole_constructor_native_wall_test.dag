@@ -1,5 +1,5 @@
-// sole_constructor_native_wall_test -- HERMETIC WALL WITNESSES for the former drop
-// gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property.
+// sole_constructor_native_wall_test -- HERMETIC WALL WITNESSES for
+// v2.compiler.infer infer_sole_constructor_diags.
 //
 // The wall's contract is judged over VALUES: a captured TypeDeclarationModifierChannel, a
 // constructing-module symbol, and a type path. No claim here runs ingest. The ONE real-path

@@ -8765,7 +8765,7 @@ fn infer_caller_admission_diags(tree: ResolvedTree, entries: List<InferredFactsE
 // ===================================================================
 // SOLE_CONSTRUCTOR — the construction wall.
 //
-// Restoration of gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property:
+// Native construction wall (retired the former native-route modifier-parse drop):
 // v2 parse already mints TypeDeclModifier onto NormalizedTree.type_declaration_modifiers.
 // This stage consumes that channel from ResolvedTree and refuses a construction of a
 // sole_constructor type whose constructing MODULE is not the declaring module.

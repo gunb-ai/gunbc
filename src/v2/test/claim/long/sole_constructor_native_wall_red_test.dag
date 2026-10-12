@@ -1,5 +1,5 @@
-// sole_constructor_native_wall_red_test -- REAL-PATH INHABITANCE for the former drop
-// gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property.
+// sole_constructor_native_wall_red_test -- REAL-PATH INHABITANCE for
+// v2.compiler.infer infer_sole_constructor_diags.
 //
 // Native ingest (parse -> assemble -> lower -> infer) over a two-module fixture. The hermetic
 // judge lives in src/v2/test/claim/sole_constructor_native_wall_test.dag. This file is in the
