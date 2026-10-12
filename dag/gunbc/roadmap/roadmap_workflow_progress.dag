@@ -33,6 +33,8 @@ import gunbc.roadmap_provider_events {
   provider_execution_state_label,
   provider_execution_activity,
   provider_execution_detail,
+  provider_execution_is_event_locked,
+  provider_execution_completed_activity,
   parse_codex_jsonl,
 }
 import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundsUnobserved, throughput_cell_text, harness_throughput_from_ledger, harness_round_ledger_from_events }
@@ -315,82 +317,89 @@ fn provider_execution_reconcile_process(
   provider: ProviderExecutionState,
   process: WorkerProcessEvidence,
 ) -> ProviderExecutionState {
-  match provider {
-    ProviderFailed { activity: _, detail: _ } => provider
-    ProviderBudgetSpent { activity: _, detail: _ } => provider
-    ProviderEventsRefused { activity: _, detail: _ } => provider
-    ProviderCompleted { activity } =>
-      match process {
-        WorkerProcessExited { exit_code, last_command: _ } =>
-          if exit_code == 0 {
-            provider
-          } else {
+  // PARTITION FOLD: the old leading arms (the three refusals keep themselves) and the trailing
+  // `_` (everything else still owes a process judgment) are the two sides of the derived
+  // is_event_locked partition; the completed arm reads its RAW activity through the
+  // provider_execution_completed_activity projection (not the "Agent complete" label), and the
+  // non-started arm reads the process fold with ProviderNotStarted named by case instead of a
+  // second wildcard.
+  if provider_execution_is_event_locked(state: provider) {
+    match provider_execution_completed_activity(state: provider) {
+      Present { value: activity } =>
+        match process {
+          WorkerProcessExited { exit_code, last_command: _ } =>
+            if exit_code == 0 {
+              provider
+            } else {
+              ProviderEventsRefused {
+                activity: activity,
+                detail: join([
+                  "Codex emitted turn.completed but the retained pane exited ",
+                  to_string(exit_code),
+                  "; terminal evidence conflicts",
+                ], ""),
+              }
+            }
+          WorkerProcessRunning { command: _ } =>
+            ProviderRunning {
+              activity: join([activity, "; awaiting process exit"], ""),
+            }
+          WorkerProcessAbsent =>
+            ProviderEventsRefused {
+              activity: activity,
+              detail: "Codex emitted turn.completed but no process exit was observed; the pane is absent, so the compatible exit the Agent obligation requires cannot be established",
+            }
+          WorkerProcessUnobserved { reason } =>
             ProviderEventsRefused {
               activity: activity,
               detail: join([
-                "Codex emitted turn.completed but the retained pane exited ",
-                to_string(exit_code),
-                "; terminal evidence conflicts",
+                "Codex emitted turn.completed but process evidence is unobserved (",
+                reason,
+                "); the compatible exit the Agent obligation requires cannot be established",
               ], ""),
             }
-          }
-        WorkerProcessRunning { command: _ } =>
-          ProviderRunning {
-            activity: join([
-              activity,
-              "; awaiting process exit",
-            ], ""),
-          }
-        WorkerProcessAbsent =>
+        }
+      // The refusals keep themselves: a locked terminal state admits no further process
+      // judgment.
+      none => provider
+    }
+  } else {
+    match process {
+      WorkerProcessRunning { command: _ } =>
+        match provider {
+          ProviderNotStarted =>
+            ProviderStarting { activity: "waiting for first provider event" }
+          ProviderStarting { activity: _ } => provider
+          ProviderAwaitingSeat { detail: _ } => provider
+          ProviderRunning { activity: _ } => provider
+        }
+      WorkerProcessExited { exit_code, last_command: _ } =>
+        if exit_code == 0 {
           ProviderEventsRefused {
-            activity: activity,
-            detail: "Codex emitted turn.completed but no process exit was observed; the pane is absent, so the compatible exit the Agent obligation requires cannot be established",
+            activity: "provider process exited",
+            detail: "provider process exited 0 without turn.completed, turn.failed, or error",
           }
-        WorkerProcessUnobserved { reason } =>
-          ProviderEventsRefused {
-            activity: activity,
+        } else {
+          ProviderFailed {
+            activity: "provider process exited",
             detail: join([
-              "Codex emitted turn.completed but process evidence is unobserved (",
-              reason,
-              "); the compatible exit the Agent obligation requires cannot be established",
+              "provider process exited ",
+              to_string(exit_code),
+              " before a terminal provider event",
             ], ""),
           }
-      }
-    _ =>
-      match process {
-        WorkerProcessRunning { command: _ } =>
-          match provider {
-            ProviderNotStarted =>
-              ProviderStarting { activity: "waiting for first provider event" }
-            _ => provider
-          }
-        WorkerProcessExited { exit_code, last_command: _ } =>
-          if exit_code == 0 {
-            ProviderEventsRefused {
-              activity: "provider process exited",
-              detail: "provider process exited 0 without turn.completed, turn.failed, or error",
-            }
-          } else {
-            ProviderFailed {
-              activity: "provider process exited",
-              detail: join([
-                "provider process exited ",
-                to_string(exit_code),
-                " before a terminal provider event",
-              ], ""),
-            }
-          }
-        WorkerProcessAbsent =>
-          ProviderEventsRefused {
-            activity: "provider process absent",
-            detail: "no retained provider pane and no terminal provider event",
-          }
-        WorkerProcessUnobserved { reason } =>
-          ProviderEventsRefused {
-            activity: "process observation refused",
-            detail: reason as String,
-          }
-      }
+        }
+      WorkerProcessAbsent =>
+        ProviderEventsRefused {
+          activity: "provider process absent",
+          detail: "no retained provider pane and no terminal provider event",
+        }
+      WorkerProcessUnobserved { reason } =>
+        ProviderEventsRefused {
+          activity: "process observation refused",
+          detail: reason as String,
+        }
+    }
   }
 }
 

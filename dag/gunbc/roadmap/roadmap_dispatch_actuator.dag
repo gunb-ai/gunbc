@@ -171,6 +171,7 @@ import gunbc.worker_lifecycle {
   WorkerObservation,
   worker_observation_without_provider_probe,
   worker_observation_without_provider_probe_for_process,
+  worker_process_observed_command,
   WorkerProcessEvidence,
   WorkerProcessUnobserved,
   WorkerProcessAbsent,
@@ -4373,14 +4374,17 @@ fn live_session_row_with_process(
 ) -> DispatchLiveSession? {
   match dispatch_worker_observation_for_process(process: process) {
     Present { value: worker } => {
-      let obs = match process {
-        WorkerProcessRunning { command } =>
+      // PARTITION FOLD: the command fingerprint is the derived worker_process_observed_command
+      // projection (only a Running pane inhabits one), so this branches on Present/none instead
+      // of a wildcard over the evidence variant list.
+      let obs = match worker_process_observed_command(process: process) {
+        Present { value: command } =>
           SessionObserved {
             session_name: entry.session_name as NonEmptyStr,
             windows: entry.windows,
             process_fingerprint: command,
           }
-        _ =>
+        none =>
           SessionNameObserved {
             session_name: entry.session_name as NonEmptyStr,
             windows: entry.windows,

@@ -14,7 +14,11 @@ import gunbc.roadmap_provider_events {
   ProviderRunning,
   ProviderAwaitingSeat,
   ProviderFailed,
+  ProviderBudgetSpent,
   ProviderEventsRefused,
+  ProviderNotStarted,
+  ProviderStarting,
+  provider_execution_is_event_locked,
 }
 import gunbc.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
@@ -26,6 +30,7 @@ import gunbc.roadmap_workflow_progress {
   workflow_attempt_progress,
   workflow_attempt_progress_json_value,
   receipt_records_admission,
+  provider_execution_reconcile_process,
 }
 import gunbc.roadmap_workflow_command { legacy_attempt_supersedable_label }
 import gunbc.harness.harness_throughput { RoundsObserved, RoundsUnobserved }
@@ -1075,3 +1080,74 @@ test fn an_ended_worker_is_owed_its_capture_until_the_commit_step_settles_it() -
     && !belt_attempt_obligation_outstanding(kind: CaptureObligation, provider: settled.provider, segments: settled.segments)
 }
 
+
+// THE RECONCILE-ON-PROCESS PARTITION FOLD, WITNESSED. nfr_dissolve_provider_terminal_absorb
+// dissolved provider_execution_reconcile_process's two wildcards into the derived
+// is_event_locked partition (locked keep themselves; everything else still owes a process
+// judgment, with ProviderNotStarted named by case); a new terminal state kind must name its
+// side of the partition here or the row goes red.
+test fn a_reconciled_refused_terminal_state_keeps_itself_under_any_process() -> Bool {
+  let processes: List<WorkerProcessEvidence> = [
+    WorkerProcessRunning { command: "codex" as NonEmptyStr },
+    WorkerProcessExited { exit_code: 0, last_command: "codex" },
+    WorkerProcessExited { exit_code: 1, last_command: "codex" },
+    WorkerProcessAbsent,
+    WorkerProcessUnobserved { reason: "no pane" as NonEmptyStr },
+  ]
+  count(
+    processes.filter(
+      p => provider_execution_reconcile_process(
+               provider: ProviderFailed { activity: "agent turn failed", detail: "d" },
+               process: p,
+             ) == ProviderFailed { activity: "agent turn failed", detail: "d" }
+             && provider_execution_reconcile_process(
+               provider: ProviderBudgetSpent { activity: "Agent stopped at its round budget", detail: "d" },
+               process: p,
+             ) == ProviderBudgetSpent { activity: "Agent stopped at its round budget", detail: "d" }
+             && provider_execution_reconcile_process(
+               provider: ProviderEventsRefused { activity: "Agent complete", detail: "d" },
+               process: p,
+             ) == ProviderEventsRefused { activity: "Agent complete", detail: "d" },
+    ),
+  ) == count(processes) && count(processes) == 5
+    && provider_execution_is_event_locked(state: ProviderCompleted { activity: "Agent complete" })
+}
+
+test fn a_completed_reconciled_against_an_incompatible_exit_is_a_refusal_named_by_the_raw_activity() -> Bool {
+  // The completed arm reads its RAW stored activity (provider_execution_completed_activity), not
+  // the "Agent complete" label, because the conflict names the completion the exit contradicts.
+  match provider_execution_reconcile_process(
+    provider: ProviderCompleted { activity: "Codex turn complete" },
+    process: WorkerProcessExited { exit_code: 3, last_command: "codex" },
+  ) {
+    ProviderEventsRefused { activity, detail: _ } =>
+      activity == "Codex turn complete"
+      && detail.contains("turn.completed") && detail.contains("exited 3")
+    _ => false
+  }
+    && provider_execution_reconcile_process(
+         provider: ProviderCompleted { activity: "Codex turn complete" },
+         process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+       ) == ProviderCompleted { activity: "Codex turn complete" }
+}
+
+test fn a_non_started_reconciled_against_a_running_pane_names_the_not_started_case() -> Bool {
+  match provider_execution_reconcile_process(
+    provider: ProviderNotStarted,
+    process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
+  ) {
+    ProviderStarting { activity } => activity == "waiting for first provider event"
+    _ => false
+  }
+    && provider_execution_reconcile_process(
+         provider: ProviderStarting { activity: "thread started" },
+         process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
+       ) == ProviderStarting { activity: "thread started" }
+    && provider_execution_reconcile_process(
+         provider: ProviderNotStarted,
+         process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
+       ) == ProviderEventsRefused {
+         activity: "provider process exited",
+         detail: "provider process exited 0 without turn.completed, turn.failed, or error",
+       }
+}
