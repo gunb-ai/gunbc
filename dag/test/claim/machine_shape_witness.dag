@@ -1,7 +1,7 @@
 module test.claim.machine_shape_witness
 
 import extdeps.gpu.apple { apple_m5_gpu_catalog }
-import extdeps.gpu.nvidia { nvidia_rtx_5090_catalog }
+import extdeps.gpu.nvidia { nvidia_rtx_5090_catalog, nvidia_b200_sxm_catalog }
 import extdeps.gpu.machine_shape {
   FromGpuModelCatalog,
   gpu_shape_from_catalog,
@@ -179,6 +179,21 @@ test fn red_dangling_level_refuses() -> Bool {
       o == rtx5090_domain && l == bad_level
     MachineShapeRefused { cause: UnknownDomain { id: _ } } => false
     MachineShapeRefused { cause: CatalogExecutionLanesUnstated } => false
+    MachineShapeOk { shape: _ } => false
+  }
+}
+
+test fn red_catalog_row_without_execution_lanes_refuses() -> Bool {
+  match gpu_shape_from_catalog(input: FromGpuModelCatalog {
+    domain: "b200-sxm" as DomainId,
+    register_level: rtx5090_register_level,
+    shared_level: rtx5090_shared_level,
+    device_level: rtx5090_device_level,
+    row: nvidia_b200_sxm_catalog,
+  }) {
+    MachineShapeRefused { cause: CatalogExecutionLanesUnstated } => true
+    MachineShapeRefused { cause: UnknownDomain { id: _ } } => false
+    MachineShapeRefused { cause: UnknownLevel { owner: _, level: _ } } => false
     MachineShapeOk { shape: _ } => false
   }
 }
