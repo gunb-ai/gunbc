@@ -15,8 +15,8 @@ import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
 // them. A stage is responsibility for the ENTRY, not the work's standing.
 //
 // ENQUEUE IS CREATE-ONLY. A second write of the same name does not replace the first. The
-// publication request used to overwrite; its content is a pure function of the subject, so
-// create-only is idempotent for a key already present.
+// publication request disk write is Filesystem.WriteCreateNew (gunbc.roadmap_publication_helper
+// publication_request_enqueue), assessed here.
 
 type HostSpoolStage
   = AttemptExitInbox

@@ -1,7 +1,7 @@
 module test.claim.retry_law_witness
 
-import std.types { Bool, List, NonEmptyStr, String, EpochSecs }
-import std.nat { Nat }
+import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
+import std.nat { Nat, Zero }
 import std.retry_law {
   RetryLaw, RetryHistoryEvent, RetryObservedClass, RealWorkFailure, RealWorkSuccess, ProbeOutcome, Cancelled,
   RetryAdmissible, RetryTerminalExhausted, RetryTerminalCancelled, RetryAlreadySucceeded,
@@ -24,20 +24,53 @@ test fn a_probe_success_does_not_reset_a_failing_real_work_series() -> Bool {
     ev(class: ProbeOutcome { succeeded: true }, at: 110),
     ev(class: RealWorkFailure, at: 120),
   ]
-  match retry_admissibility(law: witness_law, history: history, last_at: 120, hint_seconds: retry_no_hint(), jitter_seconds: 0) {
-    RetryAdmissible { earliest: e, real_work_failures: n } => n == 2 && e == 120 + 4
+  match retry_admissibility(law: witness_law, history: history, last_at: 120, hint_seconds: retry_no_hint(), jitter_seconds: Zero) {
+    RetryAdmissible { earliest: e, real_work_failures: n } => (n as Int) == 2 && e == 120 + 4
+    _ => false
+  }
+}
+
+test fn a_resume_does_not_reset_the_whole_history_bound() -> Bool {
+  let prior_session = [
+    ev(class: RealWorkFailure, at: 1),
+    ev(class: RealWorkFailure, at: 2),
+  ]
+  let after_resume = concat(prior_session, [ev(class: RealWorkFailure, at: 80)])
+  (match retry_admissibility(law: witness_law, history: prior_session, last_at: 2, hint_seconds: retry_no_hint(), jitter_seconds: Zero) {
+    RetryAdmissible { earliest: _, real_work_failures: n } => (n as Int) == 2
+    _ => false
+  }) && (match retry_admissibility(law: witness_law, history: after_resume, last_at: 80, hint_seconds: retry_no_hint(), jitter_seconds: Zero) {
+    RetryTerminalExhausted { real_work_failures: n } => (n as Int) == 3
+    _ => false
+  })
+}
+
+test fn a_probe_success_is_not_counted_toward_the_failure_bound() -> Bool {
+  let history = [
+    ev(class: RealWorkFailure, at: 1),
+    ev(class: ProbeOutcome { succeeded: true }, at: 2),
+    ev(class: ProbeOutcome { succeeded: true }, at: 3),
+  ]
+  match retry_admissibility(law: witness_law, history: history, last_at: 3, hint_seconds: retry_no_hint(), jitter_seconds: Zero) {
+    RetryAdmissible { earliest: _, real_work_failures: n } => (n as Int) == 1
     _ => false
   }
 }
 
 test fn an_upstream_retry_after_is_a_lower_bound_never_a_shortening() -> Bool {
   let history = [ev(class: RealWorkFailure, at: 50)]
-  let with_hint = retry_admissibility(law: witness_law, history: history, last_at: 50, hint_seconds: retry_hint_from_delta_seconds(seconds: 10), jitter_seconds: 0)
-  let without = retry_admissibility(law: witness_law, history: history, last_at: 50, hint_seconds: retry_no_hint(), jitter_seconds: 0)
+  let with_hint = retry_admissibility(law: witness_law, history: history, last_at: 50, hint_seconds: retry_hint_from_delta_seconds(seconds: 10), jitter_seconds: Zero)
+  let without = retry_admissibility(law: witness_law, history: history, last_at: 50, hint_seconds: retry_no_hint(), jitter_seconds: Zero)
+  let below_backoff = retry_admissibility(law: witness_law, history: history, last_at: 50, hint_seconds: retry_hint_from_delta_seconds(seconds: 1), jitter_seconds: Zero)
   match with_hint {
     RetryAdmissible { earliest: hinted, real_work_failures: _ } =>
       match without {
-        RetryAdmissible { earliest: plain, real_work_failures: _ } => hinted == 50 + 10 && plain == 50 + 2 && hinted > plain
+        RetryAdmissible { earliest: plain, real_work_failures: _ } =>
+          match below_backoff {
+            RetryAdmissible { earliest: not_lowered, real_work_failures: _ } =>
+              hinted == 50 + 10 && plain == 50 + 2 && hinted > plain && not_lowered == plain
+            _ => false
+          }
         _ => false
       }
     _ => false
@@ -52,13 +85,13 @@ test fn exhaustion_and_cancellation_are_persisted_terminals() -> Bool {
   ]
   let cancelled_hist = [ev(class: Cancelled { by: "operator" as NonEmptyStr }, at: 9)]
   let succeeded = [ev(class: RealWorkSuccess, at: 4)]
-  (match retry_admissibility(law: witness_law, history: exhausted_hist, last_at: 3, hint_seconds: retry_no_hint(), jitter_seconds: 0) {
-    RetryTerminalExhausted { real_work_failures: n } => n == 3
+  (match retry_admissibility(law: witness_law, history: exhausted_hist, last_at: 3, hint_seconds: retry_no_hint(), jitter_seconds: Zero) {
+    RetryTerminalExhausted { real_work_failures: n } => (n as Int) == 3
     _ => false
-  }) && (match retry_admissibility(law: witness_law, history: cancelled_hist, last_at: 9, hint_seconds: retry_no_hint(), jitter_seconds: 0) {
+  }) && (match retry_admissibility(law: witness_law, history: cancelled_hist, last_at: 9, hint_seconds: retry_no_hint(), jitter_seconds: Zero) {
     RetryTerminalCancelled { by: who } => (who as String) == "operator"
     _ => false
-  }) && (match retry_admissibility(law: witness_law, history: succeeded, last_at: 4, hint_seconds: retry_no_hint(), jitter_seconds: 0) {
+  }) && (match retry_admissibility(law: witness_law, history: succeeded, last_at: 4, hint_seconds: retry_no_hint(), jitter_seconds: Zero) {
     RetryAlreadySucceeded => true
     _ => false
   })

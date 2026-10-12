@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.holds_spools_retry_consolidation_residue
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringFailureMode {
+  identity: "holds_spools_retry_consolidation_residue" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: the holds/spools/retry consolidation (gunbc#13821) left named leftover authorities beside the new homes, so a later durable work-queue can still fork against the old spelling. HARM: a second decision algebra, a second stall bound, a specialized transfer pair, or a systemd RestartSec that is not the retry law's earliest time reappears as if the consolidation had not happened. These are not rung drops: nothing fell; the class sits unbuilt.",
+
+    "SITE — ProcessLeasePlan and DispatchLeasePlan remain separate from std.temporal_effect decision_for_held_lease_verdict. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: one UpsertDecision fold consumed by gunbc.session_lease and gunbc.roadmap_dispatch_actuator, with ProcessLeasePlan/DispatchLeasePlan deleted.",
+
+    "SITE — flock, exclusive-create lease files, and the git-ref lease remain realizations of occupancy, not rewritten onto std.durable_exclusive_hold. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: each realization's acquire/release assess through durable_hold_acquire_assess / durable_hold_release_assess without a parallel occupancy type; flock stays until kernel auto-release and -w wait are preserved.",
+
+    "SITE — stall_budget_verdict is not yet the stall half of event_backlog_judge, systemd_workload_stall_fired, or runner_broker_progress_silence_bound_seconds. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: those three consumers call std.temporal_effect stall_budget_verdict and their local stall numbers are deleted.",
+
+    "SITE — gunbc.fleet_observation_capture_chunk LocalCommitStanding remains a specialized pair beside std.durable_transfer. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: capture_chunk instantiates LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> from std.durable_transfer and deletes its own type.",
+
+    "SITE — spark transfer RestartSec/StartLimit* are systemd unit properties whose numbers are taken from spark_transfer_retry_law, but the unit still restarts without asking retry_admissibility. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the transfer supervisor consumes retry_admissibility for whether another start is admissible; RestartSec is the law's earliest delay, not a second bound.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration. Age-based recovery at four sites is a different class: gunbc.recurring_failure_mode.hold_recovered_by_age_not_observed_holder_death.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.session_lease", decl_name: "ProcessLeasePlan"),
+    decl_ref(module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "DispatchLeasePlan"),
+    decl_ref(module_path: "std.temporal_effect", decl_name: "decision_for_held_lease_verdict"),
+    decl_ref(module_path: "std.temporal_effect", decl_name: "stall_budget_verdict"),
+    decl_ref(module_path: "std.durable_transfer", decl_name: "LocalCommitStanding"),
+    decl_ref(module_path: "gunbc.fleet_observation_capture_chunk", decl_name: "LocalCommitStanding"),
+    decl_ref(module_path: "gunbc.spark.model_snapshot_materialize", decl_name: "spark_transfer_retry_law"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.hold_recovered_by_age_not_observed_holder_death", decl_name: "hold_recovered_by_age_not_observed_holder_death"),
+  ],
+}

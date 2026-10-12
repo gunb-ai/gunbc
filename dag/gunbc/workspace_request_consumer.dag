@@ -1,6 +1,11 @@
 module gunbc.workspace_request_consumer
 
-import std.types { String, NonEmptyStr, Timestamp, List }
+import std.types { String, NonEmptyStr, Timestamp, List, EpochSecs }
+import std.nat { Zero }
+import std.retry_law {
+  RetryLaw, RetryHistoryEvent, RealWorkFailure, retry_admissibility, retry_no_hint,
+  RetryAdmissible, RetryTerminalExhausted, RetryTerminalCancelled, RetryAlreadySucceeded,
+}
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation_store {
@@ -24,6 +29,35 @@ type WorkspaceConsumerNext
   | WorkspaceConsumerRoute { allocation: WorkspaceAllocation }
   | WorkspaceConsumerSettled { allocation: WorkspaceAllocation }
   | WorkspaceConsumerRetry
+
+data workspace_consumer_retry_law: RetryLaw = RetryLaw {
+  initial_delay_seconds: Zero,
+  delay_cap_seconds: 1,
+  real_work_failure_bound: 3,
+}
+
+fn workspace_consumer_retry_from_history(history: List<RetryHistoryEvent>, at: EpochSecs) -> WorkspaceConsumerNext {
+  match retry_admissibility(
+    law: workspace_consumer_retry_law,
+    history: history,
+    last_at: at,
+    hint_seconds: retry_no_hint(),
+    jitter_seconds: Zero,
+  ) {
+    RetryAdmissible { earliest: _, real_work_failures: _ } => WorkspaceConsumerRetry
+    RetryTerminalExhausted { real_work_failures: _ } =>
+      WorkspaceConsumerRefused { reason: "workspace store conflicts exhausted the retry law" }
+    RetryTerminalCancelled { by: who } => WorkspaceConsumerRefused { reason: who as String }
+    RetryAlreadySucceeded => WorkspaceConsumerIdle
+  }
+}
+
+fn workspace_consumer_on_conflict() -> WorkspaceConsumerNext {
+  workspace_consumer_retry_from_history(
+    history: [RetryHistoryEvent { class: RealWorkFailure, at: 0 }],
+    at: 0,
+  )
+}
 
 fn workspace_consumer_select(read: WorkspaceStoreRead, observed_at: Timestamp) -> WorkspaceConsumerNext {
   match read {
@@ -58,7 +92,7 @@ fn workspace_consumer_discover(store: FabricStorageBinding, owner: PrincipalRef,
 
 fn workspace_consumer_settlement_result(result: WorkspaceStoreWrite) -> WorkspaceConsumerNext {
   match result {
-    WorkspaceStoreConflict => WorkspaceConsumerRetry
+    WorkspaceStoreConflict => workspace_consumer_on_conflict()
     WorkspaceStoreWriteRefused { reason: detail } => WorkspaceConsumerRefused { reason: detail }
     WorkspaceStoreWritten { allocation: allocation } => if (allocation.phase == WorkspaceReleased) {
       WorkspaceConsumerSettled { allocation: allocation }
@@ -85,10 +119,10 @@ fn workspace_consumer_retire(store: FabricStorageBinding, owner: PrincipalRef,
         }
       } else { match workspace_record_expiry(store: store, owner: owner,
         idempotency_key: idempotency_key, observed_at: observed_at) {
-        WorkspaceStoreConflict => WorkspaceConsumerRetry
+        WorkspaceStoreConflict => workspace_consumer_on_conflict()
         WorkspaceStoreWriteRefused { reason: detail } => WorkspaceConsumerRefused { reason: detail }
         WorkspaceStoreWritten { allocation: current } => if (current.desired != WorkspaceRetired) {
-          WorkspaceConsumerRetry
+          workspace_consumer_on_conflict()
         } else { match current.plan {
           Present { value: _ } => WorkspaceConsumerRoute { allocation: current }
           Absent => workspace_consumer_settlement_result(result: workspace_settle_unplanned_retirement(

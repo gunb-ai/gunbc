@@ -8,7 +8,7 @@ import gunbc.systemd_unit_invocation_liveness {
 
 data recorded: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr
 
-test fn invocation_id_is_the_unit_hold_fence() -> Bool {
+test fn a_reused_unit_name_with_a_different_invocation_id_is_not_the_same_holder() -> Bool {
   let live = unit_invocation_holder_liveness(recorded_invocation: recorded, observed: UnitInvocationPresent { invocation_id: recorded })
   let moved = unit_invocation_holder_liveness(
     recorded_invocation: recorded,
