@@ -6866,13 +6866,13 @@ fn body_lower_postfix_chain_fold_step(
 fn body_lower_dotted_chain_lowered_optional(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_postfix_chain_read(node: node) {
     PostfixChainNotThisShape =>
-      if body_lower_postfix_chain_carries_as_suffix(node: node) {
+      if body_lower_postfix_chain_carries_cast_or_index_suffix(node: node) {
         outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: node))
       } else {
         outcome_accepted(value: optional_absent())
       }
     PostfixChainSuffixCarried { at: at } =>
-      if body_lower_postfix_chain_carries_as_suffix(node: node) {
+      if body_lower_postfix_chain_carries_cast_or_index_suffix(node: node) {
         outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_postfix_suffix_carried, n: at))
       } else {
       outcome_with_diagnostics(
@@ -6914,7 +6914,7 @@ fn body_lower_postfix_chain_lowered_from_steps(
     Absent =>
       match body_lower_operand_ref_read(node: head_node) {
         OperandRefAbsent =>
-          if body_lower_postfix_steps_carry_cast(steps: steps)
+          if body_lower_postfix_steps_carry_cast_or_index(steps: steps)
             || body_lower_postfix_head_is_call(head_node: head_node) {
             body_lower_postfix_cast_chain_computed_head(head_node: head_node, steps: steps, source: node)
           } else {
@@ -6985,7 +6985,7 @@ fn body_lower_postfix_cast_target_not_carried(at: Node) -> Outcome<PostfixAccum>
 // THE OPERAND READERS' CAST DOOR. A postfix chain carrying a cast step is lowered whole through the
 // chain fold (body_lower_dotted_chain_lowered_optional); any other node is not this reader's.
 fn body_lower_cast_chain_read(node: Node) -> OperandRefRead {
-  if body_lower_postfix_chain_carries_as_suffix(node: node) {
+  if body_lower_postfix_chain_carries_cast_or_index_suffix(node: node) {
     match body_lower_dotted_chain_lowered_optional(node: node) {
       Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
       Accepted { value: Present { value: lowered }, diagnostics: _ } => OperandRefLowered { lowered: lowered }
@@ -6999,7 +6999,7 @@ fn body_lower_cast_chain_read(node: Node) -> OperandRefRead {
   }
 }
 
-fn body_lower_postfix_steps_carry_cast(steps: List<PostfixStep>) -> Bool {
+fn body_lower_postfix_steps_carry_cast_or_index(steps: List<PostfixStep>) -> Bool {
   fold(steps, init: false, f: fn(acc, step) {
     acc || match step {
       PostfixCast { target: _ } => true
@@ -9703,14 +9703,14 @@ fn body_lower_postfix_lowered_primary_optional(captured: Node) -> Optional<Node>
 // A CAST IN A CHAIN THIS READ DECLINES IS REFUSED, NOT DECLINED: the arms behind the door read the
 // head and not the suffixes, so declining would drop the cast. The carried suffix is the refusal's
 // cause and locus.
-fn body_lower_postfix_chain_carries_as_suffix(node: Node) -> Bool {
+fn body_lower_postfix_chain_carries_cast_or_index_suffix(node: Node) -> Bool {
   match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: node)) {
     Absent => false
-    Present { value: pair } => body_lower_postfix_repeat_carries_as_suffix(repeat_capture: pair.right)
+    Present { value: pair } => body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: pair.right)
   }
 }
 
-fn body_lower_postfix_repeat_carries_as_suffix(repeat_capture: Node) -> Bool {
+fn body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: Node) -> Bool {
   if is_empty_conj_root(n: repeat_capture) {
     false
   } else {
@@ -9724,7 +9724,7 @@ fn body_lower_postfix_repeat_carries_as_suffix(repeat_capture: Node) -> Bool {
           Present { value: _ } => true
           Absent =>
             match body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
-              Present { value: rest } => body_lower_postfix_repeat_carries_as_suffix(repeat_capture: rest)
+              Present { value: rest } => body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: rest)
               Absent => false
             }
           }
