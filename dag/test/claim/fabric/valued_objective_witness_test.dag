@@ -213,6 +213,13 @@ fn accepted_work_field() -> List<ParetoEntry> {
   ]
 }
 
+fn zero_accepted_work_field() -> List<ParetoEntry> {
+  [
+    replica(id: id_wait, label: "zero work cheap cash" as NonEmptyStr, money: 1, delay: 0, interruption: 0, work: 0),
+    replica(id: id_move, label: "positive work" as NonEmptyStr, money: 50, delay: 0, interruption: 0, work: 10),
+  ]
+}
+
 fn dominated_field() -> List<ParetoEntry> {
   [
     replica(id: id_wait, label: "wait" as NonEmptyStr, money: 80, delay: 50, interruption: 5, work: 5),
@@ -290,6 +297,13 @@ test fn debt_payoff_waits_and_latency_sensitive_moves_on_the_tradeoff() -> Bool 
 
 test fn debt_payoff_moves_when_moving_raises_accepted_work_per_dollar() -> Bool {
   match pick(field: accepted_work_field(), objective: debt_payoff_objective, constraints: []) {
+    Picked { id: move_id, policy: _ } => declaration_ref_eq(a: move_id, b: id_move)
+    _ => false
+  }
+}
+
+test fn debt_payoff_does_not_pick_zero_accepted_work() -> Bool {
+  match pick(field: zero_accepted_work_field(), objective: debt_payoff_objective, constraints: []) {
     Picked { id: move_id, policy: _ } => declaration_ref_eq(a: move_id, b: id_move)
     _ => false
   }
