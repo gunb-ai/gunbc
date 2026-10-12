@@ -52,12 +52,12 @@ import gunbc.managed_directory {
   ManagedDirectory,
   managed_directory_admit,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
-  managed_directory_mode_octal,
+  managed_directory_mode_octal, managed_directory_permissions, declared_directory_mode, DirectoryOwnerAllEveryoneTraverse,
   EntriesUnmanaged, EntriesReadableByDependents,
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
 import extdeps.tools.chmod { chmod_binary_path }
-import extdeps.access.posix { PosixUser, file_mode_octal }
+import extdeps.access.posix { PosixUser, file_mode_octal, FileMode, PermissionBits }
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
   tailscale_serve_enable_argv,
@@ -1039,9 +1039,16 @@ fn leftover_timer_not_found_readback_intent() -> Node {
 // verbs on it. These two are the first members in this emitter whose modes are NOT the shared 0755
 // constant, and they are stated here with the dependents that force them written above -- which is
 // the input that derivation will eventually consume, not a second convention beside it.
-data publication_spool_request_mode: NonEmptyStr = "0730"
+data publication_spool_request_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: false, write: true, execute: true },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
 
-data publication_spool_answer_mode: NonEmptyStr = "0755"
+data publication_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
@@ -1684,7 +1691,7 @@ fn path_parent_dir(path: String) -> String {
 // them changes no emitted byte and does not derive them — that derivation is exactly what the
 // paragraph above says is still owed — but it makes the inheritance visible to the reader and gives
 // the eventual derivation one place to land per class.
-data install_d_shared_mode: NonEmptyStr = "0755"
+data install_d_shared_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 data install_file_shared_mode: NonEmptyStr = "0644"
 
@@ -1793,7 +1800,7 @@ fn ensure_managed_directory_command(admission: ManagedDirectoryAdmission) -> Str
 // projects it instead of reusing the user's.
 fn install_d_managed_command(dir: ManagedDirectory) -> String {
   install_directory_owned_command(
-    mode: managed_directory_mode_octal(d: dir) as NonEmptyStr,
+    mode: managed_directory_permissions(d: dir).mode,
     owner: dir.owner.name,
     group: dir.group_principal.name,
     path: dir.path as String,

@@ -232,6 +232,7 @@ import gunbc.runner_service_activation {
   runner_activation_reachability_report,
   runner_activation_safety_report,
 }
+import extdeps.access.posix { file_mode_octal }
 
 type TimerRetirementMemberAt = NonEmptyStr
 
@@ -2882,10 +2883,10 @@ fn fleet_converge_allocation_store_plan_artifact(
           "# allocation-store",
           allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
           concat("ensure-directory:path=", spec.namespace_path as String),
-          concat("ensure-directory:mode=", spec.namespace_mode as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.namespace_mode)),
           "ensure-directory:owner=CellSubstrateRootOwned",
           concat("ensure-directory:path=", spec.path as String),
-          concat("ensure-directory:mode=", spec.mode as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.mode)),
           "ensure-directory:owner=CellSubstrateRootOwned",
           "# allocation-store-refusals=0",
           "apply-admission:ready",
