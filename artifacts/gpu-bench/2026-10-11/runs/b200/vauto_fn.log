@@ -1,0 +1,40 @@
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+SERVE_OK
+(EngineCore pid=3684) WARNING 10-11 21:44:22 [kv_cache_utils.py:2206] Speculative decoding (method=mtp) is enabled but no KV cache group could be identified as the draft model's.
+(EngineCore pid=3684) INFO 10-11 21:44:22 [kv_cache_utils.py:2395] GPU KV cache size: 828,941 tokens, Maximum concurrency for 262,144 tokens per request: 3.16x
+(EngineCore pid=3684) INFO 10-11 21:45:23 [gpu_worker.py:825] CUDA graph pool memory: 0.53 GiB (actual), 1.13 GiB (estimated), difference: 0.6 GiB (112.5%).
+(EngineCore pid=3684) INFO 10-11 21:45:23 [gpu_worker.py:888] Free memory on device (177.74/178.35 GiB) on startup. Desired GPU memory utilization is (0.9, 160.52 GiB). Actual usage is 130.6 GiB for consumed memory (weights + non-torch), 5.97 GiB for peak activation, and 0.53 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=24989742490` (23.27 GiB) to fit into requested memory, or `--kv-cache-memory=43483962368` (40.5 GiB) to fully utilize gpu memory. Current kv cache memory in use is 23.95 GiB.
+(EngineCore pid=3684) INFO 10-11 21:45:26 [core.py:379] init engine (profile, create kv cache, warmup model) took 122.94 s
+(EngineCore pid=3684) INFO 10-11 21:45:26 [kv_cache_utils.py:748] kv cache group sizes [1600, 1600, 1600, 1600, 8, 1600]
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA B200, 183359 MiB, 160768 MiB, 3996 MHz
+warming 6 sessions
+warm done 28s {1: 173890, 0: 173940, 3: 173759, 2: 173669, 4: 173879, 5: 173858}
+== vllm_flashnext_fp8w_bf16kv_b200 short
+N= 1: rounds= 13  median    204  p90    269  p99    272  max    272 tok/s
+N= 4: rounds= 13  median    674  p90    767  p99    782  max    782 tok/s
+N= 8: rounds= 13  median   1174  p90   1270  p99   1289  max   1289 tok/s
+N=16: rounds= 13  median   1961  p90   2078  p99   2137  max   2137 tok/s
+N=32: rounds= 13  median   3048  p90   3205  p99   3229  max   3229 tok/s
+== vllm_flashnext_fp8w_bf16kv_b200 warm ~174k
+N=1 ctx~173966: rounds=12 | aggregate med 73 p90 76 p99 158 | per-stream med 299 p99 351 | TTFT med 5.5s p90 5.6s
+N=4 ctx~174407: rounds=12 | aggregate med 113 p90 117 p99 143 | per-stream med 81 p99 279 | TTFT med 11.4s p90 15.7s
+N=6 ctx~174638: rounds=12 | aggregate med 189 p90 197 p99 200 | per-stream med 73 p99 309 | TTFT med 2.1s p90 14.0s
+RUN_EXIT=0
+# HELP vllm:prefix_cache_queries_total Prefix cache queries, in terms of number of queried tokens.
+# TYPE vllm:prefix_cache_queries_total counter
+vllm:prefix_cache_queries_total{engine="0",model_name="qwen"} 2.4705587e+07
+# HELP vllm:prefix_cache_hits_total Prefix cache hits, in terms of number of cached tokens.
+# TYPE vllm:prefix_cache_hits_total counter
+vllm:prefix_cache_hits_total{engine="0",model_name="qwen"} 1.04048e+07
+# HELP vllm:external_prefix_cache_queries_total External prefix cache queries from KV connector cross-instance cache sharing, in terms of number of queried tokens.
+# TYPE vllm:external_prefix_cache_queries_total counter
+vllm:external_prefix_cache_queries_total{engine="0",model_name="qwen"} 0.0
+# HELP vllm:external_prefix_cache_hits_total External prefix cache hits from KV connector cross-instance cache sharing, in terms of number of cached tokens.
+# TYPE vllm:external_prefix_cache_hits_total counter
+vllm:external_prefix_cache_hits_total{engine="0",model_name="qwen"} 0.0
+# HELP vllm:num_preemptions_total Cumulative number of preemption from the engine.
+# TYPE vllm:num_preemptions_total counter
+vllm:num_preemptions_total{engine="0",model_name="qwen"} 2.0

@@ -1,0 +1,31 @@
+PEER-TO-PEER ON
+W1011 21:27:12.674000 1730 torch/distributed/run.py:874] 
+W1011 21:27:12.674000 1730 torch/distributed/run.py:874] *****************************************
+W1011 21:27:12.674000 1730 torch/distributed/run.py:874] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+W1011 21:27:12.674000 1730 torch/distributed/run.py:874] *****************************************
+       bytes    lat_us  busbw_GB/s
+        4096      24.9        0.16
+       16384      20.9        0.78
+       65536      20.3        3.23
+      262144      20.7       12.66
+     1048576      40.0       26.21
+     4194304     125.8       33.34
+    16777216     467.9       35.86
+    67108864    1825.4       36.76
+   268435456    6852.0       39.18
+
+PEER-TO-PEER OFF
+W1011 21:27:17.684000 1729 torch/distributed/run.py:874] 
+W1011 21:27:17.684000 1729 torch/distributed/run.py:874] *****************************************
+W1011 21:27:17.684000 1729 torch/distributed/run.py:874] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+W1011 21:27:17.684000 1729 torch/distributed/run.py:874] *****************************************
+       bytes    lat_us  busbw_GB/s
+        4096      20.2        0.20
+       16384      19.9        0.82
+       65536      40.1        1.64
+      262144      31.0        8.47
+     1048576      66.0       15.90
+     4194304     212.7       19.72
+    16777216     814.7       20.59
+    67108864    3200.9       20.97
+   268435456   12173.6       22.05

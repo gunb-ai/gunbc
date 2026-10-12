@@ -1,0 +1,12 @@
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 97887 MiB, 88846 MiB, 14001 MHz
+== vllm_fp8kv_pro6000ws short
+N= 1: rounds=  8  median    120  p90    122  p99    123  max    123 tok/s
+N= 4: rounds=  8  median    449  p90    461  p99    471  max    471 tok/s
+N= 8: rounds=  8  median    809  p90    812  p99    826  max    826 tok/s
+N=16: rounds=  8  median   1353  p90   1358  p99   1369  max   1369 tok/s
+N=32: rounds=  8  median   1926  p90   1936  p99   1936  max   1936 tok/s
+== vllm_fp8kv_pro6000ws warm ~174k
+N=1 ctx~173966: rounds=13 | aggregate med 85 p90 95 p99 96 | per-stream med 146 p99 164 | TTFT med 2.2s p90 2.7s
+N=4 ctx~174503: rounds=13 | aggregate med 161 p90 172 p99 173 | per-stream med 77 p99 101 | TTFT med 5.9s p90 6.8s
+N=8 ctx~174322: rounds=13 | aggregate med 197 p90 208 p99 212 | per-stream med 46 p99 62 | TTFT med 9.0s p90 11.2s

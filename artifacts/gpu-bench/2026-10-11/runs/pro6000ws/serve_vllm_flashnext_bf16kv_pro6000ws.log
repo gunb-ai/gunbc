@@ -1,0 +1,249 @@
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+(APIServer pid=22534) INFO 10-11 22:27:09 [api_utils.py:347] 
+(APIServer pid=22534) INFO 10-11 22:27:09 [api_utils.py:347]        █     █     █▄   ▄█
+(APIServer pid=22534) INFO 10-11 22:27:09 [api_utils.py:347]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.30.0
+(APIServer pid=22534) INFO 10-11 22:27:09 [api_utils.py:347]   █▄█▀ █     █     █     █  model   nvidia/Qwen3.8-Flash-Next-NVFP4
+(APIServer pid=22534) INFO 10-11 22:27:09 [api_utils.py:347]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=22534) INFO 10-11 22:27:09 [api_utils.py:347] 
+(APIServer pid=22534) INFO 10-11 22:27:09 [api_utils.py:286] non-default args: {'model_tag': 'nvidia/Qwen3.8-Flash-Next-NVFP4', 'port': 8081, 'model': 'nvidia/Qwen3.8-Flash-Next-NVFP4', 'max_model_len': 262144, 'served_model_name': ['qwen'], 'gpu_memory_utilization': 0.9, 'enable_prefix_caching': True, 'mamba_cache_mode': 'align', 'max_num_batched_tokens': 32768, 'max_num_seqs': 8, 'enable_chunked_prefill': True, 'speculative_config': {'method': 'mtp', 'num_speculative_tokens': 3}}
+(APIServer pid=22534) WARNING 10-11 22:27:09 [envs.py:2248] Unknown vLLM environment variable detected: VLLM_TEST_ENDPOINT
+(APIServer pid=22534) WARNING 10-11 22:27:09 [envs.py:2248] Unknown vLLM environment variable detected: VLLM_MODEL
+(APIServer pid=22534) Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) INFO 10-11 22:27:28 [model.py:692] Resolved architecture: Qwen4ExpForConditionalGeneration
+(APIServer pid=22534) INFO 10-11 22:27:28 [model.py:2030] Using max model len 262144
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) INFO 10-11 22:27:48 [model.py:692] Resolved architecture: Qwen4ExpMTP
+(APIServer pid=22534) INFO 10-11 22:27:48 [model.py:2030] Using max model len 262144
+(APIServer pid=22534) WARNING 10-11 22:27:48 [speculative.py:1361] Enabling num_speculative_tokens > 1 will run multiple times of forward on same MTP layer,which may result in lower acceptance rate
+(APIServer pid=22534) INFO 10-11 22:27:48 [scheduler.py:288] Chunked prefill is enabled with max_num_batched_tokens=32768.
+(APIServer pid=22534) INFO 10-11 22:27:48 [vllm.py:1252] Resolved Engram configuration: EngramConfig(cpu_offload=True, embedding_across_dp=False, dp_shared_memory=False)
+(APIServer pid=22534) INFO 10-11 22:27:48 [vllm.py:762] Auto-enabling VLLM_USE_BREAKABLE_CUDAGRAPH=1. Set VLLM_USE_BREAKABLE_CUDAGRAPH=0 to opt out.
+(APIServer pid=22534) INFO 10-11 22:27:48 [kernel.py:416] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native'])
+(APIServer pid=22534) INFO 10-11 22:27:48 [compilation.py:336] Enabled custom fusions: norm_quant, act_quant
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(EngineCore pid=23764) INFO 10-11 22:28:17 [core.py:123] Initializing a V1 LLM engine (v0.30.0) with config: model='nvidia/Qwen3.8-Flash-Next-NVFP4', speculative_config=SpeculativeConfig(method='mtp', model='nvidia/Qwen3.8-Flash-Next-NVFP4', num_spec_tokens=3), tokenizer='nvidia/Qwen3.8-Flash-Next-NVFP4', skip_tokenizer_init=False, tokenizer_mode=auto, revision=main, tokenizer_revision=main, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=262144, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=modelopt_mixed, quantization_config=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, per_request_spec_decode_metrics='none', kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=qwen, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['+quant_fp8', 'all', '+quant_fp8'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [32768], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 64, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native']), enable_flashinfer_autotune=True, enable_cutedsl_warmup=True, enable_jit_warmup=True, moe_backend='auto', sparse_indexer_topk_backend='auto', linear_backend='auto', linear_backend_per_quant=None)
+(EngineCore pid=23764) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=23764) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=23764) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=23764) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=23764) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=23764) INFO 10-11 22:28:20 [parallel_state.py:1827] world_size=1 rank=0 local_rank=0 distributed_init_method=file:///tmp/vllm_dist_b53070aae8b3418d9c06e963a1501fbf backend=nccl
+(EngineCore pid=23764) INFO 10-11 22:28:20 [parallel_state.py:2267] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, ETP rank 0, EP rank 0, EPLB rank N/A
+(EngineCore pid=23764) INFO 10-11 22:28:20 [gpu_worker.py:441] Using V2 Model Runner
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(APIServer pid=22534) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_interleaved', 'mrope_section'}
+(EngineCore pid=23764) INFO 10-11 22:28:22 [model_runner.py:396] Loading model from scratch...
+(EngineCore pid=23764) INFO 10-11 22:28:22 [cuda.py:597] Using backend AttentionBackendEnum.FLASH_ATTN for vit attention
+(EngineCore pid=23764) INFO 10-11 22:28:22 [mm_encoder_attention.py:372] Using AttentionBackendEnum.FLASH_ATTN for MMEncoderAttention.
+(EngineCore pid=23764) INFO 10-11 22:28:22 [qwen_gdn_linear_attn.py:176] Using FlashInfer GDN prefill kernel (requested=auto, head_k_dim=128).
+(EngineCore pid=23764) INFO 10-11 22:28:22 [qwen_gdn_linear_attn.py:528] GDN decode kernel: cuda
+(EngineCore pid=23764) INFO 10-11 22:28:23 [nvfp4.py:304] Using 'FLASHINFER_CUTLASS' NvFp4 MoE backend out of potential backends: ['FLASHINFER_TRTLLM', 'FLASHINFER_CUTEDSL', 'FLASHINFER_CUTEDSL_BATCHED', 'FLASHINFER_CUTLASS', 'VLLM_CUTLASS', 'MARLIN', 'HUMMING', 'EMULATION'].
+(APIServer pid=22534) [transformers] Qwen3VL video processing does not apply the per-frame pixel cap the reference implementation (qwen-vl-utils) applies, so some videos cost far more tokens than they would there. In v5.22 the capped behavior will become the default and `cap_pixels_per_frame` will be removed. Pass `cap_pixels_per_frame=True` to adopt the reference behavior now, or `False` to keep the current behavior and silence this warning.
+(APIServer pid=22534) INFO 10-11 22:28:35 [base.py:261] Multi-modal warmup completed in 29.669s
+(APIServer pid=22534) INFO 10-11 22:28:38 [base.py:261] Readonly multi-modal warmup completed in 3.007s
+(EngineCore pid=23764) INFO 10-11 22:30:15 [ngram_embedding.py:720] Initialized PLE embedding language_model.model.layers.1.ple.ple_embedding.ngram_embedding: quantization_method=Qwen4ExpPLEFp8EmbeddingMethod, weight_dtype=torch.float8_e4m3fn, weight_device=cpu, pinned=True
+(EngineCore pid=23764) INFO 10-11 22:30:15 [flash_attn.py:1116] Using FlashAttention version 2
+(EngineCore pid=23764) WARNING 10-11 22:30:16 [compilation.py:1361] Op 'quant_fp8' not present in model, enabling with '+quant_fp8' has no effect
+(EngineCore pid=23764) INFO 10-11 22:30:20 [weight_utils.py:895] Filesystem type for checkpoints: OVERLAY. Checkpoint size: 123.57 GiB. Available RAM: 103.92 GiB.
+(EngineCore pid=23764) INFO 10-11 22:30:20 [weight_utils.py:925] Auto-prefetch is disabled because the filesystem (OVERLAY) is not a recognized network FS (NFS/Lustre) and the checkpoint size (123.57 GiB) exceeds 90% of available RAM (103.92 GiB).
+(EngineCore pid=23764) Loading safetensors checkpoint shards:   0% Completed | 0/11 [00:00<?, ?it/s]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:   9% Completed | 1/11 [00:13<02:15, 13.52s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  18% Completed | 2/11 [00:57<04:44, 31.67s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  27% Completed | 3/11 [01:44<05:07, 38.42s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  36% Completed | 4/11 [02:25<04:37, 39.66s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  45% Completed | 5/11 [03:09<04:05, 40.99s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  55% Completed | 6/11 [03:52<03:28, 41.71s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  64% Completed | 7/11 [04:28<02:39, 39.91s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  73% Completed | 8/11 [05:01<01:53, 37.83s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  82% Completed | 9/11 [05:16<01:00, 30.43s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards: 100% Completed | 11/11 [06:59<00:00, 40.42s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards: 100% Completed | 11/11 [06:59<00:00, 38.12s/it]
+(EngineCore pid=23764) 
+(EngineCore pid=23764) INFO 10-11 22:37:25 [default_loader.py:430] Loading weights took 425.72 seconds
+(EngineCore pid=23764) INFO 10-11 22:37:26 [nvfp4.py:613] Using MoEPrepareAndFinalizeNoDPEPModular
+(EngineCore pid=23764) INFO 10-11 22:37:27 [vllm.py:1252] Resolved Engram configuration: EngramConfig(cpu_offload=True, embedding_across_dp=False, dp_shared_memory=False)
+(EngineCore pid=23764) INFO 10-11 22:37:27 [kernel.py:416] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native'])
+(EngineCore pid=23764) INFO 10-11 22:37:27 [compilation.py:336] Enabled custom fusions: norm_quant, act_quant
+(EngineCore pid=23764) INFO 10-11 22:37:27 [fp8.py:438] Using DEEPGEMM Fp8 MoE backend out of potential backends: ['AITER', 'FLASHINFER_TRTLLM', 'FLASHINFER_CUTLASS', 'DEEPGEMM', 'TRITON', 'MARLIN', 'HUMMING', 'BATCHED_DEEPGEMM', 'BATCHED_TRITON', 'XPU', 'CPU', 'HPC'].
+(EngineCore pid=23764) Loading safetensors checkpoint shards:   0% Completed | 0/11 [00:00<?, ?it/s]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:   9% Completed | 1/11 [00:07<01:16,  7.66s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  18% Completed | 2/11 [00:35<02:55, 19.49s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  27% Completed | 3/11 [01:00<02:56, 22.11s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  36% Completed | 4/11 [01:23<02:35, 22.20s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  45% Completed | 5/11 [01:46<02:16, 22.77s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  55% Completed | 6/11 [02:08<01:52, 22.53s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  64% Completed | 7/11 [02:18<01:13, 18.36s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  73% Completed | 8/11 [02:20<00:38, 12.96s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  82% Completed | 9/11 [02:29<00:24, 12.01s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards:  91% Completed | 10/11 [02:30<00:08,  8.46s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards: 100% Completed | 11/11 [02:36<00:00,  7.61s/it]
+(EngineCore pid=23764) Loading safetensors checkpoint shards: 100% Completed | 11/11 [02:36<00:00, 14.20s/it]
+(EngineCore pid=23764) 
+(EngineCore pid=23764) INFO 10-11 22:40:04 [default_loader.py:430] Loading weights took 156.50 seconds
+(EngineCore pid=23764) INFO 10-11 22:40:04 [deep_gemm.py:192] deep_gemm not found in site-packages, trying vendored vllm.third_party.deep_gemm
+(EngineCore pid=23764) INFO 10-11 22:40:04 [deep_gemm.py:219] DeepGEMM PDL enabled on vllm.third_party.deep_gemm.
+(EngineCore pid=23764) INFO 10-11 22:40:04 [deep_gemm.py:136] DeepGEMM E8M0 enabled on current platform.
+(EngineCore pid=23764) INFO 10-11 22:40:17 [fp8.py:740] Using MoEPrepareAndFinalizeNoDPEPModular
+(EngineCore pid=23764) WARNING 10-11 22:40:17 [speculator.py:235] Draft model Qwen4ExpMTP does not support external multimodal embeddings. Embeddings from the target model will not be passed to the drafter; using text-only draft inputs instead.
+(EngineCore pid=23764) INFO 10-11 22:40:21 [model_runner.py:428] Model loading took 80.09 GiB memory and 719.567664 seconds
+(EngineCore pid=23764) INFO 10-11 22:40:21 [topk_topp_sampler.py:78] Using FlashInfer for top-p & top-k sampling.
+(EngineCore pid=23764) INFO 10-11 22:40:21 [interface.py:933] Setting attention block size to 1600 tokens to ensure that attention page size is >= mamba page size.
+(EngineCore pid=23764) INFO 10-11 22:40:21 [interface.py:957] Padding mamba page size by 0.25% to ensure that mamba page size and attention page size are exactly equal.
+(EngineCore pid=23764) INFO 10-11 22:40:21 [utils.py:320] Using BLNHC KV cache layout.
+(EngineCore pid=23764) Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+(EngineCore pid=23764) WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+(EngineCore pid=23764) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=23764) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=23764) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
+(EngineCore pid=23764) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=23764) [transformers] Unrecognized keys in `rope_parameters` for 'rope_type'='default': {'mrope_section', 'mrope_interleaved'}
+(EngineCore pid=23764) INFO 10-11 22:44:15 [encoder_runner.py:131] Encoder cache will be initialized with a budget of 32768 tokens, and profiled with 2 image items of the maximum feature size.
+(EngineCore pid=23764) WARNING 10-11 22:45:09 [kv_cache_utils.py:2206] Speculative decoding (method=mtp) is enabled but no KV cache group could be identified as the draft model's.
+(EngineCore pid=23764) INFO 10-11 22:45:09 [speculator.py:120] Fused multi-step draft decode is not supported by attention backend(s) QWEN4_EXP_EXP_QSA_STATE; falling back to rebuilding attention metadata between draft steps.
+(EngineCore pid=23764) INFO 10-11 22:45:09 [breakable_cudagraph.py:293] Breakable CUDA graph enabled
+(EngineCore pid=23764) Capturing CUDA graphs (PIECEWISE):   0%|          | 0/11 [00:00<?, ?it/s]Capturing CUDA graphs (PIECEWISE):   9%|▉         | 1/11 [00:21<03:37, 21.70s/it]Capturing CUDA graphs (PIECEWISE):  18%|█▊        | 2/11 [00:22<01:25,  9.54s/it]Capturing CUDA graphs (PIECEWISE):  27%|██▋       | 3/11 [00:23<00:43,  5.43s/it]Capturing CUDA graphs (PIECEWISE):  36%|███▋      | 4/11 [00:23<00:24,  3.51s/it]Capturing CUDA graphs (PIECEWISE):  45%|████▌     | 5/11 [00:27<00:21,  3.60s/it]Capturing CUDA graphs (PIECEWISE):  55%|█████▍    | 6/11 [00:28<00:14,  2.81s/it]Capturing CUDA graphs (PIECEWISE):  64%|██████▎   | 7/11 [00:32<00:12,  3.09s/it]Capturing CUDA graphs (PIECEWISE):  73%|███████▎  | 8/11 [00:38<00:11,  3.90s/it]Capturing CUDA graphs (PIECEWISE):  82%|████████▏ | 9/11 [00:38<00:05,  2.91s/it]Capturing CUDA graphs (PIECEWISE):  91%|█████████ | 10/11 [00:39<00:02,  2.16s/it]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 11/11 [00:41<00:00,  2.15s/it]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 11/11 [00:41<00:00,  3.77s/it]
+(EngineCore pid=23764) Capturing CUDA graphs (FULL):   0%|          | 0/2 [00:00<?, ?it/s]Capturing CUDA graphs (FULL):  50%|█████     | 1/2 [00:01<00:01,  1.92s/it]Capturing CUDA graphs (FULL): 100%|██████████| 2/2 [00:02<00:00,  1.04s/it]Capturing CUDA graphs (FULL): 100%|██████████| 2/2 [00:02<00:00,  1.18s/it]
+(EngineCore pid=23764) INFO 10-11 22:45:54 [speculator.py:151] Capturing model for speculator...
+(EngineCore pid=23764) Capturing prefill CUDA graphs (PIECEWISE):   0%|          | 0/11 [00:00<?, ?it/s]Capturing prefill CUDA graphs (PIECEWISE):   9%|▉         | 1/11 [00:01<00:12,  1.23s/it]Capturing prefill CUDA graphs (PIECEWISE):  27%|██▋       | 3/11 [00:01<00:03,  2.55it/s]Capturing prefill CUDA graphs (PIECEWISE):  55%|█████▍    | 6/11 [00:01<00:00,  5.17it/s]Capturing prefill CUDA graphs (PIECEWISE):  82%|████████▏ | 9/11 [00:01<00:00,  7.44it/s]Capturing prefill CUDA graphs (PIECEWISE): 100%|██████████| 11/11 [00:07<00:00,  1.04it/s]Capturing prefill CUDA graphs (PIECEWISE): 100%|██████████| 11/11 [00:07<00:00,  1.47it/s]
+(EngineCore pid=23764) Capturing prefill CUDA graphs (FULL):   0%|          | 0/5 [00:00<?, ?it/s]Capturing prefill CUDA graphs (FULL):  80%|████████  | 4/5 [00:00<00:00, 31.86it/s]Capturing prefill CUDA graphs (FULL): 100%|██████████| 5/5 [00:00<00:00, 31.98it/s]
+(EngineCore pid=23764) Capturing decode CUDA graphs (FULL):   0%|          | 0/4 [00:00<?, ?it/s]Capturing decode CUDA graphs (FULL): 100%|██████████| 4/4 [00:00<00:00, 49.21it/s]
+(EngineCore pid=23764) INFO 10-11 22:46:04 [model_runner.py:1066] Graph capturing finished in 55 secs, took 0.40 GiB
+(EngineCore pid=23764) INFO 10-11 22:46:06 [gpu_worker.py:640] Available KV cache memory: -4.34 GiB
+(EngineCore pid=23764) INFO 10-11 22:46:06 [gpu_worker.py:655] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8957 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9043. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+(EngineCore pid=23764) WARNING 10-11 22:46:06 [kv_cache_utils.py:2206] Speculative decoding (method=mtp) is enabled but no KV cache group could be identified as the draft model's.
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366] EngineCore failed to start.
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366] Traceback (most recent call last):
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1328, in run_engine_core
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]     return func(*args, **kwargs)
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1085, in __init__
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]     super().__init__(
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 145, in __init__
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]     kv_cache_config = self._initialize_kv_caches(vllm_config)
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]     return func(*args, **kwargs)
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 319, in _initialize_kv_caches
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]     kv_cache_configs = get_kv_cache_configs(
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]                        ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_utils.py", line 2737, in get_kv_cache_configs
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]     _check_enough_kv_cache_memory(
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_utils.py", line 879, in _check_enough_kv_cache_memory
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366]     raise ValueError(
+(EngineCore pid=23764) ERROR 10-11 22:46:06 [core.py:1366] ValueError: No available memory for the cache blocks. Try increasing `gpu_memory_utilization` when initializing the engine (this flag also controls CPU memory reservation on the CPU backend, despite its name). See https://docs.vllm.ai/en/latest/configuration/conserving_memory/ for more details.
+(EngineCore pid=23764) Process EngineCore:
+(EngineCore pid=23764) Traceback (most recent call last):
+(EngineCore pid=23764)   File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+(EngineCore pid=23764)     self.run()
+(EngineCore pid=23764)   File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+(EngineCore pid=23764)     self._target(*self._args, **self._kwargs)
+(EngineCore pid=23764)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1370, in run_engine_core
+(EngineCore pid=23764)     raise e
+(EngineCore pid=23764)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1328, in run_engine_core
+(EngineCore pid=23764)     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=23764)                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=23764)   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=23764)     return func(*args, **kwargs)
+(EngineCore pid=23764)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=23764)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1085, in __init__
+(EngineCore pid=23764)     super().__init__(
+(EngineCore pid=23764)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 145, in __init__
+(EngineCore pid=23764)     kv_cache_config = self._initialize_kv_caches(vllm_config)
+(EngineCore pid=23764)                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=23764)   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=23764)     return func(*args, **kwargs)
+(EngineCore pid=23764)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=23764)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 319, in _initialize_kv_caches
+(EngineCore pid=23764)     kv_cache_configs = get_kv_cache_configs(
+(EngineCore pid=23764)                        ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=23764)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_utils.py", line 2737, in get_kv_cache_configs
+(EngineCore pid=23764)     _check_enough_kv_cache_memory(
+(EngineCore pid=23764)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_utils.py", line 879, in _check_enough_kv_cache_memory
+(EngineCore pid=23764)     raise ValueError(
+(EngineCore pid=23764) ValueError: No available memory for the cache blocks. Try increasing `gpu_memory_utilization` when initializing the engine (this flag also controls CPU memory reservation on the CPU backend, despite its name). See https://docs.vllm.ai/en/latest/configuration/conserving_memory/ for more details.
+[rank0]:[W1011 22:46:09.027908478 ProcessGroupNCCL.cpp:1624] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+(APIServer pid=22534) INFO 10-11 22:46:15 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+(APIServer pid=22534) Traceback (most recent call last):
+(APIServer pid=22534)   File "/usr/local/bin/vllm", line 10, in <module>
+(APIServer pid=22534)     sys.exit(main())
+(APIServer pid=22534)              ^^^^^^
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/cli/main.py", line 106, in main
+(APIServer pid=22534)     args.dispatch_function(args)
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/cli/serve.py", line 154, in cmd
+(APIServer pid=22534)     uvloop.run(run_server(args))
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/uvloop/__init__.py", line 96, in run
+(APIServer pid=22534)     return __asyncio.run(
+(APIServer pid=22534)            ^^^^^^^^^^^^^^
+(APIServer pid=22534)   File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+(APIServer pid=22534)     return runner.run(main)
+(APIServer pid=22534)            ^^^^^^^^^^^^^^^^
+(APIServer pid=22534)   File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+(APIServer pid=22534)     return self._loop.run_until_complete(task)
+(APIServer pid=22534)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=22534)   File "uvloop/loop.pyx", line 1518, in uvloop.loop.Loop.run_until_complete
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/uvloop/__init__.py", line 48, in wrapper
+(APIServer pid=22534)     return await main
+(APIServer pid=22534)            ^^^^^^^^^^
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 176, in run_server
+(APIServer pid=22534)     await run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 190, in run_server_worker
+(APIServer pid=22534)     async with build_async_engine_client(
+(APIServer pid=22534)   File "/usr/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=22534)     return await anext(self.gen)
+(APIServer pid=22534)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 58, in build_async_engine_client
+(APIServer pid=22534)     async with build_async_engine_client_from_engine_args(
+(APIServer pid=22534)   File "/usr/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=22534)     return await anext(self.gen)
+(APIServer pid=22534)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 94, in build_async_engine_client_from_engine_args
+(APIServer pid=22534)     async_llm = AsyncLLM.from_vllm_config(
+(APIServer pid=22534)                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/async_llm.py", line 235, in from_vllm_config
+(APIServer pid=22534)     return cls(
+(APIServer pid=22534)            ^^^^
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/async_llm.py", line 169, in __init__
+(APIServer pid=22534)     self.engine_core = EngineCoreClient.make_async_mp_client(
+(APIServer pid=22534)                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(APIServer pid=22534)     return func(*args, **kwargs)
+(APIServer pid=22534)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core_client.py", line 163, in make_async_mp_client
+(APIServer pid=22534)     return AsyncMPClient(
+(APIServer pid=22534)            ^^^^^^^^^^^^^^
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(APIServer pid=22534)     return func(*args, **kwargs)
+(APIServer pid=22534)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core_client.py", line 1060, in __init__
+(APIServer pid=22534)     super().__init__(
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core_client.py", line 656, in __init__
+(APIServer pid=22534)     with launch_core_engines(
+(APIServer pid=22534)   File "/usr/lib/python3.12/contextlib.py", line 144, in __exit__
+(APIServer pid=22534)     next(self.gen)
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/utils.py", line 1240, in launch_core_engines
+(APIServer pid=22534)     wait_for_engine_startup(
+(APIServer pid=22534)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/utils.py", line 1320, in wait_for_engine_startup
+(APIServer pid=22534)     raise RuntimeError(
+(APIServer pid=22534) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}

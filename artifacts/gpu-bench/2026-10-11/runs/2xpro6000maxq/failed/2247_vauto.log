@@ -1,0 +1,15 @@
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+SERVE_OK
+(Worker_TP1_EP1 pid=14511) INFO 10-11 22:28:34 [gpu_worker.py:888] Free memory on device (93.92/94.97 GiB) on startup. Desired GPU memory utilization is (0.85, 80.72 GiB). Actual usage is 47.88 GiB for consumed memory (weights + non-torch), 3.86 GiB for peak activation, and 0.27 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=30676165428` (28.57 GiB) to fit into requested memory, or `--kv-cache-memory=44842545152` (41.76 GiB) to fully utilize gpu memory. Current kv cache memory in use is 28.98 GiB.
+(Worker_TP0_EP0 pid=14510) INFO 10-11 22:28:34 [gpu_worker.py:825] CUDA graph pool memory: 0.27 GiB (actual), 0.57 GiB (estimated), difference: 0.3 GiB (114.0%).
+(Worker_TP0_EP0 pid=14510) INFO 10-11 22:28:34 [gpu_worker.py:888] Free memory on device (93.91/94.96 GiB) on startup. Desired GPU memory utilization is (0.85, 80.72 GiB). Actual usage is 47.88 GiB for consumed memory (weights + non-torch), 3.86 GiB for peak activation, and 0.27 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=30668645172` (28.56 GiB) to fit into requested memory, or `--kv-cache-memory=44833697792` (41.75 GiB) to fully utilize gpu memory. Current kv cache memory in use is 28.97 GiB.
+(EngineCore pid=14014) INFO 10-11 22:28:35 [core.py:379] init engine (profile, create kv cache, warmup model) took 62.59 s
+(EngineCore pid=14014) INFO 10-11 22:28:36 [kv_cache_utils.py:748] kv cache group sizes [1600, 1600, 1600, 1600, 8, 1600]
+(EngineCore pid=14014) INFO 10-11 22:28:40 [vllm.py:1252] Resolved Engram configuration: EngramConfig(cpu_offload=True, embedding_across_dp=False, dp_shared_memory=False)
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, 97887 MiB, 82964 MiB, 14001 MHz
+NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, 97887 MiB, 82964 MiB, 14001 MHz
+warming 16 sessions
+warm done 204s {0: 173940, 1: 173890, 2: 173669, 3: 173759, 4: 173879, 5: 173858, 6: 173709, 7: 173743, 8: 173838, 10: 173616, 12: 173783, 15: 173806, 9: 173548, 13: 173731, 11: 173876, 14: 173783}

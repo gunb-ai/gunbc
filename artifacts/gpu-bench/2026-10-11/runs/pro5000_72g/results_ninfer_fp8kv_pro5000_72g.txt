@@ -1,0 +1,10 @@
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 72GB Blackwell, 73415 MiB, 70850 MiB, 14001 MHz
+== ninfer_fp8kv_pro5000_72g short
+N= 1: rounds= 14  median     97  p90    102  p99    104  max    104 tok/s
+N= 4: rounds= 14  median    353  p90    363  p99    366  max    366 tok/s
+N= 8: rounds= 14  median    584  p90    602  p99    610  max    610 tok/s
+== ninfer_fp8kv_pro5000_72g warm ~174k
+N=1 ctx~173967: rounds=12 | aggregate med 74 p90 83 p99 97 | per-stream med 86 p99 112 | TTFT med 1.2s p90 1.7s
+N=4 ctx~173917: rounds=12 | aggregate med 138 p90 179 p99 199 | per-stream med 48 p99 73 | TTFT med 2.1s p90 5.3s
+N=8 ctx~173944: rounds=12 | aggregate med 170 p90 228 p99 229 | per-stream med 29 p99 43 | TTFT med 3.3s p90 9.2s
