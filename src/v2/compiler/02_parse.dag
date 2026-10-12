@@ -1,6 +1,6 @@
 module v2.compiler.parse
 
-import std.types { List }
+import std.types { List, SourceSpan }
 import std.optional {
   Absent,
   Optional,
