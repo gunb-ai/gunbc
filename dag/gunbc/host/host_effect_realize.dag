@@ -197,7 +197,6 @@ import gunbc.live_deploy.emit {
   approval_broker_dark_install_script,
   microvm_controller_install_script,
 }
-import gunbc.live_deploy.apply_receipt { live_deploy_apply_withheld_reason }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -4512,26 +4511,18 @@ fn realize_live_deploy_apply_on_host(
             )
         }
     }
-    match cap_authorization {
-      CapConvergeWithheld { cause: why } =>
-        NotConverged {
-          reason: live_deploy_apply_withheld_reason(cause: why),
-          applied: intent,
-        }
-      CapConvergeAuthorized { host: _, authorized_retiring: _, target_units: _, desired: _ } =>
-        realize_shell_on_host(
-          script: retained_srvn(
-            body: live_deploy_apply_script_for_wet(
-              spec: spec,
-              plan: plan,
-              cap_authorization: cap_authorization,
-            ),
-            reason: "live_deploy apply (unit install + start)",
-          ),
-          transport: transport,
-          intent: intent,
-        )
-    }
+    realize_shell_on_host(
+      script: retained_srvn(
+        body: live_deploy_apply_script_for_wet(
+          spec: spec,
+          plan: plan,
+          cap_authorization: cap_authorization,
+        ),
+        reason: "live_deploy apply (unit install + start)",
+      ),
+      transport: transport,
+      intent: intent,
+    )
   }
 }
 

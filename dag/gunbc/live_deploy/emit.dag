@@ -1916,10 +1916,10 @@ fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> 
 
 // THE EMITTED ORDER DERIVES FROM THIS PARTITION. Every apply fragment is Decide or Mutate.
 // compose_host_script concatenates every Decide, then every Mutate, and drops the Mutate list
-// when any Decide is Withheld or Refused. A future withholdable step cannot land after a mutation
-// by list position: it is a Decide, so it is composed before every Mutate, or it withholds and
-// there is no Mutate. Hiding a withhold inside a Mutate command is a classification error, not an
-// ordering choice.
+// when any Decide is Refused. A cap withhold is HostScriptProceed plus a CONVERGE_WITHHELD
+// echo (2026-09-17: zero-mutation CAPS, other members still apply). An emit-time poison that
+// used to sit inside a Mutate after unit/binary writes is a Decide{Refused} instead, so the
+// composer emits no Mutate. Hiding a refuse inside a Mutate command is a classification error.
 type HostScriptStanding
   = HostScriptProceed
   | HostScriptWithheld { cause: String }
@@ -1931,9 +1931,13 @@ type HostScriptFragment
 
 fn host_script_standing_join(left: HostScriptStanding, right: HostScriptStanding) -> HostScriptStanding {
   match left {
-    HostScriptProceed => right
-    HostScriptWithheld { cause: c } => HostScriptWithheld { cause: c }
     HostScriptRefused { cause: c } => HostScriptRefused { cause: c }
+    HostScriptWithheld { cause: c } =>
+      match right {
+        HostScriptRefused { cause: r } => HostScriptRefused { cause: r }
+        _ => HostScriptWithheld { cause: c }
+      }
+    HostScriptProceed => right
   }
 }
 
@@ -1958,13 +1962,17 @@ fn compose_host_script_decide_steps(fragments: List<HostScriptFragment>) -> List
 
 fn compose_host_script_mutate_steps(fragments: List<HostScriptFragment>) -> List<PipelineStep> {
   match compose_host_script_standing(fragments: fragments) {
+    HostScriptRefused { cause: _ } => []
     HostScriptProceed =>
       flat_map(fragments, f => match f {
         Mutate { steps: s } => s
         Decide { standing: _, steps: _ } => []
       })
-    HostScriptWithheld { cause: _ } => []
-    HostScriptRefused { cause: _ } => []
+    HostScriptWithheld { cause: _ } =>
+      flat_map(fragments, f => match f {
+        Mutate { steps: s } => s
+        Decide { standing: _, steps: _ } => []
+      })
   }
 }
 
@@ -1995,17 +2003,18 @@ fn compose_host_script(fragments: List<HostScriptFragment>) -> Pipeline {
 // IT REFUSES BOTH HALVES. The withheld arm emits neither the authoring script NOR the per-unit
 // shadow reverts that follow it, because a revert is a change to the same subject and authorising
 // half a transaction is how the ordering hazard returns under a different name.
-// A WITHHOLD OR REFUSAL IS NOT A CONTINUING ECHO. bright-moth-475 ran the echo arm under set -e,
-// then mutated /opt/gunbc/bin, the tree and the unit file, then refused at the door. The marker is
-// not valid shell, so the decide fragment cannot be followed by a mutate fragment that still runs.
-// Withheld and refused stay distinct causes (gunbc.host_axis_caps cap_authorization_for_host);
-// compose_host_script drops every Mutate when either standing is not Proceed.
-fn memory_cap_withheld_refuse_command(host: HostIdentity, cause: String) -> String {
+// THE WITHHELD LINE IS A REPORT, NOT A FAILURE: the same __GUNBC_CONVERGE_WITHHELD__ spelling the
+// fleet plan's slot teardown uses (gunbc.runner_slot_provision slot_removal_withheld_line), so a
+// reader of the apply transcript sees one vocabulary for "this member was not performed and why".
+// Single quotes in the cause are dropped rather than escaped: the cause is prose for the operator,
+// and a quote inside a single-quoted echo would end the word and run the rest.
+fn memory_cap_withheld_line(host: HostIdentity, cause: String) -> String {
   join([
-    "__GUNBC_DEPLOY_REFUSED__ memory-cap apply WITHHELD: ",
+    "echo '__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: ",
     cause.replace(from: "'", to: ""),
-    "; no host mutation emitted host=",
+    "; existing caps left exactly as observed host=",
     host as String,
+    "' >&2",
   ], "")
 }
 
@@ -2047,8 +2056,8 @@ fn deploy_memory_cap_decide_fragment(
   match cap_authorization_for_host(d: authorization, host: host) {
     CapAuthorizationWithheld { cause: why } =>
       Decide {
-        standing: HostScriptWithheld { cause: why },
-        steps: [deploy_raw(command: memory_cap_withheld_refuse_command(host: host, cause: why))],
+        standing: HostScriptProceed,
+        steps: [deploy_raw(command: memory_cap_withheld_line(host: host, cause: why))],
       }
     CapAuthorizationRefused { cause: why } =>
       Decide {
@@ -2087,17 +2096,22 @@ fn deploy_memory_cap_mutate_fragment(
   }
 }
 
-// THE MUTATE HALF ONLY. Withheld and refused write nothing here; their typed standing lives on
-// deploy_memory_cap_decide_fragment. Claims that this producer emits cap bytes still call it with
-// a matching authorization.
+// THE PRODUCTION WRITER THE 2026-09-17 CLAIMS CALL. Withheld is the echo from the decide
+// fragment; refused is the poison from the decide fragment; authorized is the mutate half.
 fn deploy_memory_cap_apply_steps(
   spec: DeploymentSpec,
   authorization: CapConvergeDecision,
 ) -> List<PipelineStep> {
-  match deploy_memory_cap_mutate_fragment(spec: spec, authorization: authorization) {
-    Mutate { steps: s } => s
-    Decide { standing: _, steps: _ } => []
-  }
+  concat(
+    match deploy_memory_cap_decide_fragment(spec: spec, authorization: authorization) {
+      Decide { standing: _, steps: s } => s
+      Mutate { steps: s } => s
+    },
+    match deploy_memory_cap_mutate_fragment(spec: spec, authorization: authorization) {
+      Mutate { steps: s } => s
+      Decide { standing: _, steps: s } => s
+    },
+  )
 }
 
 // GunbcSourceTree stages working bytes with rsync --delete while excluding .git, then the
@@ -3669,6 +3683,159 @@ fn deploy_apply_frame_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   concat(deploy_apply_frame_decide_steps(spec: spec), deploy_apply_frame_mutate_steps())
 }
 
+fn host_script_decide_refused(cause: String, command: String) -> HostScriptFragment {
+  Decide {
+    standing: HostScriptRefused { cause: cause },
+    steps: [deploy_raw(command: command)],
+  }
+}
+
+fn owned_directory_will_install(spec: DeploymentSpec, plan: ReleaseEffectPlan, t: OwnedDirectoryTarget) -> Bool {
+  match plan_mutation_of(plan: plan, member: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }) {
+    MemberNotInPlan => true
+    MutationInPlan { mutation } => !mutation_is_keep(e: mutation)
+  }
+}
+
+fn owned_directory_refuse_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
+  flat_map(deployment_directory_demands(spec: spec), t =>
+    if !(owned_directory_will_install(spec: spec, plan: plan, t: t)) {
+      []
+    } else {
+      match owned_directory_install_plan_of(t: t) {
+        EnsurePlanUnavailable { reason } =>
+          [host_script_decide_refused(cause: reason, command: concat(owned_directory_unplannable_poison, reason))]
+        EnsurePlanAvailable { plan: _ } =>
+          match t {
+            OwnedDirectoryDeclared { member: _, path: _, owner: _, mode: _ } => []
+            OwnedDirectoryManaged { directory } =>
+              match managed_directory_admit(d: directory) {
+                ManagedDirectoryRefused { member, path, writer } =>
+                  [host_script_decide_refused(
+                    cause: join([member as String, " writer uncovered"], ""),
+                    command: join([managed_directory_writer_uncovered_poison, member as String, " path=", path as String, " writer=", writer as String], ""),
+                  )]
+                ManagedDirectoryAdmitted { dir } =>
+                  match dir.entries {
+                    EntriesUnmanaged => []
+                    EntriesReadableByDependents { repaired_by: _ } =>
+                      match managed_directory_entry_mode(d: dir) {
+                        ManagedEntryModeDerived { mode: _ } => []
+                        ManagedEntryModeRefused { member, path, reason } =>
+                          [host_script_decide_refused(
+                            cause: reason as String,
+                            command: join([managed_directory_entry_mode_refused_poison, member as String, " path=", path as String, " reason=", reason as String], ""),
+                          )]
+                      }
+                  }
+              }
+          }
+      }
+    })
+}
+
+fn apply_oidc_refuse_fragments(spec: DeploymentSpec, oidc_now: Second?) -> List<HostScriptFragment> {
+  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
+    LiveDeployOidcEnvAdmitted { directives: _ } => []
+    LiveDeployOidcEnvRefused { cause } =>
+      [host_script_decide_refused(
+        cause: cause as String,
+        command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
+      )]
+  }
+}
+
+fn approval_broker_helper_grant_refuse_fragments(revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
+  match approval_broker_helper_grant_admission(revision: revision) {
+    HelperGrantAdmitted => []
+    HelperGrantWordRefused { word: w } =>
+      [host_script_decide_refused(
+        cause: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }),
+        command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w })),
+      )]
+    HelperGrantLocusWritableByGrantee { owner: o } =>
+      [host_script_decide_refused(
+        cause: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }),
+        command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o })),
+      )]
+  }
+}
+
+fn apply_helper_grant_refuse_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
+  if !(deployment_owns_the_host_approval_broker(spec: spec) && plan_writes_unit(plan: plan)) {
+    []
+  } else {
+    approval_broker_helper_grant_refuse_fragments(revision: RevisionBoundAtEmission { revision: plan.target.revision })
+  }
+}
+
+fn spec_has_fabric_storage_apply_step(spec: DeploymentSpec) -> Bool {
+  any(spec.steps, st => match st {
+    ArtifactStep { step: art } => match art.kind {
+      FabricStorageServeUnit => true
+      FabricStorageServeMapping => true
+      _ => false
+    }
+    Dependency { step: _ } => false
+  })
+}
+
+fn spec_has_fleet_converge_timer_step(spec: DeploymentSpec) -> Bool {
+  any(spec.steps, st => match st {
+    ArtifactStep { step: art } => match art.kind {
+      FleetConvergeTimerUnit => true
+      _ => false
+    }
+    Dependency { step: _ } => false
+  })
+}
+
+fn fabric_storage_refuse_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
+  match deployment_fabric_storage_door_socket(spec: spec) {
+    Present { value: _ } => []
+    Absent =>
+      if spec_has_fabric_storage_apply_step(spec: spec) {
+        [host_script_decide_refused(
+          cause: "fabric storage door unknown",
+          command: join([fabric_storage_door_unknown_instance_poison, spec.instance_id as String, "\n"], ""),
+        )]
+      } else {
+        []
+      }
+  }
+}
+
+fn fleet_converge_timer_refuse_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
+  if spec_has_fleet_converge_timer_step(spec: spec) {
+    [host_script_decide_refused(
+      cause: "FleetConvergeTimerUnit retired",
+      command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)",
+    )]
+  } else {
+    []
+  }
+}
+
+fn apply_emit_time_refuse_fragments(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  oidc_now: Second?,
+) -> List<HostScriptFragment> {
+  concat(
+    concat(
+      owned_directory_refuse_fragments(spec: spec, plan: plan),
+      apply_oidc_refuse_fragments(spec: spec, oidc_now: oidc_now),
+    ),
+    concat(
+      apply_helper_grant_refuse_fragments(spec: spec, plan: plan),
+      concat(
+        fabric_storage_refuse_fragments(spec: spec),
+        fleet_converge_timer_refuse_fragments(spec: spec),
+      ),
+    ),
+  )
+}
+
 fn apply_intent_fragments(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
@@ -3677,28 +3844,26 @@ fn apply_intent_fragments(
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
 ) -> List<HostScriptFragment> {
-  let decide = [
-    Decide { standing: HostScriptProceed, steps: deploy_apply_frame_decide_steps(spec: spec) },
-    deploy_memory_cap_decide_fragment(spec: spec, authorization: cap_authorization),
-  ]
-  match compose_host_script_standing(fragments: decide) {
-    HostScriptWithheld { cause: _ } => decide
-    HostScriptRefused { cause: _ } => decide
-    HostScriptProceed => concat(
-      decide,
+  concat(
+    concat(
       [
-        Mutate { steps: deploy_apply_frame_mutate_steps() },
-        Mutate { steps: deploy_apply_preamble_steps(access: access, spec: spec) },
-        Mutate { steps: owned_directory_apply_steps(spec: spec, plan: plan) },
-        deploy_memory_cap_mutate_fragment(spec: spec, authorization: cap_authorization),
-        Mutate {
-          steps: flat_map(spec.steps, step =>
-            apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
-        },
-        Mutate { steps: deploy_apply_receipt_steps(spec: spec) },
+        Decide { standing: HostScriptProceed, steps: deploy_apply_frame_decide_steps(spec: spec) },
+        deploy_memory_cap_decide_fragment(spec: spec, authorization: cap_authorization),
       ],
-    )
-  }
+      apply_emit_time_refuse_fragments(spec: spec, plan: plan, oidc_now: oidc_now),
+    ),
+    [
+      Mutate { steps: deploy_apply_frame_mutate_steps() },
+      Mutate { steps: deploy_apply_preamble_steps(access: access, spec: spec) },
+      Mutate { steps: owned_directory_apply_steps(spec: spec, plan: plan) },
+      deploy_memory_cap_mutate_fragment(spec: spec, authorization: cap_authorization),
+      Mutate {
+        steps: flat_map(spec.steps, step =>
+          apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
+      },
+      Mutate { steps: deploy_apply_receipt_steps(spec: spec) },
+    ],
+  )
 }
 
 fn apply_intent_from_effects(
@@ -3857,16 +4022,31 @@ fn approval_broker_dark_install_intent(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
 ) -> Pipeline {
-  Pipeline {
-    steps: concat(
+  compose_host_script(fragments: concat(
+    concat(
+      [Decide { standing: HostScriptProceed, steps: [deploy_raw(command: deploy_shell_strict_options_command)] }],
       concat(
-        [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
+        match managed_directory_admit(d: approval_device_store_directory()) {
+          ManagedDirectoryAdmitted { dir: _ } => []
+          ManagedDirectoryRefused { member, path, writer } =>
+            [host_script_decide_refused(
+              cause: join([member as String, " writer uncovered"], ""),
+              command: join([managed_directory_writer_uncovered_poison, member as String, " path=", path as String, " writer=", writer as String], ""),
+            )]
+        },
+        approval_broker_helper_grant_refuse_fragments(revision: revision),
       ),
-      concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
     ),
-    on_failure: FailFast,
-  }
+    [Mutate {
+      steps: concat(
+        concat(
+          [deploy_stage_directory_let_step()],
+          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
+        ),
+        concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
+      ),
+    }],
+  ))
 }
 
 // A NON-OWNING SPEC REACHING THE DARK INSTALL REFUSES LOUDLY RATHER THAN EMITTING A SCRIPT THAT
