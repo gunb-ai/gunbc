@@ -3,6 +3,7 @@ module test.claim.witness_floor_workflow_consolidation_witness
 import std.types { Bool, List, String }
 import v2.std.algebra { count_where, length, non_empty_to_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.witness.compiler_gate_workflow { expected_compiler_gate_yml }
 import gunbc.witness.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, witness_floor_workflow_job_id, required_ci_measurement_publish_condition, required_ci_measurement_bound_steps, witness_floor_run_step, build_lane_needs, witness_floor_lane_needs, ci_heal_expected_healed_sha_input_name, WitnessFloorGroupFixture, DispatchInputBinding, resolve_witness_floor_concurrency_group, WitnessFloorGroupResolved, WitnessFloorGroupRefused, evaluate_against_group_fixture, witness_floor_pull_request_activity_types, witness_floor_group_expression, witness_floor_triggers }
 import gunbc.witness.witness_floor_lanes { build_lane_job_id, floor_lane_job_id, required_lanes_roster }
 import gunbc.fabric.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
@@ -520,17 +521,24 @@ test fn w_concurrency_group_resolves_pull_request_to_pr_number() -> Bool {
   )
 }
 
-// THE PUSH-ON-MAIN TRIGGER IS GONE, so a push event reaches no branch of the group expression and
-// falls to the run-id fallback. This is the discriminating RED for the cut: while the trigger stood,
-// this fixture resolved to `witness-floor-refs/heads/main`, and restoring either the trigger or its
-// `RefAfterEvent` branch reddens this row. The fallback is the right destination and not a gap --
-// a push that somehow reaches this workflow shares a group with nothing, which is the same grain the
-// merge_group `mg-<sha>` branch gives every landing.
+// A PUSH ON MAIN takes no event branch of the group expression and falls to the run-id fallback, so
+// every landed sha's run is the only member of its group and never supersedes another. Restoring a
+// `RefAfterEvent` branch keyed by github.ref -- which let GitHub replace pending main runs -- reddens
+// this row.
 test fn w_concurrency_group_no_longer_groups_push_by_ref() -> Bool {
   group_resolved_as(
     fx: group_fx(event: github_event_name_push, inputs: []),
     expected: "witness-floor-run-rid"
   )
+}
+
+// Main runs what a pull request runs: the emitted required workflow (witnesses.yml) carries a push
+// trigger on main beside the pull_request one. Deleting the Push row from witness_floor_triggers reddens this.
+test fn w_emitted_workflow_runs_on_push_to_main() -> Bool {
+  match expected_compiler_gate_yml() {
+    WitnessFloorGenerated { content: y } => string_contains(s: y, pattern: "\n  push:\n    branches: [main]\n")
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
 }
 
 test fn w_concurrency_group_push_is_not_grouped_as_a_pr() -> Bool {

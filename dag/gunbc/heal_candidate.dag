@@ -18,7 +18,6 @@ import extdeps.git { git_pathspec_literal }
 import extdeps.git.plumbing
 import extdeps.git.inspect
 import extdeps.shell
-import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import gunbc.heal_publication_boundary {
   CandidateEntry, HealRepairCandidate,
@@ -253,10 +252,6 @@ fn proposable_paths_of(paths: List<String>) -> List<String> {
   filter(paths, p => !is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr }))
 }
 
-fn candidate_proposable_paths() -> List<String> {
-  proposable_paths_of(paths: committed_generated_artifact_paths())
-}
-
 fn observe_drift_population(root: String, paths: List<String>) -> DriftPopulation {
   fold(paths, init: DriftPopulationObserved { drifted: [] }, f: fn(acc, path) {
     match acc {
@@ -366,24 +361,30 @@ fn heal_candidate_declaration_wet() -> RequiredEnv {
   }
 }
 
-// THE ENTRY THE HEAL WORKFLOW INVOKES, AND IT WRITES A MANIFEST WHETHER OR NOT ANYTHING DRIFTED.
-// The earlier shape wrote one only when the tree was dirty, which made the manifest's ABSENCE carry
-// two incompatible meanings downstream: the tree was clean, or the candidate was produced and did
-// not survive the artifact round trip. The publisher could not tell them apart, so it took the same
-// silent green for both -- a repair owed and never made, reported as nothing to do. An empty
-// entries list says "clean" in a way that cannot be confused with "missing", and the publisher
-// refuses on a manifest that is absent after a heal run that succeeded.
-//
-// A DRIFTED TREE STILL WRITES A COMPLETE, REREAD CANDIDATE. Every refusing state writes no manifest
-// at all, so no partial candidate can reach the publisher; but those states also exit non-zero, and
-// the publisher only runs when this phase concluded success.
-fn heal_candidate_produce_wet() -> ProcessExit {
-  heal_candidate_produce_over(root: ".", paths: candidate_proposable_paths())
-}
-
 // THE ROSTER IS THE CALLER'S AND IS FILTERED HERE, so every repository's producer proposes only what
 // a publisher can accept (proposable_paths_of, above) whatever roster it brings.
 fn heal_candidate_produce_over(root: String, paths: List<String>) -> ProcessExit {
+  heal_candidate_produce_declaring(root: root, paths: paths, source: DeclarationFromLedgerStep)
+}
+
+// WHERE THE DECLARATION OF WHAT WAS REPAIRED COMES FROM. A ledger repair is declared by the step that
+// judged the ledgers (heal_candidate_declaration_wet); a repair with no ledger to judge -- the stage0
+// mirrors -- is declared by the paths that drifted, which the producer has just observed and so
+// cannot misreport. Both are mandatory for a candidate that names paths, and a candidate that
+// names none declares nothing.
+type DeclarationSource
+  = DeclarationFromLedgerStep
+  | DeclarationFromDriftedPaths { subject: String }
+
+fn drifted_paths_declaration(subject: String, drifted: List<DriftedEntry>) -> String {
+  join([
+    subject, ":\n",
+    join(map(drifted, d => concat("- ", d.entry.path.value as String)), "\n"),
+    "\n"
+  ], "")
+}
+
+fn heal_candidate_produce_declaring(root: String, paths: List<String>, source: DeclarationSource) -> ProcessExit {
   match prepare_candidate_directory() {
     CandidateWriteRefused { cause } => exit_failure(reason: cause)
     CandidateWritten =>
@@ -393,10 +394,15 @@ fn heal_candidate_produce_over(root: String, paths: List<String>) -> ProcessExit
           if count(drifted) == 0 {
             heal_candidate_write_wet(root: root, drifted: drifted, declaration: "")
           } else {
-            match heal_candidate_declaration_wet() {
-              RequiredEnvRefused { cause } => exit_failure(reason: cause)
-              RequiredEnvFound { value: declaration } =>
-                heal_candidate_write_wet(root: root, drifted: drifted, declaration: declaration as String)
+            match source {
+              DeclarationFromDriftedPaths { subject } =>
+                heal_candidate_write_wet(root: root, drifted: drifted, declaration: drifted_paths_declaration(subject: subject, drifted: drifted))
+              DeclarationFromLedgerStep =>
+                match heal_candidate_declaration_wet() {
+                  RequiredEnvRefused { cause } => exit_failure(reason: cause)
+                  RequiredEnvFound { value: declaration } =>
+                    heal_candidate_write_wet(root: root, drifted: drifted, declaration: declaration as String)
+                }
             }
           }
       }
