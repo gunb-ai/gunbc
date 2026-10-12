@@ -123,10 +123,6 @@ data nfr_reason_git_text_observation_projection: String = "one-variant extractio
 
 data nfr_dissolve_git_text_observation_projection: DissolutionCondition = unbound_dissolution(description: "the convergence fold carries a refined observed-text carrier past the pre-state fault check (a String proven present by construction, never a GitTextObservation re-projected), so git_text_or_empty has no caller and deletes, and git_text_value becomes a total two-arm match or a std optional projection derived from the coproduct — the rows delete with that fold")
 
-data nfr_reason_build_projection_fold_step: String = "accumulator fold step over a Derived | Empty | Refused projection coproduct (CashProjection, BasisProjection, ConstructibleCeiling): the outer match on the accumulator short-circuits the Refused arm and the wildcard is the two non-refused arms continuing the fold; a nested match on the same accumulator separates the running-Derived arm from the first derivation with a second wildcard. Enumerating the non-refused arms would clone the fold body once per arm (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with I-3 inventory-aware build fulfillment (#8543, 2026-08-19) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_build_projection_partition: DissolutionCondition = unbound_dissolution(description: "the three projection coproducts carry a derived refused-vs-open partition from inhabitance (dag/std/algebra, DESIGN §3/§4 — the same move as derived terminality), or the folds run over a std short-circuiting refusal carrier, so each step matches on the partition rather than the variant list, the wildcard arms become named cases, and the rows delete")
-
 data nfr_reason_build_axis_reading_unreachable_arm: String = "axis-reading projection over CashProjection and ConstructibleCeiling: the Derived arm yields its magnitude and the wildcard answers a zero magnitude for the empty arm (CashNoPurchaseLines is a genuine zero; CeilingUnconstrainedByAnyLine is declared a missing input by ceiling_missing) and for the Refused arm, which candidate_missing_inputs has already declared missing, so the refused reading is construction-unreachable at the only caller (per the in-file note above cash_reading) rather than a fabricated zero. Landed with I-3 inventory-aware build fulfillment (#8543, 2026-08-19) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
 data nfr_dissolve_build_axis_reading_refined_carrier: DissolutionCondition = unbound_dissolution(description: "BuildCandidate carries its cash and ceiling on a refined Derived-only carrier once candidate_missing_inputs has admitted it (illegal states unrepresentable at the reading), so the readings match totally over the refined carrier and the unreachable arms delete with their rows")
@@ -499,21 +495,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/live_deploy/repository_convergence.dag::git_text_value" },
     reason: nfr_reason_git_text_observation_projection,
     dissolution: nfr_dissolve_git_text_observation_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/product/build_fulfillment.dag::basis_step" },
-    reason: nfr_reason_build_projection_fold_step,
-    dissolution: nfr_dissolve_build_projection_partition,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/product/build_fulfillment.dag::cash_step" },
-    reason: nfr_reason_build_projection_fold_step,
-    dissolution: nfr_dissolve_build_projection_partition,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/product/build_fulfillment.dag::ceiling_step" },
-    reason: nfr_reason_build_projection_fold_step,
-    dissolution: nfr_dissolve_build_projection_partition,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/product/build_selection.dag::cash_reading" },
