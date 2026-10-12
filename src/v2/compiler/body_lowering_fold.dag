@@ -7063,10 +7063,19 @@ fn body_lower_postfix_steps_carry_cast_or_index(steps: List<PostfixStep>) -> Boo
 // base or a non-Int index is NOT established: no harness yet assembles source with its std import
 // closure (gunbc.recurring_failure_mode index_suffix_infer_verdict_unobserved).
 fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
+  // The operator is a node CAUSED BY the suffix, not the suffix's own occurrence: a base lowered from
+  // a projection (`r.items[i]`) is a spine that already carries the source occurrence, and two
+  // nodes under one occurrence is a collision the module refuses.
+  let operator_occurrence = match source.occurrence_id {
+    OccurrenceMinted { id: id } => OccurrencePending { caused_by: id }
+    OccurrenceProjected { id: id, caused_by: _ } => OccurrencePending { caused_by: id }
+    OccurrencePending { caused_by: c } => OccurrencePending { caused_by: c }
+    OccurrenceSynthetic => OccurrenceSynthetic
+  }
   body_lower_transform_call(
     operator: qualified_name_spine_node(
       qn: [^v2, ^std, ^collection, ^list_at_optional],
-      occurrence_id: source.occurrence_id
+      occurrence_id: operator_occurrence
     ),
     args: [
       Edge { label: Authored { name: ^xs }, target: base },
