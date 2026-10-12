@@ -171,7 +171,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -6448,6 +6448,7 @@ type PostfixStep
   = PostfixProjection { segment: Node, call_elem: Optional<Node> }
   | PostfixCast { target: Node }
   | PostfixRecord { segment: Node, items: List<Node> }
+  | PostfixIndex { items_capture: Node, at: Node }
 
 // THE THIRD ARM CARRIES THE SUFFIX KINDS THIS LOWERING CANNOT READ. A dot-projection step whose
 // suffix slot is neither empty, a paren call, nor a brace record body reaches PostfixChainSuffixCarried.
@@ -6567,6 +6568,16 @@ fn body_lower_postfix_chain_steps_read(
               grown: body_lower_postfix_chain_acc_cast_step(acc: acc, target: target)
             )
           Absent =>
+        match body_lower_index_suffix_expr_optional(repeat_elem: repeat_elem) {
+          Present { value: items_capture } =>
+            body_lower_postfix_chain_steps_grow(
+              repeat_capture: repeat_capture,
+              grown: body_lower_postfix_chain_acc_closing_step(
+                acc: acc,
+                step: PostfixIndex { items_capture: items_capture, at: repeat_elem }
+              )
+            )
+          Absent =>
         match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
           Absent => PostfixChainNotThisShape
           Present { value: segment } =>
@@ -6596,6 +6607,7 @@ fn body_lower_postfix_chain_steps_read(
                   )
                 )
             }
+        }
         }
         }
     }
@@ -6730,6 +6742,37 @@ fn body_lower_postfix_chain_fold_step(
                 },
                 diagnostics: ad
               )
+          }
+        PostfixIndex { items_capture: items_capture, at: at } =>
+          match body_lower_comma_list_items(
+            list_capture: items_capture,
+            shape_refusal: ^body_lowering_reason_list_literal_shape_unread
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: items, diagnostics: _ } =>
+              match items {
+                Empty => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_index_suffix_arity, n: at))
+                Cons { head: index, tail: more } =>
+                  match more {
+                    Cons { head: _, tail: _ } =>
+                      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_index_suffix_arity, n: at))
+                    Empty =>
+                      match body_lower_value_read(value: index) {
+                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                        Accepted { value: index_value, diagnostics: xd } =>
+                          outcome_with_diagnostics(
+                            value: PostfixAccumValue {
+                              node: body_lower_index_read_node(
+                                base: body_lower_postfix_accum_node(acc: state, source: source),
+                                index: index_value,
+                                source: source
+                              )
+                            },
+                            diagnostics: diagnostics_merge(outer: ad, inner: xd)
+                          )
+                      }
+                  }
+              }
           }
         PostfixRecord { segment: step_segment, items: items } =>
           match state {
@@ -6927,6 +6970,7 @@ fn body_lower_postfix_chain_head_atom_for_steps(head_node: Node, steps: List<Pos
     Cons { head: first, tail: _ } =>
       match first {
         PostfixCast { target: _ } => optional_absent()
+        PostfixIndex { items_capture: _, at: _ } => optional_absent()
         PostfixProjection { segment: _, call_elem: _ } => body_lower_dotted_head_atom_optional(node: head_node)
         PostfixRecord { segment: _, items: _ } => body_lower_dotted_head_atom_optional(node: head_node)
       }
@@ -6959,6 +7003,7 @@ fn body_lower_postfix_steps_carry_cast(steps: List<PostfixStep>) -> Bool {
   fold(steps, init: false, f: fn(acc, step) {
     acc || match step {
       PostfixCast { target: _ } => true
+      PostfixIndex { items_capture: _, at: _ } => true
       PostfixProjection { segment: _, call_elem: _ } => false
       PostfixRecord { segment: _, items: _ } => false
     }
@@ -6971,6 +7016,26 @@ fn body_lower_postfix_steps_carry_cast(steps: List<PostfixStep>) -> Bool {
 // CanonicalOperation (v2.extdeps.languages.dag dag_surface_operator_canonicalization_lookup) and
 // binds T in type role. The named edge is never an operand: readers take a Transform's operands
 // through its positional children.
+// AN INDEX READ IS THE EXISTING STD ELEMENT ACCESS, NOT A NEW OPERATION. `xs[i]` lowers to
+// v2.std.collection list_at_optional(xs: xs, index: i) -- an Optional<T>, because an index out of
+// range is a value and not a crash (the answer v2 already models). The head is the absolute path
+// to that declaration, so the lowering does not depend on what the authoring module imported. A
+// Map is NOT indexed by this: map_lookup is a different operation keyed by a different type, and
+// the index step does not decide which carrier its base is; infer judges the base against the
+// declared xs: List<T>, so a Map base refuses there rather than reading as a list.
+fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
+  body_lower_transform_call(
+    operator: qualified_name_spine_node(
+      qn: [^v2, ^std, ^collection, ^list_at_optional],
+      occurrence_id: source.occurrence_id
+    ),
+    args: [
+      Edge { label: Authored { name: ^xs }, target: base },
+      Edge { label: Authored { name: ^index }, target: index }
+    ]
+  )
+}
+
 fn body_lower_cast_node(operand: Node, target_type: Node, source: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
@@ -9655,10 +9720,14 @@ fn body_lower_postfix_repeat_carries_as_suffix(repeat_capture: Node) -> Bool {
         match body_lower_as_suffix_type_optional(repeat_elem: repeat_elem) {
           Present { value: _ } => true
           Absent =>
+          match body_lower_index_suffix_expr_optional(repeat_elem: repeat_elem) {
+          Present { value: _ } => true
+          Absent =>
             match body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
               Present { value: rest } => body_lower_postfix_repeat_carries_as_suffix(repeat_capture: rest)
               Absent => false
             }
+          }
         }
     }
   }
@@ -9675,6 +9744,12 @@ fn body_lower_as_suffix_type_optional(repeat_elem: Node) -> Optional<Node> {
         Absent => optional_absent()
       }
   }
+}
+
+// index_suffix = seq(lbracket, seq(expr_list, rbracket)) -- the list literal's bracket shape: answers
+// its items capture when the element is an index suffix.
+fn body_lower_index_suffix_expr_optional(repeat_elem: Node) -> Optional<Node> {
+  body_lower_list_literal_items_capture_optional(captured: repeat_elem)
 }
 
 fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
