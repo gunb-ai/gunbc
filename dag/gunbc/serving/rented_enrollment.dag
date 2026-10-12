@@ -1,6 +1,7 @@
 module gunbc.serving.rented_enrollment
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, Map, Int }
+import product.fabric.work { identity_frame }
 import std.optional { Present, Absent }
 import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
 import gunbc.serving.serving_enrollment {
@@ -34,22 +35,82 @@ type RentedEnrollment {
 // parameter.
 data rented_cohort_enrollments: List<RentedEnrollment> = []
 
-fn rented_enrollments_of(rows: List<RentedEnrollment>, replica: RentedReplicaIdentity) -> List<RentedEnrollment> {
-  filter(rows, e => rented_replica_wire(id: e.endpoint.replica) == rented_replica_wire(id: replica))
-}
-
 data rented_replica_enrolled_twice_obligation: NonEmptyStr = "more than one enrollment row answers for this replica; which endpoint and host the replica is reached at must not depend on roster order" as NonEmptyStr
 
 data rented_replica_unenrolled_obligation: NonEmptyStr = "no enrollment row names this replica, so there is no recorded host through which its process can be read" as NonEmptyStr
 
-// A REPLICA ENROLLED TWICE IS UNRESOLVED EVERYWHERE IT APPEARS, never resolved by order: the roster
-// refuses it as a route and the incarnation transport refuses it as a host.
-fn rented_enrolled_routes(rows: List<RentedEnrollment>) -> List<ServingRoute> {
-  map(rows, e =>
-    if count(rented_enrollments_of(rows: rows, replica: e.endpoint.replica)) > 1 {
-      ServingRouteUnresolved { replica: e.endpoint.replica, obligation: rented_replica_enrolled_twice_obligation }
-    } else {
-      ServingRouteResolved { endpoint: e.endpoint, ceiling: e.ceiling }
+data rented_endpoint_enrolled_twice_obligation: NonEmptyStr = "more than one enrollment row claims this serving address and port; one engine cannot back two replicas' capacity pools, so the operator must settle which replica owns the endpoint" as NonEmptyStr
+
+data rented_replica_node_differs_from_access_node_obligation: NonEmptyStr = "the enrollment row's replica is on one node but its host access names another; process evidence read from the access host cannot be attributed to this replica" as NonEmptyStr
+
+type RentedEnrollmentDecision
+  = RentedEnrollmentAdmitted { enrollment: RentedEnrollment }
+  | RentedEnrollmentRefused { replica: RentedReplicaIdentity, obligation: NonEmptyStr }
+
+type RentedEnrollmentIndex {
+  decisions: List<RentedEnrollmentDecision>
+  by_replica: Map<String, RentedEnrollmentDecision>
+}
+
+fn rented_endpoint_wire(e: ServingRouteEndpoint) -> String {
+  concat(identity_frame(label: "address", value: e.address as String), identity_frame(label: "port", value: to_string(e.port)))
+}
+
+fn rented_count_bump(counts: Map<String, Int>, key: String) -> Map<String, Int> {
+  match map_get(counts, key) {
+    Present { value: n } => map_insert(counts, key, n + 1)
+    Absent => map_insert(counts, key, 1)
+  }
+}
+
+fn rented_count_of(counts: Map<String, Int>, key: String) -> Int {
+  match map_get(counts, key) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn rented_enrollment_decision(e: RentedEnrollment, replicas: Map<String, Int>, endpoints: Map<String, Int>) -> RentedEnrollmentDecision {
+  if rented_count_of(counts: replicas, key: rented_replica_wire(id: e.endpoint.replica)) > 1 {
+    RentedEnrollmentRefused { replica: e.endpoint.replica, obligation: rented_replica_enrolled_twice_obligation }
+  } else if rented_count_of(counts: endpoints, key: rented_endpoint_wire(e: e.endpoint)) > 1 {
+    RentedEnrollmentRefused { replica: e.endpoint.replica, obligation: rented_endpoint_enrolled_twice_obligation }
+  } else if (e.endpoint.replica.node as String) != (e.access.node as String) {
+    RentedEnrollmentRefused { replica: e.endpoint.replica, obligation: rented_replica_node_differs_from_access_node_obligation }
+  } else {
+    RentedEnrollmentAdmitted { enrollment: e }
+  }
+}
+
+fn rented_decision_replica(d: RentedEnrollmentDecision) -> String {
+  match d {
+    RentedEnrollmentAdmitted { enrollment: e } => rented_replica_wire(id: e.endpoint.replica)
+    RentedEnrollmentRefused { replica: r, obligation: _ } => rented_replica_wire(id: r)
+  }
+}
+
+// THE ONE DERIVATION OF WHO MAY BE ENROLLED, built once per row set and read by both the route roster
+// and the incarnation lookup, so conflicting ownership is refused in one place and the two consumers
+// cannot disagree. Ownership is counted in one pass (replica wire, serving address+port); a replica or
+// endpoint claimed by more than one row refuses every claimant rather than letting roster order pick,
+// and a row whose replica node differs from its access node refuses before any host is read.
+fn rented_enrollment_index(rows: List<RentedEnrollment>) -> RentedEnrollmentIndex {
+  let replicas = fold(rows, init: empty_map(), f: (acc, e) => rented_count_bump(counts: acc, key: rented_replica_wire(id: e.endpoint.replica)))
+  let endpoints = fold(rows, init: empty_map(), f: (acc, e) => rented_count_bump(counts: acc, key: rented_endpoint_wire(e: e.endpoint)))
+  let decisions = map(rows, e => rented_enrollment_decision(e: e, replicas: replicas, endpoints: endpoints))
+  RentedEnrollmentIndex {
+    decisions: decisions,
+    by_replica: fold(decisions, init: empty_map(), f: (acc, d) => map_insert(acc, rented_decision_replica(d: d), d)),
+  }
+}
+
+data rented_cohort_index: RentedEnrollmentIndex = rented_enrollment_index(rows: rented_cohort_enrollments)
+
+fn rented_enrolled_routes(index: RentedEnrollmentIndex) -> List<ServingRoute> {
+  map(index.decisions, d =>
+    match d {
+      RentedEnrollmentAdmitted { enrollment: e } => ServingRouteResolved { endpoint: e.endpoint, ceiling: e.ceiling }
+      RentedEnrollmentRefused { replica: r, obligation: o } => ServingRouteUnresolved { replica: r, obligation: o }
     })
 }
 
@@ -57,15 +118,14 @@ type RentedEnrollmentLookup
   = RentedEnrollmentFound { enrollment: RentedEnrollment }
   | RentedEnrollmentNotFound { replica: RentedReplicaIdentity, obligation: NonEmptyStr }
 
-fn rented_enrollment_for(rows: List<RentedEnrollment>, replica: RentedReplicaIdentity) -> RentedEnrollmentLookup {
-  let named = rented_enrollments_of(rows: rows, replica: replica)
-  if count(named) > 1 {
-    RentedEnrollmentNotFound { replica: replica, obligation: rented_replica_enrolled_twice_obligation }
-  } else {
-    match first(named) {
-      Present { value: e } => RentedEnrollmentFound { enrollment: e }
-      Absent => RentedEnrollmentNotFound { replica: replica, obligation: rented_replica_unenrolled_obligation }
-    }
+fn rented_enrollment_for(index: RentedEnrollmentIndex, replica: RentedReplicaIdentity) -> RentedEnrollmentLookup {
+  match map_get(index.by_replica, rented_replica_wire(id: replica)) {
+    Absent => RentedEnrollmentNotFound { replica: replica, obligation: rented_replica_unenrolled_obligation }
+    Present { value: d } =>
+      match d {
+        RentedEnrollmentAdmitted { enrollment: e } => RentedEnrollmentFound { enrollment: e }
+        RentedEnrollmentRefused { replica: _, obligation: o } => RentedEnrollmentNotFound { replica: replica, obligation: o }
+      }
   }
 }
 
@@ -74,11 +134,11 @@ fn rented_enrollment_for(rows: List<RentedEnrollment>, replica: RentedReplicaIde
 // and the observation is gunbc.serving.replica_incarnation observe_replica_incarnation unchanged. A
 // replica with no row, a launch naming another replica, a refused host access or an unreadable fact is
 // Unread with its cause, which keeps the session pinned and never calls it warm.
-fn rented_incarnation_standing(rows: List<RentedEnrollment>, endpoint: ServingRouteEndpoint, launch: ReplicaEndpointLaunch, attempt_raw: String) -> ReplicaIncarnationStanding {
+fn rented_incarnation_standing(index: RentedEnrollmentIndex, endpoint: ServingRouteEndpoint, launch: ReplicaEndpointLaunch, attempt_raw: String) -> ReplicaIncarnationStanding {
   if rented_replica_wire(id: launch.replica) != rented_replica_wire(id: endpoint.replica) {
     replica_incarnation_unread(cause: "the launch read names another replica than the endpoint it is observed at")
   } else {
-    match rented_enrollment_for(rows: rows, replica: endpoint.replica) {
+    match rented_enrollment_for(index: index, replica: endpoint.replica) {
       RentedEnrollmentNotFound { replica: _, obligation: o } => replica_incarnation_unread(cause: o as String)
       RentedEnrollmentFound { enrollment: e } =>
         match rented_host_access(declaration: e.access, attempt_raw: attempt_raw) {
