@@ -3,9 +3,9 @@ module v2.test.emit.dag_bind_let_block_scoped
 import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.extdeps.languages.dag {
-  dag_value_expression_projection,
-  parse_production_emitted_identity_optional
+  dag_value_expression_projection
 }
+import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.compilers.target_model {
   BoundToken,
   FixedToken,

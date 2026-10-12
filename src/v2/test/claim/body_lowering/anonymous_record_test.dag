@@ -30,7 +30,8 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.test.claim.namespace_xl0.reference_conservation { conservation_subject }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
-import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+
+import v2.std.grammar { parse_production_emitted_identity_optional }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
