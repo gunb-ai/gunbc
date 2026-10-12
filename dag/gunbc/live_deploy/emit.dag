@@ -3158,14 +3158,17 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
     UnitFile => concat(
       apply_oidc_line_stop_steps(spec: spec, oidc_now: oidc_now),
       concat(
-        if !plan_writes_unit(plan: plan) { [] } else { concat([
-          apply_systemd_unit_write_step(spec: spec, revision: revision, oidc_now: oidc_now),
-          deploy_raw(command: deploy_stage_install_command(
-            stage_name: spec.service.unit_name as String,
-            mode: install_file_shared_mode,
-            dest: deployment_systemd_unit_path(names: spec.names) as String,
-          )),
-        ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)) },
+        if !plan_writes_unit(plan: plan) { [] } else { concat(
+          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
+          [
+            apply_systemd_unit_write_step(spec: spec, revision: revision, oidc_now: oidc_now),
+            deploy_raw(command: deploy_stage_install_command(
+              stage_name: spec.service.unit_name as String,
+              mode: install_file_shared_mode,
+              dest: deployment_systemd_unit_path(names: spec.names) as String,
+            )),
+          ],
+        ) },
         concat(
           if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
           if !plan_restarts_process(plan: plan) { [] } else { concat([
