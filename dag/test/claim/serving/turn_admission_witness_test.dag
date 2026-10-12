@@ -1,5 +1,6 @@
 module test.claim.serving.turn_admission_witness
 
+import std.measure { token_count, token_count_value }
 import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
@@ -340,13 +341,13 @@ fn residency_on_gpu(owner: String, current: String, intact: Bool, turn: ServingT
 }
 
 fn reuse(cached: Nat, launch: String) -> ServingTurnReuse {
-  TurnReuseRead { cached_tokens: cached, launch: launch as NonEmptyStr, turn: "t7" as NonEmptyStr }
+  TurnReuseRead { cached_tokens: token_count(count: cached), launch: launch as NonEmptyStr, turn: "t7" as NonEmptyStr }
 }
 
 // An attributed hit is reuse AT THAT TURN, carrying its evidence -- not residency now.
 test fn an_attributed_hit_on_the_owning_launch_reads_reused_at_turn() -> Bool {
   match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 512, launch: "L1"), host: HostTierUnread) {
-    ReusedAtTurn { cached_tokens: n, launch: l, turn: t } => n == 512 && (l as String) == "L1" && (t as String) == "t7"
+    ReusedAtTurn { cached_tokens: n, launch: l, turn: t } => token_count_value(t: n) == 512 && (l as String) == "L1" && (t as String) == "t7"
     _ => false
   }
 }
@@ -422,7 +423,7 @@ fn rec(owner: String) -> ServingSessionRecord {
 }
 
 test fn a_warm_session_is_pinned_and_an_established_reconstruct_is_free() -> Bool {
-  (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: 512, launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+  (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: token_count(count: 512), launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
      OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
      _ => false
    })

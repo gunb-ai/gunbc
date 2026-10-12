@@ -2,6 +2,7 @@ module gunbc.serving.session_store
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
+import std.measure { TokenCount }
 import std.optional { Present, Absent }
 import product.fabric.work { identity_frame }
 import gunbc.serving.turn_admission {
@@ -65,7 +66,7 @@ type CachedTokensUnobservedCause
 // The per-request prefix-cache count: observed, or unobserved with its cause. Never zero by omission: a
 // cold turn reports 0, a turn that was not observed reports nothing.
 type ServingCachedTokensReading
-  = CachedTokensObserved { cached_tokens: Nat }
+  = CachedTokensObserved { cached_tokens: TokenCount }
   | CachedTokensUnobserved { cause: CachedTokensUnobservedCause }
 
 fn cached_tokens_unobserved_obligation(cause: CachedTokensUnobservedCause) -> NonEmptyStr {

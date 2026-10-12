@@ -1,5 +1,6 @@
 module test.claim.serving.serving_availability_bind_wet_witness
 
+import std.measure { token_count, token_count_value }
 import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
 import std.optional { Present, Absent }
@@ -183,7 +184,7 @@ test fn a_ready_route_reaches_the_existing_incarnation_frontier_in_the_product_p
 // Deleting harness_note_owner_standing fails the first claim; reading the standing from the candidate
 // being probed (the earlier defect) fails the second.
 fn w_record(owner: String, intact: Bool) -> ServingSessionRecord {
-  SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: intact, last_turn: TurnReuseRead { cached_tokens: 512, launch: owner as NonEmptyStr, turn: "t7" as NonEmptyStr } }
+  SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: intact, last_turn: TurnReuseRead { cached_tokens: token_count(count: 512), launch: owner as NonEmptyStr, turn: "t7" as NonEmptyStr } }
 }
 
 fn w_own_key() -> String {
@@ -198,7 +199,7 @@ test fn the_owner_launch_contributes_a_reused_at_turn_standing_from_its_own_attr
 }
 
 fn w_evicted_record() -> ServingSessionRecord {
-  SessionRecord { owner_launch: w_own_key() as NonEmptyStr, prefix_intact: true, last_turn: TurnReuseRead { cached_tokens: 0, launch: w_own_key() as NonEmptyStr, turn: "t7" as NonEmptyStr } }
+  SessionRecord { owner_launch: w_own_key() as NonEmptyStr, prefix_intact: true, last_turn: TurnReuseRead { cached_tokens: token_count(count: 0), launch: w_own_key() as NonEmptyStr, turn: "t7" as NonEmptyStr } }
 }
 
 // THE A-EVICTED / B-HIT RED ON THE PRODUCTION FOLD: engine-wide counters no longer exist on the
@@ -235,11 +236,11 @@ test fn an_unprobed_owner_does_not_admit_another_replica_and_no_record_does() ->
           PlacementFree => true
           _ => false
         })
-    && (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: 512, launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: w_record(owner: "some-other-launch", intact: true), candidate_launch: l2) {
+    && (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: token_count(count: 512), launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: w_record(owner: "some-other-launch", intact: true), candidate_launch: l2) {
           OwnedByAnotherReplica { owner: _ } => true
           _ => false
         })
-    && (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: 512, launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: w_record(owner: w_own_key(), intact: true), candidate_launch: l2) {
+    && (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: token_count(count: 512), launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: w_record(owner: w_own_key(), intact: true), candidate_launch: l2) {
           PlacementFree => true
           _ => false
         })

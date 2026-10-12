@@ -1,5 +1,6 @@
 module test.claim.harness_cached_tokens_witness
 
+import std.measure { token_count, token_count_value }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.optional { Present, Absent }
@@ -37,7 +38,7 @@ fn standing_after(body: String, next: List<String>) -> ServingSessionResidency? 
 
 test fn a_reported_cached_tokens_flows_from_the_wire_to_reused_at_the_recorded_turn() -> Bool {
   match standing_after(body: reported_body(), next: ["sys", "user", "assistant-1", "tool-result"]) {
-    Present { value: ReusedAtTurn { cached_tokens: n, launch: _, turn: t } } => n == 768 && (t as String) == "t1"
+    Present { value: ReusedAtTurn { cached_tokens: n, launch: _, turn: t } } => token_count_value(t: n) == 768 && (t as String) == "t1"
     _ => false
   }
 }

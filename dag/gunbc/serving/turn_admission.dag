@@ -2,7 +2,7 @@ module gunbc.serving.turn_admission
 
 import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
-import std.measure { second, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
+import std.measure { TokenCount, second, money_amount_micro, MoneyOnce, MoneyRate, MoneyPerSecond }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
@@ -282,7 +282,7 @@ fn serving_admission_on_counts(
 // ReusedAtTurn names cached_tokens, the launch it was observed on and the turn -- and no arm claims
 // the prefix is resident now. A lifetime-counter ratio is likewise refused (prefix_cache_verdict).
 type ServingTurnReuse
-  = TurnReuseRead { cached_tokens: Nat, launch: NonEmptyStr, turn: NonEmptyStr }
+  = TurnReuseRead { cached_tokens: TokenCount, launch: NonEmptyStr, turn: NonEmptyStr }
   | TurnReuseUnread { obligation: NonEmptyStr }
 
 // What the caller remembers about a session between turns. No store of these exists yet, so the
@@ -334,7 +334,7 @@ type ServingMustReconstructCause
   | PrefixMissedAndNotRetained
 
 type ServingSessionResidency
-  = ReusedAtTurn { cached_tokens: Nat, launch: NonEmptyStr, turn: NonEmptyStr }
+  = ReusedAtTurn { cached_tokens: TokenCount, launch: NonEmptyStr, turn: NonEmptyStr }
   | HostRestorable
   | MustReconstruct { cause: ServingMustReconstructCause }
   | ResidencyUnread { obligation: NonEmptyStr }

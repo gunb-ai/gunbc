@@ -351,7 +351,7 @@ fn harness_cached_tokens_read(doc: JsonValue) -> ServingCachedTokensReading {
               if n < 0 {
                 CachedTokensUnobserved { cause: CachedTokensNegative }
               } else {
-                CachedTokensObserved { cached_tokens: nat_magnitude(a: n) }
+                CachedTokensObserved { cached_tokens: token_count(count: nat_magnitude(a: n)) }
               }
             IntAbsent => CachedTokensUnobserved { cause: CachedTokensMemberAbsent }
             IntDuplicated => CachedTokensUnobserved { cause: CachedTokensMemberDuplicated }
