@@ -671,42 +671,44 @@ fn live_deploy_serve_unit_file_over_listener(
 
 // THE TAILNET DOOR'S UNIT: the same server as the unit above, launched on the door entry and bound
 // to the socket the deployment's serve route targets (gunbc.live_deploy.spec
-// deployment_tailnet_door_socket). Absent for a deployment whose route targets a port.
+// deployment_tailnet_door_socket). Three arms: emitted, not deployed (no socket), refused (OIDC).
+type LiveDeployTailnetDoorUnitEmission
+  = LiveDeployTailnetDoorUnitEmitted { file: SystemdUnitFile }
+  | LiveDeployTailnetDoorUnitNotDeployed
+  | LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: NonEmptyStr }
+
 fn live_deploy_tailnet_door_unit_file(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
-) -> SystemdUnitFile? {
+) -> LiveDeployTailnetDoorUnitEmission {
   match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
-    LiveDeployOidcEnvRefused { cause: _ } => none
+    LiveDeployOidcEnvRefused { cause } =>
+      LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: cause }
     LiveDeployOidcEnvAdmitted { directives } =>
       match deployment_tailnet_door_socket(names: spec.names) {
-        Absent => none
-        Present { value: socket } => Present { value: live_deploy_serve_unit_file_over_listener(
-          spec: spec, revision: revision, oidc_env: directives,
-          description: "gunbc roadmap tailnet door (gunbc serve)" as NonEmptyStr,
-          function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
-          listener: concat(" --unix-socket ", socket as String),
-        ) }
+        Absent => LiveDeployTailnetDoorUnitNotDeployed
+        Present { value: socket } => LiveDeployTailnetDoorUnitEmitted {
+          file: live_deploy_serve_unit_file_over_listener(
+            spec: spec, revision: revision, oidc_env: directives,
+            description: "gunbc roadmap tailnet door (gunbc serve)" as NonEmptyStr,
+            function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
+            listener: concat(" --unix-socket ", socket as String),
+          )
+        }
       }
   }
 }
 
 fn live_deploy_tailnet_door_unit_file_at(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second,
-) -> SystemdUnitFile? {
+) -> LiveDeployTailnetDoorUnitEmission {
   live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: Present { value: now_epoch })
 }
 
-// A step of this kind exists only where the door does (deployment_tailnet_door_steps), so the
-// absent arm is a spec whose steps and names disagree: it writes a refusal marker, never a unit.
-fn apply_tailnet_door_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> List<PipelineStep> {
-  match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
-    Absent => []
-    Present { value: unit } =>
-      [deploy_raw(command: deploy_stage_write_command(
-        stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
-        content: render(doc: doc_text(text: serialize_systemd_unit_file(file: unit)), proto: live_deploy_protocol),
-      ))]
-  }
+fn apply_tailnet_door_unit_write_steps(spec: DeploymentSpec, file: SystemdUnitFile) -> List<PipelineStep> {
+  [deploy_raw(command: deploy_stage_write_command(
+    stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
+    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
+  ))]
 }
 
 // THE FABRIC DB ENDPOINT'S UNIT: `gunbc serve` answering every request through the ONE .dag entry
@@ -1438,15 +1440,11 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
 // fact. Parameterizing only the install side would have left the writer staging one name and the
 // installer copying another — a deploy that fails on a missing file, which is at least loud, or
 // worse installs a stale unit left in the stage directory from a previous run.
-fn apply_systemd_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> List<PipelineStep> {
-  match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
-    LiveDeployServeUnitEmitted { file } =>
-      [deploy_raw(command: deploy_stage_write_command(
-        stage_name: spec.service.unit_name as String,
-        content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
-      ))]
-    LiveDeployServeUnitOidcReadbackRefused { cause: _ } => []
-  }
+fn apply_systemd_unit_write_steps(spec: DeploymentSpec, file: SystemdUnitFile) -> List<PipelineStep> {
+  [deploy_raw(command: deploy_stage_write_command(
+    stage_name: spec.service.unit_name as String,
+    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
+  ))]
 }
 
 fn apply_oidc_config_steps(spec: DeploymentSpec, oidc_now: Second?) -> List<PipelineStep> {
@@ -3201,14 +3199,17 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
     UnitFile => concat(
       if !plan_writes_unit(plan: plan) { [] } else { concat(
         apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
-        concat(
-          apply_systemd_unit_write_steps(spec: spec, revision: revision, oidc_now: oidc_now),
-          [deploy_raw(command: deploy_stage_install_command(
-            stage_name: spec.service.unit_name as String,
-            mode: install_file_shared_mode,
-            dest: deployment_systemd_unit_path(names: spec.names) as String,
-          ))],
-        ),
+        match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
+          LiveDeployServeUnitEmitted { file } => concat(
+            apply_systemd_unit_write_steps(spec: spec, file: file),
+            [deploy_raw(command: deploy_stage_install_command(
+              stage_name: spec.service.unit_name as String,
+              mode: install_file_shared_mode,
+              dest: deployment_systemd_unit_path(names: spec.names) as String,
+            ))],
+          )
+          LiveDeployServeUnitOidcReadbackRefused { cause: _ } => []
+        },
       ) },
       concat(
         if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
@@ -3293,14 +3294,17 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     ]))
     SystemdUnit => concat(
       concat(
-        concat(
-          apply_systemd_unit_write_steps(spec: spec, revision: revision, oidc_now: oidc_now),
-          [deploy_raw(command: deploy_stage_install_command(
-            stage_name: spec.service.unit_name as String,
-            mode: install_file_shared_mode,
-            dest: art.path as String,
-          ))],
-        ),
+        match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
+          LiveDeployServeUnitEmitted { file } => concat(
+            apply_systemd_unit_write_steps(spec: spec, file: file),
+            [deploy_raw(command: deploy_stage_install_command(
+              stage_name: spec.service.unit_name as String,
+              mode: install_file_shared_mode,
+              dest: art.path as String,
+            ))],
+          )
+          LiveDeployServeUnitOidcReadbackRefused { cause: _ } => []
+        },
         apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
       ),
       concat(
@@ -3854,15 +3858,52 @@ fn spec_has_tailnet_door_step(spec: DeploymentSpec) -> Bool {
   })
 }
 
-data tailnet_door_unknown_poison: String = "__GUNBC_TAILNET_DOOR_REFUSED__ TailnetDoorServeUnit step on a deployment whose serve route targets no unix socket"
+fn spec_has_systemd_unit_step(spec: DeploymentSpec) -> Bool {
+  any(spec.steps, st => match st {
+    ArtifactStep { step: art } => match art.kind {
+      SystemdUnit => true
+      _ => false
+    }
+    Dependency { step: _ } => false
+  })
+}
+
+fn serve_unit_write_fragments(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  oidc_now: Second?,
+) -> List<HostScriptFragment> {
+  if !(spec_has_systemd_unit_step(spec: spec)) {
+    []
+  } else {
+  let member = "serve-unit" as NonEmptyStr
+  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
+    LiveDeployOidcEnvAdmitted { directives: _ } =>
+      host_script_member_proceed(
+        member: member,
+        mutate_steps: emit_release_member_effects(
+          member: UnitFile,
+          plan: plan,
+          spec: spec,
+          oidc_now: oidc_now,
+        ),
+      )
+    LiveDeployOidcEnvRefused { cause } =>
+      host_script_member_refused(
+        member: member,
+        cause: cause as String,
+        command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
+      )
+  }
+  }
+}
 
 fn tailnet_door_admitted_mutate_steps(
   spec: DeploymentSpec,
-  revision: ReleaseRevisionBinding,
-  oidc_now: Second?,
+  file: SystemdUnitFile,
 ) -> List<PipelineStep> {
   concat(
-    apply_tailnet_door_unit_write_steps(spec: spec, revision: revision, oidc_now: oidc_now),
+    apply_tailnet_door_unit_write_steps(spec: spec, file: file),
     [
       deploy_raw(command: deploy_stage_install_command(
         stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
@@ -3881,21 +3922,19 @@ fn tailnet_door_fragments(spec: DeploymentSpec, oidc_now: Second?, revision: Rel
     []
   } else {
     match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
-      Present { value: _ } =>
+      LiveDeployTailnetDoorUnitEmitted { file } =>
         host_script_member_proceed(
           member: "tailnet-door" as NonEmptyStr,
-          mutate_steps: tailnet_door_admitted_mutate_steps(spec: spec, revision: revision, oidc_now: oidc_now),
+          mutate_steps: tailnet_door_admitted_mutate_steps(spec: spec, file: file),
         )
-      Absent =>
-        match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
-          LiveDeployOidcEnvRefused { cause: _ } => []
-          LiveDeployOidcEnvAdmitted { directives: _ } =>
-            host_script_member_refused(
-              member: "tailnet-door" as NonEmptyStr,
-              cause: "tailnet door socket unknown",
-              command: tailnet_door_unknown_poison,
-            )
-        }
+      LiveDeployTailnetDoorUnitNotDeployed =>
+        host_script_member_proceed(member: "tailnet-door" as NonEmptyStr, mutate_steps: [])
+      LiveDeployTailnetDoorUnitOidcReadbackRefused { cause } =>
+        host_script_member_refused(
+          member: "tailnet-door" as NonEmptyStr,
+          cause: cause as String,
+          command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
+        )
     }
   }
 }
@@ -3959,6 +3998,7 @@ fn apply_member_fragment_owns_step(step: DeploymentStep) -> Bool {
   match step {
     ArtifactStep { step: art } => match art.kind {
       OidcConfigArtifact => true
+      SystemdUnit => true
       FabricStorageServeUnit => true
       FabricStorageServeMapping => true
       TailnetDoorServeUnit => true
@@ -3996,7 +4036,10 @@ fn apply_intent_fragments(
           oidc_now: oidc_now,
           should_write: plan_writes_oidc_config(plan: plan),
         ),
-        apply_helper_grant_fragments(spec: spec, plan: plan),
+        concat(
+          serve_unit_write_fragments(spec: spec, plan: plan, oidc_now: oidc_now),
+          apply_helper_grant_fragments(spec: spec, plan: plan),
+        ),
       ),
       concat(
         concat(
