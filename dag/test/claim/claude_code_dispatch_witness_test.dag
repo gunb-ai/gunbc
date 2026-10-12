@@ -93,28 +93,15 @@ import gunbc.roadmap_dispatch_actuator {
   CodexDispatchProvider,
   CursorDispatchProvider,
   GunbcHarnessProvider,
-  DispatchProviderInnerArgvReady,
-  CodexProviderExecutableAbsent,
-  CursorProviderOffCustodyHost,
-  CursorProviderCredentialUnbound,
-  CodexProviderOffCustodyHost,
-  CredentialSnapshotNotConsumed,
-  CredentialSnapshotForAnotherAttempt,
-  ClaudeProviderCredentialUnbound,
   RecordedAttemptFingerprint,
   DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,
   decode_dispatch_executor_request,
-  claude_inner_argv_for_credential,
-  dispatch_provider_inner_argv_for_instance,
   dispatch_tmux_session_scope_for_recorded,
-  provider_kind_to_dispatch_cli,
-  claude_launch_without_snapshot_reason,
   claude_credential_custody_source,
   ClaudeCustodyFile,
   ClaudeCustodyUnbound,
 }
-import gunbc.dispatch_credential_snapshot { NoCredentialSnapshot }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -412,7 +399,9 @@ data spawn_argv_tail: List<String> = ["env", "CLAUDE_CODE_NO_FLICKER=1", "claude
 // The argv shape of a credential-bound Claude launch needs a snapshot the real take wrote (the type is
 // sealed, so a witness cannot supply one), so those claims live in
 // test.claim.dispatch_credential_snapshot_wet_witness. What is decidable without a host effect stays
-// here: where the credential is held, and that a launch holding no snapshot refuses.
+// here: where the credential is held. A Claude launch holding no snapshot has no expression: the
+// launch is reachable only through a snapshot the take wrote (gunbc.dispatch_attempt_launch
+// SnapshotLaunch).
 test fn the_dispatch_credential_is_held_in_its_custody_file() -> Bool {
   match claude_credential_custody_source() {
     ClaudeCustodyFile { path } => path as String == claude_code_oauth_harness_host_path as String
@@ -550,7 +539,6 @@ test fn a_recorded_fingerprint_scopes_the_session_over_the_default_selection() -
     effort: ReasoningMedium,
     model: ProviderAccountDefaultModel,
     process_fingerprint: "gunbc" as NonEmptyStr,
-    credential_snapshot: NoCredentialSnapshot,
   }
   let recorded = match dispatch_tmux_session_scope_for_recorded(
     node_id: node,
@@ -569,49 +557,4 @@ test fn a_recorded_fingerprint_scopes_the_session_over_the_default_selection() -
     Absent => false
   }
   recorded && fallback
-}
-
-// ── THE REAL-PATH ROUTE WITH NO TAKEN SNAPSHOT ──────────────────────────────────────────────────
-// The route an explicit Claude dispatch takes, through every real producer except the CLI process
-// itself, whose stdout is the captured 2.1.289 receipt: the trip's lines become the standing
-// (claude_code_standing_from_trip), the standing replaces the declared srv1 row
-// (inventory_with_observed_standing over the PRODUCTION provider_inventory_for_instance), selection
-// resolves Claude (resolve_dispatch_selection), the receipt's kind becomes the dispatch provider
-// (provider_kind_to_dispatch_cli), and the PRODUCTION spawn fold for srv1
-// (dispatch_provider_inner_argv_for_instance) is reached holding NO credential snapshot -- which it
-// refuses by name, where it used to emit an argv for a snapshot no take had written. The same route
-// holding a snapshot the real take wrote is the inhabitance claim of
-// test.claim.dispatch_credential_snapshot_wet_witness.
-test fn the_captured_trip_with_no_taken_snapshot_refuses_the_claude_launch() -> Bool {
-  let instance = srv1_live_dashboard_instance()
-  match resolve_dispatch_selection(
-    inventory: observed(stdout: trip(lines: [planted_assistant_line, receipt_rate_limit_allowed, receipt_result_success])),
-    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
-    sizing_expectation: NoDerivedSizingExpectation,
-  ) {
-    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason: _ } => false
-    DispatchSelectionResolved { receipt } =>
-      match dispatch_provider_inner_argv_for_instance(
-        instance: instance,
-        provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
-        effort: receipt.applied_effort,
-        model: ProviderAccountDefaultModel,
-        session_uuid: "00000000-0000-4000-8000-000000000000",
-        node_id: "node-claude" as NonEmptyStr as RoadmapNodeId,
-        attempt_key: "0123456789abcdef",
-        worktree_path: "/tmp/w",
-        brief: "brief",
-        alignment_chain_fingerprint: "fp",
-        credential_snapshot: NoCredentialSnapshot,
-      ) {
-        ClaudeProviderCredentialUnbound { reason } => reason as String == claude_launch_without_snapshot_reason as String
-        DispatchProviderInnerArgvReady { argv: _ } => false
-        CodexProviderExecutableAbsent { reason: _ } => false
-        CursorProviderOffCustodyHost { reason: _ } => false
-        CursorProviderCredentialUnbound { reason: _ } => false
-        CodexProviderOffCustodyHost { reason: _ } => false
-        CredentialSnapshotNotConsumed { reason: _ } => false
-        CredentialSnapshotForAnotherAttempt { reason: _ } => false
-      }
-  }
 }
