@@ -1,6 +1,5 @@
 module test.claim.product.node_platform_selection_witness
 
-import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Watt, byte_size_count, gibibyte, gibibyte_to_byte_size, watt, watt_count }

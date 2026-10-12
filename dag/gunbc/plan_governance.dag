@@ -1,7 +1,6 @@
 module gunbc.plan_governance
 
 import std.types { String, Bool, List }
-import v2.std.algebra { filter }
 
 // THE ONE AUTHORED FACT OF THE PLAN DOCUMENT GRAPH: which design authority governs a plan, and in
 // what role. Everything a reader sees about that relation -- the banner on the child, the children
@@ -56,6 +55,12 @@ data plan_governance_rows: List<PlanGovernance> = [
     role: CompilerStageSpecialization,
     stage: "completion, residual and closure -- environmental completion at a concrete placement",
   },
+  PlanGovernance {
+    plan_slug: "convergence-coverage-program",
+    governed_by_slug: "v2-compiler-architecture",
+    role: ImplementationProgram,
+    stage: "completion, residual and closure -- covering production convergence paths to the execution boundary",
+  },
 ]
 
 fn plan_governance_role_label(role: CompilerPlanRole) -> String {
@@ -63,7 +68,7 @@ fn plan_governance_role_label(role: CompilerPlanRole) -> String {
     CompilerStageAuthority => "compiler-stage authority"
     CompilerStageSpecialization => "compiler-stage specialization"
     CrossCuttingLensAuthority => "cross-cutting lens authority"
-    ImplementationProgram => "implementation program"
+    ImplementationProgram => "compiler-stage implementation program"
   }
 }
 

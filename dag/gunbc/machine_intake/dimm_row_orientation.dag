@@ -1,6 +1,5 @@
 module gunbc.machine_intake_dimm_row_orientation
 
-import v2.std.algebra { filter }
 import std.types { Bool, NonEmptyStr, String, List, list_length }
 import std.nat { Nat }
 import extdeps.publication { SpecificationDocumentDate }
