@@ -468,6 +468,8 @@ pub type Hertz = Rc<Measure<Frequency, One, Nat>>;
 
 pub type MegatransfersPerSecond = Rc<Measure<Frequency, Mega, Nat>>;
 
+pub type ClockTickCount = Rc<Measure<Count, One, Nat>>;
+
 pub type HardwareThreadCount = Rc<Measure<Count, One, Nat>>;
 
 pub type HardwareThreadMinute =
@@ -1246,6 +1248,17 @@ pub fn hertz(count: Nat) -> Hertz {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
+}
+
+pub fn clock_tick_count(count: Nat) -> ClockTickCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn clock_tick_count_value(t: ClockTickCount) -> Nat {
+    t.count.clone()
 }
 
 pub fn megatransfers_per_second(count: Nat) -> MegatransfersPerSecond {

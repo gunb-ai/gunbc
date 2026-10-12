@@ -66,17 +66,13 @@ pub fn not_unicode_scalar_code_point(n: Rc<NotUnicodeScalar>) -> i64 {
     }
 }
 
-pub fn char_text(c: i64) -> String {
-    crate::std_coercion::unicode_scalar_fold(crate::std_algebra::list_snoc_item(
-        Rc::new(vec![]),
-        c.clone(),
-    ))
-}
-
 pub fn from_code_point(cp: i64) -> Rc<Result<String, Rc<NotUnicodeScalar>>> {
     match (*scalar_of_code_point(cp.clone())).clone() {
         Result::Ok { value: c, .. } => Rc::new(Result::Ok {
-            value: char_text(c.clone()),
+            value: crate::std_coercion::unicode_scalar_fold(crate::std_algebra::list_snoc_item(
+                Rc::new(vec![]),
+                c.clone(),
+            )),
         }),
         Result::Err { value: n, .. } => Rc::new(Result::Err { value: n.clone() }),
     }

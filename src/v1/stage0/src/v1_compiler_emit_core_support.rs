@@ -4,7 +4,7 @@
 pub use crate::gunbc_rust_emitted_crate::EmittedRustCrate;
 pub use crate::gunbc_rust_emitted_edge::module_to_filename;
 pub use crate::gunbc_rust_emitted_edge::EmittedEdge;
-pub use crate::std_unicode_scalar::char_text;
+pub use crate::std_unicode_scalar::{ascii_lowercase, ascii_uppercase, ascii_uppercase_first};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
@@ -285,14 +285,19 @@ pub fn to_snake(name: String) -> String {
                 __result.push({
                     let idx = pair.0.clone();
                     let ch = pair.1.clone();
+                    let spelled =
+                        v1_rt::substring(&name, idx.clone(), v1_rt::int_add(idx.clone(), 1));
                     if is_upper(ch.clone()) {
                         if (idx.clone() == 0) {
-                            to_lower_char(ch.clone())
+                            crate::std_unicode_scalar::ascii_lowercase(spelled.clone())
                         } else {
-                            v1_rt::concat("_".to_string(), to_lower_char(ch.clone()))
+                            v1_rt::concat(
+                                "_".to_string(),
+                                crate::std_unicode_scalar::ascii_lowercase(spelled.clone()),
+                            )
                         }
                     } else {
-                        crate::std_unicode_scalar::char_text(ch.clone())
+                        spelled.clone()
                     }
                 });
             }
@@ -305,50 +310,12 @@ pub fn to_snake(name: String) -> String {
 pub fn to_screaming_snake(name: String) -> String {
     {
         let snake = to_snake(name.clone());
-        Rc::new({
-            let mut __result = Vec::new();
-            for ch in Rc::new(snake.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
-                .iter()
-                .cloned()
-            {
-                __result.push(to_upper_char(ch.clone()));
-            }
-            __result
-        })
-        .join(&"".to_string())
+        crate::std_unicode_scalar::ascii_uppercase(snake.clone())
     }
 }
 
 pub fn is_upper(ch: i64) -> bool {
     ((ch.clone() >= 65) && (ch.clone() <= 90))
-}
-
-pub fn to_lower_char(ch: i64) -> String {
-    {
-        let cp = ch.clone();
-        if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
-            {
-                let lower_cp = v1_rt::int_add(cp.clone(), 32);
-                crate::std_unicode_scalar::char_text(lower_cp.clone())
-            }
-        } else {
-            crate::std_unicode_scalar::char_text(ch.clone())
-        }
-    }
-}
-
-pub fn to_upper_char(ch: i64) -> String {
-    {
-        let cp = ch.clone();
-        if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
-            {
-                let upper_cp = v1_rt::int_sub(cp.clone(), 32);
-                crate::std_unicode_scalar::char_text(upper_cp.clone())
-            }
-        } else {
-            crate::std_unicode_scalar::char_text(ch.clone())
-        }
-    }
 }
 
 pub fn sanitize_service_name(name: String) -> String {
@@ -376,29 +343,7 @@ pub fn capitalize_first(s: String) -> String {
         if ((chars_list.clone().len() as i64) == 0) {
             "".to_string()
         } else {
-            Rc::new({
-                let mut __result = Vec::new();
-                for pair in Rc::new(
-                    chars_list
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                {
-                    __result.push(if (pair.0.clone() == 0) {
-                        to_upper_char(pair.1.clone())
-                    } else {
-                        crate::std_unicode_scalar::char_text(pair.1.clone())
-                    });
-                }
-                __result
-            })
-            .join(&"".to_string())
+            crate::std_unicode_scalar::ascii_uppercase_first(s.clone())
         }
     }
 }

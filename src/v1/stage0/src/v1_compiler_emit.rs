@@ -51,7 +51,7 @@ use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::is_container_type;
 pub use crate::std_types::SourceSpan;
-pub use crate::std_unicode_scalar::char_text;
+pub use crate::std_unicode_scalar::ascii_lowercase;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
@@ -65,8 +65,7 @@ pub use crate::v1_compiler_emit_core_support::{
     extract_test_projections, has_mock_prefix, is_leaf_type_item, is_type_alias_item,
     is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
     make_indent, module_to_filename, sanitize_service_name, service_var_name, test_function_name,
-    to_lower_char, to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper,
-    to_upper_char, unique_strings,
+    to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
@@ -1328,19 +1327,7 @@ pub fn to_camel(name: String) -> String {
         } else {
             {
                 let first_part = match parts.clone().first().cloned() {
-                    Some(p) => Rc::new({
-                        let mut __result = Vec::new();
-                        for c in Rc::new(p.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
-                            .iter()
-                            .cloned()
-                        {
-                            __result.push(crate::v1_compiler_emit_core_support::to_lower_char(
-                                c.clone(),
-                            ));
-                        }
-                        __result
-                    })
-                    .join(&"".to_string()),
+                    Some(p) => crate::std_unicode_scalar::ascii_lowercase(p.clone()),
                     std::option::Option::None => "".to_string(),
                 };
                 let rest_parts = Rc::new({
@@ -5522,11 +5509,11 @@ pub fn emit_suffix_escape_ident(
 }
 
 pub fn hex_digit_char(d: i64) -> String {
-    if (d.clone() < 10) {
-        crate::std_unicode_scalar::char_text(v1_rt::int_add(48, d.clone()))
-    } else {
-        crate::std_unicode_scalar::char_text(v1_rt::int_add(55, d.clone()))
-    }
+    v1_rt::substring(
+        &"0123456789ABCDEF".to_string(),
+        d.clone(),
+        v1_rt::int_add(d.clone(), 1),
+    )
 }
 
 pub fn int_to_upper_hex_inner(mut __tco_loop_n: i64, mut __tco_loop_acc: String) -> String {

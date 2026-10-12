@@ -888,8 +888,10 @@ pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
     let mut focus = chars.focus();
     let mut out = String::with_capacity(end - start);
     for i in start..end {
-        if let Some(ch) = char::from_u32(*focus.index(i) as u32) {
-            out.push(ch);
+        let cp = *focus.index(i);
+        match u32::try_from(cp).ok().and_then(char::from_u32) {
+            Some(ch) => out.push(ch),
+            None => panic!("chars_to_string: {} is not a Unicode scalar value (std.unicode.scalar NotUnicodeScalar); refusing to drop it silently", cp),
         }
     }
     out
