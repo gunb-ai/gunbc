@@ -1,14 +1,14 @@
 module test.claim.serving.engine_progress_witness
 
-import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import std.types { Bool, String, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.measure { second, second_count }
 import std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
-import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, vllm_endpoint_process_launch, LaunchObserved, LaunchUnobserved,
+import gunbc.serving.replica_endpoint_launch {
+  ReplicaEndpointLaunch, ReplicaLaunchObservation, replica_endpoint_launch, ReplicaLaunchObserved, ReplicaLaunchUnobserved,
 }
 import gunbc.harness.harness_backend { harness_progress_sample, harness_counter_field }
 import extdeps.vllm.metrics {
@@ -26,14 +26,16 @@ import gunbc.serving.engine_progress {
   ServingStepBoundStanding, StepBoundMeasured, StepBoundDeclaredUnmeasured,
 }
 
-data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { group: FabricGroupB {}, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
+data w_replica: RentedReplicaIdentity = RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 0, served_name: "qwen-first-row" as NonEmptyStr }
 
-fn w_launch(field: String) -> VllmEndpointProcessLaunch {
-  vllm_endpoint_process_launch(group: FabricGroupB {}, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
+data w_endpoint: ServingRouteEndpoint = ServingRouteEndpoint { replica: w_replica, address: "192.168.1.225" as NonEmptyStr, port: 30000 }
+
+fn w_launch(field: String) -> ReplicaEndpointLaunch {
+  replica_endpoint_launch(replica: w_replica, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: field as NonEmptyStr)
 }
 
-fn w_seen(field: String) -> VllmEndpointProcessLaunchObservation {
-  LaunchObserved { launch: w_launch(field: field), receipt: "w" as ObservationReceiptRef }
+fn w_seen(field: String) -> ReplicaLaunchObservation {
+  ReplicaLaunchObserved { launch: w_launch(field: field), receipt: "w" as ObservationReceiptRef }
 }
 
 fn w_sample(running: Nat, counter: String, at: EpochSecs) -> EngineProgressSample? {
@@ -142,7 +144,7 @@ test fn samples_across_a_replaced_exporter_are_unread() -> Bool {
   !w_is_not_progressing(p: p) && w_unread_cause(p: p).contains("replaced")
     && w_unread_cause(p: engine_progress_read(
       endpoint: w_endpoint,
-      before_launch: LaunchUnobserved { group: FabricGroupB {}, obligation: "metrics did not answer" as NonEmptyStr },
+      before_launch: ReplicaLaunchUnobserved { replica: w_replica, obligation: "metrics did not answer" as NonEmptyStr },
       after_launch: w_seen(field: "1789300000.12"),
       before: none,
       after: w_sample(running: 3, counter: "4.0", at: 1789400600),

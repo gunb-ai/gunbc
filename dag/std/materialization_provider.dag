@@ -15,11 +15,19 @@ import std.content_hash {
   content_hash_tagged,
   content_hash_tagged_structural,
   as_content_hash_structural,
+  as_content_hash_cryptographic,
+  Sha256Digest,
+  content_hash_of_value,
+  Fnv1a64,
+  Sha256Hash,
+  Sha1Hash,
+  Sha512Hash,
   structural_content_hash,
   serialize_content_hash,
   fnv1a64_structural_hex_digest,
   content_hash_family,
   compare_content_hash,
+  content_hash_equal,
   ContentHashEqual,
   ContentHashDifferent,
   ContentHashCrossFamilyIncomparable,
@@ -56,6 +64,15 @@ import std.judgment_contract {
   DeclaredInput,
   DecodedDeclaredInputs,
   DemandIdentity,
+  IdentityComponent,
+  IdentityText,
+  IdentityDigest,
+  IdentityUpstreamObject,
+  identity_upstream_object_component,
+  identity_component_canonical,
+  identity_digest_component,
+  identity_structural_component,
+  identity_text_component,
   JudgmentContract,
   LengthPrefixedField,
   LengthPrefixedScan,
@@ -106,7 +123,9 @@ import gunbc.compute.work_request {
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name,
   CargoRelease, CargoDebug,
 }
-import extdeps.git.object_store { git_object_id_wire_hex }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_content_hash }
+import extdeps.crypto.sha2 { sha256_computed_digest }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 
 // The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one
 // interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed
@@ -153,7 +172,7 @@ type ArtifactRequest
     }
   | ResolveClosureRequest { closure_digest: Fnv1a64Structural, compiler: DeclaredInput }
   | NativeCompilerArtifactRequest { generation: PreMaterializationIdentity }
-  | UniverseArtifactRequest { tested_tree_identity: Fnv1a64Structural, route_binary: DeclaredInput }
+  | UniverseArtifactRequest { tested_tree_identity: ContentHash, route_binary: DeclaredInput }
   | NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject)
   | ComputeWorkRequest { subject: WorkSubject, operation: WorkOperation, toolchain: WorkToolchainIdentity }
 
@@ -252,11 +271,11 @@ type ArtifactRequest
 // commits its outcome and binaries there (compute_store_commit); belt verification reaches it through
 // gunbc.roadmap_belt_actuate belt_run_claim_through_compute.
 type NativeModuleVerdictBundleSubject {
-  route_binary_identity: Fnv1a64Structural
-  module_identity: Fnv1a64Structural
-  canonical_module_import_closure_identity: Fnv1a64Structural
-  ordered_test_identity_population: Fnv1a64Structural
-  eval_interpretation_identity: Fnv1a64Structural
+  route_binary_identity: ContentHash
+  module_identity: ContentHash
+  canonical_module_import_closure_identity: ContentHash
+  ordered_test_identity_population: ContentHash
+  eval_interpretation_identity: ContentHash
 }
 
 // JudgmentContract is the ONE authority for what an ArtifactRequest family denotes. ArtifactRequest
@@ -331,16 +350,16 @@ type HashFamilyScopeAdmission
   | StructuralFingerprintRefusedAsStoreKey { family: HashFamily, scope: KeyingScope }
   | FamilyNotAdmittedForRelation { family: HashFamily, scope: KeyingScope }
 
-type EvaluationIdentityCollisionDisposition
-  = FnvBucketPreimageVerified { restoration_trigger: NonEmptyStr }
-
-data evaluation_identity_fnv_store_preimage_exception: EvaluationIdentityCollisionDisposition = FnvBucketPreimageVerified {
-  restoration_trigger: "std.content_hash parse_content_hash (algorithm-qualified ContentHash wire, inverse of serialize_content_hash) round-trips Sha256Family and Sha512Family object headers, and every persistent consumer of EvaluationStoreAddress — store_object_name, store_lookup_decide, store_commit_prepare, local_store_lookup, provider_serve PersistedProbe — derives EvaluationIdentity from evaluation_bucket under that family for PersistentStoreScope and CrossRunScope"
+// WHAT AN ADMITTED PERSISTENT ADDRESS STANDS ON. The digest is the admitted cryptographic family
+// over the canonical preimage, and every component of that preimage was judged against the scope
+// before the digest was taken (identity_component_persistent_standing). A structural fingerprint
+// component has no admitted address at all. A SHA-1 component is admitted only as the upstream
+// object identity it is -- git names a tree by it -- and each such component is NAMED here, so an
+// address resting on git's collision resistance says so rather than reading as uniformly SHA-256.
+type EvaluationStoreAddressStanding {
+  family: HashFamily
+  upstream_object_identity_refs: List<NonEmptyStr>
 }
-
-type EvaluationStoreAddressStanding
-  = CryptographicAddressStanding { family: HashFamily }
-  | PreimageVerifiedBucketStanding { disposition: EvaluationIdentityCollisionDisposition }
 
 type EvaluationStoreAddress sole_constructor {
   identity: EvaluationIdentity
@@ -351,7 +370,7 @@ type EvaluationStoreAddress sole_constructor {
 
 type EvaluationStoreAddressAdmission
   = Admitted { address: EvaluationStoreAddress }
-  | FamilyRefused { family: HashFamily, scope: KeyingScope }
+  | IdentityComponentsRefused { components: List<RefusedIdentityComponent>, scope: KeyingScope }
 
 fn evaluation_identity_canonical(evaluation: EvaluationIdentity) -> NonEmptyStr {
   concat(
@@ -360,23 +379,26 @@ fn evaluation_identity_canonical(evaluation: EvaluationIdentity) -> NonEmptyStr 
   ) as NonEmptyStr
 }
 
-fn evaluation_identity_fnv_bucket(evaluation: EvaluationIdentity) -> ContentHash {
-  content_hash_tagged(
-    tag: "materialization_provider.request",
-    payload: content_hash_combine_structural(
-      left: content_hash_atom(value: evaluation.demand.kind),
-      right: content_hash_combine_structural(
-        left: evaluation.demand.subject,
-        right: content_hash_tagged_structural(
-          tag: "materialization_provider.declared_inputs",
-          payload: evaluation.demand.declared_inputs |> fold(
-            init: content_hash_atom(value: "materialization_provider.no_inputs"),
-            f: (acc, i) => content_hash_combine_structural(left: acc, right: declared_input_digest(input: i))
-          )
-        )
-      )
-    )
-  )
+// THE IN-PROCESS INDEX BUCKET IS A FINGERPRINT OF THE SAME CANONICAL PREIMAGE THE STORE ADDRESS
+// DIGESTS. One preimage, two families chosen by scope: a structural fingerprint indexes a table
+// inside one process, where a collision costs a preimage comparison; the admitted cryptographic
+// family addresses a store that outlives the process (evaluation_store_address).
+fn evaluation_identity_index_bucket(evaluation: EvaluationIdentity) -> ContentHash {
+  content_hash_of_value(value: evaluation_identity_canonical(evaluation: evaluation))
+}
+
+fn identity_component_index_fingerprint(component: IdentityComponent) -> Fnv1a64Structural {
+  match component {
+    IdentityText { content: _ } => content_hash_atom(value: identity_component_canonical(component: component) as NonEmptyStr)
+    IdentityDigest { hash: h } =>
+      match h {
+        Fnv1a64(structural) => structural
+        Sha256Hash(_) => content_hash_atom(value: identity_component_canonical(component: component) as NonEmptyStr)
+        Sha1Hash(_) => content_hash_atom(value: identity_component_canonical(component: component) as NonEmptyStr)
+        Sha512Hash(_) => content_hash_atom(value: identity_component_canonical(component: component) as NonEmptyStr)
+      }
+    IdentityUpstreamObject { relation: _, hash: _ } => content_hash_atom(value: identity_component_canonical(component: component) as NonEmptyStr)
+  }
 }
 
 fn request_evaluation_identity(req: ArtifactRequest) -> EvaluationIdentity {
@@ -386,19 +408,19 @@ fn request_evaluation_identity(req: ArtifactRequest) -> EvaluationIdentity {
 fn request_evaluation_bucket(identity: EvaluationIdentity, req: ArtifactRequest) -> ContentHash {
   request_fold(
     req: req,
-    parse_module: (sd, c) => evaluation_identity_fnv_bucket(evaluation: identity),
+    parse_module: (sd, c) => evaluation_identity_index_bucket(evaluation: identity),
     typecheck_module: (sd, ii, c) =>
       as_content_hash_structural(
         structural: typed_module_key(
           interface_key: module_key(source_hash: sd, direct_import_interface_hashes: ii),
-          compiler_identity: c.digest
+          compiler_identity: identity_component_index_fingerprint(component: c.component)
         )
       ),
-    resolve_closure: (cd, c) => evaluation_identity_fnv_bucket(evaluation: identity),
-    native_compiler: g => evaluation_identity_fnv_bucket(evaluation: identity),
-    universe: (tt, rb) => evaluation_identity_fnv_bucket(evaluation: identity),
-    module_verdict_bundle: s => evaluation_identity_fnv_bucket(evaluation: identity),
-    compute_work: (sj, op, tc) => evaluation_identity_fnv_bucket(evaluation: identity)
+    resolve_closure: (cd, c) => evaluation_identity_index_bucket(evaluation: identity),
+    native_compiler: g => evaluation_identity_index_bucket(evaluation: identity),
+    universe: (tt, rb) => evaluation_identity_index_bucket(evaluation: identity),
+    module_verdict_bundle: s => evaluation_identity_index_bucket(evaluation: identity),
+    compute_work: (sj, op, tc) => evaluation_identity_index_bucket(evaluation: identity)
   )
 }
 
@@ -406,53 +428,279 @@ type EvaluationBucket sole_constructor {
   identity: EvaluationIdentity
   digest: ContentHash
   canonical_preimage: NonEmptyStr
+  persistent_refusals: List<RefusedIdentityComponent>
+  upstream_object_identity_refs: List<NonEmptyStr>
 }
 
 fn evaluation_bucket_for_request(req: ArtifactRequest) -> EvaluationBucket admit_callers: [
   decl_ref(module_path: "std.materialization_provider", decl_name: "evaluation_store_address"),
   decl_ref(module_path: "std.materialization_provider", decl_name: "request_key"),
   decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve"),
-  decl_ref(module_path: "std.materialization_provider", decl_name: "in_process_materialization")
+  decl_ref(module_path: "std.materialization_provider", decl_name: "in_process_materialization"),
+  decl_ref(module_path: "std.materialization_provider", decl_name: "addressed_request_with_supplied_digest")
 ] {
   let identity = request_evaluation_identity(req: req)
   EvaluationBucket {
     identity: identity,
     digest: request_evaluation_bucket(identity: identity, req: req),
-    canonical_preimage: evaluation_identity_canonical(evaluation: identity)
+    canonical_preimage: evaluation_identity_canonical(evaluation: identity),
+    persistent_refusals: evaluation_store_refused_components(req: req, scope: PersistentStoreScope),
+    upstream_object_identity_refs: evaluation_store_upstream_object_refs(req: req)
   }
+}
+
+// A COMPONENT IS JUDGED AGAINST THE SCOPE IT IS ASKED TO KEY, BEFORE ANY DIGEST IS TAKEN OVER IT.
+// Hashing a preimage that already contains a sixty-four-bit fingerprint yields a strong digest of a
+// weak identity: what the fingerprint collapsed stays collapsed. So the family rule is applied to
+// the components, where the information is, and the address digest is taken only over a preimage
+// every component of which the scope admits.
+//
+// THE STANDING IS TWO-LEVEL SO THAT A REFUSAL CANNOT HOLD AN ADMISSION. How a component is admitted
+// and why one is refused are separate closed sets, and a RefusedIdentityComponent carries only a
+// cause from the second: "a refusal that refuses nothing" has no constructor, and no caller asks a
+// standing whether it refuses -- it matches the outer arm.
+type IdentityComponentAdmission
+  = ComponentAdmittedForScope
+  | ComponentUpstreamObjectIdentity
+
+type IdentityComponentRefusalCause
+  = ComponentStructuralFingerprintRefused
+  | ComponentFamilyNotAdmitted
+
+type IdentityComponentScopeStanding
+  = ComponentAdmitted { admission: IdentityComponentAdmission }
+  | ComponentRefused { cause: IdentityComponentRefusalCause }
+
+type EvaluationIdentityComponentRow {
+  ref: NonEmptyStr
+  component: IdentityComponent
+}
+
+data evaluation_identity_subject_ref: NonEmptyStr = "subject"
+
+fn evaluation_identity_component_rows(identity: EvaluationIdentity) -> List<EvaluationIdentityComponentRow> {
+  concat(
+    [EvaluationIdentityComponentRow { ref: evaluation_identity_subject_ref, component: identity.demand.subject }],
+    identity.demand.declared_inputs |> map(i => EvaluationIdentityComponentRow { ref: i.ref, component: i.component })
+  )
+}
+
+// GIT'S OBJECT IDENTITY, ADMITTED AS GIT'S AND AS NOTHING WIDER -- AND THE STANDING COMES FROM THE TYPED
+// REQUEST, NEVER FROM THE COMPONENT'S OWN LABEL. An IdentityUpstreamObject says which relation it
+// belongs to, and that spelling is part of its canonical encoding; but anyone can write the
+// spelling, so reading it would let a caller grant an arbitrary SHA-1 git's standing by naming git.
+// The admission instead asks the request: request_git_object_rows lists, for the request family at
+// hand, each component that IS a GitObjectId field of that request -- a value extdeps.git.object_store
+// constructs only through its validating readers -- together with the component that field mints.
+// A component is admitted as an upstream object identity only when that list holds the same ref
+// with the same canonical encoding. A relabelled digest matches no typed field and is refused.
+data git_object_identity_relation: NonEmptyStr = "git.object_id"
+
+fn git_object_identity_component(oid: GitObjectId) -> IdentityComponent {
+  identity_upstream_object_component(relation: git_object_identity_relation, hash: git_object_id_content_hash(oid: oid))
+}
+
+fn request_git_object_rows(req: ArtifactRequest) -> List<EvaluationIdentityComponentRow> {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => [],
+    typecheck_module: (sd, ii, c) => [],
+    resolve_closure: (cd, c) => [],
+    native_compiler: g => [],
+    universe: (tt, rb) => [],
+    module_verdict_bundle: s => [],
+    compute_work: (sj, op, tc) => [
+      EvaluationIdentityComponentRow { ref: evaluation_identity_subject_ref, component: compute_work_subject_component(subject: sj) },
+      EvaluationIdentityComponentRow { ref: compute_work_provider_revision_ref, component: git_object_identity_component(oid: tc.provider_revision) }
+    ]
+  )
+}
+
+fn component_row_is_typed_git_object(row: EvaluationIdentityComponentRow, git_rows: List<EvaluationIdentityComponentRow>) -> Bool {
+  git_rows |> any(g => (g.ref as String) == (row.ref as String)
+    && identity_component_canonical(component: g.component) == identity_component_canonical(component: row.component))
+}
+
+fn identity_component_persistent_standing(
+  row: EvaluationIdentityComponentRow,
+  git_rows: List<EvaluationIdentityComponentRow>
+) -> IdentityComponentScopeStanding {
+  match row.component {
+    IdentityText { content: _ } => ComponentAdmitted { admission: ComponentAdmittedForScope }
+    IdentityDigest { hash: h } =>
+      match content_hash_family(hash: h) {
+        Sha256Family => ComponentAdmitted { admission: ComponentAdmittedForScope }
+        Sha512Family => ComponentAdmitted { admission: ComponentAdmittedForScope }
+        Sha1Family => ComponentRefused { cause: ComponentFamilyNotAdmitted }
+        Fnv1a64StructuralFamily => ComponentRefused { cause: ComponentStructuralFingerprintRefused }
+      }
+    IdentityUpstreamObject { relation: _, hash: h } =>
+      match content_hash_family(hash: h) {
+        Fnv1a64StructuralFamily => ComponentRefused { cause: ComponentStructuralFingerprintRefused }
+        Sha512Family => ComponentRefused { cause: ComponentFamilyNotAdmitted }
+        Sha256Family => typed_git_object_standing(row: row, git_rows: git_rows)
+        Sha1Family => typed_git_object_standing(row: row, git_rows: git_rows)
+      }
+  }
+}
+
+fn typed_git_object_standing(
+  row: EvaluationIdentityComponentRow,
+  git_rows: List<EvaluationIdentityComponentRow>
+) -> IdentityComponentScopeStanding {
+  if component_row_is_typed_git_object(row: row, git_rows: git_rows) {
+    ComponentAdmitted { admission: ComponentUpstreamObjectIdentity }
+  } else {
+    ComponentRefused { cause: ComponentFamilyNotAdmitted }
+  }
+}
+
+fn identity_component_scope_standing(
+  row: EvaluationIdentityComponentRow,
+  git_rows: List<EvaluationIdentityComponentRow>,
+  scope: KeyingScope
+) -> IdentityComponentScopeStanding {
+  match scope {
+    InProcessIndexScope => ComponentAdmitted { admission: ComponentAdmittedForScope }
+    PersistentStoreScope => identity_component_persistent_standing(row: row, git_rows: git_rows)
+    CrossRunScope => identity_component_persistent_standing(row: row, git_rows: git_rows)
+  }
+}
+
+// A REFUSAL NAMES WHAT IT REFUSED AND WHY. One row per component the scope does not admit, carrying
+// the component's ref and the cause that refused it, so a caller is told "the subject is a
+// structural fingerprint" or "this input is a bare SHA-1" rather than a family it has to guess at.
+type RefusedIdentityComponent {
+  ref: NonEmptyStr
+  cause: IdentityComponentRefusalCause
+}
+
+fn evaluation_store_refused_components(req: ArtifactRequest, scope: KeyingScope) -> List<RefusedIdentityComponent> {
+  let git_rows = request_git_object_rows(req: req)
+  let rows = evaluation_identity_component_rows(identity: request_evaluation_identity(req: req))
+  rows |> flat_map(r => match identity_component_scope_standing(row: r, git_rows: git_rows, scope: scope) {
+    ComponentAdmitted { admission: _ } => []
+    ComponentRefused { cause: c } => [RefusedIdentityComponent { ref: r.ref, cause: c }]
+  })
+}
+
+fn evaluation_store_upstream_object_refs(req: ArtifactRequest) -> List<NonEmptyStr> {
+  let git_rows = request_git_object_rows(req: req)
+  let rows = evaluation_identity_component_rows(identity: request_evaluation_identity(req: req))
+  rows |> flat_map(r => match identity_component_persistent_standing(row: r, git_rows: git_rows) {
+    ComponentRefused { cause: _ } => []
+    ComponentAdmitted { admission: a } => match a {
+      ComponentUpstreamObjectIdentity => [r.ref]
+      ComponentAdmittedForScope => []
+    }
+  })
+}
+
+fn refused_identity_components_text(components: List<RefusedIdentityComponent>) -> String {
+  join(components |> map(c => join([c.ref as String, match c.cause {
+    ComponentStructuralFingerprintRefused => " is a structural fingerprint"
+    ComponentFamilyNotAdmitted => " is a digest whose family or relation this scope does not admit"
+  }], "")), "; ")
 }
 
 fn persist_evaluation_store_address(bucket: EvaluationBucket) -> EvaluationStoreAddressAdmission admit_callers: [
   decl_ref(module_path: "std.materialization_provider", decl_name: "evaluation_store_address"),
   decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve")
 ] {
-  let family = content_hash_family(hash: bucket.digest)
-  match admit_hash_family_for_scope(family: family, scope: PersistentStoreScope) {
-    HashFamilyAdmittedForScope { family: admitted, scope: _ } =>
-      Admitted {
-        address: EvaluationStoreAddress {
-          identity: bucket.identity,
-          digest: bucket.digest,
-          canonical_preimage: bucket.canonical_preimage,
-          standing: CryptographicAddressStanding { family: admitted }
+  let refused = bucket.persistent_refusals
+  if count(refused) > 0 {
+    IdentityComponentsRefused { components: refused, scope: PersistentStoreScope }
+  } else {
+    Admitted {
+      address: EvaluationStoreAddress {
+        identity: bucket.identity,
+        digest: as_content_hash_cryptographic(digest: canonical_preimage_sha256(preimage: bucket.canonical_preimage)),
+        canonical_preimage: bucket.canonical_preimage,
+        standing: EvaluationStoreAddressStanding {
+          family: Sha256Family,
+          upstream_object_identity_refs: bucket.upstream_object_identity_refs
         }
       }
-    StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } =>
-      Admitted {
-        address: EvaluationStoreAddress {
-          identity: bucket.identity,
-          digest: bucket.digest,
-          canonical_preimage: bucket.canonical_preimage,
-          standing: PreimageVerifiedBucketStanding { disposition: evaluation_identity_fnv_store_preimage_exception }
-        }
-      }
-    FamilyNotAdmittedForRelation { family: refused, scope: sc } =>
-      FamilyRefused { family: refused, scope: sc }
+    }
   }
+}
+
+// THE DIGEST OF A REQUEST'S CANONICAL PREIMAGE, WITHOUT THE ADMISSION. It names the demand as
+// stated and claims nothing about whether its components may key a store: a request with a refused
+// component still has a name -- a record, a lease or a refusal has to call it something -- and no
+// persistent address. evaluation_store_address is this digest PLUS the judgment of every component.
+fn canonical_preimage_sha256(preimage: NonEmptyStr) -> Sha256Digest {
+  sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: preimage as String)))
+}
+
+fn request_canonical_digest(req: ArtifactRequest) -> Sha256Digest {
+  canonical_preimage_sha256(preimage: evaluation_identity_canonical(evaluation: request_evaluation_identity(req: req)))
 }
 
 fn evaluation_store_address(req: ArtifactRequest) -> EvaluationStoreAddressAdmission {
   persist_evaluation_store_address(bucket: evaluation_bucket_for_request(req: req))
+}
+
+// A REQUEST TOGETHER WITH THE ADDRESS THAT NAMES IT, AND THE ONLY WAY TO HOLD ONE IS TO MINT IT.
+// The store's doors used to take a request and an address as peer parameters, which admits an
+// address minted for some OTHER request: the object it names would then be bound, verified and
+// served as the answer to a question it was never an answer to. Here the pair has no constructor
+// outside the two mints below, each of which derives the address FROM the request it stores beside
+// it, so a mismatched pair is unwritable rather than refused by a check a door has to remember
+// (the std.fabric_storage FabricAddressedObject move, for the same reason). It is also how an
+// address is derived ONCE per operation and carried, instead of once per door that needs it.
+type AddressedRequest sole_constructor {
+  request: ArtifactRequest
+  address: EvaluationStoreAddress
+}
+
+type AddressedRequestAdmission
+  = RequestAddressed { addressed: AddressedRequest }
+  | RequestAddressRefused { components: List<RefusedIdentityComponent>, scope: KeyingScope }
+
+fn addressed_request(req: ArtifactRequest) -> AddressedRequestAdmission {
+  match evaluation_store_address(req: req) {
+    Admitted { address: a } => RequestAddressed { addressed: AddressedRequest { request: req, address: a } }
+    IdentityComponentsRefused { components: f, scope: sc } => RequestAddressRefused { components: f, scope: sc }
+  }
+}
+
+// THE SUPPLIED-DIGEST MINT, FOR WITNESSES OF THE STORE'S OWN DECISIONS. A witness of object decoding,
+// corruption, completeness or settlement is a claim about the store given an address, and deriving
+// that address re-executes a SHA-256 the claim is not about (DESIGN section 3, a witness
+// discriminates at one interface). So such a witness supplies the DIGEST -- and only the digest.
+// The identity and preimage are still derived from the request, and every component is still
+// judged: a request the persistent scope refuses is refused here too, so this mint is not a way
+// around the admission. What it leaves unexecuted is the digest computation, and the pairing
+// obligation is discharged where the real derivation runs: test.claim.materialization_provider_witness
+// compares a real address with a digest derived outside this corpus, and the wet store witnesses
+// commit and read back under real addresses.
+fn addressed_request_with_supplied_digest(req: ArtifactRequest, digest: Sha256Digest) -> AddressedRequestAdmission admit_callers: [
+  decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "witness_supplied_addressed"),
+  decl_ref(module_path: "test.claim.materialization_store_witness", decl_name: "witness_supplied_addressed"),
+  decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "witness_supplied_addressed"),
+  decl_ref(module_path: "test.claim.materialization_store_local_immutable_pin_wet_witness", decl_name: "witness_supplied_addressed")
+] {
+  let bucket = evaluation_bucket_for_request(req: req)
+  let refused = bucket.persistent_refusals
+  if count(refused) > 0 {
+    RequestAddressRefused { components: refused, scope: PersistentStoreScope }
+  } else {
+    RequestAddressed {
+      addressed: AddressedRequest {
+        request: req,
+        address: EvaluationStoreAddress {
+          identity: bucket.identity,
+          digest: as_content_hash_cryptographic(digest: digest),
+          canonical_preimage: bucket.canonical_preimage,
+          standing: EvaluationStoreAddressStanding {
+            family: Sha256Family,
+            upstream_object_identity_refs: bucket.upstream_object_identity_refs
+          }
+        }
+      }
+    }
+  }
 }
 
 fn evaluation_store_address_digest(address: EvaluationStoreAddress) -> ContentHash {
@@ -466,7 +714,7 @@ fn evaluation_store_address_preimage(address: EvaluationStoreAddress) -> NonEmpt
 fn evaluation_store_admitted_address(admission: EvaluationStoreAddressAdmission) -> EvaluationStoreAddress? {
   match admission {
     Admitted { address: a } => Present { value: a }
-    FamilyRefused { family: _, scope: _ } => none
+    IdentityComponentsRefused { components: _, scope: _ } => none
   }
 }
 
@@ -524,7 +772,7 @@ fn parse_module_judgment_contract(source_digest: Fnv1a64Structural, compiler: De
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: parse_source_artifact_kind,
-      subject: source_digest,
+      subject: identity_structural_component(digest: source_digest),
       declared_inputs: [compiler]
     },
     result: ResultContract {
@@ -549,9 +797,9 @@ fn typecheck_module_judgment_contract(
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: typed_module_artifact_kind,
-      subject: source_digest,
+      subject: identity_structural_component(digest: source_digest),
       declared_inputs: concat(
-        direct_import_interfaces |> map(h => DeclaredInput { ref: "direct_import_interface", digest: h }),
+        direct_import_interfaces |> map(h => DeclaredInput { ref: "direct_import_interface", component: identity_structural_component(digest: h) }),
         [compiler]
       )
     },
@@ -573,7 +821,7 @@ fn resolve_closure_judgment_contract(closure_digest: Fnv1a64Structural, compiler
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: resolved_graph_artifact_kind,
-      subject: closure_digest,
+      subject: identity_structural_component(digest: closure_digest),
       declared_inputs: [compiler]
     },
     result: ResultContract {
@@ -595,14 +843,14 @@ fn native_compiler_judgment_contract(generation: PreMaterializationIdentity) -> 
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: native_compiler_artifact_kind,
-      subject: pre_materialization_digest(pre: generation),
+      subject: identity_structural_component(digest: pre_materialization_digest(pre: generation)),
       declared_inputs: [
-        DeclaredInput { ref: "generation.producer_compiler", digest: generation.producer_compiler },
-        DeclaredInput { ref: "generation.source_closure", digest: generation.source_closure },
-        DeclaredInput { ref: "generation.target_model", digest: generation.target_model },
-        DeclaredInput { ref: "generation.toolchain", digest: generation.toolchain },
-        DeclaredInput { ref: "generation.build_configuration", digest: generation.build_configuration },
-        DeclaredInput { ref: "generation.required_lens_contract", digest: generation.required_lens_contract }
+        DeclaredInput { ref: "generation.producer_compiler", component: identity_structural_component(digest: generation.producer_compiler) },
+        DeclaredInput { ref: "generation.source_closure", component: identity_structural_component(digest: generation.source_closure) },
+        DeclaredInput { ref: "generation.target_model", component: identity_structural_component(digest: generation.target_model) },
+        DeclaredInput { ref: "generation.toolchain", component: identity_structural_component(digest: generation.toolchain) },
+        DeclaredInput { ref: "generation.build_configuration", component: identity_structural_component(digest: generation.build_configuration) },
+        DeclaredInput { ref: "generation.required_lens_contract", component: identity_structural_component(digest: generation.required_lens_contract) }
       ]
     },
     result: ResultContract {
@@ -619,11 +867,11 @@ fn native_compiler_judgment_contract(generation: PreMaterializationIdentity) -> 
   }
 }
 
-fn universe_judgment_contract(tested_tree_identity: Fnv1a64Structural, route_binary: DeclaredInput) -> JudgmentContract {
+fn universe_judgment_contract(tested_tree_identity: ContentHash, route_binary: DeclaredInput) -> JudgmentContract {
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: native_test_universe_artifact_kind,
-      subject: tested_tree_identity,
+      subject: identity_digest_component(hash: tested_tree_identity),
       declared_inputs: [route_binary]
     },
     result: ResultContract {
@@ -644,8 +892,13 @@ fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSub
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: native_module_verdict_bundle_artifact_kind,
-      subject: module_verdict_bundle_subject_digest(subject: subject),
-      declared_inputs: []
+      subject: identity_digest_component(hash: subject.module_identity),
+      declared_inputs: [
+        DeclaredInput { ref: "verdict_bundle.route_binary_identity", component: identity_digest_component(hash: subject.route_binary_identity) },
+        DeclaredInput { ref: "verdict_bundle.canonical_module_import_closure_identity", component: identity_digest_component(hash: subject.canonical_module_import_closure_identity) },
+        DeclaredInput { ref: "verdict_bundle.ordered_test_identity_population", component: identity_digest_component(hash: subject.ordered_test_identity_population) },
+        DeclaredInput { ref: "verdict_bundle.eval_interpretation_identity", component: identity_digest_component(hash: subject.eval_interpretation_identity) }
+      ]
     },
     result: ResultContract {
       carries_semantic_value: true,
@@ -661,13 +914,11 @@ fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSub
   }
 }
 
-fn compute_work_subject_digest(subject: WorkSubject) -> Fnv1a64Structural {
+data compute_work_provider_revision_ref: NonEmptyStr = "compute_work.execution.provider_revision"
+
+fn compute_work_subject_component(subject: WorkSubject) -> IdentityComponent {
   match subject {
-    ExactTree { tree } =>
-      content_hash_tagged_structural(
-        tag: "materialization_provider.compute_work.tree",
-        payload: content_hash_atom(value: git_object_id_wire_hex(oid: tree) as NonEmptyStr)
-      )
+    ExactTree { tree } => git_object_identity_component(oid: tree)
   }
 }
 
@@ -686,14 +937,10 @@ fn compute_work_operation_preimage(operation: WorkOperation) -> NonEmptyStr {
       ), "") as NonEmptyStr
     CompileEntry { entry } =>
       join([length_prefixed_encode(s: "compile"), length_prefixed_encode(s: entry as String)], "") as NonEmptyStr
-    RunClaims { entry, functions, hermetic, window } =>
+    RunClaims { entry, functions, hermetic, window: _ } =>
       join([
         length_prefixed_encode(s: "claims"), length_prefixed_encode(s: entry as String),
         length_prefixed_encode(s: functions as String), length_prefixed_encode(s: if hermetic { "hermetic" } else { "wet" }),
-        match window {
-          Present { value: w } => join([length_prefixed_encode(s: "window"), length_prefixed_encode(s: w.identity.digest as String)], "")
-          Absent => length_prefixed_encode(s: "no-window")
-        },
       ], "") as NonEmptyStr
   }
 }
@@ -701,6 +948,23 @@ fn compute_work_operation_preimage(operation: WorkOperation) -> NonEmptyStr {
 // The binaries a build materializes are REQUIRED OUTPUTS of its record, one per declared bin, carried
 // as byte parts (extdeps.realization.materialization_store_local LocalStoreStagedPart). The checking
 // operations materialize none.
+// THE CLAIM WINDOW IS ITS OWN DECLARED INPUT, NOT A FIELD OF THE OPERATION TEXT. Its identity is a
+// structural fingerprint (gunbc.roadmap.roadmap_verification_receipt change_window_identity), and
+// written into the operation's text it would have been a fingerprint wearing text's standing: the
+// scope rule would have read text and admitted it. As a component it is judged as what it is, so a
+// windowed request has no persistent address until the window carries its own facts.
+fn compute_work_window_component(operation: WorkOperation) -> IdentityComponent {
+  match operation {
+    BuildGunbcBinaries { profile: _, bins: _ } => identity_text_component(content: "no-window")
+    CompileEntry { entry: _ } => identity_text_component(content: "no-window")
+    RunClaims { entry: _, functions: _, hermetic: _, window } =>
+      match window {
+        Present { value: w } => identity_structural_component(digest: w.identity)
+        Absent => identity_text_component(content: "no-window")
+      }
+  }
+}
+
 fn compute_work_binary_output(b: GunbcBinary) -> ArtifactOutputId {
   match b {
     GunbcDriver => output_compute_work_gunbc_binary
@@ -732,17 +996,18 @@ fn compute_work_judgment_contract(
   JudgmentContract {
     demand_identity: DemandIdentity {
       kind: compute_work_artifact_kind,
-      subject: compute_work_subject_digest(subject: subject),
+      subject: compute_work_subject_component(subject: subject),
       declared_inputs: [
         DeclaredInput {
           ref: "compute_work.operation",
-          digest: content_hash_atom(value: compute_work_operation_preimage(operation: operation))
+          component: identity_text_component(content: compute_work_operation_preimage(operation: operation))
         },
-        DeclaredInput { ref: "compute_work.execution.rustc_verbose", digest: content_hash_atom(value: toolchain.rustc_verbose) },
-        DeclaredInput { ref: "compute_work.execution.target_triple", digest: content_hash_atom(value: toolchain.target_triple) },
-        DeclaredInput { ref: "compute_work.execution.cargo_version", digest: content_hash_atom(value: toolchain.cargo_version) },
-        DeclaredInput { ref: "compute_work.execution.cache_release", digest: content_hash_atom(value: toolchain.cache_release) },
-        DeclaredInput { ref: "compute_work.execution.provider_revision", digest: content_hash_atom(value: toolchain.provider_revision) }
+        DeclaredInput { ref: "compute_work.operation.claim_diff_window", component: compute_work_window_component(operation: operation) },
+        DeclaredInput { ref: "compute_work.execution.rustc_verbose", component: identity_text_component(content: toolchain.rustc_verbose) },
+        DeclaredInput { ref: "compute_work.execution.target_triple", component: identity_text_component(content: toolchain.target_triple) },
+        DeclaredInput { ref: "compute_work.execution.cargo_version", component: identity_text_component(content: toolchain.cargo_version) },
+        DeclaredInput { ref: "compute_work.execution.cache_release", component: identity_text_component(content: toolchain.cache_release) },
+        DeclaredInput { ref: compute_work_provider_revision_ref, component: git_object_identity_component(oid: toolchain.provider_revision) }
       ]
     },
     result: ResultContract {
@@ -782,7 +1047,7 @@ fn request_fold<T>(
   typecheck_module: fn(Fnv1a64Structural, List<InterfaceHash>, DeclaredInput) -> T,
   resolve_closure: fn(Fnv1a64Structural, DeclaredInput) -> T,
   native_compiler: fn(PreMaterializationIdentity) -> T,
-  universe: fn(Fnv1a64Structural, DeclaredInput) -> T,
+  universe: fn(ContentHash, DeclaredInput) -> T,
   module_verdict_bundle: fn(NativeModuleVerdictBundleSubject) -> T,
   compute_work: fn(WorkSubject, WorkOperation, WorkToolchainIdentity) -> T
 ) -> T {
@@ -801,25 +1066,6 @@ fn request_fold<T>(
 // The verdict bundle's subject digest folds its five identities in DECLARED field order under a
 // tag of its own, so two bundles agree on the subject only when all five agree; the tag keeps it
 // from colliding with any other family's subject over the same digests.
-fn module_verdict_bundle_subject_digest(subject: NativeModuleVerdictBundleSubject) -> Fnv1a64Structural {
-  content_hash_tagged_structural(
-    tag: "materialization_provider.native_module_verdict_bundle",
-    payload: content_hash_combine_structural(
-      left: content_hash_combine_structural(
-        left: content_hash_combine_structural(
-          left: content_hash_combine_structural(
-            left: subject.route_binary_identity,
-            right: subject.module_identity
-          ),
-          right: subject.canonical_module_import_closure_identity
-        ),
-        right: subject.ordered_test_identity_population
-      ),
-      right: subject.eval_interpretation_identity
-    )
-  )
-}
-
 fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
   request_judgment_contract(req: req).demand_identity.kind
 }
@@ -830,22 +1076,6 @@ fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
 
 fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
   judgment_required_output_ids(contract: request_judgment_contract(req: req))
-}
-
-fn declared_input_digest(input: DeclaredInput) -> Fnv1a64Structural {
-  content_hash_combine_structural(
-    left: content_hash_atom(value: input.ref),
-    right: input.digest
-  )
-}
-
-fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
-  as_content_hash_structural(
-    structural: inputs |> fold(
-      init: content_hash_atom(value: "materialization_provider.no_inputs"),
-      f: (acc, i) => content_hash_combine_structural(left: acc, right: declared_input_digest(input: i))
-    )
-  )
 }
 
 // WHICH AUTHORITY EACH FAMILY'S KEY COMES FROM (operator review, blocker 1 — a section 3 nickname
@@ -867,7 +1097,7 @@ fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
 // is witnessed by execution rather than asserted.
 
 fn request_key(req: ArtifactRequest) -> ContentHash {
-  evaluation_bucket_for_request(req: req).digest
+  request_evaluation_bucket(identity: request_evaluation_identity(req: req), req: req)
 }
 
 // Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape
@@ -1364,16 +1594,26 @@ type RequestArtifactBinding
   | BindingWrongContent { recorded: ContentHash, observed: ContentHash }
   | BindingIncomplete { missing: List<ArtifactOutputId> }
 
-fn request_artifact_binding(
+// THE KEY AN ARTIFACT IS BOUND AGAINST IS THE KEY OF THE SCOPE IT WAS FOUND IN. An artifact in an
+// in-process table is filed under the request's index bucket; an artifact read back from a
+// persistent store is filed under the admitted store address, a different family over the same
+// canonical preimage. So the expected key is supplied by the door that found the artifact, and the
+// comparison is the family-aware one: a recorded key of another family is a wrong artifact, not an
+// evaluation fault.
+fn request_artifact_binding_at(
   req: ArtifactRequest,
+  key: ContentHash,
   artifact: MaterializedArtifact,
   observed_digest: ContentHash
-) -> RequestArtifactBinding {
-  let key = request_key(req: req)
+) -> RequestArtifactBinding admit_callers: [
+  decl_ref(module_path: "std.materialization_provider", decl_name: "request_artifact_binding"),
+  decl_ref(module_path: "std.materialization_provider", decl_name: "provider_binding_lookup"),
+  decl_ref(module_path: "std.materialization_object", decl_name: "store_commit_prepare_admitted")
+] {
   let kind = request_kind(req: req)
   if (artifact_kind(artifact: artifact) == kind) == false {
     BindingKindMismatch { requested: kind, found: artifact_kind(artifact: artifact) }
-  } else if (artifact_request_key(artifact: artifact) == key) == false {
+  } else if content_hash_equal(left: artifact_request_key(artifact: artifact), right: key) == false {
     BindingWrongArtifact { key: key, found_key: artifact_request_key(artifact: artifact) }
   } else if (observed_digest == artifact_content_digest(artifact: artifact)) == false {
     BindingWrongContent { recorded: artifact_content_digest(artifact: artifact), observed: observed_digest }
@@ -1386,6 +1626,14 @@ fn request_artifact_binding(
       ArtifactMissingOutputs { missing: m } => BindingIncomplete { missing: m }
     }
   }
+}
+
+fn request_artifact_binding(
+  req: ArtifactRequest,
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash
+) -> RequestArtifactBinding {
+  request_artifact_binding_at(req: req, key: request_key(req: req), artifact: artifact, observed_digest: observed_digest)
 }
 
 // Identity is DERIVED from the comparison the contract already performs, never accepted from the
@@ -1455,7 +1703,7 @@ type ProviderLookup
   | ProviderRefusedCrossFamilyContentHash { key: ContentHash, family: HashFamily }
   | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
   | ProviderRefusedEvaluationPreimageMismatch { key: ContentHash, expected: NonEmptyStr, found: NonEmptyStr }
-  | ProviderRefusedStoreFamily { key: ContentHash, family: HashFamily, scope: KeyingScope }
+  | ProviderRefusedStoreAddress { key: ContentHash, components: List<RefusedIdentityComponent>, scope: KeyingScope }
   | ProviderRefusedUnqualifiedPersistedFormat { key: ContentHash }
 
 data resolved_graph_disk_format_unqualified_frontier: DissolutionCondition = unbound_dissolution(
@@ -1494,12 +1742,15 @@ fn persisted_probe(
   }
 }
 
-fn provider_binding_lookup(req: ArtifactRequest, key: ContentHash, artifact: MaterializedArtifact, observed_digest: ContentHash) -> ProviderLookup {
-  match request_artifact_binding(req: req, artifact: artifact, observed_digest: observed_digest) {
+fn provider_binding_lookup(req: ArtifactRequest, key: ContentHash, artifact: MaterializedArtifact, observed_digest: ContentHash) -> ProviderLookup admit_callers: [
+  decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve"),
+  decl_ref(module_path: "std.materialization_provider", decl_name: "provider_serve_persisted")
+] {
+  match request_artifact_binding_at(req: req, key: key, artifact: artifact, observed_digest: observed_digest) {
     BindingOk =>
       ProviderHit {
         artifact: artifact,
-        identity: binding_identity_grade(b: request_artifact_binding(req: req, artifact: artifact, observed_digest: observed_digest))
+        identity: binding_identity_grade(b: request_artifact_binding_at(req: req, key: key, artifact: artifact, observed_digest: observed_digest))
       }
     BindingKindMismatch { requested: rk, found: fk } =>
       ProviderRefusedKindMismatch { key: key, requested: rk, found: fk }
@@ -1512,14 +1763,21 @@ fn provider_binding_lookup(req: ArtifactRequest, key: ContentHash, artifact: Mat
   }
 }
 
+// THE PERSISTED DOOR TAKES THE PAIR, NOT ITS HALVES. The request, the key an artifact is bound
+// against and the preimage a stored object must carry are all read off one AddressedRequest, so a
+// caller cannot present request A beside B's address and B's object and be served B's result as
+// A's answer. The functions below this one that still take a request and a key separately
+// (provider_binding_lookup, request_artifact_binding_at) are sealed to the callers that derive both
+// from one value: this door for a persisted artifact, provider_serve for an in-process one.
 fn provider_serve_persisted(
-  req: ArtifactRequest,
-  key: ContentHash,
+  addressed: AddressedRequest,
   artifact: MaterializedArtifact,
   observed_digest: ContentHash,
-  observed: ObservedEvaluationPreimage,
-  expected_preimage: NonEmptyStr
+  observed: ObservedEvaluationPreimage
 ) -> ProviderLookup {
+  let req = addressed.request
+  let key = addressed.address.digest
+  let expected_preimage = addressed.address.canonical_preimage
   if (observed.encoded as String) == (expected_preimage as String) {
     provider_binding_lookup(req: req, key: key, artifact: artifact, observed_digest: observed_digest)
   } else {
@@ -1555,10 +1813,10 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
     }
     PersistedProbe { artifact: a, observed_digest: obs, observed_evaluation_preimage: observed } =>
       match persist_evaluation_store_address(bucket: bucket) {
-        FamilyRefused { family: f, scope: sc } =>
-          ProviderRefusedStoreFamily { key: key, family: f, scope: sc }
+        IdentityComponentsRefused { components: f, scope: sc } =>
+          ProviderRefusedStoreAddress { key: key, components: f, scope: sc }
         Admitted { address: addr } =>
-          provider_serve_persisted(req: req, key: key, artifact: a, observed_digest: obs, observed: observed, expected_preimage: addr.canonical_preimage)
+          provider_serve_persisted(addressed: AddressedRequest { request: req, address: addr }, artifact: a, observed_digest: obs, observed: observed)
       }
   }
 }
@@ -1640,7 +1898,7 @@ fn provider_admit(
 // outcome vocabulary.
 
 fn compiler_identity_input(digest: Fnv1a64Structural) -> DeclaredInput {
-  DeclaredInput { ref: "compiler_binary_identity", digest: digest }
+  DeclaredInput { ref: "compiler_binary_identity", component: identity_structural_component(digest: digest) }
 }
 
 fn wire_fnv1a64_structural_hex(hex: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {
@@ -1917,7 +2175,7 @@ fn lookup_fold<T>(
   cross_family: fn(ContentHash, HashFamily) -> T,
   incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T,
   evaluation_preimage_mismatch: fn(ContentHash, NonEmptyStr, NonEmptyStr) -> T,
-  store_family_refused: fn(ContentHash, HashFamily, KeyingScope) -> T,
+  store_address_refused: fn(ContentHash, List<RefusedIdentityComponent>, KeyingScope) -> T,
   unqualified_persisted_format: fn(ContentHash) -> T
 ) -> T {
   match l {
@@ -1929,7 +2187,7 @@ fn lookup_fold<T>(
     ProviderRefusedCrossFamilyContentHash { key: k, family: f } => cross_family(k, f)
     ProviderRefusedIncomplete { key: k, missing: m } => incomplete(k, m)
     ProviderRefusedEvaluationPreimageMismatch { key: k, expected: e, found: f } => evaluation_preimage_mismatch(k, e, f)
-    ProviderRefusedStoreFamily { key: k, family: f, scope: sc } => store_family_refused(k, f, sc)
+    ProviderRefusedStoreAddress { key: k, components: f, scope: sc } => store_address_refused(k, f, sc)
     ProviderRefusedUnqualifiedPersistedFormat { key: k } => unqualified_persisted_format(k)
   }
 }
@@ -1945,7 +2203,7 @@ fn lookup_is_hit(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -1961,7 +2219,7 @@ fn lookup_is_miss(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -1977,7 +2235,7 @@ fn lookup_is_refused_kind_mismatch(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -1993,7 +2251,7 @@ fn lookup_is_refused_wrong_artifact(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -2009,7 +2267,7 @@ fn lookup_is_refused_wrong_content(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => false,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -2025,7 +2283,7 @@ fn lookup_is_refused_cross_family_content_hash(l: ProviderLookup) -> Bool {
     cross_family: (k, f) => true,
     incomplete: (k, m) => false,
     evaluation_preimage_mismatch: (k, e, f) => false,
-    store_family_refused: (k, f, sc) => false,
+    store_address_refused: (k, f, sc) => false,
     unqualified_persisted_format: k => false
   )
 }
@@ -2041,7 +2299,7 @@ fn lookup_served_identity(l: ProviderLookup) -> ComputationIdentity {
     cross_family: (k, f) => IdentityUnknown { cause: MissingEnforcement { detail: "content hash family is incompatible with the fnv1a64 structural seam" } },
     incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } },
     evaluation_preimage_mismatch: (k, e, f) => IdentityUnknown { cause: MissingEnforcement { detail: "stored evaluation preimage disagrees with the request" } },
-    store_family_refused: (k, f, sc) => IdentityUnknown { cause: MissingEnforcement { detail: "hash family is refused for persistent store admission" } },
+    store_address_refused: (k, f, sc) => IdentityUnknown { cause: MissingEnforcement { detail: join(["identity components are refused a persistent store address: ", refused_identity_components_text(components: f)], "") } },
     unqualified_persisted_format: k => IdentityUnknown { cause: MissingEnforcement { detail: "persisted format carries no evaluation or result preimage" } }
   )
 }
@@ -2057,7 +2315,7 @@ fn lookup_refused_incomplete_missing(l: ProviderLookup) -> List<ArtifactOutputId
     cross_family: (k, f) => no_output_ids,
     incomplete: (k, m) => m,
     evaluation_preimage_mismatch: (k, e, f) => no_output_ids,
-    store_family_refused: (k, f, sc) => no_output_ids,
+    store_address_refused: (k, f, sc) => no_output_ids,
     unqualified_persisted_format: k => no_output_ids
   )
 }
@@ -2073,7 +2331,7 @@ fn provider_lookup_outcome_tag(l: ProviderLookup) -> String {
     cross_family: (k, f) => "cross_family_hash",
     incomplete: (k, m) => "incomplete",
     evaluation_preimage_mismatch: (k, e, f) => "evaluation_preimage_mismatch",
-    store_family_refused: (k, f, sc) => "store_family_refused",
+    store_address_refused: (k, f, sc) => "store_address_refused",
     unqualified_persisted_format: k => "unqualified_persisted_format"
   )
 }

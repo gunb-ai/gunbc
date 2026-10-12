@@ -73,6 +73,7 @@ import gunbc.ci_deploy_access {
   deploy_target_proof_from_access,
   deploy_access_sudoers_install_scope,
 }
+import gunbc.fleet_posix_accounts { grounded_posix_principal_name }
 import gunbc.ci_deploy_access_observe {
   deploy_mutation_gate,
 }
@@ -170,9 +171,10 @@ import gunbc.fleet_converge_receipt {
   fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_path,
 }
 import gunbc.live_deploy.apply_receipt {
-  LiveDeployApplyReceipt, LiveDeployFleetProvenance,
+  LiveDeployApplyReceipt, LiveDeployFleetProvenance, LiveDeployApplyProvenance,
+  FleetTransactionProvenance, OperatorLocalApply,
   LiveDeployApplyOutcome, LiveDeployReadinessOutcome,
-  read_live_deploy_fleet_provenance, FleetProvenancePresent, FleetProvenanceAbsent, LiveDeployFleetProvenance,
+  read_live_deploy_fleet_provenance, FleetProvenancePresent, FleetProvenanceAbsent,
   LiveDeployApplyConverged, LiveDeployApplyNotConverged,
   LiveDeployReadinessObserved, LiveDeployReadinessRefused,
   LiveDeployRoleSingletonDisposition, RoleSingletonsNoop, RoleSingletonsInPlace, RoleSingletonsInstalled, RoleSingletonsRefusedBeforeApply,
@@ -621,7 +623,7 @@ fn live_deploy_apply_via_transport(
   access: DeployAccess
 ) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_with_access"),
-  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_receipted_decided"),
 ] {
   match assess_and_admit(deployment: deployment) {
     RoleSingletonNotAdmitted { cause } =>
@@ -640,7 +642,7 @@ fn live_deploy_apply_admitted_via_transport(
   access: DeployAccess
 ) -> Reconciliation<LiveDeployAppliedSubject, HostEffectEvidence> admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport"),
-  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_receipted_decided"),
 ] {
   let spec = admitted_spec(admission: admission)
   let mutation = live_deploy_apply_mutation_via_transport(
@@ -1276,7 +1278,11 @@ fn live_deploy_apply_desired_wet(instance_id: String, access: DeployAccess) -> P
 // The operator-local apply of any srv1 roster row, e.g.
 // `--function live_deploy_apply_desired_operator_local_wet --arg instance_id=srv1-lab-codex-feedback-v0`.
 fn live_deploy_apply_desired_operator_local_wet(instance_id: String) -> ProcessExit {
-  live_deploy_apply_desired_wet(instance_id: instance_id, access: ci_deploy_srv1_operator_local_access)
+  match live_deploy_desired_apply_selection(instance_id: instance_id, access: ci_deploy_srv1_operator_local_access) {
+    DesiredApplyRefused { reason } => exit_failure(reason: reason)
+    DesiredApplySelected { deployment } =>
+      live_deploy_operator_local_wet_with_access(deployment: deployment, access: ci_deploy_srv1_operator_local_access)
+  }
 }
 
 fn live_deploy_apply_prod_role_wet() -> ProcessExit {
@@ -1298,7 +1304,47 @@ fn live_deploy_prod_role_wet_with_access(access: DeployAccess) -> ProcessExit {
 // principal on the host itself. Candidate observation, preflight, mutation and the readiness
 // gate are all shared; nothing here is a second deploy.
 fn live_deploy_apply_prod_role_operator_local_wet() -> ProcessExit {
-  live_deploy_prod_role_wet_with_access(access: ci_deploy_srv1_operator_local_access)
+  match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_operator_local_access) {
+    DesiredApplyRefused { reason } => exit_failure(reason: reason)
+    DesiredApplySelected { deployment } =>
+      live_deploy_operator_local_wet_with_access(deployment: deployment, access: ci_deploy_srv1_operator_local_access)
+  }
+}
+
+fn live_deploy_operator_local_wet_with_access(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
+  live_deploy_operator_local_wet_for_realization(
+    deployment: deployment,
+    access: access,
+    realization: deployed_tree_repository_transition,
+  )
+}
+
+fn live_deploy_operator_local_wet_for_realization(
+  deployment: DesiredDeployment,
+  access: DeployAccess,
+  realization: RepositoryTransitionRealization,
+) -> ProcessExit {
+  match repository_transition_admission(realization: realization) {
+    LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
+    RepositoryTransitionAdmitted => live_deploy_operator_local_admitted(deployment: deployment, access: access)
+  }
+}
+
+fn live_deploy_operator_local_admitted(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
+  match observe_candidate_release() {
+    CandidateUnobservable { cause: why } =>
+      exit_failure(reason: candidate_unobservable_detail(cause: why))
+    CandidateObserved { candidate: candidate } =>
+      live_deploy_receipted_with_candidate(
+        deployment: deployment,
+        access: access,
+        candidate: candidate,
+        provenance: OperatorLocalApply {
+          host: access.host.identity,
+          principal: grounded_posix_principal_name(p: access.principal),
+        },
+      )
+  }
 }
 
 fn live_deploy_retract_prod_role_wet() -> ProcessExit {
@@ -1343,15 +1389,15 @@ fn live_deploy_post_apply_readiness(spec: DeploymentSpec, access: DeployAccess) 
   }
 }
 
-fn live_deploy_write_transaction_receipt(spec: DeploymentSpec, receipt: LiveDeployApplyReceipt, exit: ProcessExit) -> ProcessExit {
+fn live_deploy_write_apply_receipt(spec: DeploymentSpec, receipt: LiveDeployApplyReceipt, exit: ProcessExit) -> ProcessExit {
   let dir = live_deploy_apply_receipt_dir_for(instance_id: spec.instance_id as String)
   let path = live_deploy_apply_receipt_artifact_path_for(instance_id: spec.instance_id as String)
   match run_shell_commands(commands: [mkdir_parents_command(path: dir)], transport: LocalExec) {
-    ExitFailure { code: _, reason: why } => exit_failure(reason: join(["live_deploy transaction: receipt dir refused: ", why], ""))
+    ExitFailure { code: _, reason: why } => exit_failure(reason: join(["live_deploy apply: receipt dir refused: ", why], ""))
     ExitSuccess => {
       let wrote = Filesystem.Write(path: path, content: serialize_json(v: live_deploy_apply_receipt_json(r: receipt)))
       if !wrote.success {
-        exit_failure(reason: join(["live_deploy transaction: receipt write refused at ", path, ": ", wrote.error], ""))
+        exit_failure(reason: join(["live_deploy apply: receipt write refused at ", path, ": ", wrote.error], ""))
       } else {
         exit
       }
@@ -1359,22 +1405,18 @@ fn live_deploy_write_transaction_receipt(spec: DeploymentSpec, receipt: LiveDepl
   }
 }
 
-fn live_deploy_transaction_receipt_for(
+fn live_deploy_apply_receipt_for(
   spec: DeploymentSpec,
-  run: ActionsRunBinding,
-  expected: String,
   candidate: CandidateRelease,
   candidate_tree: String,
   apply_outcome: LiveDeployApplyOutcome,
   role_singleton_disposition: LiveDeployRoleSingletonDisposition,
   readiness: LiveDeployReadinessOutcome,
-  provenance: LiveDeployFleetProvenance,
+  provenance: LiveDeployApplyProvenance,
 ) -> LiveDeployApplyReceipt {
   LiveDeployApplyReceipt {
-    run: run,
     target: deployment_plan_host_identity(spec: spec),
     instance_id: spec.instance_id as String,
-    expected_revision: expected,
     candidate_revision: candidate.revision as String,
     candidate_surface_identity: candidate.expected_surface_identity.digest as String,
     candidate_tree_oid: candidate_tree,
@@ -1387,7 +1429,7 @@ fn live_deploy_transaction_receipt_for(
 }
 
 fn role_singleton_disposition_of(admission: RoleSingletonAdmission) -> LiveDeployRoleSingletonDisposition admit_callers: [
-  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_receipted_decided"),
 ] {
   role_singleton_disposition_of_decision(decision: admitted_decision(admission: admission))
 }
@@ -1401,30 +1443,28 @@ fn role_singleton_disposition_of_decision(decision: RoleSingletonConvergence) ->
   }
 }
 
-fn live_deploy_transaction_decided(
+fn live_deploy_receipted_decided(
   deployment: DesiredDeployment,
   access: DeployAccess,
-  run: ActionsRunBinding,
-  expected: String,
   candidate: CandidateRelease,
   candidate_tree: String,
-  provenance: LiveDeployFleetProvenance,
+  provenance: LiveDeployApplyProvenance,
 ) -> ProcessExit {
   let spec = selected_deployment_spec(row: deployment)
   let preflight = live_deploy_access_preflight_for(access: access)
   if !reconciliation_converged(r: preflight) {
-    live_deploy_write_transaction_receipt(
+    live_deploy_write_apply_receipt(
       spec: spec,
-      receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, role_singleton_disposition: RoleSingletonsRefusedBeforeApply { detail: "not assessed: the access preflight refused first" }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
+      receipt: live_deploy_apply_receipt_for(spec: spec, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, role_singleton_disposition: RoleSingletonsRefusedBeforeApply { detail: "not assessed: the access preflight refused first" }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
       exit: live_deploy_reconciliation_exit(r: preflight),
     )
   } else {
     match assess_and_admit(deployment: deployment) {
       RoleSingletonNotAdmitted { cause } => {
         let why = role_singleton_refusal_detail(cause: cause)
-        live_deploy_write_transaction_receipt(
+        live_deploy_write_apply_receipt(
           spec: spec,
-          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: why }, role_singleton_disposition: RoleSingletonsRefusedBeforeApply { detail: why }, readiness: LiveDeployReadinessRefused { detail: "not observed: the role-singleton assessment refused before any member was planned" }, provenance: provenance),
+          receipt: live_deploy_apply_receipt_for(spec: spec, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: why }, role_singleton_disposition: RoleSingletonsRefusedBeforeApply { detail: why }, readiness: LiveDeployReadinessRefused { detail: "not observed: the role-singleton assessment refused before any member was planned" }, provenance: provenance),
           exit: exit_failure(reason: why),
         )
       }
@@ -1434,13 +1474,33 @@ fn live_deploy_transaction_decided(
           Converged { evidence: _, applied: _ } => LiveDeployApplyConverged
           NotConverged { reason: why, applied: _ } => LiveDeployApplyNotConverged { reason: why }
         }
-        live_deploy_write_transaction_receipt(
+        live_deploy_write_apply_receipt(
           spec: spec,
-          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: outcome, role_singleton_disposition: role_singleton_disposition_of(admission: admission), readiness: live_deploy_post_apply_readiness(spec: spec, access: access), provenance: provenance),
+          receipt: live_deploy_apply_receipt_for(spec: spec, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: outcome, role_singleton_disposition: role_singleton_disposition_of(admission: admission), readiness: live_deploy_post_apply_readiness(spec: spec, access: access), provenance: provenance),
           exit: live_deploy_reconciliation_exit(r: applied),
         )
       }
     }
+  }
+}
+
+fn live_deploy_receipted_with_candidate(
+  deployment: DesiredDeployment,
+  access: DeployAccess,
+  candidate: CandidateRelease,
+  provenance: LiveDeployApplyProvenance,
+) -> ProcessExit {
+  match observe_candidate_root_tree_oid(repo: ".") {
+    CandidateTreeOidUnobservable { detail: d } =>
+      exit_failure(reason: join(["live_deploy apply: CandidateTreeUnobservable — ", d], ""))
+    CandidateTreeOidObserved { oid_hex: candidate_tree } =>
+      live_deploy_receipted_decided(
+        deployment: deployment,
+        access: access,
+        candidate: candidate,
+        candidate_tree: candidate_tree,
+        provenance: provenance,
+      )
   }
 }
 
@@ -1452,20 +1512,12 @@ fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: Deplo
       if (candidate.revision as String) != expected {
         exit_failure(reason: join(["live_deploy transaction: CandidateNotExpected — the checkout is ", candidate.revision as String, " but R is ", expected], ""))
       } else {
-        match observe_candidate_root_tree_oid(repo: ".") {
-          CandidateTreeOidUnobservable { detail: d } =>
-            exit_failure(reason: join(["live_deploy transaction: CandidateTreeUnobservable — ", d], ""))
-          CandidateTreeOidObserved { oid_hex: candidate_tree } =>
-            live_deploy_transaction_decided(
-              deployment: deployment,
-              access: access,
-              run: run,
-              expected: expected,
-              candidate: candidate,
-              candidate_tree: candidate_tree,
-              provenance: provenance,
-            )
-        }
+        live_deploy_receipted_with_candidate(
+          deployment: deployment,
+          access: access,
+          candidate: candidate,
+          provenance: FleetTransactionProvenance { run: run, expected_revision: expected, fleet: provenance },
+        )
       }
   }
 }

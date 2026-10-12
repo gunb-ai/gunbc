@@ -4,9 +4,10 @@ import extdeps.bazel.label {
   Label, LabelCanonicalityCause, LabelCanonical, LabelNonCanonical,
   render_label, label_canonicality,
 }
-import std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import std.types { String, List, NonEmptyStr }
 import std.integer { Int }
+import std.measure { Millisecond }
 
 // A TARGET AND THE MECHANISM THAT REALIZES IT ARE PEER FACTS. BuildTarget owns the stable graph
 // identity and dependency edges; this relation answers the separate realization question. In
@@ -17,10 +18,13 @@ import std.integer { Int }
 // NOT the RequiredFloorProducer variant, which remains unbound: what it produces is a memory
 // QUALIFICATION, not a floor verdict, and reusing a differently-named slot for a different fact is
 // the meaning fork DESIGN section 3 forbids.
-// NativeClaimProgramProducer IS GENERIC OVER ITS ENTRY, which is the point of carrying the entry
-// as a field: it emits the named std.compiler_entry NativeClaimDriver entry, builds it, runs it and
-// hands the report to gunbc.native_claim_program native_claim_program_standing, so the next program
-// of that shape is one more BINDING ROW naming its entry, never another producer arm.
+// NativeClaimProgramProducer IS GENERIC OVER ITS ENTRY AND ITS HOST DEADLINE. The entry is the
+// NativeClaimDriver program; the deadline is a std.measure Millisecond wall budget on the child
+// process after emit and build. Exceeding it is ObservationDidNotHold (gunbc test exit 1): the bound
+// is part of the invocation's claim, the child is killed, and no partial stdout is admitted to
+// native_claim_program_standing. An Optional or omitted budget is how a hang returns, so the field
+// is required. The next program of this shape is one more BINDING ROW naming entry and deadline,
+// never another producer arm.
 // NativeServeProgramProducer is the same shape for std.compiler_entry NativeServeDriver: it emits and
 // builds the named service entry, starts it, writes gunbc.native_serve_probe's requests to real TCP
 // connections and hands what came back to native_serve_probe_standing. A separate arm because the
@@ -54,8 +58,49 @@ type TargetProducer
   | GenericIdentityCensusProducer
   | InterpolationHoleCensusProducer
   | RegenRoundCostProducer
-  | NativeClaimProgramProducer { entry: String }
+  | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
   | NativeServeProgramProducer { entry: String }
+
+// THE HOST EVALUATES THIS AT SPAWN so the child wall is the binding row's Millisecond, not a
+// second Duration literal. Present only when the producer is a NativeClaimProgramProducer whose
+// entry matches; every other arm is Absent.
+fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Optional<Millisecond> {
+  match producer {
+    NativeClaimProgramProducer { entry: e, deadline: d } =>
+      match e == want {
+        true => optional_present(value: d)
+        false => optional_absent()
+      }
+    SelfHostProducer {} => optional_absent()
+    RequiredFloorProducer {} => optional_absent()
+    BazelProducer {} => optional_absent()
+    BehavioralReceiptPlanProducer {} => optional_absent()
+    BehavioralReceiptCensusProducer {} => optional_absent()
+    BehavioralReceiptSelftestProducer {} => optional_absent()
+    HeadsReadingDifferentialProducer {} => optional_absent()
+    CompileCleanDiagnosticCensusProducer {} => optional_absent()
+    V2NativeCliProducer {} => optional_absent()
+    V2NativeFrontierProducer {} => optional_absent()
+    V2NativeCensusProducer { reading: _ } => optional_absent()
+    EmittedCrateWorkspaceProducer {} => optional_absent()
+    EvaluationStoreAddressExactHeadProducer {} => optional_absent()
+    PrimitiveEgressCensusProducer {} => optional_absent()
+    PrimitiveEgressCensusV2Producer {} => optional_absent()
+    PrimitiveEgressCensusDagProducer {} => optional_absent()
+    PrimitiveEgressCensusSeedProducer {} => optional_absent()
+    FloorMemoryQualificationProducer {} => optional_absent()
+    TypedGraphExclusiveBytesProducer {} => optional_absent()
+    TypedGraphExclusiveBytesFloorSubjectProducer {} => optional_absent()
+    RequiredLaneResolutionCensusProducer {} => optional_absent()
+    BareReferenceChannelOutcomeProducer {} => optional_absent()
+    SelfHostBehavioralEquivalenceProducer {} => optional_absent()
+    DependencyDemandCensusProducer {} => optional_absent()
+    GenericIdentityCensusProducer {} => optional_absent()
+    InterpolationHoleCensusProducer {} => optional_absent()
+    RegenRoundCostProducer {} => optional_absent()
+    NativeServeProgramProducer { entry: _ } => optional_absent()
+  }
+}
 
 // WHICH READING OF THE NATIVE CENSUS FAMILY A ROW TAKES. One producer spawns the emitted v2
 // compiler's census verbs; the reading names the verb and the reader that decides its standing, so a

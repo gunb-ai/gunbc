@@ -1,0 +1,65 @@
+module gunbc.t
+
+fn f(value: Int) -> Int? {
+  match g(value: value, key: "k1") { Absent => none Present { value: v1 } => {
+  let w1 = v1
+  match g(value: value, key: "k2") { Absent => none Present { value: v2 } => {
+  let w2 = v2
+  match g(value: value, key: "k3") { Absent => none Present { value: v3 } => {
+  let w3 = v3
+  match g(value: value, key: "k4") { Absent => none Present { value: v4 } => {
+  let w4 = v4
+  match g(value: value, key: "k5") { Absent => none Present { value: v5 } => {
+  let w5 = v5
+  match g(value: value, key: "k6") { Absent => none Present { value: v6 } => {
+  let w6 = v6
+  match g(value: value, key: "k7") { Absent => none Present { value: v7 } => {
+  let w7 = v7
+  match g(value: value, key: "k8") { Absent => none Present { value: v8 } => {
+  let w8 = v8
+  match g(value: value, key: "k9") { Absent => none Present { value: v9 } => {
+  let w9 = v9
+  match g(value: value, key: "k10") { Absent => none Present { value: v10 } => {
+  let w10 = v10
+  match g(value: value, key: "k11") { Absent => none Present { value: v11 } => {
+  let w11 = v11
+  match g(value: value, key: "k12") { Absent => none Present { value: v12 } => {
+  let w12 = v12
+  match g(value: value, key: "k13") { Absent => none Present { value: v13 } => {
+  let w13 = v13
+  match g(value: value, key: "k14") { Absent => none Present { value: v14 } => {
+  let w14 = v14
+  match g(value: value, key: "k15") { Absent => none Present { value: v15 } => {
+  let w15 = v15
+  match g(value: value, key: "k16") { Absent => none Present { value: v16 } => {
+  let w16 = v16
+  match g(value: value, key: "k17") { Absent => none Present { value: v17 } => {
+  let w17 = v17
+  match g(value: value, key: "k18") { Absent => none Present { value: v18 } => {
+  let w18 = v18
+  match g(value: value, key: "k19") { Absent => none Present { value: v19 } => {
+  let w19 = v19
+  match g(value: value, key: "k20") { Absent => none Present { value: v20 } => {
+  let w20 = v20
+  Present { value: 1 }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+}

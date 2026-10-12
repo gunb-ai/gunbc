@@ -24,7 +24,7 @@ import gunbc.roadmap_workflow_stage {
   WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptEvidence }
-import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable }
+import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable }
 import gunbc.roadmap.roadmap_review_function { ReviewReport, review_report_json }
 import gunbc.roadmap_publish {
   PublicationSubjectObservation, PublicationSubjectObserved, PublicationSubjectUnobserved,
@@ -371,7 +371,8 @@ fn dogfood_submission_reading(attempt_key: String, capture: SubmissionCaptureObs
   match capture {
     CaptureForHead { capture: c } =>
       SubmissionEstablished { evidence: SubmissionEvidence { attempt_key: attempt_key, head_sha: c.head_sha, digest: c.digest } }
-    CaptureAbsent => SubmissionGap { gap: StageOwed { owed_by: "the worker has not captured a submission at its head" } }
+    CaptureAbsent => SubmissionGap { gap: StageRefused { reason: "the commit step settled this head without a capture: the worker yielded, so no submission exists to establish" } }
+    CaptureNotAttempted { reason } => SubmissionGap { gap: StageOwed { owed_by: join(["the belt has not captured the worker's ending: ", reason], "") } }
     CaptureUnreadable { reason } => SubmissionGap { gap: StageRefused { reason: reason } }
   }
 }
