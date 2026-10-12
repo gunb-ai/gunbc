@@ -285,7 +285,7 @@ pub enum TargetProducer {
     RegenRoundCost,
     /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
     /// of the same shape is a registry row, never another variant. The Millisecond deadline is
-    /// read from `gunbc.instrument_targets` `native_claim_child_deadline_for_entry` at spawn.
+    /// read from `gunbc.instrument_targets` `native_claim_child_deadline_count` at spawn.
     NativeClaimProgram {
         entry: &'static str,
     },
@@ -315,6 +315,12 @@ fn self_host_source_roots() -> Vec<String> {
 fn v2_native_cli_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
 }
+
+/// Modules this producer evaluates by name at spawn. Parallel to
+/// `REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`: listing here is what makes that by-name
+/// evaluation legitimate rather than an undeclared reach. Not a floor-subject seed — the floor
+/// list must not grow this module's closure.
+const NATIVE_CLAIM_RUNTIME_AUTHORITY_MODULES: [&str; 1] = ["gunbc.instrument_targets"];
 
 /// `gunbc.instrument_targets` `emitted_crate_workspace_label`: the closure is emitted from the same
 /// corpus the self-host step emits from, so the two instruments measure one closure two ways.
@@ -1538,14 +1544,21 @@ fn native_claim_child_deadline_from_binding(
     label_name: &str,
 ) -> Result<std::time::Duration, InvocationOutcome> {
     const READER: &str = "dag/gunbc/instrument_targets.dag";
+    let authority = NATIVE_CLAIM_RUNTIME_AUTHORITY_MODULES[0];
+    let ungrounded = |detail: String| -> InvocationOutcome {
+        InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: NATIVE-CLAIM REFUSAL cause=NativeClaimDeadlineUngrounded \
+                 module={authority} entry={entry} — {detail}"
+            ),
+        }
+    };
     let roots = cli_run::default_source_roots();
     let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
         Ok(resolved) => resolved,
         Err(cause) => {
-            return Err(InvocationOutcome {
-                termination: Termination::SubjectUnreached,
-                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
-            });
+            return Err(ungrounded(format!("resolve failed for {READER}: {cause}")));
         }
     };
     let ctx = cli_run::make_eval_context(
@@ -1555,7 +1568,7 @@ fn native_claim_child_deadline_from_binding(
     );
     let value = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
-        "native_claim_child_deadline_for_entry",
+        "native_claim_child_deadline_count",
         &[(
             Some("entry".to_string()),
             crate::v1_interpreter::str_value(entry),
@@ -1564,12 +1577,9 @@ fn native_claim_child_deadline_from_binding(
     ) {
         Ok(value) => value,
         Err(cause) => {
-            return Err(InvocationOutcome {
-                termination: Termination::SubjectUnreached,
-                message: format!(
-                    "{label_name}: {READER} native_claim_child_deadline_for_entry failed: {cause}"
-                ),
-            });
+            return Err(ungrounded(format!(
+                "native_claim_child_deadline_count failed: {cause}"
+            )));
         }
     };
     let crate::v1_interpreter::Value::Variant {
@@ -1578,52 +1588,31 @@ fn native_claim_child_deadline_from_binding(
         ..
     } = &value
     else {
-        return Err(InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!(
-                "{label_name}: native_claim_child_deadline_for_entry is not an Optional"
-            ),
-        });
+        return Err(ungrounded(
+            "native_claim_child_deadline_count is not an Optional".to_string(),
+        ));
     };
     if ctx.sym_eq(*variant_name, "Absent") {
-        return Err(InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!(
-                "{label_name}: no NativeClaimProgramProducer binding for entry={entry}"
-            ),
-        });
+        return Err(ungrounded(
+            "no NativeClaimProgramProducer binding, or its count disagrees with the named *_child_deadline_count projection"
+                .to_string(),
+        ));
     }
     if !ctx.sym_eq(*variant_name, "Present") {
-        return Err(InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!(
-                "{label_name}: native_claim_child_deadline_for_entry is not Present or Absent"
-            ),
-        });
+        return Err(ungrounded(
+            "native_claim_child_deadline_count is not Present or Absent".to_string(),
+        ));
     }
-    let Some(measure) = ctx.field(fields, "value") else {
-        return Err(InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!("{label_name}: Present deadline has no value field"),
-        });
-    };
-    let crate::v1_interpreter::Value::Record {
-        fields: mfields, ..
-    } = measure
-    else {
-        return Err(InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!("{label_name}: deadline is not a Measure record"),
-        });
-    };
-    match ctx.field(mfields, "count") {
-        Some(crate::v1_interpreter::Value::Int(n)) if *n >= 0 => {
+    match ctx.field(fields, "value") {
+        Some(crate::v1_interpreter::Value::Int(n)) if *n > 0 => {
             Ok(std::time::Duration::from_millis(*n as u64))
         }
-        _ => Err(InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!("{label_name}: deadline count is not a non-negative Int"),
-        }),
+        Some(crate::v1_interpreter::Value::Int(n)) => Err(ungrounded(format!(
+            "native_claim_child_deadline_count returned {n}ms — a child deadline must be strictly positive"
+        ))),
+        other => Err(ungrounded(format!(
+            "native_claim_child_deadline_count expected a positive Int, got {other:?}"
+        ))),
     }
 }
 

@@ -71,7 +71,8 @@ import gunbc.target_invocation {
   route_target_invocation,
 }
 import std.types { String, Bool, NonEmptyStr }
-import std.measure { Millisecond, millisecond }
+import std.integer { Int }
+import std.measure { Millisecond, millisecond, millisecond_count }
 import std.optional { Optional, Present, Absent }
 
 // THE REAL INSTRUMENT TARGETS, AND THEY ARE PRODUCTION ROWS RATHER THAN FIXTURE EXAMPLES.
@@ -640,6 +641,10 @@ fn native_claim_policy_child_deadline() -> Millisecond {
   millisecond(count: 600000)
 }
 
+fn native_claim_policy_child_deadline_count() -> Int {
+  millisecond_count(m: native_claim_policy_child_deadline())
+}
+
 // Wall budget for //gunbc/instruments:value-position-block-nests, set from the measured child
 // wall of this driver. Producer: `gunbc test //gunbc/instruments:value-position-block-nests`
 // on sunny-carp-272 at 1d1f4cf6d17, cgroup memory.max=25769803776, printed
@@ -649,6 +654,10 @@ fn native_claim_policy_child_deadline() -> Millisecond {
 // so one noisy runner cannot false-RED a 1.1 s green.
 fn value_position_block_nests_child_deadline() -> Millisecond {
   millisecond(count: 15000)
+}
+
+fn value_position_block_nests_child_deadline_count() -> Int {
+  millisecond_count(m: value_position_block_nests_child_deadline())
 }
 
 fn native_crypto_vectors_binding() -> TargetBinding {
@@ -874,6 +883,23 @@ fn native_claim_child_deadline_for_entry(entry: String) -> Optional<Millisecond>
       Absent => native_claim_deadline_if_entry(producer: b.producer, want: entry)
     }
   )
+}
+
+// THE HOST READ POINT. Same projection as v2.workflow.floor_enrolment_margin
+// floor_enrolment_margin_budget_ms_count: Int milliseconds via millisecond_count, no
+// arithmetic of its own. Absent or non-positive is NativeClaimDeadlineUngrounded.
+fn native_claim_child_deadline_count(entry: String) -> Optional<Int> {
+  match native_claim_child_deadline_for_entry(entry: entry) {
+    Absent => Absent
+    Present { value: d } =>
+      if entry == value_position_block_nests_entry() {
+        if millisecond_count(m: d) == value_position_block_nests_child_deadline_count() {
+          Present { value: value_position_block_nests_child_deadline_count() }
+        } else { Absent }
+      } else if millisecond_count(m: d) == native_claim_policy_child_deadline_count() {
+        Present { value: native_claim_policy_child_deadline_count() }
+      } else { Absent }
+  }
 }
 
 // THE PRODUCTION ENTRY: the generic route, bound to the live population, in one place. Every
