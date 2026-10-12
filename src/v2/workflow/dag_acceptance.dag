@@ -25,6 +25,8 @@ import v2.compiler.staged_front_end {
   FrontEndResolvedModule,
   FrontEndBoundReached,
   FrontEndRefused,
+  front_end_stage_index,
+  front_end_full_depth,
   run_front_end_to
 }
 import std.algebra { FreeSemigroup, list_snoc_item }
@@ -146,6 +148,38 @@ fn obligation_prerequisites(obligation: DagStageObligation) -> List<DagStageObli
     EvalStage { claim: _ } => [InferStage]
     TranslateStage { claim: _ } => [InferStage]
     TargetCompileStage { claim: c } => [TranslateStage { claim: c.translation }]
+  }
+}
+
+// The obligation partition is the single authority for WHICH SIDE of the acceptance
+// fold an obligation belongs to. It is derived from DagStageObligation by
+// inhabitance (DagStageObligation stays the authority; the partition is projected
+// from it and never constructed independently): the four front-end obligations
+// project to the staged_front_end.FrontEndStage they run, the four back-end
+// obligations to the DagBackEndStage that executes them. The three partition
+// matches (is_front_end_obligation, obligation_front_end_depth, execute_obligation)
+// fold over this projection rather than the variant list, so their wildcard
+// fallback arms become named cases.
+type DagBackEndStage
+  = BackEndInfer
+  | BackEndEval { claim: EvalClaim }
+  | BackEndTranslate { claim: TranslationClaim }
+  | BackEndTargetCompile { claim: TargetCompileClaim }
+
+type DagObligationPartition
+  = FrontEndObligation { stage: FrontEndStage }
+  | BackEndObligation { stage: DagBackEndStage }
+
+fn obligation_partition(obligation: DagStageObligation) -> DagObligationPartition {
+  match obligation {
+    TokenizeStage => FrontEndObligation { stage: FrontEndTokenize }
+    ParseStage => FrontEndObligation { stage: FrontEndParse }
+    NormalizeStage => FrontEndObligation { stage: FrontEndNormalize }
+    ResolveStage => FrontEndObligation { stage: FrontEndResolve }
+    InferStage => BackEndObligation { stage: BackEndInfer }
+    EvalStage { claim: c } => BackEndObligation { stage: BackEndEval { claim: c } }
+    TranslateStage { claim: c } => BackEndObligation { stage: BackEndTranslate { claim: c } }
+    TargetCompileStage { claim: c } => BackEndObligation { stage: BackEndTargetCompile { claim: c } }
   }
 }
 
@@ -400,11 +434,9 @@ fn effective_obligations(contract: DagAcceptanceContract) -> List<DagStageObliga
 }
 
 fn obligation_front_end_depth(obligation: DagStageObligation) -> Int {
-  match obligation {
-    TokenizeStage => 1
-    ParseStage => 2
-    NormalizeStage => 3
-    _ => 4
+  match obligation_partition(obligation: obligation) {
+    FrontEndObligation { stage: stage } => front_end_stage_index(stage: stage)
+    BackEndObligation { stage: _ } => front_end_full_depth
   }
 }
 
@@ -1028,12 +1060,8 @@ fn execute_obligation(
   env: AcceptanceEnvironment,
   obligation: DagStageObligation
 ) -> AcceptanceRunState {
-  match obligation {
-    InferStage => infer_execution(state: state)
-    EvalStage { claim: c } => eval_execution(state: state, claim: c)
-    TranslateStage { claim: c } => translate_execution(state: state, claim: c)
-    TargetCompileStage { claim: c } => target_compile_execution(state: state, env: env, claim: c)
-    _ =>
+  match obligation_partition(obligation: obligation) {
+    FrontEndObligation { stage: _ } =>
       state_with_row(
         state: state,
         row: StageNotRun {
@@ -1041,6 +1069,13 @@ fn execute_obligation(
           reason: ExecutorUnavailable { cause: "front-end obligations execute inside the staged front-end fold" }
         }
       )
+    BackEndObligation { stage: stage } =>
+      match stage {
+        BackEndInfer => infer_execution(state: state)
+        BackEndEval { claim: c } => eval_execution(state: state, claim: c)
+        BackEndTranslate { claim: c } => translate_execution(state: state, claim: c)
+        BackEndTargetCompile { claim: c } => target_compile_execution(state: state, env: env, claim: c)
+      }
   }
 }
 
@@ -1069,12 +1104,9 @@ fn attempt_obligation(
 }
 
 fn is_front_end_obligation(obligation: DagStageObligation) -> Bool {
-  match obligation {
-    TokenizeStage => true
-    ParseStage => true
-    NormalizeStage => true
-    ResolveStage => true
-    _ => false
+  match obligation_partition(obligation: obligation) {
+    FrontEndObligation { stage: _ } => true
+    BackEndObligation { stage: _ } => false
   }
 }
 
