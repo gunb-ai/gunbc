@@ -118,9 +118,11 @@ data deepseek_v4_sparse_mla_sm10_row: KvMainDtypeRow = kv_main_dtype_row(
   basis: KvBasisUpstreamSource { revision: vllm_deepseek_v4_1_sm12_revision, locator: v41_flashinfer_sparse_locator },
 )
 
-// NVIDIA Qwen4Exp QSA backend requires a BF16 main KV cache
-// (vllm/models/qwen4_exp/nvidia/qsa.py). Main KV, indexer cache, and weight quantization
-// stay distinct. CONSUMER: P4 feasibility (acceptable KV precision on that arch).
+// NVIDIA Qwen4Exp QSA backend admits main KV "auto" and "bfloat16"
+// (vllm/models/qwen4_exp/nvidia/qsa.py supported_kv_cache_dtypes at ced6857).
+// auto resolves to BF16 storage; values outside that pair are refused.
+// Main KV, indexer cache, and weight quantization stay distinct.
+// CONSUMER: P4 feasibility (acceptable KV precision on that arch).
 // full_revision is the commit `refs/tags/v0.30.0` resolved to on github.com/vllm-project/vllm
 // (ced6857afa0ea7b2e3f0846a62e1394e90f15607), not the tag spelling: VllmSourceRevision is one build.
 data vllm_0_30_0_qwen4_exp_qsa_revision: VllmSourceRevision = vllm_source_revision(
@@ -134,7 +136,7 @@ data qwen4_exp_nvidia_qsa_sm12_row: KvMainDtypeRow = kv_main_dtype_row(
   backend: Qwen4ExpNvidiaQsa,
   runtime: RowAtSourceRevision { revision: vllm_0_30_0_qwen4_exp_qsa_revision },
   device_major: 12,
-  admitted: [KvBf16],
+  admitted: [KvAuto, KvBf16],
   basis: KvBasisUpstreamSource { revision: vllm_0_30_0_qwen4_exp_qsa_revision, locator: qwen4_exp_qsa_locator },
 )
 

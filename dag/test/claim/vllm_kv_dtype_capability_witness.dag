@@ -151,6 +151,11 @@ fn w_qsa_subject(main: VllmKvCacheDtypeRequest) -> KvCapabilitySubject {
 
 test fn w_qwen4_exp_qsa_requires_bf16_main_kv() -> Bool {
   (vllm_0_30_0_qwen4_exp_qsa_revision.full_revision as String) == "ced6857afa0ea7b2e3f0846a62e1394e90f15607"
+    && (match kv_capability_verdict(subject: w_qsa_subject(main: KvAuto), rows: upstream_kv_main_dtype_rows) {
+    KvCombinationAdmitted { bases: _ } => true
+    KvCombinationRefused { cause: _, basis: _ } => false
+    KvCombinationUnanswered { obligation: _ } => false
+  })
     && (match kv_capability_verdict(subject: w_qsa_subject(main: KvBf16), rows: upstream_kv_main_dtype_rows) {
     KvCombinationAdmitted { bases: _ } => true
     KvCombinationRefused { cause: _, basis: _ } => false

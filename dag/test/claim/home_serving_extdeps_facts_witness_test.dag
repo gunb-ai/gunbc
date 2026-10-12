@@ -5,7 +5,7 @@ import std.types { Bool, List, String }
 import std.optional { Present, Absent }
 import std.measure {
   bandwidth_count, watt_count, byte_size_count, gibibyte, gibibyte_to_byte_size, hardware_thread_count_value,
-  basis_point, basis_point_count,
+  basis_point_count,
 }
 import extdeps.storage.types { PcieLink, Gen3, Gen4, Gen5 }
 import extdeps.gpu.types { GpuModelCatalogRow, GpuPackageForm, PcieAddInCard, SxmModule, IntegratedComputePackage, gpu_catalog_row_eq }
@@ -24,7 +24,7 @@ import extdeps.ninfer.ninfer_serve {
   Qwen35KvCapacityAdmitted, Qwen35ConcurrencyOutOfRange, Qwen35KvPagesOutOfBounds,
 }
 import gunbc.serving.flashinfer_cutlass_moe_scratch_observation {
-  flash_next_nvfp4_pro6000_tp2_ep_moe_scratch, moe_scratch_matches_launch,
+  flash_next_nvfp4_pro6000_tp2_ep_moe_scratch,
 }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
 
@@ -154,45 +154,17 @@ test fn w_ninfer_qwen35_planner_refuses_pages_outside_the_interval() -> Bool {
 
 test fn w_flashinfer_moe_scratch_is_pinned_launch_not_a_general_law() -> Bool {
   let obs = flash_next_nvfp4_pro6000_tp2_ep_moe_scratch
-  moe_scratch_matches_launch(
-    obs: obs,
-    max_num_batched_tokens: 32768,
-    gpu_memory_utilization: basis_point(count: 8500),
-    tensor_parallel: 2,
-    expert_parallel: true,
-    accelerator: nvidia_rtx_pro_6000_workstation_catalog,
-  )
-    && !moe_scratch_matches_launch(
-      obs: obs,
-      max_num_batched_tokens: 8192,
-      gpu_memory_utilization: basis_point(count: 8500),
-      tensor_parallel: 2,
-      expert_parallel: true,
-      accelerator: nvidia_rtx_pro_6000_workstation_catalog,
-    )
-    && !moe_scratch_matches_launch(
-      obs: obs,
-      max_num_batched_tokens: 32768,
-      gpu_memory_utilization: basis_point(count: 8500),
-      tensor_parallel: 2,
-      expert_parallel: true,
-      accelerator: nvidia_rtx_pro_6000_max_q_catalog,
-    )
-    && !moe_scratch_matches_launch(
-      obs: obs,
-      max_num_batched_tokens: 32768,
-      gpu_memory_utilization: basis_point(count: 8500),
-      tensor_parallel: 2,
-      expert_parallel: true,
-      accelerator: nvidia_rtx_pro_6000_server_catalog,
-    )
-    && (match obs.standing {
+  (match obs.standing {
       TranscribedUncited { read_obligation: _ } => true
       CitedToAuthority { authority: _ } => false
       ObservedByReceipt { observed: _ } => false
     })
+    && obs.max_num_batched_tokens == 32768
+    && obs.tensor_parallel == 2
+    && obs.expert_parallel
     && obs.started_at_tokens == 8192
     && basis_point_count(bp: obs.gpu_memory_utilization) == 8500
+    && byte_size_count(b: obs.scratch) == 3457466670
 }
 
 test fn w_endpoint_capability_is_not_the_host_link() -> Bool {

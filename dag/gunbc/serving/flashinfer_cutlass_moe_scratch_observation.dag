@@ -1,10 +1,10 @@
 module gunbc.serving.flashinfer_cutlass_moe_scratch_observation
 
-import std.types { Bool, NonEmptyStr }
+import std.types { NonEmptyStr }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, BasisPoint, basis_point, basis_point_count }
+import std.measure { ByteSize, byte_size, BasisPoint, basis_point }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
-import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
+import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog }
 
 data flashinfer_moe_scratch_read_obligation: NonEmptyStr = "Re-read the pinned vLLM launch log for Flash-Next NVFP4 on RTX PRO 6000 at TP2+EP: FlashInfer CUTLASS MoE scratch GiB at max_num_batched_tokens 32768 versus the profiled budget at gpu_memory_utilization 0.85, and the 8192 value that started. Until a P3 receipt fold derives those bytes from committed raw text, this row is an observation transcribed from that launch, not an upstream vLLM or FlashInfer law." as NonEmptyStr
@@ -55,18 +55,3 @@ data flash_next_nvfp4_pro6000_tp2_ep_moe_scratch: FlashInferCutlassMoeScratchObs
   started_at_tokens: 8192,
   standing: TranscribedUncited { read_obligation: flashinfer_moe_scratch_read_obligation },
 )
-
-fn moe_scratch_matches_launch(
-  obs: FlashInferCutlassMoeScratchObservation,
-  max_num_batched_tokens: Nat,
-  gpu_memory_utilization: BasisPoint,
-  tensor_parallel: Nat,
-  expert_parallel: Bool,
-  accelerator: GpuModelCatalogRow,
-) -> Bool {
-  obs.max_num_batched_tokens == max_num_batched_tokens
-    && basis_point_count(bp: obs.gpu_memory_utilization) == basis_point_count(bp: gpu_memory_utilization)
-    && obs.tensor_parallel == tensor_parallel
-    && obs.expert_parallel == expert_parallel
-    && gpu_catalog_row_eq(a: obs.accelerator, b: accelerator)
-}
