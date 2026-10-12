@@ -679,9 +679,12 @@ fn acceptance_first_rejection(prior: Optional<Symbol>, row: StageExecution) -> O
   match prior {
     Present { value: _ } => prior
     Absent =>
-      match row {
-        StageRejected { obligation: o, refusal: _ } => optional_present(value: obligation_label(obligation: o))
-        _ => Absent
+      match stage_execution_outcome(row: row) {
+        OutcomeRejected => optional_present(value: obligation_label(obligation: row_obligation(row: row)))
+        OutcomePassed => optional_absent()
+        OutcomePassedWithFrontier => optional_absent()
+        OutcomeUnfinished => optional_absent()
+        OutcomeNotRequired => optional_absent()
       }
   }
 }
@@ -1212,30 +1215,67 @@ fn run_acceptance(
   }
 }
 
-fn row_rejection_label(row: StageExecution) -> Optional<Symbol> {
+// THE ONE DERIVED OUTCOME PARTITION OF StageExecution, from inhabitance (DESIGN §3/§4; the same
+// move as derived terminality in regen_convergence_transaction). The acceptance_row_projection
+// non-fold residue dissolved here: the label projections used to match the
+// five-arm StageExecution and wildcard every off-variant arm to Absent (the DESIGN §2 redundancy,
+// not §4 totality). This partition names the classes a projection can distinguish — passed,
+// passed-with-frontier, rejected, unfinished, not-required — and each projection folds over it
+// with a named arm per class. StageNotRunReason is partitioned into not-required
+// (NotRequiredByContract) versus unfinished (every other reason, which left a debt on the
+// obligation). The derive fn is total and wildcard-free, so it carries no non-fold-residue site.
+type StageExecutionOutcome
+  = OutcomePassed
+  | OutcomePassedWithFrontier
+  | OutcomeRejected
+  | OutcomeUnfinished
+  | OutcomeNotRequired
+
+fn stage_execution_outcome(row: StageExecution) -> StageExecutionOutcome {
   match row {
-    StageRejected { obligation: o, refusal: _ } => optional_present(value: obligation_label(obligation: o))
-    _ => Absent
+    StagePassed { obligation: _, receipt: _ } => OutcomePassed
+    StagePassedWithFrontier { obligation: _, receipt: _, diagnostics: _ } => OutcomePassedWithFrontier
+    StageRejected { obligation: _, refusal: _ } => OutcomeRejected
+    StageNotRun { obligation: _, reason: reason } =>
+      match reason {
+        NotRequiredByContract => OutcomeNotRequired
+        BlockedByPrerequisite { prerequisite: _ } => OutcomeUnfinished
+        SkippedAfterDecisiveRejection { rejected_obligation: _ } => OutcomeUnfinished
+        VerifierBudgetUnavailable { required: _, budget_total: _, already_spent: _ } => OutcomeUnfinished
+        ExecutorUnavailable { cause: _ } => OutcomeUnfinished
+      }
+    StageUndecided { obligation: _, cause: _ } => OutcomeUnfinished
+  }
+}
+
+fn row_rejection_label(row: StageExecution) -> Optional<Symbol> {
+  match stage_execution_outcome(row: row) {
+    OutcomeRejected => optional_present(value: obligation_label(obligation: row_obligation(row: row)))
+    OutcomePassed => optional_absent()
+    OutcomePassedWithFrontier => optional_absent()
+    OutcomeUnfinished => optional_absent()
+    OutcomeNotRequired => optional_absent()
   }
 }
 
 fn row_unfinished_label(row: StageExecution) -> Optional<Symbol> {
-  match row {
-    StageUndecided { obligation: o, cause: _ } => optional_present(value: obligation_label(obligation: o))
-    StageNotRun { obligation: o, reason: reason } =>
-      match reason {
-        NotRequiredByContract => optional_absent()
-        _ => optional_present(value: obligation_label(obligation: o))
-      }
-    _ => Absent
+  match stage_execution_outcome(row: row) {
+    OutcomeUnfinished => optional_present(value: obligation_label(obligation: row_obligation(row: row)))
+    OutcomePassed => optional_absent()
+    OutcomePassedWithFrontier => optional_absent()
+    OutcomeRejected => optional_absent()
+    OutcomeNotRequired => optional_absent()
   }
 }
 
 fn row_frontier_label(row: StageExecution) -> Optional<Symbol> {
-  match row {
-    StagePassedWithFrontier { obligation: o, receipt: _, diagnostics: _ } =>
-      optional_present(value: obligation_label(obligation: o))
-    _ => optional_absent()
+  match stage_execution_outcome(row: row) {
+    OutcomePassedWithFrontier =>
+      optional_present(value: obligation_label(obligation: row_obligation(row: row)))
+    OutcomePassed => optional_absent()
+    OutcomeRejected => optional_absent()
+    OutcomeUnfinished => optional_absent()
+    OutcomeNotRequired => optional_absent()
   }
 }
 
