@@ -2,6 +2,7 @@ module product.build_fulfillment
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
+import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyAmountMicro, MoneyOnce, money_amount_micro, money_amount_micro_count, money_once_micros }
 import extdeps.currency.currency { CurrencyCode }
@@ -728,13 +729,13 @@ type CashProjection
 // body is written once: naming the open variants in the fold would clone it once per arm (the
 // DESIGN section 2 redundancy, not the section 4 totality).
 type CashPartition
-  = CashPartitionOpen
+  = CashPartitionOpen { running: Optional<MoneyOnce> }
   | CashPartitionRefused { cause: CashRefusalCause }
 
 fn cash_partition(p: CashProjection) -> CashPartition {
   match p {
-    CashDerived { cash: _ } => CashPartitionOpen
-    CashNoPurchaseLines => CashPartitionOpen
+    CashDerived { cash: c } => CashPartitionOpen { running: Present { value: c } }
+    CashNoPurchaseLines => CashPartitionOpen { running: Absent }
     CashRefused { cause: c } => CashPartitionRefused { cause: c }
   }
 }
@@ -755,7 +756,7 @@ fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> 
   // the open region runs the fold body once for every open variant.
   match cash_partition(p: acc) {
     CashPartitionRefused { cause: c } => CashRefused { cause: c }
-    CashPartitionOpen =>
+    CashPartitionOpen { running: running } =>
       match r {
         LineRefused { line: l, cause: _ } => CashRefused { cause: CashLineRefused { part: l.part } }
         LineResolved { line: l, fulfillment: f } =>
@@ -764,20 +765,18 @@ fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> 
               if price.currency != declared {
                 CashRefused { cause: CashCurrencyMismatch { declared: declared, line_currency: price.currency } }
               } else {
-                // Running vs. first derivation, totalized. The two not-yet-running variants both
-                // start the derivation: CashNoPurchaseLines, and CashRefused -- which cannot reach
-                // here (a refused accumulator short-circuits the partition above) but is named so
-                // the match over the closed coproduct is total rather than wildcarded.
-                match acc {
-                  CashDerived { cash: running } =>
+                // Running vs. first derivation: the partition carries the running sum (Absent when
+                // no line has derived one yet). No arm for a refused accumulator exists here -- a
+                // refused one short-circuits the partition above, so nothing is fabricated.
+                match running {
+                  Present { value: running_sum } =>
                     CashDerived {
                       cash: MoneyOnce {
-                        amount: money_amount_micro(count: money_once_micros(q: running) + q * money_once_micros(q: price)),
+                        amount: money_amount_micro(count: money_once_micros(q: running_sum) + q * money_once_micros(q: price)),
                         currency: declared,
                       },
                     }
-                  CashNoPurchaseLines => cash_first_derivation(declared: declared, price: price, q: q)
-                  CashRefused { cause: _ } => cash_first_derivation(declared: declared, price: price, q: q)
+                  Absent => cash_first_derivation(declared: declared, price: price, q: q)
                 }
               }
             SupplyMissing { part: p, requested: _, owned_available: _, market_units: _ } =>
@@ -904,14 +903,23 @@ type BasisProjection
 // written once: a refused accumulator short-circuits and both open variants continue the same
 // step (naming the open variants in the fold would clone the body once per arm, the DESIGN
 // section 2 redundancy).
+// The running basis fact, carried by the open side of the partition: the derived sum, its
+// retained remainder, and the allocation policy that produced it.
+type BasisRunning {
+  basis: MoneyOnce
+  remainder: MoneyAmountMicro
+  policy: BasisAllocationPolicy
+}
+
 type BasisPartition
-  = BasisPartitionOpen
+  = BasisPartitionOpen { running: Optional<BasisRunning> }
   | BasisPartitionRefused { cause: BasisRefusalCause }
 
 fn basis_partition(p: BasisProjection) -> BasisPartition {
   match p {
-    BasisDerived { basis: _, remainder: _, policy: _ } => BasisPartitionOpen
-    BasisNoDraws => BasisPartitionOpen
+    BasisDerived { basis: b, remainder: r, policy: pol } =>
+      BasisPartitionOpen { running: Present { value: BasisRunning { basis: b, remainder: r, policy: pol } } }
+    BasisNoDraws => BasisPartitionOpen { running: Absent }
     BasisRefused { cause: c } => BasisPartitionRefused { cause: c }
   }
 }
@@ -968,7 +976,7 @@ fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -
   // the open region runs the step once for every open variant.
   match basis_partition(p: acc) {
     BasisPartitionRefused { cause: c } => BasisRefused { cause: c }
-    BasisPartitionOpen =>
+    BasisPartitionOpen { running: running } =>
       match lot_for(lots: lots, identity: draw.lot) {
         LotAbsent => BasisRefused { cause: BasisLotUnknown { lot: draw.lot } }
         LotDuplicated => BasisRefused { cause: BasisLotDuplicated { lot: draw.lot } }
@@ -977,29 +985,29 @@ fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -
             BasisRefused { cause: c } => BasisRefused { cause: c }
             BasisNoDraws => acc
             BasisDerived { basis: b, remainder: rem, policy: p } =>
-              // Running vs. first derivation, totalized: the not-yet-running variants start the
-              // derivation. BasisRefused cannot reach here (a refused accumulator short-circuits
-              // the partition above) but is named so the match is total, not wildcarded.
-              match acc {
-                BasisDerived { basis: running, remainder: running_rem, policy: _ } =>
-                  if running.currency != b.currency {
+              // Running vs. first derivation: the partition carries the running basis fact
+              // (Absent when no draw has derived one yet). No arm for a refused accumulator
+              // exists here -- a refused one short-circuits the partition above, so nothing is
+              // fabricated.
+              match running {
+                Present { value: running } =>
+                  if running.basis.currency != b.currency {
                     BasisRefused {
-                      cause: BasisCurrencyMismatchAcrossLots { first: running.currency, other: b.currency },
+                      cause: BasisCurrencyMismatchAcrossLots { first: running.basis.currency, other: b.currency },
                     }
                   } else {
                     BasisDerived {
                       basis: MoneyOnce {
-                        amount: money_amount_micro(count: money_once_micros(q: running) + money_once_micros(q: b)),
-                        currency: running.currency,
+                        amount: money_amount_micro(count: money_once_micros(q: running.basis) + money_once_micros(q: b)),
+                        currency: running.basis.currency,
                       },
                       remainder: money_amount_micro(
-                        count: money_amount_micro_count(m: running_rem) + money_amount_micro_count(m: rem),
+                        count: money_amount_micro_count(m: running.remainder) + money_amount_micro_count(m: rem),
                       ),
                       policy: p,
                     }
                   }
-                BasisNoDraws => basis_first_derivation(b: b, rem: rem, p: p)
-                BasisRefused { cause: _ } => basis_first_derivation(b: b, rem: rem, p: p)
+                Absent => basis_first_derivation(b: b, rem: rem, p: p)
               }
           }
       }
@@ -1120,14 +1128,25 @@ type ConstructibleCeiling
 // fold matches on this partition rather than the variant list, so the fold body is written once: a
 // refused ceiling short-circuits and both open variants continue the same step (naming the open
 // variants in the fold would clone the body once per arm, the DESIGN section 2 redundancy).
+// The running ceiling fact, carried by the open side of the partition: the best build ceiling
+// seen so far, the bottleneck lines that produce it, and their unit count.
+type CeilingRunning {
+  builds: Nat
+  bottlenecks: List<BomLine>
+  bottleneck_units: Nat
+}
+
 type CeilingPartition
-  = CeilingPartitionOpen
+  = CeilingPartitionOpen { running: Optional<CeilingRunning> }
   | CeilingPartitionRefused { cause: CeilingRefusalCause }
 
 fn ceiling_partition(p: ConstructibleCeiling) -> CeilingPartition {
   match p {
-    CeilingDerived { builds: _, bottlenecks: _, bottleneck_units: _ } => CeilingPartitionOpen
-    CeilingUnconstrainedByAnyLine => CeilingPartitionOpen
+    CeilingDerived { builds: b, bottlenecks: bs, bottleneck_units: bu } =>
+      CeilingPartitionOpen {
+        running: Present { value: CeilingRunning { builds: b, bottlenecks: bs, bottleneck_units: bu } },
+      }
+    CeilingUnconstrainedByAnyLine => CeilingPartitionOpen { running: Absent }
     CeilingRefused { cause: c } => CeilingPartitionRefused { cause: c }
   }
 }
@@ -1142,7 +1161,7 @@ fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> C
   // open region runs the step once for every open variant.
   match ceiling_partition(p: acc) {
     CeilingPartitionRefused { cause: c } => CeilingRefused { cause: c }
-    CeilingPartitionOpen =>
+    CeilingPartitionOpen { running: running } =>
       match depth {
         DepthRefused { cause: c } =>
           CeilingRefused { cause: CeilingLineRefused { part: line.part, cause: c } }
@@ -1151,20 +1170,23 @@ fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> C
         DepthUnconstrained => acc
         DepthUnits { units: u } => {
           let builds = u / line.quantity_per_build
-          // Running vs. first derivation, totalized. CeilingUnconstrainedByAnyLine starts the
-          // derivation; CeilingRefused cannot reach here (a refused ceiling short-circuits the
-          // partition above) but is named so the match is total, not wildcarded.
-          match acc {
-            CeilingDerived { builds: best, bottlenecks: bs, bottleneck_units: bu } =>
-              if builds < best {
+          // Running vs. first derivation: the partition carries the running ceiling fact (Absent
+          // when no line has constrained the build yet). No arm for a refused ceiling exists here
+          // -- a refused one short-circuits the partition above, so nothing is fabricated.
+          match running {
+            Present { value: running } =>
+              if builds < running.builds {
                 CeilingDerived { builds: builds, bottlenecks: [line], bottleneck_units: u }
-              } else if builds == best {
-                CeilingDerived { builds: best, bottlenecks: concat(bs, [line]), bottleneck_units: bu }
+              } else if builds == running.builds {
+                CeilingDerived {
+                  builds: running.builds,
+                  bottlenecks: concat(running.bottlenecks, [line]),
+                  bottleneck_units: running.bottleneck_units,
+                }
               } else {
                 acc
               }
-            CeilingUnconstrainedByAnyLine => ceiling_first_derivation(line: line, builds: builds, u: u)
-            CeilingRefused { cause: _ } => ceiling_first_derivation(line: line, builds: builds, u: u)
+            Absent => ceiling_first_derivation(line: line, builds: builds, u: u)
           }
         }
       }
