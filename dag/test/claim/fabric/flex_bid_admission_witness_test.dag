@@ -11,7 +11,7 @@ import std.measure {
   DecimalMoneyScaleRefused, DecimalMoneyUnrepresentable, exact_decimal_to_money_amount_micro_ceil,
   DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
 }
-import extdeps.currency.currency { Usd }
+import extdeps.currency.currency { Usd, Eur }
 import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
 import product.fabric.identity { FabricIdentity, OfferKey }
@@ -36,8 +36,9 @@ import product.fabric.flex_policy {
   ExactRatio, FlexPolicy, FlexBidLedger, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
   FlexBidAdmission, FlexBidAdmitted, FlexBidRefused, FlexNoAcquisitionRemaining,
   FlexRetainedLimitWouldRise, FlexRateCapBelowMin, FlexMoneyRefused, FlexSupplyNotSelected,
-  FlexBufferDenominatorZero, FlexOnDemandFractionExceeded,
+  FlexOnDemandFractionExceeded, FlexCurrencyMismatch, FlexDecimalConversionRefused,
   flex_floor_buffer, flex_bid_admission, flex_rebid_at_buffer_of_new_min, flex_buffered_min,
+  exact_ratio_denominator,
 }
 import extdeps.cloud.vast_ai {
   VastAiOffer, vast_ai_min_bid_money_per_hour,
@@ -128,7 +129,7 @@ fn t_policy(cap_micros: Nat) -> FlexPolicy {
   FlexPolicy {
     fleet_rate_cap: usd_hour(micros: cap_micros),
     floor_buffer: flex_floor_buffer,
-    on_demand_fraction: ExactRatio { numerator: 1, denominator: 1 },
+    on_demand_fraction: ExactRatio { numerator: 1, denominator_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
   }
 }
@@ -151,7 +152,7 @@ fn t_window(remaining: Nat) -> FlexAcquisitionWindow {
 
 fn t_attempt(
   machine: FlexMachineKey,
-  min_bid: MoneyPerHour,
+  min_bid: ExactDecimal,
   quote: MoneyPerHour,
   key: OfferKey,
   reservation: NonEmptyStr,
@@ -185,8 +186,9 @@ fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
     FlexBidRefused { cause: c } =>
       match c {
         FlexNoAcquisitionRemaining => "no-remaining"
-        FlexBufferDenominatorZero => "zero-denominator"
         FlexOnDemandFractionExceeded => "on-demand-fraction"
+        FlexCurrencyMismatch { left: _, right: _ } => "currency"
+        FlexDecimalConversionRefused { conversion: _ } => "decimal"
         FlexRateCapBelowMin { cap: _, min_bid: _ } => "rate-cap"
         FlexRetainedLimitWouldRise { retained: _, min_bid: _ } => "retained-would-rise"
         FlexSupplyNotSelected { selection: _ } => "supply"
@@ -198,6 +200,8 @@ fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
 // Dollar amounts as ExactDecimal: 1.00 = 100 cents at 2 fraction digits → 1_000_000 micros.
 fn one_dollar() -> MoneyPerHour { usd_hour(micros: 1000000) }
 fn one_ten() -> MoneyPerHour { usd_hour(micros: 1100000) }
+fn one_dollar_wire() -> ExactDecimal { ExactDecimal { units: 1, fraction_digits: 0 } }
+fn one_twenty_wire() -> ExactDecimal { ExactDecimal { units: 12, fraction_digits: 1 } }
 
 fn vast_min_sample() -> VastAiOffer {
   VastAiOffer {
@@ -233,7 +237,7 @@ test fn two_acquisitions_race_one_allowance_and_the_second_is_refused() -> Bool 
     account: t_account(ceiling: 10000000),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
-      min_bid: one_dollar(),
+      min_bid: one_dollar_wire(),
       quote: one_ten(),
       key: "offer-a",
       reservation: "res-a",
@@ -251,7 +255,7 @@ test fn two_acquisitions_race_one_allowance_and_the_second_is_refused() -> Bool 
         account: next_account,
         attempt: t_attempt(
           machine: t_machine(id: "machine-b"),
-          min_bid: one_dollar(),
+          min_bid: one_dollar_wire(),
           quote: one_ten(),
           key: "offer-b",
           reservation: "res-b",
@@ -272,7 +276,7 @@ test fn the_red_rebid_at_one_point_one_times_new_min_is_not_what_admission_does(
     account: t_account(ceiling: 10000000),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
-      min_bid: one_dollar(),
+      min_bid: one_dollar_wire(),
       quote: one_ten(),
       key: "offer-a",
       reservation: "res-a",
@@ -292,7 +296,7 @@ test fn the_red_rebid_at_one_point_one_times_new_min_is_not_what_admission_does(
         account: next_account,
         attempt: t_attempt(
           machine: t_machine(id: "machine-a"),
-          min_bid: new_min,
+          min_bid: one_twenty_wire(),
           quote: red,
           key: "offer-a2",
           reservation: "res-a2",
@@ -315,7 +319,7 @@ test fn rate_cap_and_cash_invariants_are_both_enforced() -> Bool {
     account: t_account(ceiling: 10000000),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
-      min_bid: one_dollar(),
+      min_bid: one_dollar_wire(),
       quote: one_ten(),
       key: "offer-cap",
       reservation: "res-cap",
@@ -330,7 +334,7 @@ test fn rate_cap_and_cash_invariants_are_both_enforced() -> Bool {
     account: t_account(ceiling: 1000),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
-      min_bid: one_dollar(),
+      min_bid: one_dollar_wire(),
       quote: one_ten(),
       key: "offer-cash",
       reservation: "res-cash",
@@ -349,7 +353,7 @@ test fn a_revocable_offer_is_refused_for_warm_residency() -> Bool {
     account: t_account(ceiling: 10000000),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
-      min_bid: one_dollar(),
+      min_bid: one_dollar_wire(),
       quote: one_ten(),
       key: "offer-warm",
       reservation: "res-warm",
@@ -362,6 +366,62 @@ test fn a_revocable_offer_is_refused_for_warm_residency() -> Bool {
 
 test fn floor_buffer_is_the_exact_tenth_ratio() -> Bool {
   flex_floor_buffer.numerator == 1
-    && flex_floor_buffer.denominator == 10
+    && exact_ratio_denominator(r: flex_floor_buffer) == 10
     && money_per_hour_micros(q: flex_buffered_min(min_bid: one_dollar(), buffer: flex_floor_buffer)) == 1100000
+}
+
+test fn a_currency_mismatch_is_refused_not_compared() -> Bool {
+  let eur_account = MoneyAccount {
+    account: "flex-eur",
+    currency: Eur,
+    ledger: EncumbranceLedger {
+      appropriation: Appropriation { ceiling: money_amount_micro(count: 10000000) },
+      entries: [],
+    },
+    leases: [],
+  }
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    ledger: FlexBidLedger { limits: [] },
+    window: t_window(remaining: 1),
+    account: eur_account,
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar_wire(),
+      quote: one_ten(),
+      key: "offer-fx",
+      reservation: "res-fx",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )) == "currency"
+}
+
+test fn admission_converts_the_vast_wire_min_bid() -> Bool {
+  let offer = vast_min_sample()
+  match vast_ai_min_bid_money_per_hour(offer: offer) {
+    DecimalMoneyPerHourRefused { conversion: _ } => false
+    DecimalMoneyPerHourConverted { rate: converted } => {
+      let buffered = flex_buffered_min(min_bid: converted, buffer: flex_floor_buffer)
+      match flex_bid_admission(
+        policy: t_policy(cap_micros: 5000000),
+        ledger: FlexBidLedger { limits: [] },
+        window: t_window(remaining: 1),
+        account: t_account(ceiling: 10000000),
+        attempt: t_attempt(
+          machine: t_machine(id: "machine-a"),
+          min_bid: offer.min_bid,
+          quote: buffered,
+          key: "offer-wire",
+          reservation: "res-wire",
+          revocation: RevocationAccepted,
+          revocable: true,
+        ),
+      ) {
+        FlexBidRefused { cause: _ } => false
+        FlexBidAdmitted { bid: b, selection: _, account: _, ledger: _, window: _ } =>
+          money_per_hour_micros(q: b) == money_per_hour_micros(q: buffered)
+      }
+    }
+  }
 }

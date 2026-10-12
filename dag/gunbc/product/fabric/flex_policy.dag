@@ -3,10 +3,14 @@ module product.fabric.flex_policy
 import std.types { NonEmptyStr, Bool, List, brand }
 import std.nat { Nat, Zero, Succ }
 import std.decl_ref { DeclarationRef }
+import std.decimal { ExactDecimal }
 import std.measure {
   MoneyAmountMicro, MoneyPerHour, MoneyPerSecond,
   money_per_hour_micros, measure_scale_fraction_ceil, Second, second_count,
+  DecimalMoneyConversion, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
+  exact_decimal_to_money_per_hour_ceil,
 }
+import extdeps.currency.currency { CurrencyCode }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply {
   EqualCostOfferTieBreak, PlacementAffinityKey, GrantDuration, ExactGrantDuration,
@@ -20,14 +24,21 @@ import product.fabric.selection {
   CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   select_supply,
 }
+
 // Fleet interruptible-bid policy. Consumer of every declaration below is flex_bid_admission.
 
+// Nonzero denominator by construction: the written field is the predecessor, so Zero cannot be
+// a denominator (DESIGN §5). Consumer: flex_buffered_min and on_demand_fraction_holds.
 type ExactRatio {
   numerator: Nat
-  denominator: Nat
+  denominator_predecessor: Nat
 }
 
-data flex_floor_buffer: ExactRatio = ExactRatio { numerator: 1, denominator: 10 }
+fn exact_ratio_denominator(r: ExactRatio) -> Nat {
+  Succ { prev: r.denominator_predecessor }
+}
+
+data flex_floor_buffer: ExactRatio = ExactRatio { numerator: 1, denominator_predecessor: 9 }
 
 type PhysicalMachineObservationIdentity = NonEmptyStr where brand("PhysicalMachineObservationIdentity")
 
@@ -65,9 +76,11 @@ type FlexAcquisitionWindow {
   interruptible_held: Nat
 }
 
+// min_bid is the wire ExactDecimal (Vast search-offers min_bid). Admission converts it with
+// exact_decimal_to_money_per_hour_ceil; a supplied MoneyPerHour here would skip that inhabitance.
 type FlexBidAttempt<P> {
   machine: FlexMachineKey
-  min_bid: MoneyPerHour
+  min_bid: ExactDecimal
   on_demand: Bool
   candidates: List<CandidateOffer<P>>
   requirements: ExecutionRequirements
@@ -80,8 +93,9 @@ type FlexBidAttempt<P> {
 
 type FlexBidRefusal
   = FlexNoAcquisitionRemaining
-  | FlexBufferDenominatorZero
   | FlexOnDemandFractionExceeded
+  | FlexCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
+  | FlexDecimalConversionRefused { conversion: DecimalMoneyConversion }
   | FlexRateCapBelowMin { cap: MoneyPerHour, min_bid: MoneyPerHour }
   | FlexRetainedLimitWouldRise { retained: MoneyPerHour, min_bid: MoneyPerHour }
   | FlexSupplyNotSelected { selection: SupplySelection<NonEmptyStr> }
@@ -97,6 +111,18 @@ type FlexBidAdmission
     }
   | FlexBidRefused { cause: FlexBidRefusal }
 
+type MoneyPerHourComparison
+  = MoneyPerHourCompared { left_le_right: Bool }
+  | MoneyPerHourCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
+
+fn money_per_hour_compare(left: MoneyPerHour, right: MoneyPerHour) -> MoneyPerHourComparison {
+  if left.currency != right.currency {
+    MoneyPerHourCurrencyMismatch { left: left.currency, right: right.currency }
+  } else {
+    MoneyPerHourCompared { left_le_right: money_per_hour_micros(q: left) <= money_per_hour_micros(q: right) }
+  }
+}
+
 fn flex_horizon_duration(policy: FlexPolicy) -> GrantDuration {
   ExactGrantDuration { seconds: policy.acquisition_horizon }
 }
@@ -105,19 +131,11 @@ fn flex_buffered_min(min_bid: MoneyPerHour, buffer: ExactRatio) -> MoneyPerHour 
   MoneyPerHour {
     amount: measure_scale_fraction_ceil(
       m: min_bid.amount,
-      num: buffer.denominator + buffer.numerator,
-      den: buffer.denominator,
+      num: exact_ratio_denominator(r: buffer) + buffer.numerator,
+      den: exact_ratio_denominator(r: buffer),
     ),
     currency: min_bid.currency,
   }
-}
-
-fn money_per_hour_le(left: MoneyPerHour, right: MoneyPerHour) -> Bool {
-  money_per_hour_micros(q: left) <= money_per_hour_micros(q: right)
-}
-
-fn money_per_hour_min(a: MoneyPerHour, b: MoneyPerHour) -> MoneyPerHour {
-  if money_per_hour_le(left: a, right: b) { a } else { b }
 }
 
 fn retained_limit_for(ledger: FlexBidLedger, machine: FlexMachineKey) -> RetainedBidLimit? {
@@ -150,14 +168,12 @@ fn flex_liability_for_horizon(rate: MoneyPerHour, horizon: Second) -> MoneyAmoun
 }
 
 fn on_demand_fraction_holds(window: FlexAcquisitionWindow, on_demand: Bool, fraction: ExactRatio) -> Bool {
-  if fraction.denominator == 0 {
-    false
-  } else if !on_demand {
+  if !on_demand {
     true
   } else {
     let od = window.on_demand_held + 1
     let total = window.on_demand_held + window.interruptible_held + 1
-    od * fraction.denominator <= total * fraction.numerator
+    od * exact_ratio_denominator(r: fraction) <= total * fraction.numerator
   }
 }
 
@@ -178,6 +194,10 @@ fn flex_rebid_at_buffer_of_new_min(new_min: MoneyPerHour, buffer: ExactRatio) ->
   flex_buffered_min(min_bid: new_min, buffer: buffer)
 }
 
+fn refuse_currency(left: CurrencyCode, right: CurrencyCode) -> FlexBidAdmission {
+  FlexBidRefused { cause: FlexCurrencyMismatch { left: left, right: right } }
+}
+
 fn flex_bid_admission(
   policy: FlexPolicy,
   ledger: FlexBidLedger,
@@ -187,44 +207,86 @@ fn flex_bid_admission(
 ) -> FlexBidAdmission {
   if window.remaining == 0 {
     FlexBidRefused { cause: FlexNoAcquisitionRemaining }
-  } else if policy.floor_buffer.denominator == 0 || policy.on_demand_fraction.denominator == 0 {
-    FlexBidRefused { cause: FlexBufferDenominatorZero }
+  } else if account.currency != policy.fleet_rate_cap.currency {
+    refuse_currency(left: account.currency, right: policy.fleet_rate_cap.currency)
   } else if !on_demand_fraction_holds(window: window, on_demand: attempt.on_demand, fraction: policy.on_demand_fraction) {
     FlexBidRefused { cause: FlexOnDemandFractionExceeded }
   } else {
-    let buffered = flex_buffered_min(min_bid: attempt.min_bid, buffer: policy.floor_buffer)
-    let capped = money_per_hour_min(a: buffered, b: policy.fleet_rate_cap)
-    match retained_limit_for(ledger: ledger, machine: attempt.machine) {
-      Present { value: retained } =>
-        if !money_per_hour_le(left: attempt.min_bid, right: retained.ceiling) {
-          FlexBidRefused {
-            cause: FlexRetainedLimitWouldRise { retained: retained.ceiling, min_bid: attempt.min_bid },
+    match exact_decimal_to_money_per_hour_ceil(d: attempt.min_bid, currency: policy.fleet_rate_cap.currency) {
+      DecimalMoneyPerHourRefused { conversion: c } =>
+        FlexBidRefused { cause: FlexDecimalConversionRefused { conversion: c } }
+      DecimalMoneyPerHourConverted { rate: min_rate } =>
+        flex_bid_after_min(
+          policy: policy,
+          ledger: ledger,
+          window: window,
+          account: account,
+          attempt: attempt,
+          min_rate: min_rate,
+        )
+    }
+  }
+}
+
+fn flex_bid_after_min(
+  policy: FlexPolicy,
+  ledger: FlexBidLedger,
+  window: FlexAcquisitionWindow,
+  account: MoneyAccount,
+  attempt: FlexBidAttempt<NonEmptyStr>,
+  min_rate: MoneyPerHour,
+) -> FlexBidAdmission {
+  let buffered = flex_buffered_min(min_bid: min_rate, buffer: policy.floor_buffer)
+  match money_per_hour_compare(left: buffered, right: policy.fleet_rate_cap) {
+    MoneyPerHourCurrencyMismatch { left: l, right: r } => refuse_currency(left: l, right: r)
+    MoneyPerHourCompared { left_le_right: buffered_under_cap } => {
+      let capped = if buffered_under_cap { buffered } else { policy.fleet_rate_cap }
+      match retained_limit_for(ledger: ledger, machine: attempt.machine) {
+        Present { value: retained } =>
+          match money_per_hour_compare(left: min_rate, right: retained.ceiling) {
+            MoneyPerHourCurrencyMismatch { left: l, right: r } => refuse_currency(left: l, right: r)
+            MoneyPerHourCompared { left_le_right: min_under_retained } =>
+              if !min_under_retained {
+                FlexBidRefused {
+                  cause: FlexRetainedLimitWouldRise { retained: retained.ceiling, min_bid: min_rate },
+                }
+              } else {
+                match money_per_hour_compare(left: capped, right: retained.ceiling) {
+                  MoneyPerHourCurrencyMismatch { left: l, right: r } => refuse_currency(left: l, right: r)
+                  MoneyPerHourCompared { left_le_right: capped_under_retained } =>
+                    flex_admit_at(
+                      policy: policy,
+                      ledger: ledger,
+                      window: window,
+                      account: account,
+                      attempt: attempt,
+                      min_rate: min_rate,
+                      bid: if capped_under_retained { capped } else { retained.ceiling },
+                    )
+                }
+              }
           }
-        } else {
-          flex_admit_at(
-            policy: policy,
-            ledger: ledger,
-            window: window,
-            account: account,
-            attempt: attempt,
-            bid: money_per_hour_min(a: capped, b: retained.ceiling),
-          )
-        }
-      Absent =>
-        if !money_per_hour_le(left: attempt.min_bid, right: policy.fleet_rate_cap) {
-          FlexBidRefused {
-            cause: FlexRateCapBelowMin { cap: policy.fleet_rate_cap, min_bid: attempt.min_bid },
+        Absent =>
+          match money_per_hour_compare(left: min_rate, right: policy.fleet_rate_cap) {
+            MoneyPerHourCurrencyMismatch { left: l, right: r } => refuse_currency(left: l, right: r)
+            MoneyPerHourCompared { left_le_right: min_under_cap } =>
+              if !min_under_cap {
+                FlexBidRefused {
+                  cause: FlexRateCapBelowMin { cap: policy.fleet_rate_cap, min_bid: min_rate },
+                }
+              } else {
+                flex_admit_at(
+                  policy: policy,
+                  ledger: ledger,
+                  window: window,
+                  account: account,
+                  attempt: attempt,
+                  min_rate: min_rate,
+                  bid: capped,
+                )
+              }
           }
-        } else {
-          flex_admit_at(
-            policy: policy,
-            ledger: ledger,
-            window: window,
-            account: account,
-            attempt: attempt,
-            bid: capped,
-          )
-        }
+      }
     }
   }
 }
@@ -235,49 +297,54 @@ fn flex_admit_at(
   window: FlexAcquisitionWindow,
   account: MoneyAccount,
   attempt: FlexBidAttempt<NonEmptyStr>,
+  min_rate: MoneyPerHour,
   bid: MoneyPerHour,
 ) -> FlexBidAdmission {
-  if !money_per_hour_le(left: attempt.min_bid, right: bid) {
-    FlexBidRefused {
-      cause: FlexRateCapBelowMin { cap: bid, min_bid: attempt.min_bid },
-    }
-  } else {
-    let liability = flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon)
-    let selection = select_supply(
-      requirements: attempt.requirements,
-      candidates: attempt.candidates,
-      duration: flex_horizon_duration(policy: policy),
-      maximum_buy_order: liability,
-      budget_currency: bid.currency,
-      delay_valuation: attempt.delay_valuation,
-      tie: attempt.tie,
-      affinity: attempt.affinity,
-    )
-    match selection {
-      NoAdmissibleOffer { considered: _ } =>
-        FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
-      EqualCostTieUnresolved { digest: _, cause: _, considered: _ } =>
-        FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
-      OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
-        match reserve_money(
-          a: account,
-          request: MoneyReservationRequest {
-            reference: attempt.reservation,
-            generation: attempt.generation,
-            maximum_liability: liability,
-            currency: bid.currency,
-          },
-        ) {
-          MoneyRefused { refusal: r } => FlexBidRefused { cause: FlexMoneyRefused { refusal: r } }
-          AccountAdvanced { account: next } =>
-            FlexBidAdmitted {
-              bid: bid,
-              selection: selection,
-              account: next,
-              ledger: record_retained_limit(ledger: ledger, machine: attempt.machine, ceiling: bid),
-              window: advance_window(window: window, on_demand: attempt.on_demand),
+  match money_per_hour_compare(left: min_rate, right: bid) {
+    MoneyPerHourCurrencyMismatch { left: l, right: r } => refuse_currency(left: l, right: r)
+    MoneyPerHourCompared { left_le_right: min_under_bid } =>
+      if !min_under_bid {
+        FlexBidRefused {
+          cause: FlexRateCapBelowMin { cap: bid, min_bid: min_rate },
+        }
+      } else {
+        let liability = flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon)
+        let selection = select_supply(
+          requirements: attempt.requirements,
+          candidates: attempt.candidates,
+          duration: flex_horizon_duration(policy: policy),
+          maximum_buy_order: liability,
+          budget_currency: bid.currency,
+          delay_valuation: attempt.delay_valuation,
+          tie: attempt.tie,
+          affinity: attempt.affinity,
+        )
+        match selection {
+          NoAdmissibleOffer { considered: _ } =>
+            FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
+          EqualCostTieUnresolved { digest: _, cause: _, considered: _ } =>
+            FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
+          OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+            match reserve_money(
+              a: account,
+              request: MoneyReservationRequest {
+                reference: attempt.reservation,
+                generation: attempt.generation,
+                maximum_liability: liability,
+                currency: bid.currency,
+              },
+            ) {
+              MoneyRefused { refusal: r } => FlexBidRefused { cause: FlexMoneyRefused { refusal: r } }
+              AccountAdvanced { account: next } =>
+                FlexBidAdmitted {
+                  bid: bid,
+                  selection: selection,
+                  account: next,
+                  ledger: record_retained_limit(ledger: ledger, machine: attempt.machine, ceiling: bid),
+                  window: advance_window(window: window, on_demand: attempt.on_demand),
+                }
             }
         }
-    }
+      }
   }
 }
