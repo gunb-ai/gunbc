@@ -61,7 +61,9 @@ import gunbc.spark.serving_arm {
 //
 // ENGINE REQUESTS ARE A COPRODUCT. vLLM KV / speculative / indexer / scheduler live inside
 // `EngineVllm`. NInfer carries its own request on `EngineNinfer`. A NInfer subject cannot also
-// carry a vLLM kv_cache_dtype field.
+// carry a vLLM kv_cache_dtype field. Those four roster axes are not-applicable on NInfer, not
+// unread: treating them as unknown made two identical NInfer subjects Incomparable and blocked
+// SubjectEstablished.
 //
 // ACCELERATOR STANDING IS A COPRODUCT TOO. `AcceleratorUnread` is unknown. `AcceleratorSparkGb10`
 // is the named Spark-GB10 join basis (two of those still join). `AcceleratorCited` is a catalog
@@ -201,6 +203,21 @@ fn subject_vllm_scheduler_admission(s: ServingPerformanceSubject) -> VllmSchedul
   match s.engine {
     EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: a } => a
     EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => none
+  }
+}
+
+fn serving_engine_is_ninfer(s: ServingPerformanceSubject) -> Bool {
+  match s.engine {
+    EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } => false
+    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => true
+  }
+}
+
+fn vllm_request_axis_is_unknown(s: ServingPerformanceSubject, present: Bool) -> Bool {
+  if serving_engine_is_ninfer(s: s) {
+    false
+  } else {
+    !present
   }
 }
 
@@ -381,14 +398,22 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
         Present { value: n } => to_string(n) as NonEmptyStr
       }
     AxisKvCacheDtype =>
-      match subject_vllm_kv_cache_dtype(s: s) {
-        Absent => axis_value_unread_marker
-        Present { value: d } => vllm_kv_cache_dtype_wire(request: d)
+      if serving_engine_is_ninfer(s: s) {
+        axis_value_not_applicable_marker
+      } else {
+        match subject_vllm_kv_cache_dtype(s: s) {
+          Absent => axis_value_unread_marker
+          Present { value: d } => vllm_kv_cache_dtype_wire(request: d)
+        }
       }
     AxisSpeculativePolicy =>
-      match subject_vllm_speculative(s: s) {
-        Absent => axis_value_unread_marker
-        Present { value: sp } => vllm_speculative_policy_wire(p: sp)
+      if serving_engine_is_ninfer(s: s) {
+        axis_value_not_applicable_marker
+      } else {
+        match subject_vllm_speculative(s: s) {
+          Absent => axis_value_unread_marker
+          Present { value: sp } => vllm_speculative_policy_wire(p: sp)
+        }
       }
     AxisCollectiveTransport =>
       match s.collective_transport {
@@ -401,14 +426,22 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
         Present { value: w } => w
       }
     AxisIndexerKvDtype =>
-      match subject_vllm_indexer_kv_dtype(s: s) {
-        Absent => axis_value_unread_marker
-        Present { value: d } => vllm_indexer_kv_dtype_key(r: d) as NonEmptyStr
+      if serving_engine_is_ninfer(s: s) {
+        axis_value_not_applicable_marker
+      } else {
+        match subject_vllm_indexer_kv_dtype(s: s) {
+          Absent => axis_value_unread_marker
+          Present { value: d } => vllm_indexer_kv_dtype_key(r: d) as NonEmptyStr
+        }
       }
     AxisSchedulerAdmission =>
-      match subject_vllm_scheduler_admission(s: s) {
-        Absent => axis_value_unread_marker
-        Present { value: a } => vllm_scheduler_admission_key(r: a) as NonEmptyStr
+      if serving_engine_is_ninfer(s: s) {
+        axis_value_not_applicable_marker
+      } else {
+        match subject_vllm_scheduler_admission(s: s) {
+          Absent => axis_value_unread_marker
+          Present { value: a } => vllm_scheduler_admission_key(r: a) as NonEmptyStr
+        }
       }
     AxisLaunchProfile =>
       match s.launch_profile_key {
@@ -556,6 +589,7 @@ fn serving_subject_axes_wire(axes: List<ServingSubjectAxis>) -> String {
 // cannot decide agreement the way the old `<transport-unread>` sentinel could. It exists only so a
 // rendered subject line shows which axes were never read.
 data axis_value_unread_marker: NonEmptyStr = "<unread>" as NonEmptyStr
+data axis_value_not_applicable_marker: NonEmptyStr = "<not-applicable>" as NonEmptyStr
 
 // ── AN AXIS CAN BE UNKNOWN, AND AN UNKNOWN AXIS MUST NOT ERASE A KNOWN MISMATCH ───────────────
 //
@@ -579,7 +613,7 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
     AxisCollectiveTransport =>
       match s.collective_transport { Absent => true, Present { value: _ } => false }
     AxisSpeculativePolicy =>
-      match subject_vllm_speculative(s: s) { Absent => true, Present { value: _ } => false }
+      vllm_request_axis_is_unknown(s: s, present: match subject_vllm_speculative(s: s) { Absent => false, Present { value: _ } => true })
     AxisCheckpoint => false
     AxisCheckpointRevision =>
       match s.checkpoint_revision { Absent => true, Present { value: _ } => false }
@@ -595,13 +629,13 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
     AxisMaxNumSeqs =>
       match s.max_num_seqs { Absent => true, Present { value: _ } => false }
     AxisKvCacheDtype =>
-      match subject_vllm_kv_cache_dtype(s: s) { Absent => true, Present { value: _ } => false }
+      vllm_request_axis_is_unknown(s: s, present: match subject_vllm_kv_cache_dtype(s: s) { Absent => false, Present { value: _ } => true })
     AxisWeightQuantization =>
       match subject_weight_quantization(s: s) { Absent => true, Present { value: _ } => false }
     AxisIndexerKvDtype =>
-      match subject_vllm_indexer_kv_dtype(s: s) { Absent => true, Present { value: _ } => false }
+      vllm_request_axis_is_unknown(s: s, present: match subject_vllm_indexer_kv_dtype(s: s) { Absent => false, Present { value: _ } => true })
     AxisSchedulerAdmission =>
-      match subject_vllm_scheduler_admission(s: s) { Absent => true, Present { value: _ } => false }
+      vllm_request_axis_is_unknown(s: s, present: match subject_vllm_scheduler_admission(s: s) { Absent => false, Present { value: _ } => true })
     AxisLaunchProfile =>
       match s.launch_profile_key { Absent => true, Present { value: _ } => false }
     AxisDeploymentEnv =>
