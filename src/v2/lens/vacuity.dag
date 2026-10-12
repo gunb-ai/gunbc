@@ -106,6 +106,8 @@ type VacuityEvidenceRecord {
   operands_structurally_equal: Bool
 }
 
+// VacuityEvidence is a coproduct; its equality is the derived structural equality (DESIGN §4:
+// operations come from inhabitance), so a new arm needs no hand equality table.
 type VacuityEvidence
   = ProvenDuplicate
   | ProvenIndependent
@@ -125,26 +127,6 @@ type VacuityAdvisoryCensus {
 
 fn operands_structurally_equal(lhs: Node, rhs: Node) -> Bool {
   exact_structural_equality_zip_fold(source_facts: lhs, candidate: rhs)
-}
-
-fn vacuity_evidence_eq(a: VacuityEvidence, b: VacuityEvidence) -> Bool {
-  match a {
-    ProvenDuplicate =>
-      match b {
-        ProvenDuplicate => true
-        _ => false
-      }
-    ProvenIndependent =>
-      match b {
-        ProvenIndependent => true
-        _ => false
-      }
-    Unknown =>
-      match b {
-        Unknown => true
-        _ => false
-      }
-  }
 }
 
 fn vacuity_evidence_record_for_binary_claim(
@@ -632,15 +614,15 @@ fn vacuity_advisory_census_from_rows(rows: List<VacuityCensusRow>) -> VacuityAdv
   VacuityAdvisoryCensus {
     proven_duplicate_count: count_where(
       xs: rows,
-      predicate: fn(row) { vacuity_evidence_eq(a: row.evidence, b: ProvenDuplicate) }
+      predicate: fn(row) { row.evidence == ProvenDuplicate }
     ),
     proven_independent_count: count_where(
       xs: rows,
-      predicate: fn(row) { vacuity_evidence_eq(a: row.evidence, b: ProvenIndependent) }
+      predicate: fn(row) { row.evidence == ProvenIndependent }
     ),
     unknown_count: count_where(
       xs: rows,
-      predicate: fn(row) { vacuity_evidence_eq(a: row.evidence, b: Unknown) }
+      predicate: fn(row) { row.evidence == Unknown }
     )
   }
 }

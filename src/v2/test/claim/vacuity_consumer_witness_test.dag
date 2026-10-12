@@ -12,8 +12,7 @@ test fn vacuity_consumer_witness_fixture_module_reached_by_direct_call() -> Bool
 }
 
 test fn vacuity_consumer_witness_pr7614_shape_red_control_classifies_proven_duplicate() -> Bool {
-  vacuity_evidence_eq(
-    a: classify_vacuity_same_eval_record(
+  classify_vacuity_same_eval_record(
       record: VacuityEvidenceRecord {
         subject: EqualityOperands,
         transport: EvalOnly,
@@ -21,7 +20,5 @@ test fn vacuity_consumer_witness_pr7614_shape_red_control_classifies_proven_dupl
         rhs_provenance: LiteralOracle,
         operands_structurally_equal: true
       }
-    ),
-    b: ProvenDuplicate
-  )
+    ) == ProvenDuplicate
 }

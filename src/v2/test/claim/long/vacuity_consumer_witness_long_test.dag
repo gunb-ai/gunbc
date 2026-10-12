@@ -88,7 +88,7 @@ fn vacuity_consumer_witness_live_shadows() -> List<VacuitySiteKey> {
     xs: vacuity_consumer_witness_classified_sites(),
     empty: std.algebra.Empty,
     cons: fn(acc, site) {
-      if vacuity_evidence_eq(a: vacuity_consumer_witness_evidence_for_site(site: site), b: ProvenDuplicate) {
+      if vacuity_consumer_witness_evidence_for_site(site: site) == ProvenDuplicate {
         list_append(left: acc, right: [site])
       } else {
         acc
@@ -164,11 +164,10 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
         rhs_provenance: OperandProvenanceUnknown,
         operand_provenance: OperandProvenanceUnknown
       )
-      fn_genuinely_absent && vacuity_evidence_eq(a: classified, b: Unknown)
+      fn_genuinely_absent && classified == Unknown
   }
   let operand = vacuity_consumer_witness_synthetic_equals_operand()
-  let dispatcher_reaches_proven_duplicate = vacuity_evidence_eq(
-    a: classify_unified_test_claim_vacuity(
+  let dispatcher_reaches_proven_duplicate = classify_unified_test_claim_vacuity(
       claim: NodeCorpus {
         claim: EqualsClaim {
           label: "vacuity_consumer_witness: dispatcher reaches ProvenDuplicate via NodeCorpus, not just Unknown",
@@ -182,8 +181,6 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
       lhs_provenance: LiveSurfaceSnapshot,
       rhs_provenance: LiteralOracle,
       operand_provenance: OperandProvenanceUnknown
-    ),
-    b: ProvenDuplicate
-  )
+    ) == ProvenDuplicate
   absent_fn_path_holds && dispatcher_reaches_proven_duplicate
 }
