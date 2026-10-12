@@ -28,10 +28,6 @@ data nfr_reason_structural_eq_backfill: String = "structural equality (param scr
 
 data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
 
-data nfr_reason_frontier_probe: String = "#6533 (Wave 2 frontier probe) landed this site unrostered — the nfr witnesses are corpus-read rows the affected-set selection did not run for that diff, so the red surfaced on the next whole-corpus cold sweep (masking class receipted on #6530); declared so the ratchet re-arms"
-
-data nfr_dissolve_frontier_probe: DissolutionCondition = unbound_dissolution(description: "the frontier probe's fold migration totals the match and the row deletes")
-
 data nfr_reason_orch_emit: String = "one-special-variant dispatch (ExprCmdSubst to cmdsubst_assign; every other Expr through the uniform spelling path) — enumerating all Expr variants would clone the general arm; landed with the shell-to-dag P2b/P4 slices (#6573), surfaced on the 2026-07-14 nightly cold sweep (masking receipt 9)"
 
 data nfr_dissolve_orch_emit: DissolutionCondition = unbound_dissolution(description: "emit becomes the backward grammar-row fold (DESIGN §4) and the special case dissolves with the orchestration-emit fold migration")

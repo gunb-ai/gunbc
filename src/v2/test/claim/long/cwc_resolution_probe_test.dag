@@ -230,8 +230,9 @@ test fn cwc_cwc_module_resolve_accepts() -> Bool {
 // ---- normalize, over a supplied parse tree ----------------------------------------------------
 
 // A coproduct arm with no constructor name cannot be built or matched, so normalize owes a refusal.
-// RED today: normalize accepts it (gunbc.recurring_failure_mode
-// a_coproduct_arm_without_a_constructor_name_is_accepted; enrolled in v2.workflow.floor_expected_red).
+// This was the expecting-red probe for gunbc.recurring_failure_mode
+// a_coproduct_arm_without_a_constructor_name_is_accepted; the refusal wall has landed, so per
+// DESIGN §4b it is now the permanent regression control for that class.
 test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
   match normalize(parse_tree: cwc_pt_malformed()) {
     Accepted { value: _, diagnostics: _ } => false
