@@ -40,7 +40,6 @@ import gunbc.host_standup {
   assimilation_input_witness_from_green_place,
   assimilation_complete,
   host_standup_p3_gunbc_pinned_tree_landed,
-  assimilation_complete_input_eq,
   assimilation_input_is_required,
 }
 import gunbc.fleet_host_backing { HostBacking, OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest }
@@ -250,7 +249,7 @@ fn assimilation_completion_input_list_contains(
       if acc {
         true
       } else {
-        assimilation_complete_input_eq(a: r, b: wanted)
+        r == wanted
       }
     }
   )

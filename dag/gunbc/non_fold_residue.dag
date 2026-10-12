@@ -490,11 +490,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row"),
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/host/host_standup.dag::assimilation_complete_input_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_listed_import" },
     reason: nfr_reason_class_b_binding_projection,
     dissolution: nfr_dissolve_class_b_binding_projection,

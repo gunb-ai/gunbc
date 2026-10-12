@@ -26,6 +26,10 @@ import gunbc.host_standup {
   Assimilation,
   OsInstallActuated,
   HostIdentityConverge,
+  NodeRegistered,
+  ResourcesPresent,
+  GreenPlacePinCoherent,
+  RunnerSlotHealthy,
   host_standup_gap_count_at_actuation_verdict,
   host_standup_step_is_effective_gap_at_actuation_verdict,
 }
@@ -276,4 +280,31 @@ test fn host_identity_converge_step_stays_modeled_not_gap() -> Bool {
         _ => false
       })
   )
+}
+
+// D1 derived-equality backfill (non_fold_residue nfr_dissolve_derived_equality): the hand
+// fold `assimilation_complete_input_eq` is deleted; its call sites now use the derived
+// `==` on the fieldless coproduct `AssimilationCompleteInput` (inhabitance-derived,
+// DESIGN §3/§4). These two claims pin the swap: the RED is a discriminating case that
+// fails if `==` collapses distinct variants (the off-variant wildcard arms of the old
+// fold returned false); the positive control is the on-variant reflexive case.
+
+// RED (discriminating): distinct coproduct variants must compare UNEQUAL. If the derived
+// `==` were wrong -- e.g. treated as a constant-true or variant-ignoring equality -- this
+// would fail. Covers all four distinct variant pairs.
+test fn assimilation_complete_input_eq_red_distinct_variants_unequal() -> Bool {
+  NodeRegistered != ResourcesPresent
+    && NodeRegistered != GreenPlacePinCoherent
+    && NodeRegistered != RunnerSlotHealthy
+    && ResourcesPresent != GreenPlacePinCoherent
+    && ResourcesPresent != RunnerSlotHealthy
+    && GreenPlacePinCoherent != RunnerSlotHealthy
+}
+
+// Positive control: equal values compare equal (reflexive, on-variant arms of the old fold).
+test fn assimilation_complete_input_eq_positive_control_reflexive() -> Bool {
+  NodeRegistered == NodeRegistered
+    && ResourcesPresent == ResourcesPresent
+    && GreenPlacePinCoherent == GreenPlacePinCoherent
+    && RunnerSlotHealthy == RunnerSlotHealthy
 }
