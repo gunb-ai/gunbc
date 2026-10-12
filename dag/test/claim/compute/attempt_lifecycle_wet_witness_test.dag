@@ -16,7 +16,9 @@ import gunbc.compute.work_provider_local {
   compute_settle_attempt, compute_attempt_settlement_wire, attempt_settlement_host_record,
   host_record_was_written,
   ProvideResult, ProvideFresh, ProvideAttached, compute_ceiling_retry_reference,
+  compute_provide_leaf, compute_layout, compute_work_identity, HostRecordWritten,
 }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.compute.host_capacity { ComputeReservationRefused }
 import std.materialization_provider { ComputeWorkRequest }
@@ -26,7 +28,7 @@ import std.cache_identity { compute_work_artifact_kind }
 import std.measure { byte_size }
 import std.fabric_blob { fabric_blob_reading_path }
 import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
-import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.git.object_store { git_object_id_from_untagged_hex, GitObjectId }
 import gunbc.compute.work_request {
   ComputeCapacityLedgerUnavailable,
   ExactTree, CompileEntry, work_default_build, WorkToolchainIdentity, work_toolchain_observed, WorkOutput, WorkSucceeded, work_outcome_wire,
@@ -502,4 +504,84 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
     && (match other_toolchain { ComputeStoreAbsent => true  _ => false })
     && (match other_subject { ComputeStoreAbsent => true  _ => false })
     && (match other_operation { ComputeStoreAbsent => true  _ => false })
+}
+
+// ── THE PRODUCTION SERVE-OR-PRODUCE DECISION, EXECUTED (side-chat review at 41a107ce81) ──────────
+//
+// The round trip above supplies its reads by hand: it never runs compute_provide_leaf, so deleting
+// that function's "serve the stored outcome" arm would leave it green. These run the function itself
+// against a scratch store. A build record committed through compute_store_commit is asked for again
+// by compute_provide_leaf, which must ATTACH to it -- the stored identity and document, the plain
+// host record of the first read -- and must not have entered production. Production's first act is
+// compute_ensure_dir on the work directory of this request's identity, so a create-new write beneath
+// that directory succeeds only if production was entered; it must fail.
+//
+// RED against a leaf that routes a served read to compute_provide_produce: where the compute root
+// cannot be made the answer is a refusal and not an attachment, and where it can the work directory
+// exists and the probe write lands. No absent request is asked here: on a host whose compute root
+// exists that would reserve a seat and launch a real unit.
+//
+// WHAT THIS DOES NOT EXECUTE: the producer. The record is committed by the production commit function
+// from a supplied outcome, not by a unit that built it; the cold side of a real request needs the
+// host's unit manager, ledger and durable volume.
+fn reuse_store(root_path: String) -> ComputeStore {
+  ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
+}
+
+fn reuse_tree() -> GitObjectId {
+  match git_object_id_from_untagged_hex(hex: "4444444444444444444444444444444444444444") { Present { value: oid } => oid  Absent => "4444444444444444444444444444444444444444" }
+}
+
+fn reuse_commit(root_path: String) -> Bool {
+  let layout = ComputeLayout {
+    root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
+    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
+    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+  }
+  let log = Filesystem.Write(path: layout.log_path, content: "built\n")
+  let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
+  let request = ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
+  let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
+    WorkOutput { declared: "release/gunbc", blob: "b1" },
+    WorkOutput { declared: "release/claim_batch", blob: "b2" },
+  ], log_path: layout.log_path }
+  let committed = compute_store_commit(
+    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: request, plan: ComputeMemoized },
+    layout: layout, op: work_default_build(), outcome: outcome,
+    document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
+  log.success && g.success && c.success && (match committed { ComputeCommitted => true  _ => false })
+}
+
+fn reuse_served_without_production(root_path: String) -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let subject = ExactTree { tree: reuse_tree() }
+  let toolchain = fixture_toolchain(rustc: "rustc fixture")
+  let provided = compute_provide_leaf(store: reuse_store(root_path: root_path), instance: instance, commit: "fixture-commit", subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
+  let work_dir = compute_layout(instance: instance, identity_hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: toolchain)).work_dir
+  let production_entered = Filesystem.WriteCreateNew(path: join([work_dir, "/reuse-probe"], ""), content: "x").success
+  !production_entered
+    && (match provided {
+      ProvideAttached { identity, ending, document, host_record } => identity == "fixture-identity" && ending == "succeeded" && string_contains(s: document, pattern: "fixture-identity") && (match host_record { HostRecordWritten => true  _ => false })
+      ProvideFresh { outcome: _, document: _, host_record: _ } => false
+    })
+}
+
+test fn the_production_leaf_attaches_to_a_committed_record_and_does_not_enter_production() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
+  let committed = reuse_commit(root_path: root_path)
+  let served = reuse_served_without_production(root_path: root_path)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  committed && served
+}
+
+// THE SAME TWO HALVES AS TWO PROCESSES over one store root the caller names, so the second process
+// holds nothing the first computed: `gunbc run --function reuse_cold_cli --arg root=<dir>`, then
+// `--function reuse_warm_cli --arg root=<dir>`.
+fn reuse_cold_cli(root: String) -> ProcessExit {
+  if reuse_commit(root_path: root) { ExitSuccess } else { ExitFailure { code: 1, reason: "the build record was not committed" } }
+}
+
+fn reuse_warm_cli(root: String) -> ProcessExit {
+  if reuse_served_without_production(root_path: root) { ExitSuccess } else { ExitFailure { code: 1, reason: "the stored build was not served by attachment, or production was entered" } }
 }

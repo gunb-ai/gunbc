@@ -1986,7 +1986,12 @@ fn compute_execution_identity(identity: String, plan: ComputeMaterializationPlan
   }
 }
 
+// WHICH STORE IS POLICY, SO IT ARRIVES AS A PARAMETER (DESIGN section 3: an operation carrying a literal
+// it should receive has leaked policy). The production caller names compute_durable_store once, in
+// compute_provide_admitted; the serve-or-produce decision below is the same code for any store, which
+// is what lets its inhabitance claim execute it against a scratch root.
 fn compute_provide_leaf(
+  store: ComputeStore,
   instance: HostDashboardInstance,
   commit: String,
   subject: WorkSubject,
@@ -2001,7 +2006,7 @@ fn compute_provide_leaf(
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
     ComputeMaterializationPlanned { plan } => {
       let layout = compute_layout(instance: instance, identity_hex: compute_execution_identity(identity: identity, plan: plan, occurrence: clock_now_probed_at_or_unknown() as String))
-      let materialization = ComputeMaterialization { store: compute_durable_store, request: request, plan: plan }
+      let materialization = ComputeMaterialization { store: store, request: request, plan: plan }
       match compute_read_stored_outcome(materialization: materialization) {
         ComputeStoreServed { ending, identity: stored_identity, document } =>
           ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
@@ -2437,9 +2442,9 @@ fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op:
         SubjectResolved { subject } =>
           match op {
             BuildGunbcBinaries { profile: _, bins: _ } =>
-              compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-            CompileEntry { entry: _ } => compute_provide_dependent(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
-            RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+              compute_provide_leaf(store: compute_durable_store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+            CompileEntry { entry: _ } => compute_provide_dependent(store: compute_durable_store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+            RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: compute_durable_store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
           }
       }
   }
@@ -2450,19 +2455,19 @@ fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op:
 // the fact that the BUILD failed to record its side facts -- the stuck lease or the lost consumption
 // reading vanished at exactly the seam where nobody was left to report it (side-chat review at
 // f5344b28). The work contract is untouched; only the host-record fact is joined.
-fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> ProvideResult {
-  let build = compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
+fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstance, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> ProvideResult {
+  let build = compute_provide_leaf(store: store, instance: instance, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
   if provide_result_succeeded(r: build) {
     let build_identity = provide_result_identity(r: build)
     let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
-    match compute_dependency_read(store: compute_durable_store, build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
+    match compute_dependency_read(store: store, build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
       ComputeDependencyRefused { detail } =>
         provide_result_with_host_record(
           r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: build_identity, ending: join(["succeeded, but ", detail], "") } }, subject: subject, op: op),
           carried: provide_result_host_record(r: build))
       ComputeDependencyResolved { dependency } =>
         provide_result_with_host_record(
-          r: compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: dependency),
+          r: compute_provide_leaf(store: store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: dependency),
           carried: provide_result_host_record(r: build))
     }
   } else {
