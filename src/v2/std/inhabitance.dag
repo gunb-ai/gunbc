@@ -30,13 +30,24 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  node_is_arrow,
   node_subtree_nodes,
   node_synthetic
 }
-import std.algebra { list_append }
+import std.algebra { Empty, list_append, list_snoc_item }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 import std.nat { Succ, Zero }
+import v2.std.collection { empty_map, list_at_optional, map_insert, map_lookup }
+import v2.std.arrow_signature {
+  ArrowParameterOrderAbsent,
+  ArrowParameterOrderDeclared,
+  ArrowParameterOrderMalformed,
+  anonymous_signature_arrow,
+  arrow_declared_parameter_order
+}
+import v2.std.node_query { declared_field_from_edge, node_positional_child_targets }
+import v2.std.type_binder { edge_is_type_params }
 import v2.std.optional_layers {
   OccupancyWrapperMalformed,
   TypeNodeOccupancy,
@@ -392,7 +403,113 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
   }
 }
 
+// AN ARROW AT AN ARROW IS ITS DOMAIN TYPES, POSITIONALLY, AND ITS RETURN. Parameter names and a body are
+// not part of what a callable inhabits: a named fn `fn(n: Int) -> Bool` and a lambda spelled `fn(x: Int)`
+// are one signature, so both sides are re-assembled through anonymous_signature_arrow (the one assembler
+// of a bodiless signature, whose binders are positional) and compared by the same exact structural
+// equality as every other type. This is the ONE judge for argument, declared-return and record-field
+// positions. A signature this arm does not normalize -- one that declares type parameters, whose order
+// cannot be read, or whose domain or return itself holds an Arrow -- stays on the exact comparison it
+// had before, which decides and may refuse; it is never widened to an advisory acceptance. Recursive
+// normalization of a nested Arrow is the climb.
+type ArrowSignatureRead
+  = ArrowSignatureTypes { domain_types: List<Node>, codomain: Node }
+  | ArrowSignatureUnreadable
+
+fn inhabitance_arrow_signature_read(arrow: Node) -> ArrowSignatureRead {
+  if fold(arrow.children, init: false, f: fn(acc, e) { acc || edge_is_type_params(e: e) }) {
+    ArrowSignatureUnreadable
+  } else {
+    match arrow_declared_parameter_order(arrow: arrow) {
+      ArrowParameterOrderAbsent => ArrowSignatureUnreadable
+      ArrowParameterOrderMalformed => ArrowSignatureUnreadable
+      ArrowParameterOrderDeclared { labels: labels } =>
+        let positional = node_positional_child_targets(node: arrow)
+        match list_at_optional(xs: positional, index: 0) {
+          Absent => ArrowSignatureUnreadable
+          Present { value: domain } =>
+            match list_at_optional(xs: positional, index: 1) {
+              Absent => ArrowSignatureUnreadable
+              Present { value: codomain } =>
+                inhabitance_arrow_signature_types(domain: domain, codomain: codomain, labels: labels)
+            }
+        }
+    }
+  }
+}
+
+fn inhabitance_arrow_signature_types(domain: Node, codomain: Node, labels: List<Symbol>) -> ArrowSignatureRead {
+  let types_by_label = fold(domain.children, init: empty_map(), f: fn(acc, e) {
+    match declared_field_from_edge(e: e) {
+      Present { value: binder } => map_insert(m: acc, key: binder.name, value: binder.type_node)
+      Absent => acc
+    }
+  })
+  let ordered = fold(labels, init: Present { value: Empty }, f: fn(acc, l) {
+    match acc {
+      Absent => Absent
+      Present { value: types } =>
+        match map_lookup(m: types_by_label, key: l) {
+          Present { value: t } => Present { value: list_snoc_item(xs: types, item: t) }
+          Absent => Absent
+        }
+    }
+  })
+  match ordered {
+    Absent => ArrowSignatureUnreadable
+    Present { value: types } =>
+      if inhabitance_signature_holds_arrow(domain_types: types, codomain: codomain) {
+        ArrowSignatureUnreadable
+      } else {
+        ArrowSignatureTypes { domain_types: types, codomain: codomain }
+      }
+  }
+}
+
+fn inhabitance_signature_holds_arrow(domain_types: List<Node>, codomain: Node) -> Bool {
+  fold(node_subtree_nodes(root: codomain), init: false, f: fn(acc, m) { acc || node_is_arrow(n: m) })
+    || fold(domain_types, init: false, f: fn(acc, t) {
+      acc || fold(node_subtree_nodes(root: t), init: false, f: fn(a, m) { a || node_is_arrow(n: m) })
+    })
+}
+
 fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
+  match inhabitance_pair_undecidable_reason(
+    declared: obligation.declared,
+    produced: obligation.produced,
+    type_variables: obligation.type_variables
+  ) {
+    Present { value: reason } => InhabitanceUndecidable { reason: reason }
+    Absent =>
+      if node_is_arrow(n: obligation.declared) && node_is_arrow(n: obligation.produced) {
+        declared_type_inhabitance_arrow(obligation: obligation)
+      } else {
+        declared_type_inhabitance_exact(obligation: obligation)
+      }
+  }
+}
+
+fn declared_type_inhabitance_arrow(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
+  match inhabitance_arrow_signature_read(arrow: obligation.declared) {
+    ArrowSignatureUnreadable => declared_type_inhabitance_exact(obligation: obligation)
+    ArrowSignatureTypes { domain_types: dd, codomain: dc } =>
+      match inhabitance_arrow_signature_read(arrow: obligation.produced) {
+        ArrowSignatureUnreadable => declared_type_inhabitance_exact(obligation: obligation)
+        ArrowSignatureTypes { domain_types: pd, codomain: pc } =>
+          declared_type_inhabitance_exact(obligation: DeclaredTypeObligation {
+            position: obligation.position,
+            parameter_identity: obligation.parameter_identity,
+            declared: anonymous_signature_arrow(domain_types: dd, codomain: dc, source: obligation.declared),
+            produced: anonymous_signature_arrow(domain_types: pd, codomain: pc, source: obligation.produced),
+            produced_declared_carrier: obligation.produced_declared_carrier,
+            application: obligation.application,
+            type_variables: obligation.type_variables
+          })
+      }
+  }
+}
+
+fn declared_type_inhabitance_exact(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_pair_undecidable_reason(
     declared: obligation.declared,
     produced: obligation.produced,

@@ -2,248 +2,230 @@
 // Source module: v1.compiler.annotation_bind
 
 pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport};
-use crate::std_source_annotation::AnnotationAdmission::{AnnotationsAdmitted, AnnotationsRefused};
-use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
-pub use crate::std_source_annotation::{
-    admit_annotations, attach_annotations, non_empty_refusals_all, source_annotation_graph_empty,
-    source_annotation_graph_rows,
+use crate::std_source_annotation::AnnotationScope::{
+    ErasedSourceRegion, FileScope, OccurrenceScope,
 };
 pub use crate::std_source_annotation::{
-    AnnotationAdmission, AnnotationAttachmentRefusal, AnnotationAttachmentResult,
-    AnnotationSubject, KeyedAnnotationRow, NormalizedAnnotationCapture, SourceAnnotationDebt,
-    SourceAnnotationGraph, UnboundAnnotationCapture,
+    annotation_scope_key, attach_annotations, source_annotation_graph_rows,
+};
+pub use crate::std_source_annotation::{
+    AnnotationGap, AnnotationRegion, AnnotationScope, KeyedAnnotationRow,
+    NormalizedAnnotationCapture, SourceAnnotationDebt, SourceAnnotationGraph,
+    UnboundAnnotationCapture,
 };
 pub use crate::std_types::{Bool, List, SourceSpan};
+pub use crate::v1_compiler_parse::ParsedSourceExtent;
+pub use crate::v1_compiler_parse::ParsedSourceExtents;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::CompilerDiagnostic;
-use crate::v1_std_core::CompilerDiagnostic::SourceAnnotationRefused;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn entry_ancestor_depth(entry: Rc<OccurrenceIndexEntry>) -> i64 {
+pub fn ancestor_depth(entry: Rc<OccurrenceIndexEntry>) -> i64 {
     (entry.containment.clone().ancestors.clone().len() as i64)
 }
 
-pub fn module_item_entries(
-    transport: Rc<OccurrenceTransport>,
-) -> Rc<Vec<Rc<OccurrenceIndexEntry>>> {
-    transport
-        .index
-        .clone()
-        .entries
-        .clone()
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<OccurrenceIndexEntry>>>, entry: Rc<OccurrenceIndexEntry>| {
-                if (entry_ancestor_depth(entry.clone()) == 1) {
-                    v1_rt::rc_list_push(acc.clone(), entry.clone())
-                } else {
-                    acc.clone()
-                }
-            },
-        )
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SweptRegion {
+    pub scope: Rc<AnnotationScope>,
+    pub extent: Rc<SourceSpan>,
+    pub depth: i64,
 }
 
-pub fn item_start_at_or_before(
-    mut __tco_loop_starts: Rc<Vec<i64>>,
-    mut __tco_loop_x: i64,
-    mut __tco_loop_lo: i64,
-    mut __tco_loop_hi: i64,
-) -> Option<i64> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RegionSweepAcc {
+    pub open: Rc<Vec<Rc<SweptRegion>>>,
+    pub regions: Rc<Vec<Rc<AnnotationRegion>>>,
+}
+
+pub fn erased_region_depth() -> i64 {
+    1000000000
+}
+
+pub fn zero_padded(n: i64, width: i64) -> String {
+    {
+        let digits = (n.clone()).to_string();
+        if (v1_rt::string_length(&digits) >= width.clone()) {
+            digits.clone()
+        } else {
+            zero_padded_with(
+                v1_rt::concat("0".to_string(), digits.clone()),
+                width.clone(),
+            )
+        }
+    }
+}
+
+pub fn zero_padded_with(mut __tco_loop_digits: String, mut __tco_loop_width: i64) -> String {
     loop {
         #[allow(unused_mut)]
-        let mut starts = __tco_loop_starts;
+        let mut digits = __tco_loop_digits;
         #[allow(unused_mut)]
-        let mut x = __tco_loop_x;
-        #[allow(unused_mut)]
-        let mut lo = __tco_loop_lo;
-        #[allow(unused_mut)]
-        let mut hi = __tco_loop_hi;
-        if (lo.clone() >= hi.clone()) {
-            if (lo.clone() == 0) {
-                break std::option::Option::None;
-            } else {
-                break starts
-                    .clone()
-                    .get((v1_rt::int_sub(lo.clone(), 1)) as usize)
-                    .cloned();
-            }
+        let mut width = __tco_loop_width;
+        if (v1_rt::string_length(&digits) >= width.clone()) {
+            break digits.clone();
         } else {
-            let mid = v1_rt::int_div(v1_rt::int_add(lo.clone(), hi.clone()), 2);
-            match starts.clone().get((mid.clone()) as usize).cloned() {
-                Some(s) => {
-                    if (s.clone() <= x.clone()) {
-                        {
-                            let __tco_0 = starts;
-                            let __tco_1 = x;
-                            let __tco_2 = v1_rt::int_add(mid.clone(), 1);
-                            let __tco_3 = hi;
-                            __tco_loop_starts = __tco_0;
-                            __tco_loop_x = __tco_1;
-                            __tco_loop_lo = __tco_2;
-                            __tco_loop_hi = __tco_3;
-                            continue;
-                        }
-                    } else {
-                        {
-                            let __tco_0 = starts;
-                            let __tco_1 = x;
-                            let __tco_2 = lo;
-                            let __tco_3 = mid.clone();
-                            __tco_loop_starts = __tco_0;
-                            __tco_loop_x = __tco_1;
-                            __tco_loop_lo = __tco_2;
-                            __tco_loop_hi = __tco_3;
-                            continue;
-                        }
-                    }
-                }
-                std::option::Option::None => {
-                    break std::option::Option::None;
-                }
+            {
+                let __tco_0 = v1_rt::concat("0".to_string(), digits);
+                let __tco_1 = width;
+                __tco_loop_digits = __tco_0;
+                __tco_loop_width = __tco_1;
+                continue;
             }
         }
     }
 }
 
-pub fn module_item_extent_ends(
-    entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
-    item_starts: Rc<Vec<i64>>,
-    source_length: i64,
-) -> Rc<HashMap<i64, i64>> {
-    {
-        let item_count = (item_starts.clone().len() as i64);
-        entries.iter().cloned().fold(
-            v1_rt::rc_empty_map::<i64, i64>(),
-            |acc: Rc<HashMap<i64, i64>>, entry: Rc<OccurrenceIndexEntry>| {
-                let entry_start = entry
-                    .projection
-                    .clone()
-                    .diagnostic_span
-                    .clone()
-                    .start
-                    .clone();
-                let entry_end = entry.projection.clone().diagnostic_span.clone().end.clone();
-                if (entry_start.clone() >= source_length.clone()) {
-                    acc.clone()
-                } else {
-                    match item_start_at_or_before(
-                        item_starts.clone(),
-                        entry_start.clone(),
-                        0,
-                        item_count.clone(),
-                    ) {
-                        Some(item_start) => match v1_rt::map_get(&acc, item_start.clone()) {
-                            Some(best) => {
-                                if (entry_end.clone() > best.clone()) {
-                                    v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        item_start.clone(),
-                                        entry_end.clone(),
-                                    )
-                                } else {
-                                    acc.clone()
-                                }
-                            }
-                            std::option::Option::None => v1_rt::rc_map_insert(
-                                acc.clone(),
-                                item_start.clone(),
-                                entry_end.clone(),
-                            ),
-                        },
-                        std::option::Option::None => acc.clone(),
+pub fn swept_region_key(r: Rc<SweptRegion>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            zero_padded(r.extent.clone().start.clone(), 12),
+            zero_padded(
+                v1_rt::int_sub(999999999999, r.extent.clone().end.clone()),
+                12,
+            ),
+        ),
+        zero_padded(r.depth.clone(), 12),
+    )
+}
+
+pub fn swept_region_order(regions: Rc<Vec<Rc<SweptRegion>>>) -> Rc<Vec<Rc<SweptRegion>>> {
+    Rc::new({
+        let mut __sorted: Vec<_> = regions.iter().cloned().collect();
+        __sorted.sort_by(|a: &Rc<SweptRegion>, b: &Rc<SweptRegion>| {
+            let __ka = (|r: Rc<SweptRegion>| swept_region_key(r.clone()))(a.clone());
+            let __kb = (|r: Rc<SweptRegion>| swept_region_key(r.clone()))(b.clone());
+            v1_rt::canonical_key_cmp(&__ka, &__kb)
+        });
+        __sorted
+    })
+}
+
+pub fn close_regions_ending_by(
+    mut __tco_loop_open: Rc<Vec<Rc<SweptRegion>>>,
+    mut __tco_loop_at: i64,
+) -> Rc<Vec<Rc<SweptRegion>>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut open = __tco_loop_open;
+        #[allow(unused_mut)]
+        let mut at = __tco_loop_at;
+        match open.clone().last().cloned() {
+            Some(top) => {
+                if (top.extent.clone().end.clone() <= at.clone()) {
+                    {
+                        let __tco_0 = Rc::new(v1_rt::list_take(
+                            &open,
+                            v1_rt::int_sub((open.len() as i64), 1),
+                        ));
+                        let __tco_1 = at;
+                        __tco_loop_open = __tco_0;
+                        __tco_loop_at = __tco_1;
+                        continue;
                     }
+                } else {
+                    break open.clone();
                 }
-            },
-        )
+            }
+            std::option::Option::None => {
+                break open.clone();
+            }
+        }
     }
 }
 
-pub fn annotation_subjects(
-    transport: Rc<OccurrenceTransport>,
-    source_length: i64,
-) -> Rc<Vec<Rc<AnnotationSubject>>> {
+pub fn region_sweep_step(acc: Rc<RegionSweepAcc>, region: Rc<SweptRegion>) -> Rc<RegionSweepAcc> {
     {
-        let entries = transport.index.clone().entries.clone();
-        let item_starts = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new({
-                let mut __result = Vec::new();
-                for item in module_item_entries(transport.clone()).iter().cloned() {
-                    __result.push(
-                        item.projection
-                            .clone()
-                            .diagnostic_span
-                            .clone()
-                            .start
-                            .clone(),
-                    );
-                }
-                __result
-            })
+        let open = close_regions_ending_by(acc.open.clone(), region.extent.clone().start.clone());
+        let parent = match open.clone().last().cloned() {
+            Some(top) => top.scope.clone(),
+            std::option::Option::None => Rc::new(AnnotationScope::FileScope),
+        };
+        Rc::new(RegionSweepAcc {
+            open: v1_rt::rc_list_push(open.clone(), region.clone()),
+            regions: v1_rt::rc_list_push(
+                acc.regions.clone(),
+                Rc::new(AnnotationRegion {
+                    scope: region.scope.clone(),
+                    extent: region.extent.clone(),
+                    parent: parent.clone(),
+                }),
+            ),
+        })
+    }
+}
+
+pub fn annotation_regions(
+    transport: Rc<OccurrenceTransport>,
+    extents: Rc<ParsedSourceExtents>,
+) -> Rc<Vec<Rc<AnnotationRegion>>> {
+    {
+        let recorded = extents.extents.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<i64, Rc<SourceSpan>>(),
+            |acc: Rc<HashMap<i64, Rc<SourceSpan>>>, row: Rc<ParsedSourceExtent>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    row.occurrence.clone().value.clone(),
+                    row.extent.clone(),
+                )
+            },
+        );
+        let occurrences = transport
+            .index
+            .clone()
+            .entries
+            .clone()
             .iter()
             .cloned()
-            .collect();
-            __sorted.sort_by(|a: &i64, b: &i64| {
-                let __ka = (|start: i64| start.clone())(a.clone());
-                let __kb = (|start: i64| start.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
-        });
-        let extent_ends =
-            module_item_extent_ends(entries.clone(), item_starts.clone(), source_length.clone());
-        entries.iter().cloned().fold(
-            Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<AnnotationSubject>>>, entry: Rc<OccurrenceIndexEntry>| {
-                let depth = entry_ancestor_depth(entry.clone());
-                let span = entry.projection.clone().diagnostic_span.clone();
-                if (depth.clone() == 0) {
-                    v1_rt::rc_list_push(
-                        acc.clone(),
-                        Rc::new(AnnotationSubject {
-                            occurrence: entry.projection.clone().occurrence.clone(),
-                            span: span.clone(),
-                            module_root: true,
-                        }),
-                    )
-                } else {
-                    if (depth.clone() == 1) {
-                        {
-                            let extent_end = match v1_rt::map_get(&extent_ends, span.start.clone())
-                            {
-                                Some(bucket_end) => {
-                                    if (bucket_end.clone() > span.end.clone()) {
-                                        bucket_end.clone()
-                                    } else {
-                                        span.end.clone()
-                                    }
-                                }
-                                std::option::Option::None => span.end.clone(),
-                            };
-                            v1_rt::rc_list_push(
-                                acc.clone(),
-                                Rc::new(AnnotationSubject {
+            .fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<Rc<SweptRegion>>>, entry: Rc<OccurrenceIndexEntry>| {
+                    match v1_rt::map_get(
+                        &recorded,
+                        entry.projection.clone().occurrence.clone().value.clone(),
+                    ) {
+                        Some(extent) => v1_rt::rc_list_push(
+                            acc.clone(),
+                            Rc::new(SweptRegion {
+                                scope: Rc::new(AnnotationScope::OccurrenceScope {
                                     occurrence: entry.projection.clone().occurrence.clone(),
-                                    span: Rc::new(SourceSpan {
-                                        file: span.file.clone(),
-                                        start: span.start.clone(),
-                                        end: extent_end.clone(),
-                                    }),
-                                    module_root: false,
                                 }),
-                            )
-                        }
-                    } else {
-                        acc.clone()
+                                extent: extent.clone(),
+                                depth: ancestor_depth(entry.clone()),
+                            }),
+                        ),
+                        std::option::Option::None => acc.clone(),
                     }
-                }
-            },
-        )
+                },
+            );
+        let erased = Rc::new({
+            let mut __result = Vec::new();
+            for scope in extents.erased_scopes.clone().iter().cloned() {
+                __result.push(Rc::new(SweptRegion {
+                    scope: Rc::new(AnnotationScope::ErasedSourceRegion {
+                        extent: scope.extent.clone(),
+                    }),
+                    extent: scope.extent.clone(),
+                    depth: erased_region_depth(),
+                }));
+            }
+            __result
+        });
+        let swept = swept_region_order(v1_rt::concat(occurrences.clone(), erased.clone()))
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(RegionSweepAcc {
+                    open: Rc::new(vec![]),
+                    regions: Rc::new(vec![]),
+                }),
+                |acc: Rc<RegionSweepAcc>, region: Rc<SweptRegion>| {
+                    region_sweep_step(acc, region.clone())
+                },
+            );
+        swept.regions.clone()
     }
 }
 
@@ -289,141 +271,226 @@ pub fn render_annotation_block(text: String) -> String {
     .join(&"\n".to_string())
 }
 
-pub fn render_subject_annotation_blocks(
-    graph: Rc<SourceAnnotationGraph>,
-    subject: OccurrenceId,
-) -> Option<String> {
-    {
-        let texts = crate::std_source_annotation::source_annotation_graph_rows(graph.clone())
-            .iter()
-            .cloned()
-            .fold(
-                Rc::new(vec![]),
-                |acc: Rc<Vec<String>>, row: Rc<SourceAnnotationDebt>| {
-                    if (row.subject.clone().value.clone() == subject.value.clone()) {
-                        v1_rt::rc_list_push(acc.clone(), row.text.clone())
-                    } else {
-                        acc.clone()
-                    }
-                },
-            );
-        if ((texts.clone().len() as i64) == 0) {
-            std::option::Option::None
-        } else {
-            Some(
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for text in texts.iter().cloned() {
-                        __result.push(render_annotation_block(text.clone()));
-                    }
-                    __result
-                })
-                .join(&"\n\n".to_string()),
-            )
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RegionKeyIndex {
+    pub parent_of: Rc<HashMap<String, Rc<AnnotationScope>>>,
+    pub step_of: Rc<HashMap<String, String>>,
+}
+
+pub fn region_label(scope: Rc<AnnotationScope>, names: Rc<HashMap<i64, String>>) -> String {
+    match (*scope.clone()).clone() {
+        AnnotationScope::FileScope => "".to_string(),
+        AnnotationScope::OccurrenceScope { occurrence: o, .. } => {
+            match v1_rt::map_get(&names, o.value.clone()) {
+                Some(n) => n.clone(),
+                std::option::Option::None => "?".to_string(),
+            }
         }
+        AnnotationScope::ErasedSourceRegion { extent: _, .. } => "()".to_string(),
     }
 }
 
-pub fn eligible_key_entries(
+pub fn region_key_index(
     transport: Rc<OccurrenceTransport>,
-) -> Rc<Vec<Rc<OccurrenceIndexEntry>>> {
-    transport
-        .index
-        .clone()
-        .entries
-        .clone()
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<OccurrenceIndexEntry>>>, entry: Rc<OccurrenceIndexEntry>| {
-                if (entry_ancestor_depth(entry.clone()) < 2) {
-                    v1_rt::rc_list_push(acc.clone(), entry.clone())
-                } else {
-                    acc.clone()
-                }
+    regions: Rc<Vec<Rc<AnnotationRegion>>>,
+) -> Rc<RegionKeyIndex> {
+    {
+        let names = transport
+            .index
+            .clone()
+            .entries
+            .clone()
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<i64, String>(),
+                |acc: Rc<HashMap<i64, String>>, entry: Rc<OccurrenceIndexEntry>| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        entry.projection.clone().occurrence.clone().value.clone(),
+                        entry.projection.clone().authored_name.clone(),
+                    )
+                },
+            );
+        let ordered = Rc::new({
+            let mut __sorted: Vec<_> = regions.iter().cloned().collect();
+            __sorted.sort_by(|a: &Rc<AnnotationRegion>, b: &Rc<AnnotationRegion>| {
+                let __ka = (|r: Rc<AnnotationRegion>| r.extent.clone().start.clone())(a.clone());
+                let __kb = (|r: Rc<AnnotationRegion>| r.extent.clone().start.clone())(b.clone());
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
+            });
+            __sorted
+        });
+        let stepped = ordered.iter().cloned().fold(
+            Rc::new(RegionKeyStepAcc {
+                seen: v1_rt::rc_empty_map::<String, i64>(),
+                step_of: v1_rt::rc_empty_map::<String, String>(),
+            }),
+            |acc: Rc<RegionKeyStepAcc>, region: Rc<AnnotationRegion>| {
+                let parent_key =
+                    crate::std_source_annotation::annotation_scope_key(region.parent.clone());
+                let ordinal = match v1_rt::map_get(&acc.seen.clone(), parent_key.clone()) {
+                    Some(n) => n.clone(),
+                    std::option::Option::None => 0,
+                };
+                Rc::new(RegionKeyStepAcc {
+                    seen: v1_rt::rc_map_insert(
+                        acc.seen.clone(),
+                        parent_key.clone(),
+                        v1_rt::int_add(ordinal.clone(), 1),
+                    ),
+                    step_of: v1_rt::rc_map_insert(
+                        acc.step_of.clone(),
+                        crate::std_source_annotation::annotation_scope_key(region.scope.clone()),
+                        v1_rt::concat(
+                            v1_rt::concat((ordinal.clone()).to_string(), ":".to_string()),
+                            region_label(region.scope.clone(), names.clone()),
+                        ),
+                    ),
+                })
             },
-        )
+        );
+        Rc::new(RegionKeyIndex {
+            parent_of: regions.iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, Rc<AnnotationScope>>(),
+                |acc: Rc<HashMap<String, Rc<AnnotationScope>>>, region: Rc<AnnotationRegion>| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        crate::std_source_annotation::annotation_scope_key(region.scope.clone()),
+                        region.parent.clone(),
+                    )
+                },
+            ),
+            step_of: stepped.step_of.clone(),
+        })
+    }
 }
 
-pub fn authored_name_among(
-    entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
-    id: OccurrenceId,
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RegionKeyStepAcc {
+    pub seen: Rc<HashMap<String, i64>>,
+    pub step_of: Rc<HashMap<String, String>>,
+}
+
+pub fn region_structural_key(
+    index: Rc<RegionKeyIndex>,
+    scope: Rc<AnnotationScope>,
+    depth: i64,
+) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*scope.clone()).clone() {
+            AnnotationScope::FileScope => "/".to_string(),
+            _ => {
+                if (depth.clone() <= 0) {
+                    "?".to_string()
+                } else {
+                    {
+                        let key = crate::std_source_annotation::annotation_scope_key(scope.clone());
+                        let step = match v1_rt::map_get(&index.step_of.clone(), key.clone()) {
+                            Some(s) => s.clone(),
+                            std::option::Option::None => "?".to_string(),
+                        };
+                        match v1_rt::map_get(&index.parent_of.clone(), key.clone()) {
+                            Some(parent) => v1_rt::concat(
+                                v1_rt::concat(
+                                    region_structural_key(
+                                        index.clone(),
+                                        parent.clone(),
+                                        v1_rt::int_sub(depth.clone(), 1),
+                                    ),
+                                    "/".to_string(),
+                                ),
+                                step.clone(),
+                            ),
+                            std::option::Option::None => {
+                                v1_rt::concat("/?".to_string(), step.clone())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn optional_region_key(
+    index: Rc<RegionKeyIndex>,
+    scope: Option<Rc<AnnotationScope>>,
+    depth: i64,
 ) -> Option<String> {
-    entries.iter().cloned().fold(
-        std::option::Option::None,
-        |acc: _, entry: Rc<OccurrenceIndexEntry>| {
-            if (entry.projection.clone().occurrence.clone().value.clone() == id.value.clone()) {
-                Some(entry.projection.clone().authored_name.clone())
-            } else {
-                acc.clone()
-            }
-        },
-    )
-}
-
-pub fn eligible_name_count(entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>, name: String) -> i64 {
-    entries
-        .iter()
-        .cloned()
-        .fold(0, |n: i64, entry: Rc<OccurrenceIndexEntry>| {
-            if (entry.projection.clone().authored_name.clone() == name.clone()) {
-                v1_rt::int_add(n.clone(), 1)
-            } else {
-                n.clone()
-            }
-        })
-}
-
-pub fn eligible_names_unique(entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>) -> bool {
-    entries
-        .clone()
-        .iter()
-        .cloned()
-        .fold(true, |ok: bool, entry: Rc<OccurrenceIndexEntry>| {
-            (ok && (eligible_name_count(
-                entries.clone(),
-                entry.projection.clone().authored_name.clone(),
-            ) == 1))
-        })
-}
-
-pub fn empty_keyed_rows() -> Rc<Vec<Rc<KeyedAnnotationRow>>> {
-    Rc::new(vec![])
+    match scope.clone() {
+        Some(s) => Some(region_structural_key(
+            index.clone(),
+            s.clone(),
+            depth.clone(),
+        )),
+        std::option::Option::None => std::option::Option::None,
+    }
 }
 
 pub fn keyed_annotation_rows(
     transport: Rc<OccurrenceTransport>,
+    extents: Rc<ParsedSourceExtents>,
     graph: Rc<SourceAnnotationGraph>,
-) -> Option<Rc<Vec<Rc<KeyedAnnotationRow>>>> {
+) -> Rc<Vec<Rc<KeyedAnnotationRow>>> {
     {
-        let eligible = eligible_key_entries(transport.clone());
-        if !eligible_names_unique(eligible.clone()) {
-            std::option::Option::None
-        } else {
-            crate::std_source_annotation::source_annotation_graph_rows(graph.clone())
+        let regions = annotation_regions(transport.clone(), extents.clone());
+        let index = region_key_index(transport.clone(), regions.clone());
+        let depth = v1_rt::int_add((regions.clone().len() as i64), 1);
+        Rc::new({
+            let mut __result = Vec::new();
+            for row in crate::std_source_annotation::source_annotation_graph_rows(graph.clone())
                 .iter()
                 .cloned()
-                .fold(
-                    Some(empty_keyed_rows()),
-                    |acc: Option<Rc<Vec<Rc<KeyedAnnotationRow>>>>,
-                     row: Rc<SourceAnnotationDebt>| match acc.clone() {
-                        std::option::Option::None => std::option::Option::None,
-                        Some(rows) => {
-                            match authored_name_among(eligible.clone(), row.subject.clone()) {
-                                std::option::Option::None => std::option::Option::None,
-                                Some(name) => Some(v1_rt::rc_list_push(
-                                    rows.clone(),
-                                    Rc::new(KeyedAnnotationRow {
-                                        subject_key: name.clone(),
-                                        text: row.text.clone(),
-                                    }),
-                                )),
-                            }
-                        }
-                    },
-                )
-        }
+            {
+                __result.push(Rc::new(KeyedAnnotationRow {
+                    scope_key: region_structural_key(
+                        index.clone(),
+                        row.gap.clone().scope.clone(),
+                        depth.clone(),
+                    ),
+                    before_key: optional_region_key(
+                        index.clone(),
+                        row.gap.clone().before.clone(),
+                        depth.clone(),
+                    ),
+                    after_key: optional_region_key(
+                        index.clone(),
+                        row.gap.clone().after.clone(),
+                        depth.clone(),
+                    ),
+                    text: row.text.clone(),
+                }));
+            }
+            __result
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KeyedAnnotationRegion {
+    pub key: String,
+    pub extent: Rc<SourceSpan>,
+}
+
+pub fn keyed_annotation_regions(
+    transport: Rc<OccurrenceTransport>,
+    extents: Rc<ParsedSourceExtents>,
+) -> Rc<Vec<Rc<KeyedAnnotationRegion>>> {
+    {
+        let regions = annotation_regions(transport.clone(), extents.clone());
+        let index = region_key_index(transport.clone(), regions.clone());
+        let depth = v1_rt::int_add((regions.clone().len() as i64), 1);
+        Rc::new({
+            let mut __result = Vec::new();
+            for r in regions.iter().cloned() {
+                __result.push(Rc::new(KeyedAnnotationRegion {
+                    key: region_structural_key(index.clone(), r.scope.clone(), depth.clone()),
+                    extent: r.extent.clone(),
+                }));
+            }
+            __result
+        })
     }
 }
 
@@ -441,64 +508,17 @@ pub fn normalize_dag_annotation(
 
 pub fn bind_annotations(
     transport: Rc<OccurrenceTransport>,
+    extents: Rc<ParsedSourceExtents>,
     captures: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
-    source_length: i64,
-) -> Rc<AnnotationAttachmentResult> {
+) -> Rc<SourceAnnotationGraph> {
     crate::std_source_annotation::attach_annotations(
-        captures.iter().cloned().fold(
-            Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<NormalizedAnnotationCapture>>>,
-             capture: Rc<UnboundAnnotationCapture>| {
-                v1_rt::rc_list_push(acc, normalize_dag_annotation(capture.clone()))
-            },
-        ),
-        annotation_subjects(transport.clone(), source_length.clone()),
-    )
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AdmittedSourceAnnotations {
-    pub graph: Rc<SourceAnnotationGraph>,
-    pub diagnostics: Rc<Vec<Rc<CompilerDiagnostic>>>,
-}
-
-pub fn admit_source_annotations(
-    transport: Rc<OccurrenceTransport>,
-    captures: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
-    source_length: i64,
-) -> Rc<AdmittedSourceAnnotations> {
-    match (*crate::std_source_annotation::admit_annotations(bind_annotations(
-        transport.clone(),
-        captures.clone(),
-        source_length.clone(),
-    )))
-    .clone()
-    {
-        AnnotationAdmission::AnnotationsAdmitted { graph: graph, .. } => {
-            Rc::new(AdmittedSourceAnnotations {
-                graph: graph.clone(),
-                diagnostics: Rc::new(vec![]),
-            })
-        }
-        AnnotationAdmission::AnnotationsRefused {
-            refusals: refusals, ..
-        } => Rc::new(AdmittedSourceAnnotations {
-            graph: crate::std_source_annotation::source_annotation_graph_empty(),
-            diagnostics: crate::std_source_annotation::non_empty_refusals_all(refusals.clone())
-                .iter()
-                .cloned()
-                .fold(
-                    Rc::new(vec![]),
-                    |acc: Rc<Vec<Rc<CompilerDiagnostic>>>,
-                     refusal: Rc<AnnotationAttachmentRefusal>| {
-                        v1_rt::rc_list_push(
-                            acc,
-                            Rc::new(CompilerDiagnostic::SourceAnnotationRefused {
-                                refusal: refusal.clone(),
-                            }),
-                        )
-                    },
-                ),
+        Rc::new({
+            let mut __result = Vec::new();
+            for capture in captures.iter().cloned() {
+                __result.push(normalize_dag_annotation(capture.clone()));
+            }
+            __result
         }),
-    }
+        annotation_regions(transport.clone(), extents.clone()),
+    )
 }
