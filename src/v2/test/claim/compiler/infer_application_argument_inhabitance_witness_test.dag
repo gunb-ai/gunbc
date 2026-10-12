@@ -522,3 +522,30 @@ test fn inhabitance_arrow_with_a_different_return_refuses_holds() -> Bool {
     produced: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_int, codomain: ^dag_binding_type_int)
   ))
 }
+
+// A NESTED ARROW IS NOT WIDENED (review 78749): a signature whose domain holds an Arrow stays on the
+// exact comparison, so an inner return mismatch refuses rather than reaching an advisory acceptance.
+fn aai_higher_order(inner_return: Symbol) -> Node {
+  declared_signature_arrow(
+    params: [binder_edge(name: ^aai_k, type_node: aai_arrow(parameter: ^aai_k, domain: ^dag_binding_type_int, codomain: inner_return))],
+    codomain: dag_type_atom_node(identity: ^dag_binding_type_bool),
+    source: dag_type_atom_node(identity: ^dag_binding_type_bool)
+  )
+}
+
+test fn inhabitance_nested_arrow_with_a_different_inner_return_refuses_holds() -> Bool {
+  aai_refused(o: aai_arrow_obligation(
+    declared: aai_higher_order(inner_return: ^dag_binding_type_bool),
+    produced: aai_higher_order(inner_return: ^dag_binding_type_int)
+  ))
+}
+
+test fn inhabitance_identical_nested_arrows_inhabit_holds() -> Bool {
+  match declared_type_inhabitance(obligation: aai_arrow_obligation(
+    declared: aai_higher_order(inner_return: ^dag_binding_type_bool),
+    produced: aai_higher_order(inner_return: ^dag_binding_type_bool)
+  )) {
+    Inhabits { homomorphism: _ } => true
+    _ => false
+  }
+}

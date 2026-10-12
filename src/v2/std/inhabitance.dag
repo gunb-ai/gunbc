@@ -408,17 +408,17 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
 // are one signature, so both sides are re-assembled through anonymous_signature_arrow (the one assembler
 // of a bodiless signature, whose binders are positional) and compared by the same exact structural
 // equality as every other type. This is the ONE judge for argument, declared-return and record-field
-// positions. Frontiers, each typed and counted, never a refusal: an Arrow that declares type parameters
-// (UndecidableGenericFormal, as a type variable is elsewhere in this relation), and one whose signature
-// cannot be read or whose domain or return itself holds an Arrow (UndecidableFormalUnresolved).
+// positions. A signature this arm does not normalize -- one that declares type parameters, whose order
+// cannot be read, or whose domain or return itself holds an Arrow -- stays on the exact comparison it
+// had before, which decides and may refuse; it is never widened to an advisory acceptance. Recursive
+// normalization of a nested Arrow is the climb.
 type ArrowSignatureRead
   = ArrowSignatureTypes { domain_types: List<Node>, codomain: Node }
-  | ArrowSignatureGeneric
   | ArrowSignatureUnreadable
 
 fn inhabitance_arrow_signature_read(arrow: Node) -> ArrowSignatureRead {
   if fold(arrow.children, init: false, f: fn(acc, e) { acc || edge_is_type_params(e: e) }) {
-    ArrowSignatureGeneric
+    ArrowSignatureUnreadable
   } else {
     match arrow_declared_parameter_order(arrow: arrow) {
       ArrowParameterOrderAbsent => ArrowSignatureUnreadable
@@ -491,12 +491,10 @@ fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> I
 
 fn declared_type_inhabitance_arrow(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_arrow_signature_read(arrow: obligation.declared) {
-    ArrowSignatureGeneric => InhabitanceUndecidable { reason: UndecidableGenericFormal }
-    ArrowSignatureUnreadable => InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
+    ArrowSignatureUnreadable => declared_type_inhabitance_exact(obligation: obligation)
     ArrowSignatureTypes { domain_types: dd, codomain: dc } =>
       match inhabitance_arrow_signature_read(arrow: obligation.produced) {
-        ArrowSignatureGeneric => InhabitanceUndecidable { reason: UndecidableGenericFormal }
-        ArrowSignatureUnreadable => InhabitanceUndecidable { reason: UndecidableFormalUnresolved }
+        ArrowSignatureUnreadable => declared_type_inhabitance_exact(obligation: obligation)
         ArrowSignatureTypes { domain_types: pd, codomain: pc } =>
           declared_type_inhabitance_exact(obligation: DeclaredTypeObligation {
             position: obligation.position,
