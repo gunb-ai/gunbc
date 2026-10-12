@@ -653,8 +653,8 @@ fn dogfood_start_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
 // THE START RECEIPT, every field the acceptance read requires. Minted only by
 // dogfood_start_candidate (from one WorkflowAttemptEvidence) or by the total decoder below, both of
 // which check every join; the wire encoder re-checks them, so correctness does not rest on
-// sole_constructor (enforced by the seed, not yet by the native route -- gunbc.rung_drop
-// g0_type_decl_modifier_parse_without_sealing_property), which is defence in depth here.
+// sole_constructor (native: v2.compiler.infer infer_sole_constructor_diags; seed: literal and
+// cast; seed residual f13/f19), which is defence in depth here.
 // THE JOINED SERVICE EVIDENCE THE START PINS (gunbc.roadmap.roadmap_service_evidence, #13109/#13157) is one
 // ServiceEvidenceSnapshot: the canonical evidence wire, persisted whole, from which the decoder of that
 // module derives the digest, the binding and every field's standing. The start receipt carries no

@@ -13,6 +13,7 @@ import v2.compiler.normalized_tree {
 }
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.resolve {
   Namespace,
   namespace_bindings_augment_from_module_atoms,
@@ -25,7 +26,8 @@ import v2.compiler.resolve {
   resolved_tree_outcome,
   resolve_walk_prefix_pending,
   resolve_walk_with_namespace_policy,
-  ResolveWalkAccepted
+  ResolveWalkAccepted,
+  type_declaration_modifier_channel_of_trees
 }
 import v2.compiler.lexical_scope { DeclaredBinding, module_binding_edge_is_namespace_body, try_edge_declared_binding }
 import v2.std.resolution_policy {
@@ -156,6 +158,7 @@ type ResolutionContext {
   namespaces: Map<QualifiedName, NamespaceProviderEntry>
   namespaces_built: Int
   closure_declarations: Optional<ClosureIndex>
+  type_declaration_modifiers: TypeDeclarationModifierChannel
 }
 
 // THE CLOSURE'S RESOLVED DECLARATIONS AND THE ROOTS THAT CONTRIBUTED NONE BECAUSE THEIR OWN RESOLVE
@@ -218,7 +221,8 @@ fn resolution_context_of_validated(
     policy: policy,
     namespaces: empty_map(),
     namespaces_built: 0,
-    closure_declarations: optional_absent()
+    closure_declarations: optional_absent(),
+    type_declaration_modifiers: type_declaration_modifier_channel_of_trees(trees: roots.roots)
   }
 }
 
@@ -798,7 +802,8 @@ fn resolution_context_namespace(
             value: NamespaceProviderEntry { admission: admission, admitted: admitted }
           ),
           namespaces_built: shared.namespaces_built + 1,
-          closure_declarations: shared.closure_declarations
+          closure_declarations: shared.closure_declarations,
+          type_declaration_modifiers: shared.type_declaration_modifiers
         }
       }
   }
@@ -959,7 +964,8 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
               symbol_index: shared.symbol_index,
               closure_declarations: closure.declarations,
               unavailable_providers: closure.refused,
-              member_kinds: channel
+              member_kinds: channel,
+              type_declaration_modifiers: shared.type_declaration_modifiers
             )
         },
         context: Accepted { value: closure.context, diagnostics: d }
@@ -1064,7 +1070,8 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
           policy: built.context.policy,
           namespaces: built.context.namespaces,
           namespaces_built: built.context.namespaces_built,
-          closure_declarations: optional_present(value: ClosureIndex { declarations: built.index, refused: built.refused })
+          closure_declarations: optional_present(value: ClosureIndex { declarations: built.index, refused: built.refused }),
+          type_declaration_modifiers: built.context.type_declaration_modifiers
         }
       }
   }

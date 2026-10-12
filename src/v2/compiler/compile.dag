@@ -3139,6 +3139,7 @@ fn native_module_resolve_verdict(
                     closure_declarations: closure.declarations,
                     unavailable_providers: closure.refused,
                     member_kinds: no_member_declaration_kinds(),
+                    type_declaration_modifiers: shared.type_declaration_modifiers,
                     lexical: lexical
                   )
                 },
