@@ -1,6 +1,7 @@
 module gunbc.harness.harness_seat
 
 import product.host_identity { HostIdentity }
+import gunbc.serving.session_store { ServingSessionEntry, serving_session_record_for_request }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count }
@@ -1096,7 +1097,8 @@ fn harness_apply_session_attachment(session: ServingSessionRecord, collected: Ha
     NoSessionRecord =>
       HarnessCandidates { candidates: kept, notes: collected.notes, retryable: collected.retryable, incarnations: collected.incarnations, owner_standing: collected.owner_standing }
     SessionRecord { owner_launch: _, prefix_intact: _, last_turn: _ } => {
-      let standing = match collected.owner_standing {
+      let owner_standing = collected.owner_standing
+      let standing = match owner_standing {
         Present { value: s } => s
         Absent => serving_unread_when_owner_unprobed()
       }
@@ -1105,7 +1107,7 @@ fn harness_apply_session_attachment(session: ServingSessionRecord, collected: Ha
         notes: collected.notes,
         retryable: collected.retryable,
         incarnations: collected.incarnations,
-        owner_standing: match collected.owner_standing {
+        owner_standing: match owner_standing {
           Present { value: s } => Present { value: s }
           Absent => Present { value: standing }
         },
@@ -1495,10 +1497,10 @@ data harness_placement_rounds: Nat = 3
 // the Work carries and the one the candidate screen applies are one value with one source. A caller
 // that constructed the request itself could hand in a request naming one requirement beside a
 // screen argument naming another.
-fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
+fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?) -> HarnessSeatBinding {
   match harness_requirement_placement(requirement: requirement, class: class) {
     LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
-    PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy)
+    PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session)
     RunOnOperatorEndpoint => harness_bind_operator(class: class, shape: shape)
   }
 }
@@ -1562,7 +1564,7 @@ fn harness_bind_hosted(short_hostname: String, unit: HarnessServingUnit, actor: 
   }
 }
 
-fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
+fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?) -> HarnessSeatBinding {
   let subject = harness_turn_subject(request: harness_turn_request(shape: shape, requirement: requirement, inputs: inputs), attempt: attempt)
   match event_log_store_for_host(short_hostname: short_hostname) {
     HostStoreRefused { detail: d } => HarnessSeatRefused { detail: d }
@@ -1574,7 +1576,7 @@ fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass,
           let declared_units = harness_declared_unit_roster()
           let participation_roster = harness_group_participation_roster(access: access)
           let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false, incarnations: [] }, f: (acc, round) =>
-            harness_placement_round(acc: acc, session: NoSessionRecord, class: class, requirement: requirement, subject: subject, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, access: access, declared_units: declared_units, participation_roster: participation_roster))
+            harness_placement_round(acc: acc, session: serving_session_record_for_request(entry: session, next_inputs: inputs), class: class, requirement: requirement, subject: subject, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, access: access, declared_units: declared_units, participation_roster: participation_roster))
           match placed.done {
             Present { value: b } => b
             Absent =>
