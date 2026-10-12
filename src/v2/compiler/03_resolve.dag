@@ -2,6 +2,11 @@ module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.normalized_tree { normalized_tree_record_declarations, MemberDeclarationsNotRead, MemberDeclarationsRead, NormalizedTree, normalized_tree_resource_declarations }
+import v2.compiler.body_lowering_fold {
+  TypeDeclModuleModifierRows,
+  TypeDeclarationModifierChannel,
+  TypeDeclarationModifiersCaptured
+}
 import v2.std.member_declaration_kind {
   DeclaredMember,
   declared_members_have_duplicate,
@@ -273,6 +278,8 @@ type ResolvedTree {
   lexical_bindings: Map<OccurrenceId, LexicalBinding>
   unavailable_providers: List<ClosureProviderRefusal>
   member_kinds: MemberKindChannel
+  type_declaration_modifiers: TypeDeclarationModifierChannel
+  constructing_module: Optional<Symbol>
 }
 
 // A CLOSURE ROOT WHOSE OWN RESOLVE REFUSED, AND WHY. v2.compiler.name_resolve closure_declarations_demand
@@ -338,12 +345,21 @@ fn resolved_declarations_of(root: Node) -> SymbolIndex {
 // ResolutionContext.symbol_index instead, which is filled from NORMALIZED roots: it would have made
 // imported field typing appear to work off AUTHORED declarations rather than resolved ones, which is the
 // authored/resolved fork this carrier exists to keep apart (see the resolved_declarations header above).
+fn resolved_tree_constructing_module_of(root: Node) -> Optional<Symbol> {
+  match qualified_name_from_module_node(root: root) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: module_qn, diagnostics: _ } =>
+      optional_present(value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: module_qn)))
+  }
+}
+
 fn resolved_tree_of(
   root: Node,
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
   unavailable_providers: List<ClosureProviderRefusal>,
   member_kinds: MemberKindChannel,
+  type_declaration_modifiers: TypeDeclarationModifierChannel,
   lexical: List<LexicalBindingEntry>
 ) -> ResolvedTree {
   ResolvedTree {
@@ -352,7 +368,9 @@ fn resolved_tree_of(
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
     lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
     unavailable_providers: unavailable_providers,
-    member_kinds: member_kinds
+    member_kinds: member_kinds,
+    type_declaration_modifiers: type_declaration_modifiers,
+    constructing_module: resolved_tree_constructing_module_of(root: root)
   }
 }
 
@@ -394,6 +412,41 @@ fn member_kind_channel_of_tree(tree: NormalizedTree) -> Outcome<MemberKindChanne
             }
           }
       }
+  }
+}
+
+// THE CLOSURE'S TYPE-DECL MODIFIERS, keyed by declaring module. Every NormalizedTree the ingest
+// held is covered, including those whose modifier list is empty: absence of a row is "not sealed",
+// absence of the module from `covered` is unreadable.
+fn type_declaration_modifier_channel_of_tree(tree: NormalizedTree) -> TypeDeclarationModifierChannel {
+  type_declaration_modifier_channel_of_trees(trees: Cons { head: tree, tail: Empty })
+}
+
+fn type_declaration_modifier_channel_of_trees(trees: FreeMonoid<NormalizedTree>) -> TypeDeclarationModifierChannel {
+  TypeDeclarationModifiersCaptured {
+    by_module: fold_list(
+      xs: trees,
+      empty: empty_map(),
+      cons: fn(acc, tree) {
+        match qualified_name_from_module_node(root: tree.root) {
+          Rejected { diagnostics: _ } => acc
+          Accepted { value: module_qn, diagnostics: _ } =>
+            map_insert(
+              m: acc,
+              key: module_qn,
+              value: TypeDeclModuleModifierRows {
+                by_name: fold_list(
+                  xs: tree.type_declaration_modifiers,
+                  empty: empty_map(),
+                  cons: fn(names, row) {
+                    map_insert(m: names, key: row.name, value: row.modifiers)
+                  }
+                )
+              }
+            )
+        }
+      }
+    )
   }
 }
 
@@ -2476,12 +2529,13 @@ fn resolved_tree_outcome(
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
   unavailable_providers: List<ClosureProviderRefusal>,
-  member_kinds: MemberKindChannel
+  member_kinds: MemberKindChannel,
+  type_declaration_modifiers: TypeDeclarationModifierChannel
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, unavailable_providers: unavailable_providers, member_kinds: member_kinds, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, unavailable_providers: unavailable_providers, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -4750,7 +4804,8 @@ fn resolve_with_namespace_policy(
     symbol_index: namespace.symbol_index,
     closure_declarations: empty_symbol_index(),
     unavailable_providers: [],
-    member_kinds: channel
+    member_kinds: channel,
+    type_declaration_modifiers: type_declaration_modifier_channel_of_tree(tree: tree)
   )
   }
 }

@@ -25,8 +25,8 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE TYPE-DECLARATION MODIFIER SLOT IS CARRIED, not consumed (gunbc.rung_drop
-// g0_type_decl_modifier_parse_without_sealing_property, the half it names as "mints nothing"). The
+// THE TYPE-DECLARATION MODIFIER SLOT IS CARRIED HERE, not consumed: parse and normalize mint the
+// row; the construction wall is v2.compiler.infer infer_sole_constructor_diags. The
 // reader's subject is ONE interface: a type_decl parse shell in, the declaration's modifier row out
 // (v2.compiler.body_lowering_fold body_lower_type_decl_declared_modifiers). Each claim below parses one
 // line and asks that reader, so a claim's cost is the parse, not a normalize. The pairing claim at the

@@ -68,7 +68,7 @@ fn vllm_source_revision(repository: NonEmptyStr, full_revision: NonEmptyStr) -> 
 // patched engine's kv-allocation-plan/v1 startup record (the reviewable patch at
 // dag/extdeps/vllm/patches/kv-allocation-plan-emission-8d09804c8.patch, whose pinned base this
 // is), and THAT emission was read today: the bounded 262144x6 experiment's captured startup line
-// (gunbc.spark.vllm_allocation_plan_observe, fixture
+// (retired gunbc.spark.vllm_allocation_plan_observe (deleted #13779), fixture
 // dag/test/fixture/kv_allocation_plan_emission/glm_5_3_flash_262144x6_2026-09-25_kv_plan_line.log)
 // carries runtime self-report 0.1.dev1+g8d09804c8. The abbreviation resolves to this full sha
 // against the cited authorities already in the corpus — extdeps.vllm.runtime_defaults'

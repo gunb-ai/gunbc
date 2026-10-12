@@ -736,6 +736,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.heal_publication", decl_name: "heal_publication_publish_for"),
+    effect: PrivilegedEffect {
+      subject: "mint a gunbai-bot installation token down-scoped to contents:write on this repository from the App key read over the publisher's WIF, then fast-forward one pull request's head branch by one admitted bot commit, compare-and-set on the head, read it back and comment the receipt" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
     effect: PrivilegedEffect {
       subject: "mint a GitHub App installation token from the App key fetched over WIF, then generate a JIT runner config for one slot -- a microVM attempt or a transient unit on a managed host -- pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,

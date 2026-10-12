@@ -409,16 +409,18 @@ service shell.Mktemp {
 // is the point rather than an inconvenience: a caller that must know whether it CREATED a directory
 // cannot learn it from `mkdir -p`, which succeeds either way, and adopting an existing directory at
 // a predictable name is how a squatted path gets reused. The mode is applied AT CREATION, so the
-// name never exists at a wider one and no second pathname operation is needed to narrow it.
+// name never exists at a wider one and no second pathname operation is needed to narrow it. It is
+// spelled with five digits for the rule extdeps.tools.gnu_coreutils coreutils_directory_mode_operand
+// states: under a set-group-ID parent `mkdir -m 0700` creates 2700, and `-m 00700` creates 0700.
 service shell.Mkdir {
   operation NewOwnerOnly {
     requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
-    transport shell { argv: ["mkdir", "-m", "0700", "--", "{path}"] }
+    transport shell { argv: ["mkdir", "-m", "00700", "--", "{path}"] }
     exit {
       0 => Unit "Directory created AT 0700; fails if the name exists at all, so success is proof this process created it"
-      nonzero => String "mkdir -m 0700 failed"
+      nonzero => String "mkdir -m 00700 failed"
     }
   }
 
@@ -570,15 +572,18 @@ service shell.Move {
   }
 }
 
+// THE DIRECTORY OPERANDS ARE FIVE DIGITS, for the rule extdeps.tools.gnu_coreutils
+// coreutils_directory_mode_operand states: `chmod 0700` on a 2700 directory leaves 2700. The file
+// operand stays four digits, because a numeric chmod clears set-id bits on a regular file.
 service shell.Chmod {
   operation OwnerOnlyDirectory {
     requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
-    transport shell { argv: ["chmod", "0700", "{path}"] }
+    transport shell { argv: ["chmod", "00700", "{path}"] }
     exit {
       0 => Unit
-      nonzero => String "chmod 0700 failed"
+      nonzero => String "chmod 00700 failed"
     }
   }
 
@@ -586,10 +591,10 @@ service shell.Chmod {
     requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
-    transport shell { argv: ["chmod", "0777", "{path}"] }
+    transport shell { argv: ["chmod", "00777", "{path}"] }
     exit {
       0 => Unit
-      nonzero => String "chmod 0777 failed"
+      nonzero => String "chmod 00777 failed"
     }
   }
 

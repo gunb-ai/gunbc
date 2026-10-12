@@ -276,7 +276,7 @@ fn systemd_bounded_poll_head(polls: String) -> String {
 // THE BUDGET IS THE PLAN'S ONE ADMITTED DURATION, SHARED — never minted per leg. Every leg — head
 // and ranks alike — derives its poll-iteration backstop from the same admitted_seconds with the
 // same arithmetic, because the plan admits exactly one experiment duration and every rank unit
-// carries the same RuntimeMaxSec (gunbc.spark.native_serving_realization): the engines stop
+// carries the same RuntimeMaxSec (retired gunbc.spark.native_serving_realization (deleted #13779)): the engines stop
 // together, and the four waits observe ONE bounded run. A leg's actual consumption is never its
 // backstop: each iteration breaks the moment its anchor appears, and exits the moment its unit
 // goes inactive, so a dead engine's leg returns within one poll and the sequential legs' waits
@@ -284,7 +284,7 @@ fn systemd_bounded_poll_head(polls: String) -> String {
 // would count a single run four times.
 //
 // A RANK THAT DIES BEFORE PRINTING fails its own host's leg: the inactivity exit fires, the leg
-// exits non-zero, and the bracket's verdict fold (gunbc.spark.native_experiment_apply
+// exits non-zero, and the bracket's verdict fold (retired gunbc.spark.native_experiment_apply (deleted #13779)
 // spark_profile_readback_verdict) locates the refusal on that host. The anchor and the log path
 // are parameters, so the head leg and the rank legs are one script inhabited twice, not two
 // spellings that can drift.
@@ -303,7 +303,7 @@ fn systemd_profile_readback_script(member: SystemdExecutionMember, profile_ancho
 //
 // THE EXECUTION CELL HAS NO WORKLOAD PHASE: the contract's eight phases end at activation and its
 // readback observes launch evidence, not serving behaviour. The fragmentation-churn experiment the
-// bracket plans when a plan targets ArmFragmentationAllowance (gunbc.spark.native_experiment_apply
+// bracket plans when a plan targets ArmFragmentationAllowance (retired gunbc.spark.native_experiment_apply (deleted #13779)
 // spark_experiment_workload_phase) is the one consumer that must DRIVE the engine between the
 // profile readbacks and the deterministic stop, so its scripts — the readiness gate, the prefill
 // seats, the churn driver, the sampler — render here beside the profile

@@ -20,7 +20,10 @@ import gunbc.serving.turn_admission {
 }
 import gunbc.harness.harness_backend { HarnessEngineReading }
 import gunbc.serving.replica_incarnation { ReplicaIncarnationUnread }
-import gunbc.harness.harness_seat { HarnessCandidates, harness_add_serving_candidate, harness_apply_session_attachment }
+import gunbc.harness.harness_seat { HarnessCandidates, HarnessTurnSubject, harness_add_serving_candidate, harness_apply_session_attachment, harness_turn_subject, harness_turn_request, AnyAdmittedModel }
+import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
+import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
+import gunbc.serving.rented_offer_admission { rented_production_sources }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -58,6 +61,18 @@ fn w_place_session(session: ServingSessionRecord) -> HarnessCandidates {
     seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
     session: session,
     incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: rented_production_sources(replica: w_replica),
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1789300000,
+  )
+}
+
+fn w_subject() -> HarnessTurnSubject {
+  harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]),
+    attempt: "a-1" as NonEmptyStr,
   )
 }
 

@@ -224,6 +224,7 @@ import v2.std.node {
   node_rebuild,
   node_synthetic,
   node_with_occurrence_id,
+  symbol_eq,
   symbol_intern_lexeme,
   symbol_lexeme,
   Disj,
@@ -10820,16 +10821,14 @@ fn declared_resource_names(kinds: FreeMonoid<DeclaredTypeKind>) -> FreeMonoid<Sy
 
 // THE TYPE-DECLARATION MODIFIER SLOT, CARRIED. `type X <modifier> = Y` -- the slot
 // v2.extdeps.languages.dag dag_grammar_type_decl_modifiers_expr admits between the name (and its
-// `<T>`) and the body -- was consumed and minted nothing on this route
-// (gunbc.rung_drop g0_type_decl_modifier_parse_without_sealing_property), so no reader of a lowered
-// declaration could tell `type X nominal_opaque = Y` from `type X = Y`. It is read HERE, on the parse,
-// for the reason DeclaredTypeKind is: lowering leaves no trace of it in the node.
+// `<T>`) and the body. It is read HERE, on the parse, for the reason DeclaredTypeKind is: lowering
+// leaves no trace of it in the node. Infer consumes the channel as the construction wall.
 //
 // A CLOSED VOCABULARY, NOT A FLAG PER SPELLING. The slot is where the ruled nominal-type plan
 // (docs/plans/nominal-type-declaration-plan.md S1) puts constructor and view visibility, so a later
 // modifier is a new variant here and a new terminal in the grammar's slot, never a second carrier.
-// Carrying a modifier ENFORCES nothing: the sealing property v1 parsed_sole_constructor_properties
-// mints is still not checked on this route, which is the half of that drop this does not restore.
+// Carrying a modifier is the minting half; the construction wall that consumes it is
+// v2.compiler.infer infer_sole_constructor_diags, keyed on the declaring module (not a file path).
 type TypeDeclModifier
   = NominalOpaqueModifier
   | SoleConstructorModifier
@@ -10840,6 +10839,62 @@ type TypeDeclModifier
 type DeclaredTypeModifiers {
   name: Symbol
   modifiers: FreeMonoid<TypeDeclModifier>
+}
+
+// THE CHANNEL INFER READS, keyed by declaring module then member name. A key in `by_module`
+// covers that module: an empty `by_name` is "not sealed". A declaring module absent from
+// `by_module` is unreadable rather than silently open. Hand-built fixtures insert only the
+// modules they claim (often none: empty map).
+type TypeDeclModuleModifierRows {
+  by_name: Map<Symbol, FreeMonoid<TypeDeclModifier>>
+}
+
+type TypeDeclarationModifierChannel
+  = TypeDeclarationModifiersCaptured {
+      by_module: Map<QualifiedName, TypeDeclModuleModifierRows>
+    }
+
+// Covers no modules: not "nothing is sealed". Infer treats a declaring module outside `by_module`
+// as unreadable (`TypeDeclModifierModuleUncovered`). This helper is for trees that are not a
+// `.dag` declaration population (ingest-bridge CoreNodes, hermetic fixtures without type
+// decls). A construct-shaped node against it refuses modifiers_unreadable; a non-construct
+// never consults the channel.
+fn type_declaration_modifiers_covering_no_modules() -> TypeDeclarationModifierChannel {
+  TypeDeclarationModifiersCaptured { by_module: empty_map() }
+}
+
+// Membership of SoleConstructorModifier on the parsed modifier list (the closed TypeDeclModifier
+// surface). NominalOpaqueModifier is a sibling variant, not a negation of sealing.
+fn type_decl_modifiers_include_sole_constructor(modifiers: FreeMonoid<TypeDeclModifier>) -> Bool {
+  fold_list(xs: modifiers, empty: false, cons: fn(found, m) {
+    match m {
+      SoleConstructorModifier => true
+      NominalOpaqueModifier => found
+    }
+  })
+}
+
+type TypeDeclModifierRowLookup
+  = TypeDeclModifierModuleUncovered
+  | TypeDeclModifierRowAbsent
+  | TypeDeclModifierRowPresent { modifiers: FreeMonoid<TypeDeclModifier> }
+
+fn type_declaration_modifier_row_at(
+  channel: TypeDeclarationModifierChannel,
+  module: QualifiedName,
+  name: Symbol
+) -> TypeDeclModifierRowLookup {
+  match channel {
+    TypeDeclarationModifiersCaptured { by_module: by_module } =>
+      match map_lookup(m: by_module, key: module) {
+        Absent => TypeDeclModifierModuleUncovered
+        Present { value: rows } =>
+          match map_lookup(m: rows.by_name, key: name) {
+            Absent => TypeDeclModifierRowAbsent
+            Present { value: modifiers } => TypeDeclModifierRowPresent { modifiers: modifiers }
+          }
+      }
+  }
 }
 
 type TypeDeclModifierSlotRead
