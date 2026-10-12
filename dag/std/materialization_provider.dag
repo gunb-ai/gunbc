@@ -454,11 +454,22 @@ fn evaluation_bucket_for_request(req: ArtifactRequest) -> EvaluationBucket admit
 // weak identity: what the fingerprint collapsed stays collapsed. So the family rule is applied to
 // the components, where the information is, and the address digest is taken only over a preimage
 // every component of which the scope admits.
-type IdentityComponentScopeStanding
+//
+// THE STANDING IS TWO-LEVEL SO THAT A REFUSAL CANNOT HOLD AN ADMISSION. How a component is admitted
+// and why one is refused are separate closed sets, and a RefusedIdentityComponent carries only a
+// cause from the second: "a refusal that refuses nothing" has no constructor, and no caller asks a
+// standing whether it refuses -- it matches the outer arm.
+type IdentityComponentAdmission
   = ComponentAdmittedForScope
   | ComponentUpstreamObjectIdentity
-  | ComponentStructuralFingerprintRefused
+
+type IdentityComponentRefusalCause
+  = ComponentStructuralFingerprintRefused
   | ComponentFamilyNotAdmitted
+
+type IdentityComponentScopeStanding
+  = ComponentAdmitted { admission: IdentityComponentAdmission }
+  | ComponentRefused { cause: IdentityComponentRefusalCause }
 
 type EvaluationIdentityComponentRow {
   ref: NonEmptyStr
@@ -515,21 +526,32 @@ fn identity_component_persistent_standing(
   git_rows: List<EvaluationIdentityComponentRow>
 ) -> IdentityComponentScopeStanding {
   match row.component {
-    IdentityText { content: _ } => ComponentAdmittedForScope
+    IdentityText { content: _ } => ComponentAdmitted { admission: ComponentAdmittedForScope }
     IdentityDigest { hash: h } =>
       match content_hash_family(hash: h) {
-        Sha256Family => ComponentAdmittedForScope
-        Sha512Family => ComponentAdmittedForScope
-        Sha1Family => ComponentFamilyNotAdmitted
-        Fnv1a64StructuralFamily => ComponentStructuralFingerprintRefused
+        Sha256Family => ComponentAdmitted { admission: ComponentAdmittedForScope }
+        Sha512Family => ComponentAdmitted { admission: ComponentAdmittedForScope }
+        Sha1Family => ComponentRefused { cause: ComponentFamilyNotAdmitted }
+        Fnv1a64StructuralFamily => ComponentRefused { cause: ComponentStructuralFingerprintRefused }
       }
     IdentityUpstreamObject { relation: _, hash: h } =>
       match content_hash_family(hash: h) {
-        Fnv1a64StructuralFamily => ComponentStructuralFingerprintRefused
-        Sha512Family => ComponentFamilyNotAdmitted
-        Sha256Family => if component_row_is_typed_git_object(row: row, git_rows: git_rows) { ComponentUpstreamObjectIdentity } else { ComponentFamilyNotAdmitted }
-        Sha1Family => if component_row_is_typed_git_object(row: row, git_rows: git_rows) { ComponentUpstreamObjectIdentity } else { ComponentFamilyNotAdmitted }
+        Fnv1a64StructuralFamily => ComponentRefused { cause: ComponentStructuralFingerprintRefused }
+        Sha512Family => ComponentRefused { cause: ComponentFamilyNotAdmitted }
+        Sha256Family => typed_git_object_standing(row: row, git_rows: git_rows)
+        Sha1Family => typed_git_object_standing(row: row, git_rows: git_rows)
       }
+  }
+}
+
+fn typed_git_object_standing(
+  row: EvaluationIdentityComponentRow,
+  git_rows: List<EvaluationIdentityComponentRow>
+) -> IdentityComponentScopeStanding {
+  if component_row_is_typed_git_object(row: row, git_rows: git_rows) {
+    ComponentAdmitted { admission: ComponentUpstreamObjectIdentity }
+  } else {
+    ComponentRefused { cause: ComponentFamilyNotAdmitted }
   }
 }
 
@@ -539,55 +561,43 @@ fn identity_component_scope_standing(
   scope: KeyingScope
 ) -> IdentityComponentScopeStanding {
   match scope {
-    InProcessIndexScope => ComponentAdmittedForScope
+    InProcessIndexScope => ComponentAdmitted { admission: ComponentAdmittedForScope }
     PersistentStoreScope => identity_component_persistent_standing(row: row, git_rows: git_rows)
     CrossRunScope => identity_component_persistent_standing(row: row, git_rows: git_rows)
   }
 }
 
 // A REFUSAL NAMES WHAT IT REFUSED AND WHY. One row per component the scope does not admit, carrying
-// the component's ref and the standing that refused it, so a caller is told "the subject is a
+// the component's ref and the cause that refused it, so a caller is told "the subject is a
 // structural fingerprint" or "this input is a bare SHA-1" rather than a family it has to guess at.
 type RefusedIdentityComponent {
   ref: NonEmptyStr
-  standing: IdentityComponentScopeStanding
-}
-
-fn component_standing_refuses(standing: IdentityComponentScopeStanding) -> Bool {
-  match standing {
-    ComponentAdmittedForScope => false
-    ComponentUpstreamObjectIdentity => false
-    ComponentStructuralFingerprintRefused => true
-    ComponentFamilyNotAdmitted => true
-  }
-}
-
-fn component_standing_is_upstream_object(standing: IdentityComponentScopeStanding) -> Bool {
-  match standing {
-    ComponentAdmittedForScope => false
-    ComponentUpstreamObjectIdentity => true
-    ComponentStructuralFingerprintRefused => false
-    ComponentFamilyNotAdmitted => false
-  }
+  cause: IdentityComponentRefusalCause
 }
 
 fn evaluation_store_refused_components(req: ArtifactRequest, scope: KeyingScope) -> List<RefusedIdentityComponent> {
   let git_rows = request_git_object_rows(req: req)
-  let judged = evaluation_identity_component_rows(identity: request_evaluation_identity(req: req))
-    |> map(r => RefusedIdentityComponent { ref: r.ref, standing: identity_component_scope_standing(row: r, git_rows: git_rows, scope: scope) })
-  judged |> filter(j => component_standing_refuses(standing: j.standing))
+  let rows = evaluation_identity_component_rows(identity: request_evaluation_identity(req: req))
+  rows |> flat_map(r => match identity_component_scope_standing(row: r, git_rows: git_rows, scope: scope) {
+    ComponentAdmitted { admission: _ } => []
+    ComponentRefused { cause: c } => [RefusedIdentityComponent { ref: r.ref, cause: c }]
+  })
 }
 
 fn evaluation_store_upstream_object_refs(req: ArtifactRequest) -> List<NonEmptyStr> {
   let git_rows = request_git_object_rows(req: req)
   let rows = evaluation_identity_component_rows(identity: request_evaluation_identity(req: req))
-  rows |> filter(r => component_standing_is_upstream_object(standing: identity_component_persistent_standing(row: r, git_rows: git_rows))) |> map(r => r.ref)
+  rows |> flat_map(r => match identity_component_persistent_standing(row: r, git_rows: git_rows) {
+    ComponentRefused { cause: _ } => []
+    ComponentAdmitted { admission: a } => match a {
+      ComponentUpstreamObjectIdentity => [r.ref]
+      ComponentAdmittedForScope => []
+    }
+  })
 }
 
 fn refused_identity_components_text(components: List<RefusedIdentityComponent>) -> String {
-  join(components |> map(c => join([c.ref as String, match c.standing {
-    ComponentAdmittedForScope => " (admitted)"
-    ComponentUpstreamObjectIdentity => " (upstream object identity)"
+  join(components |> map(c => join([c.ref as String, match c.cause {
     ComponentStructuralFingerprintRefused => " is a structural fingerprint"
     ComponentFamilyNotAdmitted => " is a digest whose family or relation this scope does not admit"
   }], "")), "; ")

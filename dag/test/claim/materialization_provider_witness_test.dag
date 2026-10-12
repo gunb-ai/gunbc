@@ -53,7 +53,7 @@ import std.materialization_provider {
   evaluation_store_refused_components, evaluation_store_upstream_object_refs, evaluation_identity_subject_ref,
   RefusedIdentityComponent, EvaluationIdentityComponentRow, git_object_identity_component,
   identity_component_persistent_standing, ComponentAdmittedForScope, ComponentUpstreamObjectIdentity,
-  ComponentStructuralFingerprintRefused, ComponentFamilyNotAdmitted, git_object_identity_relation,
+  ComponentStructuralFingerprintRefused, ComponentFamilyNotAdmitted, ComponentAdmitted, ComponentRefused, git_object_identity_relation,
   demand_identity_canonical, demand_identity_decode,
   evaluation_store_address, evaluation_store_address_digest, evaluation_store_address_preimage,
   request_evaluation_identity, result_content_identity, evaluation_identity_canonical,
@@ -872,10 +872,8 @@ fn refused_has(xs: List<RefusedIdentityComponent>, wanted: NonEmptyStr) -> Bool 
 }
 
 fn refused_is_fingerprint(xs: List<RefusedIdentityComponent>, wanted: NonEmptyStr) -> Bool {
-  xs |> any(x => (x.ref as String) == (wanted as String) && match x.standing {
+  xs |> any(x => (x.ref as String) == (wanted as String) && match x.cause {
     ComponentStructuralFingerprintRefused => true
-    ComponentAdmittedForScope => false
-    ComponentUpstreamObjectIdentity => false
     ComponentFamilyNotAdmitted => false
   })
 }
@@ -906,10 +904,14 @@ test fn a_structural_fingerprint_component_is_refused_a_persistent_address_by_na
 
 fn standing_tag(row: EvaluationIdentityComponentRow, git_rows: List<EvaluationIdentityComponentRow>) -> String {
   match identity_component_persistent_standing(row: row, git_rows: git_rows) {
-    ComponentAdmittedForScope => "admitted"
-    ComponentUpstreamObjectIdentity => "upstream"
-    ComponentStructuralFingerprintRefused => "fingerprint"
-    ComponentFamilyNotAdmitted => "not_admitted"
+    ComponentAdmitted { admission: a } => match a {
+      ComponentAdmittedForScope => "admitted"
+      ComponentUpstreamObjectIdentity => "upstream"
+    }
+    ComponentRefused { cause: c } => match c {
+      ComponentStructuralFingerprintRefused => "fingerprint"
+      ComponentFamilyNotAdmitted => "not_admitted"
+    }
   }
 }
 
