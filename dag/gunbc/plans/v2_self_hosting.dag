@@ -40,7 +40,6 @@ fn v2_self_hosting_body() -> List<MarkdownBlock> {
       li(text: "Pipeline runs on **emitted Rust** (not v1 seed mirror)."),
       li(text: "`src/v1` collapses to **~8-15k LOC pinned bootstrap kernel** ([seed-shrink-census.md](seed-shrink-census.md))."),
       li(text: "**Import grammar deleted** (import-deletion ladder B4 — see §3)."),
-      li(text: "**CI compile cone gone** — regen cutover complete; HAND queue drained."),
       li(text: "TypeScript fixed-point work **opens** post-Rust (END GOAL unchanged; [typescript-gap-census.md](typescript-gap-census.md))."),
     ]),
     h2(text: "2. Census honesty — what is firm vs carrier-held"),

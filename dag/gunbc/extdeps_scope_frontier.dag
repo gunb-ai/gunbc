@@ -213,6 +213,8 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/ninfer/ninfer_serve.dag",
+  "dag/extdeps/ninfer/qwen3_8_27b_nvfp4.dag",
   "dag/extdeps/vendor/bambu_lab.dag",
   "dag/extdeps/vendor/molex.dag",
   "dag/extdeps/printing/bambu_lab_filament.dag",

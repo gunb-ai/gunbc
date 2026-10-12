@@ -14,7 +14,7 @@ module test.claim.scm_commit_closure_witness
 
 import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
 import v2.std.algebra { non_empty_to_list }
-import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, Cardinality, Positional, TypeNode, node_synthetic }
+import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, Occupancy, Positional, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectStore,
@@ -1040,7 +1040,7 @@ test fn a_partial_closure_spells_its_missing_child_uncontained() -> Bool {
 // insert_from_structure now canonicalizes its children, and re_writing_the_same_bindings_in_another_
 // order_is_idempotent says two authored orders of the same NAMED bindings are one object. On its own
 // that claim is satisfied by sorting every child list unconditionally -- which would be wrong, and
-// silently so: under Cardinality and Instantiation the discipline is PositionalEdges, where position
+// silently so: under Occupancy and Instantiation the discipline is PositionalEdges, where position
 // IS the meaning and reordering names a different program. External review named this gap.
 //
 // The canonicalizer already answers correctly, because it dispatches on kind_edge_discipline and
@@ -1051,7 +1051,7 @@ test fn positional_children_are_not_reordered_by_canonicalization() -> Bool {
   fx.ok
     && match insert_from_structure(
       store: fx.store,
-      kind: TypeNode { connective: Cardinality },
+      kind: TypeNode { connective: Occupancy },
       children: [
         StoredEdge { label: Positional, target: fx.alpha },
         StoredEdge { label: Positional, target: fx.beta },
@@ -1061,7 +1061,7 @@ test fn positional_children_are_not_reordered_by_canonicalization() -> Bool {
       Stored { store: once, node: first_ref } =>
         match insert_from_structure(
           store: once,
-          kind: TypeNode { connective: Cardinality },
+          kind: TypeNode { connective: Occupancy },
           children: [
             StoredEdge { label: Positional, target: fx.beta },
             StoredEdge { label: Positional, target: fx.alpha },

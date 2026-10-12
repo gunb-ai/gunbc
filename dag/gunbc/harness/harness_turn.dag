@@ -14,7 +14,7 @@ import gunbc.harness.harness_reasoning_wire {
   harness_serving_unit_wire, harness_reasoning_level_wire,
 }
 import gunbc.harness.harness_hosted_route {
-  HarnessBackendAccess, BackendAdmittedBySeat, BackendAdmittedByHostedQuota, HarnessHostedQuota, HostedRoundCharged,
+  HarnessBackendAccess, BackendAdmittedBySeat, BackendAdmittedByHostedQuota, BackendAdmittedByOperatorEndpoint, HarnessHostedQuota, HostedRoundCharged,
   HostedRoundQuotaFull, HostedRoundUnleasable, harness_hosted_round_charge, harness_hosted_refusal_cause,
   HostedRoundLease,
 }
@@ -1139,6 +1139,7 @@ fn harness_post_round(
         RoundPrepared { wire_request_detail: wd } =>
           match config.backend_access {
             BackendAdmittedBySeat => RoundPosted { posted: harness_send_round(config: config, round: round, header_file: none, wire_request_detail: wd) }
+            BackendAdmittedByOperatorEndpoint { header_file: hf } => RoundPosted { posted: harness_send_round(config: config, round: round, header_file: Present { value: hf }, wire_request_detail: wd) }
             BackendAdmittedByHostedQuota { header_file: hf, quota: q } => harness_hosted_round_post(config: config, round: round, header_file: hf, quota: q, wire_request_detail: wd)
           }
       }
@@ -1313,6 +1314,7 @@ type HarnessPostOutcome {
 fn harness_hosted_failure(config: HarnessTurnConfig, posted: HarnessPostOutcome) -> HostedHttpFailure? {
   match config.backend_access {
     BackendAdmittedBySeat => none
+    BackendAdmittedByOperatorEndpoint { header_file: _ } => none
     BackendAdmittedByHostedQuota { header_file: _, quota: _ } => {
       let dump = match posted.headers {
         Present { value: d } => d
@@ -1368,6 +1370,7 @@ fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> Ha
 fn harness_refusal_body_text(config: HarnessTurnConfig, body: String) -> String {
   match config.backend_access {
     BackendAdmittedBySeat => join(["body was: ", body], "")
+    BackendAdmittedByOperatorEndpoint { header_file: _ } => join(["operator endpoint answered: ", body], "")
     BackendAdmittedByHostedQuota { header_file: _, quota: _ } => join(["upstream answered: ", harness_hosted_refusal_cause(body: body)], "")
   }
 }
@@ -1873,5 +1876,15 @@ fn harness_run_turn(config: HarnessTurnConfig, prompt: String, step_budget: Int)
         events: started,
         repairs_used: 0,
       )
+  }
+}
+
+// The Bearer header file a turn's requests carry, if its backend access has one: the supplied-value seam the
+// operator-route witnesses read instead of running a turn.
+fn harness_backend_header_file(access: HarnessBackendAccess) -> NonEmptyStr? {
+  match access {
+    BackendAdmittedBySeat => none
+    BackendAdmittedByOperatorEndpoint { header_file: hf } => Present { value: hf }
+    BackendAdmittedByHostedQuota { header_file: hf, quota: _ } => Present { value: hf }
   }
 }

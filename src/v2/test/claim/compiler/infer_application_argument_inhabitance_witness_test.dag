@@ -8,7 +8,7 @@ import v2.std.inhabitance {
   Inhabits,
   declared_type_inhabitance,
   position_direct_call_argument,
-  inhabitance_cardinality_type,
+  inhabitance_occupancy_type,
   inhabitance_node_undecidable_reason,
   inhabitance_undecidable_reason_symbol
 }
@@ -137,7 +137,7 @@ fn inhabitance_optional_formal_tree() -> Node {
   inhabitance_apply(
     domain: inhabitance_named_conj_domain(
       parameter: ^inhabitance_param_opt,
-      declared: inhabitance_cardinality_type(
+      declared: inhabitance_occupancy_type(
         inner: dag_type_atom_node(identity: ^dag_binding_type_int)
       )
     ),
@@ -234,9 +234,9 @@ test fn infer_generic_formal_is_counted_frontier_holds() -> Bool {
   }
 }
 
-test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
+test fn inhabitance_occupancy_type_is_optional_carrier_holds() -> Bool {
   match inhabitance_node_undecidable_reason(
-    n: inhabitance_cardinality_type(
+    n: inhabitance_occupancy_type(
       inner: dag_type_atom_node(identity: ^dag_binding_type_int)
     ),
     type_variables: []
@@ -248,7 +248,7 @@ test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
   }
 }
 
-// A formal declared `Int?` owes no descent: the Cardinality type connective is Bounded
+// A formal declared `Int?` owes no descent: the Occupancy type connective is Bounded
 // (v2.std.cardinality connective_multiplicity). The application reaches its ordinary inhabitance
 // judgment and is counted as the OptionalCarrier frontier on the Accepted path, not Rejected for
 // infer_descent_not_derived.

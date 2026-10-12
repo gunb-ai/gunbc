@@ -68,7 +68,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // `circular dependency detected: std.bytes -> std.decimal -> std.integer -> std.measure`, since
 // std.integer already consumes std.measure. That cycle is closable: it exists only because
 // std.decimal imports std.bytes for the divergent seam its negative-scale arm uses, and inlining
-// `1 / 0` there breaks it (also measured). It was not taken, because std.bytes' own note records
+// `1 / 0` there breaks it (also measured; the seam has since moved to the leaf std.error_primitives, which
+// std.decimal imports without a cycle). It was not taken, because the seam's own note records
 // that seam as ONE seam projected per result type and marks the pair as a deliberate duplication
 // to be dissolved -- adding a third copy to widen an alias family would trade a naming defect for
 // a worse one in a load-bearing file. Writing the type out costs nothing but characters.

@@ -31,7 +31,6 @@ import v2.extdeps.languages.rust {
   rust_fixture_emitted_add_fn,
   rust_fn_add_lex,
 }
-import v2.std.algebra { any }
 import v2.std.collection { empty_map}
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,

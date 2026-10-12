@@ -1,7 +1,7 @@
 module gunbc.generated_workflow_provenance
 
 import std.types { String, List }
-import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact }
 import gunbc.generated_artifact_registry { generated_artifact_registry }
 import std.optional { Present, Absent }
 
@@ -67,10 +67,6 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     FleetConvergeYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet_converge_workflow expected_fleet_converge_yml",
       authority: "gunbc.fleet_converge_workflow fleet_converge_workflow",
-    } }
-    FleetDesiredAdmissionYamlArtifact => Present { value: GeneratedWorkflowProvenance {
-      generator: "gunbc.fleet_desired_admission_workflow expected_fleet_desired_yml",
-      authority: "gunbc.fleet_desired_admission_workflow fleet_desired_admission_workflow",
     } }
     MicrovmShakedownYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.runner_microvm_shakedown_workflow expected_microvm_shakedown_yml",

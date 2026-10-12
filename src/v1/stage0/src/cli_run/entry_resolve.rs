@@ -2862,8 +2862,10 @@ pub(crate) fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
         // This minted `^{stem}` after escaping non-identifier characters and a leading digit,
         // and stopped there. A stem that IS a keyword still lexes as a keyword, so `dag/std/
         // import.dag` emitted `^import` and the manifest failed to parse -- measured, at the
-        // caret: "expected identifier or `(` after `^`, found keyword". Two stems in the tree
-        // reach it today, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`.
+        // caret: "expected identifier or `(` after `^`, found keyword". Two stems reached
+        // it when this arm was written, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`;
+        // both were renamed to non-keyword stems (`import_statement`, `go_mod`). The live residual
+        // population is the two `capability.dag` files, `dag/extdeps/bmc/` and `dag/extdeps/ollama/`.
         //
         // The mint promised a valid symbol and returned an unparseable one with no refusal,
         // which is why nothing caught it: the emitter succeeded, the file was written, and the

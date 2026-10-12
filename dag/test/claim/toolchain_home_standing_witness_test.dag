@@ -22,7 +22,6 @@ import gunbc.toolchain_home_standing {
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step }
 import gunbc.witness_floor_workflow { witness_floor_workflow }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
-import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
 import std.optional { Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -245,6 +244,3 @@ test fn every_fleet_converge_yml_job_carries_a_toolchain_home_standing() -> Bool
   workflow_is_admitted(workflow: fleet_converge_workflow)
 }
 
-test fn every_fleet_desired_yml_job_carries_a_toolchain_home_standing() -> Bool {
-  workflow_is_admitted(workflow: fleet_desired_admission_workflow)
-}

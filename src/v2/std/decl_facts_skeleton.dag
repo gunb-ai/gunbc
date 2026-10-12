@@ -207,7 +207,7 @@ fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
           TypeNode { connective: Conj } => skeleton_atom_lexeme_census_fold_otherwise()
           TypeNode { connective: Disj } => skeleton_atom_lexeme_census_fold_otherwise()
           TypeNode { connective: Arrow } => skeleton_atom_lexeme_census_fold_otherwise()
-          TypeNode { connective: Cardinality } => skeleton_atom_lexeme_census_fold_otherwise()
+          TypeNode { connective: Occupancy } => skeleton_atom_lexeme_census_fold_otherwise()
           TypeNode { connective: Instantiation } => skeleton_atom_lexeme_census_fold_otherwise()
           ComputationNode { behavior: _ } => skeleton_atom_lexeme_census_fold_otherwise()
         }

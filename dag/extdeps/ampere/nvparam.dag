@@ -1,6 +1,5 @@
 module extdeps.ampere.nvparam
 
-import v2.std.algebra { filter }
 import v2.std.collection { empty_map, map_insert, map_lookup }
 import std.types { Int, List, Map, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size }

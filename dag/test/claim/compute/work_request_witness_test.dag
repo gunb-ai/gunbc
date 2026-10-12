@@ -29,20 +29,26 @@ import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.content_hash { serialize_content_hash, content_hash_atom }
 import std.cache_identity { compute_work_artifact_kind }
-import std.judgment_contract { output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs }
+import std.judgment_contract { ArtifactOutputId, output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs, output_compute_work_gunbc_binary, output_compute_work_claim_batch_binary }
 import std.materialization_ladder { DemandNature, IdempotentEffect, FreshEffect, PureComputation, WorldRead }
 import std.materialization_provider {
   ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_required_outputs, request_judgment_contract,
-  ArtifactManifest, ArtifactPart, ComputeWorkArtifact, artifact_manifest, artifact_from_manifest, artifact_request_key,
+  ArtifactManifest, ArtifactPart, ComputeWorkArtifact, CarriedOutput, artifact_manifest, artifact_from_manifest, artifact_request_key,
   ManifestDecoded, ManifestKindUndeclared, ManifestPartUndeclared, ManifestPartRepeated, LegacyIncompleteArtifact,
 }
 import std.measure { byte_size }
 import gunbc.compute.work_provider_local {
-  compute_work_identity, compute_operation_admission, compute_toolchain_decide, ToolchainObserved, ToolchainObservationRefused,
-  ComputeExecOk, ComputeExecFailed,
+  compute_work_identity, compute_execution_identity, compute_toolchain_decide, ToolchainObserved, ToolchainObservationRefused,
+  ComputeExecOk, ComputeExecFailed, compute_materialization_plan, ComputeMaterializationPlanned, ComputeMaterializationRefused,
+  ComputeMemoized, ComputeRecomputed, compute_store_read_decide, ComputeStoreServed, ComputeStoreAbsent, ComputeStoreRefused,
+  ComputeStoreNotConsulted, compute_operation_env, compute_command_argv, NoComputeDependency,
+  compute_dependency_decide, ComputeDependencyResolved, ComputeDependencyRefused,
 }
+import std.materialization_object { StoreLookupMiss, StoreLookupRefused, StoreLookupObjectMalformed }
+import extdeps.realization.materialization_store_local { LocalStorePartsLookup }
+import std.content_hash { content_hash_tagged_structural }
 import gunbc.compute.work_request {
-  WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
+  ClaimDiffWindow, GunbcDriver, ClaimBatchRunner, WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostComputeCapacityFull,
@@ -87,12 +93,12 @@ test fn identical_requests_share_an_identity_and_every_difference_separates_them
   let same = key(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0")
   let other_tree = key(subject: tree(hex: tree_b), op: work_default_build(), rustc: "rustc 1.90.0")
   let other_toolchain = key(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.91.0")
-  let debug = key(subject: tree(hex: tree_a), op: BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] }, rustc: "rustc 1.90.0")
+  let debug = key(subject: tree(hex: tree_a), op: BuildGunbcBinaries { profile: CargoDebug, bins: [GunbcDriver] }, rustc: "rustc 1.90.0")
   let compile_x = key(subject: tree(hex: tree_a), op: CompileEntry { entry: "dag/x.dag" as FilePath }, rustc: "rustc 1.90.0")
   let compile_y = key(subject: tree(hex: tree_a), op: CompileEntry { entry: "dag/y.dag" as FilePath }, rustc: "rustc 1.90.0")
-  let claims_h = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: true }, rustc: "rustc 1.90.0")
-  let claims_w = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: false }, rustc: "rustc 1.90.0")
-  let claims_f = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }, rustc: "rustc 1.90.0")
+  let claims_h = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: true, window: none }, rustc: "rustc 1.90.0")
+  let claims_w = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: false, window: none }, rustc: "rustc 1.90.0")
+  let claims_f = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, rustc: "rustc 1.90.0")
   base == same
     && base != other_tree && base != other_toolchain && base != debug && base != compile_x
     && compile_x != compile_y && claims_h != claims_w && claims_h != claims_f && compile_x != claims_h
@@ -102,14 +108,16 @@ test fn identical_requests_share_an_identity_and_every_difference_separates_them
 // THE KEY IS INJECTIVE OVER THE TYPED OPERATION AND COVERS EVERY EXECUTION AXIS (ruling on
 // gunbc#13072, items 1 and 4). Each pair below is two different computations that a delimiter-joined
 // preimage, or a key missing an axis, collapsed into one -- and one request then received the other's
-// result. Each must key apart on its own.
+// result. Each must key apart on its own. The ruling's ["a,b"] / ["a", "b"] pair is now unwritable: a
+// bin is a GunbcBinary variant, never a name; what remains to show is that distinct closed bin lists
+// key apart under the length-prefixed encoding, including a list and its prefix.
 test fn colliding_display_text_and_every_execution_axis_key_apart() -> Bool {
   let subject = tree(hex: tree_a)
   let t = tc_default(rustc: "rustc 1.90.0")
-  let one_bin = BuildGunbcBinaries { profile: CargoRelease, bins: ["a,b" as NonEmptyStr] }
-  let two_bins = BuildGunbcBinaries { profile: CargoRelease, bins: ["a" as NonEmptyStr, "b" as NonEmptyStr] }
-  let colon_entry = RunClaims { entry: "a:b" as FilePath, functions: "c" as NonEmptyStr, hermetic: true }
-  let colon_functions = RunClaims { entry: "a" as FilePath, functions: "b:c" as NonEmptyStr, hermetic: true }
+  let one_bin = BuildGunbcBinaries { profile: CargoRelease, bins: [ClaimBatchRunner] }
+  let two_bins = BuildGunbcBinaries { profile: CargoRelease, bins: [GunbcDriver, ClaimBatchRunner] }
+  let colon_entry = RunClaims { entry: "a:b" as FilePath, functions: "c" as NonEmptyStr, hermetic: true, window: none }
+  let colon_functions = RunClaims { entry: "a" as FilePath, functions: "b:c" as NonEmptyStr, hermetic: true, window: none }
   let base = key_with(subject: subject, op: work_default_build(), toolchain: t)
   key_with(subject: subject, op: one_bin, toolchain: t) != key_with(subject: subject, op: two_bins, toolchain: t)
     && key_with(subject: subject, op: colon_entry, toolchain: t) != key_with(subject: subject, op: colon_functions, toolchain: t)
@@ -119,12 +127,23 @@ test fn colliding_display_text_and_every_execution_axis_key_apart() -> Bool {
     && base != key_with(subject: subject, op: work_default_build(), toolchain: tc_axes(rustc: "rustc 1.90.0", triple: "aarch64-unknown-linux-gnu", cargo: "cargo 1.90.0", cache: "sccache 0.15.0", provider: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"))
 }
 
-// A WET CLAIM RUN IS REFUSED BEFORE ANYTHING IS OBSERVED OR RUN (ruling item 2). RED against a provider
-// that serves it under the request key, where a repeat would attach to the first run's outcome.
-test fn a_wet_claim_run_is_refused_and_a_hermetic_one_is_admitted() -> Bool {
-  (match compute_operation_admission(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false }) { Present { value: _ } => true  Absent => false })
-    && (match compute_operation_admission(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }) { Present { value: _ } => false  Absent => true })
-    && (match compute_operation_admission(op: work_default_build()) { Present { value: _ } => false  Absent => true })
+fn exec_of(r: ArtifactRequest, occurrence: String) -> String {
+  match compute_materialization_plan(req: r) {
+    ComputeMaterializationPlanned { plan } => compute_execution_identity(identity: "k", plan: plan, occurrence: occurrence)
+    ComputeMaterializationRefused { detail: _ } => ""
+  }
+}
+
+// TWO IDENTICAL WET REQUESTS ARE TWO EXECUTIONS; TWO HERMETIC ONES ARE ONE (ruling item 2). The
+// execution identity a request's lease and work directory are keyed by follows the ladder's plan: a
+// memoized demand has one per key, so the second request attaches; a recomputed one has one per
+// occurrence, so it cannot. RED against a provider that keys a FreshEffect's execution by its demand.
+test fn wet_requests_execute_per_occurrence_and_hermetic_requests_share_one_execution() -> Bool {
+  let subject = tree(hex: tree_a)
+  let wet = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: none }, rustc: "rustc 1.90.0")
+  let hermetic = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, rustc: "rustc 1.90.0")
+  exec_of(r: wet, occurrence: "t1") != exec_of(r: wet, occurrence: "t2") && exec_of(r: wet, occurrence: "t1") != "k" && exec_of(r: wet, occurrence: "t1") != ""
+    && exec_of(r: hermetic, occurrence: "t1") == exec_of(r: hermetic, occurrence: "t2") && exec_of(r: hermetic, occurrence: "t1") == "k"
 }
 
 // THE EXECUTION IDENTITY IS READ, NEVER DEFAULTED. The triple comes from rustc's own `host:` line, and
@@ -158,7 +177,7 @@ fn key(subject: WorkSubject, op: WorkOperation, rustc: String) -> String {
 // provider that keeps (or regrows) a private hash beside request_key: the two would disagree here.
 test fn the_provider_identity_is_the_materialization_request_key() -> Bool {
   let subject = tree(hex: tree_a)
-  let claims = RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }
+  let claims = RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }
   compute_work_identity(subject: subject, op: work_default_build(), toolchain: tc_default(rustc: "rustc 1.90.0"))
       == key(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
     && compute_work_identity(subject: subject, op: claims, toolchain: tc_default(rustc: "rustc 1.90.0"))
@@ -180,11 +199,13 @@ fn demand_is_fresh(d: DemandNature) -> Bool {
 // while its hermetic twin over the same entry and functions is IdempotentEffect.
 test fn the_compute_family_derives_kind_outputs_and_demand_nature() -> Bool {
   let subject = tree(hex: tree_a)
-  let wet = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false }, rustc: "rustc 1.90.0")
-  let hermetic = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }, rustc: "rustc 1.90.0")
+  let wet = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: none }, rustc: "rustc 1.90.0")
+  let hermetic = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, rustc: "rustc 1.90.0")
   let build = req(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
   request_kind(req: build) == compute_work_artifact_kind
-    && request_required_outputs(req: build) == [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs]
+    && request_required_outputs(req: build) == [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs,
+         output_compute_work_gunbc_binary, output_compute_work_claim_batch_binary]
+    && request_required_outputs(req: hermetic) == [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs]
     && demand_is_fresh(d: request_judgment_contract(req: wet).demand_nature)
     && !demand_is_fresh(d: request_judgment_contract(req: hermetic).demand_nature)
     && !demand_is_fresh(d: request_judgment_contract(req: build).demand_nature)
@@ -199,11 +220,11 @@ fn part(text: String) -> ArtifactPart {
 // family's roster drop a part).
 test fn the_compute_artifact_round_trips_its_manifest_and_a_missing_log_is_incomplete() -> Bool {
   let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
-  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x") }
+  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x"), gunbc_binary: none, claim_batch_binary: none }
   let m = artifact_manifest(artifact: artifact)
   let dropped = ArtifactManifest { kind: m.kind, request_key: m.request_key, parts: m.parts |> filter(p => p.id != output_compute_work_log) }
   (match artifact_from_manifest(m: m) {
-    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: rk, outcome: _, log: _, outputs: _ } => rk == k  _ => false }
+    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: rk, outcome: _, log: _, outputs: _, gunbc_binary: _, claim_batch_binary: _ } => rk == k  _ => false }
     _ => false
   })
     && (match artifact_from_manifest(m: dropped) {
@@ -218,19 +239,19 @@ test fn the_compute_artifact_round_trips_its_manifest_and_a_missing_log_is_incom
 // none, so an absent binary is a mismatch and an absent nothing is not.
 test fn declared_outputs_follow_the_operation() -> Bool {
   let build = work_declared_outputs(op: work_default_build())
-  let debug = work_declared_outputs(op: BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] })
+  let debug = work_declared_outputs(op: BuildGunbcBinaries { profile: CargoDebug, bins: [GunbcDriver] })
   map(build, d => d.path) == ["release/gunbc", "release/claim_batch"]
     && all(build, d => match d.root { TargetRoot => true  CheckoutRoot => false })
     && map(debug, d => d.path) == ["debug/gunbc"]
     && count(work_declared_outputs(op: CompileEntry { entry: "dag/x.dag" as FilePath })) == 0
-    && count(work_declared_outputs(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true })) == 0
+    && count(work_declared_outputs(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none })) == 0
 }
 
 // The stored outcome round-trips its ending and identity; a document missing either is unreadable,
 // never "no outcome" (RED against an attach that treats a broken store file as absent).
 test fn the_stored_outcome_round_trips_and_a_broken_one_is_unreadable() -> Bool {
   let subject = tree(hex: tree_a)
-  let ok = work_outcome_wire(o: WorkSucceeded { identity: "abc", outputs: [WorkOutput { declared: "target/release/gunbc", blob: "deadbeef", store_path: "/s/gunbc" }], log_path: "/l" }, subject: subject, op: work_default_build())
+  let ok = work_outcome_wire(o: WorkSucceeded { identity: "abc", outputs: [WorkOutput { declared: "target/release/gunbc", blob: "deadbeef" }], log_path: "/l" }, subject: subject, op: work_default_build())
   let failed = work_outcome_wire(o: WorkFailed { identity: "abc", exit_code: 101, log_path: "/l" }, subject: subject, op: work_default_build())
   let refused = work_outcome_wire(o: WorkRefusedByInfrastructure { identity: "abc", cause: HostComputeCapacityFull { wire: "pool-full (attempt 1)" } }, subject: subject, op: work_default_build())
   (match stored_outcome_decode(text: ok) { StoredOutcomeFound { ending, identity, document: _ } => ending == "succeeded" && identity == "abc"  StoredOutcomeUnreadable { reason: _ } => false })
@@ -558,4 +579,93 @@ test fn a_refused_spawn_is_a_property_not_queried_and_never_a_reading() -> Bool 
     && answered.queried
     && answered.value == "inactive"
     && !nonzero.queried
+}
+
+fn plan_word(req: ArtifactRequest) -> String {
+  match compute_materialization_plan(req: req) {
+    ComputeMaterializationRefused { detail: _ } => "refused"
+    ComputeMaterializationPlanned { plan } => match plan { ComputeMemoized => "memoized"  ComputeRecomputed { verdict: _ } => "recomputed" }
+  }
+}
+
+// THE LADDER, NOT THE PROVIDER, DECIDES WHETHER THE STORE IS CONSULTED, and it decides against the
+// store's own family provider row. A build over the durable root's declared compute budget is a
+// declared recurrence the store discharges; a wet claim run is a FreshEffect the ladder exempts.
+// RED against a provider that memoizes everything (the wet run would read memoized) or that
+// bypasses the ladder (a family with no declared budget would not refuse).
+test fn the_ladder_memoizes_repeatable_compute_and_exempts_a_wet_claim_run() -> Bool {
+  let subject = tree(hex: tree_a)
+  plan_word(req: req(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")) == "memoized"
+    && plan_word(req: req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, rustc: "rustc 1.90.0")) == "memoized"
+    && plan_word(req: req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: none }, rustc: "rustc 1.90.0")) == "recomputed"
+}
+
+// A REFUSED LOOKUP REFUSES AND NEVER RECOMPUTES; ONLY ESTABLISHED ABSENCE IS A MISS. RED against the
+// absorbing fallback: a decision that read a malformed stored object as absent would produce again
+// over a store it cannot read.
+test fn a_refused_store_lookup_is_never_a_miss() -> Bool {
+  let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
+  (match compute_store_read_decide(lookup: StoreLookupMiss { key: k }) { ComputeStoreAbsent => true  _ => false })
+    && (match compute_store_read_decide(lookup: StoreLookupRefused { key: k, refusal: StoreLookupObjectMalformed { cause: "fixture" } }) {
+      ComputeStoreRefused { detail } => string_contains(s: detail, pattern: "fixture")
+      _ => false
+    })
+}
+
+fn windowed(w: ClaimDiffWindow) -> WorkOperation {
+  RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: Present { value: w } }
+}
+
+// THE AFFECTED-SET WINDOW IS A DECLARED INPUT. Two windows over one tree are two runs, and the unit
+// is handed the window's path under the one name its reader consumes. RED against a key that omits
+// the window (two windows would share one answer) or a unit that never receives it.
+test fn the_claim_window_keys_apart_and_binds_the_unit_environment() -> Bool {
+  let subject = tree(hex: tree_a)
+  let w1 = ClaimDiffWindow { identity: content_hash_tagged_structural(tag: "w" as NonEmptyStr, payload: content_hash_atom(value: "one" as NonEmptyStr)), path: "/v/one.json" as FilePath }
+  let w2 = ClaimDiffWindow { identity: content_hash_tagged_structural(tag: "w" as NonEmptyStr, payload: content_hash_atom(value: "two" as NonEmptyStr)), path: "/v/two.json" as FilePath }
+  let w1_moved = ClaimDiffWindow { identity: w1.identity, path: "/elsewhere/one.json" as FilePath }
+  key(subject: subject, op: windowed(w: w1), rustc: "rustc 1.90.0") != key(subject: subject, op: windowed(w: w2), rustc: "rustc 1.90.0")
+    && key(subject: subject, op: windowed(w: w1), rustc: "rustc 1.90.0") == key(subject: subject, op: windowed(w: w1_moved), rustc: "rustc 1.90.0")
+    && (match compute_operation_env(op: windowed(w: w1)) |> first() {
+      Present { value: b } => (b.name as String) == "GUNBC_DIFF_WINDOW_PATH" && (b.value as String) == "/v/one.json"
+      Absent => false
+    })
+    && count(compute_operation_env(op: windowed(w: w1))) == 1
+    && count(compute_operation_env(op: work_default_build())) == 0
+}
+
+// THE RUNNER IS TOLD THE MODE THE KEY SAYS. claim_batch defaults to hermetic, so a wet request that
+// spelled no flag ran hermetic under a wet identity. RED against an argv that omits --wet.
+test fn a_claim_run_names_its_mode_in_both_directions() -> Bool {
+  let layout = compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc")
+  let wet = compute_command_argv(instance: srv1_live_dashboard_instance(), layout: layout, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: none }, dependency: NoComputeDependency)
+  let hermetic = compute_command_argv(instance: srv1_live_dashboard_instance(), layout: layout, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, dependency: NoComputeDependency)
+  any(wet, a => a == "--wet") && !any(wet, a => a == "--hermetic")
+    && any(hermetic, a => a == "--hermetic") && !any(hermetic, a => a == "--wet")
+}
+
+// A BUILD RECORD CARRIES ITS BINARIES AS PARTS, AND THE DECODE ADMITS NOTHING ELSE. RED against a
+// decode that lets an arbitrary extra part ride into a compute record.
+test fn a_compute_record_admits_binary_parts_and_refuses_any_other() -> Bool {
+  let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
+  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x"), gunbc_binary: none, claim_batch_binary: none }
+  let m = artifact_manifest(artifact: artifact)
+  let bin = ArtifactManifest { kind: m.kind, request_key: m.request_key, parts: concat(m.parts, [CarriedOutput { id: output_compute_work_gunbc_binary, digest: content_hash_atom(value: "b" as NonEmptyStr), bytes: byte_size(count: 1) }]) }
+  let stray = ArtifactManifest { kind: m.kind, request_key: m.request_key, parts: concat(m.parts, [CarriedOutput { id: "stray" as ArtifactOutputId, digest: content_hash_atom(value: "s" as NonEmptyStr), bytes: byte_size(count: 1) }]) }
+  (match artifact_from_manifest(m: bin) {
+    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: _, outcome: _, log: _, outputs: _, gunbc_binary: g, claim_batch_binary: c } => (match g { Present { value: _ } => true  Absent => false }) && (match c { Present { value: _ } => false  Absent => true })  _ => false }
+    _ => false
+  })
+    && (match artifact_from_manifest(m: stray) { ManifestPartUndeclared { kind: _, part: p } => (p as String) == "stray"  _ => false })
+}
+
+// A DEPENDENT NEVER REBUILDS AND NEVER RUNS UNVERIFIED BYTES. RED against a dependency read that
+// treats an evicted or refused build record as room to run something else.
+test fn a_dependency_read_refuses_an_absent_or_refused_build() -> Bool {
+  let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
+  (match compute_dependency_decide(read: LocalStorePartsLookup { lookup: StoreLookupMiss { key: k }, parts: [] }) { ComputeDependencyRefused { detail: _ } => true  ComputeDependencyResolved { dependency: _ } => false })
+    && (match compute_dependency_decide(read: LocalStorePartsLookup { lookup: StoreLookupRefused { key: k, refusal: StoreLookupObjectMalformed { cause: "tampered" } }, parts: [] }) {
+      ComputeDependencyRefused { detail } => string_contains(s: detail, pattern: "tampered")
+      ComputeDependencyResolved { dependency: _ } => false
+    })
 }

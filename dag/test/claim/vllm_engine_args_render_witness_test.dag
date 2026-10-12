@@ -6,7 +6,7 @@ import std.measure { basis_point, byte_size }
 import extdeps.vllm.engine_args {
   VllmMemoryRequest, VllmPrefixCachingRequest,
   PrefixCachingOmitted, PrefixCachingExplicit,
-  vllm_memory_request_argv, vllm_prefix_caching_argv, vllm_basis_point_fraction_wire,
+  vllm_memory_request_argv, vllm_prefix_caching_argv, VllmPromptTokensDetailsRequest, PromptTokensDetailsOmitted, PromptTokensDetailsReported, vllm_prompt_tokens_details_argv, vllm_basis_point_fraction_wire,
 }
 
 // ── THE FLAGS A REQUEST RENDERS TO ─────────────────────────────────────────────────────────────
@@ -103,4 +103,9 @@ test fn an_explicit_disable_renders_the_negative_flag_rather_than_silence() -> B
       Present { value: v } => v == "--no-enable-prefix-caching"
       Absent => false
     })
+}
+
+test fn prompt_tokens_details_renders_only_when_reported() -> Bool {
+  length(vllm_prompt_tokens_details_argv(r: PromptTokensDetailsOmitted)) == 0
+    && vllm_prompt_tokens_details_argv(r: PromptTokensDetailsReported) == ["--enable-prompt-tokens-details"]
 }

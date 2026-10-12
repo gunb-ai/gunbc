@@ -4,7 +4,6 @@ import std.types { String, List, Bool, Int }
 import std.integer { UInt8 }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.encoding { utf8_decode_octets }
-import v2.std.algebra { any, filter }
 
 // WHATWG URL, application/x-www-form-urlencoded: split pairs before decoding, plus means space,
 // percent escapes decode exactly once. This admission refuses malformed escapes/UTF-8 and duplicate

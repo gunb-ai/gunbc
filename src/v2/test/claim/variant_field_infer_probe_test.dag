@@ -572,20 +572,12 @@ fn vfp_arrow_reading() -> VfpArrowReading {
   vfp_arrow_reading_over(resolved: vfp_arrow_resolved())
 }
 
-// THE CLAIMS OVER THE ROUND-TRIP FIXTURE. The RESOLVE-side rows (construction carrier, construct
-// read, its carrier) ground on the text route. The INFER typed-fact rows over the two-arm
-// param-scrutinee match DO NOT: the walk refuses at the match node with infer_match_arm_type_mismatch
-// (terminal, under active bisect in #13210) while the resolver's own binder records carry the
-// canonical payload type -- so those rows are DECLARED REDS on that specific located defect, not
-// positives; the positive evidence for the typed payload-binder facts is the ARROW fixture's arm row
-// (accepted-with-advisories walk) and the enrolled native claims on the real route.
-// The construction green cannot hold on the fixture module while the two-arm mismatch stands: infer
-// refuses the fixture MODULE-WIDE (the match's arm types), so every fact field on this reading reads
-// the terminal reason, construction included. The construction-typing invariant is pinned on the
-// route by the ARROW fixture's greens (whose module grounds); this row is a DECLARED RED on the
-// located module refusal until the two-arm fix flips it.
-test fn vfp_the_fixture_construction_fact_reads_the_module_refusal_red() -> Bool {
-  vfp_fixture_reading().rt_construction_fact == ^infer_match_arm_type_mismatch
+// THE CLAIMS OVER THE ROUND-TRIP FIXTURE: the resolve-side rows (construction carrier, construct read, its
+// carrier) and the infer typed-fact rows over the two-arm param-scrutinee match, all ground on the text route.
+// The construction fact grounds as the declaring coproduct: the two-arm module no longer refuses
+// module-wide, so the fixture's every fact field reads on the real route.
+test fn vfp_the_fixture_construction_fact_grounds_as_the_declaring_coproduct_holds() -> Bool {
+  vfp_fixture_reading().rt_construction_fact == ^Verdict
 }
 
 test fn vfp_the_construct_read_names_the_variant_holds() -> Bool {
@@ -596,11 +588,11 @@ test fn vfp_the_construct_read_carrier_is_the_declaring_coproduct_holds() -> Boo
   vfp_fixture_reading().construct_read_carrier == ^Verdict
 }
 
-// DECLARED RED (the two-arm mismatch): the terminal diagnostic is anchored at the match node itself,
-// and the reading's fact fields read that terminal reason on a refused walk. This row goes green
-// exactly when the mismatch is understood and fixed or the fixture's context stops producing it.
-test fn vfp_the_two_arm_match_refuses_with_the_located_mismatch_red() -> Bool {
-  vfp_fixture_reading().rt_match_fact == ^infer_match_arm_type_mismatch
+// THE TWO-ARM MATCH GROUNDS (flipped from the declared mismatch red, N7): the arm binder is a
+// payload binder whose type infer pays at arm entry from the scrutinee's instantiated coproduct,
+// so both arms agree on Int and the match carries it.
+test fn vfp_the_two_arm_match_grounds_as_int_holds() -> Bool {
+  vfp_fixture_reading().rt_match_fact == ^dag_binding_type_int
 }
 
 // THE COVERAGE CONTROL: a one-arm match over a two-variant carrier must refuse, and the refusal must
@@ -609,25 +601,20 @@ test fn vfp_the_partial_match_refuses_as_not_covering_the_carrier_holds() -> Boo
   vfp_reports(reading: vfp_partial_reading(), reason: ^infer_match_non_exhaustive)
 }
 
-// THE CALL-RESULT SCRUTINEE (the N7 shape): h's match scrutinee is the nullary call `g()`. At the
-// assembled route the call's derived result type does not reach the facts (the walk reports
-// infer_match_scrutinee_type_underived, advisory), so the coverage check runs undecidable and the
-// ARM BINDER still types from the payload -- the row below pins the binder; this row pins the
-// KNOWN route gap on the scrutinee's own fact so the gap cannot silently become a pass.
-test fn vfp_the_call_result_scrutinee_fact_stays_underived_on_the_assembled_route_red() -> Bool {
-  vfp_arrow_reading().call_result_fact == ^vfp_underived
+// THE CALL-RESULT SCRUTINEE (the N7 shape): h's match scrutinee is the nullary call `g()`; its fact
+// grounds as g's declared result and the arm binder types from the payload field (the next row).
+test fn vfp_the_call_result_scrutinee_fact_grounds_as_its_declared_result_holds() -> Bool {
+  vfp_arrow_reading().call_result_fact == ^Result2
 }
 
-// DECLARED RED: same refused walk as the two-arm mismatch row -- the projection's fact reads the
-// terminal reason until the mismatch is settled.
-test fn vfp_the_projection_fact_reads_the_located_refusal_red() -> Bool {
-  vfp_fixture_reading().projection_fact == ^infer_match_arm_type_mismatch
+// The projection rode the refused two-arm walk; with the binder grounded its fact is Int.
+test fn vfp_the_projection_fact_grounds_as_int_holds() -> Bool {
+  vfp_fixture_reading().projection_fact == ^dag_binding_type_int
 }
 
-// DECLARED RED: the nullary arm rides the same refused walk. When the mismatch settles, this row
-// flips to `== ^Int` beside the arrow binder row.
-test fn vfp_the_nullary_arm_fact_reads_the_located_refusal_red() -> Bool {
-  vfp_fixture_reading().nullary_arm_fact == ^infer_match_arm_type_mismatch
+// The nullary arm rode the same refused walk; with the binder grounded it reads Int.
+test fn vfp_the_nullary_arm_fact_grounds_as_int_holds() -> Bool {
+  vfp_fixture_reading().nullary_arm_fact == ^dag_binding_type_int
 }
 
 // THE PAYLOAD-BINDER REGRESSION CONTROL (the N7 shape, flipped from the declared red per DESIGN
@@ -638,7 +625,7 @@ test fn vfp_the_nullary_arm_fact_reads_the_located_refusal_red() -> Bool {
 // (the shape that dies on the native route) must read its payload field's type -- the regression
 // guard the param-scrutinee positive control does not cover.
 test fn vfp_the_call_result_arm_binder_types_from_its_payload_field_holds() -> Bool {
-  vfp_arrow_reading().arrow_arm_fact == ^Int
+  vfp_arrow_reading().arrow_arm_fact == ^dag_binding_type_int
 }
 
 // THE ARROW FIXTURE'S RESOLVE-SIDE CONTROL (its second consumer claim): resolve must bind the
@@ -676,16 +663,10 @@ fn vfp_decode_arrow_reading(r: VfpArrowReading) -> CliWireResponse {
 
 fn vfp_decode_arrow() -> CliWireResponse { vfp_decode_arrow_reading(r: vfp_arrow_reading()) }
 
-// THE FORMAL-PAYLOAD GATE (side-chat review 5452786886): a pattern binder whose variant field is
-// typed by the DECLARING TYPE's formal must refuse the PREPARE stage -- a typed, located refusal
-// (^resolve_reason_pattern_payload_formal_uninstantiated, at the payload field), not an advisory
-// frontier the module could prepare under and the native lane could report as prepared. The
-// concrete sibling beside it runs the same two-arm shape with a CONCRETE Int payload and prepares
-// (accepted, with this route's known advisories), isolating the formal as the refusal's cause. Its
-// match sits over the fixture's construction because a match over a variant-typed PARAMETER refuses
-// on this route with the declared two-arm defect regardless of payload (the red the two-arm claim
-// carries), so the parameter shape cannot serve as the preparing sibling. The red flips to grounding
-// when the deep-instantiation follow-up installs the scrutinee's arguments into the arm frame.
+// THE FORMAL-PAYLOAD BINDER (re-derives gunbc#13558): a binder whose variant field is typed by the
+// DECLARING TYPE's formal is recorded by resolve as owed that field type (LexicalOwedFormal) and paid at
+// infer arm entry from the scrutinee's instantiated arguments -- no resolve-time refusal. The concrete
+// sibling runs the same shape with an Int payload, isolating the formal.
 data vfp_formal_gate_src: String = "module p\n\ntype Out<T> = Acc { value: T } | Rej\n\nfn read(x: Out<Int>) -> Int {\n  match x {\n    Acc { value: v } => v\n    Rej => 0\n  }\n}"
 
 data vfp_formal_gate_concrete_src: String = "module p\n\ntype Out = Acc { value: Int } | Rej\n\nfn make() -> Out {\n  Acc { value: 5 }\n}\n\nfn id(n: Int) -> Int {\n  n\n}\n\nfn read() -> Int {\n  match make() {\n    Acc { value: v } => id(5)\n    Rej => 0\n  }\n}"
@@ -711,10 +692,11 @@ fn vfp_formal_gate_pair() -> VfpFormalGatePair {
   }
 }
 
-test fn vfp_the_formal_payload_binder_refuses_at_prepare_red() -> Bool {
-  vfp_formal_gate_pair().formal.match_fact == ^resolve_reason_pattern_payload_formal_uninstantiated
+test fn vfp_the_formal_payload_binder_grounds_from_the_scrutinee_arguments_holds() -> Bool {
+  vfp_formal_gate_pair().formal.arm_body_fact == ^dag_binding_type_int
 }
 
 test fn vfp_the_concrete_payload_sibling_still_prepares_holds() -> Bool {
   vfp_infers(reading: vfp_formal_gate_pair().concrete)
 }
+

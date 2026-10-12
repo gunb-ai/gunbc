@@ -48,7 +48,6 @@ import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady, SecretCredentialFetchRefused }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access, bmc_ipmi_get_user_access }
-import v2.std.algebra { any, filter }
 import gunbc.machine_intake_bmc_rotation_route {
   IpmiSetUserPrivilegeLimit, RotationApplyRouteForAnotherOperation, RotationApplyRouteEffectUnobserved,
   RotationApplyWouldLeaveNoAdministrator, rotation_route_candidate, PublicStandardOperation,

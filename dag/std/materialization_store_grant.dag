@@ -37,7 +37,8 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 // durable-root open on a runner guest finds no initialized store and REFUSES as unavailable
 // (extdeps.realization.materialization_store_local), never falls back to scratch -- there is no
 // shadow store. TRIGGER: the runner attempt launch attaches the persistent host volume at
-// materialization_store_durable_root_path.
+// materialization_store_durable_root_path. Discharged for srv1 by gunbc.live_deploy.spec
+// deployment_ensured_srv1_host_directories, the MaterializationStoreDirectory row.
 //
 // LIFECYCLE GRADE: LifecycleByConvention, honestly. A durable store is not released by frame
 // teardown -- that is its purpose -- so it cannot claim LifecycleByConstruction; its release is the
@@ -70,6 +71,16 @@ fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {
     DurableHostVolumeRoot => materialization_store_durable_root_path
     WitnessScratchRoot { root: r } => r
   }
+}
+
+// THE STAGING SIBLING BELONGS TO THE STORE, so its path derives here, once, for both the producer
+// that stages into it (gunbc.compute.work_provider_local compute_staging_dir) and the deployment
+// that must create it. It was spelled only at the producer, so the deploy created the store and not
+// its sibling, and every build on srv1 refused 'store unavailable' because the service user cannot
+// create a directory under the root-owned /var/lib/gunbc (srv1 lab, 2026-10-11). A sibling and not a
+// child because the store lists its root. It lies outside the grant root above: declared, not modeled.
+fn materialization_store_staging_root_path(root: MaterializationStoreRoot) -> String {
+  join([materialization_store_root_path(root: root), "-staging"], "")
 }
 
 fn materialization_store_durability(root: MaterializationStoreRoot) -> MaterializationStoreDurability {

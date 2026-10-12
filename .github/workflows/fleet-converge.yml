@@ -32,7 +32,7 @@ on:
       credential:
         description: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and a row scoped to one host refuses any other"
         required: false
-        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token]
+        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, cursor_worker_turn_api_key, codex_worker_turn_auth, oracle_oci_api_signing_key, claude_code_oauth_harness_token, tracker_web_test_oauth_client_secret]
         type: choice
       app_key_version:
         description: "app_key_version_verify only: the Secret Manager version NUMBER of ci-github-app-private-key to verify. The alias latest is refused -- it names whatever is newest when it resolves, so a mint through it proves nothing about a specific key"
@@ -815,14 +815,14 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'launch_environment_plan'
-        timeout-minutes: 5
+        timeout-minutes: 15
       - name: Fleet allocation-store substrate plan
         id: allocation_store_plan
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_allocation_store_plan_wet
         if: github.event.inputs.mode == 'allocation_store_plan'
-        timeout-minutes: 5
+        timeout-minutes: 15
       - name: Fleet workspace slot commissioning plan
         id: workspace_commissioning_plan
         run: |-
@@ -1582,7 +1582,7 @@ jobs:
           compression-level: 0
         if: always() && github.event.inputs.mode == 'workspace_transcript_rate_observe'
         timeout-minutes: 10
-      - name: Materialize approval MAC keys on srv1 (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)
+      - name: Materialize approval MAC keys on the approval broker host (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)
         id: approval_keyring_converge
         run: |-
           # 🟡 dissolve-on: gunbc_ci_approval_keyring_converge_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, two PINNED secret versions (capability and submission MAC keys) fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. The pipeline steps are modeled (gunbc_ci_approval_keyring_converge_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN the runner is authored as v2.extdeps.languages.bash_build nodes (typed, grammar-quoted words; command substitution; assignment; pipe; if/test; redirect; || true) emitted by v2.workflow.bash_emit bash_emit_stmts -- a route AVAILABLE today (#12422 retired the sibling pack runner on it), so this migration is unauthored, not blocked on a missing capability; set -euo pipefail, umask, export and trap are ordinary commands on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word, so no new orchestration intent is a prerequisite
@@ -1611,7 +1611,7 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'approval_keyring_converge'
         timeout-minutes: 5
-      - name: Issue a device enrolment code on srv1 and deliver it to the operator channel (receipt only in this log)
+      - name: Issue a device enrolment code on the approval broker host and deliver it to the operator channel (receipt only in this log)
         id: approval_device_enrolment_code_issue
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -2580,11 +2580,11 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.inputs.apply_workflow_run_id }}
         timeout-minutes: 10
-      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_transaction_wet, receipted)
+      - name: Deploy dashboard to srv1 (live_deploy_apply_prod_role_transaction_wet, receipted)
         id: dashboard_deploy
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_transaction_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_prod_role_transaction_wet
           cat "$ROOT/target/live-deploy-srv1-live-receipt/live_deploy_receipt.json"
         env:
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
@@ -2697,11 +2697,11 @@ jobs:
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
-      - name: Install the approval broker dark on srv1 (additive unit + slice; does not restart gunbc-roadmap.service)
+      - name: Install the approval broker dark on the approval broker host (additive unit + slice; does not restart gunbc-roadmap.service)
         id: approval_broker_dark_install
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_srv1_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_wet
         timeout-minutes: 30
   microvm-controller-install:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
@@ -2810,7 +2810,7 @@ jobs:
         id: microvm_controller_install
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function microvm_controller_install_srv1_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function microvm_controller_install_wet
         timeout-minutes: 30
   rlm-launch-deployment-receipt:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}

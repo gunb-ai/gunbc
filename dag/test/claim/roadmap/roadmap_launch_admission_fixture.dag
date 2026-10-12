@@ -6,7 +6,7 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_execution_contract { WorkItemExecutionContract, gunbc_claim_execution_contract }
 import gunbc.roadmap_dashboard_instance { DashboardActuationPosture, DashboardActuating, DashboardObserveOnly }
 import gunbc.deploy_transition { ActuationAdmitted, ActuationRefused }
-import gunbc.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
+import gunbc.origin_main_revision_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_from_untagged_hex }
 import std.content_hash { Sha1Digest, Sha1DigestHex }
 import gunbc.worker_lifecycle { WorkerProcessEvidence }

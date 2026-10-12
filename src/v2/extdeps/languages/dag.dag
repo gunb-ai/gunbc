@@ -3,7 +3,7 @@ import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
-import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
+import v2.std.algebra_structure_signature { boolean_algebra_node, free_monoid_structure_node, ordered_ring_node }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
@@ -94,9 +94,14 @@ import v2.std.compilers.lexing {
   LexRuleSet,
   LexRules,
   LineCommentTextChar,
+  LexMode,
   LiteralPattern,
   ModeledLexRules,
+  ModeTransitionTokenRule,
+  NotFollowedByPattern,
   OneOrMorePattern,
+  PopLexMode,
+  PushLexMode,
   RepeatPattern,
   SequencePattern,
   StringTextChar,
@@ -130,6 +135,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  Instantiation,
   is_empty_conj_root,
   node_lowered_from,
   symbol_intern_lexeme,
@@ -198,8 +204,8 @@ import v2.std.compilers.target_model {
   TargetRecordConstructShape
 }
 import v2.std.logic { bool_node }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_init, list_map, skip }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
+import v2.std.algebra { fold_list, for_all, is_empty, length, list_init, list_map, skip }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -567,10 +573,28 @@ fn dag_string_escape_char_pattern() -> LexPattern {
   )
 }
 
-fn dag_string_escape_sequence_pattern() -> LexPattern {
+// v1.compiler.tokenize scan_string_body consumes `\u{` as the escape prefix (backslash, u, brace)
+// before the interpolation check, so a Unicode-escape brace is never a hole opener. Digit
+// accumulation stays with decode (dag_string_decode_step). Without this prefix, `\u{E9}` lexes
+// `\` and `u` as StringTextChar and `{E` as dag_string_hole_opener_pattern (E is IdentStartChar) —
+// a documented escape read as a template hole (review 78485).
+fn dag_string_unicode_escape_prefix_pattern() -> LexPattern {
   SequencePattern {
     left: CharPattern { char: 92 },
-    right: dag_string_escape_char_pattern()
+    right: SequencePattern {
+      left: CharPattern { char: 117 },
+      right: CharPattern { char: 123 }
+    }
+  }
+}
+
+fn dag_string_escape_sequence_pattern() -> LexPattern {
+  ChoicePattern {
+    left: dag_string_unicode_escape_prefix_pattern(),
+    right: SequencePattern {
+      left: CharPattern { char: 92 },
+      right: dag_string_escape_char_pattern()
+    }
   }
 }
 
@@ -578,12 +602,32 @@ fn dag_string_escape_sequence_pattern() -> LexPattern {
 // only quote, backslash, and interpolation-start end the body walk. This arm
 // is that admission on the grammar row — StringTextChar still excludes LF so
 // other language models that reuse the class do not grow a second meaning.
+fn dag_string_hole_start_pattern() -> LexPattern {
+  ChoicePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: ChoicePattern {
+      left: CharPattern { char: 40 },
+      right: ChoicePattern { left: CharPattern { char: 33 }, right: CharPattern { char: 45 } }
+    }
+  }
+}
+
+fn dag_string_hole_opener_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharPattern { char: 123 },
+    right: NotFollowedByPattern { element: NotFollowedByPattern { element: dag_string_hole_start_pattern() } }
+  }
+}
+
 fn dag_string_body_element_pattern() -> LexPattern {
   ChoicePattern {
     left: dag_string_escape_sequence_pattern(),
-    right: ChoicePattern {
-      left: CharPattern { char: 10 },
-      right: CharClassPattern { class: StringTextChar }
+    right: SequencePattern {
+      left: NotFollowedByPattern { element: dag_string_hole_opener_pattern() },
+      right: ChoicePattern {
+        left: CharPattern { char: 10 },
+        right: CharClassPattern { class: StringTextChar }
+      }
     }
   }
 }
@@ -597,6 +641,76 @@ fn dag_string_literal_lex_rule() -> LexRule {
       close: CharPattern { char: 34 }
     }
   }
+}
+
+fn dag_string_template_head_lex_rule() -> LexRule {
+  ModeTransitionTokenRule {
+    token_class: ^dag_token_string_template_head,
+    pattern: SequencePattern {
+      left: CharPattern { char: 34 },
+      right: SequencePattern {
+        left: RepeatPattern { element: dag_string_body_element_pattern() },
+        right: dag_string_hole_opener_pattern()
+      }
+    },
+    transition: PushLexMode { mode: ^dag_lex_mode_template_hole }
+  }
+}
+
+fn dag_string_template_middle_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: ^dag_token_string_template_middle,
+    pattern: SequencePattern {
+      left: CharPattern { char: 125 },
+      right: SequencePattern {
+        left: RepeatPattern { element: dag_string_body_element_pattern() },
+        right: dag_string_hole_opener_pattern()
+      }
+    }
+  }
+}
+
+fn dag_string_template_tail_lex_rule() -> LexRule {
+  ModeTransitionTokenRule {
+    token_class: ^dag_token_string_template_tail,
+    pattern: SequencePattern {
+      left: CharPattern { char: 125 },
+      right: SequencePattern {
+        left: RepeatPattern { element: dag_string_body_element_pattern() },
+        right: CharPattern { char: 34 }
+      }
+    },
+    transition: PopLexMode
+  }
+}
+
+fn dag_template_lbrace_push_lex_rule() -> LexRule {
+  ModeTransitionTokenRule {
+    token_class: ^dag_token_lbrace,
+    pattern: LiteralPattern { text: unicode_scalar_unfold(s: "{") },
+    transition: PushLexMode { mode: ^dag_lex_mode_template_brace }
+  }
+}
+
+fn dag_template_hole_mode_lex_rules() -> List<LexRule> {
+  list_append(left: dag_lex_rules_except_braces(), right: [
+    dag_template_lbrace_push_lex_rule(),
+    dag_string_template_middle_lex_rule(),
+    dag_string_template_tail_lex_rule(),
+    dag_string_template_head_lex_rule()
+  ])
+}
+
+fn dag_template_brace_mode_lex_rules() -> List<LexRule> {
+  list_append(left: dag_lex_rules_except_braces(), right: [
+    dag_template_lbrace_push_lex_rule(),
+    ModeTransitionTokenRule {
+      token_class: ^dag_token_rbrace,
+      pattern: LiteralPattern { text: unicode_scalar_unfold(s: "}") },
+      transition: PopLexMode
+    },
+    dag_string_template_head_lex_rule()
+  ])
 }
 
 fn dag_whitespace_trivia_rule() -> LexRule {
@@ -615,10 +729,8 @@ fn dag_line_comment_annotation_rule() -> LexRule {
   }
 }
 
-fn dag_lex_rules() -> LexRuleSet {
-
-  LexRuleSet {
-    rules: [
+fn dag_lex_rules_except_braces() -> List<LexRule> {
+  [
       dag_whitespace_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_line_comment_annotation_rule(),
@@ -666,8 +778,6 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_comma, text: ","),
       dag_literal_lex_rule(token_class: ^dag_token_dot, text: "."),
       dag_literal_lex_rule(token_class: ^dag_token_pipe, text: "|"),
-      dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: "{"),
-      dag_literal_lex_rule(token_class: ^dag_token_rbrace, text: "}"),
       dag_literal_lex_rule(token_class: ^dag_token_lparen, text: "("),
       dag_literal_lex_rule(token_class: ^dag_token_rparen, text: ")"),
       dag_literal_lex_rule(token_class: ^dag_token_lbracket, text: "["),
@@ -676,8 +786,20 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_gt, text: ">"),
       dag_literal_lex_rule(token_class: ^dag_token_question, text: "?"),
       dag_literal_lex_rule(token_class: ^dag_token_match_scrutinee_nop, text: "")
-    ],
-    modes: []
+  ]
+}
+
+fn dag_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(left: dag_lex_rules_except_braces(), right: [
+      dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: "{"),
+      dag_literal_lex_rule(token_class: ^dag_token_rbrace, text: "}"),
+      dag_string_template_head_lex_rule()
+    ]),
+    modes: [
+      LexMode { mode: ^dag_lex_mode_template_hole, rules: dag_template_hole_mode_lex_rules() },
+      LexMode { mode: ^dag_lex_mode_template_brace, rules: dag_template_brace_mode_lex_rules() }
+    ]
   }
 }
 
@@ -835,6 +957,25 @@ fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
         )
       ),
       right: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma))
+    )
+  )
+}
+
+// A COMMA-REQUIRED LIST: `item (',' item)*`, no trailing comma. dag_grammar_comma_list_expr makes every
+// comma optional, which is right where the list is bracketed by a closer but wrong where it ends at
+// an unbracketed entry boundary: `requires Network` then `transport shell { .. }` read `transport`
+// and `shell` as two more members, and the record `{ argv: .. }` as a third that failed. v1's
+// parse_op_requires_members requires the comma and a member after it, so this is that shape. A member
+// can only continue the list across a comma, so the next entry keyword (transport, exit, input, ...)
+// is never a member, and the grammar stays unambiguous with no lookahead predicate.
+fn dag_grammar_required_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
+  dag_grammar_sequence(
+    left: item,
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_comma),
+        right: item
+      )
     )
   )
 }
@@ -1798,6 +1939,22 @@ fn dag_contextual_value_name_keywords() -> List<Symbol> {
   [^dag_token_kw_module, ^dag_token_kw_data]
 }
 
+fn dag_grammar_string_template_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_string_template_head),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_expr),
+      right: dag_grammar_sequence(
+        left: dag_grammar_repeat(element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_string_template_middle),
+          right: dag_grammar_nonterminal(production: ^dag_production_expr)
+        )),
+        right: dag_grammar_terminal(token_class: ^dag_token_string_template_tail)
+      )
+    )
+  )
+}
+
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
@@ -1811,6 +1968,8 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
         right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
           right: dag_grammar_choice(
+            left: dag_grammar_nonterminal(production: ^dag_production_string_template),
+            right: dag_grammar_choice(
             left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
             right: dag_grammar_choice(
               left: dag_grammar_terminal(token_class: ^dag_token_kw_false),
@@ -1851,8 +2010,9 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
             )
           )
         )
-        )
+      )
     )
+  )
   )
 }
 
@@ -2703,7 +2863,7 @@ fn dag_grammar_op_requires_expr() -> GrammarExpr {
               right: dag_grammar_keyword_expr(lexeme: "opaque")
             )
           ),
-          right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+          right: dag_grammar_required_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
         )
       )
     )
@@ -3712,6 +3872,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_if_expr_expr(),
     emitted: ^dag_surface_if_expr
   )
+  let string_template = dag_grammar_production(
+    name: ^dag_production_string_template,
+    expression: dag_grammar_string_template_expr(),
+    emitted: ^dag_string_template
+  )
   let loop_expr = dag_grammar_production(
     name: ^dag_production_loop_expr,
     expression: dag_grammar_loop_expr_expr(),
@@ -3796,6 +3961,7 @@ fn dag_grammar_root() -> GrammarRoot {
       stmt,
       let_expr,
       expr,
+      string_template,
       loop_expr,
       binary_expr,
       unary_expr,
@@ -3841,10 +4007,7 @@ fn dag_grammar_production_emits(production: GrammarProduction, n: Node) -> Bool 
 // occupies, so it shares that declared type.
 fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
   if (n == namespace_graft_module_body_marker_node())
-    || any(
-      xs: dag_grammar_root().productions,
-      predicate: fn(production) { dag_grammar_production_emits(production: production, n: n) }
-    ) {
+    || (dag_grammar_root().productions |> any(fn(production) { dag_grammar_production_emits(production: production, n: n) })) {
     optional_present(value: dag_grammar_surface_production_type_node())
   } else {
     optional_absent()
@@ -4577,8 +4740,41 @@ fn dag_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   }
 }
 
+fn dag_free_monoid_row_element() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^dag_free_monoid_row_element } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn dag_free_monoid_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.FreeMonoid"), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: dag_free_monoid_row_element() }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_structure_node(inhabitant: inhabitant, generator: dag_free_monoid_row_element()),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.list_append"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_host_text_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = host_text_type_node()
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_structure_node(inhabitant: inhabitant, generator: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.types.Char"), occurrence_id: OccurrenceSynthetic)),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.node.host_text_concatenation"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_algebra_inhabitance_row_type_params() -> List<Symbol> {
+  [^dag_free_monoid_row_element]
+}
+
 fn dag_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance()]
+  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance(), dag_free_monoid_free_monoid_inhabitance(), dag_host_text_free_monoid_inhabitance()]
 }
 
 fn dag_kernel_value_type_binding(row: KernelValueType) -> Optional<Symbol> {
@@ -4680,7 +4876,7 @@ fn dag_kernel_string_type_spelling(sym: Symbol) -> Bool {
 fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional<Symbol> {
   dag_kernel_value_type_row_binding(
     found: dag_kernel_value_type_first(select: fn(row, _binding) {
-      any(xs: row.declarations, predicate: fn(declared) { declared == path })
+      row.declarations |> any(fn(declared) { declared == path })
     })
   )
 }
@@ -5069,19 +5265,20 @@ fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
   }
 }
 
-// The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the quote
-// and there are at least two of them.
-fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
+// The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the open
+// and close and there are at least two of them (quotes for a literal; quote/`{` and `}`/quote for
+// a template part).
+fn dag_string_framed_body_optional(lexeme: String, open: Int, close: Int) -> Optional<List<Int>> {
   let cs = unicode_scalar_unfold(s: lexeme)
   let n = length(xs: cs)
   if n < 2 {
     optional_absent()
   } else {
     match list_at_optional(xs: cs, index: 0) {
-      Present { value: open } =>
+      Present { value: first } =>
         match list_at_optional(xs: cs, index: n - 1) {
-          Present { value: close } =>
-            if (open == 34) && (close == 34) {
+          Present { value: last } =>
+            if (first == open) && (last == close) {
               optional_present(value: list_init(xs: skip(xs: cs, n: 1)))
             } else {
               optional_absent()
@@ -5093,13 +5290,17 @@ fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
   }
 }
 
-fn dag_string_literal_refusal(reason: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
+fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
+  dag_string_framed_body_optional(lexeme: lexeme, open: 34, close: 34)
+}
+
+fn dag_string_text_refusal(token_class: Symbol, reason: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
   outcome_rejected(
     d: Diagnostic {
       reason: reason,
       at: node_locus(
         node: Node {
-          kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
+          kind: TypeNode { connective: Atom { identity: token_class } },
           children: [],
           occurrence_id: occurrence_id
         }
@@ -5107,6 +5308,10 @@ fn dag_string_literal_refusal(reason: Symbol, occurrence_id: NodeOccurrenceIdent
       correction: Unavailable { reason: CorrectionNotModeled }
     }
   )
+}
+
+fn dag_string_literal_refusal(reason: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
+  dag_string_text_refusal(token_class: ^dag_token_string_literal, reason: reason, occurrence_id: occurrence_id)
 }
 
 // An escape left open at the closing quote, or one the decode could not complete, is malformed.
@@ -5121,16 +5326,21 @@ fn dag_string_literal_escape_refusal(occurrence_id: NodeOccurrenceIdentity) -> O
 // answered as the value. Every reader of string-literal text decodes here, so the escape
 // vocabulary has one reader.
 fn dag_string_literal_decoded_text(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
-  match dag_string_literal_body_optional(lexeme: lexeme) {
-    Absent => dag_string_literal_refusal(reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
+  dag_string_text_decoded(token_class: ^dag_token_string_literal, body: dag_string_literal_body_optional(lexeme: lexeme), occurrence_id: occurrence_id)
+}
+
+fn dag_string_text_decoded(token_class: Symbol, body: Optional<List<Int>>, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
+  let escape_refusal = dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
+  match body {
+    Absent => dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
     Present { value: body } =>
       match fold(body, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
         DagStringDecodeText { text: value } => outcome_accepted(value: value)
-        DagStringDecodeEscape { text: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
-        DagStringDecodeHex { text: _, digits: _, value: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
-        DagStringDecodeUnicodeOpen { text: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
-        DagStringDecodeUnicode { text: _, digits: _, value: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
-        DagStringDecodeMalformed { spelled: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
+        DagStringDecodeEscape { text: _ } => escape_refusal
+        DagStringDecodeHex { text: _, digits: _, value: _ } => escape_refusal
+        DagStringDecodeUnicodeOpen { text: _ } => escape_refusal
+        DagStringDecodeUnicode { text: _, digits: _, value: _ } => escape_refusal
+        DagStringDecodeMalformed { spelled: _ } => escape_refusal
       }
   }
 }
@@ -5188,19 +5398,56 @@ fn dag_string_literal_encoded(value: String) -> String {
   )
 }
 
-// The string-literal node for a lexeme: its decoded text as the value payload, or the decode's
-// located refusal.
-fn dag_string_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
-  match dag_string_literal_decoded_text(lexeme: lexeme, occurrence_id: occurrence_id) {
+type DagStringTextFrame {
+  open: Int
+  close: Int
+}
+
+fn dag_string_text_frame_optional(token_class: Symbol) -> Optional<DagStringTextFrame> {
+  if token_class == ^dag_token_string_literal {
+    optional_present(value: DagStringTextFrame { open: 34, close: 34 })
+  } else if token_class == ^dag_token_string_template_head {
+    optional_present(value: DagStringTextFrame { open: 34, close: 123 })
+  } else if token_class == ^dag_token_string_template_middle {
+    optional_present(value: DagStringTextFrame { open: 125, close: 123 })
+  } else if token_class == ^dag_token_string_template_tail {
+    optional_present(value: DagStringTextFrame { open: 125, close: 34 })
+  } else {
+    optional_absent()
+  }
+}
+
+fn dag_string_template_part_class(token_class: Symbol) -> Bool {
+  (token_class == ^dag_token_string_template_head)
+    || (token_class == ^dag_token_string_template_middle)
+    || (token_class == ^dag_token_string_template_tail)
+}
+
+fn dag_string_text_encoded(frame: DagStringTextFrame, value: String) -> String {
+  concat(
+    from_code_point(cp: frame.open),
+    concat(
+      fold(unicode_scalar_unfold(s: value), init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
+      from_code_point(cp: frame.close)
+    )
+  )
+}
+
+fn dag_string_template_part_node_from_lexeme(token_class: Symbol, lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
+  let body = match dag_string_text_frame_optional(token_class: token_class) {
+    Present { value: frame } => dag_string_framed_body_optional(lexeme: lexeme, open: frame.open, close: frame.close)
+    Absent => optional_absent()
+  }
+  match dag_string_text_decoded(token_class: token_class, body: body, occurrence_id: occurrence_id) {
     Accepted { value: value, diagnostics: _ } =>
-      outcome_accepted(value: dag_string_literal_node(value: value, occurrence_id: occurrence_id))
+      outcome_accepted(value: dag_string_text_node(token_class: token_class, value: value, occurrence_id: occurrence_id))
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
-fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
+fn dag_string_text_node(token_class: Symbol, value: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
+    kind: TypeNode { connective: Atom { identity: token_class } },
     children: [
       Edge {
         label: Authored { name: ^string_literal_value_field },
@@ -5213,6 +5460,20 @@ fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity)
     ],
     occurrence_id: occurrence_id
   }
+}
+
+// The string-literal node for a lexeme: its decoded text as the value payload, or the decode's
+// located refusal.
+fn dag_string_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
+  match dag_string_literal_decoded_text(lexeme: lexeme, occurrence_id: occurrence_id) {
+    Accepted { value: value, diagnostics: _ } =>
+      outcome_accepted(value: dag_string_literal_node(value: value, occurrence_id: occurrence_id))
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  dag_string_text_node(token_class: ^dag_token_string_literal, value: value, occurrence_id: occurrence_id)
 }
 
 // The decoded value a string-literal node carries: its payload atom's interned identity. Absent for
@@ -5245,6 +5506,164 @@ fn dag_string_literal_value_symbol_optional(node: Node) -> Optional<Symbol> {
   match dag_string_literal_value_payload_optional(node: node) {
     Present { value: payload } => node_atom_identity_optional(node: payload)
     Absent => optional_absent()
+  }
+}
+
+fn dag_string_template_part_value_optional(node: Node) -> Optional<String> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } =>
+      if dag_string_template_part_class(token_class: id) && (length(xs: node.children) == 1) {
+        match list_at_optional(xs: node.children, index: 0) {
+          Present { value: edge } =>
+            match dag_string_literal_value_edge_target_optional(edge: edge) {
+              Present { value: payload } =>
+                match node_atom_identity_optional(node: payload) {
+                  Present { value: v } => optional_present(value: symbol_lexeme(sym: v))
+                  Absent => optional_absent()
+                }
+              Absent => optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+// THE GRAMMAR SHAPE, AS A TYPE: a template is a text, then one or more (hole, text) pairs
+// (dag_grammar_string_template_expr: head, expr, repeat(middle, expr), tail). Adjacent texts, a
+// leading hole, a trailing hole, or a hole-free template have no constructor. segments is
+// std.algebra FreeSemigroup (DESIGN section 2: the nonempty carrier already exists; an empty
+// inhabitant has no representation), not a List with an Empty refusal (DESIGN section 5).
+type StringTemplateText {
+  value: String
+  at: Node
+}
+
+type StringTemplateSegment {
+  hole: Node
+  text: StringTemplateText
+}
+
+type StringTemplate {
+  head: StringTemplateText
+  segments: FreeSemigroup<StringTemplateSegment>
+}
+
+fn string_template_optional(node: Node) -> Optional<StringTemplate> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if emitted == ^dag_string_template {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } =>
+            dag_string_template_from_frontier(
+              nodes: dag_string_template_frontier(acc: Empty, n: captured)
+            )
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn dag_string_template_text_from_node(node: Node) -> Optional<StringTemplateText> {
+  match dag_string_template_part_value_optional(node: node) {
+    Present { value: text } => optional_present(value: StringTemplateText { value: text, at: node })
+    Absent => optional_absent()
+  }
+}
+
+fn dag_string_template_hole_node_optional(node: Node) -> Optional<Node> {
+  if parse_production_emitted_identity_optional(node: node) == optional_present(value: ^dag_surface_expr) {
+    optional_present(value: node)
+  } else {
+    optional_absent()
+  }
+}
+
+fn dag_string_template_rest_segments_optional(nodes: List<Node>) -> Optional<List<StringTemplateSegment>> {
+  match nodes {
+    Empty => optional_present(value: Empty)
+    Cons { head: hole_node, tail: after } =>
+      match dag_string_template_hole_node_optional(node: hole_node) {
+        Absent => optional_absent()
+        Present { value: hole } =>
+          match after {
+            Empty => optional_absent()
+            Cons { head: text_node, tail: more } =>
+              match dag_string_template_text_from_node(node: text_node) {
+                Absent => optional_absent()
+                Present { value: text } =>
+                  match dag_string_template_rest_segments_optional(nodes: more) {
+                    Absent => optional_absent()
+                    Present { value: rest } =>
+                      optional_present(value: Cons {
+                        head: StringTemplateSegment { hole: hole, text: text },
+                        tail: rest
+                      })
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn dag_string_template_segments_optional(nodes: List<Node>) -> Optional<FreeSemigroup<StringTemplateSegment>> {
+  match nodes {
+    Empty => optional_absent()
+    Cons { head: hole_node, tail: after } =>
+      match dag_string_template_hole_node_optional(node: hole_node) {
+        Absent => optional_absent()
+        Present { value: hole } =>
+          match after {
+            Empty => optional_absent()
+            Cons { head: text_node, tail: more } =>
+              match dag_string_template_text_from_node(node: text_node) {
+                Absent => optional_absent()
+                Present { value: text } =>
+                  match dag_string_template_rest_segments_optional(nodes: more) {
+                    Absent => optional_absent()
+                    Present { value: rest } =>
+                      optional_present(value: FreeSemigroup {
+                        head: StringTemplateSegment { hole: hole, text: text },
+                        tail: rest
+                      })
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn dag_string_template_from_frontier(nodes: List<Node>) -> Optional<StringTemplate> {
+  match nodes {
+    Empty => optional_absent()
+    Cons { head: n0, tail: rest } =>
+      match dag_string_template_text_from_node(node: n0) {
+        Absent => optional_absent()
+        Present { value: head } =>
+          match dag_string_template_segments_optional(nodes: rest) {
+            Absent => optional_absent()
+            Present { value: segments } =>
+              optional_present(value: StringTemplate { head: head, segments: segments })
+          }
+      }
+  }
+}
+
+fn dag_string_template_frontier(acc: List<Node>, n: Node) -> List<Node> {
+  match dag_string_template_part_value_optional(node: n) {
+    Present { value: _ } => list_snoc_item(xs: acc, item: n)
+    Absent =>
+      if parse_production_emitted_identity_optional(node: n) == optional_present(value: ^dag_surface_expr) {
+        list_snoc_item(xs: acc, item: n)
+      } else {
+        fold(n.children, init: acc, f: fn(a, e) { dag_string_template_frontier(acc: a, n: e.target) })
+      }
   }
 }
 
@@ -7869,6 +8288,15 @@ fn dag_emit_class_terminal_spelling(lex: LexRules, token_class: Symbol, captured
       Present { value: value } => outcome_accepted(value: dag_string_literal_encoded(value: value))
       Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
     }
+  } else if dag_string_template_part_class(token_class: token_class) {
+    match dag_string_template_part_value_optional(node: captured) {
+      Present { value: value } =>
+        match dag_string_text_frame_optional(token_class: token_class) {
+          Present { value: frame } => outcome_accepted(value: dag_string_text_encoded(frame: frame, value: value))
+          Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
+        }
+      Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
+    }
   } else if token_class == ^dag_token_float_literal {
     match dag_float_literal_lexeme_optional(node: captured) {
       Present { value: lexeme } => outcome_accepted(value: lexeme)
@@ -7894,28 +8322,70 @@ fn dag_emit_token_spelling(lex: LexRules, terminal: GrammarEmitTerminal) -> Outc
 type DagEmitText {
   text: String
   break_pending: Bool
+  last_class: Optional<Symbol>
+}
+
+fn dag_emit_terminal_class_optional(t: GrammarEmitTerminal) -> Optional<Symbol> {
+  match t {
+    GrammarEmitClassTerminal { token_class: c, captured: _ } => optional_present(value: c)
+    GrammarEmitLexemeTerminal { token_class: c, lexeme: _ } => optional_present(value: c)
+    GrammarEmitLineBreak => optional_absent()
+  }
+}
+
+fn dag_emit_template_part_is_opener(token_class: Symbol) -> Bool {
+  (token_class == ^dag_token_string_template_head) || (token_class == ^dag_token_string_template_middle)
+}
+
+fn dag_emit_template_part_is_closer(token_class: Symbol) -> Bool {
+  (token_class == ^dag_token_string_template_middle) || (token_class == ^dag_token_string_template_tail)
+}
+
+fn dag_emit_skip_space_around_template(prev: Optional<Symbol>, next: Optional<Symbol>) -> Bool {
+  match prev {
+    Absent => false
+    Present { value: p } =>
+      match next {
+        Absent => false
+        Present { value: n } => dag_emit_template_part_is_opener(token_class: p) || dag_emit_template_part_is_closer(token_class: n)
+      }
+  }
+}
+
+fn dag_emit_separator(acc: DagEmitText, next: Optional<Symbol>) -> String {
+  if acc.text == "" {
+    ""
+  } else if acc.break_pending {
+    "\n"
+  } else if dag_emit_skip_space_around_template(prev: acc.last_class, next: next) {
+    ""
+  } else {
+    " "
+  }
 }
 
 // Whitespace is trivia in dag_lex_rules, so one space between tokens cannot change the tree that is
-// read back. A line break is written only where the grammar requires one (GrammarEmitLineBreak).
-// Layout is otherwise a projection over this text, not a fact of the emit.
+// read back except at a template hole: a space after `{` or before `}` turns a hole into literal
+// text. A line break is written only where the grammar requires one (GrammarEmitLineBreak).
 fn dag_emit_text_step(lex: LexRules, acc: DagEmitText, t: GrammarEmitTerminal) -> Outcome<DagEmitText> {
   match t {
-    GrammarEmitLineBreak => outcome_accepted(value: DagEmitText { text: acc.text, break_pending: true })
+    GrammarEmitLineBreak => outcome_accepted(value: DagEmitText { text: acc.text, break_pending: true, last_class: optional_absent() })
     GrammarEmitClassTerminal { token_class: _, captured: _ } =>
       bind_outcome(
         o: dag_emit_token_spelling(lex: lex, terminal: t),
         f: fn(spelled) {
-          let separator = if acc.text == "" { "" } else if acc.break_pending { "\n" } else { " " }
-          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false })
+          let next = dag_emit_terminal_class_optional(t: t)
+          let separator = dag_emit_separator(acc: acc, next: next)
+          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false, last_class: next })
         }
       )
     GrammarEmitLexemeTerminal { token_class: _, lexeme: _ } =>
       bind_outcome(
         o: dag_emit_token_spelling(lex: lex, terminal: t),
         f: fn(spelled) {
-          let separator = if acc.text == "" { "" } else if acc.break_pending { "\n" } else { " " }
-          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false })
+          let next = dag_emit_terminal_class_optional(t: t)
+          let separator = dag_emit_separator(acc: acc, next: next)
+          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false, last_class: next })
         }
       )
   }
@@ -7926,7 +8396,7 @@ fn dag_emit_terminals_text(lex: LexRules, terminals: List<GrammarEmitTerminal>) 
   bind_outcome(
     o: fold(
       terminals,
-      init: outcome_accepted(value: DagEmitText { text: "", break_pending: false }),
+      init: outcome_accepted(value: DagEmitText { text: "", break_pending: false, last_class: optional_absent() }),
       f: fn(acc, t) { bind_outcome(o: acc, f: fn(state) { dag_emit_text_step(lex: lex, acc: state, t: t) }) }
     ),
     f: fn(state) { outcome_accepted(value: state.text) }

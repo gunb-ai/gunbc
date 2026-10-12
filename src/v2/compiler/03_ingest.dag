@@ -143,7 +143,7 @@ fn grammar_relation_binding_to_token_class_map(rules: Node) -> Map<Symbol, Symbo
     TypeNode { connective: Atom { identity: _ } } => empty_map()
     TypeNode { connective: Disj } => empty_map()
     TypeNode { connective: Arrow } => empty_map()
-    TypeNode { connective: Cardinality } => empty_map()
+    TypeNode { connective: Occupancy } => empty_map()
     TypeNode { connective: Instantiation } => empty_map()
     ComputationNode { behavior: _ } => empty_map()
   }
@@ -181,7 +181,7 @@ fn grammar_relation_token_class_set(rules: Node) -> Map<Symbol, Symbol> {
     TypeNode { connective: Atom { identity: _ } } => empty_map()
     TypeNode { connective: Disj } => empty_map()
     TypeNode { connective: Arrow } => empty_map()
-    TypeNode { connective: Cardinality } => empty_map()
+    TypeNode { connective: Occupancy } => empty_map()
     TypeNode { connective: Instantiation } => empty_map()
     ComputationNode { behavior: _ } => empty_map()
   }
