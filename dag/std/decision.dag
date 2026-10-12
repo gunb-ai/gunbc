@@ -737,17 +737,20 @@ type CandidateFieldStanding
 
 // A ZERO RATE IS PRESENT, NEVER DROPPED. Dropping a term whose buyer-assigned rate is zero
 // makes the objective under-modeled at the next join and silently treats unread evidence as
-// free. Each arm is one unit: money (weight on a money reading), delay as MoneyPerSecond,
-// interruption as money per event, accepted work as money per unit of completed work.
-type ValuationRate
+// free. Each arm is one unit: money, delay as MoneyPerSecond, interruption, accepted work.
+// The arm is the unit kind. Pareto-axis identities are ValuationAxes, supplied once, not a
+// second per-row tag that can disagree with the arm.
+type TermValuation
   = MoneyValuation { amount: MoneyAmountMicro }
   | DelayValuation { rate: MoneyPerSecond }
   | InterruptionValuation { amount: MoneyAmountMicro }
   | AcceptedWorkValuation { amount: MoneyAmountMicro }
 
-type TermValuation {
-  term: DeclarationRef
-  rate: ValuationRate
+type ValuationAxes {
+  money: DeclarationRef
+  delay: DeclarationRef
+  interruption: DeclarationRef
+  accepted_work: DeclarationRef
 }
 
 // NetValue is today's linear signed sum. CostPerAcceptedUnit divides valued cost
@@ -768,6 +771,7 @@ type SelectionPolicy
   | ValuedObjective {
       identity: DeclarationRef
       valuations: List<TermValuation>
+      axes: ValuationAxes
       measure: ValuedObjectiveMeasure
     }
 
@@ -1218,8 +1222,8 @@ fn identity_order_pick(survivors: List<DeclarationRef>) -> DeclarationRef? {
 
 // Sign is the coproduct arm: money, delay and interruption add; accepted work subtracts.
 // CONSUMER: valued_term_contribution.
-fn signed_valuation_product(reading: Int, rate: ValuationRate) -> CheckedInt {
-  match rate {
+fn signed_valuation_product(reading: Int, valuation: TermValuation) -> CheckedInt {
+  match valuation {
     MoneyValuation { amount: a } =>
       checked_int_multiply(a: reading, b: money_amount_micro_count(m: a) as Int)
     DelayValuation { rate: r } =>
@@ -1234,13 +1238,23 @@ fn signed_valuation_product(reading: Int, rate: ValuationRate) -> CheckedInt {
   }
 }
 
+fn valuation_axis(valuation: TermValuation, axes: ValuationAxes) -> DeclarationRef {
+  match valuation {
+    MoneyValuation { amount: _ } => axes.money
+    DelayValuation { rate: _ } => axes.delay
+    InterruptionValuation { amount: _ } => axes.interruption
+    AcceptedWorkValuation { amount: _ } => axes.accepted_work
+  }
+}
+
 type ValuedContribution
   = ValuedContributionReady { micros: Int }
   | ValuedContributionNeeds { need: SelectionEvidenceNeed }
   | ValuedContributionRefused { defect: NonEmptyStr }
 
-fn valued_term_contribution(entry: ParetoEntry, valuation: TermValuation) -> ValuedContribution {
-  match reading_for(e: entry, wanted: valuation.term) {
+fn valued_term_contribution(entry: ParetoEntry, valuation: TermValuation, axes: ValuationAxes) -> ValuedContribution {
+  let term = valuation_axis(valuation: valuation, axes: axes)
+  match reading_for(e: entry, wanted: term) {
     ReadingDuplicated { duplicated_axis: ax } =>
       ValuedContributionNeeds {
         need: UnfundedAxis { gap: AxisGap { axis: ax, cause: "duplicated valued-term reading" as NonEmptyStr } },
@@ -1253,11 +1267,11 @@ fn valued_term_contribution(entry: ParetoEntry, valuation: TermValuation) -> Val
       if interval_low(interval: iv) != interval_high(interval: iv) {
         ValuedContributionNeeds {
           need: UnfundedAxis {
-            gap: AxisGap { axis: valuation.term, cause: "valued-term reading is an interval, not a point" as NonEmptyStr },
+            gap: AxisGap { axis: term, cause: "valued-term reading is an interval, not a point" as NonEmptyStr },
           },
         }
       } else {
-        match signed_valuation_product(reading: interval_low(interval: iv), rate: valuation.rate) {
+        match signed_valuation_product(reading: interval_low(interval: iv), valuation: valuation) {
           CheckedIntOverflow { cause: _ } =>
             ValuedContributionRefused { defect: "valued-term product overflowed" as NonEmptyStr }
           CheckedIntReady { value: micros } => ValuedContributionReady { micros: micros }
@@ -1271,18 +1285,18 @@ type ValuedSum
   | ValuedSumNeeds { needs: List<SelectionEvidenceNeed> }
   | ValuedSumRefused { defects: List<NonEmptyStr> }
 
-fn valued_sum(entry: ParetoEntry, valuations: List<TermValuation>) -> ValuedSum {
+fn valued_sum(entry: ParetoEntry, valuations: List<TermValuation>, axes: ValuationAxes) -> ValuedSum {
   fold(valuations, init: ValuedSumReady { micros: 0 }, f: (acc, valuation) =>
     match acc {
       ValuedSumNeeds { needs: ns } =>
-        match valued_term_contribution(entry: entry, valuation: valuation) {
+        match valued_term_contribution(entry: entry, valuation: valuation, axes: axes) {
           ValuedContributionNeeds { need: n } => ValuedSumNeeds { needs: concat(ns, [n]) }
           ValuedContributionRefused { defect: d } => ValuedSumRefused { defects: [d] }
           ValuedContributionReady { micros: _ } => ValuedSumNeeds { needs: ns }
         }
       ValuedSumRefused { defects: ds } => ValuedSumRefused { defects: ds }
       ValuedSumReady { micros: so_far } =>
-        match valued_term_contribution(entry: entry, valuation: valuation) {
+        match valued_term_contribution(entry: entry, valuation: valuation, axes: axes) {
           ValuedContributionNeeds { need: n } => ValuedSumNeeds { needs: [n] }
           ValuedContributionRefused { defect: d } => ValuedSumRefused { defects: [d] }
           ValuedContributionReady { micros: add } =>
@@ -1305,25 +1319,34 @@ type ValuedScoreStanding
   | ValuedScoreNeeds { needs: List<SelectionEvidenceNeed> }
   | ValuedScoreRefused { defects: List<NonEmptyStr> }
 
-fn is_accepted_work_valuation(rate: ValuationRate) -> Bool {
-  match rate {
-    AcceptedWorkValuation { amount: _ } => true
-    MoneyValuation { amount: _ } => false
-    DelayValuation { rate: _ } => false
-    InterruptionValuation { amount: _ } => false
-  }
-}
-
 fn cost_valuations(valuations: List<TermValuation>) -> List<TermValuation> {
-  filter(valuations, v => !is_accepted_work_valuation(rate: v.rate))
+  fold(valuations, init: [], f: (acc, v) =>
+    match v {
+      AcceptedWorkValuation { amount: _ } => acc
+      MoneyValuation { amount: _ } => concat(acc, [v])
+      DelayValuation { rate: _ } => concat(acc, [v])
+      InterruptionValuation { amount: _ } => concat(acc, [v])
+    }
+  )
 }
 
-fn accepted_work_point(entry: ParetoEntry, valuations: List<TermValuation>) -> ValuedScoreStanding {
-  match (filter(valuations, v => is_accepted_work_valuation(rate: v.rate))).first() {
+fn accepted_work_valuations(valuations: List<TermValuation>) -> List<TermValuation> {
+  fold(valuations, init: [], f: (acc, v) =>
+    match v {
+      AcceptedWorkValuation { amount: _ } => concat(acc, [v])
+      MoneyValuation { amount: _ } => acc
+      DelayValuation { rate: _ } => acc
+      InterruptionValuation { amount: _ } => acc
+    }
+  )
+}
+
+fn accepted_work_point(entry: ParetoEntry, valuations: List<TermValuation>, axes: ValuationAxes) -> ValuedScoreStanding {
+  match (accepted_work_valuations(valuations: valuations)).first() {
     Absent =>
       ValuedScoreRefused { defects: ["CostPerAcceptedUnit has no accepted-work TermValuation" as NonEmptyStr] }
-    Present { value: row } =>
-      match reading_for(e: entry, wanted: row.term) {
+    Present { value: _ } =>
+      match reading_for(e: entry, wanted: axes.accepted_work) {
         ReadingDuplicated { duplicated_axis: ax } =>
           ValuedScoreNeeds {
             needs: [UnfundedAxis { gap: AxisGap { axis: ax, cause: "duplicated accepted-work reading" as NonEmptyStr } }],
@@ -1336,14 +1359,14 @@ fn accepted_work_point(entry: ParetoEntry, valuations: List<TermValuation>) -> V
           if interval_low(interval: iv) != interval_high(interval: iv) {
             ValuedScoreNeeds {
               needs: [UnfundedAxis {
-                gap: AxisGap { axis: row.term, cause: "accepted-work reading is an interval, not a point" as NonEmptyStr },
+                gap: AxisGap { axis: axes.accepted_work, cause: "accepted-work reading is an interval, not a point" as NonEmptyStr },
               }],
             }
           } else {
             if interval_low(interval: iv) <= 0 {
               ValuedScoreReady { score: UnboundedUnitCost }
             } else {
-              match valued_sum(entry: entry, valuations: cost_valuations(valuations: valuations)) {
+              match valued_sum(entry: entry, valuations: cost_valuations(valuations: valuations), axes: axes) {
                 ValuedSumNeeds { needs: ns } => ValuedScoreNeeds { needs: ns }
                 ValuedSumRefused { defects: ds } => ValuedScoreRefused { defects: ds }
                 ValuedSumReady { micros: cost } =>
@@ -1355,15 +1378,15 @@ fn accepted_work_point(entry: ParetoEntry, valuations: List<TermValuation>) -> V
   }
 }
 
-fn score_valued_entry(entry: ParetoEntry, valuations: List<TermValuation>, measure: ValuedObjectiveMeasure) -> ValuedScoreStanding {
+fn score_valued_entry(entry: ParetoEntry, valuations: List<TermValuation>, axes: ValuationAxes, measure: ValuedObjectiveMeasure) -> ValuedScoreStanding {
   match measure {
     NetValue =>
-      match valued_sum(entry: entry, valuations: valuations) {
+      match valued_sum(entry: entry, valuations: valuations, axes: axes) {
         ValuedSumNeeds { needs: ns } => ValuedScoreNeeds { needs: ns }
         ValuedSumRefused { defects: ds } => ValuedScoreRefused { defects: ds }
         ValuedSumReady { micros: total } => ValuedScoreReady { score: NetValueScore { micros: total } }
       }
-    CostPerAcceptedUnit => accepted_work_point(entry: entry, valuations: valuations)
+    CostPerAcceptedUnit => accepted_work_point(entry: entry, valuations: valuations, axes: axes)
   }
 }
 
@@ -1436,6 +1459,7 @@ fn scan_valued_survivors(
   remaining: List<ParetoEntry>,
   survivors: List<DeclarationRef>,
   valuations: List<TermValuation>,
+  axes: ValuationAxes,
   measure: ValuedObjectiveMeasure,
 ) -> ValuedPickScan {
   fold(survivors, init: ValuedPickScan { pick: none, score: none, needs: [], defects: [] }, f: (acc, sid) =>
@@ -1450,7 +1474,7 @@ fn scan_valued_survivors(
           defects: concat(acc.defects, ["valued survivor missing from remaining field" as NonEmptyStr]),
         }
         Present { value: entry } =>
-          match score_valued_entry(entry: entry, valuations: valuations, measure: measure) {
+          match score_valued_entry(entry: entry, valuations: valuations, axes: axes, measure: measure) {
             ValuedScoreNeeds { needs: ns } => ValuedPickScan { pick: acc.pick, score: acc.score, needs: concat(acc.needs, ns), defects: acc.defects }
             ValuedScoreRefused { defects: ds } => ValuedPickScan { pick: acc.pick, score: acc.score, needs: acc.needs, defects: concat(acc.defects, ds) }
             ValuedScoreReady { score: total } =>
@@ -1556,7 +1580,7 @@ fn apply_policy(
       } else {
         RealizationSelectionRefused { defects: ["policy preferred a dominated, infeasible, unresolved or absent candidate" as NonEmptyStr] }
       }
-    ValuedObjective { identity: pol, valuations: vals, measure: measure } =>
+    ValuedObjective { identity: pol, valuations: vals, axes: vaxes, measure: measure } =>
       if (survivors |> count) == 0 {
         NoFeasibleRealization {
           causes: ["no non-dominated feasible realization" as NonEmptyStr],
@@ -1566,7 +1590,7 @@ fn apply_policy(
         if (vals |> count) == 0 {
           RealizationSelectionRefused { defects: ["ValuedObjective valuations are empty" as NonEmptyStr] }
         } else {
-        let scanned = scan_valued_survivors(remaining: remaining, survivors: survivors, valuations: vals, measure: measure)
+        let scanned = scan_valued_survivors(remaining: remaining, survivors: survivors, valuations: vals, axes: vaxes, measure: measure)
         if (scanned.defects |> count) > 0 {
           RealizationSelectionRefused { defects: scanned.defects }
         } else {

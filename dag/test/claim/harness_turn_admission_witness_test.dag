@@ -37,10 +37,10 @@ import product.fabric.selection {
   OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
 }
 import product.fabric.demand {
-  AdmissionTerms, BuyTerms, DemandObjective, term_money,
+  AdmissionTerms, BuyTerms, DemandObjective,
   debt_payoff_objective, latency_sensitive_objective, demand_delay_valuation,
 }
-import std.decision { CostPerAcceptedUnit, TermValuation, MoneyValuation }
+import std.decision { CostPerAcceptedUnit, MoneyValuation }
 import test.claim.fabric.provider_use_fixture {
   fixture_admitted_for_offer, fixture_route, fixture_demand_for, fixture_work_for,
 }
@@ -373,10 +373,7 @@ test fn missing_and_duplicate_terms_refuse_on_the_serving_path() -> Bool {
     objective: DemandObjective {
       profile: debt_payoff_objective.profile,
       valuations: [
-        TermValuation {
-          term: term_money.identity,
-          rate: MoneyValuation { amount: money_amount_micro(count: 1) },
-        },
+        MoneyValuation { amount: money_amount_micro(count: 1) },
       ],
       measure: CostPerAcceptedUnit,
     },

@@ -31,7 +31,6 @@ import std.decision {
   PhysicalModelEstablished,
   CausalModelEstablished,
   FleetObservedCoupling,
-  TermValuation,
   MoneyValuation,
   ObjectiveUnderModeled,
   TermSetsJoinComplete,
@@ -45,6 +44,7 @@ import product.fabric.demand {
   demand_objective_join, demand_delay_valuation, admission_hard_constraints,
   admission_terms, BuyTerms, fabric_demand_required_term_ids,
   interpret_demand_objective, ObjectiveInterpreted, ObjectiveInterpretationRefused,
+  fabric_valuation_axes,
 }
 import std.measure { money_amount_micro, money_rate_micros }
 import extdeps.currency.currency { Usd }
@@ -178,7 +178,7 @@ fn pick(field: List<ParetoEntry>, objective: DemandObjective, constraints: List<
         axes: axes(),
         constraints: constraints,
         constraint_authority: id_constraints,
-        policy: ValuedObjective { identity: objective.profile, valuations: rows, measure: measure },
+        policy: ValuedObjective { identity: objective.profile, valuations: rows, axes: fabric_valuation_axes(), measure: measure },
         evidence_snapshot: id_evidence,
       ) {
         SelectedWithin { candidate: c, receipt: r } => Picked { id: c.identity, policy: r.policy_authority }
@@ -251,10 +251,7 @@ test fn profiles_join_complete_and_a_missing_term_is_under_modeled() -> Bool {
           match demand_objective_join(objective: DemandObjective {
             profile: debt_payoff_objective.profile,
             valuations: [
-              TermValuation {
-                term: term_money.identity,
-                rate: MoneyValuation { amount: money_amount_micro(count: 1) },
-              },
+              MoneyValuation { amount: money_amount_micro(count: 1) },
             ],
             measure: CostPerAcceptedUnit,
           }) {
@@ -375,10 +372,7 @@ fn missing_term_objective() -> DemandObjective {
   DemandObjective {
     profile: debt_payoff_objective.profile,
     valuations: [
-      TermValuation {
-        term: term_money.identity,
-        rate: MoneyValuation { amount: money_amount_micro(count: 1) },
-      },
+      MoneyValuation { amount: money_amount_micro(count: 1) },
     ],
     measure: CostPerAcceptedUnit,
   }
@@ -388,10 +382,7 @@ fn duplicate_term_objective() -> DemandObjective {
   DemandObjective {
     profile: debt_payoff_objective.profile,
     valuations: concat(debt_payoff_objective.valuations, [
-      TermValuation {
-        term: term_money.identity,
-        rate: MoneyValuation { amount: money_amount_micro(count: 1) },
-      },
+      MoneyValuation { amount: money_amount_micro(count: 1) },
     ]),
     measure: CostPerAcceptedUnit,
   }

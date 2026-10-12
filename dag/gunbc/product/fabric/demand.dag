@@ -12,8 +12,8 @@ import extdeps.external_authority { TranscribedUncited }
 import std.decision {
   ObjectiveTerm, ObjectiveMeasure, TermSetJoin, TermSetsJoinComplete,
   ObjectiveUnderModeled, ObjectiveDeclaresUnwarrantedTerms,
-  TermValuation, ValuationRate, MoneyValuation, DelayValuation,
-  InterruptionValuation, AcceptedWorkValuation,
+  TermValuation, MoneyValuation, DelayValuation,
+  InterruptionValuation, AcceptedWorkValuation, ValuationAxes,
   HardConstraint, term_set_join,
   ValuedObjectiveMeasure, NetValue, CostPerAcceptedUnit,
 }
@@ -83,9 +83,9 @@ type BudgetAccountId = NonEmptyStr where brand("BudgetAccountId")
 // liability - a refusal boundary, never a degradation: an ask above it refuses
 // rather than selecting something cheaper and unsuitable.
 // Delay valuation does not live here. AdmissionTerms.objective carries
-// TermValuation DelayValuation as MoneyPerSecond, so the rate has a typed
-// carrier and a missing delay term refuses through term_set_join
-// ObjectiveUnderModeled rather than silently pricing wait as free. Budget
+// DelayValuation as MoneyPerSecond, so the rate has a typed
+// carrier and a missing delay arm refuses through interpret_demand_objective
+// rather than silently pricing wait as free. Budget
 // caps stay on this record; consumers project them into std.decision
 // HardConstraint rows (admission_hard_constraints) and must not duplicate
 // them onto DemandObjective.
@@ -141,7 +141,7 @@ type BuyTerms {
 // THE FOUR OBJECTIVE TERMS, one per unit the brief names. They are buyer-policy
 // identities, not cited physical figures: ground is TranscribedUncited naming
 // that fact. CONSUMERS: fabric_demand_objective_terms (the required join
-// population); TermValuation.term on every DemandObjective; Pareto axes in
+// population); each TermValuation arm on DemandObjective; Pareto axes in
 // test.claim.fabric.valued_objective_witness (same identities, so a valued
 // term is a funded axis).
 data term_money: ObjectiveTerm = ObjectiveTerm {
@@ -179,12 +179,30 @@ type DemandObjective {
   measure: ValuedObjectiveMeasure
 }
 
+fn valuation_axis_identity(valuation: TermValuation) -> DeclarationRef {
+  match valuation {
+    MoneyValuation { amount: _ } => term_money.identity
+    DelayValuation { rate: _ } => term_delay.identity
+    InterruptionValuation { amount: _ } => term_interruption.identity
+    AcceptedWorkValuation { amount: _ } => term_accepted_work.identity
+  }
+}
+
+fn fabric_valuation_axes() -> ValuationAxes {
+  ValuationAxes {
+    money: term_money.identity,
+    delay: term_delay.identity,
+    interruption: term_interruption.identity,
+    accepted_work: term_accepted_work.identity,
+  }
+}
+
 fn demand_objective_as_measure(objective: DemandObjective) -> ObjectiveMeasure {
   ObjectiveMeasure {
     identity: objective.profile,
     goal: LowerIsBetter,
     terms: map(objective.valuations, v => ObjectiveTerm {
-      identity: v.term,
+      identity: valuation_axis_identity(valuation: v),
       ground: TranscribedUncited { read_obligation: "valuation rate is buyer policy" as NonEmptyStr },
     }),
   }
@@ -205,28 +223,12 @@ fn usd_rate(count: Nat) -> MoneyPerSecond {
   MoneyRate { amount: money_amount_micro(count: count), currency: Usd }
 }
 
-fn money_val(count: Nat) -> ValuationRate {
-  MoneyValuation { amount: money_amount_micro(count: count) }
-}
-
-fn delay_val(count: Nat) -> ValuationRate {
-  DelayValuation { rate: usd_rate(count: count) }
-}
-
-fn interruption_val(count: Nat) -> ValuationRate {
-  InterruptionValuation { amount: money_amount_micro(count: count) }
-}
-
-fn accepted_work_val(count: Nat) -> ValuationRate {
-  AcceptedWorkValuation { amount: money_amount_micro(count: count) }
-}
-
 fn closed_valuations(money: Nat, delay: Nat, interruption: Nat, accepted_work: Nat) -> List<TermValuation> {
   [
-    TermValuation { term: term_money.identity, rate: money_val(count: money) },
-    TermValuation { term: term_delay.identity, rate: delay_val(count: delay) },
-    TermValuation { term: term_interruption.identity, rate: interruption_val(count: interruption) },
-    TermValuation { term: term_accepted_work.identity, rate: accepted_work_val(count: accepted_work) },
+    MoneyValuation { amount: money_amount_micro(count: money) },
+    DelayValuation { rate: usd_rate(count: delay) },
+    InterruptionValuation { amount: money_amount_micro(count: interruption) },
+    AcceptedWorkValuation { amount: money_amount_micro(count: accepted_work) },
   ]
 }
 
@@ -251,52 +253,12 @@ data latency_sensitive_objective: DemandObjective = DemandObjective {
   measure: NetValue,
 }
 
-fn rate_inhabits_term(term: DeclarationRef, rate: ValuationRate) -> Bool {
-  if declaration_ref_eq(a: term, b: term_money.identity) {
-    match rate {
-      MoneyValuation { amount: _ } => true
-      DelayValuation { rate: _ } => false
-      InterruptionValuation { amount: _ } => false
-      AcceptedWorkValuation { amount: _ } => false
-    }
-  } else {
-    if declaration_ref_eq(a: term, b: term_delay.identity) {
-      match rate {
-        DelayValuation { rate: _ } => true
-        MoneyValuation { amount: _ } => false
-        InterruptionValuation { amount: _ } => false
-        AcceptedWorkValuation { amount: _ } => false
-      }
-    } else {
-      if declaration_ref_eq(a: term, b: term_interruption.identity) {
-        match rate {
-          InterruptionValuation { amount: _ } => true
-          MoneyValuation { amount: _ } => false
-          DelayValuation { rate: _ } => false
-          AcceptedWorkValuation { amount: _ } => false
-        }
-      } else {
-        if declaration_ref_eq(a: term, b: term_accepted_work.identity) {
-          match rate {
-            AcceptedWorkValuation { amount: _ } => true
-            MoneyValuation { amount: _ } => false
-            DelayValuation { rate: _ } => false
-            InterruptionValuation { amount: _ } => false
-          }
-        } else {
-          false
-        }
-      }
-    }
-  }
-}
-
 type ObjectiveInterpretation
   = ObjectiveInterpreted { rows: List<TermValuation>, measure: ValuedObjectiveMeasure }
   | ObjectiveInterpretationRefused { cause: NonEmptyStr }
 
 fn interpret_demand_objective(objective: DemandObjective) -> ObjectiveInterpretation {
-  let observed = map(objective.valuations, v => v.term)
+  let observed = map(objective.valuations, v => valuation_axis_identity(valuation: v))
   match observation_completeness(
     expected: fabric_demand_required_term_ids(),
     observed: observed,
@@ -311,11 +273,7 @@ fn interpret_demand_objective(objective: DemandObjective) -> ObjectiveInterpreta
     ObservationRepeatedObserved { keys: _ } =>
       ObjectiveInterpretationRefused { cause: "objective repeats a term" as NonEmptyStr }
     ObservationComplete =>
-      if any(objective.valuations, v => !rate_inhabits_term(term: v.term, rate: v.rate)) {
-        ObjectiveInterpretationRefused { cause: "a TermValuation rate does not inhabit its term" as NonEmptyStr }
-      } else {
-        ObjectiveInterpreted { rows: objective.valuations, measure: objective.measure }
-      }
+      ObjectiveInterpreted { rows: objective.valuations, measure: objective.measure }
   }
 }
 
@@ -323,15 +281,20 @@ fn demand_delay_valuation(objective: DemandObjective) -> MoneyPerSecond? {
   match interpret_demand_objective(objective: objective) {
     ObjectiveInterpretationRefused { cause: _ } => none
     ObjectiveInterpreted { rows: rows, measure: _ } =>
-      match (filter(rows, v => declaration_ref_eq(a: v.term, b: term_delay.identity))).first() {
+      match (fold(rows, init: none, f: (found, v) =>
+        match found {
+          Present { value: r } => Present { value: r }
+          Absent =>
+            match v {
+              DelayValuation { rate: r } => Present { value: r }
+              MoneyValuation { amount: _ } => none
+              InterruptionValuation { amount: _ } => none
+              AcceptedWorkValuation { amount: _ } => none
+            }
+        }
+      )) {
         Absent => none
-        Present { value: row } =>
-          match row.rate {
-            DelayValuation { rate: r } => Present { value: r }
-            MoneyValuation { amount: _ } => none
-            InterruptionValuation { amount: _ } => none
-            AcceptedWorkValuation { amount: _ } => none
-          }
+        Present { value: r } => Present { value: r }
       }
   }
 }
