@@ -36,7 +36,7 @@ import gunbc.serving.turn_admission { ServingCoTenancyClass, serving_co_tenancy_
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
 import gunbc.harness.harness_seat {
-  HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_reference_wire,
+  HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_pool_key_wire, harness_seat_reference_wire,
   release_retry, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseRefused,
 }
 
@@ -250,9 +250,9 @@ type FrontDoorPoolSelection
 
 fn front_door_pool_for(door: FrontDoorIdentity, class: ServingCoTenancyClass) -> FrontDoorPoolSelection {
   let candidates = filter(door.pools, p => (serving_co_tenancy_class_wire(c: p.class) as String) == (serving_co_tenancy_class_wire(c: class) as String))
-  let foreign = filter(candidates, p => (fabric_group_wire(g: p.group) as String) != (fabric_group_wire(g: door.group) as String))
+  let foreign = filter(candidates, p => (harness_seat_pool_key_wire(key: p.key) as String) != (fabric_group_wire(g: door.group) as String))
   match first(foreign) {
-    Present { value: p } => DoorPoolOfAnotherGroup { pool_group: fabric_group_wire(g: p.group) }
+    Present { value: p } => DoorPoolOfAnotherGroup { pool_group: harness_seat_pool_key_wire(key: p.key) }
     Absent =>
       if length(candidates) > 1 {
         DoorPoolDuplicated { pools: length(candidates) }

@@ -10,7 +10,7 @@ import gunbc.auth.request_authentication {
   fabric_service_principal,
 }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label }
-import gunbc.harness.harness_seat {
+import gunbc.harness.harness_seat { SparkGroup,
   HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_pool_identity_at,
   harness_seat_reference_record, harness_seat_reference_wire,
 }
@@ -59,8 +59,8 @@ data witness_key: MacKey = MacKey {
   material: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" as Secret,
 }
 
-data quality_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB {}, class: InteractiveQualitySensitive, seats: 1)
-data tolerant_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(group: FabricGroupB {}, class: BatchQualityTolerant, seats: 2)
+data quality_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(key: SparkGroup { group: FabricGroupB {} }, class: InteractiveQualitySensitive, seats: 1)
+data tolerant_pool: HarnessSeatPoolIdentity = harness_seat_pool_identity_at(key: SparkGroup { group: FabricGroupB {} }, class: BatchQualityTolerant, seats: 2)
 data witness_partition: PartitionId = quality_pool.partition
 data witness_attempt: NonEmptyStr = "attempt-7" as NonEmptyStr
 data witness_admitting: EventId = "ev-acquire-7" as EventId
@@ -621,7 +621,7 @@ test fn a_door_configured_with_two_pools_for_one_class_refuses_rather_than_choos
 
 test fn the_pool_derived_for_the_doors_own_group_still_admits() -> Bool {
   let selected = match front_door_pool_for(door: group_b_door, class: InteractiveQualitySensitive) {
-    DoorPoolSelected { pool: p } => (p.partition as String) == (harness_seat_pool_identity_at(group: FabricGroupB {}, class: InteractiveQualitySensitive, seats: 1).partition as String)
+    DoorPoolSelected { pool: p } => (p.partition as String) == (harness_seat_pool_identity_at(key: SparkGroup { group: FabricGroupB {} }, class: InteractiveQualitySensitive, seats: 1).partition as String)
     _ => false
   }
   let admits = match verdict_at_door(door: group_b_door) {

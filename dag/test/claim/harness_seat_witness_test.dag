@@ -9,7 +9,7 @@ import gunbc.spark.pair_serving_desired {
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant }
 import product.capacity.lease { QuiescenceRequired, FencedResource }
-import gunbc.harness.harness_seat {
+import gunbc.harness.harness_seat { SparkGroup,
   harness_seat_partition, SeatCeilingByDeclaredPolicy, AdmissionCeilingUnestablished,
   harness_seat_capacity, harness_interactive_quality_seats, harness_seat_reference,
 }
@@ -58,7 +58,7 @@ fn w_engine_max_num_seqs(group: FabricGroup) -> Int {
 }
 
 test fn each_group_has_its_own_partition() -> Bool {
-  (harness_seat_partition(group: FabricGroupB {}, class: InteractiveQualitySensitive, ceiling: harness_interactive_quality_seats) as String) == "group-group-b-quality-seat-v1"
+  (harness_seat_partition(key: SparkGroup { group: FabricGroupB {} }, class: InteractiveQualitySensitive, ceiling: harness_interactive_quality_seats) as String) == "group-group-b-quality-seat-v1"
 }
 
 // THE DISCRIMINATING ROW: THE SEAT CEILING IS NOT THE ENGINE'S SEQUENCE LIMIT.

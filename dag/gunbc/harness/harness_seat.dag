@@ -1,6 +1,7 @@
 module gunbc.harness.harness_seat
 
 import product.host_identity { HostIdentity }
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
 import gunbc.serving.session_store { ServingSessionEntry, serving_session_record_for_request }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
@@ -168,16 +169,39 @@ import gunbc.serving.serving_availability {
 // is running. Nothing produces that arm today -- both routes carry a CeilingByDeclaredPolicy row. When something does, the ceiling moves with an OBSERVATION and there is no edit and no
 // author to bump anything -- at which point a derived suffix is the only mechanism that can hold, and
 // having it already in place is what stops that landing from silently reinterpreting live history.
-fn harness_seat_partition_stem(group: FabricGroup) -> String {
-  join(["group-", fabric_group_wire(g: group) as String, "-"], "")
+// THE POOL KEY IS ONE CLOSED SUM, NOT A PARALLEL KEY TYPE. A Spark serving group and a rented
+// single-GPU replica are the two things a seat pool can account for; the lease, fence, permit and
+// release folds below are keyed by the partition either arm derives, so neither arm needs its own
+// copy of them. The SparkGroup arm derives exactly the partition, ceiling and root it always did
+// (witnessed byte-for-byte against group B's published names); a rented replica's partition carries
+// its replica identity, so adding a replica mints a new pool and cannot re-key an existing owner's.
+// DECLARED FRONTIER (DESIGN.md 3c): the RentedReplica arm is consumed by the pool-identity and
+// partition derivations below; the binder's route resolution (serving_route) still enrolls Spark
+// groups only, and the rented cohort's own enrollment is the warm-trace PR's consumer.
+type HarnessSeatPoolKey
+  = SparkGroup { group: FabricGroup }
+  | RentedReplicaPool { replica: RentedReplicaIdentity }
+
+fn harness_seat_pool_key_wire(key: HarnessSeatPoolKey) -> NonEmptyStr {
+  match key {
+    SparkGroup { group: g } => fabric_group_wire(g: g)
+    RentedReplicaPool { replica: r } => rented_replica_wire(id: r) as NonEmptyStr
+  }
 }
 
-fn harness_seat_partition(group: FabricGroup, class: ServingCoTenancyClass, ceiling: Nat) -> PartitionId {
+fn harness_seat_partition_stem(key: HarnessSeatPoolKey) -> String {
+  match key {
+    SparkGroup { group: g } => join(["group-", fabric_group_wire(g: g) as String, "-"], "")
+    RentedReplicaPool { replica: r } => join(["replica-", rented_replica_wire(id: r), "-"], "")
+  }
+}
+
+fn harness_seat_partition(key: HarnessSeatPoolKey, class: ServingCoTenancyClass, ceiling: Nat) -> PartitionId {
   match class {
     InteractiveQualitySensitive =>
-      join([harness_seat_partition_stem(group: group), "quality-seat-v1"], "") as PartitionId
+      join([harness_seat_partition_stem(key: key), "quality-seat-v1"], "") as PartitionId
     BatchQualityTolerant =>
-      join([harness_seat_partition_stem(group: group), "tolerant-seat-c", to_string(ceiling), "-v1"], "") as PartitionId
+      join([harness_seat_partition_stem(key: key), "tolerant-seat-c", to_string(ceiling), "-v1"], "") as PartitionId
   }
 }
 
@@ -249,7 +273,7 @@ fn harness_seat_capacity_for(route: ServingRoute, class: ServingCoTenancyClass) 
     ServingRouteUnresolved { group: g, obligation: why } =>
       AdmissionCeilingUnestablished { group: g, cause: why }
     ServingRouteResolved { endpoint: e, ceiling: c } => {
-      let identity = harness_seat_pool_identity_at(group: e.group, class: class, seats: harness_class_ceiling(class: class, route_ceiling: c))
+      let identity = harness_seat_pool_identity_at(key: SparkGroup { group: e.group }, class: class, seats: harness_class_ceiling(class: class, route_ceiling: c))
       SeatCeilingByDeclaredPolicy { class: class, pool: identity.root, seats: identity.ceiling }
     }
   }
@@ -264,16 +288,16 @@ fn harness_seat_capacity_for(route: ServingRoute, class: ServingCoTenancyClass) 
 // authority mints the identity from the same three inputs acquisition uses, and a consumer compares
 // it by exact equality.
 type HarnessSeatPoolIdentity {
-  group: FabricGroup
+  key: HarnessSeatPoolKey
   class: ServingCoTenancyClass
   partition: PartitionId
   ceiling: Nat
   root: Pool<Count, One>
 }
 
-fn harness_seat_pool_identity_at(group: FabricGroup, class: ServingCoTenancyClass, seats: Nat) -> HarnessSeatPoolIdentity {
-  let partition = harness_seat_partition(group: group, class: class, ceiling: seats)
-  HarnessSeatPoolIdentity { group: group, class: class, partition: partition, ceiling: seats, root: harness_seat_pool_root(partition: partition, ceiling: seats) }
+fn harness_seat_pool_identity_at(key: HarnessSeatPoolKey, class: ServingCoTenancyClass, seats: Nat) -> HarnessSeatPoolIdentity {
+  let partition = harness_seat_partition(key: key, class: class, ceiling: seats)
+  HarnessSeatPoolIdentity { key: key, class: class, partition: partition, ceiling: seats, root: harness_seat_pool_root(partition: partition, ceiling: seats) }
 }
 
 type HarnessSeatPoolReading
@@ -287,7 +311,7 @@ fn harness_seat_pool_identity(group: FabricGroup, class: ServingCoTenancyClass) 
   match serving_route(group: group) {
     ServingRouteUnresolved { group: _, obligation: why } => SeatPoolUnestablished { cause: why }
     ServingRouteResolved { endpoint: e, ceiling: c } =>
-      SeatPoolEstablished { pool: harness_seat_pool_identity_at(group: e.group, class: class, seats: harness_class_ceiling(class: class, route_ceiling: c)) }
+      SeatPoolEstablished { pool: harness_seat_pool_identity_at(key: SparkGroup { group: e.group }, class: class, seats: harness_class_ceiling(class: class, route_ceiling: c)) }
   }
 }
 
@@ -376,7 +400,7 @@ fn harness_class_held(route: ServingRoute, class: ServingCoTenancyClass, store: 
         ServingRouteUnresolved { group: g, obligation: why } =>
           ClassHeldUnread { obligation: join([fabric_group_wire(g: g) as String, ": ", why as String], "") as NonEmptyStr }
         ServingRouteResolved { endpoint: e, ceiling: _ } =>
-          match fabric_seat_observe(store: store, partition: harness_seat_partition(group: e.group, class: class, ceiling: ceiling), root: root, at: now, budget: 4096) {
+          match fabric_seat_observe(store: store, partition: harness_seat_partition(key: SparkGroup { group: e.group }, class: class, ceiling: ceiling), root: root, at: now, budget: 4096) {
             SeatStandingUnobserved { step: st, reason: why } =>
               ClassHeldUnread {
                 obligation: join([
@@ -1369,7 +1393,7 @@ fn harness_acquire_under_authority(candidate: HarnessCandidate, class: ServingCo
     AdmissionCeilingUnestablished { group: _, cause: why } =>
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: why as String) }
     SeatCeilingByDeclaredPolicy { class: _, pool: root, seats: _ } => {
-      let partition = harness_seat_partition(group: candidate.group, class: class, ceiling: candidate.ceiling)
+      let partition = harness_seat_partition(key: SparkGroup { group: candidate.group }, class: class, ceiling: candidate.ceiling)
       match event_log_observe_head(store: store, partition: partition) {
         HeadObservationRefused { cause: c } =>
           AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: join(["the partition head could not be read, so no unique acquisition reference exists: ", event_log_refusal_wire(cause: c)], "")) }

@@ -31,7 +31,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted,
   HarnessBackendUnreachable, HarnessBackendUnreadable, harness_route_availability,
 }
-import gunbc.harness.harness_seat {
+import gunbc.harness.harness_seat { SparkGroup,
   harness_seat_partition, harness_interactive_quality_seats,
   ServingModelRequirement, AnyAdmittedModel, ExactServingUnit, harness_requirement_admits,
   harness_model_requirement_ref,
@@ -314,9 +314,9 @@ test fn an_occupant_the_seat_ledger_did_not_admit_blocks_both_classes() -> Bool 
 // and the quality ceiling is still one. A branch that widened the reader's protection would fail
 // here, which is the control the ruling asked for.
 test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Bool {
-  (harness_seat_partition(group: FabricGroupB {}, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-b-quality-seat-v1"
-    && (harness_seat_partition(group: FabricGroupB {}, class: BatchQualityTolerant, ceiling: 4) as String) == "group-group-b-tolerant-seat-c4-v1"
-    && (harness_seat_partition(group: FabricGroupB {}, class: InteractiveQualitySensitive, ceiling: 1) as String) != (harness_seat_partition(group: FabricGroupB {}, class: BatchQualityTolerant, ceiling: 4) as String)
+  (harness_seat_partition(key: SparkGroup { group: FabricGroupB {} }, class: InteractiveQualitySensitive, ceiling: 1) as String) == "group-group-b-quality-seat-v1"
+    && (harness_seat_partition(key: SparkGroup { group: FabricGroupB {} }, class: BatchQualityTolerant, ceiling: 4) as String) == "group-group-b-tolerant-seat-c4-v1"
+    && (harness_seat_partition(key: SparkGroup { group: FabricGroupB {} }, class: InteractiveQualitySensitive, ceiling: 1) as String) != (harness_seat_partition(key: SparkGroup { group: FabricGroupB {} }, class: BatchQualityTolerant, ceiling: 4) as String)
     && harness_interactive_quality_seats == 1
 }
 
@@ -340,11 +340,11 @@ test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Boo
 // the quality pool's continuity, and one that versioned nothing would reinterpret the tolerant
 // pool's history.
 test fn the_tolerant_partition_is_keyed_by_its_ceiling_and_the_quality_partition_is_not() -> Bool {
-  (harness_seat_partition(group: FabricGroupB {}, class: BatchQualityTolerant, ceiling: 1) as String)
-      != (harness_seat_partition(group: FabricGroupB {}, class: BatchQualityTolerant, ceiling: 2) as String)
-    && (harness_seat_partition(group: FabricGroupB {}, class: InteractiveQualitySensitive, ceiling: 1) as String)
-      == (harness_seat_partition(group: FabricGroupB {}, class: InteractiveQualitySensitive, ceiling: 2) as String)
-    && (harness_seat_partition(group: FabricGroupB {}, class: BatchQualityTolerant, ceiling: 1) as String) == "group-group-b-tolerant-seat-c1-v1"
+  (harness_seat_partition(key: SparkGroup { group: FabricGroupB {} }, class: BatchQualityTolerant, ceiling: 1) as String)
+      != (harness_seat_partition(key: SparkGroup { group: FabricGroupB {} }, class: BatchQualityTolerant, ceiling: 2) as String)
+    && (harness_seat_partition(key: SparkGroup { group: FabricGroupB {} }, class: InteractiveQualitySensitive, ceiling: 1) as String)
+      == (harness_seat_partition(key: SparkGroup { group: FabricGroupB {} }, class: InteractiveQualitySensitive, ceiling: 2) as String)
+    && (harness_seat_partition(key: SparkGroup { group: FabricGroupB {} }, class: BatchQualityTolerant, ceiling: 1) as String) == "group-group-b-tolerant-seat-c1-v1"
 }
 
 // ── 7. A MODEL-INDIFFERENT DEMAND AND AN EXACT ONE ARE DIFFERENT DEMANDS ──────────────────────
