@@ -20,6 +20,7 @@ import gunbc.target_binding {
   EmittedCrateWorkspaceProducer,
   NativeClaimProgramProducer,
   NativeServeProgramProducer,
+  native_claim_deadline_if_entry,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused,
@@ -71,6 +72,7 @@ import gunbc.target_invocation {
 }
 import std.types { String, Bool, NonEmptyStr }
 import std.measure { Millisecond, millisecond }
+import std.optional { Optional, Present, Absent }
 
 // THE REAL INSTRUMENT TARGETS, AND THEY ARE PRODUCTION ROWS RATHER THAN FIXTURE EXAMPLES.
 //
@@ -863,6 +865,15 @@ fn instrument_bindings() -> List<TargetBinding> {
     native_materialization_store_closure_binding(),
     native_emission_controls_binding(), value_position_block_nests_binding(), native_serve_binding()
   ]
+}
+
+fn native_claim_child_deadline_for_entry(entry: String) -> Optional<Millisecond> {
+  fold(instrument_bindings(), init: Absent, f: (acc, b) =>
+    match acc {
+      Present { value: d } => Present { value: d }
+      Absent => native_claim_deadline_if_entry(producer: b.producer, want: entry)
+    }
+  )
 }
 
 // THE PRODUCTION ENTRY: the generic route, bound to the live population, in one place. Every

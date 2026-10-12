@@ -61,6 +61,44 @@ type TargetProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
   | NativeServeProgramProducer { entry: String }
 
+// THE HOST EVALUATES THIS AT SPAWN so the child wall is the binding row's Millisecond, not a
+// second Duration literal. Present only when the producer is a NativeClaimProgramProducer whose
+// entry matches; every other arm is Absent.
+fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Optional<Millisecond> {
+  match producer {
+    NativeClaimProgramProducer { entry: e, deadline: d } =>
+      if e == want { Present { value: d } } else { Absent }
+    SelfHostProducer {} => Absent
+    RequiredFloorProducer {} => Absent
+    BazelProducer {} => Absent
+    BehavioralReceiptPlanProducer {} => Absent
+    BehavioralReceiptCensusProducer {} => Absent
+    BehavioralReceiptSelftestProducer {} => Absent
+    HeadsReadingDifferentialProducer {} => Absent
+    CompileCleanDiagnosticCensusProducer {} => Absent
+    V2NativeCliProducer {} => Absent
+    V2NativeFrontierProducer {} => Absent
+    V2NativeCensusProducer { reading: _ } => Absent
+    EmittedCrateWorkspaceProducer {} => Absent
+    EvaluationStoreAddressExactHeadProducer {} => Absent
+    PrimitiveEgressCensusProducer {} => Absent
+    PrimitiveEgressCensusV2Producer {} => Absent
+    PrimitiveEgressCensusDagProducer {} => Absent
+    PrimitiveEgressCensusSeedProducer {} => Absent
+    FloorMemoryQualificationProducer {} => Absent
+    TypedGraphExclusiveBytesProducer {} => Absent
+    TypedGraphExclusiveBytesFloorSubjectProducer {} => Absent
+    RequiredLaneResolutionCensusProducer {} => Absent
+    BareReferenceChannelOutcomeProducer {} => Absent
+    SelfHostBehavioralEquivalenceProducer {} => Absent
+    DependencyDemandCensusProducer {} => Absent
+    GenericIdentityCensusProducer {} => Absent
+    InterpolationHoleCensusProducer {} => Absent
+    RegenRoundCostProducer {} => Absent
+    NativeServeProgramProducer { entry: _ } => Absent
+  }
+}
+
 // WHICH READING OF THE NATIVE CENSUS FAMILY A ROW TAKES. One producer spawns the emitted v2
 // compiler's census verbs; the reading names the verb and the reader that decides its standing, so a
 // further census over the same walk is a variant here and a row there, never another producer.

@@ -283,13 +283,11 @@ pub enum TargetProducer {
     GenericIdentityCensus,
     InterpolationHoleCensus,
     RegenRoundCost,
-    /// `NativeClaimProgramProducer { entry, deadline }`: the entry and the Millisecond child
-    /// deadline are carried, so a second program of the same shape is a registry row, never another
-    /// variant. Duration here is the host mirror of the `.dag` `std.measure` field, not a budget
-    /// invented at the spawn site.
+    /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
+    /// of the same shape is a registry row, never another variant. The Millisecond deadline is
+    /// read from `gunbc.instrument_targets` `native_claim_child_deadline_for_entry` at spawn.
     NativeClaimProgram {
         entry: &'static str,
-        deadline: std::time::Duration,
     },
     /// `NativeServeProgramProducer { entry }`: generic over its entry on the same rule.
     NativeServeProgram {
@@ -316,16 +314,6 @@ fn self_host_source_roots() -> Vec<String> {
 /// is emitted FROM is this instrument's own fact, on the same rule its siblings follow.
 fn v2_native_cli_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
-}
-
-/// Host mirror of `gunbc.instrument_targets` `native_claim_policy_child_deadline` (600000 ms).
-fn native_claim_policy_child_deadline() -> std::time::Duration {
-    std::time::Duration::from_millis(600_000)
-}
-
-/// Host mirror of `gunbc.instrument_targets` `value_position_block_nests_child_deadline` (15000 ms).
-fn value_position_block_nests_child_deadline() -> std::time::Duration {
-    std::time::Duration::from_millis(15_000)
 }
 
 /// `gunbc.instrument_targets` `emitted_crate_workspace_label`: the closure is emitted from the same
@@ -388,42 +376,36 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("native-crypto-vectors"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_crypto_vectors.dag",
-                deadline: native_claim_policy_child_deadline(),
             },
         ),
         (
             instrument_label("native-app-attest"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_app_attest.dag",
-                deadline: native_claim_policy_child_deadline(),
             },
         ),
         (
             instrument_label("dag-emit-real-grammar-round-trips"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/dag_emit_real_grammar_round_trips.dag",
-                deadline: native_claim_policy_child_deadline(),
             },
         ),
         (
             instrument_label("native-materialization-store-closure"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_materialization_store_closure.dag",
-                deadline: native_claim_policy_child_deadline(),
             },
         ),
         (
             instrument_label("native-emission-controls"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_emission_controls.dag",
-                deadline: native_claim_policy_child_deadline(),
             },
         ),
         (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
-                deadline: value_position_block_nests_child_deadline(),
             },
         ),
         (
@@ -877,9 +859,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_type_declaration_use_census(&self_host_source_roots()),
-        TargetProducer::NativeClaimProgram { entry, deadline } => {
-            run_native_claim_program(entry, deadline)
-        }
+        TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
@@ -1553,10 +1533,101 @@ fn run_emitted_crate_workspace(source_roots: &[String]) -> InvocationOutcome {
 /// (`cli_run::classify_exit`): success is held, code 1 is an observation that did not hold, and code
 /// 2 -- a roster/row join that breaks, a status the rows do not support, a signal -- is no
 /// observation. The source roots are the instrument's own fact, as for every sibling here.
-fn run_native_claim_program(
-    entry: &'static str,
-    deadline: std::time::Duration,
-) -> InvocationOutcome {
+fn native_claim_child_deadline_from_binding(
+    entry: &str,
+    label_name: &str,
+) -> Result<std::time::Duration, InvocationOutcome> {
+    const READER: &str = "dag/gunbc/instrument_targets.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return Err(InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+            });
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let value = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_claim_child_deadline_for_entry",
+        &[(
+            Some("entry".to_string()),
+            crate::v1_interpreter::str_value(entry),
+        )],
+        true,
+    ) {
+        Ok(value) => value,
+        Err(cause) => {
+            return Err(InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "{label_name}: {READER} native_claim_child_deadline_for_entry failed: {cause}"
+                ),
+            });
+        }
+    };
+    let crate::v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &value
+    else {
+        return Err(InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: native_claim_child_deadline_for_entry is not an Optional"
+            ),
+        });
+    };
+    if ctx.sym_eq(*variant_name, "Absent") {
+        return Err(InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: no NativeClaimProgramProducer binding for entry={entry}"
+            ),
+        });
+    }
+    if !ctx.sym_eq(*variant_name, "Present") {
+        return Err(InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: native_claim_child_deadline_for_entry is not Present or Absent"
+            ),
+        });
+    }
+    let Some(measure) = ctx.field(fields, "value") else {
+        return Err(InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: Present deadline has no value field"),
+        });
+    };
+    let crate::v1_interpreter::Value::Record {
+        fields: mfields, ..
+    } = measure
+    else {
+        return Err(InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: deadline is not a Measure record"),
+        });
+    };
+    match ctx.field(mfields, "count") {
+        Some(crate::v1_interpreter::Value::Int(n)) if *n >= 0 => {
+            Ok(std::time::Duration::from_millis(*n as u64))
+        }
+        _ => Err(InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: deadline count is not a non-negative Int"),
+        }),
+    }
+}
+
+fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
     let label_name = "native-claim";
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
@@ -1564,6 +1635,10 @@ fn run_native_claim_program(
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
+    let deadline = match native_claim_child_deadline_from_binding(entry, label_name) {
+        Ok(deadline) => deadline,
+        Err(outcome) => return outcome,
+    };
     let run = match cli_run::run_native_claim_program(
         &v2_native_cli_source_roots(),
         entry,
