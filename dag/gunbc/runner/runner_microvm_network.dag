@@ -37,6 +37,8 @@ import extdeps.tools.conntrack {
   conntrack_delete_command, conntrack_list_command, ConntrackOriginalSource, ConntrackOriginalDestination,
   conntrack_list_expectations_command,
 }
+import extdeps.access.posix { FileMode }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 
 data runner_microvm_network_disposition: ConstructionMechanism = SingleAuthority
 
@@ -758,7 +760,7 @@ data runner_microvm_converged_receipt_path: String = concat(runner_microvm_conve
 // needed to create a parent, and this one is OURS.
 data runner_microvm_nft_ruleset_dir: NonEmptyStr = "/etc/gunbc" as NonEmptyStr
 
-data runner_microvm_nft_ruleset_dir_mode: NonEmptyStr = "0755" as NonEmptyStr
+data runner_microvm_nft_ruleset_dir_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 data runner_microvm_nft_ruleset_file: NonEmptyStr = "microvm.nft" as NonEmptyStr
 
