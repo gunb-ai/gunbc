@@ -25,19 +25,23 @@ fn rented_replica_offer_key(instance: SupplierOffer<NonEmptyStr>, replica: Rente
   ) as OfferKey
 }
 
-fn rented_per_gpu_hourly(quote: OfferQuote, gpus: Nat) -> OfferQuote? {
+type RentedPerGpuQuote
+  = RentedPerGpuQuoted { quote: OfferQuote }
+  | RentedPerGpuUnpriceable
+
+fn rented_per_gpu_hourly(quote: OfferQuote, gpus: Nat) -> RentedPerGpuQuote {
   match quote {
     QuotedPerHour(rate) =>
       match nat_div_rem(a: money_amount_micro_count(m: rate.amount), b: gpus) {
-        NatDivisionByZero => Absent
+        NatDivisionByZero => RentedPerGpuUnpriceable
         NatQuotientRemainder { quotient: q, remainder: r } =>
           if r == 0 {
-            Present { value: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: q), currency: rate.currency }) }
+            RentedPerGpuQuoted { quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: q), currency: rate.currency }) }
           } else {
-            Absent
+            RentedPerGpuUnpriceable
           }
       }
-    _ => Absent
+    _ => RentedPerGpuUnpriceable
   }
 }
 
@@ -71,8 +75,8 @@ fn rented_replica_offer_reading(
         rented_replica_not_read(replica: replica, obligation: rented_instance_gpu_count_unusable_obligation)
       } else {
         match rented_per_gpu_hourly(quote: instance.quote, gpus: instance_gpus) {
-          Absent => rented_replica_not_read(replica: replica, obligation: rented_instance_not_per_gpu_priced_obligation)
-          Present { value: quote } =>
+          RentedPerGpuUnpriceable => rented_replica_not_read(replica: replica, obligation: rented_instance_not_per_gpu_priced_obligation)
+          RentedPerGpuQuoted { quote: quote } =>
             let id = FabricIdentity { principal: instance.id.principal, key: rented_replica_offer_key(instance: instance, replica: replica) }
             RentedOfferRead {
               replica: replica,

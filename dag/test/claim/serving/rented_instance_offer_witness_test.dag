@@ -59,7 +59,7 @@ fn i_key(r: RentedOfferReading) -> String {
 test fn a_two_gpu_instance_reads_as_two_distinct_one_gpu_replica_offers() -> Bool {
   let a = i_read(instance: i_instance(gpus: 2), device: 0)
   let b = i_read(instance: i_instance(gpus: 2), device: 1)
-  i_key(r: a) != "" and i_key(r: b) != "" and i_key(r: a) != i_key(r: b)
+  i_key(r: a) != "" && i_key(r: b) != "" && i_key(r: a) != i_key(r: b)
 }
 
 test fn each_replica_offer_states_one_gpu_and_half_the_instance_quote() -> Bool {
@@ -69,8 +69,8 @@ test fn each_replica_offer_states_one_gpu_and_half_the_instance_quote() -> Bool 
       match q.offer.shape.envelope.gpu {
         Absent => false
         Present { value: g } =>
-          g.count == 1 and
-          money_amount_micro_count(m: offer_quote_amount(q: q.offer.quote)) * 2 == money_amount_micro_count(m: offer_quote_amount(q: i_instance(gpus: 2).quote)) and
+          g.count == 1 &&
+          money_amount_micro_count(m: offer_quote_amount(q: q.offer.quote)) * 2 == money_amount_micro_count(m: offer_quote_amount(q: i_instance(gpus: 2).quote)) &&
           q.dispatch.offer == q.offer.id
       }
   }
