@@ -1273,36 +1273,23 @@ fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
   Cons { head: FloorRouteGapExpectation { identity: "test.claim.approval_device_routes_wet_witness_test.a_bound_realization_passes_the_read_past_the_gate", operation: "Read", ground: NoMockResponse {} }, tail: Empty {} }
 }
 
-// THE DECLARED-UNIT DIGEST MINT IS THE ONE ROUTE GAP THESE IDENTITIES SHARE.
-// retired gunbc.spark.pair_serving_realization (deleted #13779) spark_pair_rendered_unit_digest calls
-// extdeps.tools.sha256sum Sha256.DigestStdin, which declares no mock_response, so the hermetic
-// floor has no route that can run it. DeclaredUnitDigestEvidence is a sole_constructor record, so
-// no fixture can route around that by authoring a standing -- which is the point rather than a
-// cost: every identity below executes the REAL producer on the local-repo wet lane
-// (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), which is the inhabitance half of
-// DESIGN section 3's supplied-input pairing obligation.
-//
-// WHAT DECIDES MEMBERSHIP HERE IS WHETHER THE ROW REACHES THE MINT, NOT WHICH ARM THE FOLD ANSWERS
-// ON. An earlier spelling of this paragraph said the declared-unit-unavailable rows are omitted
-// "because the arm is decided before the mint is reached", and that is FALSE as a rule and misread
-// once already (review 67105 asked for a correct enrollment to be deleted on the strength of it).
-// The fold's refusal order says nothing about what the row EVALUATED to build its arguments: a row
-// can hand in DeclaredUnitDigestUnavailable and still reach DigestStdin through its INCARNATION
-// fixture, because that launch's unit_digest is taken from the production mint so the agreeing and
-// disagreeing arms compare real bytes.
-//
-// THE TWO t_unit_unavailable ROWS ARE EXACTLY THAT CONTRAST, and they are the reason to state this
-// precisely rather than by arm name:
-//   an_observed_incarnation_without_a_declared_unit_digest_refuses -- supplies the unavailable
-//     standing AND an observed incarnation built from t_incarnation(), which routes through
-//     t_declared_digest() to spark_pair_declared_head_digest. It gaps. ENROLLED.
-//   the_declared_unit_is_refused_before_the_incarnation -- supplies the unavailable standing over a
-//     bare t_covered_matching() with no incarnation fixture. It never reaches the mint. OMITTED.
-// Read the row's whole argument closure, not the arm it asserts.
-//
-// The withdrawn-roster row in the bind witness is omitted for the different reason that it is HANDED
-// its standing and constructs no launch fixture.
+// Spark pair declared-unit digest identities lived here. They were deleted with
+// gunbc.spark.pair_serving_realization (#13779). The chunk stays empty so
+// floor_route_gap_expectation_chunks still names chunk_14.
 fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
+  Empty {}
+}
+
+// The test.claim.durable_exclusive_hold_file_store_wet_witness identities: the hold protocol
+// over the real file store -- absent acquires at 1, held refuses without writing (another owner and
+// its own spelling), release to N+1 and reacquire at N+2, two contenders over one free observation,
+// store refusal distinct from contention, refused releases leave no next generation, and a commit
+// after the slot moved is release-lost, and a write-time store refusal is unavailable. First effect is shell.Mktemp.DirWithTemplate with no
+// mock_response, exactly as the CAS store's own wet rows in chunk_12. Triple enrollment: this
+// expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
+// witness_exclusion_frontier LocalRepoWetLane row for durable_exclusive_hold_file_store_wet_witness_test.dag.
+// Floor run 35402867077 measured the unenrolled DirWithTemplate / NoMockResponse gap on each identity.
+fn floor_route_gap_expectation_chunk_15() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.an_absent_slot_acquires_at_generation_one_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
@@ -1331,7 +1318,6 @@ fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.w_refused_acquire_body_writes_a_marker_when_called_directly", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
   }}}}}}}}}}}}}
-
 }
 
 // The five test.claim.fabric.fabric_control_plane_wet_witness identities: the fabric's release
@@ -1468,13 +1454,10 @@ fn floor_route_gap_expectation_chunk_18() -> List<FloorRouteGapExpectation> {
   }  }  }  }
 }
 
-// THE RANK-PARTICIPATION ROWS REACH THE MINT FOR THE SAME REASON AS THE ROWS ABOVE: each builds an
-// observed incarnation with t_incarnation(), whose unit digest comes from the production
-// spark_pair_declared_head_digest, so the participation gate is reached only after a real
-// DigestStdin. They run on the same local-repo wet lane; the hermetic floor records the gap.
+// Spark pair rank-participation DigestStdin identities lived here. They were deleted with
+// pair serving realization (#13779). The chunk stays empty so the chunks roster still names chunk_19.
 fn floor_route_gap_expectation_chunk_19() -> List<FloorRouteGapExpectation> {
   Empty {}
-
 }
 
 // ALL SIX test.claim.mtcollins1_census_image_local_wet identities: the census envelope grammar read
