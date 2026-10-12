@@ -29,57 +29,49 @@ type GpuBenchWarmStanding
   | WarmRejected { cause: NonEmptyStr }
   | WarmCapacityUnread { cause: NonEmptyStr }
 
-fn gpu_bench_is_prime(r: GpuBenchRequestV2) -> Bool {
-  match r.phase {
-    GpuBenchPhasePrime => true
+fn gpu_bench_any_prime_prompt_unread(records: List<GpuBenchRequestV2>) -> Bool {
+  any(records, r => match r.phase {
+    GpuBenchPhasePrime => match r.prompt_tokens {
+      Absent => true
+      Present { value: _ } => false
+    }
     GpuBenchPhaseWarm => false
     GpuBenchPhaseShort => false
-  }
-}
-
-fn gpu_bench_is_warm(r: GpuBenchRequestV2) -> Bool {
-  match r.phase {
-    GpuBenchPhaseWarm => true
-    GpuBenchPhasePrime => false
-    GpuBenchPhaseShort => false
-  }
-}
-
-fn gpu_bench_request_failed(r: GpuBenchRequestV2) -> Bool {
-  match r.status {
-    GpuBenchRequestOk => false
-    GpuBenchRequestError { detail: _ } => true
-  }
-}
-
-fn gpu_bench_any_prime_prompt_unread(records: List<GpuBenchRequestV2>) -> Bool {
-  any(records, r => gpu_bench_is_prime(r: r) && match r.prompt_tokens {
-    Absent => true
-    Present { value: _ } => false
   })
 }
 
 fn gpu_bench_prime_working_set_tokens(records: List<GpuBenchRequestV2>) -> Nat {
   fold(records, init: 0, f: fn(acc, r) {
-    if gpu_bench_is_prime(r: r) {
-      match r.prompt_tokens {
+    match r.phase {
+      GpuBenchPhasePrime => match r.prompt_tokens {
         Absent => acc
         Present { value: t } => acc + token_count_value(t: t)
       }
-    } else {
-      acc
+      GpuBenchPhaseWarm => acc
+      GpuBenchPhaseShort => acc
     }
   })
 }
 
 fn gpu_bench_prime_count(records: List<GpuBenchRequestV2>) -> Nat {
   fold(records, init: 0, f: fn(acc, r) {
-    if gpu_bench_is_prime(r: r) { acc + 1 } else { acc }
+    match r.phase {
+      GpuBenchPhasePrime => acc + 1
+      GpuBenchPhaseWarm => acc
+      GpuBenchPhaseShort => acc
+    }
   })
 }
 
 fn gpu_bench_any_prime_or_warm_failed(records: List<GpuBenchRequestV2>) -> Bool {
-  any(records, r => (gpu_bench_is_prime(r: r) || gpu_bench_is_warm(r: r)) && gpu_bench_request_failed(r: r))
+  any(records, r => match r.status {
+    GpuBenchRequestOk => false
+    GpuBenchRequestError { detail: _ } => match r.phase {
+      GpuBenchPhasePrime => true
+      GpuBenchPhaseWarm => true
+      GpuBenchPhaseShort => false
+    }
+  })
 }
 
 fn gpu_bench_warm_standing(records: List<GpuBenchRequestV2>, measured_kv: TokenCount?) -> GpuBenchWarmStanding {

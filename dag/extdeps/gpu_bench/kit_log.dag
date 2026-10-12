@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
-import std.checked_arithmetic { checked_int_to_nat }
+import std.checked_arithmetic { nat_from_last_space_token }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
 import extdeps.gpu_bench.request_v2 { extdeps_external_authority_anchor }
@@ -37,11 +37,22 @@ type GpuBenchCapacityOkRead
   | CapacityOkAbsent
   | CapacityOkMalformed { cause: NonEmptyStr }
 
-fn gpu_bench_nat_from_last_token(line: String) -> Nat? {
-  let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
-  match parse_int(s: last) {
-    Absent => none
-    Present { value: n } => checked_int_to_nat(n: n)
+fn gpu_bench_capacity_ok_line_prefix() -> String {
+  join([gpu_bench_capacity_ok_marker as String, " "], "")
+}
+
+fn gpu_bench_capacity_ok_from_line(line: String) -> GpuBenchCapacityOkRead? {
+  if string_contains(s: line, pattern: gpu_bench_capacity_ok_line_prefix()) {
+    match nat_from_last_space_token(line: line) {
+      Absent => Present {
+        value: CapacityOkMalformed {
+          cause: join([gpu_bench_capacity_ok_marker as String, " last token is not a natural"], "") as NonEmptyStr
+        }
+      }
+      Present { value: cap } => Present { value: CapacityOkRead { tokens: token_count(count: cap) } }
+    }
+  } else {
+    none
   }
 }
 
@@ -50,23 +61,30 @@ fn gpu_bench_capacity_ok_tokens(log: String) -> GpuBenchCapacityOkRead {
     CapacityOkAbsent
   } else {
     fold(split(s: log, delimiter: "\n"), init: CapacityOkAbsent, f: fn(acc, line) {
-      if string_contains(s: line, pattern: "CAPACITY_OK ") {
-        match gpu_bench_nat_from_last_token(line: line) {
-          Absent => CapacityOkMalformed { cause: "CAPACITY_OK last token is not a natural" as NonEmptyStr }
-          Present { value: cap } =>
-            match acc {
-              CapacityOkMalformed { cause: c } => CapacityOkMalformed { cause: c }
-              CapacityOkAbsent => CapacityOkRead { tokens: token_count(count: cap) }
-              CapacityOkRead { tokens: t } =>
-                if token_count_value(t: t) == cap {
-                  CapacityOkRead { tokens: t }
-                } else {
-                  CapacityOkMalformed { cause: "CAPACITY_OK snapshots disagree" as NonEmptyStr }
-                }
-            }
-        }
-      } else {
-        acc
+      match acc {
+        CapacityOkMalformed { cause: c } => CapacityOkMalformed { cause: c }
+        CapacityOkAbsent =>
+          match gpu_bench_capacity_ok_from_line(line: line) {
+            Absent => CapacityOkAbsent
+            Present { value: next } => next
+          }
+        CapacityOkRead { tokens: t } =>
+          match gpu_bench_capacity_ok_from_line(line: line) {
+            Absent => CapacityOkRead { tokens: t }
+            Present { value: next } =>
+              match next {
+                CapacityOkMalformed { cause: c } => CapacityOkMalformed { cause: c }
+                CapacityOkAbsent => CapacityOkRead { tokens: t }
+                CapacityOkRead { tokens: n } =>
+                  if token_count_value(t: t) == token_count_value(t: n) {
+                    CapacityOkRead { tokens: t }
+                  } else {
+                    CapacityOkMalformed {
+                      cause: join([gpu_bench_capacity_ok_marker as String, " snapshots disagree"], "") as NonEmptyStr
+                    }
+                  }
+              }
+          }
       }
     })
   }
