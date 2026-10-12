@@ -38,7 +38,6 @@ import gunbc.host_reset_return {
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.ci_spec { gunbc_ci_host_reset_dispatch_admission_target, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
 import std.measure { second_count }
-import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping, YamlKeyValue
@@ -403,15 +402,12 @@ test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_i
     && string_contains(s: fleet_converge_spark_bootstrap_step_if, pattern: "mode == 'spark_bootstrap'")
 }
 
-// THE SERVING APPLY STEP PRINTS THE RECEIPT ITS ENTRY WRITES. The step carried its own spelling of
-// the path, which named a file the entry never writes, so every converged apply (runs 34776045365,
-// 34782197491, 34783266345) ended red on `cat: No such file` after the units had landed. The step
-// now reads the entry's own declaration; the second assertion fails on the old spelling.
+// Serving apply is retired (hardware sold): the step refuses rather than invoking a deleted entry.
 test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes() -> Bool {
   let invoke = gunbc_ci_spark_serving_apply_invoke()
-  string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/pair_serving_apply.dag --function spark_pair_serving_apply_wet")
-    && string_contains(s: invoke, pattern: join(["cat \"$ROOT/", spark_pair_apply_receipt_path, "\""], ""))
-    && !string_contains(s: invoke, pattern: "spark-pair-serving-apply-receipt")
+  string_contains(s: invoke, pattern: "DGX Spark serving path retired")
+    && string_contains(s: invoke, pattern: "exit 1")
+    && !string_contains(s: invoke, pattern: "pair_serving_apply")
 }
 
 // ── THE DARK INSTALL REACHES srv1 UNDER THE RUNNER PRINCIPAL ────────────────────────────────

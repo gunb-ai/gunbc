@@ -6,7 +6,8 @@ import v2.lens.enforcement.lens_module_gate {
   LensInvariantSurface, LensInvariantProjection, LensVerdictAuthority, LensInvariantRemedy,
   LensModuleAdmission, GenuinelyNewInvariant, HandlerOnKernel,
   ProjectionNodeDag, VerdictLensVerdict, VerdictFidelityVerdict, VerdictVacuityEvidence,
-  RemedyShare, RemedyReport, RemedyIndependentOracle,
+  VerdictDeterminismFact, VerdictAsymptoticCost,
+  RemedyShare, RemedyReport, RemedyIndependentOracle, RemedyDelete,
   lens_module_gate_blocking_holds, lens_module_gate_holds,
   lens_module_gate_unenrolled_count_from_facts,
   lens_module_gate_unjustified_count_from_facts,
@@ -150,4 +151,36 @@ test fn question_zero_fixture_redundant_leg_fails() -> Bool {
 
 test fn lens_closure_question_zero_live_matches_gate() -> Bool {
   lens_closure_question_zero_holds() == lens_module_gate_blocking_holds()
+}
+
+// D1 derived-equality backfill: the hand equality folds (lens_module_gate_verdict_authority_eq /
+// lens_module_gate_remedy_eq) are deleted; their call sites now read the derived == from
+// dag/std/algebra (DESIGN §3/§4). The RED is the control for the backfill: distinct variants
+// compare unequal, so any equality that conflated them (the failure mode the hand folds were
+// backfilling) FAILs. The positive control pins the equal-values-equal-equal direction.
+
+test fn lens_verdict_authority_derived_eq_red_distinct_variants_unequal() -> Bool {
+  (VerdictLensVerdict == VerdictLensVerdict)
+    && (VerdictLensVerdict != VerdictFidelityVerdict)
+    && (VerdictLensVerdict != VerdictDeterminismFact)
+    && (VerdictFidelityVerdict != VerdictAsymptoticCost)
+}
+
+test fn lens_verdict_authority_derived_eq_positive_control_equal_values_equal() -> Bool {
+  (VerdictFidelityVerdict == VerdictFidelityVerdict)
+    && (VerdictAsymptoticCost == VerdictAsymptoticCost)
+    && (VerdictLensVerdict == VerdictLensVerdict)
+}
+
+test fn lens_invariant_remedy_derived_eq_red_distinct_variants_unequal() -> Bool {
+  (RemedyShare == RemedyShare)
+    && (RemedyShare != RemedyReport)
+    && (RemedyShare != RemedyDelete)
+    && (RemedyReport != RemedyIndependentOracle)
+}
+
+test fn lens_invariant_remedy_derived_eq_positive_control_equal_values_equal() -> Bool {
+  (RemedyDelete == RemedyDelete)
+    && (RemedyIndependentOracle == RemedyIndependentOracle)
+    && (RemedyReport == RemedyReport)
 }

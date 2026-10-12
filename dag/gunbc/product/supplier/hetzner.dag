@@ -401,12 +401,12 @@ fn hetzner_nuremberg_route_facts() -> ProviderRouteFacts {
 // product.fabric.provider_admission admit_provider_use unchanged and supplied nothing of its own --
 // a second name for one concept, which DESIGN section 3 calls out as a correctness concern rather
 // than a style one because a fork always gets consolidated later. Review 64960 named it. The sibling
-// this module compares itself to is the contrast that makes the point: gunbc.spark.first_party_serving
-// spark_first_party_admission takes only scope and offer and BINDS its own roster, facts, posture and
-// decision receipt, so it carries content. Here there is no roster and no posture to bind -- owning
-// one would be the fabricated authority this whole spine exists to refuse -- so a wrapper could only
-// ever be an alias. Consumers call admit_provider_use directly with the facts rows below, which is
-// what test.claim.spark.spark_first_party_serving_witness_test already does.
+// this module compared itself to was gunbc.spark.first_party_serving spark_first_party_admission,
+// which bound its own roster, facts, posture and decision receipt. That producer and its witness
+// were deleted with the sold Spark serving path (#13779). Here there is no roster and no posture
+// to bind -- owning one would be the fabricated authority this whole spine exists to refuse -- so
+// a wrapper could only ever be an alias. Consumers call admit_provider_use directly with the
+// facts rows below.
 //
 // DECLARED FRONTIER (DESIGN section 3c). The production consumer is a Hetzner supplier binding --
 // the product.supplier.ubicloud shape, producing SupplierOffers on these routes -- joined to a
