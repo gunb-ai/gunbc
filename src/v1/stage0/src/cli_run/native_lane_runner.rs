@@ -2856,35 +2856,95 @@ pub struct NativeClaimProgramRun {
     pub stderr: String,
 }
 
+/// Child wait under the binding's `std.measure` Millisecond deadline
+/// (`gunbc.target_binding` `NativeClaimProgramProducer.deadline`). Expiry kills the child and does
+/// not carry stdout: a partial report is not an observation of the cases.
+pub enum NativeClaimProgramAttempt {
+    Completed(NativeClaimProgramRun),
+    DeadlineExceeded {
+        entry: String,
+        budget: std::time::Duration,
+        elapsed: std::time::Duration,
+        closure_identity: String,
+        binary_identity: String,
+        seed_identity: String,
+        warning_count: i64,
+    },
+}
+
 /// EMIT, BUILD AND RUN ONE `NativeClaimDriver` ENTRY. The emission and build are the preparation
 /// every native route already uses (`prepare_emitted_compiler_for_entry`), so there is one answer to
-/// what "the emitted program" is; the one thing added is spawning it and keeping what it wrote.
-/// A refusal here -- emission refused, build failed, spawn failed -- is the subject never having
-/// been reached, and the caller reports it as such rather than as a case that did not hold.
+/// what "the emitted program" is; the one thing added is spawning it, waiting up to `deadline`, and
+/// keeping what it wrote if it exits in time. A refusal here -- emission refused, build failed,
+/// spawn failed -- is the subject never having been reached, and the caller reports it as such
+/// rather than as a case that did not hold. Deadline expiry is a completed observation that the
+/// bound did not hold (caller maps to exit 1), not a subject-unreached refusal.
 pub fn run_native_claim_program(
     source_roots: &[String],
     entry: &str,
-) -> Result<NativeClaimProgramRun, String> {
+    deadline: std::time::Duration,
+) -> Result<NativeClaimProgramAttempt, String> {
+    use std::io::Read;
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
     eprintln!(
-        "native-claim: {entry} built (closure {}) -- running {}",
+        "native-claim: {entry} built (closure {}) -- running {} deadline_ms={}",
         prepared.closure_identity,
-        prepared.binary_path.display()
+        prepared.binary_path.display(),
+        deadline.as_millis()
     );
-    let output = std::process::Command::new(&prepared.binary_path)
-        .output()
+    let mut child = std::process::Command::new(&prepared.binary_path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|cause| {
             format!("NATIVE-CLAIM REFUSAL cause=SpawnFailed entry={entry} — {cause}")
         })?;
-    Ok(NativeClaimProgramRun {
-        closure_identity: prepared.closure_identity,
-        binary_identity: prepared.binary_identity,
-        seed_identity: prepared.seed_identity,
-        warning_count: prepared.build.warning_count,
-        status: output.status.code(),
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-    })
+    let started = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Ok(NativeClaimProgramAttempt::DeadlineExceeded {
+                    entry: entry.to_string(),
+                    budget: deadline,
+                    elapsed: started.elapsed(),
+                    closure_identity: prepared.closure_identity,
+                    binary_identity: prepared.binary_identity,
+                    seed_identity: prepared.seed_identity,
+                    warning_count: prepared.build.warning_count,
+                });
+            }
+            Err(cause) => {
+                return Err(format!(
+                    "NATIVE-CLAIM REFUSAL cause=WaitFailed entry={entry} — {cause}"
+                ))
+            }
+        }
+    };
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        let _ = pipe.read_to_end(&mut stdout);
+    }
+    if let Some(mut pipe) = child.stderr.take() {
+        let _ = pipe.read_to_end(&mut stderr);
+    }
+    Ok(NativeClaimProgramAttempt::Completed(
+        NativeClaimProgramRun {
+            closure_identity: prepared.closure_identity,
+            binary_identity: prepared.binary_identity,
+            seed_identity: prepared.seed_identity,
+            warning_count: prepared.build.warning_count,
+            status: status.code(),
+            stdout: String::from_utf8_lossy(&stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        },
+    ))
 }
 
 /// ONE RUN OF A `std.compiler_entry` `NativeServeDriver` SERVICE, as the observation

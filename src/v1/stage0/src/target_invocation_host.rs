@@ -283,10 +283,13 @@ pub enum TargetProducer {
     GenericIdentityCensus,
     InterpolationHoleCensus,
     RegenRoundCost,
-    /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
-    /// shape is a registry row naming its entry, never another variant.
+    /// `NativeClaimProgramProducer { entry, deadline }`: the entry and the Millisecond child
+    /// deadline are carried, so a second program of the same shape is a registry row, never another
+    /// variant. Duration here is the host mirror of the `.dag` `std.measure` field, not a budget
+    /// invented at the spawn site.
     NativeClaimProgram {
         entry: &'static str,
+        deadline: std::time::Duration,
     },
     /// `NativeServeProgramProducer { entry }`: generic over its entry on the same rule.
     NativeServeProgram {
@@ -313,6 +316,16 @@ fn self_host_source_roots() -> Vec<String> {
 /// is emitted FROM is this instrument's own fact, on the same rule its siblings follow.
 fn v2_native_cli_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
+}
+
+/// Host mirror of `gunbc.instrument_targets` `native_claim_policy_child_deadline` (600000 ms).
+fn native_claim_policy_child_deadline() -> std::time::Duration {
+    std::time::Duration::from_millis(600_000)
+}
+
+/// Host mirror of `gunbc.instrument_targets` `value_position_block_nests_child_deadline` (15000 ms).
+fn value_position_block_nests_child_deadline() -> std::time::Duration {
+    std::time::Duration::from_millis(15_000)
 }
 
 /// `gunbc.instrument_targets` `emitted_crate_workspace_label`: the closure is emitted from the same
@@ -375,30 +388,42 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("native-crypto-vectors"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_crypto_vectors.dag",
+                deadline: native_claim_policy_child_deadline(),
             },
         ),
         (
             instrument_label("native-app-attest"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_app_attest.dag",
+                deadline: native_claim_policy_child_deadline(),
             },
         ),
         (
             instrument_label("dag-emit-real-grammar-round-trips"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/dag_emit_real_grammar_round_trips.dag",
+                deadline: native_claim_policy_child_deadline(),
             },
         ),
         (
             instrument_label("native-materialization-store-closure"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_materialization_store_closure.dag",
+                deadline: native_claim_policy_child_deadline(),
             },
         ),
         (
             instrument_label("native-emission-controls"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_emission_controls.dag",
+                deadline: native_claim_policy_child_deadline(),
+            },
+        ),
+        (
+            instrument_label("value-position-block-nests"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/value_position_block_nests.dag",
+                deadline: value_position_block_nests_child_deadline(),
             },
         ),
         (
@@ -852,7 +877,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_type_declaration_use_census(&self_host_source_roots()),
-        TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
+        TargetProducer::NativeClaimProgram { entry, deadline } => {
+            run_native_claim_program(entry, deadline)
+        }
         TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
@@ -1526,7 +1553,10 @@ fn run_emitted_crate_workspace(source_roots: &[String]) -> InvocationOutcome {
 /// (`cli_run::classify_exit`): success is held, code 1 is an observation that did not hold, and code
 /// 2 -- a roster/row join that breaks, a status the rows do not support, a signal -- is no
 /// observation. The source roots are the instrument's own fact, as for every sibling here.
-fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
+fn run_native_claim_program(
+    entry: &'static str,
+    deadline: std::time::Duration,
+) -> InvocationOutcome {
     let label_name = "native-claim";
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
@@ -1534,8 +1564,30 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
-    let run = match cli_run::run_native_claim_program(&v2_native_cli_source_roots(), entry) {
-        Ok(run) => run,
+    let run = match cli_run::run_native_claim_program(
+        &v2_native_cli_source_roots(),
+        entry,
+        deadline,
+    ) {
+        Ok(cli_run::NativeClaimProgramAttempt::Completed(run)) => run,
+        Ok(cli_run::NativeClaimProgramAttempt::DeadlineExceeded {
+            entry,
+            budget,
+            elapsed,
+            closure_identity,
+            binary_identity,
+            seed_identity,
+            warning_count,
+        }) => {
+            return InvocationOutcome {
+                termination: Termination::ObservationDidNotHold,
+                message: format!(
+                    "{label_name}: deadline exceeded entry={entry} budget_ms={} elapsed_ms={} closure={closure_identity} binary={binary_identity} seed={seed_identity} warning_count={warning_count}",
+                    budget.as_millis(),
+                    elapsed.as_millis()
+                ),
+            };
+        }
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,

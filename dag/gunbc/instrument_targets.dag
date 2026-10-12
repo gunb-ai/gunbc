@@ -70,6 +70,7 @@ import gunbc.target_invocation {
   route_target_invocation,
 }
 import std.types { String, Bool, NonEmptyStr }
+import std.measure { Millisecond, millisecond }
 
 // THE REAL INSTRUMENT TARGETS, AND THEY ARE PRODUCTION ROWS RATHER THAN FIXTURE EXAMPLES.
 //
@@ -407,6 +408,13 @@ fn native_emission_controls_entry() -> String {
   "dag/gunbc/instruments/native_emission_controls.dag"
 }
 
+// THE VALUE-POSITION BLOCK NEST CONTROL: native tokenize/parse/normalize of the committed
+// docs/measurements/value_position_block_nests/{single,multi}_d14 fixtures, as a NativeClaimDriver
+// program. Seed emit of this entry does not lower those sources (they are files the child reads),
+// so a regression is visible only in the emitted child — and the binding's deadline makes that hang
+// exit 1. Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:value-position-block-nests`.
+
 // O(corpus) exact-head join of evaluation_store_address callers plus the fail-closed src/v2
 // call-form scan. Not a DiscoverySelection floor witness (enrolment_bound_without_ceiling);
 // not a required CI job. `gunbc test //gunbc/instruments:evaluation-store-address-exact-head`.
@@ -619,8 +627,21 @@ fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
 
+// EXPLICIT POLICY BUDGET (DESIGN section 5) for NativeClaimDriver children other than the
+// value-position nest control: ten minutes of wall after emit and build. Tightened to a measured
+// child wall plus stated margin when a cgroup-bounded green of that binding records one.
+fn native_claim_policy_child_deadline() -> Millisecond {
+  millisecond(count: 600000)
+}
+
+// Wall budget for //gunbc/instruments:value-position-block-nests. 15 s is ~25× the ~0.6 s census-infer
+// head of a d14/d20 nest and ≪ the 80.6 s pre-fix d10; retune from the in-child green measurement.
+fn value_position_block_nests_child_deadline() -> Millisecond {
+  millisecond(count: 15000)
+}
+
 fn native_crypto_vectors_binding() -> TargetBinding {
-  TargetBinding { target: native_crypto_vectors_label() producer: NativeClaimProgramProducer { entry: native_crypto_vectors_entry() } }
+  TargetBinding { target: native_crypto_vectors_label() producer: NativeClaimProgramProducer { entry: native_crypto_vectors_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn v2_native_cli_binding() -> TargetBinding {
@@ -628,19 +649,31 @@ fn v2_native_cli_binding() -> TargetBinding {
 }
 
 fn native_app_attest_binding() -> TargetBinding {
-  TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() } }
+  TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn native_emission_controls_binding() -> TargetBinding {
-  TargetBinding { target: native_emission_controls_label() producer: NativeClaimProgramProducer { entry: native_emission_controls_entry() } }
+  TargetBinding { target: native_emission_controls_label() producer: NativeClaimProgramProducer { entry: native_emission_controls_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn dag_emit_real_grammar_round_trips_binding() -> TargetBinding {
-  TargetBinding { target: dag_emit_real_grammar_round_trips_label() producer: NativeClaimProgramProducer { entry: dag_emit_real_grammar_round_trips_entry() } }
+  TargetBinding { target: dag_emit_real_grammar_round_trips_label() producer: NativeClaimProgramProducer { entry: dag_emit_real_grammar_round_trips_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn native_materialization_store_closure_binding() -> TargetBinding {
-  TargetBinding { target: native_materialization_store_closure_label() producer: NativeClaimProgramProducer { entry: native_materialization_store_closure_entry() } }
+  TargetBinding { target: native_materialization_store_closure_label() producer: NativeClaimProgramProducer { entry: native_materialization_store_closure_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn value_position_block_nests_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "value-position-block-nests" } }
+}
+
+fn value_position_block_nests_entry() -> String {
+  "dag/gunbc/instruments/value_position_block_nests.dag"
+}
+
+fn value_position_block_nests_binding() -> TargetBinding {
+  TargetBinding { target: value_position_block_nests_label() producer: NativeClaimProgramProducer { entry: value_position_block_nests_entry() deadline: value_position_block_nests_child_deadline() } }
 }
 
 fn type_declaration_use_census_binding() -> TargetBinding {
@@ -801,7 +834,7 @@ fn instrument_targets() -> List<Label> {
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), native_serve_label()
+    native_emission_controls_label(), value_position_block_nests_label(), native_serve_label()
   ]
 }
 
@@ -819,7 +852,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), native_serve_binding()
+    native_emission_controls_binding(), value_position_block_nests_binding(), native_serve_binding()
   ]
 }
 
