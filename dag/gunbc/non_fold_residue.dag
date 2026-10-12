@@ -241,11 +241,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_derived_equality,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/effect_reach.dag::sink_kind_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/source_authority.dag::discovered_source_refs_digest_eq" },
     reason: nfr_reason_structural_eq_backfill,
     dissolution: nfr_dissolve_derived_equality,
@@ -274,16 +269,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/compiler/05_emit_orchestration.dag::orch_emit_let_step" },
     reason: nfr_reason_orch_emit,
     dissolution: nfr_dissolve_orch_emit,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/live_read_classification.dag::live_read_carrier_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/live_read_classification.dag::path_pattern_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/extdeps/git/git.dag::git_diff_name_status_pending_after_status" },

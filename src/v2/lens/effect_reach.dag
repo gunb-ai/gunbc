@@ -120,23 +120,8 @@ fn flow_eq(a: EffectReachFlow, b: EffectReachFlow) -> Bool {
         EffectReachFlow { sink: sb, path_literal: pb, init_literal_fp: fpb } =>
           pa == pb
             && fpa == fpb
-            && sink_kind_eq(a: sa, b: sb)
+            && sa == sb
       }
-  }
-}
-
-fn sink_kind_eq(a: HostEffectSinkKind, b: HostEffectSinkKind) -> Bool {
-  match a {
-    FilesystemReadSink =>
-      match b { FilesystemReadSink => true _ => false }
-    WitnessBinRunSink =>
-      match b { WitnessBinRunSink => true _ => false }
-    ShellExecRunSink =>
-      match b { ShellExecRunSink => true _ => false }
-    GunbcCompileEntrySink =>
-      match b { GunbcCompileEntrySink => true _ => false }
-    UnknownHostEffectSink =>
-      match b { UnknownHostEffectSink => true _ => false }
   }
 }
 
