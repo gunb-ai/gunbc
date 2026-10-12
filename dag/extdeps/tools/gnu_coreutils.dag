@@ -312,13 +312,21 @@ data coreutils_install_group_flag: NonEmptyStr = "-g"
 data coreutils_install_binary_name: NonEmptyStr = "install"
 
 fn coreutils_install_directory_argv(mode: FileMode, path: String) -> List<String> {
-  [
-    coreutils_install_binary_name as String,
-    coreutils_install_directory_flag as String,
-    coreutils_install_mode_flag as String,
-    coreutils_directory_mode_operand(mode: mode),
-    path,
-  ]
+  concat([coreutils_install_binary_name as String], coreutils_install_directories_arguments(mode: mode, paths: [path]))
+}
+
+// THE OPERANDS OF `install -d` FOR DIRECTORIES THE INVOKING PRINCIPAL OWNS, without the program word,
+// for a caller that runs install through its own resolved program; install -d takes a list, and every
+// directory named gets the one mode.
+fn coreutils_install_directories_arguments(mode: FileMode, paths: List<String>) -> List<String> {
+  concat(
+    [
+      coreutils_install_directory_flag as String,
+      coreutils_install_mode_flag as String,
+      coreutils_directory_mode_operand(mode: mode),
+    ],
+    paths,
+  )
 }
 
 fn coreutils_install_file_owned_argv(
