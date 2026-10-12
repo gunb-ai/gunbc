@@ -68,8 +68,11 @@ import gunbc.live_deploy.desired {
   prod_role_deployment_mismatch_detail,
   ProdRoleDeployment,
 }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import gunbc.live_deploy.emit {
-  live_deploy_serve_unit_file,
+  live_deploy_serve_unit_emission,
+  LiveDeployServeUnitEmitted,
+  LiveDeployServeUnitOidcReadbackRefused,
   live_deploy_belt_service_unit_file,
   live_deploy_belt_exit_path_unit_file,
   live_deploy_belt_answer_path_unit_file,
@@ -78,7 +81,7 @@ import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
 }
 import gunbc.live_deploy.unit_standing {
-  LaunchUnitStanding, observe_dashboard_service_standing, observe_belt_event_path_standing, observe_belt_oneshot_standing,
+  LaunchUnitStanding, DashboardServiceRefused, observe_dashboard_service_standing, observe_belt_event_path_standing, observe_belt_oneshot_standing,
 }
 import gunbc.deploy_transition { ActuationStanding, ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable, transition_actuation_standing }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, prod_role_realization_refusal_detail }
@@ -343,7 +346,7 @@ fn principal_fact() -> PrincipalFact {
 fn provider_fact(instance: HostDashboardInstance) -> BeltProviderPreflight {
   match dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation) {
     DispatchActuatorSelectionRefused { reason: r } => ProviderPreflightRefused { step: "dispatch-selection", detail: r as String }
-    DispatchActuatorSelectionOk { provider: p, effort: _, model: _, process_fingerprint: _ } => belt_provider_preflight_for_instance(instance: instance, provider: p)
+    DispatchActuatorSelectionOk { provider: p, effort: _, model: _, process_fingerprint: _, credential_snapshot: _ } => belt_provider_preflight_for_instance(instance: instance, provider: p)
   }
 }
 
@@ -385,11 +388,19 @@ fn event_backlog_fact(instance: HostDashboardInstance, now: String) -> EventBack
 
 fn unit_standing_fact(spec: DeploymentSpec, revision: String) -> LaunchUnitStanding
 {
+  let revision_binding = RevisionBoundAtEmission { revision: revision as CommitSha }
   LaunchUnitStanding {
-    dashboard: observe_dashboard_service_standing(
-      unit: spec.names.unit_name,
-      file: live_deploy_serve_unit_file(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }),
-    ),
+    dashboard: match live_deploy_serve_unit_emission(spec: spec, revision: revision_binding, now_epoch: tracker_web_oidc_deploy_now_epoch()) {
+      LiveDeployServeUnitEmitted { file } =>
+        observe_dashboard_service_standing(unit: spec.names.unit_name, file: file)
+      LiveDeployServeUnitOidcReadbackRefused { cause } =>
+        DashboardServiceRefused {
+          unit: spec.names.unit_name as String,
+          property: "oidc-readback",
+          expected: "LiveDeployServeUnitEmitted",
+          observed: cause as String,
+        }
+    },
     exit_path: observe_belt_event_path_standing(
       unit: deployment_belt_exit_path_unit_name(names: spec.names),
       file: live_deploy_belt_exit_path_unit_file(spec: spec),

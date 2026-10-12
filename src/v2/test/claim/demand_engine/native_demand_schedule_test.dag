@@ -41,7 +41,7 @@ import v2.compiler.compile {
   ElapsedObservationInvalid
 }
 import std.content_hash { Fnv1a64Structural }
-import std.judgment_contract { DeclaredInput }
+import std.judgment_contract { identity_structural_component, DeclaredInput }
 import std.types { NonEmptyStr, List }
 
 
@@ -66,7 +66,7 @@ fn g_module(name: String, declarations: List<String>) -> NativeLaneUniverseModul
 fn g_compiler() -> DeclaredInput {
   DeclaredInput {
     ref: "probe_compiler" as NonEmptyStr,
-    digest: Fnv1a64Structural { digest: "00000000000000c0" }
+    component: identity_structural_component(digest: Fnv1a64Structural { digest: "00000000000000c0" })
   }
 }
 
@@ -172,7 +172,7 @@ test fn the_two_module_stages_are_distinct_demands_holds() -> Bool {
 test fn the_compiler_input_is_part_of_the_demand_identity_holds() -> Bool {
   let other = DeclaredInput {
     ref: "probe_compiler" as NonEmptyStr,
-    digest: Fnv1a64Structural { digest: "00000000000000c1" }
+    component: identity_structural_component(digest: Fnv1a64Structural { digest: "00000000000000c1" })
   }
   demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()))
     != demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: other))
@@ -190,7 +190,7 @@ test fn the_compiler_input_is_part_of_the_demand_identity_holds() -> Bool {
 fn g_unknown_kind_identity() -> DemandIdentity {
   DemandIdentity {
     kind: parse_source_artifact_kind,
-    subject: Fnv1a64Structural { digest: "00000000000000ff" },
+    subject: identity_structural_component(digest: Fnv1a64Structural { digest: "00000000000000ff" }),
     declared_inputs: []
   }
 }

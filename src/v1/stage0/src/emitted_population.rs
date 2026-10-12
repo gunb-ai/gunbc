@@ -66,7 +66,7 @@
 // src/std_error_primitives.rs
 // src/std_execution_mode.rs
 // src/std_graph.rs
-// src/std_import.rs
+// src/std_import_statement.rs
 // src/std_induction.rs
 // src/std_integer.rs
 // src/std_interface_summary.rs
@@ -97,7 +97,6 @@
 // src/std_termination.rs
 // src/std_trait_derive_shape.rs
 // src/std_types.rs
-// src/std_unicode_scalar.rs
 // src/std_unicode_types.rs
 // src/std_witness_admission.rs
 // src/std_workspace_artifact.rs
@@ -155,12 +154,14 @@
 // src/v1_rt.rs
 // src/v1_std_core.rs
 // src/v1_test_non_ascii_perf_fixture.rs
+// src/v1_tests_claim_annotation_gap_round_trip_test.rs
 // src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
 // src/v1_tests_claim_generic_identity_census.rs
 // src/v1_tests_claim_interpolation_hole_census.rs
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
+// src/v1_tests_claim_parse_source_extent_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
 // src/v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness.rs

@@ -33,7 +33,7 @@ type AdmissionMechanismRoot {
   function_name: NonEmptyStr
 }
 
-// src/v1 is not in witness_layer_roots, so mechanism identity is a separate axis from the compile-clean active-source manifest: a tokenize_artifact edit cannot appear as an IncrementalSources path-diff of corpus files. Until self-host, the executing admission path is the seed: tokenize_artifact, parse_with_table_at / parse_module, admit_source_annotations, attach_annotations / admit_annotations, and alloc_occurrence_id. A .dag-only identity is MechanismIdentityUnobservable, not an identity. Omitting the seed is broken by construction. transform_content_digest and hashing those five files whole are both rejected: file-grain is still a roster, and a parse-only edit of v1_compiler_parse.rs would EntireHead the corpus. Identity is the reachable-declaration closure of those roots, which gunbc.namespace_reference_derived_closure cannot yet produce (production admissions Unavailable; closing witness red on purpose). Seed-Rust declaration closure is likewise uncomputable (rustc dep-info is file/crate grain). Do not substitute a 4-file or 38-file module union.
+// src/v1 is not in witness_layer_roots, so mechanism identity is a separate axis from the compile-clean active-source manifest: a tokenize_artifact edit cannot appear as an IncrementalSources path-diff of corpus files. Until self-host, the executing admission path is the seed: tokenize_artifact, parse_with_table_at / parse_module, bind_annotations, attach_annotations, and alloc_occurrence_id. A .dag-only identity is MechanismIdentityUnobservable, not an identity. Omitting the seed is broken by construction. transform_content_digest and hashing those files whole are both rejected: file-grain is still a roster, and a parse-only edit of v1_compiler_parse.rs would EntireHead the corpus. Identity is the reachable-declaration closure of those roots, which gunbc.namespace_reference_derived_closure cannot yet produce (production admissions Unavailable; closing witness red on purpose). Seed-Rust declaration closure is likewise uncomputable (rustc dep-info is file/crate grain). Do not substitute a 4-file or 38-file module union.
 data admission_mechanism_seed_roots: List<AdmissionMechanismRoot> = [
   AdmissionMechanismRoot {
     realization_file: "src/v1/stage0/src/v1_compiler_tokenize.rs" as NonEmptyStr,
@@ -49,15 +49,11 @@ data admission_mechanism_seed_roots: List<AdmissionMechanismRoot> = [
   },
   AdmissionMechanismRoot {
     realization_file: "src/v1/stage0/src/v1_compiler_annotation_bind.rs" as NonEmptyStr,
-    function_name: "admit_source_annotations" as NonEmptyStr,
+    function_name: "bind_annotations" as NonEmptyStr,
   },
   AdmissionMechanismRoot {
     realization_file: "src/v1/stage0/src/std_source_annotation.rs" as NonEmptyStr,
     function_name: "attach_annotations" as NonEmptyStr,
-  },
-  AdmissionMechanismRoot {
-    realization_file: "src/v1/stage0/src/std_source_annotation.rs" as NonEmptyStr,
-    function_name: "admit_annotations" as NonEmptyStr,
   },
   AdmissionMechanismRoot {
     realization_file: "src/v1/stage0/src/std_occurrence_identity.rs" as NonEmptyStr,

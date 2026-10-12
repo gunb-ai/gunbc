@@ -19,6 +19,8 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item }
 import v2.compiler.fold_lowering {
   CallbackAllByAnd,
+  CallbackAnyByOr,
+  CallbackFiltersByCondition,
   CallbackCallOperands,
   CallbackMapsToCons,
   CallbackRealization,
@@ -169,7 +171,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_node, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -1424,6 +1426,16 @@ fn body_lower_first_field_wire_key_optional(fields: List<BodyLowerIoItem>) -> Op
   })
 }
 
+// THE FIRST FIELD THAT CARRIES A WHERE REFINEMENT, if any: its clause, where the record refuses.
+fn body_lower_first_field_refinement_optional(fields: List<BodyLowerIoItem>) -> Optional<Node> {
+  fold(fields, init: optional_absent(), f: fn(acc, io) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => io.refinement
+    }
+  })
+}
+
 // Each field's binder, carrying the default its tail holds when it has one.
 fn body_lower_field_binder_edges(fields: List<BodyLowerIoItem>) -> Outcome<List<Edge>> {
   fold(fields, init: outcome_accepted(value: Empty), f: fn(acc, io) {
@@ -1481,6 +1493,10 @@ fn body_lower_field_decl_block_payload(block_shell: Node) -> Outcome<Node> {
           match body_lower_field_items_optional(items: items) {
             Absent => refuse
             Present { value: fields } =>
+              match body_lower_first_field_refinement_optional(fields: fields) {
+                Present { value: clause } =>
+                  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_refinement_unmodeled, n: clause))
+                Absent =>
               match body_lower_first_field_wire_key_optional(fields: fields) {
                 Present { value: tail } =>
                   outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_interface_member_unmodeled, n: tail))
@@ -1488,6 +1504,7 @@ fn body_lower_field_decl_block_payload(block_shell: Node) -> Outcome<Node> {
                   bind_outcome(o: body_lower_field_binder_edges(fields: fields), f: fn(edges) {
                     outcome_accepted(value: body_lower_payload_node(edges: edges, source: block_shell))
                   })
+              }
               }
           }
       }
@@ -3678,14 +3695,25 @@ fn body_lower_callback_init(realization: CallbackRealization, source: Node) -> N
   match realization {
     CallbackMapsToCons => body_lower_algebra_constructor_reference(name: ^Empty, source: source)
     CallbackAllByAnd => body_lower_param_ref_atom(source: source, identity: ^dag_token_kw_true)
+    CallbackFiltersByCondition => body_lower_algebra_constructor_reference(name: ^Empty, source: source)
+    CallbackAnyByOr => body_lower_param_ref_atom(source: source, identity: ^dag_token_kw_false)
   }
 }
 
-fn body_lower_callback_step_body(realization: CallbackRealization, accumulator: Symbol, body: Node, source: Node) -> Node {
+// filter's step names the MEMBER as well as the accumulator: the member is the callback's own authored
+// binder, so a reference to it is the same lexical reference the callback body already makes.
+fn body_lower_callback_step_body(realization: CallbackRealization, accumulator: Symbol, member: Symbol, body: Node, source: Node) -> Node {
   let acc_ref = body_lower_param_ref_atom(source: source, identity: accumulator)
   match realization {
     CallbackMapsToCons => body_lower_callback_cons(head: body, tail: acc_ref, source: source)
     CallbackAllByAnd => lower_binary_infix(left: acc_ref, operator: body_lower_callback_operator(token: ^dag_token_and_and), right: body)
+    CallbackFiltersByCondition =>
+      lower_branch(
+        condition: body,
+        then_arm: body_lower_callback_cons(head: body_lower_param_ref_atom(source: source, identity: member), tail: acc_ref, source: source),
+        else_arm: body_lower_param_ref_atom(source: source, identity: accumulator)
+      )
+    CallbackAnyByOr => lower_binary_infix(left: acc_ref, operator: body_lower_callback_operator(token: ^dag_token_or_or), right: body)
   }
 }
 
@@ -3725,7 +3753,7 @@ fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection:
                           shell: callback_node,
                           binders: [accumulator_binder, member],
                           codomain: CodomainElided,
-                          body: body_lower_callback_step_body(realization: operands.realization, accumulator: accumulator, body: body, source: callback_node)
+                          body: body_lower_callback_step_body(realization: operands.realization, accumulator: accumulator, member: member.name, body: body, source: callback_node)
                         ) {
                           Rejected { diagnostics: r } => Rejected { diagnostics: r }
                           Accepted { value: step, diagnostics: ad } =>
@@ -4420,7 +4448,7 @@ fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outco
 // reader of a where clause (body_lower_kept_where_clause) serves a type variant; a parameter's type
 // is read by body_lower_type_expr_lowered_optional, which would keep the base type and drop the
 // refinement. So until a parameter's type can carry its refinement the fn refuses
-// (gunbc.recurring_failure_mode parameter_refinement_has_no_carrier). The clause is searched only
+// (gunbc.recurring_failure_mode refinement_has_no_carrier). The clause is searched only
 // inside this declaration's own param_list.
 // A parameter's DEFAULT is not refused here any more: it lowers onto the parameter's binder
 // (body_lower_typed_param_optional, body_lower_binder_edge_read; XL-2 PR2c-ii).
@@ -5427,6 +5455,9 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
     OperandRefLowered { lowered: lowered } => outcome_accepted(value: optional_present(value: lowered))
     OperandRefAbsent =>
       let raw = body_lower_deep_unwrap_optional(node: node)
+      if body_lower_is_block_value(node: raw) {
+        body_lower_block_value_lowered(raw: raw)
+      } else {
       match body_lower_fold(node: raw) {
         Accepted { value: folded, diagnostics: d } =>
           match body_lower_lowered_behind_shells_read(node: folded) {
@@ -5437,7 +5468,58 @@ fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
           }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
+      }
     OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+// A BLOCK `{ .. }` IN VALUE POSITION (a match arm body) IS LOWERED BY THE WALKER ALONE, NEVER FOLDED FIRST.
+// The fold leaves a block as an unsealed fn_body shell (body_lower_fold_dispatch has no fn_body case: a
+// fn_decl's own body is lowered by its producer) that the peel cannot read, so the walker lowered the block
+// anyway and the fold's whole result was discarded: every nesting level paid the fold (which lowers the
+// nested blocks through this reader) AND the walker (which lowers them again), 3^d in the depth d of
+// `Present { value: v } => { match .. }` arms. The dag+src/v2 native census never reached its first module.
+// The block is recognised by its shape (productions down single captured children to fn_body), not by a
+// fold attempt.
+fn body_lower_is_block_value(node: Node) -> Bool {
+  if body_lower_is_fn_body_shell(node: node) {
+    true
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Absent => false
+      Present { value: _ } =>
+        match parse_production_captured_child_optional(node: node) {
+          Absent => false
+          Present { value: captured } => body_lower_is_block_value(node: body_lower_deep_unwrap_optional(node: captured))
+        }
+    }
+  }
+}
+
+// The block's statements through the walker's own statement spine (body_lower_try_statement_spine, the
+// walker's first step: a block of two or more statements, or one that returns). A block of ONE statement is
+// that statement's value, read once by the value reader; the walker instead folded the whole block (which
+// lowers the nested blocks) and, when that left the unsealed shell, lowered the same statement again by
+// its control-form route -- a second reader of the one value.
+fn body_lower_block_value_lowered(raw: Node) -> Outcome<Optional<Node>> {
+  match body_lower_try_statement_spine(captured: raw) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: Present { value: lowered }, diagnostics: d } =>
+      outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
+    Accepted { value: Absent, diagnostics: _ } =>
+      match body_lower_find_captured(root: raw, emitted: ^dag_surface_stmt_seq) {
+        ParseSubtreeAbsent => body_lower_body_subtree_lower_rest(captured: raw)
+        ParseSubtreeFound { captured: spine } =>
+          match body_lower_stmt_spine_head_optional(spine: spine) {
+            Absent => body_lower_body_subtree_lower_rest(captured: raw)
+            Present { value: head } =>
+              match body_lower_value_read(value: head) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: lowered, diagnostics: d } =>
+                  outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
+              }
+          }
+      }
   }
 }
 
@@ -6094,6 +6176,26 @@ fn body_lower_comma_list_items(list_capture: Node, shape_refusal: Symbol) -> Out
   }
 }
 
+// A comma list ends in an optional comma (dag_grammar_comma_list_expr: seq(first, seq(repeat, optional comma))).
+// Whether that trailing comma was written is a fact of the capture the items read does not carry; a
+// consumer for which `[a,]` is not `[a]` -- an index suffix -- asks it here.
+fn body_lower_comma_list_has_trailing_comma(list_capture: Node) -> Bool {
+  let list = body_lower_deep_unwrap_optional(node: list_capture)
+  if is_empty_conj_root(n: list) {
+    false
+  } else {
+    match sugar_sequence_pair_optional(node: list) {
+      Absent => false
+      Present { value: head_and_rest } =>
+        match sugar_sequence_pair_optional(node: head_and_rest.right) {
+          Absent => false
+          Present { value: repeat_and_trailing } =>
+            is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: repeat_and_trailing.right)) == false
+        }
+    }
+  }
+}
+
 // The consumers that refuse under their own cause read the shape through this adapter: Absent is
 // "not a comma list", and each such caller already turns Absent into its own located refusal.
 fn body_lower_comma_list_items_optional(list_capture: Node) -> Optional<List<Node>> {
@@ -6435,6 +6537,7 @@ type PostfixStep
   = PostfixProjection { segment: Node, call_elem: Optional<Node> }
   | PostfixCast { target: Node }
   | PostfixRecord { segment: Node, items: List<Node> }
+  | PostfixIndex { items_capture: Node, at: Node }
 
 // THE THIRD ARM CARRIES THE SUFFIX KINDS THIS LOWERING CANNOT READ. A dot-projection step whose
 // suffix slot is neither empty, a paren call, nor a brace record body reaches PostfixChainSuffixCarried.
@@ -6554,6 +6657,16 @@ fn body_lower_postfix_chain_steps_read(
               grown: body_lower_postfix_chain_acc_cast_step(acc: acc, target: target)
             )
           Absent =>
+        match body_lower_index_suffix_expr_optional(repeat_elem: repeat_elem) {
+          Present { value: items_capture } =>
+            body_lower_postfix_chain_steps_grow(
+              repeat_capture: repeat_capture,
+              grown: body_lower_postfix_chain_acc_closing_step(
+                acc: acc,
+                step: PostfixIndex { items_capture: items_capture, at: repeat_elem }
+              )
+            )
+          Absent =>
         match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
           Absent => PostfixChainNotThisShape
           Present { value: segment } =>
@@ -6583,6 +6696,7 @@ fn body_lower_postfix_chain_steps_read(
                   )
                 )
             }
+        }
         }
         }
     }
@@ -6718,6 +6832,41 @@ fn body_lower_postfix_chain_fold_step(
                 diagnostics: ad
               )
           }
+        PostfixIndex { items_capture: items_capture, at: at } =>
+          match body_lower_comma_list_items(
+            list_capture: items_capture,
+            shape_refusal: ^body_lowering_reason_list_literal_shape_unread
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: items, diagnostics: _ } =>
+              if body_lower_comma_list_has_trailing_comma(list_capture: items_capture) {
+                outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_index_suffix_arity, n: at))
+              } else {
+              match items {
+                Empty => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_index_suffix_arity, n: at))
+                Cons { head: index, tail: more } =>
+                  match more {
+                    Cons { head: _, tail: _ } =>
+                      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_index_suffix_arity, n: at))
+                    Empty =>
+                      match body_lower_value_read(value: index) {
+                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                        Accepted { value: index_value, diagnostics: xd } =>
+                          outcome_with_diagnostics(
+                            value: PostfixAccumValue {
+                              node: body_lower_index_read_node(
+                                base: body_lower_postfix_accum_node(acc: state, source: source),
+                                index: index_value,
+                                source: source
+                              )
+                            },
+                            diagnostics: diagnostics_merge(outer: ad, inner: xd)
+                          )
+                      }
+                  }
+              }
+              }
+          }
         PostfixRecord { segment: step_segment, items: items } =>
           match state {
             PostfixAccumSpine { segments: segments } =>
@@ -6810,13 +6959,13 @@ fn body_lower_postfix_chain_fold_step(
 fn body_lower_dotted_chain_lowered_optional(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_postfix_chain_read(node: node) {
     PostfixChainNotThisShape =>
-      if body_lower_postfix_chain_carries_as_suffix(node: node) {
+      if body_lower_postfix_chain_carries_cast_or_index_suffix(node: node) {
         outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: node))
       } else {
         outcome_accepted(value: optional_absent())
       }
     PostfixChainSuffixCarried { at: at } =>
-      if body_lower_postfix_chain_carries_as_suffix(node: node) {
+      if body_lower_postfix_chain_carries_cast_or_index_suffix(node: node) {
         outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_postfix_suffix_carried, n: at))
       } else {
       outcome_with_diagnostics(
@@ -6858,7 +7007,7 @@ fn body_lower_postfix_chain_lowered_from_steps(
     Absent =>
       match body_lower_operand_ref_read(node: head_node) {
         OperandRefAbsent =>
-          if body_lower_postfix_steps_carry_cast(steps: steps)
+          if body_lower_postfix_steps_carry_cast_or_index(steps: steps)
             || body_lower_postfix_head_is_call(head_node: head_node) {
             body_lower_postfix_cast_chain_computed_head(head_node: head_node, steps: steps, source: node)
           } else {
@@ -6914,6 +7063,7 @@ fn body_lower_postfix_chain_head_atom_for_steps(head_node: Node, steps: List<Pos
     Cons { head: first, tail: _ } =>
       match first {
         PostfixCast { target: _ } => optional_absent()
+        PostfixIndex { items_capture: _, at: _ } => optional_absent()
         PostfixProjection { segment: _, call_elem: _ } => body_lower_dotted_head_atom_optional(node: head_node)
         PostfixRecord { segment: _, items: _ } => body_lower_dotted_head_atom_optional(node: head_node)
       }
@@ -6928,7 +7078,7 @@ fn body_lower_postfix_cast_target_not_carried(at: Node) -> Outcome<PostfixAccum>
 // THE OPERAND READERS' CAST DOOR. A postfix chain carrying a cast step is lowered whole through the
 // chain fold (body_lower_dotted_chain_lowered_optional); any other node is not this reader's.
 fn body_lower_cast_chain_read(node: Node) -> OperandRefRead {
-  if body_lower_postfix_chain_carries_as_suffix(node: node) {
+  if body_lower_postfix_chain_carries_cast_or_index_suffix(node: node) {
     match body_lower_dotted_chain_lowered_optional(node: node) {
       Rejected { diagnostics: r } => OperandRefRefused { diagnostics: r }
       Accepted { value: Present { value: lowered }, diagnostics: _ } => OperandRefLowered { lowered: lowered }
@@ -6942,10 +7092,11 @@ fn body_lower_cast_chain_read(node: Node) -> OperandRefRead {
   }
 }
 
-fn body_lower_postfix_steps_carry_cast(steps: List<PostfixStep>) -> Bool {
+fn body_lower_postfix_steps_carry_cast_or_index(steps: List<PostfixStep>) -> Bool {
   fold(steps, init: false, f: fn(acc, step) {
     acc || match step {
       PostfixCast { target: _ } => true
+      PostfixIndex { items_capture: _, at: _ } => true
       PostfixProjection { segment: _, call_elem: _ } => false
       PostfixRecord { segment: _, items: _ } => false
     }
@@ -6958,6 +7109,35 @@ fn body_lower_postfix_steps_carry_cast(steps: List<PostfixStep>) -> Bool {
 // CanonicalOperation (v2.extdeps.languages.dag dag_surface_operator_canonicalization_lookup) and
 // binds T in type role. The named edge is never an operand: readers take a Transform's operands
 // through its positional children.
+// AN INDEX READ IS THE EXISTING STD ELEMENT ACCESS, NOT A NEW OPERATION. `xs[i]` lowers to
+// v2.std.collection list_at_optional(xs: xs, index: i) -- an Optional<T>, because an index out of
+// range is a value and not a crash (the answer v2 already models). The head is the absolute path
+// to that declaration. What is established is that `xs[i]` normalizes to the same tree as the
+// qualified list_at_optional call (v2.test.claim.parse.index_suffix). Whether infer refuses a Map
+// base or a non-Int index is NOT established: no harness yet assembles source with its std import
+// closure (gunbc.recurring_failure_mode index_suffix_infer_verdict_unobserved).
+fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
+  // The operator is a node CAUSED BY the suffix, not the suffix's own occurrence: a base lowered from
+  // a projection (`r.items[i]`) is a spine that already carries the source occurrence, and two
+  // nodes under one occurrence is a collision the module refuses.
+  let operator_occurrence = match source.occurrence_id {
+    OccurrenceMinted { id: id } => OccurrencePending { caused_by: id }
+    OccurrenceProjected { id: id, caused_by: _ } => OccurrencePending { caused_by: id }
+    OccurrencePending { caused_by: c } => OccurrencePending { caused_by: c }
+    OccurrenceSynthetic => OccurrenceSynthetic
+  }
+  body_lower_transform_call(
+    operator: qualified_name_spine_node(
+      qn: [^v2, ^std, ^collection, ^list_at_optional],
+      occurrence_id: operator_occurrence
+    ),
+    args: [
+      Edge { label: Authored { name: ^xs }, target: base },
+      Edge { label: Authored { name: ^index }, target: index }
+    ]
+  )
+}
+
 fn body_lower_cast_node(operand: Node, target_type: Node, source: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
@@ -9625,14 +9805,14 @@ fn body_lower_postfix_lowered_primary_optional(captured: Node) -> Optional<Node>
 // A CAST IN A CHAIN THIS READ DECLINES IS REFUSED, NOT DECLINED: the arms behind the door read the
 // head and not the suffixes, so declining would drop the cast. The carried suffix is the refusal's
 // cause and locus.
-fn body_lower_postfix_chain_carries_as_suffix(node: Node) -> Bool {
+fn body_lower_postfix_chain_carries_cast_or_index_suffix(node: Node) -> Bool {
   match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: node)) {
     Absent => false
-    Present { value: pair } => body_lower_postfix_repeat_carries_as_suffix(repeat_capture: pair.right)
+    Present { value: pair } => body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: pair.right)
   }
 }
 
-fn body_lower_postfix_repeat_carries_as_suffix(repeat_capture: Node) -> Bool {
+fn body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: Node) -> Bool {
   if is_empty_conj_root(n: repeat_capture) {
     false
   } else {
@@ -9642,10 +9822,14 @@ fn body_lower_postfix_repeat_carries_as_suffix(repeat_capture: Node) -> Bool {
         match body_lower_as_suffix_type_optional(repeat_elem: repeat_elem) {
           Present { value: _ } => true
           Absent =>
+          match body_lower_index_suffix_expr_optional(repeat_elem: repeat_elem) {
+          Present { value: _ } => true
+          Absent =>
             match body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
-              Present { value: rest } => body_lower_postfix_repeat_carries_as_suffix(repeat_capture: rest)
+              Present { value: rest } => body_lower_postfix_repeat_carries_cast_or_index_suffix(repeat_capture: rest)
               Absent => false
             }
+          }
         }
     }
   }
@@ -9662,6 +9846,12 @@ fn body_lower_as_suffix_type_optional(repeat_elem: Node) -> Optional<Node> {
         Absent => optional_absent()
       }
   }
+}
+
+// index_suffix = seq(lbracket, seq(expr_list, rbracket)) -- the list literal's bracket shape: answers
+// its items capture when the element is an index suffix.
+fn body_lower_index_suffix_expr_optional(repeat_elem: Node) -> Optional<Node> {
+  body_lower_list_literal_items_capture_optional(captured: repeat_elem)
 }
 
 fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
@@ -10949,7 +11139,15 @@ fn body_lower_io_item_step(a: IoAcc, item: Node) -> Outcome<IoAcc> {
   match body_lower_io_item_optional(item: item) {
     Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: item))
     Present { value: io } =>
-      bind_outcome(o: body_lower_binder_edge_read(param: io.field, default: body_lower_io_field_default_optional(tail: io.tail)), f: fn(edge) {
+      match io.refinement {
+        Present { value: clause } => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_refinement_unmodeled, n: clause))
+        Absent => body_lower_io_item_step_unrefined(a: a, item: item, io: io)
+      }
+  }
+}
+
+fn body_lower_io_item_step_unrefined(a: IoAcc, item: Node, io: BodyLowerIoItem) -> Outcome<IoAcc> {
+  bind_outcome(o: body_lower_binder_edge_read(param: io.field, default: body_lower_io_field_default_optional(tail: io.tail)), f: fn(edge) {
         if body_lower_io_field_wire_key_present(tail: io.tail) {
           match body_lower_io_field_wire_key_node_optional(tail: io.tail) {
             Present { value: key } =>
@@ -10964,8 +11162,7 @@ fn body_lower_io_item_step(a: IoAcc, item: Node) -> Outcome<IoAcc> {
         } else {
           outcome_accepted(value: IoAcc { edges: list_snoc_item(xs: a.edges, item: edge), set_aside: a.set_aside, rows: a.rows, row_items: a.row_items })
         }
-      })
-  }
+  })
 }
 
 // The wire key's string literal: the one string literal in the tail's `from "key"` part.
@@ -11013,6 +11210,7 @@ fn body_lower_io_block_items_optional(captured: Node) -> Optional<List<Node>> {
 // An io item is seq(field_decl, tail): its field declaration and its `[from "key"] [= default]` tail.
 type BodyLowerIoItem {
   field: BodyLowerTypedParam,
+  refinement: Optional<Node>,
   tail: Node,
 }
 
@@ -11022,7 +11220,16 @@ fn body_lower_io_item_optional(item: Node) -> Optional<BodyLowerIoItem> {
     Present { value: pair } =>
       match body_lower_field_decl_optional(item: pair.left) {
         Absent => Absent
-        Present { value: field } => Present { value: BodyLowerIoItem { field: field, tail: pair.right } }
+        Present { value: field } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => Present { value: BodyLowerIoItem { field: field, refinement: Absent, tail: pair.right } }
+            Present { value: slots } =>
+              Present { value: BodyLowerIoItem {
+                field: field,
+                refinement: body_lower_find_production_shell_optional(root: slots.left, emitted: ^dag_surface_where_refinement_clause),
+                tail: slots.right
+              } }
+          }
       }
   }
 }

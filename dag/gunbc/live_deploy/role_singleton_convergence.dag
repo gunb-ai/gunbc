@@ -59,7 +59,12 @@ import extdeps.languages.json.parse {
   FieldMalformed,
   FieldRead,
 }
-import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, prod_role_actuated_realization_in, selected_deployment_spec, bind_desired_selected_identity, DesiredSelectedIdentityBound, DesiredSelectedIdentityUnknownInstance, DesiredSelectedIdentityRosterRefused, DesiredSelectedIdentityMismatch, instance_id_text }
+import gunbc.live_deploy.desired {
+  DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, prod_role_actuated_realization_in, selected_deployment_spec,
+  bind_desired_selected_identity, DesiredSelectedIdentityBound, DesiredSelectedIdentityUnknownInstance, DesiredSelectedIdentityRosterRefused, DesiredSelectedIdentityMismatch,
+  instance_id_text, desired_deployment_for_instance_id_over, DesiredDeploymentLookup, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
+  DesiredRosterRefusal, desired_roster_refusal_detail,
+}
 import v2.std.operation_argv {
   ArgvMaterialized,
   ArgvMaterializationRefused,
@@ -167,6 +172,7 @@ type RoleSingletonRefusal
   | RoleSingletonMarkerMismatched { deployment: DeploymentId, host: NonEmptyStr, field: NonEmptyStr, expected: String, observed: String }
   | RoleSingletonStaleSpec { instance_id: NonEmptyStr, detail: String }
   | RoleSingletonDeploymentUnrostered { instance_id: String, detail: String }
+  | RoleSingletonDesiredRosterRefused { refusal: DesiredRosterRefusal }
 
 // ── What is decided ─────────────────────────────────────────────────────────────────────────────
 type RoleSingletonConvergence
@@ -268,6 +274,12 @@ fn target_host_of(rows: List<DesiredDeployment>, deployment: DeploymentId) -> No
 // deployment realized off its own target; two deployments realized on one host; two deployments
 // realized anywhere; a broker on a host where no store is realized. Only then are realizations formed,
 // each (deployment, host) with the members seen for it, broker included from the same host.
+// THE HOST-LEVEL BROKER (gunbc_approval_broker_unit_path) is SightedBroker: it carries no
+// DeploymentId. Attribution is derived, never guessed. The broker joins the ObservedRealization of
+// the unique store deployment on the same host. Two store deployments on one host refuse as
+// RoleSingletonTwoOnOneHost before realizations form. A broker with no store refuses as
+// RoleSingletonBrokerWithoutStore. A co-hosted non-holder therefore sees the holder's broker
+// attributed to the holder, never to itself.
 fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>, rows: List<DesiredDeployment>) -> RoleSingletonObservation {
   let unobservable = readings |> flat_map(r => match r {
     HostRoleSingletonsUnobservable { host, cause } => [RoleSingletonHostUnobservable { host: host, cause: cause }]
@@ -384,7 +396,7 @@ fn admitted_spec(admission: RoleSingletonAdmission) -> DeploymentSpec admit_call
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_admitted_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "role_singleton_disposition_of"),
-  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_receipted_decided"),
 ] {
   admission.spec
 }
@@ -393,7 +405,7 @@ fn admitted_decision(admission: RoleSingletonAdmission) -> RoleSingletonConverge
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_admitted_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "role_singleton_disposition_of"),
-  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_receipted_decided"),
 ] {
   admission.decision
 }
@@ -465,6 +477,8 @@ fn role_singleton_refusal_detail(cause: RoleSingletonRefusal) -> String {
       join(["role singletons refused: spec ", instance_id as String, " is not admitted: ", detail], "")
     RoleSingletonDeploymentUnrostered { instance_id, detail } =>
       join(["role singletons refused: deployment ", instance_id, " does not bind to its desired_deployment_roster row: ", detail], "")
+    RoleSingletonDesiredRosterRefused { refusal } =>
+      join(["role singletons refused: the desired roster is not admitted: ", desired_roster_refusal_detail(refusal: refusal)], "")
   }
 }
 
@@ -644,19 +658,24 @@ type RoleSingletonSelfReport {
   reading: HostRoleSingletonReading
 }
 
-fn roster_row_of_instance(instance: HostDashboardInstance, rows: List<DesiredDeployment>) -> DesiredDeployment? {
-  rows |> filter(r => instance_id_text(id: r.instance.instance_id) == instance_id_text(id: instance.instance_id)) |> first
+fn roster_row_of_instance(instance: HostDashboardInstance, rows: List<DesiredDeployment>) -> DesiredDeploymentLookup {
+  desired_deployment_for_instance_id_over(rows: rows, instance_id: instance_id_text(id: instance.instance_id))
 }
 
 fn role_singleton_self_report_of(instance: HostDashboardInstance) -> RoleSingletonSelfReport {
   let rows = desired_deployment_roster()
   match roster_row_of_instance(instance: instance, rows: rows) {
-    Absent => RoleSingletonSelfReport {
+    DesiredDeploymentUnknownInstanceId { instance_id } => RoleSingletonSelfReport {
       host: instance.host_identity as NonEmptyStr,
       observed_at_unix_millis: none,
-      reading: HostRoleSingletonsUnobservable { host: instance.host_identity as NonEmptyStr, cause: join(["dashboard instance ", instance_id_text(id: instance.instance_id), " is not a desired_deployment_roster row, so it names no roster host"], "") },
+      reading: HostRoleSingletonsUnobservable { host: instance.host_identity as NonEmptyStr, cause: join(["dashboard instance ", instance_id, " is not a desired_deployment_roster row, so it names no roster host"], "") },
     }
-    Present { value: row } => match clock_unix_millis_read() {
+    DesiredDeploymentRosterRefused { refusal } => RoleSingletonSelfReport {
+      host: instance.host_identity as NonEmptyStr,
+      observed_at_unix_millis: none,
+      reading: HostRoleSingletonsUnobservable { host: instance.host_identity as NonEmptyStr, cause: join(["the desired roster is not admitted: ", desired_roster_refusal_detail(refusal: refusal)], "") },
+    }
+    DesiredDeploymentFound { row } => match clock_unix_millis_read() {
       ClockUnixMillisRefused { detail } => RoleSingletonSelfReport {
         host: row.target.ssh_host,
         observed_at_unix_millis: none,
@@ -1079,12 +1098,15 @@ fn first_unobservable_refusal(readings: List<HostRoleSingletonReading>) -> RoleS
   }
 }
 
-fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization) -> Bool {
+// A2: the global gate covers singleton PLACEMENT changes only (Install, Move, Remove).
+// HoldsNoRoleSingleton emits no broker/fabric step and must never retract another deployment's
+// units. A placement change exists only when an observed realization belongs to THIS spec's
+// deployment — leftover units of its own (review 78627), not a co-hosted holder's. The spec's
+// deployment is the row desired_deployment_for_instance_id_over already Found; unrostered and
+// roster-refused specs never reach this fold.
+fn local_placement_change(spec: DeploymentSpec, realizations: List<ObservedRealization>, desired: ProdRoleRealization, spec_deployment: DeploymentId) -> Bool {
   match spec.role_singletons {
-    HoldsNoRoleSingleton => match realizations |> first {
-      Absent => false
-      Present { value: _ } => true
-    }
+    HoldsNoRoleSingleton => any(realizations, r => r.deployment == spec_deployment)
     HoldsProdRoleSingletons { holder } => match desired {
       ProdRoleRealizationRefused { cause: _ } => true
       ProdRoleRealizedBy { holder: desired_holder } =>
@@ -1119,49 +1141,60 @@ fn assess_spec_over_roster(spec: DeploymentSpec, source: RoleSingletonReadingSou
 }
 
 fn assess_spec_over_roster_in(spec: DeploymentSpec, source: RoleSingletonReadingSource, selection: ProdRoleSelection) -> RoleSingletonAdmissionStanding {
-  let rows = desired_deployment_roster()
-  let desired = prod_role_actuated_realization_in(selection: selection)
-  let read = source.read
-  let readings = map(roster_hosts(rows: rows), h => read(h, rows))
-  match read(spec.target.ssh_host, rows) {
-    HostRoleSingletonsUnobservable { host, cause } =>
-      RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host: host, cause: cause } }
-    HostRoleSingletonsRead { host: _, sightings: _ } =>
-      match role_singleton_observation_of(readings: [read(spec.target.ssh_host, rows)], rows: rows) {
-        RoleSingletonObservationRefused { cause } => RoleSingletonInadmissible { cause: cause }
-        RoleSingletonsObserved { realizations } =>
-          if count(unobservable_hosts_of(readings: readings)) == 0 {
-            classify_role_singleton_admission(
-              spec: spec,
-              desired: desired,
-              decision: role_singleton_convergence(
-                desired: desired,
-                observed: role_singleton_observation_of(readings: readings, rows: rows),
-                rows: rows,
-              ),
-            )
-          } else if local_placement_change(spec: spec, realizations: realizations, desired: desired) {
-            RoleSingletonInadmissible { cause: first_unobservable_refusal(readings: readings) }
-          } else {
-            classify_role_singleton_admission(
-              spec: spec,
-              desired: desired,
-              decision: RoleSingletonInPlace { global_unobservable: unobservable_hosts_of(readings: readings) },
-            )
+  assess_spec_over_roster_over(spec: spec, source: source, selection: selection, rows: desired_deployment_roster())
+}
+
+fn assess_spec_over_roster_over(spec: DeploymentSpec, source: RoleSingletonReadingSource, selection: ProdRoleSelection, rows: List<DesiredDeployment>) -> RoleSingletonAdmissionStanding {
+  match desired_deployment_for_instance_id_over(rows: rows, instance_id: instance_id_text(id: spec.instance_id)) {
+    DesiredDeploymentRosterRefused { refusal } =>
+      RoleSingletonInadmissible { cause: RoleSingletonDesiredRosterRefused { refusal: refusal } }
+    DesiredDeploymentUnknownInstanceId { instance_id } =>
+      RoleSingletonInadmissible { cause: RoleSingletonDeploymentUnrostered { instance_id: instance_id, detail: "no roster row carries this instance id" } }
+    DesiredDeploymentFound { row } => {
+      let desired = prod_role_actuated_realization_in(selection: selection)
+      let read = source.read
+      let readings = map(roster_hosts(rows: rows), h => read(h, rows))
+      match read(spec.target.ssh_host, rows) {
+        HostRoleSingletonsUnobservable { host, cause } =>
+          RoleSingletonInadmissible { cause: RoleSingletonHostUnobservable { host: host, cause: cause } }
+        HostRoleSingletonsRead { host: _, sightings: _ } =>
+          match role_singleton_observation_of(readings: [read(spec.target.ssh_host, rows)], rows: rows) {
+            RoleSingletonObservationRefused { cause } => RoleSingletonInadmissible { cause: cause }
+            RoleSingletonsObserved { realizations } =>
+              if count(unobservable_hosts_of(readings: readings)) == 0 {
+                classify_role_singleton_admission(
+                  spec: spec,
+                  desired: desired,
+                  decision: role_singleton_convergence(
+                    desired: desired,
+                    observed: role_singleton_observation_of(readings: readings, rows: rows),
+                    rows: rows,
+                  ),
+                )
+              } else if local_placement_change(spec: spec, realizations: realizations, desired: desired, spec_deployment: row.instance.deployment) {
+                RoleSingletonInadmissible { cause: first_unobservable_refusal(readings: readings) }
+              } else {
+                classify_role_singleton_admission(
+                  spec: spec,
+                  desired: desired,
+                  decision: RoleSingletonInPlace { global_unobservable: unobservable_hosts_of(readings: readings) },
+                )
+              }
           }
       }
+    }
   }
 }
 
 fn assess_and_admit(deployment: DesiredDeployment) -> RoleSingletonAdmissionResult admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport"),
-  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_receipted_decided"),
 ] {
   match bind_desired_selected_identity(desired: deployment) {
     DesiredSelectedIdentityUnknownInstance { instance_id } =>
       RoleSingletonNotAdmitted { cause: RoleSingletonDeploymentUnrostered { instance_id: instance_id, detail: "no roster row carries this instance id" } }
-    DesiredSelectedIdentityRosterRefused { refusal: _ } =>
-      RoleSingletonNotAdmitted { cause: RoleSingletonDeploymentUnrostered { instance_id: instance_id_text(id: deployment.instance.instance_id), detail: "the desired roster itself refused" } }
+    DesiredSelectedIdentityRosterRefused { refusal } =>
+      RoleSingletonNotAdmitted { cause: RoleSingletonDesiredRosterRefused { refusal: refusal } }
     DesiredSelectedIdentityMismatch { carried: _, rostered: _ } =>
       RoleSingletonNotAdmitted { cause: RoleSingletonDeploymentUnrostered { instance_id: instance_id_text(id: deployment.instance.instance_id), detail: "the carried selected identity is not the rostered one" } }
     DesiredSelectedIdentityBound { row } => assess_and_admit_rostered(spec: selected_deployment_spec(row: row))

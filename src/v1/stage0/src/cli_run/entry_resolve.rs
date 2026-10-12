@@ -1935,72 +1935,17 @@ pub(crate) fn resolve_entry_with_parse_cache_inner(
     .map(|(graph, si, _compile_clean_diags)| (graph, si))
 }
 
-pub(crate) fn via_index_source_annotation_diagnostics(
-    source: &v1_compiler_compile::SourceFile,
-    occurrence_transport: Rc<crate::std_occurrence_identity::OccurrenceTransport>,
-    captures: Rc<im::Vector<Rc<crate::std_source_annotation::UnboundAnnotationCapture>>>,
-) -> im::Vector<Rc<ErrorNode>> {
-    let bound = v1_compiler_compile::admit_source_annotations(
-        occurrence_transport,
-        captures,
-        v1_rt::string_length(&source.content),
-    );
-    bound
-        .diagnostics
-        .iter()
-        .cloned()
-        .map(|d| make_error_node(d, source.path.clone()))
-        .collect()
-}
-
-/// Census-fill admission for a parse_cache hit that never ran `admit_source_annotations`.
-/// Filters to `SourceAnnotationRefused` because that is all `admit_source_annotations`
-/// emits today (both sites in `v1_compiler_annotation_bind`). The miss path keeps
-/// every diagnostic that function returns; the two agree until a third diagnostic
-/// appears — latent coupling, not a live divergence.
-pub(crate) fn via_index_census_fill_annotation_diags(
-    source: &Rc<v1_compiler_compile::SourceFile>,
-) -> im::Vector<Rc<ErrorNode>> {
-    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(vec![source.clone()].into()));
-    fill.diagnostics
-        .iter()
-        .filter(|d| {
-            matches!(
-                d.diagnostic.as_ref(),
-                CompilerDiagnostic::SourceAnnotationRefused { .. }
-            )
-        })
-        .cloned()
-        .collect()
-}
-
-/// Parse one via-index source, admitting annotations into the cache entry so a later
-/// `Memoize` consumer (`handle_serve`) cannot observe a different population than a
-/// cold parse of the same bytes.
+/// Parse one via-index source into the per-file parse memo. Annotation binding cannot
+/// refuse (std.source_annotation attaches every comment to its gap), so a cached entry is
+/// complete whichever path installed it.
 pub(crate) fn via_index_parse_one_source(
     index: &MultiEntryIndex,
     source: &Rc<v1_compiler_compile::SourceFile>,
 ) -> ParseCacheEntry {
     let cached = index.parse_cache.borrow().get(&source.path).cloned();
     if let Some(entry) = cached {
-        if entry.annotation_diags.is_some() {
-            return entry;
-        }
-        let refused = via_index_census_fill_annotation_diags(source);
-        let upgraded = ParseCacheEntry {
-            annotation_diags: Some(Rc::new(refused)),
-            ..entry
-        };
-        index
-            .parse_cache
-            .borrow_mut()
-            .insert(source.path.clone(), upgraded.clone());
-        return upgraded;
+        return entry;
     }
-    // Ordinary frontend (`front_end_sources`) keeps tokenize_artifact
-    // captures and admits them against this file's occurrence transport.
-    // Annotation-erasing `tokenize` here let a touched in-closure file
-    // compile on the floor while missing the class #8204 claims to close.
     // One acquisition, not one per walk -- see `cli_run::pool_acquire`. The pool census already
     // tokenized these bytes under this spelling; the artifact keeps the annotation channel.
     let artifact = super::pool_acquire::artifact_for(&source.path, &source.content);
@@ -2014,15 +1959,9 @@ pub(crate) fn via_index_parse_one_source(
     let parsed =
         v1_compiler_parse::parse_with_table(artifact.tokens.clone(), single_si, current_table);
     *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-    let annotation_diags = via_index_source_annotation_diagnostics(
-        source,
-        parsed.occurrence_transport.clone(),
-        artifact.annotations.clone(),
-    );
     let entry = ParseCacheEntry {
         parse_result: parsed.result.clone(),
         newline_index: nl_index,
-        annotation_diags: Some(Rc::new(annotation_diags)),
     };
     index
         .parse_cache
@@ -2080,15 +2019,11 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut parse_error_msgs: Vec<String> = Vec::new();
-    let mut annotation_diags: im::Vector<Rc<ErrorNode>> = im::Vector::new();
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
         note_source_hash(index, source);
         let entry = via_index_parse_one_source(index, source);
-        if let Some(stored) = &entry.annotation_diags {
-            annotation_diags.extend(stored.iter().cloned());
-        }
         let parse_result = entry.parse_result.clone();
         let nl_index = entry.newline_index.clone();
 
@@ -2110,12 +2045,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         }
     }
     if !parse_error_msgs.is_empty() {
-        let source_indices = Rc::new(si_map);
-        return Err(join_via_index_stage_refusal(
-            &annotation_diags,
-            &source_indices,
-            parse_error_msgs.join("\n"),
-        ));
+        return Err(parse_error_msgs.join("\n"));
     }
 
     let source_indices = Rc::new(si_map);
@@ -2131,11 +2061,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(join_via_index_stage_refusal(
-            &annotation_diags,
-            &source_indices,
-            format_error_nodes(&graph.diagnostics, &source_indices),
-        ));
+        return Err(format_error_nodes(&graph.diagnostics, &source_indices));
     }
     resolve_stage_slot_add(|s| s.resolve += resolve_started.elapsed().as_nanos());
 
@@ -2173,11 +2099,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(join_via_index_stage_refusal(
-            &annotation_diags,
-            &source_indices,
-            format_error_nodes(&norm_diags, &source_indices),
-        ));
+        return Err(format_error_nodes(&norm_diags, &source_indices));
     }
     resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
@@ -2185,8 +2107,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let reconcile_attributed_before = resolve_stage_slot_snapshot().reconcile_attributed_total();
     let reconcile_started = std::time::Instant::now();
     let typed =
-        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)
-            .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
+        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
     // `typed` carries the completed per-module typecheck and its diagnostics. Record the
     // verdict before testing whether it is positive: a blocking diagnostic is stronger
     // evidence of visibility than a green result. Parse/resolve aborts and a reconcile that
@@ -2205,8 +2126,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                 "assembly attribution refused: NestedSpanAttribution {{ before_nanos: \
              {reconcile_attributed_before}, after_nanos: {reconcile_attributed_after} }}"
             )
-        })
-        .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
+        })?;
     let assembly_other = reconcile_total
         .checked_sub(reconcile_attributed)
         .ok_or_else(|| {
@@ -2214,8 +2134,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                 "assembly attribution refused: OverAttributed {{ sum_exclusive_nanos: \
              {reconcile_attributed}, parent_span_nanos: {reconcile_total} }}"
             )
-        })
-        .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
+        })?;
     resolve_stage_slot_add(|s| s.reconcile_assembly += assembly_other);
 
     let has_type_errors = typed
@@ -2229,11 +2148,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
             .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
-        return Err(join_via_index_stage_refusal(
-            &annotation_diags,
-            &source_indices,
-            msgs.join("\n"),
-        ));
+        return Err(msgs.join("\n"));
     }
 
     let ownership_started = std::time::Instant::now();
@@ -2268,22 +2183,15 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(join_via_index_stage_refusal(
-            &annotation_diags,
-            &source_indices,
-            format_error_nodes(&ownership_diags, &source_indices),
-        ));
+        return Err(format_error_nodes(&ownership_diags, &source_indices));
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
-    let compile_clean_diags = prepend_via_index_annotation_diags(
-        annotation_diags,
-        compile_clean_diags_from_resolved_stages(
-            &graph.diagnostics,
-            &norm_diags,
-            &typed,
-            &ownership_diags,
-        ),
+    let compile_clean_diags = compile_clean_diags_from_resolved_stages(
+        &graph.diagnostics,
+        &norm_diags,
+        &typed,
+        &ownership_diags,
     );
 
     // Install into the in-process share so same-subject re-resolves skip assembly —
@@ -2329,7 +2237,6 @@ pub(crate) fn parse_module_node_from_index_source(
             let entry = ParseCacheEntry {
                 parse_result: parsed.result.clone(),
                 newline_index: nl_index.clone(),
-                annotation_diags: None,
             };
             index
                 .parse_cache
@@ -2862,8 +2769,10 @@ pub(crate) fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
         // This minted `^{stem}` after escaping non-identifier characters and a leading digit,
         // and stopped there. A stem that IS a keyword still lexes as a keyword, so `dag/std/
         // import.dag` emitted `^import` and the manifest failed to parse -- measured, at the
-        // caret: "expected identifier or `(` after `^`, found keyword". Two stems in the tree
-        // reach it today, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`.
+        // caret: "expected identifier or `(` after `^`, found keyword". Two stems reached
+        // it when this arm was written, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`;
+        // both were renamed to non-keyword stems (`import_statement`, `go_mod`). The live residual
+        // population is the two `capability.dag` files, `dag/extdeps/bmc/` and `dag/extdeps/ollama/`.
         //
         // The mint promised a valid symbol and returned an unparseable one with no refusal,
         // which is why nothing caught it: the emitter succeeded, the file was written, and the

@@ -1,10 +1,17 @@
 module gunbc.instruments.native_materialization_store_closure
 
-import std.types { List, String, Bool }
+import std.types { List, String, Bool, NonEmptyStr }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.authorization_profile { UniversalAudience, EnumeratedAudience, audience_subset, audience_join }
 import std.effect_grant { namespace_tree_of_label, namespace_tree_label }
 import std.materialization_object { store_object_line, store_object_line_malformed_text }
+import std.content_hash { ContentHash, content_hash_atom, sha256_hex_digest, as_content_hash_cryptographic, as_content_hash_structural, serialize_content_hash }
+import std.judgment_contract { demand_identity_canonical, demand_identity_decode }
+import std.materialization_provider {
+  ArtifactRequest, NativeModuleVerdictBundleRequest, NativeModuleVerdictBundleSubject,
+  evaluation_store_address, evaluation_store_address_digest, Admitted, IdentityComponentsRefused,
+  refused_identity_components_text, request_evaluation_identity,
+}
 import extdeps.realization.materialization_store_local { store_path }
 import v2.compiler.self_host.generation {
   SourceClosureMember, SourceClosureRoster, source_closure_axis_digest,
@@ -145,9 +152,79 @@ fn store_path_cases() -> List<StoreClosureCase> {
   ]
 }
 
+// THE IDENTITY CONTROLS, EXECUTED AS EMITTED CODE. The store address of one fixed verdict-bundle
+// request is compared with a digest established OUTSIDE this corpus: the canonical preimage was
+// written out by hand from the encoding's definition (length-prefixed fields, "digest", the family
+// tag, the algorithm-qualified wire) and hashed with an independent SHA-256, giving the literal
+// below. So the case holds only if the encoder, the component order and the digest all agree with
+// that outside derivation; a field dropped, reordered or re-tagged gives a different digest. The
+// reds: one component changed moves the digest off the literal; the same request carrying
+// structural fingerprints has no address, and the refusal names every refused component.
+//
+// NOT YET EXECUTED AS EMITTED CODE. This instrument's closure does not build: on main the emitted
+// std.list fails to typecheck, and with this module's provider import the closure holds two types
+// spelled Word64 (std.bit and std.bitwise), whose derives the emitter picks by spelling
+// (gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). The
+// first identity case is executed today on the interpreter route by
+// test.claim.materialization_provider_witness; these cases become evidence when the closure builds.
+fn identity_fixture_sha256(hex: String) -> ContentHash {
+  match sha256_hex_digest(hex: hex) {
+    Present { value: digest } => as_content_hash_cryptographic(digest: digest)
+    Absent => as_content_hash_structural(structural: content_hash_atom(value: "unreachable-identity-fixture"))
+  }
+}
+
+fn identity_bundle_request(module_hex: String) -> ArtifactRequest {
+  NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
+    route_binary_identity: identity_fixture_sha256(hex: "1111111111111111111111111111111111111111111111111111111111111111"),
+    module_identity: identity_fixture_sha256(hex: module_hex),
+    canonical_module_import_closure_identity: identity_fixture_sha256(hex: "3333333333333333333333333333333333333333333333333333333333333333"),
+    ordered_test_identity_population: identity_fixture_sha256(hex: "4444444444444444444444444444444444444444444444444444444444444444"),
+    eval_interpretation_identity: identity_fixture_sha256(hex: "5555555555555555555555555555555555555555555555555555555555555555")
+  })
+}
+
+fn identity_fingerprint_bundle_request() -> ArtifactRequest {
+  NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject {
+    route_binary_identity: as_content_hash_structural(structural: content_hash_atom(value: "route")),
+    module_identity: as_content_hash_structural(structural: content_hash_atom(value: "module")),
+    canonical_module_import_closure_identity: identity_fixture_sha256(hex: "3333333333333333333333333333333333333333333333333333333333333333"),
+    ordered_test_identity_population: identity_fixture_sha256(hex: "4444444444444444444444444444444444444444444444444444444444444444"),
+    eval_interpretation_identity: identity_fixture_sha256(hex: "5555555555555555555555555555555555555555555555555555555555555555")
+  })
+}
+
+fn identity_address_text(req: ArtifactRequest) -> String {
+  match evaluation_store_address(req: req) {
+    Admitted { address: a } => serialize_content_hash(hash: evaluation_store_address_digest(address: a)) as String
+    IdentityComponentsRefused { components: cs, scope: _ } => concat("refused: ", refused_identity_components_text(components: cs))
+  }
+}
+
+fn identity_canonical_round_trip_text(req: ArtifactRequest) -> String {
+  let canonical = demand_identity_canonical(demand: request_evaluation_identity(req: req).demand) as String
+  match demand_identity_decode(encoded: canonical) {
+    Present { value: decoded } => bool_text(b: (demand_identity_canonical(demand: decoded) as String) == canonical)
+    Absent => "undecodable"
+  }
+}
+
+data identity_expected_address: String = "sha256:3f3d732486089ae8bb1e1a22f3e2a7dc81a94dad93087c0f58d3b7c1adcb0a01"
+
+fn identity_cases() -> List<StoreClosureCase> {
+  let base = identity_bundle_request(module_hex: "2222222222222222222222222222222222222222222222222222222222222222")
+  let changed = identity_bundle_request(module_hex: "2222222222222222222222222222222222222222222222222222222222222223")
+  [
+    held_as(identity: "store_address_is_the_independently_derived_sha256_of_the_canonical_preimage", observed: identity_address_text(req: base), expected: identity_expected_address),
+    held_as(identity: "store_address_red_one_changed_component_moves_the_digest", observed: bool_text(b: identity_address_text(req: changed) == identity_expected_address), expected: "false"),
+    held_as(identity: "store_address_red_fingerprint_components_are_refused_by_name", observed: identity_address_text(req: identity_fingerprint_bundle_request()), expected: "refused: subject is a structural fingerprint; verdict_bundle.route_binary_identity is a structural fingerprint"),
+    held_as(identity: "identity_canonical_encoding_round_trips", observed: identity_canonical_round_trip_text(req: base), expected: "true")
+  ]
+}
+
 fn store_closure_cases() -> List<StoreClosureCase> {
   concat(
-    concat(audience_cases(), tree_label_cases()),
+    concat(concat(audience_cases(), tree_label_cases()), identity_cases()),
     concat(concat(roster_cases(), malformed_text_cases()), store_path_cases())
   )
 }
@@ -168,6 +245,10 @@ data store_closure_expected_identities: List<String> = [
   "tree_label_service_round_trips",
   "tree_label_red_service_prefix_naming_no_service_refuses",
   "tree_label_parameterless_tree_round_trips",
+  "store_address_is_the_independently_derived_sha256_of_the_canonical_preimage",
+  "store_address_red_one_changed_component_moves_the_digest",
+  "store_address_red_fingerprint_components_are_refused_by_name",
+  "identity_canonical_encoding_round_trips",
   "roster_ascending_members_fold_to_a_digest",
   "roster_red_an_empty_member_identity_refuses",
   "malformed_text_carries_the_malformed_line",

@@ -1,13 +1,13 @@
 module gunbc.parsed_import_statement_production
 
-import std.import { ParsedImportStatements, ParsedImportObservation }
+import std.import_statement { ParsedImportStatements, ParsedImportObservation }
 import std.types { String }
 import v2.std.compilers.lexing { Token }
 
 // THE PRODUCTION SEAM FOR PARSED IMPORT STATEMENTS, AND IT IS A TRANSPORT RATHER THAN AN AUTHORITY.
 //
 // The statements are delimited by v1.compiler.parse parse_import_statement_extents -- the parser
-// reading its own consumption -- and carried in std.import's vocabulary. No module under dag
+// reading its own consumption -- and carried in std.import_statement's vocabulary. No module under dag
 // imports a v1 module anywhere in the corpus, and the required floor resolves `dag` and `src/v2`
 // only, so a dag consumer cannot name that producer at all; this row is the one crossing.
 //

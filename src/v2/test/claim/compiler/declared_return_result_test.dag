@@ -1,7 +1,9 @@
 module v2.test.claim.compiler.declared_return_result
 
-import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_list_peers, fmi_reason }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source }
 import v2.compiler.infer {
+  infer,
   infer_application_result_type,
   infer_arrow_declared_return_type,
   infer_projected_field_type,
@@ -15,11 +17,33 @@ import v2.compiler.infer {
   ReceiverTypeNotADeclaration,
   ReceiverTypeUnderived
 }
+import v2.compiler.inferred_tree { ObligatedInferredTree }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
 import v2.std.qualified_name { declaration_reference_node }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic {
+  Accepted,
+  Outcome,
+  Rejected,
+  diagnostics_fatal_reason
+}
 import v2.std.inhabitance { TypeVariableInstance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Arrow, Atom, Authored, Conj, Edge, Instantiation, Node, OccurrenceSynthetic, Positional, Symbol, TypeNode, node_synthetic }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Authored,
+  Conj,
+  Edge,
+  Instantiation,
+  Node,
+  OccurrenceSynthetic,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_synthetic
+}
 import std.optional { Absent, Optional, Present }
 import v2.std.algebra { length, list_map }
 import std.algebra { Cons, list_snoc_item }
@@ -34,13 +58,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (v2.compiler.infer infer_application_result_type), and a field read off an instantiated generic
 // record (infer_projected_field_type).
 //
-// WITNESS SHAPE (DESIGN section 3, a witness discriminates at one interface): five claims SUPPLY the
-// callee's arrow and the call's instances at the result-type interface, built here, so each judges
-// only its own case and pays no assembly. Each asserts where the replaced reader disagrees:
-// infer_arrow_declared_return_type, the only reader before this change, answers Absent for a
-// declared return. ONE claim runs the real path, source through the production assembly route into
-// infer, and asserts the ROUTE: a generic declared return, instantiated at the call, projected, and
-// judged at a declared parameter, refuses for a reason only that whole route produces.
+// WITNESS SHAPE (DESIGN section 3, a witness discriminates at one interface): supplied claims judge
+// infer_application_result_type at its own interface. ONE inhabitance claim runs the production
+// assembly route: drr_the_real_route_judges_a_projected_generic_call_result (Box<Int>.item at Bool,
+// plus the RFM Nat / generic-Nat / Out<Int> / Int consuming-position specimens).
 
 fn drr_atom(sym: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
@@ -176,13 +197,15 @@ test fn drr_a_wrong_type_argument_count_at_a_generic_record_projection_refuses()
 
 // THE ONE REAL-PATH CLAIM, ASSERTING THE ROUTE. `boxed(1).item` at a Bool parameter refuses as an
 // argument mismatch only if the call's generic declared return is derived (Box<Int>), the field is
-// projected at that instantiation (Int), and the projection is judged at the declared Bool. Before
-// this change the call stayed underived and the program was ACCEPTED.
+// projected at that instantiation (Int), and the projection is judged at the declared Bool. The same
+// claim also infers the RFM consuming-position specimens (Nat / generic Nat / Out<Int> / Int at Bool,
+// Nat at Nat, wants_bool(mk())). Before infer_application_result_type landed, the call stayed underived
+// and the program was ACCEPTED.
 data drr_route_source: String = "module p\n\ntype Box<T> {\n  item: T\n}\n\nfn boxed<T>(x: T) -> Box<T> {\n  Box { item: x }\n}\n\nfn wants_bool(b: Bool) -> Int {\n  0\n}\n\nfn k() -> Int {\n  wants_bool(boxed(1).item)\n}\n"
 
-// The route's verdict is one nullary producer, assembled AND inferred once, so the floor fills the
-// whole real path as this claim's shared fill (its single-claim fill debt) and the claim itself only
-// compares the reason.
+// The route's verdicts are nullary producers (the Box projection plus the RFM specimens), so the
+// floor fills the real path as this claim's shared fill (its single-claim fill debt) and the claim
+// itself only compares the reasons.
 fn drr_route_reason() -> Symbol {
   match fmi_assemble(src: drr_route_source) {
     Rejected { diagnostics: _ } => ^drr_assembly_refused
@@ -190,6 +213,64 @@ fn drr_route_reason() -> Symbol {
   }
 }
 
+// RFM inhabitance folded into the one real-path claim below
+// (gunbc.recurring_failure_mode call_result_of_a_declared_return_type_unjudged_in_v2_infer).
+// Production assembly with a std.nat peer, then infer. Measured against main 1f25232cdc: a callee
+// declared to return Nat (plain or generic), Out<Int>, or kernel Int, used where Bool is declared,
+// refuses -- declared return as arrow_body_does_not_inhabit_declared_return, argument as
+// application_argument_does_not_inhabit. The honest Nat-at-Nat control is accepted. Integer literals
+// at Nat (0) so the body is admitted by kernel grounding; the refusal is the CALL result at the
+// consuming position. These cannot be supplied arrows at infer_application_result_type: that fold
+// answers the result type, not inhabitance of the call at a Bool (or Nat) position.
+data drr_nat_peer_artifact: Artifact = Artifact { kind: SourceFile, id: ^drr_nat_peer_artifact, file_path: "src/v2/pilot/drr_nat_peer.dag" }
+
+data drr_nat_peer_source: String = "module std.nat\n\ntype Nat\n  = Zero\n  | Succ { prev: Nat }\n"
+
+fn drr_nat_peer() -> DagSourceReadWitness {
+  bla_source(src: drr_nat_peer_source, artifact: drr_nat_peer_artifact, cu: ^drr_nat_peer_cu)
+}
+
+fn drr_assemble_with_nat(src: String) -> Outcome<ResolvedTree> {
+  bla_assemble_with_peers(p_src: src, peers: list_snoc_item(xs: fmi_list_peers(), item: drr_nat_peer()))
+}
+
+fn drr_inferred(src: String) -> Outcome<ObligatedInferredTree> {
+  match drr_assemble_with_nat(src: src) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => infer(tree: tree)
+  }
+}
+
+fn drr_reason(src: String) -> Symbol {
+  match drr_inferred(src: src) {
+    Accepted { value: _, diagnostics: _ } => ^accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+fn drr_reason_is(src: String, wanted: Symbol) -> Bool {
+  drr_reason(src: src) == wanted
+}
+
+data drr_nat_at_bool_source: String = "module p\n\nimport std.nat { Nat }\n\nfn mk() -> Nat {\n  0\n}\n\nfn f() -> Bool {\n  mk()\n}\n"
+
+data drr_generic_nat_at_bool_source: String = "module p\n\nimport std.nat { Nat }\nimport v2.std.collection { List }\n\nfn mk<T>(xs: List<T>) -> Nat {\n  0\n}\n\nfn f(xs: List<Int>) -> Bool {\n  mk(xs)\n}\n"
+
+data drr_int_at_bool_source: String = "module p\n\nfn mk() -> Int {\n  0\n}\n\nfn f() -> Bool {\n  mk()\n}\n"
+
+data drr_nat_at_nat_source: String = "module p\n\nimport std.nat { Nat }\n\nfn mk() -> Nat {\n  0\n}\n\nfn f() -> Nat {\n  mk()\n}\n"
+
+data drr_nat_at_bool_arg_source: String = "module p\n\nimport std.nat { Nat }\n\nfn mk() -> Nat {\n  0\n}\n\nfn wants_bool(b: Bool) -> Int {\n  0\n}\n\nfn k() -> Int {\n  wants_bool(mk())\n}\n"
+
+data drr_out_at_bool_source: String = "module p\n\ntype Out<T> = Present { value: T } | Absent\n\nfn mk() -> Out<Int> {\n  Present { value: 1 }\n}\n\nfn f() -> Bool {\n  mk()\n}\n"
+
 test fn drr_the_real_route_judges_a_projected_generic_call_result() -> Bool {
   drr_route_reason() == ^application_argument_does_not_inhabit
+    && drr_reason_is(src: drr_nat_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
+    && drr_reason_is(src: drr_generic_nat_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
+    && drr_reason_is(src: drr_int_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
+    && drr_reason_is(src: drr_nat_at_bool_arg_source, wanted: ^application_argument_does_not_inhabit)
+    && drr_reason_is(src: drr_nat_at_nat_source, wanted: ^accepted)
+    && drr_reason_is(src: drr_out_at_bool_source, wanted: ^arrow_body_does_not_inhabit_declared_return)
 }
+

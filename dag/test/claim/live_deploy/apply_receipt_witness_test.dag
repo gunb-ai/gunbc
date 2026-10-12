@@ -7,23 +7,40 @@ data apply_receipt_fixture_tree: String = "fedcba9876543210fedcba9876543210fedcb
 
 fn fixture_dashboard_receipt() -> LiveDeployApplyReceipt {
   LiveDeployApplyReceipt {
-    run: ActionsRunBinding {
-      repository: "gunb-ai/gunbc",
-      workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
-      run_id: "1003",
-      run_revision: apply_receipt_fixture_r,
-    },
     target: "srv1",
     instance_id: "srv1-live",
-    expected_revision: apply_receipt_fixture_r,
     candidate_revision: apply_receipt_fixture_r,
     candidate_surface_identity: "0011223344556677",
     candidate_tree_oid: apply_receipt_fixture_tree,
     apply_outcome: LiveDeployApplyConverged,
     role_singleton_disposition: RoleSingletonsNoop,
     readiness: LiveDeployReadinessObserved { revision: apply_receipt_fixture_r, surface: "0011223344556677" },
-    provenance: LiveDeployFleetProvenance { plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: "a1b2c3d4e5f60718", plan_receipt_identity: "1111111111111111", apply_receipt_identity: "2222222222222222" },
+    provenance: FleetTransactionProvenance {
+      run: ActionsRunBinding {
+        repository: "gunb-ai/gunbc",
+        workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+        run_id: "1003",
+        run_revision: apply_receipt_fixture_r,
+      },
+      expected_revision: apply_receipt_fixture_r,
+      fleet: LiveDeployFleetProvenance { plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: "a1b2c3d4e5f60718", plan_receipt_identity: "1111111111111111", apply_receipt_identity: "2222222222222222" },
+    },
     completed_at: "2026-08-30T12:00:00Z",
+  }
+}
+
+fn fixture_operator_local_in_place_receipt() -> LiveDeployApplyReceipt {
+  LiveDeployApplyReceipt {
+    target: "srv1",
+    instance_id: "srv1-lab-codex-feedback-v0",
+    candidate_revision: apply_receipt_fixture_r,
+    candidate_surface_identity: "0011223344556677",
+    candidate_tree_oid: apply_receipt_fixture_tree,
+    apply_outcome: LiveDeployApplyConverged,
+    role_singleton_disposition: RoleSingletonsInPlace { global_unobservable: ["srv2"] },
+    readiness: LiveDeployReadinessObserved { revision: apply_receipt_fixture_r, surface: "0011223344556677" },
+    provenance: OperatorLocalApply { host: "srv1" as HostIdentity, principal: "ubuntu" as NonEmptyStr },
+    completed_at: "2026-10-12T03:00:00Z",
   }
 }
 
@@ -43,7 +60,7 @@ test fn witness_dashboard_receipt_round_trips() -> Bool {
 test fn witness_dashboard_receipt_not_converged_round_trips_its_reason() -> Bool {
   let base = fixture_dashboard_receipt()
   let r = LiveDeployApplyReceipt {
-    run: base.run, target: base.target, instance_id: base.instance_id, expected_revision: base.expected_revision, candidate_revision: base.candidate_revision,
+    target: base.target, instance_id: base.instance_id, candidate_revision: base.candidate_revision,
     candidate_surface_identity: base.candidate_surface_identity, candidate_tree_oid: base.candidate_tree_oid,
     apply_outcome: LiveDeployApplyNotConverged { reason: "terminal no-op: this run installed nothing" },
     role_singleton_disposition: RoleSingletonsNoop,
@@ -91,5 +108,37 @@ test fn witness_dashboard_receipt_with_tampered_plan_receipt_identity_refuses() 
     && (match live_deploy_apply_receipt_decode(raw: tampered) {
       LiveDeployApplyReceiptDecoded { receipt: _ } => false
       LiveDeployApplyReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match")
+    })
+}
+
+test fn witness_operator_local_receipt_round_trips_in_place_disposition_naming_srv2() -> Bool {
+  let r = fixture_operator_local_in_place_receipt()
+  match live_deploy_apply_receipt_decode(raw: serialize_json(v: live_deploy_apply_receipt_json(r: r))) {
+    LiveDeployApplyReceiptUnreadable { reason: _ } => false
+    LiveDeployApplyReceiptDecoded { receipt: back } =>
+      live_deploy_apply_receipt_identity_hex(r: back) == live_deploy_apply_receipt_identity_hex(r: r)
+        && (match back.role_singleton_disposition {
+          RoleSingletonsInPlace { global_unobservable } =>
+            join(global_unobservable, ",") == "srv2"
+          RoleSingletonsNoop => false
+          RoleSingletonsInstalled { deployment: _, host: _ } => false
+          RoleSingletonsRefusedBeforeApply { detail: _ } => false
+        })
+        && (match back.provenance {
+          OperatorLocalApply { host, principal } => (host as String) == "srv1" && (principal as String) == "ubuntu"
+          FleetTransactionProvenance { run: _, expected_revision: _, fleet: _ } => false
+        })
+  }
+}
+
+test fn witness_v3_apply_receipt_schema_is_unreadable() -> Bool {
+  let v4 = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
+  let v3 = replace(v4, "live-deploy-apply-receipt/v4", "live-deploy-apply-receipt/v3")
+  v3 != v4
+    && (match live_deploy_apply_receipt_decode(raw: v3) {
+      LiveDeployApplyReceiptDecoded { receipt: _ } => false
+      LiveDeployApplyReceiptUnreadable { reason: r } =>
+        string_contains(s: r, pattern: "live-deploy-apply-receipt/v4")
+          && string_contains(s: r, pattern: "live-deploy-apply-receipt/v3")
     })
 }

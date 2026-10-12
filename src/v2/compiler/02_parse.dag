@@ -51,20 +51,20 @@ import v2.std.occurrence_id {
   occurrence_id_allocator_initial
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocator, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, node_occurrence_identity_minted }
-import std.source_annotation {
-  AnnotationAttachmentRefusal,
-  AnnotationAttachmentResult,
-  AnnotationsAdmitted,
-  AnnotationsRefused,
-  SourceAnnotationGraph,
-  admit_annotations
-}
+import std.source_annotation { SourceAnnotationGraph }
 import v2.std.provenance {
   DerivedBy,
   SpanIndex,
+  node_occurrence_id_optional,
   origin_event_from_source,
   span_index_empty,
-  span_index_record
+  span_index_extent,
+  RecordedSourceExtent,
+  SourceExtentKnown,
+  SourceExtentUnrepresentable,
+  span_index_record_extent_unrepresentable,
+  span_index_record,
+  span_index_record_extent
 }
 import v2.std.collection {
   Map,
@@ -79,8 +79,8 @@ import std.optional {
   Optional,
   Present
 }
-import std.algebra { Cons, Empty, FreeSemigroup, list_append, list_snoc_item }
-import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_head, list_reverse, list_tail, unique, zip_eq }
+import std.algebra { Cons, Empty, list_append, list_snoc_item }
+import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_head, list_reverse, list_tail, unique, zip_eq }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import v2.extdeps.languages.dag {
   dag_float_literal_node_from_lexeme,
@@ -185,46 +185,13 @@ type ParseArtifact {
   alloc: OccurrenceIdAllocator
 }
 
-data authored_parse_artifact_note: String = "The parse-layer twin of LexArtifact: the semantic parse result PLUS what the annotation channel captured, now bound to subjects. `authored_parse_semantic` is the erasure boundary — a consumer projecting through it sees exactly the ParseArtifact it saw before this channel existed, which is what lets every existing semantic consumer stay untouched while annotation-aware machinery reads the whole thing.
+data authored_parse_artifact_note: String = "The parse-layer twin of LexArtifact: the semantic parse result PLUS what the annotation channel captured, bound to gaps. `authored_parse_semantic` is the erasure boundary — a consumer projecting through it sees exactly the ParseArtifact it saw before this channel existed, which is what lets every existing semantic consumer stay untouched while annotation-aware machinery reads the whole thing. It carries no refusal: attachment by gap (std.source_annotation attach_annotations) places every capture, the file's gap at worst."
 
-It carries NO refusal field. Refusals do not travel inside this artifact, because a wrapper holding both an annotation graph and a list of things that failed to attach invites a consumer to read the first and never the second.
-
-The intended discipline is that this artifact exists only when nothing refused, and AuthoredParseOutcome below is the only thing in this module that constructs one. That is a CONVENTION, not yet a constraint: this is a plain record, so any module can construct one directly with whatever graph it likes. NEXT-RUNG TRIGGER: restrict construction to this module (sole_constructor or equivalent) with a control proving an outside construction does not compile — at which point this paragraph says `cannot` instead of `does not`."
-
-data authored_parse_artifact_v2_roster_disposition: String = "SCAFFOLD — v2 carries the carrier, not yet the producer. Attachment needs a module-item subject roster (identity plus span per module-scope declaration), and the v2 parse tree does not project one today; the working attachment realization is the v1 seed parser, which is the production path that compiles this corpus. So the rows below are constructed and projected by execution, but no v2 parse entry point yet emits one with a non-empty graph.
-
-The v2 lexical capture row also does not yet carry `preceded_by_blank_line`, the blank-line adjacency fact the shared attachment fold reads to decide where one authored block ends. It is deliberately absent rather than defaulted: v2 constructs no NormalizedAnnotationCapture today, so a field with no producer would be a value nobody computed, and a hardcoded `false` would silently merge blocks the author separated. The v2 walk can observe it from the same line-prefix state it already threads, and that lands with the producer below.
-
-DISSOLVE-ON: v2 parse projects a module-item roster of AnnotationSubject from its parse tree, AND its capture row carries blank-line adjacency observed by the walk. At that point parse_module gains an authored sibling that calls std.source_annotation.attach_annotations — the SAME fold the v1 realization calls, never a second one — and this disposition row is deleted."
+data authored_parse_artifact_v2_roster_disposition: String = "SCAFFOLD — v2 carries the carrier, not yet the producer. Attachment needs a region roster (std.source_annotation AnnotationRegion: scope, extent, parent per retained source region); v2 publishes the extents it needs in v2.std.provenance SpanIndex (span_index_extent, roadmap parse-node-source-extent) and the parent of each composite in its parse tree, but no fold projects them into a roster yet. The v2 lexical capture row also does not yet carry the blank-line and annotation-line adjacency bits the fold reads to group a block, and the lexer drops its final source position, which file-scope trivia needs. DISSOLVE-ON: roadmap node parse-comment-gap-attachment-v2 lands -- a roster projected from SpanIndex extents with parser scaffolding transparent, adjacency bits on the capture row, the lexer's final position retained -- and parse_module gains an authored sibling calling attach_annotations, the SAME fold v1 calls."
 
 type AuthoredParseArtifact {
   semantic: ParseArtifact
   annotations: SourceAnnotationGraph
-}
-
-data authored_parse_outcome_note: String = "Refusal BLOCKS continuation; it does not ride along inside a successful-looking artifact. An earlier shape carried the refusals as a field on the wrapper, which left every consumer free to read `annotations` and never look at `refusals` — prose dropped, compilation proceeding, exactly the outcome admitting `//` and discarding the capture would have produced.
-
-Only the accepted arm holds an AuthoredParseArtifact, so along this function's path `has annotations` and `nothing was refused` are the same fact rather than two fields a caller must remember to check together. That equivalence holds for artifacts this function produces; it is not enforced against a caller that constructs the record itself (see the carrier note above). The rejected arm still carries the semantic ParseArtifact, because the parse itself succeeded and the diagnostic must be reported against real located structure."
-
-type AuthoredParseOutcome
-  = AuthoredParseAccepted { artifact: AuthoredParseArtifact }
-  | AuthoredParseRejected {
-      semantic: ParseArtifact,
-      refusals: FreeSemigroup<AnnotationAttachmentRefusal>
-    }
-
-fn authored_parse_outcome(
-  semantic: ParseArtifact,
-  attachment: AnnotationAttachmentResult
-) -> AuthoredParseOutcome {
-  match admit_annotations(result: attachment) {
-    AnnotationsAdmitted { graph: graph } =>
-      AuthoredParseAccepted {
-        artifact: AuthoredParseArtifact { semantic: semantic, annotations: graph },
-      }
-    AnnotationsRefused { refusals: refusals } =>
-      AuthoredParseRejected { semantic: semantic, refusals: refusals }
-  }
 }
 
 fn authored_parse_semantic(artifact: AuthoredParseArtifact) -> ParseArtifact {
@@ -842,7 +809,7 @@ fn parse_stamp_derived_conj(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: parse_composite_extent(index: index, id: minted.id, children: [cap1, cap2])
     }
   }
 }
@@ -871,7 +838,7 @@ fn parse_stamp_infix_application(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: parse_composite_extent(index: index, id: minted.id, children: [left, operator, right])
     }
   }
 }
@@ -891,7 +858,7 @@ fn parse_stamp_derived_repeat(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: parse_composite_extent(index: index, id: minted.id, children: acc_nodes)
     }
   }
 }
@@ -938,8 +905,68 @@ fn parse_wrap_production_captured(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index
+      index: parse_composite_extent(index: index, id: minted.id, children: [captured])
     }
+  }
+}
+
+// A COMPOSED NODE PUBLISHES ITS EXTENT WHEN IT IS BUILT, from its direct children's extents, which
+// were themselves published when THEY were built: it starts where its first child with an extent
+// starts and ends where its last one ends. That is exact because every accepted parse result that
+// consumed input keeps a capture whose extent is recorded -- a terminal (FromSource) or a composite
+// recorded here -- so no consumed token sits only under a child without one. It reads direct children only, never descendants. A composite none of whose children has
+// an extent consumed nothing and records nothing, rather than a zero-width range at a guessed place.
+fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<Node>) -> SpanIndex {
+  match fold_list(xs: children, empty: ParseExtentNoneYet, cons: fn(acc, child) { parse_extent_span_step(acc: acc, index: index, child: child) }) {
+    ParseExtentSpan { file: file, start: start, end: end } =>
+      span_index_record_extent(index: index, id: id, extent: Textual { file: file, extent: ByteRange { start: start, end: end } })
+    ParseExtentNoneYet => index
+    ParseExtentUnreadable => span_index_record_extent_unrepresentable(index: index, id: id)
+  }
+}
+
+
+// THE FOLD OVER A COMPOSITE'S CHILDREN, as a closed sum: nothing read yet, a same-file byte range,
+// or a child whose extent this cannot compose. A child in another file, a WholeFile locus or a
+// non-textual locus, or a child itself recorded unrepresentable, is UNREADABLE and absorbing: the
+// parent then records itself unrepresentable -- so ITS parent refuses too -- rather than a range
+// that silently omits that child (DESIGN 5: a failure arm refuses, never narrows). A child with no
+// extent at all consumed nothing and leaves the fold unchanged.
+type ParseExtentFold
+  = ParseExtentNoneYet
+  | ParseExtentSpan { file: Symbol, start: Int, end: Int }
+  | ParseExtentUnreadable
+
+fn parse_extent_span_step(acc: ParseExtentFold, index: SpanIndex, child: Node) -> ParseExtentFold {
+  match acc {
+    ParseExtentUnreadable => ParseExtentUnreadable
+    _ =>
+      match node_occurrence_id_optional(node: child) {
+        Absent => acc
+        Present { value: child_id } =>
+          match span_index_extent(index: index, id: child_id) {
+            Absent => acc
+            Present { value: recorded } =>
+              match recorded {
+                SourceExtentUnrepresentable => ParseExtentUnreadable
+                SourceExtentKnown { locus: locus } =>
+                  match locus {
+                    Textual { file: f, extent: ext } =>
+                      match ext {
+                        ByteRange { start: s, end: e } =>
+                          match acc {
+                            ParseExtentNoneYet => ParseExtentSpan { file: f, start: s, end: e }
+                            ParseExtentSpan { file: af, start: astart, end: _ } =>
+                              if af == f { ParseExtentSpan { file: af, start: astart, end: e } } else { ParseExtentUnreadable }
+                            ParseExtentUnreadable => ParseExtentUnreadable
+                          }
+                        WholeFile => ParseExtentUnreadable
+                      }
+                    _ => ParseExtentUnreadable
+                  }
+              }
+          }
+      }
   }
 }
 

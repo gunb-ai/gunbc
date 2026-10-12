@@ -205,7 +205,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.logic { bool_node }
 import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
-import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_init, list_map, skip }
+import v2.std.algebra { fold_list, for_all, is_empty, length, list_init, list_map, skip }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -962,6 +962,25 @@ fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   )
 }
 
+// A COMMA-REQUIRED LIST: `item (',' item)*`, no trailing comma. dag_grammar_comma_list_expr makes every
+// comma optional, which is right where the list is bracketed by a closer but wrong where it ends at
+// an unbracketed entry boundary: `requires Network` then `transport shell { .. }` read `transport`
+// and `shell` as two more members, and the record `{ argv: .. }` as a third that failed. v1's
+// parse_op_requires_members requires the comma and a member after it, so this is that shape. A member
+// can only continue the list across a comma, so the next entry keyword (transport, exit, input, ...)
+// is never a member, and the grammar stays unambiguous with no lookahead predicate.
+fn dag_grammar_required_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
+  dag_grammar_sequence(
+    left: item,
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_comma),
+        right: item
+      )
+    )
+  )
+}
+
 fn dag_grammar_module_header_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_module),
@@ -1400,6 +1419,11 @@ fn dag_grammar_field_decl_expr() -> GrammarExpr {
   )
 }
 
+// A FIELD MAY REFINE ITS TYPE WITH A WHERE CLAUSE (`n: Int where range(min: 0)`), in v1 parse_field's
+// order: type, refinement, wire key, default. It PARSES, and every lowering of a field REFUSES at the
+// clause (body_lowering_reason_field_refinement_unmodeled), the parameter precedent
+// (dag_grammar_typed_param_expr): the clause is the first slot of the tail, optional and led by `where`,
+// which neither `from` nor `=` can begin, so the three optional slots are disjoint and left-factored.
 // A field: the general field plus v1 parse_field's `[from "key"] [= default]` tail, which v1 admits on
 // EVERY field. It was once scoped to the service io_block (review 68343), because a record type does
 // lower and nothing then read the tail, so a grammar-only admission would have lowered the type and
@@ -1413,13 +1437,18 @@ fn dag_grammar_io_field_decl_expr() -> GrammarExpr {
     left: dag_grammar_field_decl_expr(),
     right: dag_grammar_sequence(
       left: dag_grammar_optional(
-        element: dag_grammar_sequence(
-          left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^from),
-          right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
-        )
+        element: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause)
       ),
-      right: dag_grammar_optional(
-        element: dag_grammar_nonterminal(production: ^dag_production_default_value)
+      right: dag_grammar_sequence(
+        left: dag_grammar_optional(
+          element: dag_grammar_sequence(
+            left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: ^from),
+            right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
+          )
+        ),
+        right: dag_grammar_optional(
+          element: dag_grammar_nonterminal(production: ^dag_production_default_value)
+        )
       )
     )
   )
@@ -1837,13 +1866,33 @@ fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
   )
 }
 
+// An index suffix `[e]` is a postfix step beside the dotted and cast ones, so `xs[i]` is ONE
+// postfix expression. Before it the suffix did not exist and `xs[i]` parsed as `xs` followed by the
+// list literal `[i]`, two juxtaposed expressions that lowering read as the first alone or as a
+// second statement -- a silent misread (DESIGN section 5). v1 reads a `[` after any complete
+// operand as an index (02_parse parse_postfix, ExprIndex), so the juxtaposition this production
+// claims was never a program v1 accepted; the only reading it removes is that one. A slice `[a..b]`
+// has no production and refuses at parse, as it did.
+fn dag_grammar_postfix_index_suffix_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
+    right: dag_grammar_sequence(
+      left: dag_grammar_expr_list_helper(),
+      right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+    )
+  )
+}
+
 fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_primary_expr),
     right: dag_grammar_repeat(
       element: dag_grammar_choice(
         left: dag_grammar_postfix_dot_suffix_expr(),
-        right: dag_grammar_postfix_as_suffix_expr()
+        right: dag_grammar_choice(
+          left: dag_grammar_postfix_as_suffix_expr(),
+          right: dag_grammar_postfix_index_suffix_expr()
+        )
       )
     )
   )
@@ -2845,7 +2894,7 @@ fn dag_grammar_op_requires_expr() -> GrammarExpr {
               right: dag_grammar_keyword_expr(lexeme: "opaque")
             )
           ),
-          right: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
+          right: dag_grammar_required_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_type_expr))
         )
       )
     )
@@ -3989,10 +4038,7 @@ fn dag_grammar_production_emits(production: GrammarProduction, n: Node) -> Bool 
 // occupies, so it shares that declared type.
 fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
   if (n == namespace_graft_module_body_marker_node())
-    || any(
-      xs: dag_grammar_root().productions,
-      predicate: fn(production) { dag_grammar_production_emits(production: production, n: n) }
-    ) {
+    || (dag_grammar_root().productions |> any(fn(production) { dag_grammar_production_emits(production: production, n: n) })) {
     optional_present(value: dag_grammar_surface_production_type_node())
   } else {
     optional_absent()
@@ -4861,7 +4907,7 @@ fn dag_kernel_string_type_spelling(sym: Symbol) -> Bool {
 fn dag_kernel_type_declaration_binding_optional(path: QualifiedName) -> Optional<Symbol> {
   dag_kernel_value_type_row_binding(
     found: dag_kernel_value_type_first(select: fn(row, _binding) {
-      any(xs: row.declarations, predicate: fn(declared) { declared == path })
+      row.declarations |> any(fn(declared) { declared == path })
     })
   )
 }
