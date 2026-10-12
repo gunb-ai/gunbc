@@ -3433,7 +3433,13 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       tailscale_serve_teardown_step(spec: spec),
     ]
     FabricStorageServeMapping => match deployment_fabric_storage_door_socket(spec: spec) {
-      Absent => []
+      Absent => [
+        deploy_raw(command: join([
+          fabric_storage_door_unknown_instance_poison,
+          spec.instance_id as String,
+          "\n",
+        ], "")),
+      ]
       Present { value: door_socket } => [
         deploy_raw(command: shell_privileged_command_text_of_argv(
           argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket))),
