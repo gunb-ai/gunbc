@@ -7,6 +7,7 @@ import v2.std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue, YamlValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.expressions { Expression, ContextAccess, FunctionCall, StringLiteral, LogicalAnd, Equals, NotEquals, Github, HashFiles, serialize_expression }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, WorkflowRunTriggered, WorkflowRunCompletedActivity,
@@ -93,10 +94,16 @@ data heal_publisher_concurrency: ConcurrencySpec = ConcurrencyMappingQueueMax {
 }
 
 fn heal_publisher_job_condition() -> String {
-  join([
-    "github.event.workflow_run.event == 'pull_request'",
-    " && github.event.workflow_run.head_repository.full_name == github.repository"
-  ], "")
+  serialize_expression(expression: LogicalAnd {
+    left: Equals {
+      left: ContextAccess { context: Github, path: ["event", "workflow_run", "event"] },
+      right: StringLiteral { value: "pull_request" }
+    },
+    right: Equals {
+      left: ContextAccess { context: Github, path: ["event", "workflow_run", "head_repository", "full_name"] },
+      right: ContextAccess { context: Github, path: ["repository"] }
+    }
+  })
 }
 
 fn heal_publisher_checkout_step() -> Step {
@@ -157,12 +164,18 @@ fn heal_publisher_download_step() -> Step {
 // other run of this job holds no publication credential at any moment, which is the same property the
 // candidate phase has by construction -- so the credentialed window is as narrow as the repair
 // population rather than as wide as the pull-request population.
+fn heal_publisher_candidate_has_entries_expression() -> Expression {
+  NotEquals {
+    left: FunctionCall {
+      function: HashFiles,
+      args: [StringLiteral { value: join([heal_publisher_candidate_directory, "/", heal_repair_candidate_blob_file_prefix as String, "*"], "") }]
+    },
+    right: StringLiteral { value: "" }
+  }
+}
+
 fn heal_publisher_candidate_has_entries_condition() -> String {
-  join([
-    "hashFiles('",
-    heal_publisher_candidate_directory, "/", heal_repair_candidate_blob_file_prefix as String, "*",
-    "') != ''"
-  ], "")
+  serialize_expression(expression: heal_publisher_candidate_has_entries_expression())
 }
 
 fn heal_publisher_gated(step_name: String, run: String, env: List<YamlKeyValue>?, id: String?, if_condition: String?) -> Step {
@@ -249,7 +262,7 @@ fn heal_publisher_publish_step() -> Step {
 // 20 that cost is what queued real repairs for hours. The gate is the consumers' own condition, so
 // the build cannot be skipped on a run whose candidate a consumer would read.
 fn heal_publisher_only_when_repair_owed(step: Step) -> Step {
-  let owed = heal_publisher_candidate_has_entries_condition()
+  let owed = heal_publisher_candidate_has_entries_expression()
   match step {
     RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: c, continue_on_error: co, timeout_minutes: t } =>
       RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: Present { value: heal_publisher_condition_and(existing: c, owed: owed) }, continue_on_error: co, timeout_minutes: t }
@@ -258,10 +271,10 @@ fn heal_publisher_only_when_repair_owed(step: Step) -> Step {
   }
 }
 
-fn heal_publisher_condition_and(existing: String?, owed: String) -> String {
+fn heal_publisher_condition_and(existing: String?, owed: Expression) -> String {
   match existing {
-    Present { value: c } => join(["(", c, ") && (", owed, ")"], "")
-    Absent => owed
+    Present { value: _ } => serialize_expression(expression: Equals { left: StringLiteral { value: "wrapped step carries its own condition" }, right: StringLiteral { value: "" } })
+    Absent => serialize_expression(expression: owed)
   }
 }
 
