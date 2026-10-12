@@ -751,9 +751,12 @@ fn cash_first_derivation(declared: CurrencyCode, price: MoneyOnce, q: Nat) -> Ca
   }
 }
 
+// The fold matches on the derived partition, not the variant list: a refused accumulator
+// short-circuits and the open region runs the fold body once for every open variant. The running
+// vs. first derivation is totalized on the running fact the partition carries (Absent until a
+// line derives one) -- no arm for a refused accumulator exists inside the fold, so nothing is
+// fabricated for a state the partition already excluded.
 fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> CashProjection {
-  // Match on the derived partition, not the variant list: a refused accumulator short-circuits;
-  // the open region runs the fold body once for every open variant.
   match cash_partition(p: acc) {
     CashPartitionRefused { cause: c } => CashRefused { cause: c }
     CashPartitionOpen { running: running } =>
@@ -765,9 +768,6 @@ fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> 
               if price.currency != declared {
                 CashRefused { cause: CashCurrencyMismatch { declared: declared, line_currency: price.currency } }
               } else {
-                // Running vs. first derivation: the partition carries the running sum (Absent when
-                // no line has derived one yet). No arm for a refused accumulator exists here -- a
-                // refused one short-circuits the partition above, so nothing is fabricated.
                 match running {
                   Present { value: running_sum } =>
                     CashDerived {
@@ -971,9 +971,12 @@ fn basis_for_draw(lot: ProcurementLot, draw: LotDraw) -> BasisProjection {
   }
 }
 
+// The fold matches on the derived partition, not the variant list: a refused accumulator
+// short-circuits and the open region runs the step once for every open variant. The running vs.
+// first derivation is totalized on the running basis fact the partition carries (Absent until a
+// draw derives one) -- no arm for a refused accumulator exists inside the fold, so nothing is
+// fabricated for a state the partition already excluded.
 fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -> BasisProjection {
-  // Match on the derived partition, not the variant list: a refused accumulator short-circuits;
-  // the open region runs the step once for every open variant.
   match basis_partition(p: acc) {
     BasisPartitionRefused { cause: c } => BasisRefused { cause: c }
     BasisPartitionOpen { running: running } =>
@@ -985,10 +988,6 @@ fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -
             BasisRefused { cause: c } => BasisRefused { cause: c }
             BasisNoDraws => acc
             BasisDerived { basis: b, remainder: rem, policy: p } =>
-              // Running vs. first derivation: the partition carries the running basis fact
-              // (Absent when no draw has derived one yet). No arm for a refused accumulator
-              // exists here -- a refused one short-circuits the partition above, so nothing is
-              // fabricated.
               match running {
                 Present { value: running } =>
                   if running.basis.currency != b.currency {
@@ -1156,9 +1155,12 @@ fn ceiling_first_derivation(line: BomLine, builds: Nat, u: Nat) -> Constructible
   CeilingDerived { builds: builds, bottlenecks: [line], bottleneck_units: u }
 }
 
+// The fold matches on the derived partition, not the variant list: a refused ceiling short-circuits
+// and the open region runs the step once for every open variant. The running vs. first derivation
+// is totalized on the running ceiling fact the partition carries (Absent until a line constrains
+// the build) -- no arm for a refused ceiling exists inside the fold, so nothing is fabricated for
+// a state the partition already excluded.
 fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> ConstructibleCeiling {
-  // Match on the derived partition, not the variant list: a refused ceiling short-circuits; the
-  // open region runs the step once for every open variant.
   match ceiling_partition(p: acc) {
     CeilingPartitionRefused { cause: c } => CeilingRefused { cause: c }
     CeilingPartitionOpen { running: running } =>
@@ -1170,9 +1172,6 @@ fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> C
         DepthUnconstrained => acc
         DepthUnits { units: u } => {
           let builds = u / line.quantity_per_build
-          // Running vs. first derivation: the partition carries the running ceiling fact (Absent
-          // when no line has constrained the build yet). No arm for a refused ceiling exists here
-          // -- a refused one short-circuits the partition above, so nothing is fabricated.
           match running {
             Present { value: running } =>
               if builds < running.builds {
