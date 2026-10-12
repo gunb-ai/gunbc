@@ -2,7 +2,8 @@ module test.claim.roadmap_belt_actuate_witness
 
 import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
-import gunbc.roadmap_belt_actuate { belt_spawn_outcome_with_release }
+import gunbc.roadmap_belt_actuate { belt_spawn_outcome_with_release, belt_discovery_owed }
+import gunbc.roadmap.roadmap_belt_obligation { belt_attempt_outstanding }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -2988,5 +2989,16 @@ test fn a_refused_metering_write_fails_the_metering_pass() -> Bool {
       BeltPassRecorded => true
       _ => false
     })
+}
+
+// THE FIRST CAPTURE IS OWED BY THE ATTEMPT'S RECORD, NOT BY THE SEGMENT (2026-10-12): an ended worker
+// not yet captured projects as yielded -- settled -- so the pure gate alone owes it nothing, which is
+// why the srv1 lab never captured a candidate; discovery owes it exactly when its record says the
+// commit step has not run, and not otherwise.
+test fn an_ended_worker_is_owed_its_first_capture_by_its_record() -> Bool {
+  let ended = completed_attempt_progress(node_id: "capture-owed-node")
+  count(belt_attempt_outstanding(provider: ended.provider, segments: ended.segments)) == 0
+    && count(belt_discovery_owed(attempts: [ended], capture_owed: p => true)) == 1
+    && count(belt_discovery_owed(attempts: [ended], capture_owed: p => false)) == 0
 }
 

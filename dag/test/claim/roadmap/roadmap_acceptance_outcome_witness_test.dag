@@ -4,7 +4,7 @@ import std.types { Bool, String, List }
 import std.optional { Present, Absent }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
-  VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
+  VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment, SubmissionWorkflowSegment,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
@@ -87,7 +87,7 @@ test fn a_handed_in_worker_is_captured_and_owed_an_outcome() -> Bool {
   let running = ProviderRunning { activity: "Agent working" }
   belt_provider_candidate_ready(provider: handed) && belt_provider_candidate_ready(provider: ended) && !belt_provider_candidate_ready(provider: running)
     && belt_provider_handed_in(provider: handed) == "h1" && belt_provider_handed_in(provider: ended) == ""
-    && belt_attempt_obligation_outstanding(kind: CaptureObligation, provider: handed, segments: [])
+    && belt_attempt_obligation_outstanding(kind: CaptureObligation, provider: handed, segments: [WorkflowSegment { kind: SubmissionWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting capture" }])
     && belt_attempt_obligation_outstanding(kind: AcceptanceOutcomeObligation, provider: handed, segments: [])
     && !belt_attempt_obligation_outstanding(kind: AcceptanceOutcomeObligation, provider: ended, segments: [])
 }
