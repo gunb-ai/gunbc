@@ -527,7 +527,7 @@ import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
   SubmissionDecoded, SubmissionNotDecodable, CaptureDecoded, CaptureNotDecodable,
   submission_artifact_name, submission_digest, submission_decode,
-  submission_capture_basename, submission_capture_text, submission_capture_decode,
+  submission_capture_basename, submission_capture_text, submission_capture_decode, submission_capture_answers_handin,
   submission_readiness_key,
   SubmissionCandidacy, SubmissionIsCandidate, SubmissionNotCandidate, submission_candidacy,
   SubmissionCaptureRootBound,
@@ -13283,6 +13283,8 @@ fn belt_acceptance_outcome_for_instance(instance: HostDashboardInstance, progres
   let handin = belt_provider_handed_in(provider: progress.provider)
   if handin == "" {
     AcceptanceOutcomeRefused { reason: "the attempt is not awaiting acceptance under a readable hand-in id, so no outcome can be addressed" }
+  } else if belt_capture_owed(instance: instance, progress: progress) {
+    AcceptanceOutcomeUndecided { reason: join(["hand-in ", handin, " is not captured yet, so no stage has judged its code"], "") }
   } else {
     match belt_worktree_head_observe(instance: instance, worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)) {
       WorktreeHeadUnobserved { reason } =>
@@ -13383,11 +13385,42 @@ type BeltAttemptObligationRun
 // for the next kind reads what the previous one wrote. Each kind is visited once, so the run is
 // bounded by the number of kinds and never re-runs a kind it already ran (the strictly-downstream
 // rule of gunbc.roadmap.roadmap_belt_obligation belt_attempt_next_after, by construction here).
+// WHETHER A CAPTURE IS OWED, READ FROM THE ATTEMPT'S OWN RECORDS. The Submission segment cannot say it:
+// a worker that has ended and is not yet captured projects as yielded -- settled -- exactly like one
+// whose commit already found no candidate, so a gate on "submission unsettled" alone never owed the
+// FIRST capture, and the srv1 lab captured nothing (2026-10-12: every worker exit's obligation run
+// recorded no steps). The two facts are told apart here:
+//   - a handed-in worker (gunbc.plans.harness_session_lifecycle, slice S2) is owed a capture until one
+//     names its hand-in -- which also covers a revision whose head still carries the previous capture;
+//   - an ended worker is owed one until the commit step has recorded an outcome for the attempt.
+// A record that cannot be read counts as owed: the commit step then runs and refuses loudly, rather than
+// the gap staying silent.
+fn belt_capture_owed(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> Bool {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let handin = belt_provider_handed_in(provider: progress.provider)
+  if handin != "" {
+    match belt_submission_captures_observe(
+      instance: instance,
+      worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+      dir: belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+    ) {
+      CaptureRosterUnobservable { reason: _ } => true
+      CaptureRosterObserved { captures } => !any(captures, c => submission_capture_answers_handin(c: c, handin: handin))
+    }
+  } else {
+    !Filesystem.Read(path: join([
+      dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+      "/", belt_commit_outcome_last_basename as String,
+    ], "")).success
+  }
+}
+
 fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltAttemptObligationRun {
   let folded = fold(belt_attempt_obligation_order, init: BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: [] }, f: fn(acc, kind) {
     match acc.read {
       BeltAttemptProgressFound { progress } =>
-        if belt_attempt_obligation_outstanding(kind: kind, provider: progress.provider, segments: progress.segments) {
+        if belt_attempt_obligation_outstanding(kind: kind, provider: progress.provider, segments: progress.segments)
+          || (belt_attempt_obligation_kind_key(kind: kind) == "capture" && belt_provider_candidate_ready(provider: progress.provider) && belt_capture_owed(instance: instance, progress: progress)) {
           let step = belt_attempt_obligation_step(instance: instance, progress: progress, kind: kind)
           BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: concat(acc.steps, [step]) }
         } else {
@@ -13652,16 +13685,18 @@ type BeltDiscovery
   = BeltDiscovered { owed: Int, enqueues: List<BeltObligationEnqueue> }
   | BeltDiscoveryRefused { reason: String }
 
-// PURE: which attempts are owed something, in observation order, and the bounded prefix to queue.
-fn belt_discovery_owed(attempts: List<WorkflowAttemptProgress>) -> List<WorkflowAttemptProgress> {
-  attempts |> filter(p => count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0)
+// PURE OVER ITS INPUTS: which attempts are owed something, in observation order, and the bounded prefix
+// to queue. Whether a capture is owed is read from the attempt's own records (belt_capture_owed), so it
+// arrives as a supplied predicate.
+fn belt_discovery_owed(attempts: List<WorkflowAttemptProgress>, capture_owed: fn(WorkflowAttemptProgress) -> Bool) -> List<WorkflowAttemptProgress> {
+  attempts |> filter(p => count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0 || (belt_provider_candidate_ready(provider: p.provider) && capture_owed(p)))
 }
 
 fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } => BeltDiscoveryRefused { reason: join(["the attempts ledger is unobservable, so no outstanding obligation can be discovered: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
-      let owed = belt_discovery_owed(attempts: attempts)
+      let owed = belt_discovery_owed(attempts: attempts, capture_owed: p => belt_capture_owed(instance: instance, progress: p))
       BeltDiscovered {
         owed: count(owed),
         enqueues: concat(
