@@ -115,7 +115,7 @@ type PermissionLevel = PermRead | PermWrite | PermNone
 
 type WorkflowTrigger
   = Push { branches: List<String>, paths: List<String> }
-  | PullRequest { branches: List<String>, types: List<PullRequestActivity> }
+  | PullRequest { branches: List<String>, types: List<PullRequestActivity>, paths: List<String> }
   | Schedule { cron: CronSchedule }
   | WorkflowDispatch { inputs: List<DispatchInput> }
   | WorkflowCall { inputs: List<DispatchInput> }
@@ -137,7 +137,7 @@ fn workflow_trigger_is_merge_group(trigger: WorkflowTrigger) -> Bool {
   match trigger {
     MergeGroup => true
     Push { branches: _, paths: _ } => false
-    PullRequest { branches: _, types: _ } => false
+    PullRequest { branches: _, types: _, paths: _ } => false
     Schedule { cron: _ } => false
     WorkflowDispatch { inputs: _ } => false
     WorkflowCall { inputs: _ } => false
