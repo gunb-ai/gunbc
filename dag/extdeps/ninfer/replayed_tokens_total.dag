@@ -6,8 +6,8 @@ import std.nat { Nat }
 import std.measure { TokenCount, token_count }
 import std.checked_arithmetic { prefixed_line_last_space_nat, PrefixedLineMiss, PrefixedLineNatUnreadable, PrefixedLineNat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.ninfer.ninfer_serve { extdeps_external_authority_anchor, ninfer_upstream_read_obligation }
 
 // NINFER'S REPLAYED-TOKEN COUNTER LINE, not a gpu-bench kit schema. The metric name is
 // ninfer_replayed_tokens_total; later snapshots overwrite earlier ones (phase counter).
@@ -15,10 +15,6 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 // `prefixed_line_last_space_nat`). A `# TYPE …` comment does not.
 
 data ninfer_replayed_tokens_total_marker: NonEmptyStr = "ninfer_replayed_tokens_total" as NonEmptyStr
-
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https, locator: "github.com/Neroued/ninfer" as NonEmptyStr }
-}
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
@@ -33,7 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data ninfer_replayed_tokens_total_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Read ninfer's metric printer at github.com/Neroued/ninfer and cite the ninfer_replayed_tokens_total line as CitedToAuthority. Until then this is the observed process-log spelling, not an upstream-published contract." as NonEmptyStr
+  read_obligation: ninfer_upstream_read_obligation,
 }
 
 type NinferReplayedTokensRead
