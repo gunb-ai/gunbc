@@ -313,5 +313,5 @@ fn arm_recovery_is_noticed(posture: ArmRecoveryPosture) -> Bool {
 // loss, which makes the posture SelfHealingOnFault and retires the converge dependency entirely.
 data glm_native_arm_recovery_posture: ArmRecoveryPosture = ConvergeRecovered {
   noticer: "gunbc.spark.rendezvous_participation serving_group_rendezvous_reach, whose GroupHostsNotAllConnected arm names the hosts holding no connection to the current store. It notices the negative case only: a host WITH a connection is not thereby established to be running its declared rank, because the reading carries no process attribution" as NonEmptyStr,
-  converge_entry: "gunbc.spark.native_serving_apply spark_native_serving_apply_wet, which restarts every rank into one epoch" as NonEmptyStr,
+  converge_entry: "retired: gunbc.spark.dgx_procurement dgx_spark_disposed_units — Spark native serving apply deleted with the sold serving path" as NonEmptyStr,
 }
