@@ -11,11 +11,10 @@ import extdeps.vllm.engine_args {
 }
 import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire }
 import extdeps.docker.cli { DockerEnvAssignment }
-import extdeps.storage.types { PcieLink, PcieGeneration, Gen3, Gen4, Gen5 }
+import extdeps.storage.types { PcieLink, pcie_generation_wire }
 import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
 import extdeps.ninfer.ninfer_serve {
-  NinferKvDtype, NinferSpeculation, NinferMtp,
-  NinferKvBf16, NinferKvInt8, NinferKvFp8, NinferKvNvfp4, NinferKvK8V4,
+  NinferKvDtype, NinferSpeculation, ninfer_kv_dtype_wire, ninfer_speculation_wire,
 }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
@@ -206,21 +205,6 @@ fn subject_vllm_scheduler_admission(s: ServingPerformanceSubject) -> VllmSchedul
   }
 }
 
-fn serving_engine_is_ninfer(s: ServingPerformanceSubject) -> Bool {
-  match s.engine {
-    EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } => false
-    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } => true
-  }
-}
-
-fn vllm_request_axis_is_unknown(s: ServingPerformanceSubject, present: Bool) -> Bool {
-  if serving_engine_is_ninfer(s: s) {
-    false
-  } else {
-    !present
-  }
-}
-
 // ── THE SUBJECT OF A LAUNCH IS DERIVED FROM THE PROFILE THAT LAUNCHED ───────────────────────────
 //
 // THE TWO HAND-BUILT LIVE SUBJECTS THIS REPLACES each filled the axes from a different source -- the
@@ -267,23 +251,6 @@ fn serving_subject_for_launch(
     ),
     accelerator: AcceleratorSparkGb10,
   )
-}
-
-fn ninfer_kv_dtype_wire(d: NinferKvDtype) -> NonEmptyStr {
-  match d {
-    NinferKvBf16 => "ninfer-kv-bf16" as NonEmptyStr
-    NinferKvInt8 => "ninfer-kv-int8" as NonEmptyStr
-    NinferKvFp8 => "ninfer-kv-fp8" as NonEmptyStr
-    NinferKvNvfp4 => "ninfer-kv-nvfp4" as NonEmptyStr
-    NinferKvK8V4 => "ninfer-kv-k8v4" as NonEmptyStr
-  }
-}
-
-fn ninfer_speculation_wire(s: NinferSpeculation) -> NonEmptyStr {
-  match s {
-    NinferMtp { draft_tokens: n, lm_head_draft: h } =>
-      join(["ninfer-mtp-", to_string(n), if h { "-lmhead" } else { "" }], "") as NonEmptyStr
-  }
 }
 
 // THE WEIGHT QUANTIZATION IS AN AXIS BUT NOT A FIELD: it is a fact about the checkpoint row
@@ -362,104 +329,153 @@ fn serving_subject_axis_wire(a: ServingSubjectAxis) -> NonEmptyStr {
   }
 }
 
-// EVERY AXIS PROJECTS TO A STRING AND THE COMPARISON IS OVER PROJECTIONS, which is the idiom
-// gunbc.spark.serving_subject uses for ServingSubject and gunbc.spark.serving_arm now publishes the
-// per-axis halves of. Nothing here re-matches on a checkpoint or a runtime variant: that match lives
-// once, in the module that owns the coproduct.
-fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxis) -> NonEmptyStr {
-  match a {
-    AxisCheckpoint => serving_checkpoint_wire(c: s.checkpoint)
-    AxisCheckpointRevision =>
-      match s.checkpoint_revision {
-        Absent => axis_value_unread_marker
-        Present { value: r } => r
+type ServingSubjectAxisReading
+  = AxisNotApplicable
+  | AxisUnread
+  | AxisRead { value: NonEmptyStr }
+
+type VllmRequestAxisReadings {
+  kv_cache_dtype: ServingSubjectAxisReading
+  speculative: ServingSubjectAxisReading
+  indexer_kv_dtype: ServingSubjectAxisReading
+  scheduler_admission: ServingSubjectAxisReading
+}
+
+fn axis_optional_reading(v: NonEmptyStr?) -> ServingSubjectAxisReading {
+  match v {
+    Absent => AxisUnread
+    Present { value: x } => AxisRead { value: x }
+  }
+}
+
+fn axis_optional_nat_reading(v: Nat?) -> ServingSubjectAxisReading {
+  match v {
+    Absent => AxisUnread
+    Present { value: n } => AxisRead { value: to_string(n) as NonEmptyStr }
+  }
+}
+
+fn axis_optional_string_reading(v: String?) -> ServingSubjectAxisReading {
+  match v {
+    Absent => AxisUnread
+    Present { value: k } => AxisRead { value: k as NonEmptyStr }
+  }
+}
+
+fn vllm_request_axis_readings(e: ServingEngineRequest) -> VllmRequestAxisReadings {
+  match e {
+    EngineNinfer { kv_dtype: _, speculation: _, max_concurrency: _, kv_capacity_auto: _ } =>
+      VllmRequestAxisReadings {
+        kv_cache_dtype: AxisNotApplicable,
+        speculative: AxisNotApplicable,
+        indexer_kv_dtype: AxisNotApplicable,
+        scheduler_admission: AxisNotApplicable,
       }
-    AxisRuntime => serving_runtime_wire(r: s.runtime)
-    AxisRuntimeImageReference => s.runtime_image_reference
+    EngineVllm { kv_cache_dtype: kv, speculative: sp, indexer_kv_dtype: ix, scheduler_admission: ad } =>
+      VllmRequestAxisReadings {
+        kv_cache_dtype: match kv {
+          Absent => AxisUnread
+          Present { value: d } => AxisRead { value: vllm_kv_cache_dtype_wire(request: d) }
+        },
+        speculative: match sp {
+          Absent => AxisUnread
+          Present { value: p } => AxisRead { value: vllm_speculative_policy_wire(p: p) }
+        },
+        indexer_kv_dtype: match ix {
+          Absent => AxisUnread
+          Present { value: d } => AxisRead { value: vllm_indexer_kv_dtype_key(r: d) as NonEmptyStr }
+        },
+        scheduler_admission: match ad {
+          Absent => AxisUnread
+          Present { value: a } => AxisRead { value: vllm_scheduler_admission_key(r: a) as NonEmptyStr }
+        },
+      }
+  }
+}
+
+fn engine_axis_reading(e: ServingEngineRequest) -> ServingSubjectAxisReading {
+  match e {
+    EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } =>
+      AxisRead { value: serving_engine_request_wire(e: e) }
+    EngineNinfer { kv_dtype: kv, speculation: sp, max_concurrency: c, kv_capacity_auto: auto } =>
+      match kv {
+        Absent => AxisUnread
+        Present { value: _ } => match sp {
+          Absent => AxisUnread
+          Present { value: _ } => match c {
+            Absent => AxisUnread
+            Present { value: _ } => match auto {
+              Absent => AxisUnread
+              Present { value: _ } => AxisRead { value: serving_engine_request_wire(e: e) }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn accelerator_axis_reading(a: ServingAcceleratorAxis) -> ServingSubjectAxisReading {
+  match a {
+    AcceleratorUnread => AxisUnread
+    AcceleratorSparkGb10 => AxisRead { value: "spark-gb10" as NonEmptyStr }
+    AcceleratorCited { realization: r } =>
+      match r.host_link {
+        HostLinkUnread => AxisUnread
+        HostLinkNegotiated { link: _ } =>
+          match r.applied_power_limit {
+            Absent => AxisUnread
+            Present { value: _ } => AxisRead { value: serving_accelerator_realization_wire(a: r) }
+          }
+      }
+  }
+}
+
+// EVERY AXIS PROJECTS THROUGH ONE THREE-WAY READING. Not-applicable vs unread vs a value is decided
+// once (the four vLLM request axes from one match on ServingEngineRequest). The renderer, the
+// unknown-check and the not-applicable check all consume that reading; they do not restate the engine
+// rule. Comparison stays over the rendered projection for ordinary axes.
+fn serving_subject_axis_reading(s: ServingPerformanceSubject, a: ServingSubjectAxis) -> ServingSubjectAxisReading {
+  let vllm = vllm_request_axis_readings(e: s.engine)
+  match a {
+    AxisCheckpoint => AxisRead { value: serving_checkpoint_wire(c: s.checkpoint) }
+    AxisCheckpointRevision => axis_optional_reading(v: s.checkpoint_revision)
+    AxisRuntime => AxisRead { value: serving_runtime_wire(r: s.runtime) }
+    AxisRuntimeImageReference => AxisRead { value: s.runtime_image_reference }
     AxisTopology =>
       match s.topology {
-        Absent => axis_value_unread_marker
-        Present { value: t } => serving_topology_wire(t: t)
+        Absent => AxisUnread
+        Present { value: t } => AxisRead { value: serving_topology_wire(t: t) }
       }
-    AxisRankPopulation =>
-      match s.rank_population {
-        Absent => axis_value_unread_marker
-        Present { value: r } => to_string(r) as NonEmptyStr
-      }
+    AxisRankPopulation => axis_optional_nat_reading(v: s.rank_population)
     AxisContextCeiling =>
       match s.context_ceiling {
-        Absent => axis_value_unread_marker
-        Present { value: c } => to_string(token_count_value(t: c)) as NonEmptyStr
+        Absent => AxisUnread
+        Present { value: c } => AxisRead { value: to_string(token_count_value(t: c)) as NonEmptyStr }
       }
-    AxisBatchBudget => to_string(token_count_value(t: s.max_num_batched_tokens)) as NonEmptyStr
-    AxisMaxNumSeqs =>
-      match s.max_num_seqs {
-        Absent => axis_value_unread_marker
-        Present { value: n } => to_string(n) as NonEmptyStr
-      }
-    AxisKvCacheDtype =>
-      if serving_engine_is_ninfer(s: s) {
-        axis_value_not_applicable_marker
-      } else {
-        match subject_vllm_kv_cache_dtype(s: s) {
-          Absent => axis_value_unread_marker
-          Present { value: d } => vllm_kv_cache_dtype_wire(request: d)
-        }
-      }
-    AxisSpeculativePolicy =>
-      if serving_engine_is_ninfer(s: s) {
-        axis_value_not_applicable_marker
-      } else {
-        match subject_vllm_speculative(s: s) {
-          Absent => axis_value_unread_marker
-          Present { value: sp } => vllm_speculative_policy_wire(p: sp)
-        }
-      }
+    AxisBatchBudget => AxisRead { value: to_string(token_count_value(t: s.max_num_batched_tokens)) as NonEmptyStr }
+    AxisMaxNumSeqs => axis_optional_nat_reading(v: s.max_num_seqs)
+    AxisKvCacheDtype => vllm.kv_cache_dtype
+    AxisSpeculativePolicy => vllm.speculative
     AxisCollectiveTransport =>
       match s.collective_transport {
-        Absent => axis_value_unread_marker
-        Present { value: tr } => nccl_realized_transport_wire(t: tr)
+        Absent => AxisUnread
+        Present { value: tr } => AxisRead { value: nccl_realized_transport_wire(t: tr) }
       }
-    AxisWeightQuantization =>
-      match subject_weight_quantization(s: s) {
-        Absent => axis_value_unread_marker
-        Present { value: w } => w
-      }
-    AxisIndexerKvDtype =>
-      if serving_engine_is_ninfer(s: s) {
-        axis_value_not_applicable_marker
-      } else {
-        match subject_vllm_indexer_kv_dtype(s: s) {
-          Absent => axis_value_unread_marker
-          Present { value: d } => vllm_indexer_kv_dtype_key(r: d) as NonEmptyStr
-        }
-      }
-    AxisSchedulerAdmission =>
-      if serving_engine_is_ninfer(s: s) {
-        axis_value_not_applicable_marker
-      } else {
-        match subject_vllm_scheduler_admission(s: s) {
-          Absent => axis_value_unread_marker
-          Present { value: a } => vllm_scheduler_admission_key(r: a) as NonEmptyStr
-        }
-      }
-    AxisLaunchProfile =>
-      match s.launch_profile_key {
-        Absent => axis_value_unread_marker
-        Present { value: k } => k as NonEmptyStr
-      }
-    AxisDeploymentEnv =>
-      match s.deployment_env_key {
-        Absent => axis_value_unread_marker
-        Present { value: k } => k as NonEmptyStr
-      }
-    AxisEngine => serving_engine_request_wire(e: s.engine)
-    AxisAccelerator =>
-      match s.accelerator {
-        AcceleratorUnread => axis_value_unread_marker
-        AcceleratorSparkGb10 => "spark-gb10" as NonEmptyStr
-        AcceleratorCited { realization: a } => serving_accelerator_realization_wire(a: a)
-      }
+    AxisWeightQuantization => axis_optional_reading(v: subject_weight_quantization(s: s))
+    AxisIndexerKvDtype => vllm.indexer_kv_dtype
+    AxisSchedulerAdmission => vllm.scheduler_admission
+    AxisLaunchProfile => axis_optional_string_reading(v: s.launch_profile_key)
+    AxisDeploymentEnv => axis_optional_string_reading(v: s.deployment_env_key)
+    AxisEngine => engine_axis_reading(e: s.engine)
+    AxisAccelerator => accelerator_axis_reading(a: s.accelerator)
+  }
+}
+
+fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxis) -> NonEmptyStr {
+  match serving_subject_axis_reading(s: s, a: a) {
+    AxisNotApplicable => axis_value_not_applicable_marker
+    AxisUnread => axis_value_unread_marker
+    AxisRead { value: v } => v
   }
 }
 
@@ -490,14 +506,6 @@ fn serving_engine_request_wire(e: ServingEngineRequest) -> NonEmptyStr {
           Present { value: b } => if b { "1" } else { "0" }
         },
       ], "") as NonEmptyStr
-  }
-}
-
-fn pcie_generation_wire(g: PcieGeneration) -> String {
-  match g {
-    Gen3 => "gen3"
-    Gen4 => "gen4"
-    Gen5 => "gen5"
   }
 }
 
@@ -610,63 +618,10 @@ fn subject_unknown_axes(s: ServingPerformanceSubject) -> List<ServingSubjectAxis
 }
 
 fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
-  match a {
-    AxisCollectiveTransport =>
-      match s.collective_transport { Absent => true, Present { value: _ } => false }
-    AxisSpeculativePolicy =>
-      vllm_request_axis_is_unknown(s: s, present: match subject_vllm_speculative(s: s) { Absent => false, Present { value: _ } => true })
-    AxisCheckpoint => false
-    AxisCheckpointRevision =>
-      match s.checkpoint_revision { Absent => true, Present { value: _ } => false }
-    AxisRuntime => false
-    AxisRuntimeImageReference => false
-    AxisTopology =>
-      match s.topology { Absent => true, Present { value: _ } => false }
-    AxisRankPopulation =>
-      match s.rank_population { Absent => true, Present { value: _ } => false }
-    AxisContextCeiling =>
-      match s.context_ceiling { Absent => true, Present { value: _ } => false }
-    AxisBatchBudget => false
-    AxisMaxNumSeqs =>
-      match s.max_num_seqs { Absent => true, Present { value: _ } => false }
-    AxisKvCacheDtype =>
-      vllm_request_axis_is_unknown(s: s, present: match subject_vllm_kv_cache_dtype(s: s) { Absent => false, Present { value: _ } => true })
-    AxisWeightQuantization =>
-      match subject_weight_quantization(s: s) { Absent => true, Present { value: _ } => false }
-    AxisIndexerKvDtype =>
-      vllm_request_axis_is_unknown(s: s, present: match subject_vllm_indexer_kv_dtype(s: s) { Absent => false, Present { value: _ } => true })
-    AxisSchedulerAdmission =>
-      vllm_request_axis_is_unknown(s: s, present: match subject_vllm_scheduler_admission(s: s) { Absent => false, Present { value: _ } => true })
-    AxisLaunchProfile =>
-      match s.launch_profile_key { Absent => true, Present { value: _ } => false }
-    AxisDeploymentEnv =>
-      match s.deployment_env_key { Absent => true, Present { value: _ } => false }
-    AxisEngine =>
-      match s.engine {
-        EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } => false
-        EngineNinfer { kv_dtype: kv, speculation: sp, max_concurrency: c, kv_capacity_auto: auto } =>
-          match kv { Absent => true, Present { value: _ } =>
-            match sp { Absent => true, Present { value: _ } =>
-              match c { Absent => true, Present { value: _ } =>
-                match auto { Absent => true, Present { value: _ } => false }
-              }
-            }
-          }
-      }
-    AxisAccelerator =>
-      match s.accelerator {
-        AcceleratorUnread => true
-        AcceleratorSparkGb10 => false
-        AcceleratorCited { realization: a } =>
-          match a.host_link {
-            HostLinkUnread => true
-            HostLinkNegotiated { link: _ } =>
-              match a.applied_power_limit {
-                Absent => true
-                Present { value: _ } => false
-              }
-          }
-      }
+  match serving_subject_axis_reading(s: s, a: a) {
+    AxisUnread => true
+    AxisNotApplicable => false
+    AxisRead { value: _ } => false
   }
 }
 
@@ -786,30 +741,10 @@ fn accelerator_known_parts_differ(left: ServingAcceleratorAxis, right: ServingAc
 }
 
 fn subject_axis_is_not_applicable(s: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
-  if serving_engine_is_ninfer(s: s) {
-    match a {
-      AxisKvCacheDtype => true
-      AxisSpeculativePolicy => true
-      AxisIndexerKvDtype => true
-      AxisSchedulerAdmission => true
-      AxisCollectiveTransport => false
-      AxisCheckpoint => false
-      AxisCheckpointRevision => false
-      AxisRuntime => false
-      AxisRuntimeImageReference => false
-      AxisTopology => false
-      AxisRankPopulation => false
-      AxisContextCeiling => false
-      AxisBatchBudget => false
-      AxisMaxNumSeqs => false
-      AxisWeightQuantization => false
-      AxisLaunchProfile => false
-      AxisDeploymentEnv => false
-      AxisEngine => false
-      AxisAccelerator => false
-    }
-  } else {
-    false
+  match serving_subject_axis_reading(s: s, a: a) {
+    AxisNotApplicable => true
+    AxisUnread => false
+    AxisRead { value: _ } => false
   }
 }
 
