@@ -103,9 +103,13 @@ fn refused_at_parse(tag: String, body: String) -> Bool {
   (reason != "ACCEPTED") && (reason != "parse_declaration_marker_not_test")
 }
 
-test fn two_names_in_one_field_refuse_holds() -> Bool { refused_or_not_a_record(tag: "two", body: "X { s t }") }
 test fn a_keyword_pun_refuses_holds() -> Bool { refused_at_parse(tag: "kw", body: "X { true }") }
 test fn a_literal_pun_refuses_holds() -> Bool { refused_or_not_a_record(tag: "lit", body: "X { 1 }") }
 test fn a_dotted_pun_refuses_holds() -> Bool { refused_or_not_a_record(tag: "dot", body: "X { s.t }") }
 test fn an_unclosed_pun_record_refuses_holds() -> Bool { refused_at_parse(tag: "open", body: "X { s") }
-test fn a_pun_with_a_missing_comma_refuses_holds() -> Bool { refused_or_not_a_record(tag: "comma", body: "X { s t: t }") }
+
+// FIELD LISTS TAKE THEIR COMMAS OPTIONALLY (dag_grammar_comma_list_expr, for every list), so two names with
+// no comma are two puns, the same reading `X { a: 1 b: 2 }` already has -- not one malformed field.
+test fn commas_between_puns_stay_optional_like_every_field_list_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "nc", text: probe(body: "X { s t }")), b: normalized_hash(tag: "tl4", text: top_long_source()))
+}
