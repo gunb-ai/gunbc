@@ -8,8 +8,9 @@ import product.fabric.execution { ReservationRef }
 import product.fabric.budget { MoneyAccount, fence_admits }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.durable_compare_and_set {
-  ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  ExpectSlotAbsent, ExpectSlotGeneration, CasExpectation, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasObservedReadable, CasObservedUnreadable,
+  cas_unreadable_slot_detail,
 }
 import gunbc.durable_cas_file_store {
   admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
@@ -215,13 +216,55 @@ fn decimal_int(s: String) -> Int? {
   decimal_int_go(s: s, acc: 0, seen: false)
 }
 
+fn encode_phase_tag(phase: CallerWorkPhase) -> String {
+  match phase {
+    WorkWaiting => "W"
+    WorkCompleted => "C"
+    WorkCancelled => "X"
+    WorkRecoveryBoundExceeded { deficit: _ } => "B"
+  }
+}
+
+fn encode_phase_deficit(phase: CallerWorkPhase) -> String {
+  match phase {
+    WorkWaiting => ""
+    WorkCompleted => ""
+    WorkCancelled => ""
+    WorkRecoveryBoundExceeded { deficit: d } => d as String
+  }
+}
+
+fn decode_phase(tag: String, deficit: String) -> CallerWorkPhase? {
+  if tag == "W" {
+    Present { value: WorkWaiting }
+  } else if tag == "C" {
+    Present { value: WorkCompleted }
+  } else if tag == "X" {
+    Present { value: WorkCancelled }
+  } else if tag == "B" && deficit != "" {
+    Present { value: WorkRecoveryBoundExceeded { deficit: deficit as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
 fn encode_waiting(record: CallerWorkRecord) -> NonEmptyStr {
-  join([record.work as String, "\t", record.reservation as String, "\t", to_string(record.generation)], "") as NonEmptyStr
+  join([
+    record.work as String,
+    "\t",
+    record.reservation as String,
+    "\t",
+    to_string(record.generation),
+    "\t",
+    encode_phase_tag(phase: record.phase),
+    "\t",
+    encode_phase_deficit(phase: record.phase),
+  ], "") as NonEmptyStr
 }
 
 fn decode_waiting(payload: NonEmptyStr) -> CallerWorkRecord? {
   let parts = (payload as String).split(delimiter: "\t")
-  if length(parts) != 3 {
+  if length(parts) != 5 {
     none
   } else {
     match parts.first() {
@@ -233,17 +276,33 @@ fn decode_waiting(payload: NonEmptyStr) -> CallerWorkRecord? {
             match parts.skip(n: 2).first() {
               Absent => none
               Present { value: generation_s } =>
-                match decimal_int(s: generation_s) {
+                match parts.skip(n: 3).first() {
                   Absent => none
-                  Present { value: generation } =>
-                    if work_s == "" || reservation_s == "" {
-                      none
-                    } else {
-                      Present { value: waiting_record(
-                        work: work_s as LogicalWorkId,
-                        reservation: reservation_s as ReservationRef,
-                        generation: generation,
-                      ) }
+                  Present { value: tag } =>
+                    match parts.skip(n: 4).first() {
+                      Absent => none
+                      Present { value: deficit } =>
+                        match decimal_int(s: generation_s) {
+                          Absent => none
+                          Present { value: generation } =>
+                            match decode_phase(tag: tag, deficit: deficit) {
+                              Absent => none
+                              Present { value: phase } =>
+                                if work_s == "" || reservation_s == "" {
+                                  none
+                                } else {
+                                  Present {
+                                    value: CallerWorkRecord {
+                                      work: work_s as LogicalWorkId,
+                                      reservation: reservation_s as ReservationRef,
+                                      generation: generation,
+                                      phase: phase,
+                                      recovery: [] as List<RecoveryEvent>,
+                                    },
+                                  }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -254,35 +313,76 @@ fn decode_waiting(payload: NonEmptyStr) -> CallerWorkRecord? {
 
 type DurablePersistStanding
   = DurableWaitingPersisted { record: CallerWorkRecord }
+  | DurablePhasePersisted { record: CallerWorkRecord }
   | DurablePersistIdempotent { record: CallerWorkRecord }
   | DurablePersistRefusedTerminal { phase: CallerWorkPhase }
   | DurablePersistStoreRefused { detail: NonEmptyStr }
   | DurablePersistKeyNotSlotAddressable { work: LogicalWorkId }
 
-fn persist_waiting_on_store(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding {
+fn persist_record_cas(
+  root: NonEmptyStr,
+  record: CallerWorkRecord,
+  expected: CasExpectation,
+  as_phase: Bool,
+) -> DurablePersistStanding {
   let key = record.work as NonEmptyStr
   let payload = encode_waiting(record: record)
-  match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: payload) {
+  match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => DurablePersistKeyNotSlotAddressable { work: record.work }
     DerivedPayloadAdmitted { verified: v } =>
       match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
-        CasCommitted { committed: _ } => DurableWaitingPersisted { record: record }
+        CasCommitted { committed: _ } =>
+          if as_phase {
+            DurablePhasePersisted { record: record }
+          } else {
+            DurableWaitingPersisted { record: record }
+          }
         CasPreconditionFailed { expected: _, observed: observed } =>
           match observed {
             CasReadableAbsent => DurablePersistStoreRefused {
-              detail: "store reported the waiting slot absent after refusing the create" as NonEmptyStr
+              detail: "store reported the slot absent after refusing the write" as NonEmptyStr
             }
             CasReadablePresent { version: held } =>
               if held.value == payload {
                 DurablePersistIdempotent { record: record }
               } else {
-                DurablePersistStoreRefused { detail: "waiting slot already holds a different record" as NonEmptyStr }
+                DurablePersistStoreRefused { detail: "slot already holds a different record" as NonEmptyStr }
               }
           }
         CasStoreRefused { cause: _ } => DurablePersistStoreRefused {
-          detail: "file compare-and-set refused the waiting persist" as NonEmptyStr
+          detail: "file compare-and-set refused the persist" as NonEmptyStr
         }
       }
+  }
+}
+
+fn persist_waiting_on_store(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding {
+  persist_record_cas(root: root, record: record, expected: ExpectSlotAbsent, as_phase: false)
+}
+
+fn persist_phase_on_store(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding {
+  let key = record.work as NonEmptyStr
+  if !cas_key_is_slot_addressable(key: key) {
+    DurablePersistKeyNotSlotAddressable { work: record.work }
+  } else {
+    match observe_cas_slot_state(root: root, key: key) {
+      CasObservedUnreadable { cause: c } => DurablePersistStoreRefused {
+        detail: cas_unreadable_slot_detail(cause: c) as NonEmptyStr
+      }
+      CasObservedReadable { readable: readable } =>
+        match readable {
+          CasReadableAbsent => DurablePersistStoreRefused {
+            detail: "no waiting slot to advance" as NonEmptyStr
+          }
+          CasReadablePresent { version: held } =>
+            persist_record_cas(
+              root: root,
+              record: record,
+              expected: ExpectSlotGeneration { generation: held.generation },
+              as_phase: true,
+            )
+        }
+    }
   }
 }
 
@@ -300,24 +400,43 @@ fn persist_waiting_durable(
   }
 }
 
-fn resume_waiting_durable(root: NonEmptyStr, work: LogicalWorkId) -> ResumeStanding {
+type DurableResumeStanding
+  = DurableResumedWaiting { record: CallerWorkRecord }
+  | DurableResumedTerminal { phase: CallerWorkPhase }
+  | DurableResumeUnknownWork
+  | DurableResumeStoreUnreadable { detail: NonEmptyStr }
+  | DurableResumePayloadUndecodable
+  | DurableResumeWorkMismatch
+
+fn resume_standing_of(record: CallerWorkRecord) -> DurableResumeStanding {
+  match record.phase {
+    WorkWaiting => DurableResumedWaiting { record: record }
+    WorkCompleted => DurableResumedTerminal { phase: record.phase }
+    WorkCancelled => DurableResumedTerminal { phase: record.phase }
+    WorkRecoveryBoundExceeded { deficit: _ } => DurableResumedTerminal { phase: record.phase }
+  }
+}
+
+fn resume_waiting_durable(root: NonEmptyStr, work: LogicalWorkId) -> DurableResumeStanding {
   let key = work as NonEmptyStr
   if !cas_key_is_slot_addressable(key: key) {
-    ResumeUnknownWork
+    DurableResumeStoreUnreadable { detail: "work id is not a slot-addressable CAS key" as NonEmptyStr }
   } else {
     match observe_cas_slot_state(root: root, key: key) {
-      CasObservedUnreadable { cause: _ } => ResumeUnknownWork
+      CasObservedUnreadable { cause: c } => DurableResumeStoreUnreadable {
+        detail: cas_unreadable_slot_detail(cause: c) as NonEmptyStr
+      }
       CasObservedReadable { readable: readable } =>
         match readable {
-          CasReadableAbsent => ResumeUnknownWork
+          CasReadableAbsent => DurableResumeUnknownWork
           CasReadablePresent { version: v } =>
             match decode_waiting(payload: v.value) {
-              Absent => ResumeUnknownWork
+              Absent => DurableResumePayloadUndecodable
               Present { value: record } =>
                 if logical_work_eq(a: record.work, b: work) {
-                  ResumedWaiting { record: record }
+                  resume_standing_of(record: record)
                 } else {
-                  ResumeUnknownWork
+                  DurableResumeWorkMismatch
                 }
             }
         }
@@ -488,6 +607,64 @@ fn snapshot_after_cancel(snapshot: CallerBacklogSnapshot, standing: CancelStandi
   }
 }
 
+type DurableCancelStanding
+  = DurableCancelled { record: CallerWorkRecord }
+  | DurableCancelAlreadyTerminal { phase: CallerWorkPhase }
+  | DurableCancelUnknownWork
+  | DurableCancelStoreRefused { detail: NonEmptyStr }
+  | DurableCancelKeyNotSlotAddressable { work: LogicalWorkId }
+
+fn cancel_work_durable(
+  root: NonEmptyStr,
+  snapshot: CallerBacklogSnapshot,
+  work: LogicalWorkId,
+) -> DurableCancelStanding {
+  match cancel_work(snapshot: snapshot, work: work) {
+    CancelUnknownWork => DurableCancelUnknownWork
+    CancelAlreadyTerminal { phase: p } => DurableCancelAlreadyTerminal { phase: p }
+    CancelledWaiting { record: r } =>
+      match persist_phase_on_store(root: root, record: r) {
+        DurablePhasePersisted { record: stored } => DurableCancelled { record: stored }
+        DurablePersistIdempotent { record: stored } => DurableCancelled { record: stored }
+        DurableWaitingPersisted { record: stored } => DurableCancelled { record: stored }
+        DurablePersistRefusedTerminal { phase: p } => DurableCancelAlreadyTerminal { phase: p }
+        DurablePersistStoreRefused { detail: d } => DurableCancelStoreRefused { detail: d }
+        DurablePersistKeyNotSlotAddressable { work: w } => DurableCancelKeyNotSlotAddressable { work: w }
+      }
+  }
+}
+
+type DurableAttemptStanding
+  = DurableAttemptCommitted { record: CallerWorkRecord }
+  | DurableAttemptFenceRefused
+  | DurableAttemptNotWaiting { phase: CallerWorkPhase }
+  | DurableAttemptUnknownWork
+  | DurableAttemptStoreRefused { detail: NonEmptyStr }
+  | DurableAttemptKeyNotSlotAddressable { work: LogicalWorkId }
+
+fn commit_attempt_durable(
+  root: NonEmptyStr,
+  snapshot: CallerBacklogSnapshot,
+  account: MoneyAccount,
+  work: LogicalWorkId,
+  presented: Int,
+) -> DurableAttemptStanding {
+  match commit_attempt(snapshot: snapshot, account: account, work: work, presented: presented) {
+    AttemptUnknownWork => DurableAttemptUnknownWork
+    AttemptFenceRefused => DurableAttemptFenceRefused
+    AttemptNotWaiting { phase: p } => DurableAttemptNotWaiting { phase: p }
+    AttemptCommitted { record: r } =>
+      match persist_phase_on_store(root: root, record: r) {
+        DurablePhasePersisted { record: stored } => DurableAttemptCommitted { record: stored }
+        DurablePersistIdempotent { record: stored } => DurableAttemptCommitted { record: stored }
+        DurableWaitingPersisted { record: stored } => DurableAttemptCommitted { record: stored }
+        DurablePersistRefusedTerminal { phase: p } => DurableAttemptNotWaiting { phase: p }
+        DurablePersistStoreRefused { detail: d } => DurableAttemptStoreRefused { detail: d }
+        DurablePersistKeyNotSlotAddressable { work: w } => DurableAttemptKeyNotSlotAddressable { work: w }
+      }
+  }
+}
+
 fn is_failed_request(event: RecoveryEvent) -> Bool {
   match event.kind {
     RecoveryProbe => false
@@ -562,8 +739,8 @@ data retriable_refusal_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.
 data stable_turn_identity_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "resume_waiting_durable")
 data idempotent_retry_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable")
 data no_expiry_on_long_wait_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "apply_ready_supply_law")
-data durable_cancellation_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "cancel_work")
-data no_double_execution_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "commit_attempt")
+data durable_cancellation_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "cancel_work_durable")
+data no_double_execution_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "commit_attempt_durable")
 
 data persist_before_offer_basis: NonEmptyStr = declaration_ref_display_key(ref: persist_before_offer_basis_ref) as NonEmptyStr
 data retriable_refusal_basis: NonEmptyStr = declaration_ref_display_key(ref: retriable_refusal_basis_ref) as NonEmptyStr
