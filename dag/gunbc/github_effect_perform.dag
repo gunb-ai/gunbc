@@ -47,6 +47,12 @@ import gunbc.runner.runner_jit_perform {
   JitCredentialDelivery, JitCredentialNotDispatched, receive_jit_mint,
 }
 import std.optional { Absent, Present }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.secret_manager { decode_sm_access_version_secret_wire, SmAccessVersionSecretDecoded, SmAccessVersionSecretDecodeRefused }
+import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.github.app { GitHubInstallationTokenPermissions }
+import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id }
 
 // THE HOME OF A PERFORMED GitHubEffect. extdeps.github.effect is the effect SHAPE; the services in
 // extdeps.github.* are REST realizations bound to it (gunbc#10923); this module is the workflow
@@ -487,5 +493,113 @@ fn update_runner_group_workflows_with(token: ControllerInstallationToken, organi
   ) {
     RestAnswered { answer } => RestAnswered { answer: answer.result }
     RestRefused { refusal } => RestRefused { refusal: refusal }
+  }
+}
+
+// THE SECOND EFFECT: THE HEAL PUBLISHER'S CONTENTS-WRITE INSTALLATION TOKEN. Same two-step App path as
+// the JIT mint (sign an App JWT, exchange it), reached from a different credential: the App key is
+// not on the host but in Secret Manager, read under the publisher's own WIF access token
+// (gunbc.auth.heal_publisher_federation), and the exchange is DOWN-SCOPED at the mint to the one
+// repository and the one permission the publication needs (contents: write), so a leaked token is
+// that and nothing else for one hour.
+//
+// THE KEY HANDOFF IS A FILE, THE SMALLER HONEST ARM. jws_rs256_sign signs from a HostKeyFile through
+// openssl reading a file; a JwsSigningKeyRef arm for an in-memory Secret would be a new signer
+// realization (openssl would still need the bytes through a pipe or a file). So the Secret Manager
+// payload is written 0600 (Filesystem.WriteOwnerOnly, create-new) under the caller-named runner
+// temp path and deleted on EVERY arm after signing, refusals included; a delete that fails refuses
+// the mint rather than leaving a key behind. The JWT and the token are Secrets that live only inside
+// this call; only the scoped installation token is returned, to be presented to one fast-forward.
+type PublisherTokenMint
+  = PublisherTokenMinted { token: Secret }
+  | PublisherTokenNotMinted { cause: String }
+
+fn publisher_refusal_text(refusal: RestRefusal) -> String {
+  match refusal {
+    RestStatusRefused { status, body } => join(["HTTP ", to_string(status as Int), ": ", body], "")
+    RestTransportRefused { cause } => concat("transport: ", cause as String)
+    RestBodyUndecodable { status, cause } => join(["HTTP ", to_string(status as Int), " undecodable: ", cause as String], "")
+  }
+}
+
+fn sign_publisher_app_jwt(key_path: NonEmptyStr) -> JitMintAppJwt {
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: d } => AppJwtUnsigned { detail: concat("clock unread: ", d) }
+    ClockUnixMillisObserved { millis: ms } =>
+      app_jwt_for(
+        dispatch_app_id: gunbai_bot_declared.app_id.value,
+        key: HostKeyFile { path: key_path },
+        now_epoch_secs: epoch_secs_of_millis(millis: ms),
+      )
+  }
+}
+
+type PublisherJwtStaged
+  = PublisherJwtReady { jwt: Secret }
+  | PublisherJwtNotReady { cause: String }
+
+fn publisher_key_unreadable(refusal: RestRefusal) -> PublisherTokenMint {
+  PublisherTokenNotMinted { cause: concat("HealPublisherAppKeyUnreadable: ", publisher_refusal_text(refusal: refusal)) }
+}
+
+fn publisher_installation_token_refused(refusal: RestRefusal) -> PublisherTokenMint {
+  PublisherTokenNotMinted { cause: concat("HealPublisherInstallationTokenRefused: ", publisher_refusal_text(refusal: refusal)) }
+}
+
+// The removal outcome is decided BEFORE the signing outcome is read, so a key that could not be
+// removed refuses the mint on every arm, a signed JWT included.
+fn publisher_jwt_after_removal(signed: JitMintAppJwt, removed: Bool, removal_error: String) -> PublisherJwtStaged {
+  if !removed {
+    PublisherJwtNotReady { cause: concat("HealPublisherAppKeyNotRemoved: ", removal_error) }
+  } else {
+    match signed {
+      AppJwtUnsigned { detail: d } => PublisherJwtNotReady { cause: concat("HealPublisherAppJwtUnsigned: ", d) }
+      AppJwtSigned { jwt: jwt } => PublisherJwtReady { jwt: jwt as Secret }
+    }
+  }
+}
+
+fn stage_sign_and_remove_publisher_key(key: Secret, key_path: NonEmptyStr) -> PublisherJwtStaged {
+  let written = Filesystem.WriteOwnerOnly(path: key_path, content: key as String)
+  if !written.success {
+    PublisherJwtNotReady { cause: concat("HealPublisherAppKeyUnstaged: ", written.error) }
+  } else {
+    let signed = sign_publisher_app_jwt(key_path: key_path)
+    let removed = Filesystem.Delete(path: key_path)
+    publisher_jwt_after_removal(signed: signed, removed: removed.success, removal_error: removed.error)
+  }
+}
+
+fn mint_publisher_installation_token_with_key(key: Secret, key_path: NonEmptyStr, repository_name: String) -> PublisherTokenMint uses net: Network {
+  match stage_sign_and_remove_publisher_key(key: key, key_path: key_path) {
+    PublisherJwtNotReady { cause: c } => PublisherTokenNotMinted { cause: c }
+    PublisherJwtReady { jwt: jwt } =>
+      match github.AppInstallationAccessTokens.CreateScoped(
+        app_jwt: jwt,
+        installation_id: gunbai_bot_declared_installation_id.value,
+        repositories: [repository_name],
+        permissions: GitHubInstallationTokenPermissions { contents: "write" },
+      ) {
+        RestAnswered { answer } => PublisherTokenMinted { token: answer.token }
+        RestRefused { refusal } => publisher_installation_token_refused(refusal: refusal)
+      }
+  }
+}
+
+fn mint_publisher_installation_token(wif_access_token: Secret, key_path: NonEmptyStr, repository_name: String) -> PublisherTokenMint uses net: Network {
+  match gcp.SecretManager.AccessVersion(
+    access_token: wif_access_token,
+    project_id: gunbai_bot_app_pem_secret.project,
+    secret: gunbai_bot_app_pem_secret.secret,
+    version: gunbai_bot_app_pem_secret.version,
+  ) {
+    RestRefused { refusal } => publisher_key_unreadable(refusal: refusal)
+    RestAnswered { answer } =>
+      match decode_sm_access_version_secret_wire(data_b64: answer.data_b64) {
+        SmAccessVersionSecretDecodeRefused { cause: _ } =>
+          PublisherTokenNotMinted { cause: "HealPublisherAppKeyUnreadable: the Secret Manager payload did not decode" }
+        SmAccessVersionSecretDecoded { credential: key } =>
+          mint_publisher_installation_token_with_key(key: key, key_path: key_path, repository_name: repository_name)
+      }
   }
 }

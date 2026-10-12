@@ -80,13 +80,12 @@ import v2.extdeps.languages.dag {
   dag_match_arm_node,
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional,
   dag_surface_kw_then_ident_from_captured,
   parse_qualified_name_segment_atoms_from_capture,
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
   dag_surface_edge_label,
-  dag_surface_edge_is,
+  dag_surface_edge_is
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
 import v2.std.node { content_hash }
@@ -150,7 +149,7 @@ import v2.std.compilers.lowered_shape {
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional, sugar_named_child_optional, sugar_type_node }
-import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class }
+import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, parse_production_emitted_identity_optional }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

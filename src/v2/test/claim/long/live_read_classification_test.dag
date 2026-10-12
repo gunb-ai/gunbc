@@ -31,7 +31,15 @@ import v2.std.live_read {
   FilesystemReadCarrier,
   ModuleDeclarationFactsCarrier,
   DeclFactsReflectionCarrier,
-  live_read_carrier_homes_v0
+  live_read_carrier_homes_v0,
+  PathPattern,
+  LiteralPath,
+  ParamRef,
+  UnknownPath,
+  LiveReadCarrier,
+  FilesystemReadPath,
+  ModuleDeclarationFactsScan,
+  DeclFactsReflection
 }
 import v2.std.node { Atom, ComputationNode, Conj, Edge, Node, Positional, Transform, TypeNode, symbol_intern_lexeme }
 import v2.std.fn_index {
@@ -410,4 +418,63 @@ test fn g2_non_call_atom_collision_does_not_reach_carrier_helper() -> Bool {
       ]
     )
   )
+}
+
+// ---- derived equality for PathPattern / LiveReadCarrier (nfr_dissolve_derived_equality payoff) --
+// path_pattern_eq / live_read_carrier_eq (hand structural equality over variant + every field,
+// off-variant wildcard arm returning false) dissolved to the derived ==: operator_realization.dag
+// -- every structural declaration realizes equality structurally (== / != / && are the host
+// token by construction). The fixtures are distinct real values, not hand-built equality verdicts.
+
+// PathPattern fixtures.
+data path_pattern_fixture_literal_a: PathPattern = LiteralPath { path: "v2/lens" }
+data path_pattern_fixture_literal_b: PathPattern = LiteralPath { path: "v2/test" }
+data path_pattern_fixture_param: PathPattern = ParamRef { name: "module_path" }
+
+// RED: distinct variants and distinct same-variant field values must compare unequal (a
+// non-structural == collapsing variants or ignoring fields would turn this false).
+test fn path_pattern_structural_eq_distinguishes() -> Bool {
+  path_pattern_fixture_literal_a != path_pattern_fixture_literal_b
+    && path_pattern_fixture_literal_a != path_pattern_fixture_param
+    && path_pattern_fixture_literal_a != UnknownPath
+    && path_pattern_fixture_param != UnknownPath
+}
+
+// POSITIVE CONTROL, paired with the distinguishing red above: identical values compare equal.
+test fn path_pattern_structural_eq_equal_control() -> Bool {
+  path_pattern_fixture_literal_a == path_pattern_fixture_literal_a
+    && path_pattern_fixture_param == ParamRef { name: "module_path" }
+    && UnknownPath == UnknownPath
+}
+
+// LiveReadCarrier fixtures (FilesystemReadPath wraps a PathPattern arm; the two nullary arms and
+// the home field of DeclFactsReflection are the other carriers).
+data live_read_carrier_fixture_fs_a: LiveReadCarrier = FilesystemReadPath {
+  path_pattern: path_pattern_fixture_literal_a
+}
+data live_read_carrier_fixture_fs_b: LiveReadCarrier = FilesystemReadPath {
+  path_pattern: path_pattern_fixture_literal_b
+}
+data live_read_carrier_fixture_scan: LiveReadCarrier = ModuleDeclarationFactsScan
+data live_read_carrier_fixture_home_a: LiveReadCarrier = DeclFactsReflection { home: "v2.std.decl_index" }
+data live_read_carrier_fixture_home_b: LiveReadCarrier = DeclFactsReflection { home: "v2.std.fn_index" }
+
+// RED: distinct arms and distinct same-arm field values (including the nested PathPattern field)
+// must compare unequal.
+test fn live_read_carrier_structural_eq_distinguishes() -> Bool {
+  live_read_carrier_fixture_fs_a != live_read_carrier_fixture_fs_b
+    && live_read_carrier_fixture_fs_a != live_read_carrier_fixture_scan
+    && live_read_carrier_fixture_fs_a != live_read_carrier_fixture_home_a
+    && live_read_carrier_fixture_scan != live_read_carrier_fixture_home_a
+    && live_read_carrier_fixture_home_a != live_read_carrier_fixture_home_b
+}
+
+// POSITIVE CONTROL, paired with the distinguishing red above: identical carriers (nested field
+// included) compare equal.
+test fn live_read_carrier_structural_eq_equal_control() -> Bool {
+  live_read_carrier_fixture_fs_a == FilesystemReadPath {
+    path_pattern: LiteralPath { path: "v2/lens" }
+  }
+    && live_read_carrier_fixture_scan == ModuleDeclarationFactsScan
+    && live_read_carrier_fixture_home_a == DeclFactsReflection { home: "v2.std.decl_index" }
 }

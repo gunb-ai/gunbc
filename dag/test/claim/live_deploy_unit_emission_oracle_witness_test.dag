@@ -1,7 +1,7 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
 import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size_count, second_count }
 import std.layout { render }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max,
@@ -44,6 +44,8 @@ import gunbc.live_deploy.emit {
   repository_convergence_slice_unit_file,
   emit_repository_convergence_slice_unit_doc,
   live_deploy_approval_broker_unit_file,
+  emit_tree_remote_unit_doc,
+  tree_remote_convergence_oneshot,
 }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
@@ -61,7 +63,13 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc }
+import gunbc.live_deploy.repository_convergence_placement {
+  convergence_unit_doc,
+  convergence_unit_start_timeout,
+  convergence_oneshot_rendering,
+  ConvergenceUnitRendered,
+  ConvergenceUnitPlacementRefused,
+}
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, systemd_time_span_of_seconds }
 import extdeps.http.server { HttpServerListenConfig }
 import v2.std.algebra { for_all }
@@ -996,6 +1004,35 @@ test fn the_convergence_oneshot_does_not_join_the_broker_slice() -> Bool {
       s: convergence,
       pattern: join(["Slice=", gunbc_approval_broker_slice_unit_name as String], ""),
     )
+}
+
+// ── THE TREE-REMOTE ONESHOT IS A CONVERGENCE ONESHOT, PLACED LIKE ONE ───────────────────────
+// On 2026-10-12 the srv1 production apply of af66aa62 waited behind `systemctl restart
+// gunbc-roadmap-tree-remote.service`: the unit named the serving slice with no TimeoutStartSec, the
+// serving members held that slice at 55.0 GB against its 52.6 GB MemoryHigh, and the oneshot sat in
+// mem_cgroup_handle_over_high for fourteen minutes until the operator's wrapper killed the apply. This
+// reads the REAL producer's rendered unit: it joins the admitted convergence slice and never the
+// serving one, its start is bounded by the declared convergence bound, and it is the tree-remote unit
+// (its ExecStart runs ensure_deployed_tree_remote_wet). RED on af66aa62, whose unit names
+// gunbc-roadmap.slice and carries no start bound.
+test fn the_tree_remote_oneshot_joins_the_convergence_slice_with_its_start_bound() -> Bool {
+  let unit = render(doc: emit_tree_remote_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
+  string_contains(s: unit, pattern: join(["Slice=", gunbc_repository_convergence_slice_unit_name as String], ""))
+    && !string_contains(s: unit, pattern: join(["Slice=", deployment_slice_unit_name(names: live_spec().names) as String], ""))
+    && string_contains(s: unit, pattern: join(["TimeoutStartSec=", to_string(value: second_count(s: convergence_unit_start_timeout))], ""))
+    && string_contains(s: unit, pattern: "--function ensure_deployed_tree_remote_wet")
+}
+
+// THE REFUSAL ARM IS THE SAME ONE: the tree-remote oneshot placed in the serving slice refuses at the
+// placement module, naming itself and the slice, rather than rendering a unit. The positive control is
+// the claim above, where the same oneshot over the declared convergence slice renders.
+test fn the_tree_remote_oneshot_in_a_serving_slice_refuses() -> Bool {
+  let serving = deployment_slice_unit_name(names: live_spec().names)
+  match convergence_oneshot_rendering(spec: live_spec(), slice: serving, oneshot: tree_remote_convergence_oneshot(spec: live_spec())) {
+    ConvergenceUnitRendered { text: _ } => false
+    ConvergenceUnitPlacementRefused { reason: r } =>
+      string_contains(s: r, pattern: "tree remote convergence") && string_contains(s: r, pattern: serving as String)
+  }
 }
 
 // AND THE BROKER IS THE ONLY UNIT IN ITS SLICE. The claim above says one particular neighbour stays

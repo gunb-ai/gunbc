@@ -1252,8 +1252,28 @@ data gunbc_ci_heal_repair_declaration_target: GunbcRunStepTarget = GunbcRunStepT
 }
 
 data gunbc_ci_heal_candidate_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/heal_candidate.dag",
+  entry: "dag/gunbc/heal_candidate_registry.dag",
   function: "heal_candidate_produce_wet",
+}
+
+data gunbc_ci_heal_candidate_stage0_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/heal_candidate_stage0.dag",
+  function: "heal_candidate_stage0_produce_wet",
+}
+
+data gunbc_ci_heal_stage0_overlap_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/heal_candidate_stage0.dag",
+  function: "heal_stage0_overlap_refusal_wet",
+}
+
+data gunbc_ci_seed_build_artifacts_regen_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/instruments/seed_build_artifacts_regen.dag",
+  function: "main_wet",
+}
+
+data gunbc_ci_tier_o_drift_check_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/instruments/tier_o_drift_check.dag",
+  function: "main",
 }
 
 data gunbc_ci_heal_publication_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1370,6 +1390,10 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_repair_declaration_target,
     gunbc_ci_heal_verify_target,
     gunbc_ci_heal_candidate_target,
+    gunbc_ci_heal_candidate_stage0_target,
+    gunbc_ci_heal_stage0_overlap_target,
+    gunbc_ci_seed_build_artifacts_regen_target,
+    gunbc_ci_tier_o_drift_check_target,
     gunbc_ci_heal_publication_admit_target,
     gunbc_ci_heal_publication_publish_target,
     gunbc_ci_approval_keyring_converge_target,
@@ -3740,6 +3764,54 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
   )
 }
 
+// THE STAGE0 MIRRORS' PRODUCER IS THE SEED'S OWN PRICED ROUND, NOT A LOOP IN SHELL: --regen-round-cost
+// builds the seed, emits, installs, rebuilds from the installed mirrors and repeats to first_generation_equal,
+// restoring the tree and refusing when it does not converge (src/v1/stage0/src/required_regen_host.rs
+// run_regen_round_cost). Its exit is the typed refusal this job reports; nothing is pushed on a non-zero exit.
+fn gunbc_ci_stage0_round_invoke() -> String {
+  "target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2"
+}
+
+fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_candidate_stage0_target.entry,
+    function: gunbc_ci_heal_candidate_stage0_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_heal_stage0_overlap_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_stage0_overlap_target.entry,
+    function: gunbc_ci_heal_stage0_overlap_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_seed_build_artifacts_regen_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_seed_build_artifacts_regen_target.entry,
+    function: gunbc_ci_seed_build_artifacts_regen_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_tier_o_drift_check_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_tier_o_drift_check_target.entry,
+    function: gunbc_ci_tier_o_drift_check_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 // THE ADMIT STEP CARRIES NO PRELUDE, AND THAT ABSENCE IS THE POINT: it runs before the publisher
 // federates, so a candidate that does not admit never causes a token to be minted.
 fn gunbc_ci_heal_publication_admit_invoke() -> String {
@@ -3796,19 +3868,13 @@ fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
   )
 }
 
-// THE PUBLISHER MINTS ITS OWN TOKEN IN-RUN, down-scoped to contents:write on this repository alone.
-// An earlier revision matched on a registration coproduct here and emitted a deliberately invalid
-// shell marker on its Pending arm; that arm is gone with the coproduct, because the App is
-// gunbai-bot -- already registered, already installed, and its key already in Secret Manager
-// labelled for exactly this purpose -- so no arm of that match was reachable any more.
+// THE PUBLISHER'S ENTRY MINTS ITS OWN TOKEN, in the .dag: gunbc.github_effect_perform
+// mint_publisher_installation_token reads the App key under the workflow's WIF access token, signs,
+// and exchanges for a contents:write token on this repository alone. This step therefore carries only
+// the cgroup prelude; no credential is rendered into shell.
 fn gunbc_ci_heal_publication_publish_invoke() -> String {
   gunbc_run_step_script_with_prelude(
-    prelude: concat(
-      heal_publisher_cgroup_prelude(),
-      github_app_installation_token_prelude(
-        spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id, f: public_heal_publisher_federation())
-      )
-    ),
+    prelude: heal_publisher_cgroup_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_heal_publication_publish_target.entry,
     function: gunbc_ci_heal_publication_publish_target.function,
