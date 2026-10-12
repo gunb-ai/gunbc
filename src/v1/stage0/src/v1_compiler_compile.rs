@@ -42,7 +42,7 @@ use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
 pub use crate::std_types::NonEmptyStr;
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_annotation_bind::admit_source_annotations;
+pub use crate::v1_compiler_annotation_bind::bind_annotations;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
 use crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule;
 pub use crate::v1_compiler_artifact::{default_artifact_plan, selected_artifact_plan};
@@ -188,13 +188,12 @@ pub struct FrontendAccum {
     pub intern_table: Rc<InternTable>,
     pub occurrence_allocator: OccurrenceIdAllocator,
     pub annotations: Rc<SourceAnnotationGraph>,
-    pub annotation_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn frontend_prepared_authored_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass, and `source_length` is what the binder needs to bound the last module item's extent.\n\nThreading the captures through this record rather than re-tokenizing later is what keeps the two halves of one lexical pass from drifting: a second pass could observe a different source, and placement in particular is unrecoverable once whitespace is gone.".to_string()
+            "Carries the AUTHORED lexical result, not only the semantic tokens. `tokens` is what pre-interning and parsing consume, unchanged; `annotations` is what the annotation channel captured on the same pass.\n\nThreading the captures through this record rather than re-tokenizing later is what keeps the two halves of one lexical pass from drifting: a second pass could observe a different source, and placement in particular is unrecoverable once whitespace is gone.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -204,7 +203,6 @@ pub fn frontend_prepared_authored_note() -> String {
 pub struct FrontendPrepared {
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
-    pub source_length: i64,
     pub newline_index: Rc<NewlineIndex>,
 }
 
@@ -3574,7 +3572,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     Rc::new(FrontendPrepared {
                         tokens: artifact.tokens.clone(),
                         annotations: artifact.annotations.clone(),
-                        source_length: v1_rt::string_length(&s.content.clone()),
                         newline_index: si.clone(),
                     })
                 });
@@ -3596,7 +3593,6 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 occurrence_allocator:
                     crate::std_occurrence_identity::occurrence_id_allocator_initial(),
                 annotations: crate::std_source_annotation::source_annotation_graph_empty(),
-                annotation_diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
@@ -3610,10 +3606,10 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     acc.occurrence_allocator.clone(),
                     dag_parse_environment(),
                 );
-                let bound = crate::v1_compiler_annotation_bind::admit_source_annotations(
+                let bound = crate::v1_compiler_annotation_bind::bind_annotations(
                     parsed.occurrence_transport.clone(),
+                    parsed.source_extents.clone(),
                     p.annotations.clone(),
-                    p.source_length.clone(),
                 );
                 Rc::new(FrontendAccum {
                     parse_results: v1_rt::rc_list_push(
@@ -3638,20 +3634,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     occurrence_allocator: parsed.occurrence_allocator.clone(),
                     annotations: crate::std_source_annotation::source_annotation_graph_concat(
                         acc.annotations.clone(),
-                        bound.graph.clone(),
-                    ),
-                    annotation_diagnostics: v1_rt::concat(
-                        acc.annotation_diagnostics.clone(),
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for d in bound.diagnostics.clone().iter().cloned() {
-                                __result.push(crate::v1_std_core::make_error_node(
-                                    d.clone(),
-                                    p.newline_index.clone().file.clone(),
-                                ));
-                            }
-                            __result
-                        }),
+                        bound.clone(),
                     ),
                 })
             },
@@ -3682,10 +3665,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         );
         Rc::new(FrontendResult {
             graph: resolution.graph.clone(),
-            diagnostics: v1_rt::concat(
-                v1_rt::concat(parse_diagnostics.clone(), resolution.diagnostics.clone()),
-                parsed.annotation_diagnostics.clone(),
-            ),
+            diagnostics: v1_rt::concat(parse_diagnostics.clone(), resolution.diagnostics.clone()),
             newline_indices: newline_indices.clone(),
             intern_table: parsed.intern_table.clone(),
             occurrence_transport: occurrence_transport.clone(),
@@ -3821,7 +3801,6 @@ pub fn parse_census_fill_sources_with(
                 occurrence_allocator:
                     crate::std_occurrence_identity::occurrence_id_allocator_initial(),
                 annotations: crate::std_source_annotation::source_annotation_graph_empty(),
-                annotation_diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| {
                 let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
@@ -3832,7 +3811,6 @@ pub fn parse_census_fill_sources_with(
                 let p = Rc::new(FrontendPrepared {
                     tokens: artifact.tokens.clone(),
                     annotations: artifact.annotations.clone(),
-                    source_length: v1_rt::string_length(&s.content.clone()),
                     newline_index: crate::v1_std_core::build_newline_index(
                         s.path.clone(),
                         s.content.clone(),
@@ -3852,10 +3830,10 @@ pub fn parse_census_fill_sources_with(
                     acc.occurrence_allocator.clone(),
                     environment.clone(),
                 );
-                let bound = crate::v1_compiler_annotation_bind::admit_source_annotations(
+                let bound = crate::v1_compiler_annotation_bind::bind_annotations(
                     parsed.occurrence_transport.clone(),
+                    parsed.source_extents.clone(),
                     p.annotations.clone(),
-                    p.source_length.clone(),
                 );
                 let retained_result =
                     census_retain_parse_result(parsed.result.clone(), retention.clone());
@@ -3882,20 +3860,7 @@ pub fn parse_census_fill_sources_with(
                     occurrence_allocator: parsed.occurrence_allocator.clone(),
                     annotations: crate::std_source_annotation::source_annotation_graph_concat(
                         acc.annotations.clone(),
-                        bound.graph.clone(),
-                    ),
-                    annotation_diagnostics: v1_rt::concat(
-                        acc.annotation_diagnostics.clone(),
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for d in bound.diagnostics.clone().iter().cloned() {
-                                __result.push(crate::v1_std_core::make_error_node(
-                                    d.clone(),
-                                    p.newline_index.clone().file.clone(),
-                                ));
-                            }
-                            __result
-                        }),
+                        bound.clone(),
                     ),
                 })
             },
@@ -3913,10 +3878,7 @@ pub fn parse_census_fill_sources_with(
                 __result
             }),
             newline_indices: parsed.newline_indices.clone(),
-            diagnostics: v1_rt::concat(
-                collect_diagnostics(parse_results.clone()),
-                parsed.annotation_diagnostics.clone(),
-            ),
+            diagnostics: collect_diagnostics(parse_results.clone()),
             occurrence_transport: merge_occurrence_transports(Rc::new({
                 let mut __result = Vec::new();
                 for input in module_inputs.iter().cloned() {

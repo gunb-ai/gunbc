@@ -173,9 +173,7 @@ pub(crate) fn floor_compile_clean_emit_ok_via_index(
     let index = process_shared_index(index_roots);
     let census_only = compile_clean_census_only_sources_for_compiled(&index, &sources);
     // #8204 out-of-closure fill runs independently of resolve: an earlier
-    // resolution refusal must not mask SourceAnnotationRefused in the rest of
-    // the indexed pool. Compiled-file admission is the via-index parse itself
-    // (`tokenize_artifact` + `admit_source_annotations`).
+    // resolution refusal must not mask a parse refusal in the rest of the indexed pool.
     let census_fill_diags = compile_clean_census_fill_hard_diagnostics(&census_only);
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,

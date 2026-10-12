@@ -13,7 +13,7 @@ data absolute_extra_source_root_panics_instead_of_typed_refusal: RecurringFailur
 
     "RECEIPT (2026-09-10): public SHA 0d6b6653e0f, `gunbc run --source-root dag --source-root src/v2 --source-root /tmp/ann_priv --entry /tmp/ann_priv/probe.dag --function probe_main` panics at `src/v1/stage0/src/cli_run.rs` `repo_relative_path_normalized` with that path. The same bytes under a workspace-relative extra root `_ann_probe` reach ordinary run (ProcessExit wrapping of a Bool, not annotation refusal).",
 
-    "It is not `extra_source_root_outside_workspace_refuses_annotations_as_unattached`: that class completes resolve and lies with UnattachedAtScopeEnd. This class never reaches attachment. A repair that types the panic does not by itself attach annotations, and a repair that attaches annotations under a relative extra root does not stop the absolute-path panic.",
+    "It is not `extra_source_root_outside_workspace_refuses_annotations_as_unattached`: that class completes resolve and lied with UnattachedAtScopeEnd (a refusal parse-comment-gap-attachment deleted; that row records its standing since). This class never reaches attachment. A repair that types the panic does not by itself attach annotations, and a repair that attaches annotations under a relative extra root does not stop the absolute-path panic.",
 
     "RUNG FOUND AT: below the ladder -- process death, no typed cause.",
 

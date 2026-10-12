@@ -5,6 +5,7 @@ import std.serialization { Text }
 import extdeps.github.workflow_runs { WorkflowRunList }
 import extdeps.cloud.gcp.gcp { WifProviderWire, WifProviderListWire, WifPoolWire }
 import extdeps.transports.rest { RestResult }
+import extdeps.cloud.packet_ai { PacketAiStorefrontProduct, PacketAiStorefrontProducts }
 
 type WireFileShape {
   encoding: String
@@ -38,6 +39,9 @@ type WireUncontractedShape {
 // uses, so a plain-text body must come back as text through dispatch_rest rather than through the
 // JSON decoder. FormatUnrecognized spells it as no WireFormat variant, which must refuse rather than
 // default to Json.
+// StorefrontProductsPage carries the OUTPUT SHAPE and response type of extdeps.cloud.packet_ai
+// Storefront.ListProducts verbatim, so a recorded dash.packet.ai body reaches the same type-directed
+// decode (the allocation wire contract).
 service test.RestReplay {
   config { endpoint: "https://rest-replay.invalid" }
 
@@ -101,6 +105,13 @@ service test.RestReplay {
     readonly
     transport rest { method: GET, path: "/answer" }
     response { 200 => WorkflowRunList }
+  }
+
+  operation StorefrontProductsPage {
+    output { products: List<PacketAiStorefrontProduct> from "data" }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+    response { 200 => PacketAiStorefrontProducts }
   }
 
   operation WifProvidersPage {

@@ -41,6 +41,7 @@ docs/plans/demand-engine-program.md merge=generated-artifact
 docs/plans/deploy-convergence-observed-side.md merge=generated-artifact
 docs/plans/ensure-closure-design.md merge=generated-artifact
 docs/plans/for-while-loop-sugar.md merge=generated-artifact
+docs/plans/harness-session-lifecycle.md merge=generated-artifact
 docs/plans/host-effect-orchestration.md merge=generated-artifact
 docs/plans/inert-layer-lens.md merge=generated-artifact
 docs/plans/input-envelope-roadmap.md merge=generated-artifact

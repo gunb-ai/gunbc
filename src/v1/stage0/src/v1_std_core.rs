@@ -67,11 +67,6 @@ pub use crate::std_occurrence_identity::{
     OccurrenceTransportRefusal,
 };
 pub use crate::std_operator_realization::OperandDeclaration;
-pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
-use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
-pub use crate::std_source_annotation::{
-    annotation_attachment_refusal_message, annotation_attachment_refusal_origin,
-};
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -769,9 +764,6 @@ pub enum CompilerDiagnostic {
         declared_type: String,
         span: Rc<SourceSpan>,
     },
-    SourceAnnotationRefused {
-        refusal: Rc<AnnotationAttachmentRefusal>,
-    },
     ConstructorCallAdmissionRefused {
         constructor_module_path: String,
         constructor_decl_name: String,
@@ -1067,9 +1059,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::KernelMintShapeMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::OptionalCastNotEliminated { span: s, .. } => s.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { span: s, .. } => s.clone(),
-        CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => {
-            crate::std_source_annotation::annotation_attachment_refusal_origin(r.clone())
-        }
         CompilerDiagnostic::ConstructorCallAdmissionRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeNotInhabited { span: s, .. } => s.clone(),
@@ -1152,7 +1141,6 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::KernelMintShapeMismatch { declaration_name: d, cause: c, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("kernel mint binding: '".to_string(), d.clone()), "' is bound to a kernel mint (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but ".to_string()), c.clone()),
     CompilerDiagnostic::OptionalCastNotEliminated { source_type: st, target_type: tt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cannot cast optional '".to_string(), st.clone()), "' to '".to_string()), tt.clone()), "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first".to_string()),
     CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("bare 'None' cannot inhabit field '".to_string(), f.clone()), "' of '".to_string()), t.clone()), "': declared type '".to_string()), dt.clone()), "' carries no absence — it is not optional and declares no 'None' variant".to_string()),
-    CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => crate::std_source_annotation::annotation_attachment_refusal_message(r.clone()),
     CompilerDiagnostic::ConstructorCallAdmissionRefused { constructor_module_path: cm, constructor_decl_name: cn, caller_module_path: caller_m, caller_decl_name: caller_n, permitted_callers: permitted, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor call admission refused: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' refuses call from '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' — permitted callers: [".to_string()), permitted.clone().join(&", ".to_string())), "]".to_string()),
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
@@ -1396,10 +1384,6 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::SourceAnnotationRefused { refusal: _, .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
