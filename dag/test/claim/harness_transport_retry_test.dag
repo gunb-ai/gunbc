@@ -5,8 +5,11 @@ import std.optional { Present, Absent }
 import extdeps.http.header_dump { HeaderDumpRead, HeaderDumpUnread }
 import gunbc.harness.harness_turn {
   HarnessPostOutcome, harness_post_drew_no_response, harness_event_transport_retry,
-  harness_transport_retry_delay, harness_transport_retry_fits, harness_transport_retry_offset,
 }
+import gunbc.harness.harness_transport_retry_policy {
+  TransportRetryPolicy, harness_transport_retry_policy_now, transport_retry_delay_seconds, transport_retry_fits, transport_retry_offset_seconds,
+}
+import std.measure { second }
 
 // ONLY A REQUEST THAT DREW NO RESPONSE IS RETRIED (F85): the transport failed, nothing came back, and
 // no response header was received. The srv1 lab's empty reply -- curl 52, a zero-byte body, an empty
@@ -32,15 +35,23 @@ test fn a_retry_is_recorded_with_its_round() -> Bool {
 }
 
 // THE WAIT BACKS OFF EXPONENTIALLY INSIDE A BUDGET (operator, 2026-10-12: the engine is expected to
-// restart): 15 s doubling to a 5-minute cap, and no retry that would carry the total wait past the
-// 30-minute budget -- so a reload is ridden out, a long outage ends typed, and the schedule never grows
-// without bound. The per-session offset is small and stable for one session.
+// restart): under the policy in force, 15 s doubling to a 5-minute cap, and no retry that would carry the
+// total wait past the 30-minute budget -- so a reload is ridden out, a long outage ends typed, and the
+// schedule never grows without bound. The per-session offset is small and stable for one session.
 test fn the_retry_backs_off_exponentially_within_its_budget() -> Bool {
-  map([0, 1, 2, 3, 4, 5, 6], n => harness_transport_retry_delay(retries_so_far: n)) == [15, 30, 60, 120, 240, 300, 300]
-    && harness_transport_retry_fits(waited: 0, retries_so_far: 0, offset: 6)
-    && harness_transport_retry_fits(waited: 1490, retries_so_far: 6, offset: 0)
-    && !harness_transport_retry_fits(waited: 1501, retries_so_far: 6, offset: 0)
-    && harness_transport_retry_offset(request_path: "/state/n-a1/harness-request.json") < 7
-    && harness_transport_retry_offset(request_path: "/state/n-a1/harness-request.json") == harness_transport_retry_offset(request_path: "/state/n-a1/harness-request.json")
+  let p = harness_transport_retry_policy_now
+  map([0, 1, 2, 3, 4, 5, 6], n => transport_retry_delay_seconds(policy: p, retries_so_far: n)) == [15, 30, 60, 120, 240, 300, 300]
+    && transport_retry_fits(policy: p, waited_seconds: 0, retries_so_far: 0, offset_seconds: 6)
+    && transport_retry_fits(policy: p, waited_seconds: 1490, retries_so_far: 6, offset_seconds: 0)
+    && !transport_retry_fits(policy: p, waited_seconds: 1501, retries_so_far: 6, offset_seconds: 0)
+    && transport_retry_offset_seconds(policy: p, session_key: "/state/n-a1/harness-request.json") < 7
 }
 
+// THE SCHEDULE IS THE POLICY'S, NOT THE MECHANISM'S: a different policy value gives a different schedule
+// through the same functions, which is what lets the policy change without touching the request path.
+test fn a_different_policy_changes_the_schedule() -> Bool {
+  let patient = TransportRetryPolicy { first_delay: second(count: 60), max_delay: second(count: 600), budget: second(count: 7200), offset_spread: 1 }
+  map([0, 1, 2, 3, 4], n => transport_retry_delay_seconds(policy: patient, retries_so_far: n)) == [60, 120, 240, 480, 600]
+    && transport_retry_offset_seconds(policy: patient, session_key: "anything") == 0
+    && transport_retry_fits(policy: patient, waited_seconds: 6000, retries_so_far: 4, offset_seconds: 0)
+}

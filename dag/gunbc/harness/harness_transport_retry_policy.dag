@@ -1,0 +1,61 @@
+module gunbc.harness.harness_transport_retry_policy
+
+import std.types { String, Int, Bool, List }
+import std.measure { Second, second, second_count }
+
+// ── WHEN A SESSION TRIES AGAIN AFTER ITS REQUEST DREW NO RESPONSE: the policy, kept apart ─────────────
+//
+// The harness decides WHETHER a request may be retried -- only one that drew no response at all, and
+// never on a hosted route (gunbc.harness.harness_turn harness_post_drew_no_response). This module decides
+// WHEN, and for how long. It is policy, held apart from the mechanism so it can change without touching
+// the request path (operator, 2026-10-12: "keep it sequestered into its own sort of policy area because
+// we'll change it over time"). The harness reads one value, harness_transport_retry_policy_now, and
+// nothing else here.
+//
+// The policy is the caller's side of a retry the serving route leaves to its callers
+// (gunbc.serving.caller_retry_contract): it makes the harness come back, and establishes none of that
+// contract's durability properties by doing so.
+type TransportRetryPolicy {
+  first_delay: Second
+  max_delay: Second
+  budget: Second
+  offset_spread: Int
+}
+
+// THE OPERATOR ENGINE IS EXPECTED TO RESTART AND TO RUN SLOW (operator, 2026-10-12): the srv1 lab's
+// empty replies were the engine reloading under the request, back about 27 s later. So the wait backs
+// off exponentially -- 15 s, doubling, capped at 5 minutes -- inside a 30-minute budget, after which the
+// session stops typed rather than waiting forever. Each wait is offset by up to offset_spread - 1
+// seconds, derived from the session's own request path, so sessions that lost the engine together do not
+// all return the instant it comes back.
+data harness_transport_retry_policy_now: TransportRetryPolicy = TransportRetryPolicy {
+  first_delay: second(count: 15),
+  max_delay: second(count: 300),
+  budget: second(count: 1800),
+  offset_spread: 7,
+}
+
+// THE nth WAIT, before its offset: first_delay doubled n times, never past max_delay.
+fn transport_retry_delay_seconds(policy: TransportRetryPolicy, retries_so_far: Int) -> Int {
+  if retries_so_far <= 0 {
+    second_count(s: policy.first_delay)
+  } else {
+    let doubled = 2 * transport_retry_delay_seconds(policy: policy, retries_so_far: retries_so_far - 1)
+    if doubled > second_count(s: policy.max_delay) { second_count(s: policy.max_delay) } else { doubled }
+  }
+}
+
+// THE SESSION'S OFFSET: small, stable for one session, different across sessions.
+fn transport_retry_offset_seconds(policy: TransportRetryPolicy, session_key: String) -> Int {
+  if policy.offset_spread <= 1 {
+    0
+  } else {
+    fold(chars(s: session_key), init: 0, f: (acc, c) => (acc + c) % policy.offset_spread)
+  }
+}
+
+// WHETHER ONE MORE RETRY FITS, given how long this request has already waited: a retry is due only
+// while its whole wait still lands inside the budget.
+fn transport_retry_fits(policy: TransportRetryPolicy, waited_seconds: Int, retries_so_far: Int, offset_seconds: Int) -> Bool {
+  waited_seconds + transport_retry_delay_seconds(policy: policy, retries_so_far: retries_so_far) + offset_seconds <= second_count(s: policy.budget)
+}
