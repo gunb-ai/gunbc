@@ -3,7 +3,7 @@ module gunbc.workspace_allocation_reservation
 import std.types { NonEmptyStr, String, Timestamp, List }
 import std.measure { MoneyAmountMicro, MoneyPerSecond, second }
 import extdeps.currency.currency { CurrencyCode }
-import product.fabric.demand { Demand, BuyTerms, AdmissionTerms, SatisfactionRequirement, ObservationReceiptRef }
+import product.fabric.demand { Demand, BuyTerms, AdmissionTerms, SatisfactionRequirement, ObservationReceiptRef, admission_terms }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import gunbc.principal_projection { principal_ref_label }
 import product.fabric.identity { FabricIdentity, WorkKey, DemandKey, ExecutionAttemptKey, fabric_identity_eq }
@@ -40,7 +40,7 @@ fn workspace_demand(request: WorkspaceRequest, submitted_at: Timestamp, buy: Buy
   Demand {
     id: FabricIdentity { principal: work.id.principal, key: request_key as DemandKey },
     work: work.id, origin: request_key as ObservationReceiptRef, submitted_at: submitted_at,
-    admission: AdmissionTerms { deadline: Present { value: request.expires_at }, buy: buy },
+    admission: admission_terms(buy: buy, deadline: Present { value: request.expires_at }),
     satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: false },
   }
 }

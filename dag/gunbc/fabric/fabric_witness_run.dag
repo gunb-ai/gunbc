@@ -29,6 +29,7 @@ import product.fabric.supply {
 }
 import product.fabric.demand {
   Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, BudgetAccountId, ObservationReceiptRef,
+  admission_terms,
 }
 import std.types { Timestamp }
 import extdeps.exec.command { ArgvCommand }
@@ -597,8 +598,5 @@ fn floor_buy_terms(
 // stop being computable.
 
 fn floor_admission_terms(buy: BuyTerms, deadline: Timestamp?) -> AdmissionTerms {
-  AdmissionTerms {
-    deadline: deadline,
-    buy: buy,
-  }
+  admission_terms(buy: buy, deadline: deadline)
 }

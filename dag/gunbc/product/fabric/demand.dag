@@ -1,11 +1,21 @@
 module product.fabric.demand
 
-import std.types { NonEmptyStr, Timestamp, Bool, List, brand }
-import std.decl_ref { DeclarationRef }
-import std.measure { MoneyAmountMicro }
-import extdeps.currency.currency { CurrencyCode }
+import std.types { NonEmptyStr, Timestamp, Bool, List, Int, brand }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, Second, money_amount_micro, money_amount_micro_count, second_count }
+import extdeps.currency.currency { CurrencyCode, Usd }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
 import std.algebra { Cons, Empty }
+import std.pareto { LowerIsBetter }
+import extdeps.external_authority { TranscribedUncited }
+import std.decision {
+  ObjectiveTerm, ObjectiveMeasure, TermSetJoin, TermSetsJoinComplete,
+  ObjectiveUnderModeled, ObjectiveDeclaresUnwarrantedTerms,
+  TermValuation, ValuationRate, MoneyValuation, DelayValuation,
+  InterruptionValuation, AcceptedWorkValuation,
+  HardConstraint, term_set_join,
+}
 
 // Demand is WHO currently wants a result and WHERE to report it. Provider facts
 // live here and nowhere else, which is what keeps Work provider-neutral.
@@ -67,21 +77,13 @@ type BudgetAccountId = NonEmptyStr where brand("BudgetAccountId")
 // or settlement. maximum_buy_order is the ceiling on a single grant's
 // liability - a refusal boundary, never a degradation: an ask above it refuses
 // rather than selecting something cheaper and unsuitable.
-// There is deliberately NO delay-valuation field yet. Selection is specified
-// to compare a provider charge against a valued availability delay, which
-// needs a money-per-second RATE, and this record has no honest carrier for
-// one: MoneyAmountMicro would put the dimension in the field name, and the
-// existing MoneyRate bundles a CurrencyCode that would let a rate disagree
-// with the currency these terms already carry.
-//
-// Landing the field on the wrong type and describing the mismatch in a comment
-// was the alternative, and it is the shape DESIGN refuses -- a dissolution note
-// is a lifecycle fact, not permission to create the debt, and the author cannot
-// grant himself that permission. Since nothing consumes the field yet, the
-// cheaper and more honest option is simply not to ship it: the terms carry what
-// they can state correctly, and the rate arrives with its carrier once the
-// denomination authority -- these terms, or the referenced budget account -- is
-// decided. An absent field forces that decision; a wrongly-typed one hides it.
+// Delay valuation does not live here. AdmissionTerms.objective carries
+// TermValuation DelayValuation as MoneyPerSecond, so the rate has a typed
+// carrier and a missing delay term refuses through term_set_join
+// ObjectiveUnderModeled rather than silently pricing wait as free. Budget
+// caps stay on this record; consumers project them into std.decision
+// HardConstraint rows (admission_hard_constraints) and must not duplicate
+// them onto DemandObjective.
 type BuyTerms {
   budget_account: BudgetAccountId
   currency: CurrencyCode
@@ -121,15 +123,9 @@ type BuyTerms {
 // demand, demand-side selection ranks DEMANDS for one offer, and they take
 // different inputs and return different carriers.
 //
-// THE FIELD IS NOT REPLACED BY A DIFFERENT NON-PRICE FIELD, and the absences
-// are deliberate for the same reason BuyTerms carries no delay-valuation rate.
-// A deadline valuation needs a money-per-second carrier this model cannot state
-// honestly yet, and `deadline` below is a Timestamp, which std.types aliases to
-// String and which therefore carries no ordering at all -- an urgency axis
-// derived from it would be string collation wearing a schedule's name. A
-// preemptibility statement is a real fact and a real future axis, but it is a
-// claim about what may be INTERRUPTED, which needs an execution-side carrier
-// that does not exist. Neither ships as a mistyped field with a note attached.
+// Delay valuation now lives on AdmissionTerms.objective as DelayValuation.
+// `deadline` remains a Timestamp with no ordering, so it is not an urgency
+// axis. A preemptibility statement still needs an execution-side carrier.
 //
 // AND NO CLASS HERE IMPLIES A LATENCY GUARANTEE. A class that promised one
 // would be fabricating plausible output (DESIGN section 5): nothing in this
@@ -137,9 +133,174 @@ type BuyTerms {
 // unbacked at the moment it was made. The fabric refuses rather than promises,
 // which is why the honest carrier for "I want this sooner" is a higher bid --
 // a fact the market can actually act on -- and not a tier.
+// THE FOUR OBJECTIVE TERMS, one per unit the brief names. They are buyer-policy
+// identities, not cited physical figures: ground is TranscribedUncited naming
+// that fact. CONSUMERS: fabric_demand_objective_terms (the required join
+// population); TermValuation.term on every DemandObjective; Pareto axes in
+// test.claim.fabric.valued_objective_witness (same identities, so a valued
+// term is a funded axis).
+data term_money: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.fabric.demand", decl_name: "term_money"),
+  ground: TranscribedUncited { read_obligation: "money is a buyer-policy term, not a cited physical figure" as NonEmptyStr },
+}
+
+data term_delay: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.fabric.demand", decl_name: "term_delay"),
+  ground: TranscribedUncited { read_obligation: "delay is a buyer-policy term, not a cited physical figure" as NonEmptyStr },
+}
+
+data term_interruption: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.fabric.demand", decl_name: "term_interruption"),
+  ground: TranscribedUncited { read_obligation: "interruption is a buyer-policy term, not a cited physical figure" as NonEmptyStr },
+}
+
+data term_accepted_work: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.fabric.demand", decl_name: "term_accepted_work"),
+  ground: TranscribedUncited { read_obligation: "accepted work is a buyer-policy term, not a cited physical figure" as NonEmptyStr },
+}
+
+fn fabric_demand_objective_terms() -> List<ObjectiveTerm> {
+  [term_money, term_delay, term_interruption, term_accepted_work]
+}
+
+// CONSUMER: demand_objective_join (required identities); admit_demand_objective.
+fn fabric_demand_required_term_ids() -> List<DeclarationRef> {
+  map(fabric_demand_objective_terms(), t => t.identity)
+}
+
+type DemandObjective {
+  profile: DeclarationRef
+  valuations: List<TermValuation>
+}
+
+fn demand_objective_as_measure(objective: DemandObjective) -> ObjectiveMeasure {
+  ObjectiveMeasure {
+    identity: objective.profile,
+    goal: LowerIsBetter,
+    terms: map(objective.valuations, v => ObjectiveTerm {
+      identity: v.term,
+      ground: TranscribedUncited { read_obligation: "valuation rate is buyer policy" as NonEmptyStr },
+    }),
+  }
+}
+
+// CONSUMER: admit_demand_objective; demand_delay_valuation; the two profile rows
+// are constructed to join complete; a missing term is ObjectiveUnderModeled.
+fn demand_objective_join(objective: DemandObjective) -> TermSetJoin {
+  term_set_join(
+    terms: fabric_demand_required_term_ids(),
+    objective: demand_objective_as_measure(objective: objective),
+    subject: objective.profile,
+  )
+}
+
+fn usd_rate(count: Nat) -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: count), currency: Usd }
+}
+
+fn money_val(count: Nat) -> ValuationRate {
+  MoneyValuation { amount: money_amount_micro(count: count) }
+}
+
+fn delay_val(count: Nat) -> ValuationRate {
+  DelayValuation { rate: usd_rate(count: count) }
+}
+
+fn interruption_val(count: Nat) -> ValuationRate {
+  InterruptionValuation { amount: money_amount_micro(count: count) }
+}
+
+fn accepted_work_val(count: Nat) -> ValuationRate {
+  AcceptedWorkValuation { amount: money_amount_micro(count: count) }
+}
+
+fn closed_valuations(money: Nat, delay: Nat, interruption: Nat, accepted_work: Nat) -> List<TermValuation> {
+  [
+    TermValuation { term: term_money.identity, rate: money_val(count: money) },
+    TermValuation { term: term_delay.identity, rate: delay_val(count: delay) },
+    TermValuation { term: term_interruption.identity, rate: interruption_val(count: interruption) },
+    TermValuation { term: term_accepted_work.identity, rate: accepted_work_val(count: accepted_work) },
+  ]
+}
+
+data id_debt_payoff: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "debt_payoff_objective")
+data id_latency_sensitive: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "latency_sensitive_objective")
+
+// delay 0, interruption 0, money valued, accepted work valued.
+// CONSUMER: admission_terms default; test.claim.fabric.valued_objective_witness (a)(b)(c)(d).
+data debt_payoff_objective: DemandObjective = DemandObjective {
+  profile: id_debt_payoff,
+  valuations: closed_valuations(money: 1, delay: 0, interruption: 0, accepted_work: 1),
+}
+
+// Positive delay valuation. CONSUMER: harness_seat select_supply delay_valuation;
+// test.claim.fabric.valued_objective_witness (a)(c)(d).
+data latency_sensitive_objective: DemandObjective = DemandObjective {
+  profile: id_latency_sensitive,
+  valuations: closed_valuations(money: 1, delay: 1, interruption: 0, accepted_work: 1),
+}
+
+fn demand_delay_valuation(objective: DemandObjective) -> MoneyPerSecond? {
+  match demand_objective_join(objective: objective) {
+    ObjectiveUnderModeled { subject: _, missing_from_objective: _ } => none
+    ObjectiveDeclaresUnwarrantedTerms { subject: _, extras: _ } => none
+    TermSetsJoinComplete =>
+      match (filter(objective.valuations, v => declaration_ref_eq(a: v.term, b: term_delay.identity))).first() {
+        Absent => none
+        Present { value: row } =>
+          match row.rate {
+            DelayValuation { rate: r } => Present { value: r }
+            MoneyValuation { amount: _ } => none
+            InterruptionValuation { amount: _ } => none
+            AcceptedWorkValuation { amount: _ } => none
+          }
+      }
+  }
+}
+
+data id_buy_order_constraint: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "buy_order_constraint")
+data id_maximum_wait_constraint: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "maximum_wait_constraint")
+
+fn buy_order_constraint(buy: BuyTerms) -> HardConstraint {
+  HardConstraint {
+    identity: id_buy_order_constraint,
+    axis: term_money.identity,
+    bound_micro: money_amount_micro_count(m: buy.maximum_buy_order) as Int,
+  }
+}
+
+fn maximum_wait_constraint(wait: Second) -> HardConstraint {
+  HardConstraint {
+    identity: id_maximum_wait_constraint,
+    axis: term_delay.identity,
+    bound_micro: second_count(s: wait) as Int,
+  }
+}
+
+// CONSUMERS: test.claim.fabric.valued_objective_witness (d) and any select_realization
+// call that must refuse an over-cap candidate. Caps are not copied onto DemandObjective.
+fn admission_hard_constraints(terms: AdmissionTerms) -> List<HardConstraint> {
+  match terms.maximum_wait {
+    Absent => [buy_order_constraint(buy: terms.buy)]
+    Present { value: wait } =>
+      [buy_order_constraint(buy: terms.buy), maximum_wait_constraint(wait: wait)]
+  }
+}
+
 type AdmissionTerms {
   deadline: Timestamp?
+  maximum_wait: Second?
   buy: BuyTerms
+  objective: DemandObjective
+}
+
+fn admission_terms(buy: BuyTerms, deadline: Timestamp?) -> AdmissionTerms {
+  AdmissionTerms {
+    deadline: deadline,
+    maximum_wait: none,
+    buy: buy,
+    objective: debt_payoff_objective,
+  }
 }
 
 type Demand<P> {

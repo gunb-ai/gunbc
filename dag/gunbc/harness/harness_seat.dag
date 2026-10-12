@@ -62,7 +62,9 @@ import product.fabric.selection {
   PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand, PayAsYouGo,
   OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply, affinity_collision_wire,
 }
-import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.demand {
+  ObservationReceiptRef, latency_sensitive_objective, demand_delay_valuation,
+}
 import extdeps.currency.currency { Usd }
 import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import std.algebra { trim }
@@ -77,7 +79,7 @@ import gunbc.serving.turn_admission {
   ServingSessionResidency, ResidencyUnread, SessionRecord, serving_session_standing, HostTierUnread, GpuPrefixUnread, ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica,
   serving_unread_when_owner_unprobed,
   serving_admission_detail, serving_isolation_profile,
-  serving_delay_valuation, serving_dispatch_inputs,
+  serving_dispatch_inputs,
 }
 import gunbc.serving.rented_offer_admission {
   RentedAdmissionSources, rented_production_sources, admit_rented_offer, RentedCandidateAdmitted, RentedAdmissionRefused,
@@ -1061,13 +1063,22 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
       let collected = harness_collect_candidates(session: session, routes: routes, class: class, requirement: requirement, subject: subject, store: store, now: now, excluded: acc.excluded)
       let notes = concat(acc.notes, collected.notes)
       let retryable = acc.retryable || collected.retryable
+      match demand_delay_valuation(objective: latency_sensitive_objective) {
+        Absent =>
+          PlacementRound {
+            done: Present { value: HarnessSeatRefused { detail: "serving demand delay valuation missing from the latency-sensitive objective" } },
+            excluded: acc.excluded,
+            notes: notes,
+            retryable: retryable,
+          }
+        Present { value: delay_valuation } =>
       match select_supply(
         requirements: subject.work.requirements,
         candidates: map(collected.candidates, c => c.offer),
         duration: harness_placement_grant_duration(policy: policy),
         maximum_buy_order: money_amount_micro(count: 0),
         budget_currency: Usd,
-        delay_valuation: serving_delay_valuation,
+        delay_valuation: delay_valuation,
         tie: AffinityKeyedRendezvous,
         affinity: actor as PlacementAffinityKey,
       ) {
@@ -1104,6 +1115,7 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
                   PlacementRound { done: none, excluded: concat(acc.excluded, [k as String]), notes: concat(notes, [d]), retryable: true }
               }
           }
+      }
       }
     }
   }

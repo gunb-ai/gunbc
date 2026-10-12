@@ -1,0 +1,354 @@
+module test.claim.fabric.valued_objective_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.interval { degenerate_interval }
+import std.pareto {
+  AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis,
+}
+import std.decision {
+  HardConstraint,
+  ValuedObjective,
+  SelectionPolicy,
+  SelectedWithin,
+  SelectionNeedsEvidence,
+  SelectionNeedsPolicy,
+  NoFeasibleRealization,
+  select_realization,
+  identity_order_pick,
+  DecisionVariable,
+  ContextParameter,
+  DecisionConstraint,
+  ObjectiveTerm,
+  ObjectiveMeasure,
+  ChoiceDomain,
+  DecisionSubject,
+  DecisionRegion,
+  VariesAlong,
+  MonotoneDecreasing,
+  ConstraintSatisfied,
+  ParameterBound,
+  DecisionAssessment,
+  PhysicalModelEstablished,
+  CausalModelEstablished,
+  FleetObservedCoupling,
+  TermValuation,
+  MoneyValuation,
+  ObjectiveUnderModeled,
+  TermSetsJoinComplete,
+}
+import product.fabric.demand {
+  term_money, term_delay, term_interruption, term_accepted_work,
+  debt_payoff_objective, latency_sensitive_objective, DemandObjective,
+  demand_objective_join, demand_delay_valuation, admission_hard_constraints,
+  admission_terms, BuyTerms, fabric_demand_required_term_ids,
+}
+import std.measure { money_amount_micro, money_rate_micros }
+import extdeps.currency.currency { Usd }
+import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data id_wait: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "id_wait")
+data id_move: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "id_move")
+data id_subject: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "id_subject")
+data id_field: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "id_field")
+data id_constraints: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "id_constraints")
+data id_evidence: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "id_evidence")
+data id_var: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "var_sel")
+data id_term: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "term_sel")
+data id_constraint_cell: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "constraint_sel")
+data id_param_cell: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "param_sel")
+data id_region: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "region_sel")
+data id_domain: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "domain_sel")
+data id_objective: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "objective_sel")
+data id_coupling: DeclarationRef = decl_ref(module_path: "test.claim.fabric.valued_objective_witness", decl_name: "id_coupling")
+
+data fixture_physical_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "fixture.invalid/valued-objective/physical" },
+}
+
+data var_sel: DecisionVariable = DecisionVariable { identity: id_var }
+data term_sel: ObjectiveTerm = ObjectiveTerm {
+  identity: id_term,
+  ground: CitedToAuthority { authority: fixture_physical_authority },
+}
+data constraint_sel: DecisionConstraint = DecisionConstraint { identity: id_constraint_cell }
+data param_sel: ContextParameter = ContextParameter { identity: id_param_cell }
+data region_sel: DecisionRegion = DecisionRegion { identity: id_region }
+
+data objective_sel: ObjectiveMeasure = ObjectiveMeasure {
+  identity: id_objective,
+  goal: LowerIsBetter,
+  terms: [term_sel],
+}
+
+data domain_sel: ChoiceDomain = ChoiceDomain {
+  identity: id_domain,
+  variables: [var_sel],
+}
+
+data subject_sel: DecisionSubject = DecisionSubject {
+  identity: id_subject,
+  question: "wait on the current replica or pay to move" as NonEmptyStr,
+  parameters: [param_sel],
+  constraints: [constraint_sel],
+  objective: objective_sel,
+  choice_domain: domain_sel,
+}
+
+fn closed_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: subject_sel,
+    sensitivities: [
+      VariesAlong {
+        term: id_term,
+        variable: id_var,
+        region: region_sel,
+        relation: MonotoneDecreasing,
+        coupling: CitedToAuthority { authority: fixture_physical_authority },
+      },
+    ],
+    constraints: [
+      ConstraintSatisfied {
+        constraint: id_constraint_cell,
+        evidence: "fixture constraint" as NonEmptyStr,
+      },
+    ],
+    parameters: [
+      ParameterBound {
+        parameter: id_param_cell,
+        evidence: "fixture parameter" as NonEmptyStr,
+      },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [id_term] },
+    causal_model: CausalModelEstablished {
+      couplings: [
+        FleetObservedCoupling {
+          receipt: id_coupling,
+          term: id_term,
+          variable: id_var,
+          subject: id_subject,
+        },
+      ],
+    },
+  }
+}
+
+fn axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: term_money.identity, goal: LowerIsBetter },
+    SelectionAxis { identity: term_delay.identity, goal: LowerIsBetter },
+    SelectionAxis { identity: term_interruption.identity, goal: LowerIsBetter },
+    SelectionAxis { identity: term_accepted_work.identity, goal: HigherIsBetter },
+  ]
+}
+
+fn reading(axis: DeclarationRef, v: Int) -> AxisReading {
+  AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) }
+}
+
+fn replica(id: DeclarationRef, label: NonEmptyStr, money: Int, delay: Int, interruption: Int, work: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id,
+    display_label: label,
+    readings: [
+      reading(axis: term_money.identity, v: money),
+      reading(axis: term_delay.identity, v: delay),
+      reading(axis: term_interruption.identity, v: interruption),
+      reading(axis: term_accepted_work.identity, v: work),
+    ],
+    missing_inputs: [],
+  }
+}
+
+fn policy_of(objective: DemandObjective) -> SelectionPolicy {
+  ValuedObjective { identity: objective.profile, valuations: objective.valuations }
+}
+
+fn pick(field: List<ParetoEntry>, objective: DemandObjective, constraints: List<HardConstraint>) -> RealizationPick {
+  match select_realization(
+    assessment: closed_assessment(),
+    candidate_field_identity: id_field,
+    field: field,
+    axes: axes(),
+    constraints: constraints,
+    constraint_authority: id_constraints,
+    policy: policy_of(objective: objective),
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: r } => Picked { id: c.identity, policy: r.policy_authority }
+    SelectionNeedsEvidence { needs: _ } => NeedsEvidence
+    SelectionNeedsPolicy { survivors: _ } => NeedsPolicy
+    NoFeasibleRealization { causes: _, scope: _ } => NoneFeasible
+    _ => Other
+  }
+}
+
+type RealizationPick
+  = Picked { id: DeclarationRef, policy: DeclarationRef }
+  | NeedsEvidence
+  | NeedsPolicy
+  | NoneFeasible
+  | Other
+
+fn tradeoff_field() -> List<ParetoEntry> {
+  [
+    replica(id: id_wait, label: "wait on current replica" as NonEmptyStr, money: 10, delay: 100, interruption: 0, work: 10),
+    replica(id: id_move, label: "pay to move" as NonEmptyStr, money: 50, delay: 1, interruption: 0, work: 10),
+  ]
+}
+
+fn accepted_work_field() -> List<ParetoEntry> {
+  [
+    replica(id: id_wait, label: "wait" as NonEmptyStr, money: 50, delay: 100, interruption: 0, work: 5),
+    replica(id: id_move, label: "move" as NonEmptyStr, money: 60, delay: 10, interruption: 0, work: 40),
+  ]
+}
+
+fn dominated_field() -> List<ParetoEntry> {
+  [
+    replica(id: id_wait, label: "wait" as NonEmptyStr, money: 80, delay: 50, interruption: 5, work: 5),
+    replica(id: id_move, label: "move" as NonEmptyStr, money: 10, delay: 1, interruption: 0, work: 50),
+  ]
+}
+
+fn over_cap_field() -> List<ParetoEntry> {
+  [
+    replica(id: id_wait, label: "wait" as NonEmptyStr, money: 10, delay: 20, interruption: 0, work: 10),
+    replica(id: id_move, label: "over-cap move" as NonEmptyStr, money: 80, delay: 1, interruption: 0, work: 10),
+  ]
+}
+
+fn cap_buy() -> BuyTerms {
+  BuyTerms {
+    budget_account: "fixture",
+    currency: Usd,
+    reservation_price: money_amount_micro(count: 40),
+    maximum_buy_order: money_amount_micro(count: 40),
+  }
+}
+
+test fn profiles_join_complete_and_a_missing_term_is_under_modeled() -> Bool {
+  match demand_objective_join(objective: debt_payoff_objective) {
+    TermSetsJoinComplete =>
+      match demand_objective_join(objective: latency_sensitive_objective) {
+        TermSetsJoinComplete =>
+          match demand_objective_join(objective: DemandObjective {
+            profile: debt_payoff_objective.profile,
+            valuations: [
+              TermValuation {
+                term: term_money.identity,
+                rate: MoneyValuation { amount: money_amount_micro(count: 1) },
+              },
+            ],
+          }) {
+            ObjectiveUnderModeled { subject: _, missing_from_objective: missing } =>
+              (missing |> count) == ((fabric_demand_required_term_ids() |> count) - 1)
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn valuation_blind_selector_does_not_discriminate_the_tradeoff() -> Bool {
+  let survivors = [id_wait, id_move]
+  match identity_order_pick(survivors: survivors) {
+    Absent => false
+    Present { value: a } =>
+      match identity_order_pick(survivors: [id_move, id_wait]) {
+        Absent => false
+        Present { value: b } => declaration_ref_eq(a: a, b: b)
+      }
+  }
+}
+
+test fn debt_payoff_waits_and_latency_sensitive_moves_on_the_tradeoff() -> Bool {
+  match pick(field: tradeoff_field(), objective: debt_payoff_objective, constraints: []) {
+    Picked { id: wait_id, policy: p_debt } =>
+      declaration_ref_eq(a: wait_id, b: id_wait)
+        && declaration_ref_eq(a: p_debt, b: debt_payoff_objective.profile)
+        && match pick(field: tradeoff_field(), objective: latency_sensitive_objective, constraints: []) {
+          Picked { id: move_id, policy: p_lat } =>
+            declaration_ref_eq(a: move_id, b: id_move)
+              && declaration_ref_eq(a: p_lat, b: latency_sensitive_objective.profile)
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn debt_payoff_moves_when_moving_raises_accepted_work_per_dollar() -> Bool {
+  match pick(field: accepted_work_field(), objective: debt_payoff_objective, constraints: []) {
+    Picked { id: move_id, policy: _ } => declaration_ref_eq(a: move_id, b: id_move)
+    _ => false
+  }
+}
+
+test fn a_dominating_candidate_is_picked_by_both_profiles_with_distinct_policy_authority() -> Bool {
+  match pick(field: dominated_field(), objective: debt_payoff_objective, constraints: []) {
+    Picked { id: a, policy: p_debt } =>
+      declaration_ref_eq(a: a, b: id_move)
+        && match pick(field: dominated_field(), objective: latency_sensitive_objective, constraints: []) {
+          Picked { id: b, policy: p_lat } =>
+            declaration_ref_eq(a: b, b: id_move)
+              && declaration_ref_eq(a: p_debt, b: debt_payoff_objective.profile)
+              && declaration_ref_eq(a: p_lat, b: latency_sensitive_objective.profile)
+              && !declaration_ref_eq(a: p_debt, b: p_lat)
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn an_over_cap_move_is_refused_under_both_profiles_by_buy_terms_hard_constraint() -> Bool {
+  let constraints = admission_hard_constraints(terms: admission_terms(buy: cap_buy(), deadline: none))
+  match pick(field: over_cap_field(), objective: debt_payoff_objective, constraints: constraints) {
+    Picked { id: a, policy: _ } =>
+      declaration_ref_eq(a: a, b: id_wait)
+        && match pick(field: over_cap_field(), objective: latency_sensitive_objective, constraints: constraints) {
+          Picked { id: b, policy: _ } => declaration_ref_eq(a: b, b: id_wait)
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn unread_valued_delay_needs_evidence_never_zero() -> Bool {
+  let unread_wait = ParetoEntry {
+    identity: id_wait,
+    display_label: "wait unread delay" as NonEmptyStr,
+    readings: [
+      reading(axis: term_money.identity, v: 10),
+      reading(axis: term_interruption.identity, v: 0),
+      reading(axis: term_accepted_work.identity, v: 10),
+    ],
+    missing_inputs: [],
+  }
+  match pick(
+    field: [unread_wait, replica(id: id_move, label: "move" as NonEmptyStr, money: 50, delay: 1, interruption: 0, work: 10)],
+    objective: latency_sensitive_objective,
+    constraints: [],
+  ) {
+    NeedsEvidence => true
+    _ => false
+  }
+}
+
+test fn serving_reads_the_demand_delay_valuation() -> Bool {
+  match demand_delay_valuation(objective: latency_sensitive_objective) {
+    Absent => false
+    Present { value: lat } =>
+      match demand_delay_valuation(objective: debt_payoff_objective) {
+        Absent => false
+        Present { value: debt } =>
+          (money_rate_micros(q: lat) as Int) > (money_rate_micros(q: debt) as Int)
+      }
+  }
+}

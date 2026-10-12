@@ -7,7 +7,7 @@ import std.content_hash { content_hash_of_value }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey, OfferKey }
 import product.fabric.work { MaterializedProgram, CapacityClass, ControlPlaneCapacity, Shape, HardRequirements, Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects, declared_terminal_obligations }
-import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order, admission_terms }
 import product.fabric.supply { UnobservedSupply, SupplierOffer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
 import product.fabric.execution { Attempt, InitialAttempt, InfrastructureRetry, CapabilityEscalation, LeaseIdentity, Receipt, ExecutionReceipt, ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, ReceiptAdmissible, ReceiptFromDifferentLease, ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale, admit_receipt_for_grant }
 
@@ -118,10 +118,7 @@ fn demand_from_binding(
     work: FabricIdentity { principal: "operator", key: fixture_work_key },
     origin: provenance,
     submitted_at: "2026-08-18T00:00:00Z",
-    admission: AdmissionTerms {
-      deadline: none,
-      buy: buy_terms(reservation: reservation, ceiling: ceiling),
-    },
+    admission: admission_terms(buy: buy_terms(reservation: reservation, ceiling: ceiling), deadline: none),
     satisfaction: SatisfactionRequirement {
       terminal_receipt_may_satisfy: true,
       new_attempt_required: false,

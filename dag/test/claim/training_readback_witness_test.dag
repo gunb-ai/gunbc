@@ -26,7 +26,7 @@ import product.training.resolution {
 import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.envelope { ResourceEnvelope }
-import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, admission_terms }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
 import extdeps.currency.currency { Usd }
@@ -101,15 +101,15 @@ fn demand_keyed(demand_key: NonEmptyStr, work_key: NonEmptyStr) -> Demand<NonEmp
     work: FabricIdentity { principal: "gunbai", key: work_key },
     origin: "gunbc.observation.training-readback",
     submitted_at: "2026-08-28T00:00:00Z",
-    admission: AdmissionTerms {
-      deadline: none,
+    admission: admission_terms(
       buy: BuyTerms {
         budget_account: "training",
         currency: Usd,
         reservation_price: money_amount_micro(count: 1),
         maximum_buy_order: money_amount_micro(count: 1000),
       },
-    },
+      deadline: none,
+    ),
     satisfaction: SatisfactionRequirement {
       terminal_receipt_may_satisfy: true,
       new_attempt_required: false,
