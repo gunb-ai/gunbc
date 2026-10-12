@@ -9,7 +9,8 @@ import product.capacity.quota { quota_partition, quota_root_pool }
 import product.capacity.event_chain { PartitionId }
 import product.capacity.pool_events { PoolSettled, PoolUpstreamObserved, SeatRequest }
 import product.capacity.pool { pool_window_at, WindowResolved, WholeLifetime, InstantBeforeAnchor }
-import product.capacity.lease { LeasePolicy, LeaseGrant, FencedResource }
+import std.resource_release_law { FencedResource }
+import product.capacity.lease { LeasePolicy, LeaseGrant }
 import gunbc.fabric.fabric_event_log_host { HostEventLogStore, HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log {

@@ -16,7 +16,8 @@ import gunbc.auth.request_authentication {
 }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
 import std.access { AccessDecision, Permit, Deny, AccessRefusal, AccessRefusalLocation, AccessPolicyRefused }
-import product.capacity.lease { LeaseGrant, GrantIdentity, QuiescenceFact }
+import product.capacity.lease { LeaseGrant, GrantIdentity }
+import std.durable_exclusive_hold { DurableHoldHolderLiveness }
 import product.capacity.redemption {
   RedemptionRefusal, RedemptionRecovery, redemption_refusal_wire, redemption_recovery,
   RecoveryNoUseToRecover, RecoveryReleaseOwed, RecoveryHoldCharged, RecoveryEndThenRelease, RecoveryUndecidable,
@@ -756,11 +757,11 @@ fn front_door_recovery_plan(recovery: RedemptionRecovery) -> FrontDoorRecoveryPl
   }
 }
 
-fn front_door_recover(store: FabricStorageBinding, pool: HarnessSeatPoolIdentity, reference: NonEmptyStr, quiescence: QuiescenceFact, proxy: NonEmptyStr, now: EpochSecs) -> FrontDoorRecovery {
+fn front_door_recover(store: FabricStorageBinding, pool: HarnessSeatPoolIdentity, reference: NonEmptyStr, holder: DurableHoldHolderLiveness, proxy: NonEmptyStr, now: EpochSecs) -> FrontDoorRecovery {
   match fabric_redemption_read(store: store, pool_partition: pool.partition, reference: reference) {
     RedemptionReadRefused { cause: c } => RecoveryRefused { detail: event_log_refusal_wire(cause: c) }
     RedemptionReadAt { head: _, state: st } =>
-      match front_door_recovery_plan(recovery: redemption_recovery(state: st, quiescence: quiescence)) {
+      match front_door_recovery_plan(recovery: redemption_recovery(state: st, holder: holder)) {
         PlanLeaveWithHolder => RecoveryLeftWithHolder
         PlanHoldCharged { request: q, holder: h, since: s } => RecoveryHeldCharged { request: q, holder: h, since: s }
         PlanRefuse { detail: d } => RecoveryRefused { detail: d }

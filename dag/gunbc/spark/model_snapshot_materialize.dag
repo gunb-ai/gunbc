@@ -3,6 +3,7 @@ module gunbc.spark.model_snapshot_materialize
 import extdeps.huggingface.hub { HubCacheEnvironment, hub_cache_root_for, hub_cache_environment_words, hub_cache_environment_unset }
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
+import std.retry_law { RetryLaw }
 import std.content_hash { content_hash_atom, content_hash_of_value, serialize_content_hash }
 import product.host_identity { HostIdentity }
 import std.algebra { trim }
@@ -692,6 +693,12 @@ fn spark_transfer_start(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
 // failure, and the Hub CLI resumes the files it has: a DNS or transport failure costs a retry, not the run.
 // It is BOUNDED, never a loop: at most spark_transfer_restart_burst starts within the interval, then the
 // unit stays failed and the supervision reads TransferExitedFailed, exactly as one failure did before.
+data spark_transfer_retry_law: RetryLaw = RetryLaw {
+  initial_delay_seconds: 120,
+  delay_cap_seconds: 21600,
+  real_work_failure_bound: 30,
+}
+
 data spark_transfer_restart_delay_seconds: Nat = 120
 data spark_transfer_restart_burst: Nat = 30
 data spark_transfer_restart_interval_seconds: Nat = 21600

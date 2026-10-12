@@ -1,5 +1,6 @@
 module gunbc.spark.pair_serving_authority_log
 
+import std.durable_compare_and_set { CasGeneration }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
@@ -8,7 +9,7 @@ import std.optional { Present, Absent }
 import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash, content_hash_equal }
 import std.temporal_effect {
   HeldLease, HeldLeaseObservedState, LeaseEpoch, held_lease, held_lease_with_observed,
-  LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
+  LeaseRunningExpected, LeaseRunningPastExpiry, LeaseInaccessible,
 }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity, lease_grant_expired_at }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_kv, json_string, json_int, json_array, json_object, serialize_json }
@@ -801,7 +802,7 @@ fn lease_decode(doc: JsonValue, prefix: String) -> HeldLease? {
               match member_nat(doc: doc, key: join([prefix, "lease_generation"], "")) {
                 Absent => none
                 Present { value: g } =>
-                  Present { value: held_lease(epoch: LeaseEpoch { lease_key: k, resource_fingerprint: res, owner_fingerprint: own, generation: g }, observed: LeaseInaccessible) }
+                  Present { value: held_lease(epoch: LeaseEpoch { lease_key: k, resource_fingerprint: res, owner_fingerprint: own, generation: g as CasGeneration }, observed: LeaseInaccessible) }
               }
           }
       }
@@ -1605,14 +1606,14 @@ type CurrentAuthority
 
 // THE LEASE'S OBSERVED STATE IS DERIVED AT THE READ, FROM THE GRANT AND THE INSTANT. The bytes
 // carry what the writer observed when it wrote; what a consumer needs is what holds NOW. A
-// grant whose expiry has passed reads as LeaseRunningStale -- which pair_serving_successor_may_launch
+// grant whose expiry has passed reads as LeaseRunningPastExpiry -- which pair_serving_successor_may_launch
 // maps to Drifted, removing the right to START while pair_serving_may_finish keeps the right to
 // FINISH -- and a leased arm with no recorded grant reads as LeaseInaccessible: its term cannot
 // be established, so nothing may start under it. An arm that carries no lease is unchanged.
 fn lease_observed_at(grant: LeaseGrant?, at: EpochSecs) -> HeldLeaseObservedState {
   match grant {
     Absent => LeaseInaccessible
-    Present { value: g } => if lease_grant_expired_at(grant: g, at: at) { LeaseRunningStale } else { LeaseRunningExpected }
+    Present { value: g } => if lease_grant_expired_at(grant: g, at: at) { LeaseRunningPastExpiry } else { LeaseRunningExpected }
   }
 }
 

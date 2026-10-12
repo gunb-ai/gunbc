@@ -26,7 +26,8 @@ import product.capacity.pool_events {
   PoolFold, PoolFolded, PoolFoldRefused, pool_fold, SeatRequest, SeatProposal, SeatProposed, SeatRefused, propose_acquire, grant_from_admission,
   PoolReleased, pool_apply_payload,
 }
-import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release_law_wire }
+import std.resource_release_law { release_law_eq, release_law_wire }
+import product.capacity.lease { LeasePolicy, LeaseGrant }
 import product.capacity.redemption {
   RedemptionEvent, RedemptionState, RedemptionRefusal, RedemptionProposal, RedemptionProposed, RedemptionRefused,
   redemption_partition_of, redemption_event_wire_text, redemption_event_decode, redemption_state_of,

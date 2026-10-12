@@ -44,6 +44,7 @@ import std.content_hash {
   ContentHash,
   content_hash_combine_structural,
 }
+import std.durable_compare_and_set { CasGeneration }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
 import extdeps.exec.command { ArgvCommand }
 import v2.extdeps.languages.bash_build {
@@ -731,7 +732,7 @@ fn fleet_converge_plan_held_lease(
       lease_key: fleet_converge_plan_lease_key(host: subject.host),
       resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
       owner_fingerprint: owner_fingerprint,
-      generation: prior_generation + 1,
+      generation: (prior_generation + 1) as CasGeneration,
     },
     observed: LeaseAbsent,
   )

@@ -2,6 +2,9 @@ module gunbc.roadmap.roadmap_attempt_exit_spool
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import gunbc.host.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
+import gunbc.durable_handoff_host {
+  HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
+}
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
   ServiceResult, service_result_of_wire, ServiceExitCode, service_exit_code_of_wire,
@@ -197,14 +200,7 @@ fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
 // WHERE IN THE SPOOL AN ENTRY STANDS, which is responsibility, not evidence: the record means the
 // same thing in every stage. Inbox: no obligation has taken it. Queued: recorded and handed off, no run has
 // claimed it. Running: a live run claimed it and has not settled it. Done: its obligation's receipt exists. Refused: the drain could not hand it off.
-type AttemptExitSpoolStage
-  = AttemptExitInbox
-  | AttemptExitQueued
-  | AttemptExitRunning
-  | AttemptExitDone
-  | AttemptExitRefused
-
-fn attempt_exit_spool_stage_dir(instance_root: String, stage: AttemptExitSpoolStage) -> String {
+fn attempt_exit_spool_stage_dir(instance_root: String, stage: HostSpoolStage) -> String {
   match stage {
     AttemptExitInbox => attempt_exit_inbox_dir(instance_root: instance_root)
     AttemptExitQueued => attempt_exit_queued_dir(instance_root: instance_root)
@@ -305,7 +301,7 @@ fn attempt_exit_record_matching(
   }
 }
 
-fn attempt_exit_stage_list(instance_root: String, stage: AttemptExitSpoolStage) -> AttemptExitStageListing {
+fn attempt_exit_stage_list(instance_root: String, stage: HostSpoolStage) -> AttemptExitStageListing {
   let dir = attempt_exit_spool_stage_dir(instance_root: instance_root, stage: stage)
   let listed = Filesystem.List(path: dir)
   attempt_exit_stage_listing(listing: filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error))

@@ -1,0 +1,150 @@
+module std.retry_law
+
+import std.types { Int, List, NonEmptyStr, EpochSecs }
+import std.nat { Nat, nat_range_inclusive }
+import std.optional { Present, Absent }
+import std.checked_arithmetic { int_inclusive_max }
+
+// ONE RETRY LAW. It decides only whether a retry is ADMISSIBLE and the earliest time it may run.
+// Which retry to take (now, later, or elsewhere) is a demand-policy selection; this module has
+// no preference among those (DESIGN §3d).
+//
+// Shape, taken from gunbc.serving.caller_backlog (the durable caller snapshot) and
+// gunbc.serving.caller_retry_contract:
+//   - backoff is exponential, with jitter supplied as an input so the fold stays pure;
+//   - an upstream delay hint (HttpRetryAfter mapped by the caller) is a LOWER BOUND, never a
+//     shortening of the backoff;
+//   - the attempt bound runs over the item's WHOLE history: a resume, restart or new endpoint
+//     does not reset it, because the history is an argument, not process-local state;
+//   - only REAL-WORK outcomes count, so a succeeding probe never resets a failing series;
+//   - exhaustion and cancellation are persisted terminals carried in the history, never inferred
+//     from silence.
+//
+// Due times are EpochSecs: already the grant/expiry carrier, a total order, comparable without
+// string lexicography. ObservationInstant stays the observation-record instant (clock-domain
+// aware). v2.std.datetime Instant stays source/compiler wall-clock. std.types Seconds/Duration
+// and std.measure Second stay lengths, not instants. String timestamps compared with <= are
+// the nickname this law does not inhabit.
+
+type RetryObservedClass
+  = RealWorkFailure
+  | RealWorkSuccess
+  | ProbeOutcome { succeeded: Bool }
+  | Cancelled { by: NonEmptyStr }
+  | Exhausted
+
+type RetryHistoryEvent {
+  class: RetryObservedClass
+  at: EpochSecs
+}
+
+type RetryLaw {
+  initial_delay_seconds: Nat
+  delay_cap_seconds: Nat
+  real_work_failure_bound: Nat
+}
+
+type RetryAdmissibility
+  = RetryAdmissible { earliest: EpochSecs, real_work_failures: Nat }
+  | RetryTerminalExhausted { real_work_failures: Nat }
+  | RetryTerminalCancelled { by: NonEmptyStr }
+  | RetryAlreadySucceeded
+
+fn retry_min_nat(a: Nat, b: Nat) -> Nat {
+  if a < b { a } else { b }
+}
+
+fn retry_max_nat(a: Nat, b: Nat) -> Nat {
+  if a > b { a } else { b }
+}
+
+// Double without crossing the machine Int bound or the declared cap. The fold is over a
+// bounded range of failure counts, never an open recursion.
+fn retry_capped_double(n: Nat, cap: Nat) -> Nat {
+  if n >= cap {
+    cap
+  } else if n > (int_inclusive_max() / 2) {
+    cap
+  } else {
+    let doubled = n + n
+    if doubled > cap { cap } else { doubled }
+  }
+}
+
+fn retry_backoff_seconds(law: RetryLaw, real_work_failures: Nat) -> Nat {
+  if real_work_failures == 0 {
+    0
+  } else {
+    fold(
+      nat_range_inclusive(lo: 1, hi: retry_min_nat(a: real_work_failures, b: 63)),
+      init: retry_min_nat(a: law.initial_delay_seconds, b: law.delay_cap_seconds),
+      f: (acc, i) => if i == 1 { acc } else { retry_capped_double(n: acc, cap: law.delay_cap_seconds) },
+    )
+  }
+}
+
+fn retry_count_real_work_failures(history: List<RetryHistoryEvent>) -> Nat {
+  fold(history, init: 0, f: (acc, e) => match e.class {
+    RealWorkFailure => acc + 1
+    RealWorkSuccess => acc
+    ProbeOutcome { succeeded: _ } => acc
+    Cancelled { by: _ } => acc
+    Exhausted => acc
+  })
+}
+
+fn retry_last_real_work_failure_at(history: List<RetryHistoryEvent>) -> EpochSecs? {
+  fold(history, init: none, f: (acc, e) => match e.class {
+    RealWorkFailure => Present { value: e.at }
+    RealWorkSuccess => acc
+    ProbeOutcome { succeeded: _ } => acc
+    Cancelled { by: _ } => acc
+    Exhausted => acc
+  })
+}
+
+fn retry_terminal_in_history(history: List<RetryHistoryEvent>) -> RetryAdmissibility? {
+  fold(history, init: none, f: (acc, e) => match e.class {
+    Cancelled { by: who } => Present { value: RetryTerminalCancelled { by: who } }
+    Exhausted => Present { value: RetryTerminalExhausted { real_work_failures: retry_count_real_work_failures(history: history) } }
+    RealWorkSuccess => Present { value: RetryAlreadySucceeded }
+    RealWorkFailure => acc
+    ProbeOutcome { succeeded: _ } => acc
+  })
+}
+
+// jitter_seconds is sampled by the realization and SUPPLIED; the law never draws entropy.
+// hint_seconds is an upstream Retry-After (or none): a lower bound on the delay, never a cap.
+fn retry_admissibility(
+  law: RetryLaw,
+  history: List<RetryHistoryEvent>,
+  last_at: EpochSecs,
+  hint_seconds: Nat?,
+  jitter_seconds: Nat,
+) -> RetryAdmissibility {
+  match retry_terminal_in_history(history: history) {
+    Present { value: t } => t
+    Absent => {
+      let failures = retry_count_real_work_failures(history: history)
+      if failures >= law.real_work_failure_bound {
+        RetryTerminalExhausted { real_work_failures: failures }
+      } else {
+        let backoff = retry_backoff_seconds(law: law, real_work_failures: failures)
+        let hinted = match hint_seconds {
+          Absent => backoff
+          Present { value: h } => retry_max_nat(a: backoff, b: h)
+        }
+        let delay = hinted + jitter_seconds
+        RetryAdmissible { earliest: last_at + delay, real_work_failures: failures }
+      }
+    }
+  }
+}
+
+fn retry_hint_from_delta_seconds(seconds: Nat) -> Nat? {
+  Present { value: seconds }
+}
+
+fn retry_no_hint() -> Nat? {
+  none
+}

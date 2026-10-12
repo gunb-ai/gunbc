@@ -597,8 +597,10 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
   AttemptWorkerRole, attempt_unit_role_token,
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
-  AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
   attempt_exit_spool_stage_dir, attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
+}
+import gunbc.durable_handoff_host {
+  HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
 }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.tools.stat { stat_mtime_epoch_command }
@@ -14676,11 +14678,11 @@ type BeltExitDrain
   = BeltExitDrained { entries: List<BeltExitDrainEntry>, launch: BeltObligationEnqueue? }
   | BeltExitDrainRefused { reason: String }
 
-fn belt_exit_entry_move(instance: HostDashboardInstance, entry: String, from: AttemptExitSpoolStage, to: AttemptExitSpoolStage) -> String? {
+fn belt_exit_entry_move(instance: HostDashboardInstance, entry: String, from: HostSpoolStage, to: HostSpoolStage) -> String? {
   belt_exit_entry_move_at(root: instance.instance_root as String, entry: entry, from: from, to: to)
 }
 
-fn belt_exit_entry_move_at(root: String, entry: String, from: AttemptExitSpoolStage, to: AttemptExitSpoolStage) -> String? {
+fn belt_exit_entry_move_at(root: String, entry: String, from: HostSpoolStage, to: HostSpoolStage) -> String? {
   let cmd = mv_exact_destination_command(
     source: join([attempt_exit_spool_stage_dir(instance_root: root, stage: from), "/", entry], ""),
     destination: join([attempt_exit_spool_stage_dir(instance_root: root, stage: to), "/", entry], ""),
@@ -14964,7 +14966,7 @@ fn belt_exit_queued_sweep_at(root: String, skip: List<String>, enqueue: fn(Strin
 // Inbox and queued only: done and refused are not a backlog -- one is consumed, the other is a refusal
 // the drain already reported. Any unreadable listing or unparseable time refuses the read whole.
 type BeltExitSpoolEntryTime {
-  stage: AttemptExitSpoolStage
+  stage: HostSpoolStage
   entry: String
   mtime_epoch: EpochSecs
 }
@@ -14973,7 +14975,7 @@ type BeltExitSpoolTimes
   = BeltExitSpoolTimesRead { entries: List<BeltExitSpoolEntryTime> }
   | BeltExitSpoolTimesUnreadable { reason: String }
 
-fn belt_exit_spool_stage_times(instance: HostDashboardInstance, stage: AttemptExitSpoolStage, label: String) -> BeltExitSpoolTimes {
+fn belt_exit_spool_stage_times(instance: HostDashboardInstance, stage: HostSpoolStage, label: String) -> BeltExitSpoolTimes {
   let root = instance.instance_root as String
   match attempt_exit_stage_list(instance_root: root, stage: stage) {
     AttemptExitStageUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }

@@ -55,7 +55,7 @@ import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBind
 import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_publication_path_unit_name, deployment_publication_service_unit_name, deployment_tailnet_url }
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   selected_deployment_spec,
@@ -76,6 +76,8 @@ import gunbc.live_deploy.emit {
   live_deploy_belt_service_unit_file,
   live_deploy_belt_exit_path_unit_file,
   live_deploy_belt_answer_path_unit_file,
+  live_deploy_publication_path_unit_file,
+  live_deploy_publication_service_unit_file,
 }
 import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
@@ -408,6 +410,14 @@ fn unit_standing_fact(spec: DeploymentSpec, revision: String) -> LaunchUnitStand
     answer_path: observe_belt_event_path_standing(
       unit: deployment_belt_answer_path_unit_name(names: spec.names),
       file: live_deploy_belt_answer_path_unit_file(spec: spec),
+    ),
+    publication_path: observe_belt_event_path_standing(
+      unit: deployment_publication_path_unit_name(names: spec.names),
+      file: live_deploy_publication_path_unit_file(spec: spec),
+    ),
+    publication_helper: observe_belt_oneshot_standing(
+      unit: deployment_publication_service_unit_name(names: spec.names),
+      file: live_deploy_publication_service_unit_file(spec: spec),
     ),
     oneshot: observe_belt_oneshot_standing(
       unit: deployment_belt_service_unit_name(names: spec.names),

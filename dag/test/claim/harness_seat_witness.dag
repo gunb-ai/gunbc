@@ -4,7 +4,7 @@ import std.types { Bool, String, Int, NonEmptyStr }
 import std.measure { second_count }
 import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant }
-import product.capacity.lease { QuiescenceRequired, FencedResource }
+import std.resource_release_law { QuiescenceRequired, FencedResource }
 import gunbc.harness.harness_seat {
   harness_seat_partition, SeatCeilingByDeclaredPolicy, AdmissionCeilingUnestablished,
   harness_seat_capacity_for, harness_interactive_quality_seats, harness_seat_reference,

@@ -43,7 +43,8 @@ import gunbc.harness.harness_seat { harness_turn_request, harness_seat_pointer_o
   HarnessReleaseCapability, harness_release_capability_wire,
   ServingModelRequirement, AnyAdmittedModel,
 }
-import product.capacity.lease { LeasePolicy, LeaseGrant, QuiescenceRequired, GrantIdentity }
+import std.resource_release_law { QuiescenceRequired }
+import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity }
 import product.fabric.demand { AdmissionTerms, BuyTerms, DemandObjective, admission_terms, debt_payoff_objective }
 import extdeps.currency.currency { Usd }
 import gunbc.serving.serving_front_door {

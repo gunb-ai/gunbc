@@ -617,7 +617,7 @@ test fn the_event_services_run_their_entries_as_the_belt_service_does() -> Bool 
   let shared = ["Type=oneshot", "User=briansrls", "Slice=gunbc-roadmap.slice", "Environment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc"]
   for_all(shared, predicate: fn(l) { any(drain, d => d == l) && any(discovery, d => d == l) && any(belt, d => d == l) })
     && any(drain, l => string_contains(s: l, pattern: "--function belt_exit_drain_cli"))
-    && any(discovery, l => string_contains(s: l, pattern: "--function belt_discover_once_cli"))
+    && any(discovery, l => string_contains(s: l, pattern: "--function belt_publication_answer_drain_cli"))
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

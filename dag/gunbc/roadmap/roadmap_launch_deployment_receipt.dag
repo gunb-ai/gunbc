@@ -470,11 +470,19 @@ fn unit_standing_blockers(f: LaunchUnitStanding) -> List<RoadmapLaunchDeployment
     BeltEventPathConverged { unit: _ } => []
     BeltEventPathRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_event_path_standing_text(s: f.answer_path))
   }
+  let publication_path = match f.publication_path {
+    BeltEventPathConverged { unit: _ } => []
+    BeltEventPathRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_event_path_standing_text(s: f.publication_path))
+  }
+  let publication_helper = match f.publication_helper {
+    BeltOneshotConverged { unit: _, active_state: _ } => []
+    BeltOneshotRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_oneshot_standing_text(s: f.publication_helper))
+  }
   let oneshot = match f.oneshot {
     BeltOneshotConverged { unit: _, active_state: _ } => []
     BeltOneshotRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_oneshot_standing_text(s: f.oneshot))
   }
-  concat(concat(concat(dashboard, exit_path), answer_path), oneshot)
+  concat(concat(concat(concat(concat(dashboard, exit_path), answer_path), publication_path), publication_helper), oneshot)
 }
 
 fn tick_blockers(s: RoadmapLaunchDeploymentSubject, f: TickFact) -> List<RoadmapLaunchDeploymentBlocker> {

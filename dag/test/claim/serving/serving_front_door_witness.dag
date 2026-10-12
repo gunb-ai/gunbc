@@ -14,7 +14,10 @@ import gunbc.harness.harness_seat {
   HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_pool_identity_at,
   harness_seat_reference_record, harness_seat_reference_wire,
 }
-import product.capacity.lease { LeaseGrant, GrantIdentity, LeasePolicy, QuiescenceRequired, Quiescent, QuiescenceUnobserved, lease_grant, lease_fence_of }
+import std.durable_compare_and_set { CasGeneration }
+import std.durable_exclusive_hold { HolderObservedDead, HolderLivenessUnobservable }
+import std.resource_release_law { QuiescenceRequired }
+import product.capacity.lease { LeaseGrant, GrantIdentity, LeasePolicy, lease_grant, lease_fence_of }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEnvelope, ChainEvent, ChainWalk, ChainWalked, HeadExpectation, HeadAbsent, HeadAt,
   AppendAdmitted, AppendStale, decide_append,
@@ -95,7 +98,7 @@ data request_two: NonEmptyStr = "request-2" as NonEmptyStr
 // THE ACQUISITION IS THE FIRST EVENT OF ITS PARTITION, so the fence generation it admitted is 1.
 data witness_grant: LeaseGrant = lease_grant(
   reference: witness_reference,
-  fence: lease_fence_of(admitting_event: witness_admitting, generation: 1),
+  fence: lease_fence_of(admitting_event: witness_admitting, generation: 1 as CasGeneration),
   granted_at: witness_granted_at,
   policy: LeasePolicy { maximum_duration_seconds: witness_term, release_law: QuiescenceRequired },
 )
@@ -537,11 +540,11 @@ test fn controller_death_after_redemption_leaves_recoverable_charged_state() -> 
     ReleaseOwnedByGate { request: _, holder: _ } => true
     _ => false
   }
-  let charged = match redemption_recovery(state: state, quiescence: QuiescenceUnobserved) {
+  let charged = match redemption_recovery(state: state, holder: HolderLivenessUnobservable { cause: "unobserved" as NonEmptyStr }) {
     RecoveryHoldCharged { request: q, holder: h, since: s } => (q as String) == (request_one as String) && (h as String) == (proxy as String) && s == 1050
     _ => false
   }
-  let recoverable = match redemption_recovery(state: state, quiescence: Quiescent { observed_at: 1300 }) {
+  let recoverable = match redemption_recovery(state: state, holder: HolderObservedDead { evidence: "quiescent" as NonEmptyStr }) {
     RecoveryEndThenRelease { request: q } => (q as String) == (request_one as String)
     _ => false
   }
@@ -577,11 +580,11 @@ test fn two_seat_records_that_collide_under_a_plain_join_render_apart() -> Bool 
 // or without a quiescence observation -- leaves it with its holder; it is not a release.
 test fn an_acquired_seat_that_was_never_redeemed_survives_recovery() -> Bool {
   let state = redemption_state_of(walk: no_redemptions, reference: witness_reference)
-  let left_quiescent = match front_door_recovery_plan(recovery: redemption_recovery(state: state, quiescence: Quiescent { observed_at: 1300 })) {
+  let left_quiescent = match front_door_recovery_plan(recovery: redemption_recovery(state: state, holder: HolderObservedDead { evidence: "quiescent" as NonEmptyStr })) {
     PlanLeaveWithHolder => true
     _ => false
   }
-  let left_unobserved = match front_door_recovery_plan(recovery: redemption_recovery(state: state, quiescence: QuiescenceUnobserved)) {
+  let left_unobserved = match front_door_recovery_plan(recovery: redemption_recovery(state: state, holder: HolderLivenessUnobservable { cause: "unobserved" as NonEmptyStr })) {
     PlanLeaveWithHolder => true
     _ => false
   }
@@ -594,7 +597,7 @@ test fn a_seat_whose_use_ended_but_was_not_released_is_released_by_recovery() ->
     redemption_envelope(id: "ev-redeem-1" as NonEmptyStr, payload: GrantRedeemed { reference: witness_reference, request: request_one, holder: proxy }),
     redemption_envelope(id: "ev-end-1" as NonEmptyStr, payload: GrantUseEnded { reference: witness_reference, request: request_one, outcome: "stream complete" as NonEmptyStr }),
   ] }
-  match front_door_recovery_plan(recovery: redemption_recovery(state: redemption_state_of(walk: ended, reference: witness_reference), quiescence: QuiescenceUnobserved)) {
+  match front_door_recovery_plan(recovery: redemption_recovery(state: redemption_state_of(walk: ended, reference: witness_reference), holder: HolderLivenessUnobservable { cause: "unobserved" as NonEmptyStr })) {
     PlanRelease => true
     _ => false
   }

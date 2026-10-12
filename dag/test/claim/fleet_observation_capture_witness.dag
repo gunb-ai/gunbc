@@ -5,12 +5,13 @@ import std.nat { Nat }
 import std.measure { ByteSize, byte_size, ObservationInstant, ClockDomain, ProcessMonotonic, SharedMonotonic, ClockBasis, WallClock }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.durable_compare_and_set { CasGeneration }
 import std.temporal_effect {
   HeldLease,
   LeaseEpoch,
   LeaseAbsent,
   LeaseRunningExpected,
-  LeaseRunningStale,
+  LeaseRunningPastExpiry,
   LeasePortForeign,
   LeaseInaccessible,
 }
@@ -221,7 +222,7 @@ fn t_lease(generation: Int) -> HeldLease {
       lease_key: "synthetic-endpoint"
       resource_fingerprint: content_hash_of_value(value: "synthetic-endpoint")
       owner_fingerprint: content_hash_of_value(value: "synthetic-collector-a")
-      generation: generation
+      generation: generation as CasGeneration
     },
     observed: LeaseRunningExpected
   }
@@ -603,8 +604,8 @@ test fn w_foreign_session_is_never_stolen() -> Bool {
 test fn w_ownership_transitions_are_distinguished() -> Bool {
   acquired(outcome: acquire_ownership(session: t_session, observed: LeaseAbsent, observed_generation: 0, requested_generation: 1))
   && renewed(outcome: acquire_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 4, requested_generation: 4))
-  && taken_over(outcome: acquire_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 4, requested_generation: 5))
-  && refuses_backwards(outcome: acquire_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 9, requested_generation: 2))
+  && taken_over(outcome: acquire_ownership(session: t_session, observed: LeaseRunningPastExpiry, observed_generation: 4, requested_generation: 5))
+  && refuses_backwards(outcome: acquire_ownership(session: t_session, observed: LeaseRunningPastExpiry, observed_generation: 9, requested_generation: 2))
 }
 
 // RELEASE IS OBSERVED, AND ONLY THE HOLDER MAY RELEASE. A collector that simply stops is
@@ -614,7 +615,7 @@ test fn w_ownership_transitions_are_distinguished() -> Bool {
 test fn w_release_is_observed_and_only_by_the_holder() -> Bool {
   released(outcome: release_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 4, held_generation: 4))
   && refuses_unheld_release(outcome: release_ownership(session: t_session, observed: LeaseAbsent, observed_generation: 0, held_generation: 4))
-  && refuses_unheld_release(outcome: release_ownership(session: t_session, observed: LeaseRunningStale, observed_generation: 4, held_generation: 4))
+  && refuses_unheld_release(outcome: release_ownership(session: t_session, observed: LeaseRunningPastExpiry, observed_generation: 4, held_generation: 4))
   && refuses_foreign(outcome: release_ownership(session: t_session, observed: LeasePortForeign, observed_generation: 4, held_generation: 4))
   && refuses_backwards(outcome: release_ownership(session: t_session, observed: LeaseRunningExpected, observed_generation: 9, held_generation: 4))
 }

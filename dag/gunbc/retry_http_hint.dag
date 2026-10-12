@@ -1,0 +1,17 @@
+module gunbc.retry_http_hint
+
+import std.nat { Nat }
+import std.retry_law { retry_hint_from_delta_seconds, retry_no_hint }
+import std.measure { second_count }
+import extdeps.ietf.http_semantics { HttpRetryAfter, RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent, RetryAfterUnread }
+
+// HttpRetryAfter is an upstream HINT into std.retry_law, never a second retry authority.
+// Unparsed, absent and unread hints do not fabricate a delay.
+fn retry_hint_from_http(after: HttpRetryAfter) -> Nat? {
+  match after {
+    RetryAfterSeconds { seconds: s } => retry_hint_from_delta_seconds(seconds: second_count(s: s))
+    RetryAfterUnparsed { text: _ } => retry_no_hint()
+    RetryAfterAbsent => retry_no_hint()
+    RetryAfterUnread { cause: _ } => retry_no_hint()
+  }
+}

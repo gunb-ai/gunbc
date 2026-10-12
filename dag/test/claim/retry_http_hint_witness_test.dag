@@ -1,0 +1,14 @@
+module test.claim.retry_http_hint_witness
+
+import std.types { Bool }
+import std.measure { second }
+import std.optional { Present, Absent }
+import extdeps.ietf.http_semantics { RetryAfterSeconds, RetryAfterAbsent, RetryAfterUnparsed, RetryAfterUnread }
+import gunbc.retry_http_hint { retry_hint_from_http }
+
+test fn http_retry_after_seconds_is_a_lower_bound_hint_and_unread_is_none() -> Bool {
+  (match retry_hint_from_http(after: RetryAfterSeconds { seconds: second(count: 7) }) { Present { value: n } => n == 7  Absent => false })
+    && (match retry_hint_from_http(after: RetryAfterAbsent) { Absent => true  Present { value: _ } => false })
+    && (match retry_hint_from_http(after: RetryAfterUnparsed { text: "Fri, 31 Dec 1999 23:59:59 GMT" }) { Absent => true  Present { value: _ } => false })
+    && (match retry_hint_from_http(after: RetryAfterUnread { cause: "headers missing" }) { Absent => true  Present { value: _ } => false })
+}

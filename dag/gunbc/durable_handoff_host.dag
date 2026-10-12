@@ -1,0 +1,125 @@
+module gunbc.durable_handoff_host
+
+import std.types { String, Bool, List }
+import std.optional { Present, Absent }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
+
+// ONE HOST SPOOL, over an entry codec. The belt exit spool
+// (gunbc.roadmap.roadmap_attempt_exit_spool) is the first instance: its stage names are kept
+// exactly, because bytes and unit names already on disk are a compatibility contract. The
+// publication helper's requests/answers/refused directories are the second instance: they
+// inhabit the same enqueue law (create-only) rather than overwrite.
+//
+// Standings of the item the entry names are Wave C's projection; this module does not invent
+// them. A stage is responsibility for the ENTRY, not the work's standing.
+//
+// ENQUEUE IS CREATE-ONLY. A second write of the same name does not replace the first. The
+// publication request used to overwrite; its content is a pure function of the subject, so
+// create-only is idempotent for a key already present.
+
+type HostSpoolStage
+  = AttemptExitInbox
+  | AttemptExitQueued
+  | AttemptExitRunning
+  | AttemptExitDone
+  | AttemptExitRefused
+
+fn host_spool_stage_wire(stage: HostSpoolStage) -> String {
+  match stage {
+    AttemptExitInbox => "inbox"
+    AttemptExitQueued => "queued"
+    AttemptExitRunning => "running"
+    AttemptExitDone => "done"
+    AttemptExitRefused => "refused"
+  }
+}
+
+type HostSpoolEnqueueLaw
+  = CreateOnlyEnqueue
+
+data host_spool_enqueue_law: HostSpoolEnqueueLaw = CreateOnlyEnqueue
+
+type HostSpoolCreateObservation
+  = HostSpoolNameAbsent
+  | HostSpoolNamePresent
+  | HostSpoolNameUnreadable { detail: String }
+
+type HostSpoolEnqueue
+  = HostSpoolEntryCreated { name: String }
+  | HostSpoolEntryAlreadyPresent { name: String }
+  | HostSpoolEnqueueRefused { name: String, detail: String }
+
+fn host_spool_enqueue_assess(name: String, observed: HostSpoolCreateObservation) -> HostSpoolEnqueue {
+  match observed {
+    HostSpoolNameAbsent => HostSpoolEntryCreated { name: name }
+    HostSpoolNamePresent => HostSpoolEntryAlreadyPresent { name: name }
+    HostSpoolNameUnreadable { detail: d } => HostSpoolEnqueueRefused { name: name, detail: d }
+  }
+}
+
+fn host_spool_create_only_command(path: String) -> ArgvCommand {
+  mkdir_create_only_command(path: path)
+}
+
+// QUEUE HEALTH: depth by stage and the oldest owed age, with bounds as per-queue rows.
+// gunbc.roadmap_launch_deployment_observe event_backlog_judge is the first reading of this.
+type HostSpoolHealthEntry {
+  stage: HostSpoolStage
+  entry: String
+  age_seconds: Int
+}
+
+type HostSpoolHealthBound {
+  stage: HostSpoolStage
+  bound_seconds: Int
+}
+
+type HostSpoolHealth
+  = HostSpoolHealthClear { depth_inbox: Int, depth_queued: Int, depth_running: Int }
+  | HostSpoolHealthStale { stage: HostSpoolStage, entry: String, age_seconds: Int, bound_seconds: Int }
+  | HostSpoolHealthUnobserved { detail: String }
+
+fn host_spool_bound_for(bounds: List<HostSpoolHealthBound>, stage: HostSpoolStage) -> Int? {
+  fold(bounds, init: none, f: (acc, b) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if host_spool_stage_wire(stage: b.stage) == host_spool_stage_wire(stage: stage) {
+      Present { value: b.bound_seconds }
+    } else {
+      none
+    }
+  })
+}
+
+fn host_spool_health_is_stale(e: HostSpoolHealthEntry, bounds: List<HostSpoolHealthBound>) -> Bool {
+  match host_spool_bound_for(bounds: bounds, stage: e.stage) {
+    Present { value: b } => e.age_seconds > b
+    Absent => true
+  }
+}
+
+fn host_spool_health_judge(entries: List<HostSpoolHealthEntry>, bounds: List<HostSpoolHealthBound>) -> HostSpoolHealth {
+  let stale = filter(entries, e => host_spool_health_is_stale(e: e, bounds: bounds))
+  match fold(stale, init: none, f: (acc, e) => match acc {
+    Absent => Present { value: e }
+    Present { value: o } => if e.age_seconds > o.age_seconds { Present { value: e } } else { Present { value: o } }
+  }) {
+    Present { value: o } =>
+      match host_spool_bound_for(bounds: bounds, stage: o.stage) {
+        Present { value: b } => HostSpoolHealthStale {
+          stage: o.stage,
+          entry: o.entry,
+          age_seconds: o.age_seconds,
+          bound_seconds: b,
+        }
+        Absent => HostSpoolHealthUnobserved {
+          detail: join(["no bound for stage ", host_spool_stage_wire(stage: o.stage)], ""),
+        }
+      }
+    Absent => HostSpoolHealthClear {
+      depth_inbox: count(filter(entries, e => host_spool_stage_wire(stage: e.stage) == "inbox")),
+      depth_queued: count(filter(entries, e => host_spool_stage_wire(stage: e.stage) == "queued")),
+      depth_running: count(filter(entries, e => host_spool_stage_wire(stage: e.stage) == "running")),
+    }
+  }
+}

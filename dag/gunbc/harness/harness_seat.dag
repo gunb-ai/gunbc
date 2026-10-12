@@ -28,7 +28,9 @@ import product.capacity.event_chain {
 import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved, SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
 }
-import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity, QuiescenceRequired }
+import std.retry_law { RetryLaw }
+import std.resource_release_law { QuiescenceRequired }
+import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log {
   HeadExpectation, event_log_refusal_wire, SeatStoreRefused, SeatStandingStoreRefused, HeadObserved, HeadObservationRefused, event_log_observe_head, EventAppended,
@@ -1163,7 +1165,13 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
   }
 }
 
-data harness_placement_rounds: Nat = 3
+data harness_seat_retry_law: RetryLaw = RetryLaw {
+  initial_delay_seconds: 0,
+  delay_cap_seconds: 1,
+  real_work_failure_bound: 3,
+}
+
+data harness_placement_rounds: Nat = harness_seat_retry_law.real_work_failure_bound
 
 // NO ADMISSIBLE OFFER IS A REFUSAL OR A PENDING, NEVER A DEGRADED PATH. The arm this replaces walked
 // the roster and took whatever granted a seat, which is the same shape as the router's "the request
