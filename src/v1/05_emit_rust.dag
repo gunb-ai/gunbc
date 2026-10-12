@@ -8429,15 +8429,27 @@ fn emit_enum_from_children(name: String, type_params: String, generic_param_name
 // before emit. Refusing the render here -- at the arm that lacks the field -- is what makes no
 // Accepted program emit a compiler-authored panic arm for a missing field (the 137 become located
 // refusals rather than fail-open panic arms).
+//
+// The synthetic positional-payload field (a sum-of-structs arm whose sole field is named "0") is
+// not a candidate: no .dag source can name it -- the parser's field-access path (parse.dag
+// expect_name) admits only ShIdent / keyword tokens, so a field access whose name is a digit
+// never parses, and the type checker's all-arms rule therefore never sees the synthetic "0" as a
+// common field. Counting it would turn a sum of structs (e.g. std.content_hash ContentHash,
+// extdeps container/oci/digest OciContentDigest) into a phantom shared field.
+fn field_is_addressable_authored_field(f: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  field_node_name_at(n: f, source_indices: source_indices) != "0"
+}
+
 fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
   if children |> count == 0 { return [] }
   let first_fields = match children |> first {
-    Present { value: v } => v.children |> map(f => authored_name(env: env, node: f))
+    Present { value: v } => v.children |> filter(f => field_is_addressable_authored_field(f: f, source_indices: env.source_indices)) |> map(f => authored_name(env: env, node: f))
     Absent => []
   }
   first_fields |> filter(fname =>
     children |> all(variant =>
-      variant.children |> any(f => authored_name(env: env, node: f) == fname)
+      variant.children |> filter(f => field_is_addressable_authored_field(f: f, source_indices: env.source_indices))
+        |> any(f => authored_name(env: env, node: f) == fname)
     )
   )
 }
