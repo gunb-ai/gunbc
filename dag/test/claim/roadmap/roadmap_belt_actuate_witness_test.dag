@@ -109,6 +109,7 @@ import gunbc.roadmap_belt_actuate {
   CommitSubjectUnaddressable, CandidateCaptured, CommitCapturePoisoned,
   belt_commit_outcome_receipt, belt_commit_outcome_receipt_json,
   BeltCommitRecordStanding, CommitStepSettled, CommitStepOwed, CommitStepRefused, belt_commit_record_standing_of_text,
+  belt_commit_outcome_key, belt_commit_outcome_kind_of_key, belt_commit_outcome_kind_key,
   belt_commit_outcome_is_failure, belt_commit_outcome_is_recorded,
   belt_commit_pass_outcome_from, belt_commit_outcome_json_value,
   belt_tick_result_json_value,
@@ -3376,11 +3377,23 @@ test fn a_refused_metering_write_fails_the_metering_pass() -> Bool {
     })
 }
 
+// THE KEY THE WRITER PERSISTS DECODES BACK TO ITS OWN KIND through the one table, so a kind left out of
+// the decode roster reds here whatever its disposition -- a refusing kind would otherwise refuse through
+// the unknown-outcome arm and hide the gap.
+fn commit_outcome_key_round_trips(o: BeltCommitOutcome) -> Bool {
+  match belt_commit_outcome_kind_of_key(key: belt_commit_outcome_key(o: o)) {
+    Present { value: k } => belt_commit_outcome_kind_key(k: k) == belt_commit_outcome_key(o: o)
+    Absent => false
+  }
+}
+
 fn commit_record_standing_key(o: BeltCommitOutcome) -> String {
+  if !commit_outcome_key_round_trips(o: o) { "unrostered" } else {
   match belt_commit_record_standing_of_text(content: serialize_json(v: belt_commit_outcome_receipt_json(r: belt_commit_outcome_receipt(o: o, attempt_key: "feedfacefeedface")))) {
     CommitStepSettled => "settled"
     CommitStepOwed { reason: _ } => "owed"
     CommitStepRefused { reason: _ } => "refused"
+  }
   }
 }
 
