@@ -1,20 +1,50 @@
 module gunbc.serving.flashinfer_cutlass_moe_scratch_observation
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, BasisPoint, basis_point, basis_point_count }
+import std.measure { ByteSize, byte_size, byte_size_count, BasisPoint, basis_point, basis_point_count, watt_count }
+import std.optional { Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.gpu.types { GpuModelCatalogRow, gpu_package_form_eq }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog }
 
 data flashinfer_moe_scratch_read_obligation: NonEmptyStr = "Re-read the pinned vLLM launch log for Flash-Next NVFP4 on RTX PRO 6000 at TP2+EP: FlashInfer CUTLASS MoE scratch GiB at max_num_batched_tokens 32768 versus the profiled budget at gpu_memory_utilization 0.85, and the 8192 value that started. Until a P3 receipt fold derives those bytes from committed raw text, this row is an observation transcribed from that launch, not an upstream vLLM or FlashInfer law." as NonEmptyStr
+
+type FlashNextWeightQuant = | Nvfp4
+
+fn flash_next_weight_quant_eq(a: FlashNextWeightQuant, b: FlashNextWeightQuant) -> Bool {
+  match a {
+    Nvfp4 =>
+      match b {
+        Nvfp4 => true
+      }
+  }
+}
+
+fn gpu_catalog_sku_eq(a: GpuModelCatalogRow, b: GpuModelCatalogRow) -> Bool {
+  gpu_package_form_eq(a: a.package, b: b.package)
+    && byte_size_count(b: a.memory.capacity) == byte_size_count(b: b.memory.capacity)
+    && (match a.tdp_watts {
+      Absent =>
+        match b.tdp_watts {
+          Absent => true
+          Present { value: _ } => false
+        }
+      Present { value: aw } =>
+        match b.tdp_watts {
+          Absent => false
+          Present { value: bw } => watt_count(w: aw) == watt_count(w: bw)
+        }
+    })
+}
 
 type FlashInferCutlassMoeScratchObservation {
   max_num_batched_tokens: Nat
   gpu_memory_utilization: BasisPoint
   tensor_parallel: Nat
   expert_parallel: Bool
-  weight_quant: NonEmptyStr
-  accelerator_model: NonEmptyStr
+  weight_quant: FlashNextWeightQuant
+  accelerator: GpuModelCatalogRow
   scratch: ByteSize
   started_at_tokens: Nat
   standing: CitedFigureStanding
@@ -25,8 +55,8 @@ fn flashinfer_cutlass_moe_scratch_observation(
   gpu_memory_utilization: BasisPoint,
   tensor_parallel: Nat,
   expert_parallel: Bool,
-  weight_quant: NonEmptyStr,
-  accelerator_model: NonEmptyStr,
+  weight_quant: FlashNextWeightQuant,
+  accelerator: GpuModelCatalogRow,
   scratch: ByteSize,
   started_at_tokens: Nat,
   standing: CitedFigureStanding,
@@ -37,7 +67,7 @@ fn flashinfer_cutlass_moe_scratch_observation(
     tensor_parallel: tensor_parallel,
     expert_parallel: expert_parallel,
     weight_quant: weight_quant,
-    accelerator_model: accelerator_model,
+    accelerator: accelerator,
     scratch: scratch,
     started_at_tokens: started_at_tokens,
     standing: standing,
@@ -49,8 +79,8 @@ data flash_next_nvfp4_pro6000_tp2_ep_moe_scratch: FlashInferCutlassMoeScratchObs
   gpu_memory_utilization: basis_point(count: 8500),
   tensor_parallel: 2,
   expert_parallel: true,
-  weight_quant: "nvfp4" as NonEmptyStr,
-  accelerator_model: nvidia_rtx_pro_6000_workstation_catalog.model,
+  weight_quant: Nvfp4,
+  accelerator: nvidia_rtx_pro_6000_workstation_catalog,
   scratch: byte_size(count: 3457466670),
   started_at_tokens: 8192,
   standing: TranscribedUncited { read_obligation: flashinfer_moe_scratch_read_obligation },
@@ -62,13 +92,13 @@ fn moe_scratch_matches_launch(
   gpu_memory_utilization: BasisPoint,
   tensor_parallel: Nat,
   expert_parallel: Bool,
-  weight_quant: NonEmptyStr,
-  accelerator_model: NonEmptyStr,
+  weight_quant: FlashNextWeightQuant,
+  accelerator: GpuModelCatalogRow,
 ) -> Bool {
   obs.max_num_batched_tokens == max_num_batched_tokens
     && basis_point_count(bp: obs.gpu_memory_utilization) == basis_point_count(bp: gpu_memory_utilization)
     && obs.tensor_parallel == tensor_parallel
     && obs.expert_parallel == expert_parallel
-    && (obs.weight_quant as String) == (weight_quant as String)
-    && (obs.accelerator_model as String) == (accelerator_model as String)
+    && flash_next_weight_quant_eq(a: obs.weight_quant, b: weight_quant)
+    && gpu_catalog_sku_eq(a: obs.accelerator, b: accelerator)
 }

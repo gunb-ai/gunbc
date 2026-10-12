@@ -99,16 +99,27 @@ type GpuPackageForm
   | SxmModule
   | IntegratedComputePackage
 
-fn gpu_package_form_wire(p: GpuPackageForm) -> String {
-  match p {
-    PcieAddInCard => "pcie_add_in_card"
-    SxmModule => "sxm_module"
-    IntegratedComputePackage => "integrated_compute_package"
-  }
-}
-
 fn gpu_package_form_eq(a: GpuPackageForm, b: GpuPackageForm) -> Bool {
-  gpu_package_form_wire(p: a) == gpu_package_form_wire(p: b)
+  match a {
+    PcieAddInCard =>
+      match b {
+        PcieAddInCard => true
+        SxmModule => false
+        IntegratedComputePackage => false
+      }
+    SxmModule =>
+      match b {
+        PcieAddInCard => false
+        SxmModule => true
+        IntegratedComputePackage => false
+      }
+    IntegratedComputePackage =>
+      match b {
+        PcieAddInCard => false
+        SxmModule => false
+        IntegratedComputePackage => true
+      }
+  }
 }
 
 // figure_citations cites the row's other published figures (bandwidth, power, memory, lane count),

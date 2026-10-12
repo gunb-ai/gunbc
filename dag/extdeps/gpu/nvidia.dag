@@ -471,15 +471,3 @@ data nvidia_b300_sxm_figure_citations: List<FactCitation> = [
     authority: hgx_b300_authority,
   },
 ]
-
-data home_serving_add_in_card_catalog_rows: List<GpuModelCatalogRow> = [
-  nvidia_rtx_pro_5000_48gb_catalog,
-  nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_rtx_pro_6000_workstation_catalog,
-  nvidia_rtx_pro_6000_max_q_catalog,
-]
-
-data home_serving_reference_sxm_catalog_rows: List<GpuModelCatalogRow> = [
-  nvidia_b200_sxm_catalog,
-  nvidia_b300_sxm_catalog,
-]

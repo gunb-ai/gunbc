@@ -1,0 +1,26 @@
+module gunbc.serving.home_serving_accelerator_field
+
+import std.types { List }
+import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.gpu.nvidia {
+  nvidia_rtx_pro_5000_48gb_catalog,
+  nvidia_rtx_pro_5000_72gb_catalog,
+  nvidia_rtx_pro_6000_workstation_catalog,
+  nvidia_rtx_pro_6000_max_q_catalog,
+  nvidia_b200_sxm_catalog,
+  nvidia_b300_sxm_catalog,
+}
+
+// HOME-SERVING POLICY, not NVIDIA's catalog: which cited add-in cards are purchase candidates
+// and which SXM modules are references only. CONSUMER: P4 home-serving selection.
+data home_serving_add_in_card_catalog_rows: List<GpuModelCatalogRow> = [
+  nvidia_rtx_pro_5000_48gb_catalog,
+  nvidia_rtx_pro_5000_72gb_catalog,
+  nvidia_rtx_pro_6000_workstation_catalog,
+  nvidia_rtx_pro_6000_max_q_catalog,
+]
+
+data home_serving_reference_sxm_catalog_rows: List<GpuModelCatalogRow> = [
+  nvidia_b200_sxm_catalog,
+  nvidia_b300_sxm_catalog,
+]
