@@ -1465,7 +1465,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v2-emitter-direct-rust-door",
       owner: "self-host",
       carriers: carrier(path: "src/v2/compiler/self_host/candidate_generation.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "Have the new compiler write out Rust source itself",
         boundary: "Read the source, work out the types, translate, and write real Rust to disk without the old generator deciding any of it. The old runner may still be what executes this; it just stops making the decisions.",
         displaced_cost: "Until the new compiler can write Rust on its own, every improvement has to go through the generator we are trying to delete.",
@@ -1473,7 +1473,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A deliberately missing Rust rule must refuse rather than guess, and taking the old generator away must leave the written source unchanged.",
         out_of_scope: "Not building the new generator as a native program yet, and no second set of Rust rules beside the ones we already have.",
         handback: "The written source, the compile result, which generator made it, and proof the old one was never called."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: direct_rust_door_production_group_closing_expectation_holds (src/v2/test/claim/long/direct_rust_door_production_group_test.dag), reported green since 2026-09-06.")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event: direct_rust_door_production_group_closing_expectation_holds (src/v2/test/claim/long/direct_rust_door_production_group_test.dag), reported green since 2026-09-06."), on: "2026-10-12", note: "Returned at the operator's acceptance review (2026-10-12), not accepted. direct_rust_door_production_group_closing_expectation_holds passes over the Rust source as an in-memory string; the handback promises the written source and its compile result, and neither is produced. Handback owed: the source written to a file, rustc's result on it, and the missing-rule refusal executed on that same route.")),
       dispatch: dispatchable(),
       execution: bound(contract: v2_emitter_direct_rust_door_execution_contract()),
       parent: in_project(project: "v2-emitter-production", contribution: "Carrying the real inferred tree through translation and writing Rust with the old generator deciding nothing is the capability this lane exists to name: the new compiler writes the source the factory is built from."),
@@ -5855,7 +5855,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       id: "v2-self-grounding-frontier",
       owner: "compiler-guarantee",
       carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
         headline: "v2 self-grounding slice — LANDED (gunbc#7485, merged; acceptance receipt recorded 2026-08-01)",
         boundary: "ACCEPTED against its handback (operator spine verdict): exact self-evidence left solve_constraints' generic arm; underived facts are typed, located, counted GroundingNotDerived diagnostics inside an accepted InferredTree — the FrontierAccepted disposition's live specimen. Identity admission reads the authored declared-inhabitant roster, never caller-supplied candidates. The documented residue is the NEXT node's whole scope: Translate can still swallow the refusal and proceed.",
         displaced_cost: "Silent self-certification became a counted frontier: the deficit ranks for fixing instead of reading as green.",
@@ -5863,7 +5863,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         red_control: "The claims carrier's v2 self-grounding path flips BelowFloor-to-FrontierAccepted exactly here; the identity path refuses caller-supplied candidate sets.",
         out_of_scope: "Translate propagation; carrier completeness; target realization (each its own node downstream).",
         handback: "The merged receipts and the frontier diagnostic counts by class."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall_test.dag."), on: "2026-09-30", note: "Not yet centered: awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall_test.dag.")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall_test.dag."), on: "2026-09-30", note: "Not yet centered: awaiting the operator's acceptance event; evidence: #7485 merged, receipt recorded 2026-08-01; src/v2/test/claim/infer_self_grounding_wall_test.dag."), on: "2026-10-12", note: "Returned at the operator's acceptance review (2026-10-12), not accepted. src/v2/test/claim/infer_self_grounding_wall_test.dag shows underived facts as counted diagnostics, but neither red_control clause is executed by any witness: the claims carrier's self-grounding path flipping BelowFloor to FrontierAccepted, and the identity path refusing a caller-supplied candidate set. The headline's 'acceptance receipt recorded 2026-08-01' has no entry in roadmap_acceptance_event_history. Handback owed: those two controls, executed.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-shared-type-check", contribution: "v2 infer refuses a self-certified fact."),
     ),
@@ -5872,7 +5872,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       id: "v2-translate-underived-refusal",
       owner: "compiler-guarantee",
       carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
         headline: "Translate propagates the refusal: an underived fact cannot be swallowed downstream",
         boundary: "ACTIVE — the containment workstream, authorized to run parallel with the spine (operator spine verdict 2026-08-01: not another optional wall; it closes the one documented fail-open the merged frontier split created). gunbc#7485 records that Translate can swallow the new GroundingNotDerived rejection and continue — the frontier diagnostic exists but the emission path proceeds. Make Translate refuse or thread the typed frontier so Eval and Translate agree: compile-time refusal on both is the class minimum. The per-path grain is exactly why the carrier models paths separately.",
         displaced_cost: "Closes the path split where the same underived fact refuses in one phase and ships in another — the subject-grain failure mode measured on the call-shape class.",
@@ -5880,7 +5880,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         red_control: "A source tree with an underived fact refuses translation naming the fact; every derived corpus module still translates.",
         out_of_scope: "New derivation rules; realization.",
         handback: "The refusal arm, probe flip, per-path disposition receipts."
-      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event once its witness is located: the 06_translate GroundingNotDerived refusal (src/v2/compiler/06_translate.dag) with its paired probe; any expecting-red enrolment flips to a regression control."), on: "2026-09-30", note: "Not yet centered: witness not yet located by name; find it before dispatch.")),
+      ), on: "2026-09-30", note: "Awaiting the operator's acceptance event once its witness is located: the 06_translate GroundingNotDerived refusal (src/v2/compiler/06_translate.dag) with its paired probe; any expecting-red enrolment flips to a regression control."), on: "2026-09-30", note: "Not yet centered: witness not yet located by name; find it before dispatch."), on: "2026-10-12", note: "Returned at the operator's acceptance review (2026-10-12), not accepted. translate_refuses_underived_bodied_arrow_holds (src/v2/test/claim/translate_underived_refusal_test.dag) fails on main because infer itself rejects its specimen (v2.test.complexity_gate.table_fixture_add_subject_producer table_fixture_add_arrow_with_body, fatal infer_grounding_not_derived), so translation is never reached. Handback owed: a specimen whose underived fact reaches translate and is refused there, or a ruling that the infer refusal is the boundary, with the red_control and its witness changed to say so.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-shared-type-check", contribution: "Translate refusing an underived fact keeps a typing gap from being swallowed downstream."),
     ),
