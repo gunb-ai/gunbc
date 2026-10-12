@@ -7829,22 +7829,22 @@ type BeltCommitOutcomeReceipt {
 // skipped -- because a settlement is a fact about one head: the head-grain capture lookup reads it only
 // for the head it was asked about (belt_commit_record_standing_of_text). An unobserved head is recorded
 // as none, which settles nothing.
-fn belt_commit_outcome_receipt(o: BeltCommitOutcome, attempt_key: String, head_sha: String?) -> BeltCommitOutcomeReceipt {
+fn belt_commit_outcome_receipt(o: BeltCommitOutcome, attempt_key: String, settled_head: String?) -> BeltCommitOutcomeReceipt {
   match o {
     CommitRecorded { node_id, message } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, outcome: belt_commit_outcome_key(o: o), detail: message }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: message }
     CandidateCaptured { node_id, head_sha, message } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, outcome: belt_commit_outcome_key(o: o), detail: join([message, " at ", head_sha], "") }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: join([message, " at ", head_sha], "") }
     CommitSkipped { node_id, reason } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, outcome: belt_commit_outcome_key(o: o), detail: reason }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: reason }
     CommitFailed { node_id, detail } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, outcome: belt_commit_outcome_key(o: o), detail: detail }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: detail }
     CommitCapturePoisoned { node_id, detail } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, outcome: belt_commit_outcome_key(o: o), detail: detail }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: detail }
     CommitDeferred { node_id, reason } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, outcome: belt_commit_outcome_key(o: o), detail: reason }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: reason }
     CommitSubjectUnaddressable { node_id, reason } =>
-      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, outcome: belt_commit_outcome_key(o: o), detail: reason }
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, head_sha: settled_head, outcome: belt_commit_outcome_key(o: o), detail: reason }
   }
 }
 
@@ -8045,7 +8045,7 @@ fn belt_commit_outcome_persist(
         r: belt_commit_outcome_receipt(
           o: outcome,
           attempt_key: attempt_key,
-          head_sha: match belt_worktree_head_observe(
+          settled_head: match belt_worktree_head_observe(
             instance: instance,
             worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: attempt_key),
           ) {

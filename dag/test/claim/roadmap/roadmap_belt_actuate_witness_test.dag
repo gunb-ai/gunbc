@@ -2571,7 +2571,7 @@ test fn the_commit_outcome_receipt_carries_the_failing_attempts_arm_and_detail()
   let r = belt_commit_outcome_receipt(
     o: CommitFailed { node_id: "n1", detail: "status: git exited 128: fatal" },
     attempt_key: "abc",
-    head_sha: Present { value: "bbbb" },
+    settled_head: Present { value: "bbbb" },
   )
   let wire = serialize_json(v: belt_commit_outcome_receipt_json(r: r))
   r.node_id == "n1"
@@ -2588,7 +2588,7 @@ test fn the_candidate_receipt_names_the_captured_head() -> Bool {
   let r = belt_commit_outcome_receipt(
     o: CandidateCaptured { node_id: "n1", head_sha: "aaaa", message: "dispatch candidate: n1 aabc" },
     attempt_key: "abc",
-    head_sha: Present { value: "aaaa" },
+    settled_head: Present { value: "aaaa" },
   )
   r.outcome == "candidate-captured"
     && string_contains(s: r.detail, pattern: "aaaa")
@@ -2649,7 +2649,7 @@ test fn the_poisoned_outcome_is_named_in_the_tick_result_and_the_attempt_receipt
   let r = belt_commit_outcome_receipt(
     o: CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" },
     attempt_key: "abc",
-    head_sha: none,
+    settled_head: none,
   )
   string_contains(s: rendered, pattern: "capture-poisoned")
     && string_contains(s: rendered, pattern: "n1")
@@ -3392,7 +3392,7 @@ fn commit_outcome_key_round_trips(o: BeltCommitOutcome) -> Bool {
 }
 
 fn commit_record_text(o: BeltCommitOutcome, head: String?) -> String {
-  serialize_json(v: belt_commit_outcome_receipt_json(r: belt_commit_outcome_receipt(o: o, attempt_key: "feedfacefeedface", head_sha: head)))
+  serialize_json(v: belt_commit_outcome_receipt_json(r: belt_commit_outcome_receipt(o: o, attempt_key: "feedfacefeedface", settled_head: head)))
 }
 
 fn commit_record_standing_key(o: BeltCommitOutcome) -> String {
