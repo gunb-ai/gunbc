@@ -27,12 +27,13 @@ import std.measure { kibibyte }
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
-import std.content_hash { serialize_content_hash, content_hash_atom }
+import std.content_hash { serialize_content_hash, content_hash_atom, content_hash_equal, sha256_hex_digest, as_content_hash_cryptographic }
 import std.cache_identity { compute_work_artifact_kind }
 import std.judgment_contract { ArtifactOutputId, output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs, output_compute_work_gunbc_binary, output_compute_work_claim_batch_binary }
 import std.materialization_ladder { DemandNature, IdempotentEffect, FreshEffect, PureComputation, WorldRead }
 import std.materialization_provider {
   ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_required_outputs, request_judgment_contract,
+  evaluation_store_address, evaluation_store_address_digest, Admitted, IdentityComponentsRefused,
   ArtifactManifest, ArtifactPart, ComputeWorkArtifact, CarriedOutput, artifact_manifest, artifact_from_manifest, artifact_request_key,
   ManifestDecoded, ManifestKindUndeclared, ManifestPartUndeclared, ManifestPartRepeated, LegacyIncompleteArtifact,
 }
@@ -67,10 +68,17 @@ fn tc_axes(rustc: String, triple: String, cargo: String, cache: String, provider
   tc(rustc: rustc, triple: triple, cargo: cargo, cache: cache, provider: provider)
 }
 
+fn provider_tree_oid(hex: String) -> GitObjectId {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Present { value: oid } => oid
+    Absent => hex as GitObjectId
+  }
+}
+
 fn tc(rustc: String, triple: String, cargo: String, cache: String, provider: String) -> WorkToolchainIdentity {
   work_toolchain_observed(
     rustc_verbose: rustc as NonEmptyStr, target_triple: triple as NonEmptyStr, cargo_version: cargo as NonEmptyStr,
-    cache_release: cache as NonEmptyStr, provider_revision: provider as NonEmptyStr,
+    cache_release: cache as NonEmptyStr, provider_revision: provider_tree_oid(hex: provider),
   )
 }
 
@@ -151,11 +159,16 @@ test fn wet_requests_execute_per_occurrence_and_hermetic_requests_share_one_exec
 test fn the_execution_identity_reads_the_host_triple_and_refuses_without_one() -> Bool {
   let verbose = "rustc 1.90.0 (abc 2025-01-01)\nbinary: rustc\nhost: aarch64-unknown-linux-gnu\nrelease: 1.90.0\n"
   let ok = ComputeExecOk { stdout: "x", stderr: "" }
-  (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: verbose, stderr: "" }, cargo: ok, cache: ok, provider: ok) {
+  let provider_ok = ComputeExecOk { stdout: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", stderr: "" }
+  (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: verbose, stderr: "" }, cargo: ok, cache: ok, provider: provider_ok) {
     ToolchainObserved { toolchain } => (toolchain.target_triple as String) == "aarch64-unknown-linux-gnu"
     ToolchainObservationRefused { detail: _ } => false
   })
-    && (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: "rustc 1.90.0\n", stderr: "" }, cargo: ok, cache: ok, provider: ok) {
+    && (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: verbose, stderr: "" }, cargo: ok, cache: ok, provider: ok) {
+      ToolchainObserved { toolchain: _ } => false
+      ToolchainObservationRefused { detail } => string_contains(s: detail, pattern: "not a git object id")
+    })
+    && (match compute_toolchain_decide(rustc: ComputeExecOk { stdout: "rustc 1.90.0\n", stderr: "" }, cargo: ok, cache: ok, provider: provider_ok) {
       ToolchainObserved { toolchain: _ } => false
       ToolchainObservationRefused { detail } => string_contains(s: detail, pattern: "host")
     })
@@ -173,15 +186,25 @@ fn key(subject: WorkSubject, op: WorkOperation, rustc: String) -> String {
   serialize_content_hash(hash: request_key(req: req(subject: subject, op: op, rustc: rustc))) as String
 }
 
-// THE PROVIDER FILES WORK UNDER THE MATERIALIZATION KEY AND UNDER NOTHING ELSE. RED against a
-// provider that keeps (or regrows) a private hash beside request_key: the two would disagree here.
-test fn the_provider_identity_is_the_materialization_request_key() -> Bool {
+// THE PROVIDER FILES WORK UNDER THE DIGEST THE STORE ADDRESSES IT BY, AND UNDER NOTHING ELSE. RED
+// against a provider that keeps (or regrows) a private hash beside the provider's: the name it
+// files the work under would differ from the admitted store address's digest. This is one of the
+// claims that executes the REAL SHA-256 derivation on both sides -- the pairing obligation for the
+// store witnesses that supply their digests -- so its cost is two interpreted digests by design.
+test fn the_provider_identity_is_the_admitted_store_address_digest() -> Bool {
   let subject = tree(hex: tree_a)
-  let claims = RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }
-  compute_work_identity(subject: subject, op: work_default_build(), toolchain: tc_default(rustc: "rustc 1.90.0"))
-      == key(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
-    && compute_work_identity(subject: subject, op: claims, toolchain: tc_default(rustc: "rustc 1.90.0"))
-      == key(subject: subject, op: claims, rustc: "rustc 1.90.0")
+  let request = req(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
+  match evaluation_store_address(req: request) {
+    IdentityComponentsRefused { components: _, scope: _ } => false
+    Admitted { address } =>
+      content_hash_equal(
+        left: evaluation_store_address_digest(address: address),
+        right: match sha256_hex_digest(hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: tc_default(rustc: "rustc 1.90.0"))) {
+          Present { value: digest } => as_content_hash_cryptographic(digest: digest)
+          Absent => request_key(req: request)
+        }
+      )
+  }
 }
 
 fn demand_is_fresh(d: DemandNature) -> Bool {
