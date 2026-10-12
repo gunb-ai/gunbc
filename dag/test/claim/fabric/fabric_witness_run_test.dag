@@ -25,6 +25,7 @@ import gunbc.fabric_witness_run {
   floor_offer_affordability, floor_offer_fungibility,
   floor_satisfaction_requirement, floor_work_contract,
 }
+import product.fabric.demand { debt_payoff_objective }
 import gunbc.witness_floor_workflow { witness_floor_run_script }
 import product.fabric.identity { FabricIdentity }
 import product.fabric.isolation { current_runner_slot_profile }
@@ -499,7 +500,7 @@ test fn floor_admission_states_only_ordinary_buy_terms() -> Bool {
     reservation_price: money_amount_micro(count: 4),
     maximum_buy_order: money_amount_micro(count: 5),
   )
-  let terms = floor_admission_terms(buy: buy, deadline: none)
+  let terms = floor_admission_terms(buy: buy, deadline: none, objective: debt_payoff_objective)
   match terms.deadline {
     Absent =>
       money_amount_micro_count(m: terms.buy.maximum_buy_order) == 5

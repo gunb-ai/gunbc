@@ -44,7 +44,7 @@ import gunbc.harness.harness_seat { harness_turn_request, harness_seat_pointer_o
   ServingModelRequirement, AnyAdmittedModel,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, QuiescenceRequired, GrantIdentity }
-import product.fabric.demand { AdmissionTerms, BuyTerms, admission_terms }
+import product.fabric.demand { AdmissionTerms, BuyTerms, DemandObjective, admission_terms, debt_payoff_objective }
 import extdeps.currency.currency { Usd }
 import gunbc.serving.serving_front_door {
   ServingSeatPermit, SeatPermitMinted, SeatPermitNotMinted, serving_seat_permit_claims, mint_serving_seat_permit,
@@ -349,6 +349,10 @@ type HarnessSeatWait {
   waits: Int
 }
 
+// Stated CLI policy: batch belt turns do not value delay. A per-invocation flag is a
+// declared frontier — gunbc run --function has no --arg for this field.
+data harness_cli_demand_objective: DemandObjective = debt_payoff_objective
+
 // The seat request every belt-spawned role makes; the waiting fold asks it once up front and once
 // after each announced interval.
 fn harness_cli_admission() -> AdmissionTerms {
@@ -360,6 +364,7 @@ fn harness_cli_admission() -> AdmissionTerms {
       maximum_buy_order: money_amount_micro(count: 0),
     },
     deadline: none,
+    objective: harness_cli_demand_objective,
   )
 }
 

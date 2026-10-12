@@ -4,7 +4,7 @@ import std.measure { token_count, money_amount_micro }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import product.fabric.demand { ObservationReceiptRef, admission_terms, BuyTerms }
+import product.fabric.demand { ObservationReceiptRef, admission_terms, BuyTerms, debt_payoff_objective }
 import extdeps.currency.currency { Usd }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.replica_endpoint_launch {
@@ -82,6 +82,7 @@ fn w_subject() -> HarnessTurnSubject {
         maximum_buy_order: money_amount_micro(count: 0),
       },
       deadline: none,
+      objective: debt_payoff_objective,
     ),
   )
 }

@@ -25,6 +25,7 @@ import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { current_runner_slot_profile }
 import product.fabric.demand {
   Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, ObservationReceiptRef, admission_terms,
+  debt_payoff_objective,
 }
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, QuotedFlatPerGrant, ObservedSupply,
@@ -104,6 +105,7 @@ fn c_demand(key: DemandKey, reservation: Nat) -> Demand<NonEmptyStr> {
         maximum_buy_order: money_amount_micro(count: 1000),
       },
       deadline: none,
+      objective: debt_payoff_objective,
     ),
     satisfaction: SatisfactionRequirement {
       terminal_receipt_may_satisfy: true,

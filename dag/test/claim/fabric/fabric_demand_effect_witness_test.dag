@@ -9,6 +9,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey, ExecutionAttemptKey }
 import product.fabric.demand {
   Demand, SatisfactionRequirement, AdmissionTerms, BuyTerms, admission_terms,
+  debt_payoff_objective,
   DemandCommand, SubmitDemand, WithdrawDemand, SupersedeDemand,
   UnknownDemand, DemandPrincipalMismatch, DuplicateDemand,
   ReplacementAlreadyRegistered, SupersedeCrossesPrincipal, ReplacementWorkMismatch,
@@ -59,6 +60,7 @@ fn terms() -> AdmissionTerms {
       maximum_buy_order: money_amount_micro(count: 200000),
     },
     deadline: none,
+    objective: debt_payoff_objective,
   )
 }
 

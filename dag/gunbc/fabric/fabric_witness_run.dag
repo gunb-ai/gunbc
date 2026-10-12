@@ -28,7 +28,7 @@ import product.fabric.supply {
   offer_fungibility_for, offer_affordability_for,
 }
 import product.fabric.demand {
-  Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, BudgetAccountId, ObservationReceiptRef,
+  Demand, AdmissionTerms, BuyTerms, DemandObjective, SatisfactionRequirement, BudgetAccountId, ObservationReceiptRef,
   admission_terms,
 }
 import std.types { Timestamp }
@@ -597,6 +597,6 @@ fn floor_buy_terms(
 // gunbc jump the queue, the arbitrage would be lost and the opportunity cost of our own work would
 // stop being computable.
 
-fn floor_admission_terms(buy: BuyTerms, deadline: Timestamp?) -> AdmissionTerms {
-  admission_terms(buy: buy, deadline: deadline)
+fn floor_admission_terms(buy: BuyTerms, deadline: Timestamp?, objective: DemandObjective) -> AdmissionTerms {
+  admission_terms(buy: buy, deadline: deadline, objective: objective)
 }

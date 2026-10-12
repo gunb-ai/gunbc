@@ -308,7 +308,7 @@ test fn a_dominating_candidate_is_picked_by_both_profiles_with_distinct_policy_a
 }
 
 test fn an_over_cap_move_is_refused_under_both_profiles_by_buy_terms_hard_constraint() -> Bool {
-  let constraints = admission_hard_constraints(terms: admission_terms(buy: cap_buy(), deadline: none))
+  let constraints = admission_hard_constraints(terms: admission_terms(buy: cap_buy(), deadline: none, objective: debt_payoff_objective))
   match pick(field: over_cap_field(), objective: debt_payoff_objective, constraints: constraints) {
     Picked { id: a, policy: _ } =>
       declaration_ref_eq(a: a, b: id_wait)

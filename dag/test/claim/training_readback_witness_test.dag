@@ -26,7 +26,7 @@ import product.training.resolution {
 import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.envelope { ResourceEnvelope }
-import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, admission_terms }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, admission_terms, debt_payoff_objective }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
 import extdeps.currency.currency { Usd }
@@ -109,6 +109,7 @@ fn demand_keyed(demand_key: NonEmptyStr, work_key: NonEmptyStr) -> Demand<NonEmp
         maximum_buy_order: money_amount_micro(count: 1000),
       },
       deadline: none,
+      objective: debt_payoff_objective,
     ),
     satisfaction: SatisfactionRequirement {
       terminal_receipt_may_satisfy: true,

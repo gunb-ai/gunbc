@@ -228,7 +228,8 @@ data id_debt_payoff: DeclarationRef = decl_ref(module_path: "product.fabric.dema
 data id_latency_sensitive: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "latency_sensitive_objective")
 
 // delay 0, interruption 0, money valued, accepted work valued.
-// CONSUMER: admission_terms default; test.claim.fabric.valued_objective_witness (a)(b)(c)(d).
+// CONSUMER: call sites that state this profile (floor_demand, harness_cli_demand_objective,
+// workspace_demand callers); test.claim.fabric.valued_objective_witness (a)(b)(c)(d).
 data debt_payoff_objective: DemandObjective = DemandObjective {
   profile: id_debt_payoff,
   valuations: closed_valuations(money: 1, delay: 0, interruption: 0, accepted_work: 1),
@@ -296,12 +297,12 @@ type AdmissionTerms {
   objective: DemandObjective
 }
 
-fn admission_terms(buy: BuyTerms, deadline: Timestamp?) -> AdmissionTerms {
+fn admission_terms(buy: BuyTerms, deadline: Timestamp?, objective: DemandObjective) -> AdmissionTerms {
   AdmissionTerms {
     deadline: deadline,
     maximum_wait: none,
     buy: buy,
-    objective: debt_payoff_objective,
+    objective: objective,
   }
 }
 

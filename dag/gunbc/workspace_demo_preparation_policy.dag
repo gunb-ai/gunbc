@@ -8,7 +8,7 @@ import extdeps.currency.currency { Usd }
 import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, OfferKey }
-import product.fabric.demand { Demand, BuyTerms, BudgetAccountId }
+import product.fabric.demand { Demand, BuyTerms, BudgetAccountId, debt_payoff_objective }
 import product.fabric.budget { MoneyAccount }
 import product.fabric.supply { GrantDuration, EstimatedGrantDuration, QuotedPerSecond }
 import product.fabric.selection {
@@ -185,7 +185,7 @@ fn workspace_demo_attempt(demand: Demand<NonEmptyStr>) -> FabricIdentity<NonEmpt
 // Every first placement is its route's own exercise (product.fabric.route_readiness ExerciseOfRoute),
 // exactly as the shakedown's is; no prior exercise is fabricated.
 fn workspace_demo_policy(request: WorkspaceRequest, submitted_at: String, evidence: List<WorkspacePreparationEvidence>) -> WorkspacePreparationPolicy {
-  let demand = workspace_demand(request: request, submitted_at: submitted_at, buy: workspace_demo_buy())
+  let demand = workspace_demand(request: request, submitted_at: submitted_at, buy: workspace_demo_buy(), objective: debt_payoff_objective)
   WorkspacePreparationPolicy {
     resource_budget: ResourceBudgetPolicy { authority: "gunbc.workspace_demo_preparation_policy", revision: "2026-10-04",
       demand: demand.id, work: demand.work, allowed_offers: map(evidence, sample => sample.terms.dispatch.offer) },
