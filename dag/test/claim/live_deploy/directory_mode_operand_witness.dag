@@ -5,7 +5,7 @@ import extdeps.access.posix { PosixUser, LoginShellUnobserved }
 import std.effect_grant { Read, Write, Execute }
 import gunbc.ownership { Owned }
 import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged }
-import gunbc.fabric_storage_placement { fabric_storage_directory }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_directory }
 import gunbc.live_deploy.emit { install_d_managed_command }
 import gunbc.executor_privileged_operation { runner_slot_install_operations, executor_privileged_operation_argv }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
