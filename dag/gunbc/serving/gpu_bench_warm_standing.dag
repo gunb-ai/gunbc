@@ -100,48 +100,62 @@ fn gpu_bench_warm_standing(records: List<GpuBenchRequestV2>, measured_kv: TokenC
   }
 }
 
-fn gpu_bench_capacity_ok_tokens(log: String) -> TokenCount? {
+type GpuBenchCapacityOkRead
+  = CapacityOkRead { tokens: TokenCount }
+  | CapacityOkAbsent
+  | CapacityOkMalformed { cause: NonEmptyStr }
+
+type GpuBenchReplayCountRead
+  = ReplayCountRead { tokens: Nat }
+  | ReplayCountAbsent
+  | ReplayCountMalformed { cause: NonEmptyStr }
+
+fn gpu_bench_nat_from_last_token(line: String) -> Nat? {
+  let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
+  match parse_int(s: last) {
+    Absent => none
+    Present { value: n } => checked_int_to_nat(n: n)
+  }
+}
+
+fn gpu_bench_capacity_ok_tokens(log: String) -> GpuBenchCapacityOkRead {
   if log == "" {
-    none
+    CapacityOkAbsent
   } else {
-    fold(split(s: log, delimiter: "\n"), init: none, f: fn(acc, line) {
+    fold(split(s: log, delimiter: "\n"), init: CapacityOkAbsent, f: fn(acc, line) {
       match acc {
-        Present { value: v } => Present { value: v }
-        Absent =>
+        CapacityOkRead { tokens: t } => CapacityOkRead { tokens: t }
+        CapacityOkMalformed { cause: c } => CapacityOkMalformed { cause: c }
+        CapacityOkAbsent =>
           if string_contains(s: line, pattern: "CAPACITY_OK ") {
-            let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
-            match parse_int(s: last) {
-              Absent => none
-              Present { value: n } =>
-                match checked_int_to_nat(n: n) {
-                  Absent => none
-                  Present { value: cap } => Present { value: token_count(count: cap) }
-                }
+            match gpu_bench_nat_from_last_token(line: line) {
+              Absent => CapacityOkMalformed { cause: "CAPACITY_OK last token is not a natural" as NonEmptyStr }
+              Present { value: cap } => CapacityOkRead { tokens: token_count(count: cap) }
             }
           } else {
-            none
+            CapacityOkAbsent
           }
       }
     })
   }
 }
 
-fn gpu_bench_ninfer_replayed_tokens_total(log: String) -> Nat? {
+fn gpu_bench_ninfer_replayed_tokens_total(log: String) -> GpuBenchReplayCountRead {
   if log == "" {
-    none
+    ReplayCountAbsent
   } else {
-    fold(split(s: log, delimiter: "\n"), init: none, f: fn(acc, line) {
+    fold(split(s: log, delimiter: "\n"), init: ReplayCountAbsent, f: fn(acc, line) {
       match acc {
-        Present { value: v } => Present { value: v }
-        Absent =>
+        ReplayCountRead { tokens: t } => ReplayCountRead { tokens: t }
+        ReplayCountMalformed { cause: c } => ReplayCountMalformed { cause: c }
+        ReplayCountAbsent =>
           if string_contains(s: line, pattern: "ninfer_replayed_tokens_total ") && !string_contains(s: line, pattern: "#") {
-            let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
-            match parse_int(s: last) {
-              Absent => none
-              Present { value: n } => checked_int_to_nat(n: n)
+            match gpu_bench_nat_from_last_token(line: line) {
+              Absent => ReplayCountMalformed { cause: "ninfer_replayed_tokens_total last token is not a natural" as NonEmptyStr }
+              Present { value: n } => ReplayCountRead { tokens: n }
             }
           } else {
-            none
+            ReplayCountAbsent
           }
       }
     })
@@ -150,12 +164,17 @@ fn gpu_bench_ninfer_replayed_tokens_total(log: String) -> Nat? {
 
 fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
   match gpu_bench_ninfer_replayed_tokens_total(log: log) {
-    Present { value: replayed } =>
+    ReplayCountAbsent => WarmRejected { cause: "ninfer_replayed_tokens_total was not observed" as NonEmptyStr }
+    ReplayCountMalformed { cause: c } => WarmRejected { cause: c }
+    ReplayCountRead { tokens: replayed } =>
       if replayed > 0 {
         WarmRejected { cause: "ninfer replayed tokens; prefix restore was not a snapshot hit" as NonEmptyStr }
       } else {
-        gpu_bench_warm_standing(records: records, measured_kv: gpu_bench_capacity_ok_tokens(log: log))
+        match gpu_bench_capacity_ok_tokens(log: log) {
+          CapacityOkAbsent => gpu_bench_warm_standing(records: records, measured_kv: Absent)
+          CapacityOkMalformed { cause: c } => WarmCapacityUnread { cause: c }
+          CapacityOkRead { tokens: kv } => gpu_bench_warm_standing(records: records, measured_kv: Present { value: kv })
+        }
       }
-    Absent => gpu_bench_warm_standing(records: records, measured_kv: gpu_bench_capacity_ok_tokens(log: log))
   }
 }

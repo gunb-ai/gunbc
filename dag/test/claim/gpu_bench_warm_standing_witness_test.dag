@@ -12,6 +12,7 @@ import extdeps.gpu_bench.request_v2 {
 import gunbc.serving.gpu_bench_warm_standing {
   gpu_bench_warm_standing, gpu_bench_warm_standing_with_ninfer_log, gpu_bench_capacity_ok_tokens,
   WarmValid, WarmOverCapacity, WarmRejected, WarmCapacityUnread,
+  CapacityOkRead, CapacityOkAbsent, CapacityOkMalformed,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -102,8 +103,9 @@ test fn missing_measured_kv_is_unread() -> Bool {
 
 test fn capacity_ok_line_reads_tokens() -> Bool {
   match gpu_bench_capacity_ok_tokens(log: "CAPACITY_OK 1920000\n") {
-    Absent => false
-    Present { value: t } => token_count_value(t: t) == 1920000
+    CapacityOkAbsent => false
+    CapacityOkMalformed { cause: _ } => false
+    CapacityOkRead { tokens: t } => token_count_value(t: t) == 1920000
   }
 }
 
@@ -158,5 +160,53 @@ test fn error_detail_malformed_refuses() -> Bool {
   match gpu_bench_parse_jsonl(text: fx_error_detail_malformed) {
     GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => true
     GpuBenchRequestV2Parsed { records: _ } => false
+  }
+}
+
+test fn missing_replay_counter_rejects() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_ok_prime) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing_with_ninfer_log(records: rs, log: "CAPACITY_OK 1920000\n") {
+        WarmRejected { cause: c } => string_contains(s: c as String, pattern: "not observed")
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
+  }
+}
+
+test fn malformed_replay_counter_rejects() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_ok_prime) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing_with_ninfer_log(records: rs, log: "CAPACITY_OK 1920000\nninfer_replayed_tokens_total not-a-nat\n") {
+        WarmRejected { cause: c } => string_contains(s: c as String, pattern: "not a natural")
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
+  }
+}
+
+test fn malformed_capacity_ok_is_not_unsupplied() -> Bool {
+  match gpu_bench_capacity_ok_tokens(log: "CAPACITY_OK xyz\n") {
+    CapacityOkMalformed { cause: c } => string_contains(s: c as String, pattern: "CAPACITY_OK")
+    CapacityOkAbsent => false
+    CapacityOkRead { tokens: _ } => false
+  }
+}
+
+test fn zero_replay_and_capacity_can_be_valid() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_ok_prime) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing_with_ninfer_log(records: rs, log: "CAPACITY_OK 1920000\nninfer_replayed_tokens_total 0\n") {
+        WarmValid { working_set_tokens: w, measured_kv_tokens: k } =>
+          token_count_value(t: w) == 180 && token_count_value(t: k) == 1920000
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmRejected { cause: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
   }
 }

@@ -11,6 +11,7 @@ import extdeps.gpu_bench.request_v2 {
 import gunbc.serving.gpu_bench_warm_standing {
   gpu_bench_warm_standing_with_ninfer_log, gpu_bench_capacity_ok_tokens,
   WarmValid, WarmOverCapacity, WarmRejected, WarmCapacityUnread,
+  CapacityOkRead, CapacityOkAbsent, CapacityOkMalformed,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -32,8 +33,9 @@ test fn committed_v2_jsonl_parses() -> Bool {
 test fn committed_auto_log_capacity_is_1920000() -> Bool {
   let log = filesystem_read(path: gpu_bench_v2_auto_log_path).content
   match gpu_bench_capacity_ok_tokens(log: log) {
-    Absent => false
-    Present { value: t } => token_count_value(t: t) == 1920000
+    CapacityOkAbsent => false
+    CapacityOkMalformed { cause: _ } => false
+    CapacityOkRead { tokens: t } => token_count_value(t: t) == 1920000
   }
 }
 

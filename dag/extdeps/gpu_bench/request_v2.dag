@@ -230,13 +230,9 @@ fn gpu_bench_request_v2_from_line(line: String) -> GpuBenchRequestV2Read {
   }
 }
 
-type GpuBenchParseFold {
-  records: List<GpuBenchRequestV2>
-  next_line: Nat
-  refused: Bool
-  refused_line: Nat
-  refused_cause: NonEmptyStr
-}
+type GpuBenchParseFold
+  = GpuBenchParseOpen { records: List<GpuBenchRequestV2>, next_line: Nat }
+  | GpuBenchParseRefused { line: Nat, cause: NonEmptyStr }
 
 fn gpu_bench_parse_jsonl(text: String) -> GpuBenchRequestV2Stream {
   if text == "" {
@@ -245,50 +241,25 @@ fn gpu_bench_parse_jsonl(text: String) -> GpuBenchRequestV2Stream {
     let lines = split(s: text, delimiter: "\n")
     let state = fold(
       lines,
-      init: GpuBenchParseFold {
-        records: [],
-        next_line: 1,
-        refused: false,
-        refused_line: 0,
-        refused_cause: "none" as NonEmptyStr,
-      },
+      init: GpuBenchParseOpen { records: [], next_line: 1 },
       f: fn(acc, line) {
-        if acc.refused {
-          acc
-        } else {
-          if line == "" {
-            GpuBenchParseFold {
-              records: acc.records,
-              next_line: acc.next_line + 1,
-              refused: false,
-              refused_line: acc.refused_line,
-              refused_cause: acc.refused_cause,
-            }
-          } else {
-            match gpu_bench_request_v2_from_line(line: line) {
-              GpuBenchRequestV2Unreadable { cause: c } => GpuBenchParseFold {
-                records: acc.records,
-                next_line: acc.next_line + 1,
-                refused: true,
-                refused_line: acc.next_line,
-                refused_cause: c,
-              }
-              GpuBenchRequestV2Read { record: r } => GpuBenchParseFold {
-                records: concat(acc.records, [r]),
-                next_line: acc.next_line + 1,
-                refused: false,
-                refused_line: acc.refused_line,
-                refused_cause: acc.refused_cause,
+        match acc {
+          GpuBenchParseRefused { line: n, cause: c } => GpuBenchParseRefused { line: n, cause: c }
+          GpuBenchParseOpen { records: rs, next_line: n } =>
+            if line == "" {
+              GpuBenchParseOpen { records: rs, next_line: n + 1 }
+            } else {
+              match gpu_bench_request_v2_from_line(line: line) {
+                GpuBenchRequestV2Unreadable { cause: c } => GpuBenchParseRefused { line: n, cause: c }
+                GpuBenchRequestV2Read { record: r } => GpuBenchParseOpen { records: concat(rs, [r]), next_line: n + 1 }
               }
             }
-          }
         }
       },
     )
-    if state.refused {
-      GpuBenchRequestV2StreamUnreadable { line: state.refused_line, cause: state.refused_cause }
-    } else {
-      GpuBenchRequestV2Parsed { records: state.records }
+    match state {
+      GpuBenchParseRefused { line: n, cause: c } => GpuBenchRequestV2StreamUnreadable { line: n, cause: c }
+      GpuBenchParseOpen { records: rs, next_line: _ } => GpuBenchRequestV2Parsed { records: rs }
     }
   }
 }
