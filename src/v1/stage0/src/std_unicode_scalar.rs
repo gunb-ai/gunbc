@@ -59,6 +59,13 @@ pub fn scalar_of_code_point(cp: i64) -> Rc<Result<i64, Rc<NotUnicodeScalar>>> {
     }
 }
 
+pub fn not_unicode_scalar_code_point(n: Rc<NotUnicodeScalar>) -> i64 {
+    match (*n.clone()).clone() {
+        NotUnicodeScalar::SurrogateCodePoint { code_point: cp, .. } => cp.clone(),
+        NotUnicodeScalar::CodePointOutOfRange { code_point: cp, .. } => cp.clone(),
+    }
+}
+
 pub fn char_text(c: i64) -> String {
     crate::std_coercion::unicode_scalar_fold(crate::std_algebra::list_snoc_item(
         Rc::new(vec![]),
@@ -72,5 +79,63 @@ pub fn from_code_point(cp: i64) -> Rc<Result<String, Rc<NotUnicodeScalar>>> {
             value: char_text(c.clone()),
         }),
         Result::Err { value: n, .. } => Rc::new(Result::Err { value: n.clone() }),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AsciiLetterPair {
+    pub upper: String,
+    pub lower: String,
+}
+
+pub fn ascii_letter_pairs() -> Rc<Vec<Rc<AsciiLetterPair>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<AsciiLetterPair>>> = {
+            serde_json::from_str("[{\"upper\": \"A\", \"lower\": \"a\"}, {\"upper\": \"B\", \"lower\": \"b\"}, {\"upper\": \"C\", \"lower\": \"c\"}, {\"upper\": \"D\", \"lower\": \"d\"}, {\"upper\": \"E\", \"lower\": \"e\"}, {\"upper\": \"F\", \"lower\": \"f\"}, {\"upper\": \"G\", \"lower\": \"g\"}, {\"upper\": \"H\", \"lower\": \"h\"}, {\"upper\": \"I\", \"lower\": \"i\"}, {\"upper\": \"J\", \"lower\": \"j\"}, {\"upper\": \"K\", \"lower\": \"k\"}, {\"upper\": \"L\", \"lower\": \"l\"}, {\"upper\": \"M\", \"lower\": \"m\"}, {\"upper\": \"N\", \"lower\": \"n\"}, {\"upper\": \"O\", \"lower\": \"o\"}, {\"upper\": \"P\", \"lower\": \"p\"}, {\"upper\": \"Q\", \"lower\": \"q\"}, {\"upper\": \"R\", \"lower\": \"r\"}, {\"upper\": \"S\", \"lower\": \"s\"}, {\"upper\": \"T\", \"lower\": \"t\"}, {\"upper\": \"U\", \"lower\": \"u\"}, {\"upper\": \"V\", \"lower\": \"v\"}, {\"upper\": \"W\", \"lower\": \"w\"}, {\"upper\": \"X\", \"lower\": \"x\"}, {\"upper\": \"Y\", \"lower\": \"y\"}, {\"upper\": \"Z\", \"lower\": \"z\"}]")
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<AsciiLetterPair>>>| c.clone())
+}
+
+pub fn ascii_lowercase(s: String) -> String {
+    ascii_letter_pairs()
+        .iter()
+        .cloned()
+        .fold(s.clone(), |acc: String, p: Rc<AsciiLetterPair>| {
+            Rc::new(
+                acc.split(&p.upper.clone())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .join(&p.lower.clone())
+        })
+}
+
+pub fn ascii_uppercase(s: String) -> String {
+    ascii_letter_pairs()
+        .iter()
+        .cloned()
+        .fold(s.clone(), |acc: String, p: Rc<AsciiLetterPair>| {
+            Rc::new(
+                acc.split(&p.lower.clone())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .join(&p.upper.clone())
+        })
+}
+
+pub fn ascii_uppercase_first(s: String) -> String {
+    {
+        let n = v1_rt::string_length(&s);
+        if (n.clone() == 0) {
+            "".to_string()
+        } else {
+            v1_rt::concat(
+                ascii_uppercase(v1_rt::substring(&s, 0, 1)),
+                v1_rt::substring(&s, 1, n.clone()),
+            )
+        }
     }
 }
