@@ -1,0 +1,72 @@
+module v2.test.claim.compiler.fold_domain_alias
+
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_list_peers, fmi_record_fold }
+import v2.compiler.infer { infer }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Diagnostics, Rejected, Some, diagnostics_fatal_reason, diagnostics_has_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { list_snoc_item }
+import std.types { Bool, List, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a collection fold's member is typed from its domain's element when the domain's declared
+// type reaches std.algebra FreeMonoid through ANY alias, not only through the one spelling
+// v2.std.collection List (v2.compiler.infer infer_fold_member_frame, v2.compiler.fold_lowering
+// fold_collection_member_type). v2.std.node declares `children: List<Edge>` with List imported from
+// std.types -- `type List<element> = FreeMonoid<element>` -- so native-seven's
+// `fold(root.children, .., f: fn(found, e) { .. e.target .. })` left `e` untyped
+// (infer_reason_fold_member_domain_not_a_collection) and refused `e.target` as
+// infer_reason_projection_receiver_declares_no_fields.
+//
+// BOUNDARY: source text in, through the production assembly route, then v2.compiler.infer infer.
+
+data fda_types_artifact: Artifact = Artifact { kind: SourceFile, id: ^fda_types_artifact, file_path: "src/v2/pilot/fda_types.dag" }
+
+data fda_types_source: String = "module q.types\n\nimport std.algebra { FreeMonoid }\n\ntype List<element> = FreeMonoid<element>\n"
+
+fn fda_peers() -> List<DagSourceReadWitness> {
+  list_snoc_item(xs: fmi_list_peers(), item: bla_source(src: fda_types_source, artifact: fda_types_artifact, cu: ^fda_types_cu))
+}
+
+// The fold's verdict as the reasons it carries, accepted or not: the fold fixture is not accepted
+// whole on main (its comparison operand is an unrelated undecided obligation), so the claims read the
+// member's typing off the reasons, exactly as v2.test.claim.compiler.infer_fold_member_instance does.
+fn fda_reasons(src: String) -> Diagnostics {
+  match bla_assemble_with_peers(p_src: src, peers: fda_peers()) {
+    Rejected { diagnostics: d } => Some { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: d } => d
+        Rejected { diagnostics: d } => Some { diagnostics: d }
+      }
+  }
+}
+
+fn fda_member_typed(src: String) -> Bool {
+  let d = fda_reasons(src: src)
+  !diagnostics_has_reason(d: d, reason: ^fda_assembly_refused)
+    && !diagnostics_has_reason(d: d, reason: ^infer_reason_fold_member_domain_not_a_collection)
+    && !diagnostics_has_reason(d: d, reason: ^infer_reason_projection_receiver_declares_no_fields)
+}
+
+// THE SAME FOLD over a list whose type arrives through q.types's alias of FreeMonoid.
+data fda_aliased_fold: String = "module p\n\nimport q.types { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.target == 0 })\n}\n"
+
+// A WRONG FIELD on the aliased domain's member still refuses at the projection: the member is typed,
+// not waved through.
+data fda_aliased_wrong_field: String = "module p\n\nimport q.types { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { found || e.nope == 0 })\n}\n"
+
+test fn fda_a_fold_over_an_aliased_list_types_its_member() -> Bool {
+  fda_member_typed(src: fda_aliased_fold)
+}
+
+test fn fda_the_v2_collection_list_fold_still_types_its_member() -> Bool {
+  fda_member_typed(src: fmi_record_fold)
+}
+
+test fn fda_a_wrong_field_on_an_aliased_list_member_refuses_at_the_field() -> Bool {
+  diagnostics_has_reason(d: fda_reasons(src: fda_aliased_wrong_field), reason: ^infer_reason_field_not_declared_on_receiver)
+}
