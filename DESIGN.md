@@ -283,7 +283,7 @@ The result is scoped, never `Optimal`: `SelectedWithin` binds a `SelectionReceip
 - A candidate violating a hard constraint is excluded *before* Pareto, never ranked.
 - An incomplete subject — required (objective-term × decision-variable) cells are an identity join, and terms drop only with order preservation — refuses: absence is not irrelevance, and `SelectedWithin` may not mint over an incomplete closure.
 
-Ranking work on a funded multi-axis field **is** this law applied to authorship, so §6 does not restate it. `std.decision` is consumed (`gunbc.spark.serving_deployment_selection` `select_serving_deployment`, `product.fleet_operating_point` `fleet_operating_point_selection`), so §3b's decision row names it; that row checks inhabitance only, and the hard laws above stay with this section's reviewer. The effectful cycle after selection — admission, actuation with uncertain completion, independent observation — has no consumed home yet (first consumer: the fleet admission spine); a receipt cannot substitute for readback, and an actuation return cannot mint convergence.
+Ranking work on a funded multi-axis field **is** this law applied to authorship, so §6 does not restate it. `std.decision` is consumed (`product.fleet_operating_point` `fleet_operating_point_selection`), so §3b's decision row names it; that row checks inhabitance only, and the hard laws above stay with this section's reviewer. The effectful cycle after selection — admission, actuation with uncertain completion, independent observation — has no consumed home yet (first consumer: the fleet admission spine); a receipt cannot substitute for readback, and an actuation return cannot mint convergence.
 
 ## 4. The closed, grounded substrate (what makes §2–§3 decidable)
 
