@@ -195,13 +195,14 @@ data waiting_recovery_separator: String = ","
 
 type WaitingPhaseWireRow {
   tag: String
-  phase: CallerWorkPhase
+  closed: CallerWorkPhase?
 }
 
 data waiting_phase_wire_rows: List<WaitingPhaseWireRow> = [
-  WaitingPhaseWireRow { tag: "W", phase: WorkWaiting },
-  WaitingPhaseWireRow { tag: "C", phase: WorkCompleted },
-  WaitingPhaseWireRow { tag: "X", phase: WorkCancelled },
+  WaitingPhaseWireRow { tag: "W", closed: Present { value: WorkWaiting } },
+  WaitingPhaseWireRow { tag: "C", closed: Present { value: WorkCompleted } },
+  WaitingPhaseWireRow { tag: "X", closed: Present { value: WorkCancelled } },
+  WaitingPhaseWireRow { tag: "B", closed: none },
 ]
 
 type WaitingRecoveryWireRow {
@@ -215,8 +216,6 @@ data waiting_recovery_wire_rows: List<WaitingRecoveryWireRow> = [
   WaitingRecoveryWireRow { token: "R1", event: RecoveryEvent { kind: RecoveryRequest, succeeded: true } },
   WaitingRecoveryWireRow { token: "R0", event: RecoveryEvent { kind: RecoveryRequest, succeeded: false } },
 ]
-
-data waiting_bound_phase_tag: String = "B"
 
 fn waiting_wire_field_is_clean(field: String) -> Bool {
   field != ""
@@ -245,68 +244,43 @@ fn encode_phase_deficit(phase: CallerWorkPhase) -> String {
   }
 }
 
-fn waiting_phase_row_matches(row: WaitingPhaseWireRow, phase: CallerWorkPhase) -> Bool {
-  match row.phase {
-    WorkWaiting => match phase { WorkWaiting => true  WorkCompleted => false  WorkCancelled => false  WorkRecoveryBoundExceeded { deficit: _ } => false }
-    WorkCompleted => match phase { WorkCompleted => true  WorkWaiting => false  WorkCancelled => false  WorkRecoveryBoundExceeded { deficit: _ } => false }
-    WorkCancelled => match phase { WorkCancelled => true  WorkWaiting => false  WorkCompleted => false  WorkRecoveryBoundExceeded { deficit: _ } => false }
-    WorkRecoveryBoundExceeded { deficit: _ } => false
+fn waiting_phase_row_covers(row: WaitingPhaseWireRow, phase: CallerWorkPhase, deficit: String) -> Bool {
+  match row.closed {
+    Present { value: p } => p == phase
+    Absent => deficit != ""
   }
 }
 
 fn encode_phase_from_rows(phase: CallerWorkPhase) -> String? {
-  match phase {
-    WorkRecoveryBoundExceeded { deficit: d } =>
-      if waiting_wire_field_is_clean(field: d as String) {
-        Present { value: waiting_bound_phase_tag }
-      } else {
-        none
-      }
-    WorkWaiting =>
-      match filter(waiting_phase_wire_rows, row => waiting_phase_row_matches(row: row, phase: phase)).first() {
-        Absent => none
-        Present { value: row } => Present { value: row.tag }
-      }
-    WorkCompleted =>
-      match filter(waiting_phase_wire_rows, row => waiting_phase_row_matches(row: row, phase: phase)).first() {
-        Absent => none
-        Present { value: row } => Present { value: row.tag }
-      }
-    WorkCancelled =>
-      match filter(waiting_phase_wire_rows, row => waiting_phase_row_matches(row: row, phase: phase)).first() {
-        Absent => none
-        Present { value: row } => Present { value: row.tag }
-      }
+  let deficit = encode_phase_deficit(phase: phase)
+  if deficit != "" && !waiting_wire_field_is_clean(field: deficit) {
+    none
+  } else {
+    match filter(waiting_phase_wire_rows, row => waiting_phase_row_covers(row: row, phase: phase, deficit: deficit)).first() {
+      Absent => none
+      Present { value: row } => Present { value: row.tag }
+    }
   }
 }
 
 fn decode_phase_from_rows(tag: String, deficit: String) -> CallerWorkPhase? {
-  if tag == waiting_bound_phase_tag {
-    if waiting_wire_field_is_clean(field: deficit) {
-      Present { value: WorkRecoveryBoundExceeded { deficit: deficit as NonEmptyStr } }
-    } else {
-      none
-    }
-  } else {
-    match filter(waiting_phase_wire_rows, row => row.tag == tag).first() {
-      Absent => none
-      Present { value: row } =>
-        if deficit == "" {
-          Present { value: row.phase }
-        } else {
-          none
-        }
-    }
+  match filter(waiting_phase_wire_rows, row => row.tag == tag).first() {
+    Absent => none
+    Present { value: row } =>
+      match row.closed {
+        Present { value: p } => if deficit == "" { Present { value: p } } else { none }
+        Absent =>
+          if waiting_wire_field_is_clean(field: deficit) {
+            Present { value: WorkRecoveryBoundExceeded { deficit: deficit as NonEmptyStr } }
+          } else {
+            none
+          }
+      }
   }
 }
 
 fn encode_recovery_event_from_rows(event: RecoveryEvent) -> String? {
-  match filter(waiting_recovery_wire_rows, row =>
-    (match row.event.kind {
-      RecoveryProbe => match event.kind { RecoveryProbe => true  RecoveryRequest => false }
-      RecoveryRequest => match event.kind { RecoveryRequest => true  RecoveryProbe => false }
-    }) && row.event.succeeded == event.succeeded
-  ).first() {
+  match filter(waiting_recovery_wire_rows, row => row.event == event).first() {
     Absent => none
     Present { value: row } => Present { value: row.token }
   }
@@ -832,14 +806,11 @@ fn commit_attempt_durable(
 }
 
 fn is_failed_request(event: RecoveryEvent) -> Bool {
-  match event.kind {
-    RecoveryProbe => false
-    RecoveryRequest => !event.succeeded
-  }
+  event.kind == RecoveryRequest && !event.succeeded
 }
 
 fn recovery_deficit(events: List<RecoveryEvent>) -> NonEmptyStr {
-  let probes_ok = length(filter(events, e => match e.kind { RecoveryProbe => e.succeeded  RecoveryRequest => false }))
+  let probes_ok = length(filter(events, e => e.kind == RecoveryProbe && e.succeeded))
   let requests_failed = length(filter(events, e => is_failed_request(event: e)))
   join([
     "recovery bound exhausted across the logical work's whole history; probes succeeded: ",
