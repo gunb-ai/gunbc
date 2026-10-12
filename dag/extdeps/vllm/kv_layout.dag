@@ -19,7 +19,6 @@ import extdeps.vllm.kv_cache { VllmObservedKvPool }
 import extdeps.vllm.log_lines {
   VllmStartupReading, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
 }
-import v2.std.algebra { filter }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -62,7 +62,8 @@ test fn par_local_fn_wins_over_primitive() -> Bool {
   )) == ^accepted
 }
 
-// (3) CONTROL: with std.primitives indexed AND holding any_contract, an imported ordinary `any` (as v2.std.algebra any) still wins.
+// (3) CONTROL: with std.primitives indexed AND holding any_contract, an imported ordinary `any`
+// (supplied fixture module q, not a live v2.std.algebra declaration) still wins.
 test fn par_imported_ordinary_fn_wins_over_primitive() -> Bool {
   par_reason(o: bla_assemble_with_peers(
     p_src: "module p\n\nimport q { any }\n\nfn f(x: Int) -> Int {\n  any(x)\n}\n",

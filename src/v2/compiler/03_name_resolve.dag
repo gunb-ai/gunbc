@@ -5,7 +5,12 @@ import v2.std.language_model { LanguageModel }
 import v2.std.member_declaration_kind { MemberKindChannel, no_member_declaration_kinds }
 
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_fill_module_roots }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources }
+import v2.compiler.normalized_tree {
+  NormalizedTree,
+  normalized_tree_record_declarations,
+  normalized_tree_resource_declarations,
+  normalized_tree_roots_to_binding_sources
+}
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
@@ -993,11 +998,6 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
 // Resolve(module) AND Resolve(each provider it consumes); here that is discharged by resolving the whole
 // SELECTED closure, which is broader than the import closure. Narrowing it to the exact provider set changes
 // WHICH roots are folded and not the inference rule.
-//
-// RECORD AND RESOURCE PAYLOAD MARKS ARE NOT CARRIED HERE, AND THAT IS INHERITED RATHER THAN CHOSEN: a resolved
-// Node does not carry the normalize-time record roster, so each root is filled with Empty carriers, and
-// v2.std.symbol_index symbol_index_declared_payload_at answers Absent for a RECORD in this index. The
-// projection path reads through symbol_index_lookup and is unaffected.
 type ClosureDeclarations {
   declarations: SymbolIndex
   refused: List<ClosureProviderRefusal>
@@ -1010,6 +1010,9 @@ type ClosureDeclarationsFold {
   context: ResolutionContext
 }
 
+// THE DECLARED-PAYLOAD KIND RIDES THE CARRIER CAPTURED AT NORMALIZE (symbol_index_fill_module_declarations): a
+// fill handed Empty marks no record, so symbol_index_declared_payload_at answered Absent for every
+// record in resolved_declarations and v2.compiler.infer read each construct as not a record.
 fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations {
   match shared.closure_declarations {
     Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, refused: closure.refused, context: shared }
@@ -1032,7 +1035,12 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
               match walked.walk {
                 ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
                   ClosureDeclarationsFold {
-                    index: symbol_index_fill_module_declarations(index: acc.index, root: resolved, record_declarations: Empty, resource_declarations: Empty),
+                    index: symbol_index_fill_module_declarations(
+                      index: acc.index,
+                      root: resolved,
+                      record_declarations: normalized_tree_record_declarations(t: nt),
+                      resource_declarations: normalized_tree_resource_declarations(t: nt)
+                    ),
                     refused: acc.refused,
                     context: next_context
                   }

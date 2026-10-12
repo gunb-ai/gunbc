@@ -82,7 +82,7 @@ import v2.std.collection { Present, Absent }
 // gunbc.live_deploy.repository_convergence is the git-native transition -- import objects, compare
 // and swap the base ref, reset the worktree, read back. It is correct and it is unreachable, because
 // nothing in this repository can say WHERE IT RUNS. The fleet-converge job executes
-// `gunbc run ... --function live_deploy_apply_srv1_wet` as the UNPRIVILEGED CI-RUNNER account, and
+// `gunbc run ... --function live_deploy_apply_prod_role_wet` as the UNPRIVILEGED CI-RUNNER account, and
 // /opt/gunbc/gunbc is owned by the SERVICE USER. A converge invoked from that process is one
 // principal mutating another principal's repository, which is the arrangement that already failed
 // once by measurement: the first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync

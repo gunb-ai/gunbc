@@ -8143,7 +8143,7 @@ fn struct_needs_serde(name: String, emit_info: EmitGraphInfo) -> Bool {
 // inference to refuse a cross-module record literal (v1.compiler.infer
 // type_has_sole_constructor). Until this seam the RUST EMITTER read that fact zero
 // times, so the model's seal did not survive lowering: DESIGN section 4b records the
-// executed receipt -- `extdeps.uri` `UriValidatedScalar` emits byte-identical to the
+// executed receipt -- `extdeps.uri.percent_encoding` `UriValidatedScalar` emits byte-identical to the
 // plain record beside it, public field and derived Deserialize, and both a direct
 // struct literal and `serde_json::from_value` admit values the mint refuses, two of
 // which reach output as invalid percent-encoding. That is the single BELOW-FLOOR item

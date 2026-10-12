@@ -1,7 +1,6 @@
 module test.claim.machine_intake_prior_life_boundary_forged_probe_witness
 
 import std.types { String, Bool, Int }
-import v2.std.algebra { filter }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
