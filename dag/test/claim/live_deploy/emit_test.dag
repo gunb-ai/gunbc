@@ -144,8 +144,11 @@ import gunbc.live_deploy.emit {
   live_deploy_retract_script_for,
   deploy_apply_preamble_steps,
   apply_intent_from_effects,
+  apply_intent_fragments,
   compose_host_script,
+  compose_host_script_decide_steps,
   compose_host_script_mutate_steps,
+  host_script_trace_steps,
   HostScriptRefused,
   Decide, Mutate,
   memory_cap_withheld_line,
@@ -435,15 +438,27 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessReady { access: a } =>
       let pre = deploy_apply_preamble_steps(access: a, spec: spec)
+      let plan = deploy_witness_full_install_plan(spec: spec)
       let p = apply_intent_from_effects(
         spec: spec,
         effects: apply_empty_host_effects(spec: spec),
         access: a,
-        plan: deploy_witness_full_install_plan(spec: spec),
+        plan: plan,
         cap_authorization: srv1_authorization(),
         oidc_now: claim_oidc_now(),
       )
-      pipeline_steps_text(steps: p.steps.skip(n: deploy_apply_frame_steps(spec: spec).length()).take(n: pre.length())) == pipeline_steps_text(steps: pre)
+      let frags = apply_intent_fragments(
+        spec: spec,
+        effects: apply_empty_host_effects(spec: spec),
+        access: a,
+        plan: plan,
+        cap_authorization: srv1_authorization(),
+        oidc_now: claim_oidc_now(),
+      )
+      let offset = compose_host_script_decide_steps(fragments: frags).length()
+        + host_script_trace_steps(kind: "Mutate", member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps()).length()
+      let traced_pre = host_script_trace_steps(kind: "Mutate", member: "preamble" as NonEmptyStr, steps: pre)
+      pipeline_steps_text(steps: p.steps.skip(n: offset).take(n: traced_pre.length())) == pipeline_steps_text(steps: traced_pre)
     DeployAccessJobPrincipalRefused { refusal: _ } => false
   }
 }
