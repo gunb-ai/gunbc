@@ -62,9 +62,47 @@ Witnesses under `dag/test/claim/spark/` that existed only to inhabit those modul
 
 **Vocabulary still consumed by GH200 qualification / harness wire / memory-fit types:** `serving_arm`, `serving_capacity_intent`, `arm_memory_fit`, `serving_compatibility`, `serving_promotion`, `serving_performance_subject`, `vllm_image_identity`, `vllm_observed`, `serving_rank_observe`, `pair_serving_authority`, `pair_serving_authority_log`, `first_party_serving` (posture; launch/incarnation types stubbed).
 
-## 4. Target Y (unchanged shape; now the only live serving path)
+## 4. Target Y — rented replica serving (only live serving path)
 
-Reuse: `gunbc.serving.turn_admission`, `serving_availability`, `engine_progress`, `product.fabric.selection`, `product.capacity.{LeaseGrant,SeatRequest}`, `gunbc.harness.harness_seat`, `extdeps/vllm/*`. Replica collection: inventory and model artifact are data; first vertical is rented 1×/2× RTX PRO 6000, Qwen, one replica per fitting device.
+Spark serving sequencing in this plan is **retired**. Target Y's **warm-session contract is not**. The Spark sale voids the old Spark carve-out; it does not void what a successfully launched rental must still establish for sessions.
+
+Reuse, do not fork: `gunbc.serving.turn_admission` `serving_group_admission`, `serving_availability`, `engine_progress`; `gunbc.serving.replica_endpoint_launch`; `gunbc.serving.session_store`; `product.fabric.selection` `select_supply`; `product.capacity.{LeaseGrant,SeatRequest}`; `gunbc.harness.harness_seat` `harness_bind_seat`; `extdeps/vllm/*`; `extdeps.vllm.bench_serve`. Replica launch identity is `replica_endpoint_launch_key`, not a deleted Spark process launch.
+
+**Replica collection (the Y root shape):**
+
+- Inventory is **data**: a list of devices (count, vendor SKU). First validation inventory: 1× and 2× NVIDIA RTX PRO 6000 Blackwell (Packet.ai, Vast.ai).
+- Model artifact is **data**: a generic served-model row. First row: Qwen. Adding GLM or DeepSeek later is another row, not a new type.
+- Collection **size derives from GPU inventory**. When the model **fits one card**, **one replica per device** (1 GPU → 1 replica; 2 GPUs → 2 replicas). Tensor-parallel across cards is a later row, not the first vertical — Spark `FourSparkTp4` does not become Y's default topology.
+- Each replica is a vLLM realization (`extdeps.vllm` engine args) bound through `gunbc.serving.replica_endpoint_launch`.
+- Admission stays `serving_group_admission` / `harness_bind_seat`. Occupancy stays the serving subject of the capacity ruling (loaded replica, quality-conditioned), not a compute cell.
+
+**§3c for every new declaration:** the executing consumer is `gunbc.harness.harness_seat` `harness_bind_seat` (bind a seat on a replica of this collection). No row without that route.
+
+**Warm-session contract (minimum Y must establish it, not only launch replicas).** Types already exist: `ServingSessionResidency` (`ReusedAtTurn`, `MustReconstruct`, `TokenPrefixBroken`, `ResidencyUnread`) on `gunbc.serving.turn_admission` / `session_store`. Each of these remains an executed obligation on the rented path:
+
+- A session keeps its owning replica across model rounds and tool gaps. This preserves the behavior `gunbc.harness.harness_cli` `harness_worker_cli` already has (one backend bound for the whole tool loop) and lifts it from one call site to the collection.
+- Adding a replica does not move existing session attachments; new sessions use the new capacity.
+- Warmth is bound to the execution identity (`replica_endpoint_launch_key`) and the continuation identity (the exact token prefix). Context loss, process replacement and required reconstruction are distinct, typed outcomes (`ServingSessionResidency`), never folded into "warm".
+- Normal continuation declares its reuse expectation (new input plus a bounded boundary replay), and execution verifies it against observed prefix-cache counters.
+- vLLM stays responsible for its actual cache allocation. The model states the required lifetime and behavior, binds them to the serving profile, and names any missing backend capability as a gap rather than assuming it.
+
+**Replica identity is the capacity-accounting domain.** `HarnessSeatPoolIdentity` is keyed on `RentedReplicaIdentity` (`#13765`), not `FabricGroup`. Y keeps that key consistent across capacity, acquisition, the front-door permit (`serving_front_door`) and release. Each loaded replica has its own capacity limit; collection capacity is derived from its members, never declared beside them.
+
+**What Y must refuse (minimum Y):** unread gauges are not idle (`serving_co_tenancy`); a model not in the admitted set is not served (`admitted_model`); missing inventory or a model that does not fit the per-device rule refuses rather than silently packing TP.
+
+### Acceptance: one warm-session qualification, same procedure for every inventory — OUTSTANDING
+
+Physical qualification of the rented 1×/2× inventories is **OUTSTANDING**. Landing this Spark-retirement PR does not complete it. `extdeps.vllm.bench_serve` `VllmBenchServeRequest.dataset` is `RandomDatasetSpec` and always emits `--dataset-name random`; a shared random prefix exercises cache reuse, not a growing conversation that carries generated output forward, pauses for tools and resumes. Spark `serving_load_runner` / `serving_load_probe` were deleted with X and are **not** the qualification path.
+
+The first vertical still owes a named producer of a representative warm agent-session trace that executes through the admitted serving path (`harness_bind_seat` on a replica of the collection), not around it. The same trace qualifies the 1× and 2× inventories, covering:
+
+- repeated continuation with realistic tool gaps and context growth;
+- the declared context envelope, including permitted maximum-context requests;
+- admission under pressure, and explicit recovery when warm state is lost;
+- adding the second replica while existing sessions continue;
+- a stated service envelope (turn latency, completion, sustainable admitted load), bound to `gunbc.spark.serving_performance_subject` until that vocabulary is re-homed (sequence item 3).
+
+Adding another compatible GPU reruns this procedure against the changed inventory; it does not reopen the architecture. A launched replica without this trace is not an accepted warm-session solution.
 
 ## 5. Why leftover Spark *vocabulary* files survive
 
