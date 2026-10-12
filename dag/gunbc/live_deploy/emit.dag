@@ -52,7 +52,7 @@ import gunbc.managed_directory {
   ManagedDirectory,
   managed_directory_admit,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
-  managed_directory_mode_octal, managed_directory_permissions, declared_directory_mode, DirectoryOwnerAllEveryoneTraverse,
+  managed_directory_permissions, declared_directory_mode, DirectoryOwnerAllEveryoneTraverse,
   EntriesUnmanaged, EntriesReadableByDependents,
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
