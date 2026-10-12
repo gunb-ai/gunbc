@@ -6,7 +6,7 @@ import std.list { list_member, distinct_by_key }
 import std.measure { Measure, ByteSize }
 import std.optional { Present, Absent }
 import gunbc.serving.rented_replica {
-  RentedGpuDevice, RentedNodeInventory, RentedServedModel, RentedReplica,
+  RentedReplicaIdentity, RentedGpuDevice, RentedNodeInventory, RentedServedModel, RentedReplica,
   ReplicasCollected, ReplicaCollectionRefused, rented_replica_collection,
 }
 import gunbc.harness.harness_seat {
@@ -87,4 +87,14 @@ test fn a_replica_pool_is_not_a_spark_group_pool() -> Bool {
   let ps = partitions(rs: collected(inv: node(devices: [device(i: 0, m: card_96)])))
   let spark = harness_seat_pool_identity_at(key: SparkGroup { group: FabricGroupB {} }, class: InteractiveQualitySensitive, seats: 1)
   (spark.partition as String) == "group-group-b-quality-seat-v1" && length(ps) == 1 && !list_member(ps, spark.partition as String, str_eq)
+}
+
+fn replica_identity(node: String, device: Nat, served: String) -> RentedReplicaIdentity {
+  RentedReplicaIdentity { node: node as NonEmptyStr, device_index: device, served_name: served as NonEmptyStr }
+}
+
+test fn delimiter_colliding_replica_identities_get_distinct_pools() -> Bool {
+  let a = harness_seat_pool_identity_at(key: RentedReplicaPool { replica: replica_identity(node: "rental", device: 0, served: "x-gpu1-y") }, class: InteractiveQualitySensitive, seats: 1)
+  let b = harness_seat_pool_identity_at(key: RentedReplicaPool { replica: replica_identity(node: "rental-gpu0-x", device: 1, served: "y") }, class: InteractiveQualitySensitive, seats: 1)
+  (a.partition as String) != (b.partition as String)
 }

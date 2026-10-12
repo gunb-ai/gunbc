@@ -369,8 +369,9 @@ fn harness_cached_tokens_read(doc: JsonValue) -> ServingCachedTokensReading {
   }
 }
 
-// THE WRITE SIDE OF THE SESSION STORE, from the wire: a completed chat completion whose body is a JSON
-// document becomes the entry the next bind reads. A body that is not a document records nothing, so the
+// THE WRITE SIDE OF THE SESSION STORE, from the wire: a completed chat completion (one harness_decode_chat_completion
+// reads as a response: choices, finish_reason) becomes the entry the next bind reads. An error body, an empty
+// choices array or a body that is not a document records nothing, so the
 // previous entry stands. inputs_and_reply is the replayed context the caller actually rendered for this
 // request followed by the reply it received; this function does not reconstruct it.
 // DECLARED FRONTIER (DESIGN.md 3c): the caller of harness_chat_completion_session_entry is the
@@ -378,17 +379,21 @@ fn harness_cached_tokens_read(doc: JsonValue) -> ServingCachedTokensReading {
 // docs/plans/serving-hardware-neutral-cutover.md), which feeds each completed response back as
 // `session:` to harness_bind_seat. Trigger: that PR; the decode-to-standing route is witnessed in
 // test.claim.harness_cached_tokens_witness_test meanwhile.
-fn harness_chat_completion_session_entry(body: String, launch: NonEmptyStr, turn: NonEmptyStr, inputs_and_reply: List<String>) -> ServingSessionEntry? {
-  match parse_json_document(s: body) {
-    JsonDocumentUnreadable { gap: _ } => none
-    JsonDocumentParsed { value: doc } =>
-      Present {
-        value: serving_session_entry_after_request(
-          launch: launch,
-          turn: turn,
-          reading: harness_cached_tokens_read(doc: doc),
-          inputs_and_reply: inputs_and_reply,
-        ),
+fn harness_chat_completion_session_entry(unit: HarnessServingUnit, body: String, launch: NonEmptyStr, turn: NonEmptyStr, inputs_and_reply: List<String>) -> ServingSessionEntry? {
+  match harness_decode_chat_completion(unit: unit, body: body) {
+    HarnessResponseUnreadable { cause: _ } => none
+    HarnessResponseParsed { blocks: _, stop_reason: _, usage: _ } =>
+      match parse_json_document(s: body) {
+        JsonDocumentUnreadable { gap: _ } => none
+        JsonDocumentParsed { value: doc } =>
+          Present {
+            value: serving_session_entry_after_request(
+              launch: launch,
+              turn: turn,
+              reading: harness_cached_tokens_read(doc: doc),
+              inputs_and_reply: inputs_and_reply,
+            ),
+          }
       }
   }
 }
