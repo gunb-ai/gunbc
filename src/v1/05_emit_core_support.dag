@@ -10,7 +10,7 @@ import v1.std.core {
 }
 
 import v1.compiler.artifact { RenderTarget }
-import std.unicode.scalar { char_text }
+import std.unicode.scalar { ascii_lowercase, ascii_uppercase, ascii_uppercase_first }
 import gunbc.rust_emitted_edge { EmittedEdge, module_to_filename }
 import gunbc.rust_emitted_crate { EmittedRustCrate }
 
@@ -136,14 +136,15 @@ fn to_snake(name: String) -> String {
   let result = chars_list |> enumerate |> map(pair =>
     let idx = pair.first
     let ch = pair.second
+    let spelled = substring(s: name, start: idx, end: idx + 1)
     if is_upper(ch: ch) {
       if idx == 0 {
-        to_lower_char(ch: ch)
+        ascii_lowercase(s: spelled)
       } else {
-        concat("_", to_lower_char(ch: ch))
+        concat("_", ascii_lowercase(s: spelled))
       }
     } else {
-      char_text(c: ch)
+      spelled
     }
   )
   result |> join(separator: "")
@@ -151,31 +152,11 @@ fn to_snake(name: String) -> String {
 
 fn to_screaming_snake(name: String) -> String {
   let snake = to_snake(name: name)
-  snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
+  ascii_uppercase(s: snake)
 }
 
 fn is_upper(ch: Int) -> Bool {
   ch >= 65 && ch <= 90
-}
-
-fn to_lower_char(ch: Int) -> String {
-  let cp = ch
-  if cp >= 65 && cp <= 90 {
-    let lower_cp = cp + 32
-    char_text(c: lower_cp)
-  } else {
-    char_text(c: ch)
-  }
-}
-
-fn to_upper_char(ch: Int) -> String {
-  let cp = ch
-  if cp >= 97 && cp <= 122 {
-    let upper_cp = cp - 32
-    char_text(c: upper_cp)
-  } else {
-    char_text(c: ch)
-  }
 }
 
 fn sanitize_service_name(name: String) -> String {
@@ -205,13 +186,7 @@ fn capitalize_first(s: String) -> String {
   if chars_list |> count == 0 {
     ""
   } else {
-    chars_list |> enumerate |> map(pair =>
-      if pair.first == 0 {
-        to_upper_char(ch: pair.second)
-      } else {
-        char_text(c: pair.second)
-      }
-    ) |> join(separator: "")
+    ascii_uppercase_first(s: s)
   }
 }
 

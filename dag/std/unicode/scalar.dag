@@ -44,8 +44,9 @@ fn not_unicode_scalar_code_point(n: NotUnicodeScalar) -> Int {
 // STAGED REPAIR (gunbc.recurring_failure_mode char_brand_admits_any_int): the seed does not yet
 // enforce Char, so a non-scalar Int can reach this fold. The host realization of that fold now
 // REFUSES it loudly, naming NotUnicodeScalar (the same unicode_scalar predicate scalar_of_code_point
-// decides), where it used to drop the value silently; every non-literal caller was moved to
-// from_code_point, so a literal (which the seed proves) is the only call left in the corpus.
+// decides), where it used to drop the value silently. This is a run-time mitigation: the seed does
+// not judge a literal against the refinement either, and every non-literal caller was moved to
+// from_code_point or a rewrite with no Int -> Char crossing.
 fn char_text(c: Char) -> String {
   unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: c))
 }

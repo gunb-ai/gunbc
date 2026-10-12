@@ -1,6 +1,7 @@
 module tools.emit_host_transport
 
-import std.unicode.scalar { char_text }
+import std.unicode.scalar { char_text, from_code_point }
+import std.error_primitives { Ok, Err }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -182,9 +183,8 @@ fn run_ts_smoke() -> Bool {
   )
   let run = node.Runtime.RunFile(workdir: dir.path, script_path: concat(dir.path, "/fixture.js"))
   let cleanup = shell.Remove.RecursiveForce(path: dir.path)
-  let expected = concat(char_text(c: ts_host_fixture_expected_sum), repeat_string(s: char_text(c: 0), n: byte_size_count(ts_signed_i32_le_byte_count) - 1))
   dir.success && src.success && compile.success && run.success && cleanup.success
-    && (run.stdout == expected)
+    && ts_host_stdout_is_the_sum(stdout: run.stdout)
 }
 
 // PORT BUDGET, and where the entropy went. The retired heredoc picked 19000 + ($ % 1000): the
@@ -403,4 +403,13 @@ fn c_emit_host_inject_fault_refuses_holds() -> Bool {
 
 fn run_c_smoke() -> Bool {
   c_emit_host_green_holds() && c_emit_host_inject_fault_refuses_holds()
+}
+
+// The fixture's sum is spelled as text through std.unicode.scalar from_code_point, the typed
+// route, so a sum that were not a scalar refuses (false) instead of being dropped.
+fn ts_host_stdout_is_the_sum(stdout: String) -> Bool {
+  match from_code_point(cp: ts_host_fixture_expected_sum) {
+    Ok { value: sum_text } => stdout == concat(sum_text, repeat_string(s: char_text(c: 0), n: byte_size_count(ts_signed_i32_le_byte_count) - 1))
+    Err { value: _ } => false
+  }
 }
