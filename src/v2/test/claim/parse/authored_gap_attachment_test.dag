@@ -30,7 +30,7 @@ fn authored(source: String) -> Optional<AuthoredParseArtifact> {
   match lex_walk_artifact(source: chars(s: source), file: ^zqx_vgap, rules: dag_lex_rules()) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: artifact, diagnostics: _ } =>
-      match parse_module_authored(artifact: artifact, grammar: lm.grammar, normalize: fn(t) { strip_line_comment_delimiter(lexeme: t) }) {
+      match parse_module_authored(artifact: artifact, grammar: lm.grammar, annotation_text: fn(t) { strip_line_comment_delimiter(lexeme: t) }) {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: a, diagnostics: _ } => optional_present(value: a)
       }

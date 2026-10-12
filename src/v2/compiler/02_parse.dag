@@ -292,9 +292,9 @@ fn authored_regions(artifact: ParseArtifact) -> AuthoredRegionWalk {
   authored_region_walk(index: artifact.span_index, node: artifact.tree, parent: FileScope, acc: AuthoredRegionWalk { regions: [], unrepresentable: [] })
 }
 
-fn authored_normalized_capture(capture: UnboundSourceAnnotation, normalize: fn(String) -> String) -> NormalizedAnnotationCapture {
+fn authored_normalized_capture(capture: UnboundSourceAnnotation, annotation_text: fn(String) -> String) -> NormalizedAnnotationCapture {
   NormalizedAnnotationCapture {
-    text: normalize(capture.lexeme),
+    text: annotation_text(capture.lexeme),
     origin: SourceSpan { file: unicode_scalar_fold(xs: symbol_lexeme(sym: capture.file)), start: capture.start, end: capture.end },
     placement: capture.placement,
     preceded_by_blank_line: capture.preceded_by_blank_line,
@@ -312,11 +312,14 @@ fn authored_parse_region_unrepresentable_diagnostic() -> Diagnostic {
 
 // THE AUTHORED SIBLING OF parse_module: the same semantic parse of the artifact's tokens, plus every
 // capture attached to its gap by std.source_annotation attach_annotations -- the SAME fold the v1
-// realization calls. `normalize` is the language's delimiter stripping (for .dag,
+// realization calls. `annotation_text` is the language's delimiter stripping (for .dag,
 // extdeps.languages.dag.syntax strip_line_comment_delimiter); the parse itself names no annotation
 // syntax. It refuses only when a production consumed input no single range covers, because then the
 // comments inside it would have no region to land in.
-fn parse_module_authored(artifact: LexArtifact, grammar: ParseGrammar, normalize: fn(String) -> String) -> Outcome<AuthoredParseArtifact> {
+// The parameter is not named `normalize`: the Rust emitter resolves a call through that name to
+// v2.compiler.normalize normalize and writes a path from this module into a later stage, which the
+// crate plan refuses as EmitterReverseEdge.
+fn parse_module_authored(artifact: LexArtifact, grammar: ParseGrammar, annotation_text: fn(String) -> String) -> Outcome<AuthoredParseArtifact> {
   match parse_module(tokens: artifact.tokens, grammar: grammar) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: semantic, diagnostics: d } =>
@@ -326,7 +329,7 @@ fn parse_module_authored(artifact: LexArtifact, grammar: ParseGrammar, normalize
           value: AuthoredParseArtifact {
             semantic: semantic,
             annotations: attach_annotations(
-              captures: artifact.annotations |> map(c => authored_normalized_capture(capture: c, normalize: normalize)),
+              captures: artifact.annotations |> map(c => authored_normalized_capture(capture: c, annotation_text: annotation_text)),
               regions: walk.regions
             )
           },

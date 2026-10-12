@@ -103,7 +103,7 @@ fn v2_neighbours(source: String) -> List<String> {
   match lex_walk_artifact(source: chars(s: source), file: ^zqx_agree, rules: dag_lex_rules()) {
     Rejected { diagnostics: _ } => ["<no lex>"]
     Accepted { value: artifact, diagnostics: _ } =>
-      match parse_module_authored(artifact: artifact, grammar: dag_language_model().grammar, normalize: fn(t) { strip_line_comment_delimiter(lexeme: t) }) {
+      match parse_module_authored(artifact: artifact, grammar: dag_language_model().grammar, annotation_text: fn(t) { strip_line_comment_delimiter(lexeme: t) }) {
         Rejected { diagnostics: _ } => ["<no parse>"]
         Accepted { value: authored, diagnostics: _ } =>
           v2_rows_text(source: source, rows: source_annotation_graph_rows(graph: authored_parse_annotations(artifact: authored)), index: authored_parse_semantic(artifact: authored).span_index)
