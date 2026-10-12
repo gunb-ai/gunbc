@@ -113,6 +113,8 @@ type ServingAcceleratorAxis
   | AcceleratorSparkGb10
   | AcceleratorCited { realization: ServingAcceleratorRealization }
 
+data serving_accelerator_spark_gb10_wire: NonEmptyStr = "spark-gb10" as NonEmptyStr
+
 type ServingHostLink
   = HostLinkUnread
   | HostLinkNegotiated { link: PcieLink }
@@ -389,7 +391,7 @@ fn engine_axis_reading(e: ServingEngineRequest) -> ServingSubjectAxisReading {
 fn accelerator_axis_reading(a: ServingAcceleratorAxis) -> ServingSubjectAxisReading {
   match a {
     AcceleratorUnread => AxisUnread
-    AcceleratorSparkGb10 => AxisRead { value: "spark-gb10" as NonEmptyStr }
+    AcceleratorSparkGb10 => AxisRead { value: serving_accelerator_spark_gb10_wire }
     AcceleratorCited { realization: r } =>
       match r.host_link {
         HostLinkUnread => AxisUnread
@@ -921,7 +923,7 @@ fn serving_subject_key_axis_fragment(s: ServingPerformanceSubject, a: ServingSub
     AxisAccelerator =>
       match s.accelerator {
         AcceleratorUnread => axis_value_unread_marker
-        AcceleratorSparkGb10 => "spark-gb10" as NonEmptyStr
+        AcceleratorSparkGb10 => serving_accelerator_spark_gb10_wire
         AcceleratorCited { realization: r } => serving_accelerator_realization_wire(a: r)
       }
     AxisCheckpoint => serving_subject_axis_value(s: s, a: a)
