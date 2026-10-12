@@ -25,7 +25,7 @@ fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_caller_backlog.XXXXXX").path
 }
 
-test fn persist_then_fresh_process_reads_the_same_waiting_work_by_real_execution() -> Bool {
+test fn persist_then_resume_reads_the_slot_not_memory_by_real_execution() -> Bool {
   let root_path = fresh_root()
   let persist_root = root_path as NonEmptyStr
   let work = "logical-work-a" as LogicalWorkId

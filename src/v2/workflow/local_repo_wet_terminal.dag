@@ -1531,9 +1531,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "persist_then_fresh_process_reads_the_same_waiting_work_by_real_execution" },
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "persist_then_resume_reads_the_slot_not_memory_by_real_execution" },
       entry: "dag/test/claim/serving_caller_backlog_wet_witness_test.dag",
-      function: "persist_then_fresh_process_reads_the_same_waiting_work_by_real_execution",
+      function: "persist_then_resume_reads_the_slot_not_memory_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
