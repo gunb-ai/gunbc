@@ -927,6 +927,57 @@ test fn a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_exec
   verdict && removed.success
 }
 
+// A STORE POPULATED BEFORE THE ADDRESS BECAME SHA-256 KEEPS WORKING, AND ITS OLD RECORDS ARE RETIRED BY
+// THE ORDINARY BOUND. The root is given what such a store holds: a record under a sixteen-digit
+// fingerprint name, a byte part beside it, and an occupancy row charging both. Reopened under this
+// code: the sweep leaves the indexed record and its part alone and the row still decodes (the name
+// predicate reads either address family); a request is a MISS, never served the old record, because
+// its address is a different name; a first commit lands beside the old record with the root inside
+// budget; and the second commit, which no longer fits beside both, evicts the OLDEST row -- the old
+// record -- by name, after which neither it nor its part is on disk and both new records are hits.
+// Nothing here is a migration step: the old record leaves the way any cold record does. The old
+// row is charged 2,000 bytes (an 1,800-byte record and a 200-byte part) and a new record is about
+// 1,190, so one new record fits beside it in the 4,096-byte budget and two do not.
+test fn a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budget = bundle_family_budget_bytes(root: root)
+  let old_name = "0123456789abcdef.materialization.v3"
+  let old_part = concat(old_name, concat(".part.", output_module_test_verdicts as String))
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: _ } => {
+      let planted_record = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: old_name), content: repeat_string(s: "o", n: 1800)).success
+      let planted_part = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: old_part), content: repeat_string(s: "p", n: 200)).success
+      let slot = store_path(root_path: root_path, name: concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, ".1"))
+      let planted_row = Filesystem.Write(path: slot, content: join(["gunbc-store-occupancy v2", "next 2", concat(old_name, " 2000 1")], "\n")).success
+      match local_store_open(root: root, budgets: witness_family_budgets) {
+        LocalStoreUnavailable { root_path: _, cause: _ } => false
+        LocalStoreOpened { capability: store, durability: _ } => {
+          let kept_by_sweep = !(store.sweep.removed |> any(n => n == old_name || n == old_part))
+          let row_decodes = index_row_count(root_path: root_path) == 1
+          let not_served = store_lookup_is_miss(l: local_store_lookup(capability: store, req: bundle_req(module: "n1")))
+          let first = local_store_commit(capability: store, req: bundle_req(module: "n1"), payloads: verdicts(text: "n1 pass"), parts: [])
+          let beside = Filesystem.Read(path: store_path(root_path: root_path, name: old_name)).success
+            && root_object_bytes(root_path: root_path) <= budget
+          let second = local_store_commit(capability: store, req: bundle_req(module: "n2"), payloads: verdicts(text: "n2 pass"), parts: [])
+          planted_record && planted_part && planted_row && kept_by_sweep && row_decodes && not_served
+            && commit_tag(c: first.commit) == "committed" && count(first.evicted) == 0 && beside
+            && commit_tag(c: second.commit) == "committed"
+            && second.evicted |> any(n => n == old_name)
+            && !Filesystem.Read(path: store_path(root_path: root_path, name: old_name)).success
+            && !Filesystem.Read(path: store_path(root_path: root_path, name: old_part)).success
+            && store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: "n1")))
+            && store_lookup_is_hit(l: local_store_lookup(capability: store, req: bundle_req(module: "n2")))
+            && root_object_bytes(root_path: root_path) <= budget
+        }
+      }
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
 fn index_row_count(root_path: String) -> Int {
   match local_store_read_index(root_path: root_path, family: native_module_verdict_bundle_artifact_kind) {
     LocalStoreIndexAt { index: i, expected: _ } => count(i.rows)
