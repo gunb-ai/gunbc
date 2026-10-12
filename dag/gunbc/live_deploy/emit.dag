@@ -1908,7 +1908,7 @@ fn host_script_fragment_mutate_steps(fragments: List<HostScriptFragment>) -> Lis
   })
 }
 
-// ONE CASE ANALYSIS per target: refusal is Decide{Refused}; Mutate carries only an admitted install.
+// ONE CASE ANALYSIS per target: refusal is Decide with standing HostScriptRefused; Mutate carries only an admitted install.
 data owned_directory_unplannable_poison: String = "__GUNBC_DEPLOY_REFUSED__ owned directory NOT ENSURED: gunbc.owned_directory owned_directory_install_plan_of has no plan: "
 
 fn owned_directory_target_fragments(t: OwnedDirectoryTarget) -> List<HostScriptFragment> {
