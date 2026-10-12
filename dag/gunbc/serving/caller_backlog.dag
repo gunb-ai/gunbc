@@ -181,12 +181,58 @@ fn resume_after_restart(view: ControllerView, work: LogicalWorkId) -> ResumeStan
   resume_from_snapshot(snapshot: view.durable, work: work)
 }
 
-fn encode_phase_tag(phase: CallerWorkPhase) -> String {
-  match phase {
-    WorkWaiting => "W"
-    WorkCompleted => "C"
-    WorkCancelled => "X"
-    WorkRecoveryBoundExceeded { deficit: _ } => "B"
+// THE SLOT PAYLOAD IS ONE WIRE FORM. waiting_wire_separator / waiting_wire_field_count,
+// waiting_phase_wire_rows, and waiting_recovery_wire_rows are the productions; encode
+// selects them backward, decode selects the same rows forward. A field that could contain
+// the separator is unencodable — never sanitized, never written — so persist cannot land
+// a turn resume cannot read (the loss PersistBeforeOffer exists to prevent).
+// generation here is product.fabric.budget MoneyLease.generation (Int), not
+// std.durable_compare_and_set CasGeneration (the slot's version).
+
+data waiting_wire_separator: String = "\t"
+data waiting_wire_field_count: Int = 6
+data waiting_recovery_separator: String = ","
+
+type WaitingPhaseWireRow {
+  tag: String
+  phase: CallerWorkPhase
+}
+
+data waiting_phase_wire_rows: List<WaitingPhaseWireRow> = [
+  WaitingPhaseWireRow { tag: "W", phase: WorkWaiting },
+  WaitingPhaseWireRow { tag: "C", phase: WorkCompleted },
+  WaitingPhaseWireRow { tag: "X", phase: WorkCancelled },
+]
+
+type WaitingRecoveryWireRow {
+  token: String
+  event: RecoveryEvent
+}
+
+data waiting_recovery_wire_rows: List<WaitingRecoveryWireRow> = [
+  WaitingRecoveryWireRow { token: "P1", event: RecoveryEvent { kind: RecoveryProbe, succeeded: true } },
+  WaitingRecoveryWireRow { token: "P0", event: RecoveryEvent { kind: RecoveryProbe, succeeded: false } },
+  WaitingRecoveryWireRow { token: "R1", event: RecoveryEvent { kind: RecoveryRequest, succeeded: true } },
+  WaitingRecoveryWireRow { token: "R0", event: RecoveryEvent { kind: RecoveryRequest, succeeded: false } },
+]
+
+data waiting_bound_phase_tag: String = "B"
+
+fn waiting_wire_field_is_clean(field: String) -> Bool {
+  field != ""
+    && length(field.split(delimiter: waiting_wire_separator)) == 1
+    && length(field.split(delimiter: "\n")) == 1
+}
+
+fn waiting_generation_wire(generation: Int) -> String? {
+  let s = to_string(generation)
+  if !waiting_wire_field_is_clean(field: s) {
+    none
+  } else {
+    match parse_int(s: s) {
+      Absent => none
+      Present { value: back } => if back == generation { Present { value: s } } else { none }
+    }
   }
 }
 
@@ -199,57 +245,113 @@ fn encode_phase_deficit(phase: CallerWorkPhase) -> String {
   }
 }
 
-fn decode_phase(tag: String, deficit: String) -> CallerWorkPhase? {
-  if tag == "W" {
-    Present { value: WorkWaiting }
-  } else if tag == "C" {
-    Present { value: WorkCompleted }
-  } else if tag == "X" {
-    Present { value: WorkCancelled }
-  } else if tag == "B" && deficit != "" {
-    Present { value: WorkRecoveryBoundExceeded { deficit: deficit as NonEmptyStr } }
+fn waiting_phase_row_matches(row: WaitingPhaseWireRow, phase: CallerWorkPhase) -> Bool {
+  match row.phase {
+    WorkWaiting => match phase { WorkWaiting => true  WorkCompleted => false  WorkCancelled => false  WorkRecoveryBoundExceeded { deficit: _ } => false }
+    WorkCompleted => match phase { WorkCompleted => true  WorkWaiting => false  WorkCancelled => false  WorkRecoveryBoundExceeded { deficit: _ } => false }
+    WorkCancelled => match phase { WorkCancelled => true  WorkWaiting => false  WorkCompleted => false  WorkRecoveryBoundExceeded { deficit: _ } => false }
+    WorkRecoveryBoundExceeded { deficit: _ } => false
+  }
+}
+
+fn encode_phase_from_rows(phase: CallerWorkPhase) -> String? {
+  match phase {
+    WorkRecoveryBoundExceeded { deficit: d } =>
+      if waiting_wire_field_is_clean(field: d as String) {
+        Present { value: waiting_bound_phase_tag }
+      } else {
+        none
+      }
+    WorkWaiting =>
+      match filter(waiting_phase_wire_rows, row => waiting_phase_row_matches(row: row, phase: phase)).first() {
+        Absent => none
+        Present { value: row } => Present { value: row.tag }
+      }
+    WorkCompleted =>
+      match filter(waiting_phase_wire_rows, row => waiting_phase_row_matches(row: row, phase: phase)).first() {
+        Absent => none
+        Present { value: row } => Present { value: row.tag }
+      }
+    WorkCancelled =>
+      match filter(waiting_phase_wire_rows, row => waiting_phase_row_matches(row: row, phase: phase)).first() {
+        Absent => none
+        Present { value: row } => Present { value: row.tag }
+      }
+  }
+}
+
+fn decode_phase_from_rows(tag: String, deficit: String) -> CallerWorkPhase? {
+  if tag == waiting_bound_phase_tag {
+    if waiting_wire_field_is_clean(field: deficit) {
+      Present { value: WorkRecoveryBoundExceeded { deficit: deficit as NonEmptyStr } }
+    } else {
+      none
+    }
   } else {
-    none
+    match filter(waiting_phase_wire_rows, row => row.tag == tag).first() {
+      Absent => none
+      Present { value: row } =>
+        if deficit == "" {
+          Present { value: row.phase }
+        } else {
+          none
+        }
+    }
   }
 }
 
-fn encode_recovery_event(event: RecoveryEvent) -> String {
-  match event.kind {
-    RecoveryProbe => if event.succeeded { "P1" } else { "P0" }
-    RecoveryRequest => if event.succeeded { "R1" } else { "R0" }
+fn encode_recovery_event_from_rows(event: RecoveryEvent) -> String? {
+  match filter(waiting_recovery_wire_rows, row =>
+    (match row.event.kind {
+      RecoveryProbe => match event.kind { RecoveryProbe => true  RecoveryRequest => false }
+      RecoveryRequest => match event.kind { RecoveryRequest => true  RecoveryProbe => false }
+    }) && row.event.succeeded == event.succeeded
+  ).first() {
+    Absent => none
+    Present { value: row } => Present { value: row.token }
   }
 }
 
-fn decode_recovery_event(token: String) -> RecoveryEvent? {
-  if token == "P1" {
-    Present { value: RecoveryEvent { kind: RecoveryProbe, succeeded: true } }
-  } else if token == "P0" {
-    Present { value: RecoveryEvent { kind: RecoveryProbe, succeeded: false } }
-  } else if token == "R1" {
-    Present { value: RecoveryEvent { kind: RecoveryRequest, succeeded: true } }
-  } else if token == "R0" {
-    Present { value: RecoveryEvent { kind: RecoveryRequest, succeeded: false } }
-  } else {
-    none
+fn decode_recovery_event_from_rows(token: String) -> RecoveryEvent? {
+  match filter(waiting_recovery_wire_rows, row => row.token == token).first() {
+    Absent => none
+    Present { value: row } => Present { value: row.event }
   }
 }
 
-fn encode_recovery(events: List<RecoveryEvent>) -> String {
-  join(map(events, e => encode_recovery_event(event: e)), ",")
+fn encode_recovery_from_rows(events: List<RecoveryEvent>) -> String? {
+  fold(
+    events,
+    init: Present { value: "" },
+    f: (acc, event) =>
+      match acc {
+        Absent => none
+        Present { value: so_far } =>
+          match encode_recovery_event_from_rows(event: event) {
+            Absent => none
+            Present { value: token } =>
+              if so_far == "" {
+                Present { value: token }
+              } else {
+                Present { value: concat(concat(so_far, waiting_recovery_separator), token) }
+              }
+          }
+      },
+  )
 }
 
-fn decode_recovery(s: String) -> List<RecoveryEvent>? {
+fn decode_recovery_from_rows(s: String) -> List<RecoveryEvent>? {
   if s == "" {
     Present { value: [] as List<RecoveryEvent> }
   } else {
     fold(
-      s.split(delimiter: ","),
+      s.split(delimiter: waiting_recovery_separator),
       init: Present { value: [] as List<RecoveryEvent> },
       f: (acc, token) =>
         match acc {
           Absent => none
           Present { value: xs } =>
-            match decode_recovery_event(token: token) {
+            match decode_recovery_event_from_rows(token: token) {
               Absent => none
               Present { value: event } => Present { value: concat(xs, [event]) }
             }
@@ -258,69 +360,107 @@ fn decode_recovery(s: String) -> List<RecoveryEvent>? {
   }
 }
 
-fn encode_waiting(record: CallerWorkRecord) -> NonEmptyStr {
-  join([
-    record.work as String,
-    "\t",
-    record.reservation as String,
-    "\t",
-    to_string(record.generation),
-    "\t",
-    encode_phase_tag(phase: record.phase),
-    "\t",
-    encode_phase_deficit(phase: record.phase),
-    "\t",
-    encode_recovery(events: record.recovery),
-  ], "") as NonEmptyStr
+type WaitingWire
+  = WaitingWireEncoded { payload: NonEmptyStr }
+  | WaitingWireUnencodable { reason: NonEmptyStr }
+
+fn encode_waiting(record: CallerWorkRecord) -> WaitingWire {
+  let work_s = record.work as String
+  let reservation_s = record.reservation as String
+  if !waiting_wire_field_is_clean(field: work_s) {
+    WaitingWireUnencodable { reason: "logical work id is not a waiting-wire field" as NonEmptyStr }
+  } else if !waiting_wire_field_is_clean(field: reservation_s) {
+    WaitingWireUnencodable { reason: "reservation ref is not a waiting-wire field" as NonEmptyStr }
+  } else {
+    match waiting_generation_wire(generation: record.generation) {
+      Absent => WaitingWireUnencodable { reason: "lease generation is not a waiting-wire field" as NonEmptyStr }
+      Present { value: generation_s } =>
+        match encode_phase_from_rows(phase: record.phase) {
+          Absent => WaitingWireUnencodable { reason: "phase is not a waiting-wire production" as NonEmptyStr }
+          Present { value: tag } =>
+            match encode_recovery_from_rows(events: record.recovery) {
+              Absent => WaitingWireUnencodable { reason: "recovery history is not a waiting-wire production" as NonEmptyStr }
+              Present { value: recovery_s } =>
+                WaitingWireEncoded {
+                  payload: join([
+                    work_s,
+                    waiting_wire_separator,
+                    reservation_s,
+                    waiting_wire_separator,
+                    generation_s,
+                    waiting_wire_separator,
+                    tag,
+                    waiting_wire_separator,
+                    encode_phase_deficit(phase: record.phase),
+                    waiting_wire_separator,
+                    recovery_s,
+                  ], "") as NonEmptyStr,
+                }
+            }
+        }
+    }
+  }
+}
+
+fn waiting_wire_part(parts: List<String>, n: Int) -> String? {
+  parts.skip(n: n).first()
 }
 
 fn decode_waiting(payload: NonEmptyStr) -> CallerWorkRecord? {
-  let parts = (payload as String).split(delimiter: "\t")
-  if length(parts) != 6 {
+  let parts = (payload as String).split(delimiter: waiting_wire_separator)
+  if length(parts) != waiting_wire_field_count {
     none
   } else {
-    match parts.first() {
+    match waiting_wire_part(parts: parts, n: 0) {
       Absent => none
       Present { value: work_s } =>
-        match parts.skip(n: 1).first() {
+        match waiting_wire_part(parts: parts, n: 1) {
           Absent => none
           Present { value: reservation_s } =>
-            match parts.skip(n: 2).first() {
+            match waiting_wire_part(parts: parts, n: 2) {
               Absent => none
               Present { value: generation_s } =>
-                match parts.skip(n: 3).first() {
+                match waiting_wire_part(parts: parts, n: 3) {
                   Absent => none
                   Present { value: tag } =>
-                    match parts.skip(n: 4).first() {
+                    match waiting_wire_part(parts: parts, n: 4) {
                       Absent => none
                       Present { value: deficit } =>
-                        match parts.skip(n: 5).first() {
+                        match waiting_wire_part(parts: parts, n: 5) {
                           Absent => none
                           Present { value: recovery_s } =>
-                            match parse_int(s: generation_s) {
-                              Absent => none
-                              Present { value: generation } =>
-                                match decode_phase(tag: tag, deficit: deficit) {
-                                  Absent => none
-                                  Present { value: phase } =>
-                                    match decode_recovery(s: recovery_s) {
-                                      Absent => none
-                                      Present { value: recovery } =>
-                                        if work_s == "" || reservation_s == "" {
-                                          none
-                                        } else {
-                                          Present {
-                                            value: CallerWorkRecord {
-                                              work: work_s as LogicalWorkId,
-                                              reservation: reservation_s as ReservationRef,
-                                              generation: generation,
-                                              phase: phase,
-                                              recovery: recovery,
-                                            },
-                                          }
+                            if !waiting_wire_field_is_clean(field: work_s) || !waiting_wire_field_is_clean(field: reservation_s) {
+                              none
+                            } else {
+                              match parse_int(s: generation_s) {
+                                Absent => none
+                                Present { value: generation } =>
+                                  match waiting_generation_wire(generation: generation) {
+                                    Absent => none
+                                    Present { value: gen_s } =>
+                                      if gen_s != generation_s {
+                                        none
+                                      } else {
+                                        match decode_phase_from_rows(tag: tag, deficit: deficit) {
+                                          Absent => none
+                                          Present { value: phase } =>
+                                            match decode_recovery_from_rows(s: recovery_s) {
+                                              Absent => none
+                                              Present { value: recovery } =>
+                                                Present {
+                                                  value: CallerWorkRecord {
+                                                    work: work_s as LogicalWorkId,
+                                                    reservation: reservation_s as ReservationRef,
+                                                    generation: generation,
+                                                    phase: phase,
+                                                    recovery: recovery,
+                                                  },
+                                                }
+                                            }
                                         }
-                                    }
-                                }
+                                      }
+                                  }
+                              }
                             }
                         }
                     }
@@ -338,6 +478,7 @@ type DurablePersistStanding
   | DurablePersistRefusedTerminal { phase: CallerWorkPhase }
   | DurablePersistStoreRefused { detail: NonEmptyStr }
   | DurablePersistKeyNotSlotAddressable { work: LogicalWorkId }
+  | DurablePersistPayloadUnencodable { reason: NonEmptyStr }
 
 fn persist_record_cas(
   root: NonEmptyStr,
@@ -346,7 +487,9 @@ fn persist_record_cas(
   as_phase: Bool,
 ) -> DurablePersistStanding {
   let key = record.work as NonEmptyStr
-  let payload = encode_waiting(record: record)
+  match encode_waiting(record: record) {
+    WaitingWireUnencodable { reason: reason } => DurablePersistPayloadUnencodable { reason: reason }
+    WaitingWireEncoded { payload: payload } =>
   match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => DurablePersistKeyNotSlotAddressable { work: record.work }
     DerivedPayloadAdmitted { verified: v } =>
@@ -373,6 +516,7 @@ fn persist_record_cas(
           detail: "file compare-and-set refused the persist" as NonEmptyStr
         }
       }
+  }
   }
 }
 
@@ -650,6 +794,7 @@ fn cancel_work_durable(
         DurablePersistRefusedTerminal { phase: p } => DurableCancelAlreadyTerminal { phase: p }
         DurablePersistStoreRefused { detail: d } => DurableCancelStoreRefused { detail: d }
         DurablePersistKeyNotSlotAddressable { work: w } => DurableCancelKeyNotSlotAddressable { work: w }
+        DurablePersistPayloadUnencodable { reason: r } => DurableCancelStoreRefused { detail: r }
       }
   }
 }
@@ -681,6 +826,7 @@ fn commit_attempt_durable(
         DurablePersistRefusedTerminal { phase: p } => DurableAttemptNotWaiting { phase: p }
         DurablePersistStoreRefused { detail: d } => DurableAttemptStoreRefused { detail: d }
         DurablePersistKeyNotSlotAddressable { work: w } => DurableAttemptKeyNotSlotAddressable { work: w }
+        DurablePersistPayloadUnencodable { reason: r } => DurableAttemptStoreRefused { detail: r }
       }
   }
 }
