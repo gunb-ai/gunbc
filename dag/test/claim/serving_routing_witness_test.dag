@@ -42,14 +42,14 @@ import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch, 
 import std.measure { token_count_value }
 import product.fabric.demand { ObservationReceiptRef }
 
-// ── 1. GROUP B IS THE ENROLLED ROUTE, AND IT CARRIES ITS OWN FRONT DOOR ───────────────────────
+// ── 1. GROUP B IS NOT ENROLLED: THE SPARKS WERE SOLD ─────────────────────────────────────────
 //
-// THE DISCRIMINATING HALF IS THE ENDPOINT, not the count: the route must resolve to group B's
-// rank-zero head of the arm converged on it, on port 30000.
-//
-// GROUP B'S PORT IS THE CONVERGED ARM'S. This claim used to pin ":30001", the retired exl3 canary's
-// port, so the witness certified the very value a real dispatch refused on (2026-09-18: nothing
-// listening at 192.168.1.236:30001, while the native arm answered at :30000).
+// Operator-ruled 2026-10-10 (rung drop serving_fixtures_name_sold_group_b_hosts). This claim used
+// to assert length 1 and a resolved :30000 front door — a live-production reading of a group that
+// no longer exists. #13641 emptied the topology list; leaving FabricGroupB on serving_enrolled_groups
+// was the leftover. The discriminating production facts now are: the enrollment list is empty, and
+// serving_route(FabricGroupB) is unresolved because the head has no LAN row. That is the inhabitance
+// that the fixture-supplied seat-ceiling claims in harness_seat_witness_test do not replace.
 fn w_endpoint(group: FabricGroup) -> String {
   match serving_route(group: group) {
     ServingRouteUnresolved { group: _, obligation: _ } => "unresolved"
@@ -58,9 +58,8 @@ fn w_endpoint(group: FabricGroup) -> String {
 }
 
 test fn group_b_is_enrolled_and_its_route_has_its_own_front_door() -> Bool {
-  length(serving_enrolled_groups) == 1
-    && w_endpoint(group: FabricGroupB {}) != "unresolved"
-    && ends_with(s: w_endpoint(group: FabricGroupB {}), suffix: ":30000")
+  length(serving_enrolled_groups) == 0
+    && w_endpoint(group: FabricGroupB {}) == "unresolved"
 }
 
 // ── 2. A ROUTE'S CEILING IS A DECLARED DECISION ───────────────────────────────────────────────
