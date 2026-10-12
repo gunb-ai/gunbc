@@ -1335,21 +1335,15 @@ fn live_deploy_operator_local_admitted(deployment: DesiredDeployment, access: De
     CandidateUnobservable { cause: why } =>
       exit_failure(reason: candidate_unobservable_detail(cause: why))
     CandidateObserved { candidate: candidate } =>
-      match observe_candidate_root_tree_oid(repo: ".") {
-        CandidateTreeOidUnobservable { detail: d } =>
-          exit_failure(reason: join(["live_deploy apply: CandidateTreeUnobservable — ", d], ""))
-        CandidateTreeOidObserved { oid_hex: candidate_tree } =>
-          live_deploy_receipted_decided(
-            deployment: deployment,
-            access: access,
-            candidate: candidate,
-            candidate_tree: candidate_tree,
-            provenance: OperatorLocalApply {
-              host: access.host.identity,
-              principal: grounded_posix_principal_name(p: access.principal),
-            },
-          )
-      }
+      live_deploy_receipted_with_candidate(
+        deployment: deployment,
+        access: access,
+        candidate: candidate,
+        provenance: OperatorLocalApply {
+          host: access.host.identity,
+          principal: grounded_posix_principal_name(p: access.principal),
+        },
+      )
   }
 }
 
@@ -1490,22 +1484,24 @@ fn live_deploy_receipted_decided(
   }
 }
 
-fn live_deploy_transaction_decided(
+fn live_deploy_receipted_with_candidate(
   deployment: DesiredDeployment,
   access: DeployAccess,
-  run: ActionsRunBinding,
-  expected: String,
   candidate: CandidateRelease,
-  candidate_tree: String,
-  provenance: LiveDeployFleetProvenance,
+  provenance: LiveDeployApplyProvenance,
 ) -> ProcessExit {
-  live_deploy_receipted_decided(
-    deployment: deployment,
-    access: access,
-    candidate: candidate,
-    candidate_tree: candidate_tree,
-    provenance: FleetTransactionProvenance { run: run, expected_revision: expected, fleet: provenance },
-  )
+  match observe_candidate_root_tree_oid(repo: ".") {
+    CandidateTreeOidUnobservable { detail: d } =>
+      exit_failure(reason: join(["live_deploy apply: CandidateTreeUnobservable — ", d], ""))
+    CandidateTreeOidObserved { oid_hex: candidate_tree } =>
+      live_deploy_receipted_decided(
+        deployment: deployment,
+        access: access,
+        candidate: candidate,
+        candidate_tree: candidate_tree,
+        provenance: provenance,
+      )
+  }
 }
 
 fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: DeployAccess, run: ActionsRunBinding, expected: String, provenance: LiveDeployFleetProvenance) -> ProcessExit {
@@ -1516,20 +1512,12 @@ fn live_deploy_transaction_admitted(deployment: DesiredDeployment, access: Deplo
       if (candidate.revision as String) != expected {
         exit_failure(reason: join(["live_deploy transaction: CandidateNotExpected — the checkout is ", candidate.revision as String, " but R is ", expected], ""))
       } else {
-        match observe_candidate_root_tree_oid(repo: ".") {
-          CandidateTreeOidUnobservable { detail: d } =>
-            exit_failure(reason: join(["live_deploy transaction: CandidateTreeUnobservable — ", d], ""))
-          CandidateTreeOidObserved { oid_hex: candidate_tree } =>
-            live_deploy_transaction_decided(
-              deployment: deployment,
-              access: access,
-              run: run,
-              expected: expected,
-              candidate: candidate,
-              candidate_tree: candidate_tree,
-              provenance: provenance,
-            )
-        }
+        live_deploy_receipted_with_candidate(
+          deployment: deployment,
+          access: access,
+          candidate: candidate,
+          provenance: FleetTransactionProvenance { run: run, expected_revision: expected, fleet: provenance },
+        )
       }
   }
 }
