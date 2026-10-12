@@ -1,6 +1,6 @@
 # Durable work handoff: the event-queue conformance pattern
 
-*Status: proposal for owner review, 2026-10-12. Nothing here is built yet. It proposes the model the 2026-09-21 owner ruling named and never landed (`gunbc.workflow.durable_handoff`), the host realization the services share, a §3b conformance row, and the order in which services move onto it.*
+> **Status: proposal for owner review, 2026-10-12. Nothing here is built yet. It proposes the model the 2026-09-21 owner ruling named and never landed (`gunbc.workflow.durable_handoff`), the host realization the services share, a §3b conformance row, and the order in which services move onto it.**
 
 ## 1. The question
 
@@ -35,7 +35,7 @@ This document adds no rule above these. It supplies the model they call for and 
 All of these come from the srv1 lab, `srv1-lab-codex-feedback-v0`, on 2026-10-12, unless noted. Each is a gap in the queue contract, not in the work itself.
 
 | Specimen | Which question failed | The gap |
-|---|---|---|
+| --- | --- | --- |
 | A deploy changed what was owed for every attempt the lab had already settled: #13764 made an absent capture owed, not yielded. Nothing ran until an operator started discovery by hand. | What makes it advance? | A revision change is not an event. Outstanding work is derived from evidence under the running code, so new code can make work owed with no new evidence. |
 | `install-owned` was captured at 18:09 and then stopped. Verify was owed, but nothing queued it. | What makes it advance? | Completing a step does not wake the next eligible step. In demand-engine terms, a completion does not re-evaluate dependents. |
 | Discovery queues at most 8 attempts per pass (`belt_discovery_attempt_bound`), taken as a prefix in observation order with no cursor. The newest attempt was left out of the first pass. | What makes it advance? | No fairness rule. An item can starve behind older items that stay owed. |
@@ -72,7 +72,7 @@ The item's key is its identity: kind plus subject, content-addressed where the s
 Every item, at every moment, has exactly one standing. The set is closed, so there is nowhere for an item to be silently stuck:
 
 | Standing | Meaning | Leaves by |
-|---|---|---|
+| --- | --- | --- |
 | `Ready` | Owed, and every prerequisite holds | a worker claiming it |
 | `Waiting { on }` | Owed, but blocked on a named future event or a due time | that event or time |
 | `Running { hold }` | Claimed by a worker that holds the exclusive hold | the worker settling it, or its hold being recovered |
@@ -91,7 +91,7 @@ A wake-up carries a key and nothing else. Any number of wake-ups for one key col
 The sources are a closed set. Each specimen in §3 is a missing member:
 
 | Source | Fires when | Belt today |
-|---|---|---|
+| --- | --- | --- |
 | `Arrival` | New evidence lands: a worker exit, a submission, an upstream answer | exit spool and answer spool (present) |
 | `Completion` | A step on the same item settles; re-evaluate the item and its dependents | **missing** |
 | `RevisionChange` | The code that derives outstanding work changed: a deploy | **missing** |
@@ -121,7 +121,7 @@ A worker does the same thing every time:
 5. **Settle** with exactly one outcome:
 
 | Outcome | Then |
-|---|---|
+| --- | --- |
 | `Advanced` | Enqueue a `Completion` wake-up for the same key and its dependents |
 | `Settled` | Done |
 | `Waiting { on }` | Park until that event or time |
@@ -169,7 +169,7 @@ Each queue publishes a standing through `std.observation`, and the served page r
 It composes existing authorities rather than restating them (§3b, conformance):
 
 | Need | Existing authority |
-|---|---|
+| --- | --- |
 | Hold and recovery | `std.durable_exclusive_hold`, over `std.durable_compare_and_set` `CasExpectation` |
 | Fencing | `std.temporal_effect` `HeldLease`, `LeaseEpoch` |
 | Step stall bound | `std.temporal_effect` `stall_budget_verdict` |
@@ -203,7 +203,7 @@ These are rows, not code paths. A service that needs a new behavior adds a row o
 The survey found each queue concept spelled several ways across services. Under DESIGN §3 these are nicknames, to be consolidated as each service migrates (§9). They are not to be extended in the meantime.
 
 | Concept | Home after this change | Spellings today |
-|---|---|---|
+| --- | --- | --- |
 | Exclusive hold | `std.durable_exclusive_hold` | unit name, flock, compute CAS slot, GitHub Actions concurrency group, `WorkClaim` (`gunbc.auth.approval_broker`) |
 | Dedup key | the item key | mkdir name, `publication_spool_key`, content-hash event id, `idempotency_key`, `DemandIdentity` |
 | Orphan recovery | `durable_hold_recovery_assess` | running-to-queued reconcile, `RecoveryTrigger` (`gunbc.compute.attempt_lifecycle`, which uses a deadline, i.e. recovery by age), `recovery_owed`, `TakeoverAdmission` |
@@ -213,6 +213,7 @@ The survey found each queue concept spelled several ways across services. Under 
 | Anti-entropy | `Resync` | belt discovery, the retired fleet-converge timer, the disk-reclaim timer, the workspace pass, `ReconcileTick` |
 
 **`gunbc.workflow.types` is deleted in M0.**
+
 - It holds a full parallel queue vocabulary (`SignalType`, `Signal { idempotency_key }`, `FailureClass`, `StageOutcome { retry_budget_remaining, next_attempt_at }`), and nothing imports it.
 - Its only other mention is a prose line in `gunbc.plans.host_effect_orchestration`, which already lists `RetryCount` as dead vocabulary to clear.
 - A dormant module like this is an attractor. It would pull this work toward its names, so it goes first (the delete-first rule of the replacement migration doctrine).
@@ -220,7 +221,7 @@ The survey found each queue concept spelled several ways across services. Under 
 ## 8. The guarantee ladder for this domain
 
 | Error class | Rung today | Ceiling | Next-rung trigger |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Lost wake-up | below the ladder (silent; §3 specimens) | structurally guaranteed: the evidence write and its entry are one durable append | M1 counts resync findings (mechanically preventable); an outbox-style append makes it structural |
 | Starvation | below the ladder (discovery prefix) | structurally guaranteed: the progress law of §5.4 holds by construction | M1's ordered queue with one entry per key |
 | "Not yet" typed as "no" | below the ladder (`install-owned`) | structurally impossible: `Waiting` requires a named source and `Stopped` requires an owner | M0's closed standing |
@@ -232,6 +233,7 @@ The survey found each queue concept spelled several ways across services. Under 
 ## 9. Milestones
 
 **M0: the model, with no consumer change.**
+
 - `std.durable_handoff` with every law of §5, each witnessed on a planted RED:
   - two enqueues collapse into one entry;
   - first-in-first-out order holds when an older item stays owed;
@@ -243,6 +245,7 @@ The survey found each queue concept spelled several ways across services. Under 
 - Decide the shared vocabulary with `v2.std.demand_engine` (open question 2).
 
 **M1: the belt is the first consumer, on the lab first.**
+
 - `RevisionChange` fires on deploy; `Completion` fires after every step; a timer drives `DueTime` and resync.
 - Resync walks a cursor over an index of unsettled subjects, replacing `belt_discovery_attempt_bound` prefix discovery.
 - The verification-window "not yet" becomes `Waiting`.
@@ -255,6 +258,7 @@ The survey found each queue concept spelled several ways across services. Under 
 **M2: the publication helper becomes a queue.** The belt settles with `Transferred`, and the helper's start failure surfaces as `Stopped`. Both publication rung drops are retired by this milestone, by their own triggers.
 
 **M3: the conformance row lands (§10), and the remaining services migrate one at a time.**
+
 - Order of migration: compute recovery (`gunbc.compute.attempt_lifecycle`), approved-action execution (`gunbc.auth.approval_broker` `ExecutionObligation`), the workspace consumer (`gunbc.workspace_request_consumer`), runner cells, and fleet converge.
 - Each migration is a replacement migration under the doctrine:
   - delete the service's own hold, retry and anti-entropy spellings;
@@ -270,6 +274,7 @@ The row is added to `gunbc.design_argument` `conformance_domains` once M0's home
 **Owns.** Work whose responsibility crosses an execution boundary: how it is accepted, keyed, woken, claimed, advanced, retried, stopped, transferred, resynced and reported.
 
 **Boundaries.**
+
 - Leasing owns the hold primitive; this domain uses it.
 - Fabric and compute own allocation.
 - §3d selection precedes: a queue advances a chosen realization and never chooses one.
@@ -278,6 +283,7 @@ The row is added to `gunbc.design_argument` `conformance_domains` once M0's home
 **Existing authorities.** `std.durable_handoff` (new); `std.durable_exclusive_hold`; `std.temporal_effect` `LeaseEpoch`; `std.effects` `IdempotencyEvidence`; `std.observation`; and the host realization module.
 
 **Reviewer question.** Does this boundary hand off responsibility durably?
+
 - Bounded admission and durable acceptance.
 - A wake-up source for every state change that can make work owed.
 - A closed standing for every item, in which "not yet" names its event and "stopped" names its owner.
@@ -286,6 +292,7 @@ The row is added to `gunbc.design_argument` `conformance_domains` once M0's home
 - Queue health that someone can see.
 
 **Tells.**
+
 - A loop with a sleep, or a tick that does work.
 - A scan bounded by count, with no cursor.
 - A refusal that really means "not yet".
@@ -302,3 +309,7 @@ The row is added to `gunbc.design_argument` `conformance_domains` once M0's home
 2. **Shared vocabulary with the demand engine.** Factor the standings and dispatch rule into one std home both import (M0), or let `std.durable_handoff` land first and have the demand engine adopt it at its M3a cut?
 3. **Automatic retry.** The manual-resume ruling stops the line on Failed or Refused. This proposal admits `RetryAfter` only for transient causes under a declared retry law, with exhaustion going to `Stopped`. Does that refine the ruling, or contradict it?
 4. **Scope edge.** Which boundaries are deliberately not queues? The ruling excludes local calls. Should synchronous request/response across a process (serving turns, `gunbc.serving.caller_retry_contract`) be in scope, given its stance that there is no server-side queue?
+
+## Dissolution trigger (DESIGN §6)
+
+Delete this document when std.durable_handoff and its host realization carry these rules in their own declarations and witnesses, every service in section 9 has migrated onto them, and the section 10 conformance row has landed.
