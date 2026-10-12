@@ -163,7 +163,7 @@ fn fabric_demand_objective_terms() -> List<ObjectiveTerm> {
   [term_money, term_delay, term_interruption, term_accepted_work]
 }
 
-// CONSUMER: demand_objective_join (required identities); admit_demand_objective.
+// CONSUMER: demand_objective_join (required identities).
 fn fabric_demand_required_term_ids() -> List<DeclarationRef> {
   map(fabric_demand_objective_terms(), t => t.identity)
 }
@@ -184,7 +184,8 @@ fn demand_objective_as_measure(objective: DemandObjective) -> ObjectiveMeasure {
   }
 }
 
-// CONSUMER: admit_demand_objective; demand_delay_valuation; the two profile rows
+// CONSUMER: demand_delay_valuation (production select_supply delay);
+// test.claim.fabric.valued_objective_witness. The two profile rows
 // are constructed to join complete; a missing term is ObjectiveUnderModeled.
 fn demand_objective_join(objective: DemandObjective) -> TermSetJoin {
   term_set_join(
