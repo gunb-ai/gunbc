@@ -2,7 +2,7 @@ module test.claim.compute.attempt_lifecycle_wet_witness
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.types { Bool, Int, NonEmptyStr, String }
+import std.types { Bool, Int, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
 import std.measure { kibibyte, kibibyte_count }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
@@ -29,7 +29,7 @@ import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows,
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import gunbc.compute.work_request {
   ComputeCapacityLedgerUnavailable,
-  ExactTree, work_default_build, WorkToolchainIdentity, work_toolchain_observed, WorkOutput, WorkSucceeded, work_outcome_wire,
+  ExactTree, CompileEntry, work_default_build, WorkToolchainIdentity, work_toolchain_observed, WorkOutput, WorkSucceeded, work_outcome_wire,
   WorkEnding, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch,
 }
 import gunbc.compute.attempt_lifecycle {
@@ -397,9 +397,9 @@ test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> B
 // the unused ceiling seat is returned through ComputeNothingToRelease rather than silently. Were
 // the retry route to skip compute_open_attempt, it would reach compute_run_leased and end as a
 // unit's outcome, never as this refusal.
-fn fixture_toolchain() -> WorkToolchainIdentity {
+fn fixture_toolchain(rustc: String) -> WorkToolchainIdentity {
   work_toolchain_observed(
-    rustc_verbose: "rustc fixture" as NonEmptyStr, target_triple: "fixture-triple" as NonEmptyStr, cargo_version: "cargo fixture" as NonEmptyStr,
+    rustc_verbose: rustc as NonEmptyStr, target_triple: "fixture-triple" as NonEmptyStr, cargo_version: "cargo fixture" as NonEmptyStr,
     cache_release: "sccache fixture" as NonEmptyStr, provider_revision: match git_object_id_from_untagged_hex(hex: "2222222222222222222222222222222222222222") { Present { value: oid } => oid  Absent => "2222222222222222222222222222222222222222" },
   )
 }
@@ -450,6 +450,15 @@ test fn a_refused_reservation_closes_the_slot_it_was_taken_under() -> Bool {
 // readings that live under the store root -- and the stages are gone. Deleting the byte-part
 // integration (committing without parts, or a dependent reading anything but the store's readings)
 // turns this red.
+//
+// AND THE RECORD ANSWERS ONLY THE QUESTION IT WAS STORED FOR. Each compute_store_read opens the
+// on-disk store afresh, which is what a later process does, so the served read is a reuse across
+// opens and not a value handed along in memory. Three further reads ask nearby questions of the same
+// store: the same tree under a toolchain whose rustc line differs by one character, a different
+// tree under the same toolchain, and a different operation. Each is ABSENT -- a miss that would
+// build -- and none is served the stored build. The toolchain line is carried whole in the
+// identity, so the one-character change moves the address; were it reduced to a fingerprint, this
+// arm is where a collision would be served as a hit.
 test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
   let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
@@ -462,7 +471,7 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let tree = match git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111") { Present { value: oid } => oid  Absent => "1111111111111111111111111111111111111111" }
-  let request = ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: work_default_build(), toolchain: fixture_toolchain() }
+  let request = ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
@@ -473,6 +482,10 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
     document: work_outcome_wire(o: outcome, subject: ExactTree { tree: tree }, op: work_default_build()))
   let served = compute_store_read(store: root, req: request)
   let resolved = compute_dependency_read(store: root, build: request)
+  let other_tree = match git_object_id_from_untagged_hex(hex: "3333333333333333333333333333333333333333") { Present { value: oid } => oid  Absent => "3333333333333333333333333333333333333333" }
+  let other_toolchain = compute_store_read(store: root, req: ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixturf") })
+  let other_subject = compute_store_read(store: root, req: ComputeWorkRequest { subject: ExactTree { tree: other_tree }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") })
+  let other_operation = compute_store_read(store: root, req: ComputeWorkRequest { subject: ExactTree { tree: tree }, operation: CompileEntry { entry: "dag/t.dag" as FilePath }, toolchain: fixture_toolchain(rustc: "rustc fixture") })
   let stage_left = Filesystem.Read(path: join([root_path, "/w.gunbc"], "")).success
   let removed = shell.Remove.RecursiveForce(path: root_path)
   log.success && g.success && c.success
@@ -486,4 +499,7 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
       ComputeDependencyRefused { detail: _ } => false
     })
     && !stage_left
+    && (match other_toolchain { ComputeStoreAbsent => true  _ => false })
+    && (match other_subject { ComputeStoreAbsent => true  _ => false })
+    && (match other_operation { ComputeStoreAbsent => true  _ => false })
 }
