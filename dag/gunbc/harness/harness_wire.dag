@@ -372,6 +372,11 @@ fn harness_cached_tokens_read(doc: JsonValue) -> HarnessCachedTokensRead {
 // document becomes the entry the next bind reads. A body that is not a document records nothing, so the
 // previous entry stands. inputs_and_reply is the replayed context the caller actually rendered for this
 // request followed by the reply it received; this function does not reconstruct it.
+// DECLARED FRONTIER (DESIGN.md 3c): the caller of harness_chat_completion_session_entry is the
+// warm-trace producer / session-keyed binder (the next PR of
+// docs/plans/serving-hardware-neutral-cutover.md), which feeds each completed response back as
+// `session:` to harness_bind_seat. Trigger: that PR; the decode-to-standing route is witnessed in
+// test.claim.harness_cached_tokens_witness_test meanwhile.
 fn harness_chat_completion_session_entry(body: String, launch: NonEmptyStr, turn: NonEmptyStr, inputs_and_reply: List<String>) -> ServingSessionEntry? {
   match parse_json_document(s: body) {
     JsonDocumentUnreadable { gap: _ } => none

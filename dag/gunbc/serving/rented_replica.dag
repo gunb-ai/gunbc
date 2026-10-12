@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count }
 import std.optional { Present, Absent }
 import extdeps.vllm.engine_args {
-  VllmPrefixCachingRequest, PrefixCachingExplicit, vllm_prefix_caching_argv,
+  VllmPrefixCachingRequest, PrefixCachingExplicit, vllm_serve_argv, vllm_prefix_caching_argv,
   VllmPromptTokensDetailsRequest, PromptTokensDetailsReported, vllm_prompt_tokens_details_argv,
 }
 
@@ -56,7 +56,7 @@ fn rented_replica_launch(device: RentedGpuDevice, model: RentedServedModel) -> R
     visible_device: device.index,
     served_model: model.served_name,
     argv: concat(
-      ["vllm", "serve", model.served_name as String],
+      vllm_serve_argv(model: model.served_name as String),
       concat(
         vllm_prefix_caching_argv(r: PrefixCachingExplicit { enabled: true }),
         vllm_prompt_tokens_details_argv(r: PromptTokensDetailsReported))),
@@ -67,6 +67,10 @@ fn rented_device_fits(device: RentedGpuDevice, model: RentedServedModel) -> Bool
   byte_size_count(b: device.memory) >= byte_size_count(b: model.resident_bytes)
 }
 
+// DECLARED FRONTIER (DESIGN.md 3c): rented_replica_collection's consumer is the warm-trace producer
+// and the rented cohort's enrollment (the next PR of docs/plans/serving-hardware-neutral-cutover.md),
+// which builds the pool keys from the collected replicas and drives harness_bind_seat. Trigger: that
+// PR landing; until then only the witnesses call it.
 // ONE REPLICA PER COMPATIBLE GPU. Refuses an empty inventory and an inventory where nothing fits,
 // because an empty cohort is not a cohort that happens to be small.
 fn rented_replica_collection(inventory: RentedNodeInventory, model: RentedServedModel) -> RentedReplicaCollection {
