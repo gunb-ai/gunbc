@@ -8418,18 +8418,25 @@ fn emit_enum_from_children(name: String, type_params: String, generic_param_name
   if supplemental == "" { with_accessors } else { concat(with_accessors, supplemental) }
 }
 
+// A field is shared only when EVERY arm of the coproduct declares it -- the same all-arms rule the
+// type checker applies to coproduct field access (v1.compiler.lookup
+// lookup_coproduct_common_field_node) and the emit-info summary build (v1.compiler.emit_info
+// build_enum_field_summaries). The previous fielded-arms rule (present in every fielded arm, with
+// unit and positional-payload arms excluded from the predicate) rendered a shared accessor whose
+// match carried a compiler-authored panic! arm for every arm lacking the field. That arm was dead
+// code no Accepted program could reach: a field access on a coproduct is admitted only when the
+// field is present in every arm, so a missing-field access is refused with a located diagnostic
+// before emit. Refusing the render here -- at the arm that lacks the field -- is what makes no
+// Accepted program emit a compiler-authored panic arm for a missing field (the 137 become located
+// refusals rather than fail-open panic arms).
 fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
-  let fielded = children |> filter(child =>
-    child.children |> count > 0
-      && !variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices)
-  )
-  if fielded |> count == 0 { return [] }
-  let first_fields = match fielded |> first {
+  if children |> count == 0 { return [] }
+  let first_fields = match children |> first {
     Present { value: v } => v.children |> map(f => authored_name(env: env, node: f))
     Absent => []
   }
   first_fields |> filter(fname =>
-    fielded |> all(variant =>
+    children |> all(variant =>
       variant.children |> any(f => authored_name(env: env, node: f) == fname)
     )
   )
