@@ -110,7 +110,7 @@ fn gpu_bench_warm_standing_from_cited_ninfer_replay(records: List<GpuBenchReques
       } else {
         match gpu_bench_capacity_ok_tokens(log: log) {
           CapacityOkAbsent => gpu_bench_warm_standing(records: records, measured_kv: Absent)
-          CapacityOkMalformed { cause: c } => WarmCapacityUnread { cause: c }
+          CapacityOkMalformed { cause: c } => WarmRejected { cause: c }
           CapacityOkRead { tokens: kv } => gpu_bench_warm_standing(records: records, measured_kv: Present { value: kv })
         }
       }

@@ -262,6 +262,25 @@ fn nat_from_last_space_token(line: String) -> Nat? {
   }
 }
 
+// A MARKER-PREFIXED PROCESS-LOG LINE: the line starts with the prefix, then the last space token
+// is a Nat. Contains-match is not this fact — it would mint a reading from an unrelated log line
+// that happened to mention the marker.
+type PrefixedLineNat
+  = PrefixedLineMiss
+  | PrefixedLineNatUnreadable
+  | PrefixedLineNat { value: Nat }
+
+fn prefixed_line_last_space_nat(line: String, prefix: String) -> PrefixedLineNat {
+  if starts_with(s: line, prefix: prefix) {
+    match nat_from_last_space_token(line: line) {
+      Absent => PrefixedLineNatUnreadable
+      Present { value: n } => PrefixedLineNat { value: n }
+    }
+  } else {
+    PrefixedLineMiss
+  }
+}
+
 fn nat_magnitude(a: Int) -> Nat {
   if a < 0 { 0 - a } else { a }
 }

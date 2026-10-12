@@ -4,15 +4,15 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count }
-import std.checked_arithmetic { nat_from_last_space_token }
+import std.checked_arithmetic { prefixed_line_last_space_nat, PrefixedLineMiss, PrefixedLineNatUnreadable, PrefixedLineNat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 
 // NINFER'S REPLAYED-TOKEN COUNTER LINE, not a gpu-bench kit schema. The metric name is
 // ninfer_replayed_tokens_total; later snapshots overwrite earlier ones (phase counter).
-// A candidate line STARTS WITH the marker prefix. A `# TYPE …` comment does not; guessing
-// "skip any line containing #" is undeclared and would drop a real counter that carries `#`.
+// A candidate line STARTS WITH the marker prefix (`std.checked_arithmetic`
+// `prefixed_line_last_space_nat`). A `# TYPE …` comment does not.
 
 data ninfer_replayed_tokens_total_marker: NonEmptyStr = "ninfer_replayed_tokens_total" as NonEmptyStr
 
@@ -46,17 +46,14 @@ fn ninfer_replayed_tokens_line_prefix() -> String {
 }
 
 fn ninfer_replayed_tokens_from_line(line: String) -> NinferReplayedTokensRead? {
-  if starts_with(s: line, prefix: ninfer_replayed_tokens_line_prefix()) {
-    match nat_from_last_space_token(line: line) {
-      Absent => Present {
-        value: NinferReplayedTokensMalformed {
-          cause: join([ninfer_replayed_tokens_total_marker as String, " last token is not a natural"], "") as NonEmptyStr
-        }
+  match prefixed_line_last_space_nat(line: line, prefix: ninfer_replayed_tokens_line_prefix()) {
+    PrefixedLineMiss => none
+    PrefixedLineNatUnreadable => Present {
+      value: NinferReplayedTokensMalformed {
+        cause: join([ninfer_replayed_tokens_total_marker as String, " last token is not a natural"], "") as NonEmptyStr
       }
-      Present { value: n } => Present { value: NinferReplayedTokensRead { tokens: token_count(count: n) } }
     }
-  } else {
-    none
+    PrefixedLineNat { value: n } => Present { value: NinferReplayedTokensRead { tokens: token_count(count: n) } }
   }
 }
 
