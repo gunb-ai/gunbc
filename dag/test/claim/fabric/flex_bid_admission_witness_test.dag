@@ -34,11 +34,12 @@ import product.fabric.selection {
 import product.fabric.budget { MoneyAccount }
 import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
 import product.fabric.flex_policy {
-  FlexPolicy, FlexBidLedger, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
+  FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
   FlexScreenedCandidate, FlexBidAdmission, FlexBidAdmitted, FlexBidRefused, FlexNoAcquisitionRemaining,
-  FlexRetainedLimitWouldRise, FlexRateCapBelowMin, FlexMoneyRefused, FlexSupplyNotSelected,
-  FlexOnDemandFractionExceeded, FlexCurrencyMismatch, FlexDecimalConversionRefused,
-  FlexCandidateMachineMismatch,
+  FlexRateCapBelowMin, FlexRateCapOccupied, FlexExistingBidWouldRise, FlexMoneyRefused,
+  FlexSupplyNotSelected, FlexOnDemandFractionExceeded, FlexCurrencyMismatch,
+  FlexDecimalConversionRefused, FlexCandidateMachineMismatch, FlexNewAcquisition,
+  FlexExistingAcquisition, AcquisitionActive,
   flex_floor_buffer, flex_bid_admission, flex_buffered_min,
 }
 import extdeps.cloud.vast_ai {
@@ -192,6 +193,7 @@ fn t_attempt(
       init: [],
       f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
     ),
+    subject: FlexNewAcquisition,
     requirements: t_reqs(revocation: revocation),
     reservation: reservation,
     generation: 1,
@@ -201,16 +203,20 @@ fn t_attempt(
   }
 }
 
+fn empty_occupancy() -> FlexFleetOccupancy {
+  FlexFleetOccupancy { standing: [] }
+}
+
 fn admitted_bid(o: FlexBidAdmission) -> Nat {
   match o {
-    FlexBidAdmitted { bid: b, selection: _, account: _, ledger: _, window: _ } => money_per_hour_micros(q: b)
+    FlexBidAdmitted { bid: b, selection: _, account: _, occupancy: _, window: _ } => money_per_hour_micros(q: b)
     FlexBidRefused { cause: _ } => 0
   }
 }
 
 fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
   match o {
-    FlexBidAdmitted { bid: _, selection: _, account: _, ledger: _, window: _ } => "admitted"
+    FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => "admitted"
     FlexBidRefused { cause: c } =>
       match c {
         FlexNoAcquisitionRemaining => "no-remaining"
@@ -218,7 +224,8 @@ fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
         FlexCurrencyMismatch { left: _, right: _ } => "currency"
         FlexDecimalConversionRefused { conversion: _ } => "decimal"
         FlexRateCapBelowMin { cap: _, min_bid: _ } => "rate-cap"
-        FlexRetainedLimitWouldRise { retained: _, min_bid: _ } => "retained-would-rise"
+        FlexRateCapOccupied { cap: _, occupied: _, proposed: _ } => "rate-cap-occupied"
+        FlexExistingBidWouldRise { current: _, min_bid: _ } => "existing-would-rise"
         FlexSupplyNotSelected { selection: _ } => "supply"
         FlexCandidateMachineMismatch { named: _, observed: _ } => "machine-mismatch"
         FlexMoneyRefused { refusal: _ } => "money"
@@ -273,7 +280,7 @@ test fn two_acquisitions_race_one_allowance_and_the_second_is_refused() -> Bool 
   let policy = t_policy(cap_micros: 5000000)
   let first = flex_bid_admission(
     policy: policy,
-    ledger: FlexBidLedger { limits: [] },
+    occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(ceiling: 10000000),
     attempt: t_attempt(
@@ -288,10 +295,10 @@ test fn two_acquisitions_race_one_allowance_and_the_second_is_refused() -> Bool 
   )
   match first {
     FlexBidRefused { cause: _ } => false
-    FlexBidAdmitted { bid: _, selection: _, account: next_account, ledger: next_ledger, window: next_window } =>
+    FlexBidAdmitted { bid: _, selection: _, account: next_account, occupancy: next_occupancy, window: next_window } =>
       refusal_label(o: flex_bid_admission(
         policy: policy,
-        ledger: next_ledger,
+        occupancy: next_occupancy,
         window: next_window,
         account: next_account,
         attempt: t_attempt(
@@ -307,13 +314,14 @@ test fn two_acquisitions_race_one_allowance_and_the_second_is_refused() -> Bool 
   }
 }
 
-// RED: after outbid, rebidding at 1.1× the new min. The wall keeps the retained ceiling.
-test fn the_red_rebid_at_one_point_one_times_new_min_is_not_what_admission_does() -> Bool {
+// RED: a history-keyed retained limit would refuse rediscovery of machine-a at a higher min.
+// Rediscovery is a new acquisition: same ceiling as an equivalent fresh machine, never above policy.
+test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent() -> Bool {
   let policy = t_policy(cap_micros: 5000000)
   let first = flex_bid_admission(
     policy: policy,
-    ledger: FlexBidLedger { limits: [] },
-    window: t_window(remaining: 2),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
     account: t_account(ceiling: 10000000),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
@@ -325,37 +333,142 @@ test fn the_red_rebid_at_one_point_one_times_new_min_is_not_what_admission_does(
       revocable: true,
     ),
   )
-  let new_min = usd_hour(micros: 1200000)
-  let red = flex_buffered_min(min_bid: new_min, buffer: flex_floor_buffer)
+  let rediscovered = flex_bid_admission(
+    policy: policy,
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_twenty_wire(),
+      quote: usd_hour(micros: 1320000),
+      key: "offer-a-again",
+      reservation: "res-a-again",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )
+  let fresh = flex_bid_admission(
+    policy: policy,
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-b"),
+      min_bid: one_twenty_wire(),
+      quote: usd_hour(micros: 1320000),
+      key: "offer-b",
+      reservation: "res-b",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )
   match first {
     FlexBidRefused { cause: _ } => false
-    FlexBidAdmitted { bid: first_bid, selection: _, account: next_account, ledger: next_ledger, window: next_window } => {
-      let second = flex_bid_admission(
-        policy: policy,
-        ledger: next_ledger,
-        window: next_window,
-        account: next_account,
-        attempt: t_attempt(
-          machine: t_machine(id: "machine-a"),
-          min_bid: one_twenty_wire(),
-          quote: red,
-          key: "offer-a2",
-          reservation: "res-a2",
-          revocation: RevocationAccepted,
-          revocable: true,
-        ),
-      )
-      (money_per_hour_micros(q: red) > money_per_hour_micros(q: first_bid))
-        && (refusal_label(o: second) == "retained-would-rise")
-        && (admitted_bid(o: second) != money_per_hour_micros(q: red))
-    }
+    FlexBidAdmitted { bid: first_bid, selection: _, account: _, occupancy: _, window: _ } =>
+      (money_per_hour_micros(q: first_bid) == 1100000)
+        && (refusal_label(o: rediscovered) == "admitted")
+        && (refusal_label(o: fresh) == "admitted")
+        && (admitted_bid(o: rediscovered) == admitted_bid(o: fresh))
+        && (admitted_bid(o: rediscovered) == 1320000)
+        && (admitted_bid(o: rediscovered) <= 5000000)
   }
+}
+
+test fn repeated_outbid_and_rediscovery_never_admits_above_the_policy_ceiling() -> Bool {
+  let policy = t_policy(cap_micros: 1500000)
+  let under = flex_bid_admission(
+    policy: policy,
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar_wire(),
+      quote: one_ten(),
+      key: "offer-under",
+      reservation: "res-under",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )
+  let over_min = flex_bid_admission(
+    policy: policy,
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: ExactDecimal { units: 16, fraction_digits: 1 },
+      quote: usd_hour(micros: 1760000),
+      key: "offer-over",
+      reservation: "res-over",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )
+  (refusal_label(o: under) == "admitted")
+    && (admitted_bid(o: under) <= 1500000)
+    && (refusal_label(o: over_min) == "rate-cap")
+}
+
+test fn the_fleet_rate_cap_is_the_sum_of_standing_plus_the_proposed_bid() -> Bool {
+  let policy = t_policy(cap_micros: 1500000)
+  let occupied = FlexFleetOccupancy {
+    standing: [AcquisitionActive { rate: usd_hour(micros: 1497000) }],
+  }
+  let proposed = flex_bid_admission(
+    policy: policy,
+    occupancy: occupied,
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-b"),
+      min_bid: one_dollar_wire(),
+      quote: one_ten(),
+      key: "offer-raise",
+      reservation: "res-raise",
+      revocation: RevocationAccepted,
+      revocable: true,
+    ),
+  )
+  refusal_label(o: proposed) == "rate-cap-occupied"
+}
+
+test fn an_existing_acquisition_bid_is_never_raised() -> Bool {
+  let policy = t_policy(cap_micros: 5000000)
+  let bound = t_bound(offer: t_offer(key: "offer-hold", rate: usd_hour(micros: 1320000)), revocable: true)
+  let machine = t_machine(id: "machine-a")
+  let o = flex_bid_admission(
+    policy: policy,
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: FlexBidAttempt {
+      machine: machine,
+      min_bid: one_twenty_wire(),
+      quote_currency: vast_ai_quote_currency,
+      candidates: fold(
+        bound,
+        init: [],
+        f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
+      ),
+      subject: FlexExistingAcquisition { current_bid: usd_hour(micros: 1100000) },
+      requirements: t_reqs(revocation: RevocationAccepted),
+      reservation: "res-hold",
+      generation: 1,
+      delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      tie: StableRosterOrder,
+      affinity: "test.flex" as PlacementAffinityKey,
+    },
+  )
+  refusal_label(o: o) == "existing-would-rise"
 }
 
 test fn rate_cap_and_cash_invariants_are_both_enforced() -> Bool {
   let cap_refuse = flex_bid_admission(
     policy: t_policy(cap_micros: 500000),
-    ledger: FlexBidLedger { limits: [] },
+    occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(ceiling: 10000000),
     attempt: t_attempt(
@@ -370,7 +483,7 @@ test fn rate_cap_and_cash_invariants_are_both_enforced() -> Bool {
   )
   let cash_refuse = flex_bid_admission(
     policy: t_policy(cap_micros: 5000000),
-    ledger: FlexBidLedger { limits: [] },
+    occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(ceiling: 1000),
     attempt: t_attempt(
@@ -389,7 +502,7 @@ test fn rate_cap_and_cash_invariants_are_both_enforced() -> Bool {
 test fn a_revocable_offer_is_refused_for_warm_residency() -> Bool {
   let o = flex_bid_admission(
     policy: t_policy(cap_micros: 5000000),
-    ledger: FlexBidLedger { limits: [] },
+    occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(ceiling: 10000000),
     attempt: t_attempt(
@@ -423,7 +536,7 @@ test fn a_currency_mismatch_is_refused_not_compared() -> Bool {
   }
   refusal_label(o: flex_bid_admission(
     policy: t_policy(cap_micros: 5000000),
-    ledger: FlexBidLedger { limits: [] },
+    occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: eur_account,
     attempt: t_attempt(
@@ -444,7 +557,7 @@ test fn a_candidate_tagged_for_another_machine_is_refused() -> Bool {
   let bound = t_bound(offer: t_offer(key: "offer-b", rate: one_ten()), revocable: true)
   refusal_label(o: flex_bid_admission(
     policy: t_policy(cap_micros: 5000000),
-    ledger: FlexBidLedger { limits: [] },
+    occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(ceiling: 10000000),
     attempt: FlexBidAttempt {
@@ -456,6 +569,7 @@ test fn a_candidate_tagged_for_another_machine_is_refused() -> Bool {
         init: [],
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: other, candidate: c }]),
       ),
+      subject: FlexNewAcquisition,
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-mismatch",
       generation: 1,
@@ -478,7 +592,7 @@ test fn a_usd_wire_min_bid_is_refused_against_a_eur_cap() -> Bool {
   }
   refusal_label(o: flex_bid_admission(
     policy: t_policy_eur(cap_micros: 5000000),
-    ledger: FlexBidLedger { limits: [] },
+    occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: eur_account,
     attempt: t_attempt(
@@ -496,7 +610,7 @@ test fn a_usd_wire_min_bid_is_refused_against_a_eur_cap() -> Bool {
 test fn the_on_demand_fraction_follows_selected_availability() -> Bool {
   let interruptible = flex_bid_admission(
     policy: t_policy_no_on_demand(cap_micros: 5000000),
-    ledger: FlexBidLedger { limits: [] },
+    occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(ceiling: 10000000),
     attempt: t_attempt(
@@ -511,7 +625,7 @@ test fn the_on_demand_fraction_follows_selected_availability() -> Bool {
   )
   let committed = flex_bid_admission(
     policy: t_policy_no_on_demand(cap_micros: 5000000),
-    ledger: FlexBidLedger { limits: [] },
+    occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(ceiling: 10000000),
     attempt: t_attempt(
@@ -526,7 +640,7 @@ test fn the_on_demand_fraction_follows_selected_availability() -> Bool {
   )
   match interruptible {
     FlexBidRefused { cause: _ } => false
-    FlexBidAdmitted { bid: _, selection: _, account: _, ledger: _, window: w } =>
+    FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: w } =>
       (w.interruptible_held == 1) && (w.on_demand_held == 0)
         && (refusal_label(o: committed) == "on-demand-fraction")
   }
@@ -540,7 +654,7 @@ test fn admission_converts_the_vast_wire_min_bid() -> Bool {
       let buffered = flex_buffered_min(min_bid: converted, buffer: flex_floor_buffer)
       match flex_bid_admission(
         policy: t_policy(cap_micros: 5000000),
-        ledger: FlexBidLedger { limits: [] },
+        occupancy: empty_occupancy(),
         window: t_window(remaining: 1),
         account: t_account(ceiling: 10000000),
         attempt: t_attempt(
@@ -554,7 +668,7 @@ test fn admission_converts_the_vast_wire_min_bid() -> Bool {
         ),
       ) {
         FlexBidRefused { cause: _ } => false
-        FlexBidAdmitted { bid: b, selection: _, account: _, ledger: _, window: _ } =>
+        FlexBidAdmitted { bid: b, selection: _, account: _, occupancy: _, window: _ } =>
           money_per_hour_micros(q: b) == money_per_hour_micros(q: buffered)
       }
     }
