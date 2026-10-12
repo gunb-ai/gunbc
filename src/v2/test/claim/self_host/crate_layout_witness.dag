@@ -13,7 +13,7 @@ import v2.compiler.self_host.stage0_crate_layout {
   hand_maintained_stage0_dirs,
   hand_maintained_stage0_filenames
 }
-import v2.std.algebra { any, fold_list, length }
+import v2.std.algebra { fold_list, length }
 import v2.std.text { String }
 
 data witness_red_control_note: String = "Discriminating RED, both directions: (1) OMIT — drop a basename from generated_pub_mod_basenames while its registration row stands, and witness_generated_basenames_match_registrations_holds goes false on the length comparison; (2) INCLUDE — append phantom_module to generated_pub_mod_basenames with no registration row, and witness_generated_has_no_phantom_registration_holds goes false. A third RED sits outside this file: perturb a suffix in dag/gunbc/stage0/stage0_crate_layout_generated.dag and the generated-artifact drift gate reds on bytes."

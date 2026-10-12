@@ -3,7 +3,6 @@ module gunbc.ipmitool_fru_text
 import std.types { String, NonEmptyStr }
 import std.algebra { trim }
 import std.optional { Present, Absent }
-import v2.std.algebra { filter }
 
 // THE PURE LINE DECODE of `ipmitool fru print` text: each field is read from exactly one line.
 // Shared by every consumer of a committed FRU capture (the Mt. Jade identity read and the board

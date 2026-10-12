@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import std.optional { Absent, optional_present }
 import std.coercion { unicode_scalar_fold }
 import v2.std.text { String }
-import v2.std.algebra { any, filter, for_all, length, list_map }
+import v2.std.algebra { for_all, length, list_map }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.source_authority {
@@ -316,7 +316,7 @@ test fn layout_check_names_the_rule_position_of_a_misplaced_module() -> Bool {
     header(file: dag_file(path: "v2/std/text.dag"), declared: "v2.std.text")
   ]) {
     LayoutHolds => false
-    LayoutRefused { refusals: refusals } => any(xs: refusals, predicate: fn(refusal) { is_misplacement_of_text(refusal: refusal) })
+    LayoutRefused { refusals: refusals } => refusals |> any(fn(refusal) { is_misplacement_of_text(refusal: refusal) })
   }
 }
 
@@ -455,7 +455,7 @@ fn derived_relative_path(name: String) -> String {
 }
 
 fn accepted_names() -> List<String> {
-  filter(xs: adversarial_names, predicate: fn(name) { derived_key(name: name) != "" })
+  adversarial_names |> filter(fn(name) { derived_key(name: name) != "" })
 }
 
 fn is_underivable(name: String) -> Bool {
@@ -464,7 +464,7 @@ fn is_underivable(name: String) -> Bool {
 
 test fn distinct_accepted_module_names_derive_distinct_files() -> Bool {
   let keys = list_map(xs: accepted_names(), f: fn(name) { derived_key(name: name) })
-  length(xs: keys) > 4 && for_all(xs: keys, predicate: fn(key) { length(xs: filter(xs: keys, predicate: fn(other) { other == key })) == 1 })
+  length(xs: keys) > 4 && for_all(xs: keys, predicate: fn(key) { length(xs: keys |> filter(fn(other) { other == key })) == 1 })
 }
 
 // Every derived path is a chain of nonempty components under the tree, ending at the `.dag` file:

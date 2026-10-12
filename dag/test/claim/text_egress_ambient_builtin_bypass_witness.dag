@@ -1,7 +1,7 @@
 module test.claim.text_egress_ambient_builtin_bypass_witness
 
 import std.types { List }
-import v2.std.algebra { any, contains, fold_list, length }
+import v2.std.algebra { contains, fold_list, length }
 import v2.std.fn_index { FnArrowDecl, callee_texts_in_decl, fn_arrow_decl_facts_live }
 import v2.std.text { String, string_eq }
 

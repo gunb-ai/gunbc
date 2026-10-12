@@ -416,6 +416,7 @@ type UnmetShapeAxis
   | ArchitectureNotOffered { required: Architecture }
   | VramNotCovered { required: ByteSize, offered: ByteSize }
   | GpuNotOffered { required: ByteSize }
+  | GpuCountNotCovered { required: Int, offered: Int }
   | GpuRuntimeNotOffered { required: GpuRuntime }
 
 fn unmet_shape_axis_wire(axis: UnmetShapeAxis) -> String {
@@ -441,6 +442,8 @@ fn unmet_shape_axis_wire(axis: UnmetShapeAxis) -> String {
     GpuNotOffered { required: r } =>
       join(["gpu: needs ", to_string(byte_size_count(b: r)),
             " bytes of vram, offer states no gpu"], "")
+    GpuCountNotCovered { required: r, offered: o } =>
+      join(["gpu count: needs ", to_string(r), ", offered ", to_string(o)], "")
     GpuRuntimeNotOffered { required: r } =>
       join(["gpu runtime: needs ", gpu_runtime_wire(runtime: r),
             ", offer does not provide it"], "")
@@ -507,12 +510,19 @@ fn unmet_gpu_axis(offered: Shape, needed: Shape) -> List<UnmetShapeAxis> {
         Absent => [GpuNotOffered { required: want.min_vram }]
         Present { value: have } =>
           concat(
+            if have.count >= want.count {
+              []
+            } else {
+              [GpuCountNotCovered { required: want.count, offered: have.count }]
+            },
+          concat(
             if byte_size_count(b: have.min_vram) >= byte_size_count(b: want.min_vram) {
               []
             } else {
               [VramNotCovered { required: want.min_vram, offered: have.min_vram }]
             },
             unmet_gpu_runtime_axes(want: want.runtimes, have: have.runtimes),
+          ),
           )
       }
   }

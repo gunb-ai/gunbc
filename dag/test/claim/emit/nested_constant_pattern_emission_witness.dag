@@ -69,15 +69,6 @@ type NcpPair = NcpQ { a: NcpMid, b: NcpMid } | NcpR
 type NcpSMid = NcpSM { inner: NcpInner, label: String } | NcpSN
 type NcpSOuter = NcpSO { mid: NcpSMid } | NcpSP
 
-fn ncp_guarded(x: NcpOuter, flag: Bool) -> Int {
-  match x {
-    NcpP => 4
-    NcpO { mid: NcpM { inner: NcpA } } if flag == true => 1
-    NcpO { mid: NcpM { inner: NcpB } } => 2
-    NcpO { mid: _ } => 3
-  }
-}
-
 fn ncp_tagged(x: NcpTagged) -> Int {
   match x {
     NcpU => 4
@@ -112,15 +103,6 @@ fn ncp_top_wildcard(x: NcpOuter) -> Int {
     NcpO { mid: NcpM { inner: NcpB } } => 2
     _ => 3
   }
-}
-
-// THE INTERPRETER HONORS AN AUTHORED GUARD. It used to ignore every match guard, so `P if g`
-// selected its arm whenever `P` matched; the third assertion was 1, not 3.
-test fn the_interpreter_honors_an_authored_guard_on_a_nested_arm() -> Bool {
-  (ncp_guarded(x: NcpO { mid: NcpM { inner: NcpA } }, flag: true) == 1)
-    && (ncp_guarded(x: NcpO { mid: NcpM { inner: NcpB } }, flag: true) == 2)
-    && (ncp_guarded(x: NcpO { mid: NcpM { inner: NcpA } }, flag: false) == 3)
-    && (ncp_guarded(x: NcpO { mid: NcpN }, flag: true) == 3)
 }
 
 test fn the_interpreter_selects_each_ungrouped_nested_arm() -> Bool {

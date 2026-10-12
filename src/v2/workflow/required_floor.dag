@@ -1,6 +1,6 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty, contains, any, list_reverse }
+import v2.std.algebra { Cons, Empty, contains, list_reverse }
 import gunbc.explicit_witness_admission { explicit_witness_admissions, explicit_witness_admission_is_known_red }
 import std.optional { Optional, Present, Absent }
 import v2.std.integer { Int, int_gt, int_add, int_mul }
@@ -1166,7 +1166,7 @@ fn first_module_prefix_match(module_path: String, prefixes: List<String>) -> Mod
 //
 // THE COST ARM BRANCHES WITH `if`, NOT WITH A VARIANT MATCH, AND THAT IS LOAD-BEARING RATHER THAN
 // STYLE. `floor_cost_debt_holds` returns the corpus `Bool`, which is realized NATIVELY as a machine
-// scalar; `v2.std.algebra` `any` itself matches it as lowercase `true`/`false`. The interpreter's
+// scalar; the collection-roster `any` joins it as lowercase `true`/`false`. The interpreter's
 // `match_pattern` carries VariantPattern arms for Variant, Record, List, Str, Int and Null and NO
 // arm for a native bool, so a `True`/`False` variant pattern over this value matches nothing and
 // falls through at RUNTIME -- it parses, it typechecks, and it dies with

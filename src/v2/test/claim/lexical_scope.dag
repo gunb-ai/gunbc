@@ -18,7 +18,7 @@ import v2.compiler.reference_site_collector {
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { HeadAbsent, HeadFound, filter, list_head, list_map }
+import v2.std.algebra { HeadAbsent, HeadFound, list_head, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -76,10 +76,7 @@ fn head_of_site(content: String, spelling: String) -> String {
       match acquisition_front_end(env: scope_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content) {
         Rejected { diagnostics: _ } => "front-end-refused"
         Accepted { value: front, diagnostics: _ } =>
-          match list_head(xs: filter(
-            xs: collect_scoped_module_reference_sites(root: front.tree.root).sites,
-            predicate: fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) == spelling }
-          )) {
+          match list_head(xs: collect_scoped_module_reference_sites(root: front.tree.root).sites |> filter(fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) == spelling })) {
             HeadAbsent => "no-site"
             HeadFound { value: found } => head_text(head: found.head)
           }
@@ -156,7 +153,7 @@ fn root_binding_of(content: String, name: String) -> String {
       match acquisition_front_end(env: scope_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content) {
         Rejected { diagnostics: _ } => "front-end-refused"
         Accepted { value: front, diagnostics: _ } =>
-          match list_head(xs: filter(xs: module_root_bindings(root: front.tree.root), predicate: fn(b) { symbol_lexeme(sym: b.name) == name })) {
+          match list_head(xs: module_root_bindings(root: front.tree.root) |> filter(fn(b) { symbol_lexeme(sym: b.name) == name })) {
             HeadAbsent => "no-binding"
             HeadFound { value: found } => binding_kind(b: found)
           }

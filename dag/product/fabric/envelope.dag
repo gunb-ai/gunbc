@@ -1,6 +1,6 @@
 module product.fabric.envelope
 
-import std.types { List, Bool }
+import std.types { List, Bool, Int }
 import std.measure { ByteSize, HardwareThreadCount }
 import extdeps.toolchain.types { Architecture }
 import extdeps.gpu.types { GpuRuntime }
@@ -26,7 +26,9 @@ import product.network_topology { NetworkEgressClass }
 
 type CpuRequirement { min_threads: HardwareThreadCount, architecture: Architecture? }
 
-type GpuRequirement { min_vram: ByteSize, runtimes: List<GpuRuntime> }
+// COUNT IS DATA: how many GPUs one grant spans, each with at least min_vram. One axis serves 1x and
+// 2x targets alike; an offer states the count it rents and a requirement the count it needs.
+type GpuRequirement { count: Int, min_vram: ByteSize, runtimes: List<GpuRuntime> }
 
 type MemoryRequirement { min_bytes: ByteSize }
 

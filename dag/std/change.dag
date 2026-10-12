@@ -4,7 +4,6 @@ import std.types { List, Bool, list_length }
 import std.algebra { Monoid, Cons }
 import std.keyed_row { KeyedRow, keyed_row_find }
 import std.optional { Present, Absent }
-import v2.std.algebra { any }
 
 type KeyedDiffHunk<K, V>
   = KeyedDiffAddedHunk { hunk_key: K, to: V }

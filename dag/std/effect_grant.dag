@@ -1,7 +1,6 @@
 module std.effect_grant
 
 import std.types { Bool, String, List }
-import v2.std.algebra { filter }
 import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect }
 import std.materialization_ladder { Frame }
 import std.access {

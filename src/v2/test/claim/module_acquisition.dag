@@ -54,7 +54,7 @@ import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { ModuleFileRef, module_file_key }
-import v2.std.algebra { HeadAbsent, HeadFound, filter, length, list_head, list_map }
+import v2.std.algebra { HeadAbsent, HeadFound, length, list_head, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
@@ -332,7 +332,7 @@ test fn a_well_formed_import_is_requested_and_its_marked_declaration_is_captured
 fn requested_text(read: AcquisitionMemberRead, spelling: String) -> String {
   match read {
     AcquisitionMemberReadOk { requests: requests, test_markers: _ } =>
-      if length(xs: filter(xs: requests.references, predicate: fn(r) { r == spelling })) == 0 {
+      if length(xs: requests.references |> filter(fn(r) { r == spelling })) == 0 {
         "not-requested"
       } else {
         "requested"
@@ -496,7 +496,7 @@ fn marked_content_of(content: String, name: String) -> String {
 }
 
 fn first_content_named(declarations: List<AcquisitionMarkedDeclaration>, name: String) -> String {
-  match list_head(xs: filter(xs: declarations, predicate: fn(d) { d.name == name })) {
+  match list_head(xs: declarations |> filter(fn(d) { d.name == name })) {
     HeadAbsent => ""
     HeadFound { value: d } => d.content
   }

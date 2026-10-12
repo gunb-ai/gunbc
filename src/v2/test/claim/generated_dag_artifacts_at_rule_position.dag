@@ -3,7 +3,7 @@ module v2.test.claim.generated_dag_artifacts_at_rule_position
 import std.types { Bool, List }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
-import v2.std.algebra { filter, length, list_map }
+import v2.std.algebra { length, list_map }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.compiler.source_authority {
   LayoutFileHeader,
@@ -101,7 +101,7 @@ fn registered_observation_cause(o: GeneratedArtifactObservation) -> String {
 }
 
 fn registered_dag_artifacts() -> List<GeneratedArtifact> {
-  filter(xs: generated_artifact_registry, predicate: fn(a) { artifact_path(a: a).ends_with(suffix: ".dag") })
+  generated_artifact_registry |> filter(fn(a) { artifact_path(a: a).ends_with(suffix: ".dag") })
 }
 
 fn registered_dag_artifact_observations() -> List<GeneratedArtifactObservation> {
@@ -111,10 +111,7 @@ fn registered_dag_artifact_observations() -> List<GeneratedArtifactObservation> 
 }
 
 fn registered_dag_artifact_causes() -> List<String> {
-  filter(
-    xs: list_map(xs: registered_dag_artifact_observations(), f: fn(o) { registered_observation_cause(o: o) }),
-    predicate: fn(cause) { cause != "" }
-  )
+  list_map(xs: registered_dag_artifact_observations(), f: fn(o) { registered_observation_cause(o: o) }) |> filter(fn(cause) { cause != "" })
 }
 
 // ---- supplied values: one discriminating red per fact, against a positive control -------------------

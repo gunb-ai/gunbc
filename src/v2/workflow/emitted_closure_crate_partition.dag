@@ -18,7 +18,6 @@ import gunbc.crate_partition {
 }
 
 import std.types { List, String, Bool, Int, Map }
-import v2.std.algebra { any }
 import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
 import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 import v2.lens.module_graph {

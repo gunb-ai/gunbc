@@ -7,7 +7,7 @@ import extdeps.sudo.nopasswd_execute_probe {
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits,
   bash_build_pipe,

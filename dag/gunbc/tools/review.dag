@@ -222,15 +222,16 @@ fn review_cycle(
     RestRefused { refusal } =>
       return ReviewAgentCycleRefused { refusal: refusal }
     RestAnswered { answer: open_prs } => {
-      results = for pr in open_prs.pulls {
-        review_pr(
+      let reviewed_count = fold(open_prs.pulls, init: 0, f: fn(acc, pr) {
+        let reviewed = review_pr(
           owner: owner,
           repo: repo,
           pr_number: pr.number
         )
-      }
+        acc + 1
+      })
 
-      return ReviewAgentCycleCompleted { reviewed_count: count(results) }
+      return ReviewAgentCycleCompleted { reviewed_count: reviewed_count }
     }
   }
 }

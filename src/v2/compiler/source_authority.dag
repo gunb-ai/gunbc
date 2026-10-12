@@ -26,7 +26,6 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim }
 import v2.std.algebra {
   HeadAbsent,
   HeadFound,
-  filter,
   fold_list,
   is_empty,
   length,

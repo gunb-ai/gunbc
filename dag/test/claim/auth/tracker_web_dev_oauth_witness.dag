@@ -2,7 +2,6 @@ module test.claim.auth.tracker_web_dev_oauth_witness
 
 import std.types { Bool, String, CommitSha, NonEmptyStr, Int }
 import std.measure { second_count }
-import v2.std.algebra { any }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalAssessmentRefused }
 import std.keyed_roster { KeyedRosterBuilt }
 import std.roster_frontier { PathSubject, frontier_rows_keyed_roster_build }

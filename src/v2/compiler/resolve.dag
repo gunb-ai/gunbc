@@ -70,7 +70,7 @@ import v2.extdeps.languages.dag {
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
-import v2.std.algebra { any, fold_list, length, list_find_first, skip }
+import v2.std.algebra { fold_list, length, list_find_first, skip }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -2186,8 +2186,9 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
 
 // THE LAST TIER: a free kernel primitive binds to its std.primitives contract row (v2.compiler.primitive_authority),
 // asked only after the frame, the imports, the indexed declarations, the kernel types and the collection roster
-// have all declined the name, so an ordinary declaration (a local fn, an imported v2.std.algebra any/filter) always
-// wins. A canonical symbol is not a primitive and keeps its own answer. A name no authority declares stays the
+// have all declined the name, so an ordinary declaration (a local fn, an imported corpus fn) always
+// wins. Collection-roster heads (filter/any) are the prior tier. A canonical symbol is not a
+// primitive and keeps its own answer. A name no authority declares stays the
 // typed resolve_reason_unbound_symbol refusal. The found row is JOINED on its own `name` field: a row whose declaration
 // name disagrees with its name field is the typed resolve_reason_primitive_row_name_disagrees refusal, not a spelling bind.
 fn resolve_atom_primitive_authority(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {

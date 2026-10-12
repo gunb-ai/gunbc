@@ -20,7 +20,7 @@ import gunbc.rust_item_scan {
   scan_rust_source
 }
 import std.types { Bool, Int, List, String }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

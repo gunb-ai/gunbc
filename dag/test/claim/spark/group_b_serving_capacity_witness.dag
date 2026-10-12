@@ -26,7 +26,7 @@ import gunbc.spark.arm_memory_fit {
 }
 import std.measure { token_count_value, basis_point_count }
 import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire }
-import v2.std.algebra { any, length }
+import v2.std.algebra { length }
 
 // ── THE DECLARED OBLIGATION AND ITS DERIVED EXECUTABLE ────────────────────────────────────────────
 //

@@ -15,7 +15,7 @@ import std.measure {
   second,
   second_count,
 }
-import v2.std.algebra { filter, length }
+import v2.std.algebra { length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.observation {
   ObservationEvent,

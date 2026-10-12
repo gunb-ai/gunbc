@@ -2,7 +2,7 @@ module gunbc.host_convergence_census
 
 import std.types { Bool, List }
 import v2.std.collection { Present, Absent }
-import v2.std.algebra { list_map, filter, length }
+import v2.std.algebra { list_map, length }
 import std.decl_ref {
   DeclarationRef,
   decl_ref,

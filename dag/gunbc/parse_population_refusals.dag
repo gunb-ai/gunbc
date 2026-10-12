@@ -15,21 +15,6 @@ type RefusalClass {
   keys: List<String>
 }
 
-// Match-arm guards (gunbc.rung_drop population_parse_match_arm_guard).
-fn match_arm_guard_keys() -> List<String> {
-  [
-    "dag:test/claim/emit/nested_constant_pattern_emission_witness.dag",
-    "dag:test/claim/interpreter_match_guard_witness.dag"
-  ]
-}
-
-// Uses of `??` (gunbc.rung_drop population_parse_null_coalesce).
-fn null_coalesce_keys() -> List<String> {
-  [
-    "dag:test/claim/eval_model_probe.dag"
-  ]
-}
-
 // Field refinements (gunbc.rung_drop population_parse_field_refinement).
 fn field_refinement_keys() -> List<String> {
   [
@@ -65,40 +50,8 @@ fn indexed_match_scrutinee_in_test_keys() -> List<String> {
   ]
 }
 
-// The caret sigil inside a `test fn`, where the verb reports the marker cause (gunbc.rung_drop population_parse_caret_expression).
-fn caret_expression_in_test_keys() -> List<String> {
-  [
-    "v2:test/claim/manual/caret_sigil_surface.dag"
-  ]
-}
-
-// A block operand inside a `test fn`, where the verb reports the marker cause (gunbc.rung_drop population_parse_block_operand).
-fn block_operand_in_test_keys() -> List<String> {
-  [
-    "dag:test/claim/machine_intake/pre_os_replay_witness.dag",
-    "dag:test/claim/spark/pair_serving_authority_log_real_execution.dag"
-  ]
-}
-
-// The `for ... in` comprehension (gunbc.rung_drop population_parse_for_loop).
-fn for_loop_keys() -> List<String> {
-  [
-    "dag:gunbc/tools/review.dag"
-  ]
-}
-
 fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
   [
-    RefusalClass {
-      drop: "population_parse_match_arm_guard",
-      cause: "parse_g0_tokens_remain",
-      keys: match_arm_guard_keys()
-    },
-    RefusalClass {
-      drop: "population_parse_null_coalesce",
-      cause: "parse_g0_tokens_remain",
-      keys: null_coalesce_keys()
-    },
     RefusalClass {
       drop: "population_parse_field_refinement",
       cause: "parse_g0_tokens_remain",
@@ -118,21 +71,6 @@ fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
       drop: "population_parse_indexed_match_scrutinee",
       cause: "parse_declaration_marker_not_test",
       keys: indexed_match_scrutinee_in_test_keys()
-    },
-    RefusalClass {
-      drop: "population_parse_caret_expression",
-      cause: "parse_declaration_marker_not_test",
-      keys: caret_expression_in_test_keys()
-    },
-    RefusalClass {
-      drop: "population_parse_block_operand",
-      cause: "parse_declaration_marker_not_test",
-      keys: block_operand_in_test_keys()
-    },
-    RefusalClass {
-      drop: "population_parse_for_loop",
-      cause: "parse_g0_tokens_remain",
-      keys: for_loop_keys()
     }
   ]
 }

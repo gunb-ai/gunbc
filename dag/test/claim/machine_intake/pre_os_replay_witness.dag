@@ -174,6 +174,17 @@ test fn w_console_chunks_compose_only_across_verified_continuity() -> Bool {
     && match interrupted.composition { ObservationRefused { cause } => contains(to_string(cause), "current chunk") && contains(to_string(cause), "reconnect lost continuity") _ => false }
 }
 
+fn w_follower_owner_refusal_is_retained(base: ObservationEnvelope) -> Bool {
+  let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
+    ownership: FollowerReadOnly { session: t_other_session }, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
+    local_commit: base.local_commit, downstream: base.downstream, continuity: base.continuity }
+  match pre_os_sel_cursor(envelope: envelope, payload: baseline_text()) {
+    ObservationRefused { cause } => match cause.detail { PreOsOwnershipRefusal { ownership: FollowerReadOnly { session } } => session == t_other_session _ => false }
+    _ => false
+  }
+
+}
+
 // The SEL cursor consumer must preserve independent commit and ownership causes.
 // These fixtures change the evidence, not the observer's refusal implementation.
 test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool {
@@ -193,15 +204,7 @@ test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool {
         _ => false
       }
     })
-    && {
-      let envelope = ObservationEnvelope { binding: base.binding, source_generation: base.source_generation, native_cursor: base.native_cursor,
-        ownership: FollowerReadOnly { session: t_other_session }, chunk: base.chunk, producer_timestamp: base.producer_timestamp, received: base.received,
-        local_commit: base.local_commit, downstream: base.downstream, continuity: base.continuity }
-      match pre_os_sel_cursor(envelope: envelope, payload: baseline_text()) {
-        ObservationRefused { cause } => match cause.detail { PreOsOwnershipRefusal { ownership: FollowerReadOnly { session } } => session == t_other_session _ => false }
-        _ => false
-      }
-    }
+    && w_follower_owner_refusal_is_retained(base: base)
 }
 
 // Equal numeric offsets in different streams are incomparable, not out of range.

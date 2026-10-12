@@ -14,7 +14,7 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.reference_closure { ReferenceOwnerless, ReferenceOwnership, ReferencesOwned, reference_closure_ownership }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest, text_set_of }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
-import v2.std.algebra { filter, fold_list }
+import v2.std.algebra { fold_list }
 import std.optional { Absent, Optional, Present }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
@@ -133,7 +133,7 @@ fn rc_every_module() -> FreeMonoid<String> {
 }
 
 fn rc_without(name: String) -> FreeMonoid<String> {
-  filter(xs: rc_every_module(), predicate: fn(m) { m != name })
+  rc_every_module() |> filter(fn(m) { m != name })
 }
 
 fn rc_ownership_target(ownership: ReferenceOwnership) -> String {

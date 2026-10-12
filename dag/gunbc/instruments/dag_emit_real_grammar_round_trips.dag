@@ -1,7 +1,6 @@
 module gunbc.instruments.dag_emit_real_grammar_round_trips
 
 import std.types { String, List, Bool }
-import v2.std.algebra { filter }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }

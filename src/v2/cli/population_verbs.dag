@@ -46,7 +46,7 @@ import v2.compiler.source_authority {
   module_file_key,
   module_header_declared_name
 }
-import v2.std.algebra { HeadAbsent, HeadFound, filter, fold_list, is_empty, length, list_head, list_map, list_reverse, skip }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list, is_empty, length, list_head, list_map, list_reverse, skip }
 import v2.std.collection { empty_map, map_contains_key, map_insert, map_lookup }
 import v2.std.text { String }
 
@@ -362,7 +362,7 @@ fn population_parse_go(env: AcquisitionEnv, pending: List<String>, tally: Popula
 // outlive its files.
 fn population_parse_unmet(tally: PopulationParse) -> List<String> {
   list_map(
-    xs: filter(xs: tally.roster.ordered, predicate: fn(declaration) { !map_contains_key(m: tally.judged, key: declaration.key) }),
+    xs: tally.roster.ordered |> filter(fn(declaration) { !map_contains_key(m: tally.judged, key: declaration.key) }),
     f: fn(declaration) {
       concat(
         declaration.key,

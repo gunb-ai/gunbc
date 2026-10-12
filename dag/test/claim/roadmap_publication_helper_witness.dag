@@ -60,8 +60,6 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
-import v2.std.algebra { any }
-
 // WHAT THIS FILE ASSERTS, AND WHAT IT CANNOT.
 //
 // The deliverable is a NEGATIVE property -- the belt and serve units never hold a GitHub token --
