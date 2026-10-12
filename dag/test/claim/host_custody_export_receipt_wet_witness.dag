@@ -1,0 +1,141 @@
+module test.claim.host_custody_export_receipt_wet_witness
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.chmod { chmod_path_resolved_program }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_remote_file_write {
+  TypedRemoteFileWrite,
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+  RemoteFileModeOwnerReadWriteGroupRead,
+  typed_remote_file_write_seal,
+  typed_remote_file_staging_path,
+  typed_remote_file_unlink_staging_argv,
+  typed_remote_file_stage_argv,
+  typed_remote_file_chmod_argv,
+  typed_remote_file_rename_argv,
+  typed_remote_file_compare_argv,
+  typed_remote_file_pre_compare_steps,
+  typed_remote_file_write_stdin_payload,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MIGRATION CASE THE SHARED STAGING USED TO LOSE. Old Cursor layout: the directory is writable
+// by the reader, who plants `<receipt>.gunbc-staging` as a symlink to a file they control. `dd of=`
+// followed the link, `mv -f` published the symlink, `cmp` followed it, and the writer reported
+// success. The production sequence is typed_remote_file_pre_compare_steps (unlink the staging name
+// without following it, then dd a fresh regular file, chmod, rename). Restoring the old `dd of=`
+// alone reddens a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real_execution:
+// the dest stays a symlink and the referent changes. Enrolled on the local-repo wet lane.
+
+data planted_referent_body: String = "reader-owned-referent\n"
+data published_body: String = "custody-export-receipt-body\n"
+
+fn fx_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_export_receipt.XXXXXX").path
+}
+
+fn sealed_write(dest: String, root: String, body: String) -> TypedRemoteFileWrite? {
+  match typed_remote_file_write_seal(
+    path: dest as FilePath,
+    content: body,
+    allowed_scope: FileTreeScope { root_path: root as NonEmptyStr },
+  ) {
+    TypedRemoteFileWriteAdmitted { write: w } => Present { value: w }
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
+  }
+}
+
+fn is_regular_file(path: String) -> Bool {
+  shell.Exec.RunArgv(program: "find", arguments: [path, "-maxdepth", "0", "-type", "f"]).exit_code == 0
+}
+
+fn is_symlink(path: String) -> Bool {
+  shell.Exec.RunArgv(program: "test", arguments: ["-L", path]).exit_code == 0
+}
+
+fn run_pre_compare(write: TypedRemoteFileWrite) -> Bool {
+  let staging = typed_remote_file_staging_path(write: write)
+  let dest = write.path as String
+  let names = map(typed_remote_file_pre_compare_steps(write: write, mode: RemoteFileModeOwnerReadWriteGroupRead), s => s.step)
+  names == ["unlink-staging", "stage", "mode", "rename"]
+    && typed_remote_file_unlink_staging_argv(write: write) == ["rm", "-f", "--", staging]
+    && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", staging]).exit_code == 0
+    && typed_remote_file_stage_argv(write: write) == ["dd", "status=none", concat("of=", staging)]
+    && shell.Exec.RunArgvStdin(
+      program: "dd",
+      arguments: ["status=none", concat("of=", staging)],
+      stdin_payload: typed_remote_file_write_stdin_payload(write: write),
+    ).exit_code == 0
+    && typed_remote_file_chmod_argv(write: write, mode: RemoteFileModeOwnerReadWriteGroupRead)
+      == [chmod_path_resolved_program as String, "640", staging]
+    && shell.Exec.RunArgv(
+      program: chmod_path_resolved_program as NonEmptyStr,
+      arguments: ["640", staging],
+    ).exit_code == 0
+    && typed_remote_file_rename_argv(write: write) == ["mv", "-f", staging, dest]
+    && shell.Exec.RunArgv(program: "mv", arguments: ["-f", staging, dest]).exit_code == 0
+    && typed_remote_file_compare_argv(write: write) == ["cmp", "-s", "-", dest]
+    && shell.Exec.RunArgvStdin(program: "cmp", arguments: ["-s", "-", dest], stdin_payload: write.content).exit_code == 0
+}
+
+test fn a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real_execution() -> Bool {
+  let root = fx_root()
+  let custody = concat(root, "/custody")
+  let reader = concat(root, "/reader")
+  let dest = concat(custody, "/receipt")
+  let staging = concat(dest, ".gunbc-staging")
+  let referent = concat(reader, "/pwned")
+  let mk = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", custody, reader]).exit_code == 0
+  let planted_ref = Filesystem.Write(path: referent, content: planted_referent_body)
+  let planted_link = shell.Exec.RunArgv(program: "ln", arguments: ["-s", referent, staging]).exit_code == 0
+  let published = match sealed_write(dest: dest, root: root, body: published_body) {
+    Absent => false
+    Present { value: w } =>
+      (typed_remote_file_staging_path(write: w) == staging) && run_pre_compare(write: w)
+  }
+  let dest_regular = is_regular_file(path: dest) && !is_symlink(path: dest)
+  let dest_bytes = Filesystem.Read(path: dest)
+  let referent_kept = Filesystem.Read(path: referent)
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  mk && planted_ref.success && planted_link && published
+    && dest_regular
+    && dest_bytes.success && dest_bytes.content == published_body
+    && referent_kept.success && referent_kept.content == planted_referent_body
+    && cleaned.success
+}
+
+test fn an_ordinary_publication_lands_a_regular_file_by_real_execution() -> Bool {
+  let root = fx_root()
+  let custody = concat(root, "/custody")
+  let dest = concat(custody, "/receipt")
+  let mk = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", custody]).exit_code == 0
+  let published = match sealed_write(dest: dest, root: root, body: published_body) {
+    Absent => false
+    Present { value: w } => run_pre_compare(write: w)
+  }
+  let dest_regular = is_regular_file(path: dest) && !is_symlink(path: dest)
+  let dest_bytes = Filesystem.Read(path: dest)
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  mk && published && dest_regular && dest_bytes.success && dest_bytes.content == published_body && cleaned.success
+}
+
+test fn a_second_publication_over_an_existing_regular_receipt_stays_a_regular_file_by_real_execution() -> Bool {
+  let root = fx_root()
+  let custody = concat(root, "/custody")
+  let dest = concat(custody, "/receipt")
+  let mk = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", custody]).exit_code == 0
+  let prior = Filesystem.Write(path: dest, content: "prior-regular\n")
+  let published = match sealed_write(dest: dest, root: root, body: published_body) {
+    Absent => false
+    Present { value: w } => run_pre_compare(write: w)
+  }
+  let dest_regular = is_regular_file(path: dest) && !is_symlink(path: dest)
+  let dest_bytes = Filesystem.Read(path: dest)
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  mk && prior.success && published && dest_regular && dest_bytes.success && dest_bytes.content == published_body && cleaned.success
+}

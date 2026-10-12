@@ -1,6 +1,6 @@
 module test.claim.typed_remote_file_converge_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.types { Bool, String, NonEmptyStr, FilePath, List }
 import gunbc.file_access { FileTreeScope }
 import std.materialization_ladder { string_list_contains }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
@@ -22,6 +22,9 @@ import gunbc.typed_remote_file_write {
   remote_file_mode_octal,
   typed_remote_file_staging_path,
   typed_remote_file_stage_argv,
+  typed_remote_file_unlink_staging_argv,
+  typed_remote_file_fresh_staging_steps,
+  typed_remote_file_pre_compare_steps,
   typed_remote_file_chmod_argv,
   typed_remote_file_rename_argv,
   typed_remote_file_compare_argv,
@@ -73,6 +76,31 @@ test fn the_staging_path_is_a_sibling_of_the_destination() -> Bool {
 }
 
 // Nothing is ever written directly to the destination: the write step names the STAGING path.
+test fn unlink_staging_removes_the_staging_name_without_a_shell() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } =>
+      typed_remote_file_unlink_staging_argv(write: w)
+        == ["rm", "-f", "--", typed_remote_file_staging_path(write: w)]
+  }
+}
+
+test fn fresh_staging_unlinks_before_dd() -> Bool {
+  match subject_write() {
+    Absent => false
+    Present { value: w } => {
+      let steps = typed_remote_file_fresh_staging_steps(write: w)
+      let pre = typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWrite)
+      map(steps, s => s.step) == ["unlink-staging", "stage"]
+        && map(steps, s => s.argv) == [
+          typed_remote_file_unlink_staging_argv(write: w),
+          typed_remote_file_stage_argv(write: w),
+        ]
+        && map(pre, s => s.step) == ["unlink-staging", "stage", "mode", "rename"]
+    }
+  }
+}
+
 test fn the_stage_step_writes_to_staging_never_the_destination() -> Bool {
   match subject_write() {
     Absent => false
@@ -161,7 +189,9 @@ test fn the_sudo_arm_prefixes_every_leg_non_interactively() -> Bool {
   match subject_write() {
     Absent => false
     Present { value: w } =>
-      remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_stage_argv(write: w))
+      remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_unlink_staging_argv(write: w))
+        == concat(["/usr/bin/sudo", "-n"], typed_remote_file_unlink_staging_argv(write: w))
+        && remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_stage_argv(write: w))
         == concat(["/usr/bin/sudo", "-n"], typed_remote_file_stage_argv(write: w))
         && remote_file_privileged_argv(privilege: RemoteFileViaNonInteractiveSudo, argv: typed_remote_file_rename_argv(write: w))
         == concat(["/usr/bin/sudo", "-n"], typed_remote_file_rename_argv(write: w))
@@ -278,7 +308,7 @@ test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
 // A first repair restored a control by admitting THIS MODULE to the mint. That worked but was the
 // weaker instrument: it tested the mint's passthrough while skipping the four legs that earn the
 // right to call it. converge_typed_remote_file is a func, and the hermetic ssh fixture answers every
-// exec, so a witness can drive stage -> chmod -> rename -> far-side cmp and RECEIVE the carrier
+// exec, so a witness can drive unlink-staging -> stage -> chmod -> rename -> far-side cmp and RECEIVE the carrier
 // instead of minting one. The mint's admit_callers is back to exactly one production caller.
 //
 // It also reads the SUBJECT back out of the receipt, so it is the executed evidence for the fields

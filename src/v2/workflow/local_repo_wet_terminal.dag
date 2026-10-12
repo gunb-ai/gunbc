@@ -1567,6 +1567,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_custody_export_receipt_wet_witness", function: "a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real_execution" },
+      entry: "dag/test/claim/host_custody_export_receipt_wet_witness.dag",
+      function: "a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_custody_export_receipt_wet_witness", function: "an_ordinary_publication_lands_a_regular_file_by_real_execution" },
+      entry: "dag/test/claim/host_custody_export_receipt_wet_witness.dag",
+      function: "an_ordinary_publication_lands_a_regular_file_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_custody_export_receipt_wet_witness", function: "a_second_publication_over_an_existing_regular_receipt_stays_a_regular_file_by_real_execution" },
+      entry: "dag/test/claim/host_custody_export_receipt_wet_witness.dag",
+      function: "a_second_publication_over_an_existing_regular_receipt_stays_a_regular_file_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.filesystem_link_create_new_wet_witness", function: "an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution" },
       entry: "dag/test/claim/filesystem_link_create_new_wet_witness.dag",
       function: "an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution",
