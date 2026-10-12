@@ -15,7 +15,7 @@ import gunbc.compute.host_occupancy {
 }
 import extdeps.systemd { systemd_unit_active_state_wire_label }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
-import gunbc.spark.pair_serving_realization { spark_pair_worker_unit_name }
+import gunbc.spark.retired_serving_container_names { spark_pair_worker_unit_name }
 import gunbc.spark.host_occupancy_admission {
   spark_host_occupancy_admission, admit_spark_host_unoccupied, with_spark_pair_vacated,
   SparkPairVacateOutcome, PairVacatedAndRestored, PairRestoreIncomplete, PairVacateRefused,

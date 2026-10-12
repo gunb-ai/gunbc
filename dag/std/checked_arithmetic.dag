@@ -237,7 +237,7 @@ fn checked_int_magnitude(a: Int) -> CheckedNat {
 // THE NONNEGATIVE CROSSING, distinct from the magnitude above: an Int that IS a Nat crosses, a
 // negative Int is ABSENT rather than mapped to its distance from zero. This is what an `n as Nat`
 // was asserting without evidence, and it is the conversion std.coercion refinement_cast_rules names
-// in the refusal an `Int as Nat` cast now receives. Promoted from gunbc.spark.serving_load_probe,
+// in the refusal an `Int as Nat` cast now receives. Promoted from retired gunbc.spark.serving_load_probe (deleted #13779),
 // where it was the only definition of this fact.
 fn checked_int_to_nat(n: Int) -> Nat? {
   if n < 0 {

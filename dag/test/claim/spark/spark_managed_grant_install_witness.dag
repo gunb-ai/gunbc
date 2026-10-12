@@ -11,7 +11,7 @@ import gunbc.spark.managed_access_bootstrap {
 import gunbc.spark.managed_grant_reconcile { spark_managed_grant_dropin_path, GrantInstallWithheld, GrantInstallStandingUnobserved, GrantInstallAdmittedOnAcceptedRisk, spark_managed_grants_admitted_on_accepted_risk }
 import gunbc.spark.managed_access_bootstrap { GrantEnumerated, spark_managed_grant_install_basis }
 import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_inspect_grant_disclosure_unestablished_obligation }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name }
+import gunbc.spark.retired_serving_container_names { spark_pair_container_name }
 import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
 import gunbc.spark.managed_grant_install {
   RetiredDropinAbsent,

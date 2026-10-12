@@ -215,8 +215,8 @@ data node_power_ceiling_axis: DeclarationRef = decl_ref(module_path: "product.no
 
 // THE ROUTE'S OWN QUALIFICATION, as a hard constraint per candidate: 1 when the route is qualified,
 // 0 when it is refused (excluded before Pareto, with its cause), and a declared gap while it is
-// unestablished. The same 0/1 axis-with-bound shape gunbc.spark.serving_deployment_selection uses for
-// constraint_no_redundancy, so this inhabits std.decision's HardConstraint rather than adding a gate.
+// unestablished. The same 0/1 axis-with-bound shape std.decision uses for a hard constraint, so this
+// inhabits HardConstraint rather than adding a gate.
 data route_qualified_axis: DeclarationRef = decl_ref(module_path: "product.node_platform_selection", decl_name: "route_qualified_axis")
 data constraint_route_qualified: DeclarationRef = decl_ref(module_path: "product.node_platform_selection", decl_name: "constraint_route_qualified")
 

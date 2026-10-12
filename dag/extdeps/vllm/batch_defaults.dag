@@ -64,7 +64,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 //
 // The measured cost on this fleet: a 121.7 GiB machine was classified as a small device and served
 // a 1,048,576-token context model on a 2048-token prefill budget, which is the largest single
-// determinant of co-tenant interactive latency (gunbc.spark.prefill_batch_sweep).
+// determinant of co-tenant interactive latency (retired gunbc.spark.prefill_batch_sweep (deleted #13779)).
 type VllmUsageContext
   = LlmClass
   | OpenAiApiServer

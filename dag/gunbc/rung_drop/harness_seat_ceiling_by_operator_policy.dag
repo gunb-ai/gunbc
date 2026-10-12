@@ -19,7 +19,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // WHAT THE DROP IS. gunbc.harness.harness_seat sized its seat pool from the desired engine's
 // `max_num_seqs`, so the fabric claimed thirty-two seats per serving group. That is the engine's
 // scheduler count limit and says nothing about KV residency, and the same corpus already stated at
-// gunbc.spark.pair_serving_desired spark_pair_serving_seq_capacity that NO LAW FROM POOL TOKENS TO
+// retired gunbc.spark.pair_serving_desired (deleted #13779) spark_pair_serving_seq_capacity that NO LAW FROM POOL TOKENS TO
 // ADMITTED SEQUENCES IS MODELLED. The wall was therefore fail-open by roughly an order of magnitude
 // in the direction that reads as capacity.
 //
@@ -30,7 +30,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // wrong three times in this repository. And the engine's own "Nx concurrency" line is a
 // full-context-equivalent projection, not a seat count for requests shorter than full context by an
 // unmodelled margin. kv_cache_usage_perc is not available either: it counts retained prefix-cache
-// blocks, reading 96.5% at zero requests running (gunbc.spark.pair_serving_observed) and reproduced
+// blocks, reading 96.5% at zero requests running (retired gunbc.spark.pair_serving_observed (deleted #13779)) and reproduced
 // live at 53% with zero running on the group B head on 2026-09-06.
 //
 // So the interim ceiling is a number the operator chose against observed concurrency, and it says

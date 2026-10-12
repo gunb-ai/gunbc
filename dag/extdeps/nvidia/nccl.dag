@@ -95,7 +95,7 @@ fn nccl_roce_gid_selection_env(s: NcclRoceGidSelection) -> List<NcclEnvAssignmen
 // ── WHICH TRANSPORT A COMMUNICATOR ACTUALLY BUILT, WHICH NCCL ITSELF ANNOUNCES ──────────────────
 //
 // WHY THIS IS A SEPARATE FACT FROM THE ENVIRONMENT THAT ASKED FOR IT. The env assignments above --
-// and gunbc.spark.pair_serving_observed's CollectiveTransportEnvObserved -- record what the launch
+// and retired gunbc.spark.pair_serving_observed (deleted #13779)'s CollectiveTransportEnvObserved -- record what the launch
 // REQUESTED. They do not record what NCCL BUILT, and the gap between the two is the whole reason
 // this type exists: NCCL falls back to Socket silently whenever the IB path is unavailable, and a
 // launch whose NCCL_IB_* variables are all set correctly still runs on TCP if the container carries

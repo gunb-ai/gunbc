@@ -27,7 +27,7 @@ test fn an_omitted_memory_request_renders_no_flags() -> Bool {
 //
 // THE DISCRIMINATING CASE, AND IT CAUGHT A REAL DEFECT. The first version of this renderer padded to
 // four places, so the pair route's long-standing 82% rendered as `0.8200` where the engine actually
-// running on the fleet was launched with `0.82` (gunbc.spark.pair_serving_observed records that exact
+// running on the fleet was launched with `0.82` (retired gunbc.spark.pair_serving_observed (deleted #13779) records that exact
 // wire value). Numerically identical, different bytes -- and convergence compares rendered argv to
 // running argv, so it would have reported drift against a healthy server and asked for a twelve-minute
 // restart to erase a difference nobody introduced. A renderer is not free to choose a spelling.

@@ -10,8 +10,6 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
-import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
-import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -1117,24 +1115,10 @@ data gunbc_ci_spark_bootstrap_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "spark_managed_access_bootstrap_ci_wet",
 }
 
-data gunbc_ci_spark_serving_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/pair_serving_apply.dag",
-  function: "spark_pair_serving_apply_wet",
-}
-
-data gunbc_ci_spark_native_serving_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/native_serving_apply.dag",
-  function: "spark_native_serving_apply_wet",
-}
-
-// THE ROUTE-A PROBE. It asks a published image what it contains, inside that image, on the selected
-// Spark -- and it needs this job's prelude for a reason that is not incidental: docker's socket on a
-// Spark is root-owned and the managed executor is in no docker group, so the only modeled way to
-// drive docker there is the administrator credential this job materializes.
-data gunbc_ci_spark_runtime_image_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/spark/v41_runtime_image_probe.dag",
-  function: "v41_published_image_probe_ci_wet",
-}
+// Spark serving apply / native apply / runtime-image probe are retired: all DGX Sparks are sold
+// (gunbc.spark.dgx_procurement dgx_spark_disposed_units). Dispatch modes remain so a bookmark
+// fails closed rather than no-op.
+data spark_serving_retired_refuse_script: String = "echo 'refused: DGX Spark serving path retired; all units sold (gunbc.spark.dgx_procurement dgx_spark_disposed_units)' >&2\nexit 1\n"
 
 // THE PRODUCTION. It verifies the candidate's kernel wheels, converges the patched source tree,
 // builds the V4.1 image on the selected Spark, reads the produced digest back from inside itself
@@ -1369,7 +1353,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_bootstrap_target,
-    gunbc_ci_spark_serving_apply_target,
     gunbc_ci_collect_fleet_convergence_target,
     gunbc_ci_fleet_host_key_scan_target,
     gunbc_ci_fleet_host_key_enroll_target,
@@ -3002,18 +2985,8 @@ fn gunbc_ci_spark_bootstrap_invoke() -> String {
   )
 }
 
-// The runtime-image probe shares the same prelude as the bootstrap, the grant install and the
-// serving apply: one fleet-key agent from the job and one per-target administrator credential
-// materialized to one file, so four steps cannot drift on how a Spark is reached or authenticated.
 fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_runtime_image_probe_target.entry,
-    function: gunbc_ci_spark_runtime_image_probe_target.function,
-    claim_run: false,
-    receipt_rel: "target/v41-published-image-probe-receipt.txt"
-  )
+  spark_serving_retired_refuse_script
 }
 
 fn gunbc_ci_spark_grants_observe_invoke() -> String {
@@ -3048,32 +3021,12 @@ fn gunbc_ci_spark_grant_install_invoke() -> String {
   )
 }
 
-// The pair-serving apply shares the bootstrap and grant-install prelude: the same fleet-key agent
-// from the job and the same per-target administrator credential materialized to the same file, so
-// the three cannot drift on how a Spark is reached or authenticated.
 fn gunbc_ci_spark_serving_apply_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_serving_apply_target.entry,
-    function: gunbc_ci_spark_serving_apply_target.function,
-    claim_run: false,
-    receipt_rel: spark_pair_apply_receipt_path
-  )
+  spark_serving_retired_refuse_script
 }
 
-// The native arm's apply shares the same prelude for the same reason: same fleet-key agent, same
-// per-target administrator credential, so the pair and the native arm cannot drift on how a Spark
-// is reached or authenticated.
 fn gunbc_ci_spark_native_serving_apply_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_spark_native_serving_apply_target.entry,
-    function: gunbc_ci_spark_native_serving_apply_target.function,
-    claim_run: false,
-    receipt_rel: spark_native_apply_receipt_path
-  )
+  spark_serving_retired_refuse_script
 }
 
 // The Secret Manager access response's payload decoder, one row for the string-built runners and the
