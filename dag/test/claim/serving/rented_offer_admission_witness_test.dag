@@ -17,7 +17,7 @@ import gunbc.serving.replica_endpoint_launch { replica_incarnation_unverified_ob
 import gunbc.serving.rented_offer_admission {
   OperatorPostureAttestation, RentedAdmissionSources, RentedOfferRead, RentedOfferNotRead,
   RentedAdmission, RentedCandidateAdmitted, RentedAdmissionRefused,
-  PostureStanding, PostureAttested, PostureUnattested, rented_posture_standing,
+  PostureStanding, PostureAttested, PostureUnattested, PostureAmbiguous, rented_posture_standing,
   rented_production_sources, admit_rented_offer,
   rented_rental_record_unread_obligation, rented_posture_unattested_obligation,
   rented_posture_attested_twice_obligation,
@@ -132,13 +132,15 @@ test fn an_attestation_for_a_sibling_region_does_not_attest_this_route() -> Bool
   }
   match rented_posture_standing(attestations: [other], route: s_hetzner_route()) {
     PostureUnattested { route: _, obligation: _ } => true
+    PostureAmbiguous { route: _, claimed: _, obligation: _ } => false
     PostureAttested { attestation: _ } => false
   }
 }
 
 test fn two_attestations_for_one_route_are_not_resolved_by_order() -> Bool {
   match rented_posture_standing(attestations: [r_attestation(), r_attestation()], route: s_hetzner_route()) {
-    PostureUnattested { route: _, obligation: o } => (o as String) == (rented_posture_attested_twice_obligation as String)
+    PostureAmbiguous { route: _, claimed: c, obligation: o } => count(c) == 2 && (o as String) == (rented_posture_attested_twice_obligation as String)
+    PostureUnattested { route: _, obligation: _ } => false
     PostureAttested { attestation: _ } => false
   }
 }

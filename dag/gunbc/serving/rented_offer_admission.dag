@@ -60,11 +60,12 @@ data rented_posture_attested_twice_obligation: NonEmptyStr = "more than one oper
 type PostureStanding
   = PostureAttested { attestation: OperatorPostureAttestation }
   | PostureUnattested { route: ProviderRoute, obligation: NonEmptyStr }
+  | PostureAmbiguous { route: ProviderRoute, claimed: List<OperatorPostureAttestation>, obligation: NonEmptyStr }
 
 fn rented_posture_standing(attestations: List<OperatorPostureAttestation>, route: ProviderRoute) -> PostureStanding {
   let rows = filter(attestations, a => provider_route_eq(a: a.route, b: route))
   if count(rows) > 1 {
-    PostureUnattested { route: route, obligation: rented_posture_attested_twice_obligation }
+    PostureAmbiguous { route: route, claimed: rows, obligation: rented_posture_attested_twice_obligation }
   } else {
     match rows.first() {
       Absent => PostureUnattested { route: route, obligation: rented_posture_unattested_obligation }
@@ -190,6 +191,8 @@ fn admit_rented_offer(
     RentedOfferRead { request: request } =>
       match rented_posture_standing(attestations: sources.attestations, route: request.offer.route) {
         PostureUnattested { route: _, obligation: o } =>
+          RentedAdmissionRefused { detail: join(["offer ", request.offer.id.key as String, ": ", o as String], "") }
+        PostureAmbiguous { route: _, claimed: _, obligation: o } =>
           RentedAdmissionRefused { detail: join(["offer ", request.offer.id.key as String, ": ", o as String], "") }
         PostureAttested { attestation: a } =>
           rented_entry_admission(entry: field_entry(
