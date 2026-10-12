@@ -1216,8 +1216,8 @@ fn run_acceptance(
 }
 
 // THE ONE DERIVED OUTCOME PARTITION OF StageExecution, from inhabitance (DESIGN §3/§4; the same
-// move as derived terminality in regen_convergence_transaction). The roster rows
-// nfr_reason_acceptance_row_projection dissolve here: the label projections used to match the
+// move as derived terminality in regen_convergence_transaction). The acceptance_row_projection
+// non-fold residue dissolved here: the label projections used to match the
 // five-arm StageExecution and wildcard every off-variant arm to Absent (the DESIGN §2 redundancy,
 // not §4 totality). This partition names the classes a projection can distinguish — passed,
 // passed-with-frontier, rejected, unfinished, not-required — and each projection folds over it

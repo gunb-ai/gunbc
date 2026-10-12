@@ -419,7 +419,6 @@ test fn acceptance_frontier_pass_is_not_a_clean_pass() -> Bool {
         ) == ^row_passed_with_frontier)
 }
 
-data partition_control_note: String = "The nfr_reason_acceptance_row_projection rows dissolved by moving the label projections from the five-arm StageExecution onto the derived StageExecutionOutcome partition (stage_execution_outcome). This control pins the partition and every projection per outcome class so a flip of any partition arm or projection arm goes RED by execution: passed versus passed-with-frontier versus rejected versus not-required versus unfinished are each distinct classes, and each projection answers Present for exactly the class it is the label of. The split that exists for a reason is the not-required / unfinished cut inside StageNotRun: a stage skipped because the contract never asked for it is NOT unfinished work, and the projections must not label it. The verdict claims drive the real consumer acceptance_verdict (collect_labels over the four projections) through all three verdict branches, so the rung sits on the acceptance path, not on the partition in isolation."
 
 fn advisory_nonempty() -> NonEmptyDiagnostics {
   diagnostics_singleton(
@@ -468,6 +467,14 @@ fn undecided_row_class() -> StageExecution {
   }
 }
 
+// The nfr acceptance_row_projection rows dissolved by moving the four label projections from the
+// five-arm StageExecution onto the derived StageExecutionOutcome partition (stage_execution_outcome,
+// the one authority). These controls pin the partition and every projection per outcome class so a
+// flip of any partition arm or projection arm goes RED by execution: passed / passed-with-frontier /
+// rejected / not-required / unfinished are each distinct classes, and each projection answers Present
+// for exactly the class it is the label of. The split that exists for a reason is the not-required /
+// unfinished cut inside StageNotRun: a stage skipped because the contract never asked for it is NOT
+// unfinished work, and the projections must not label it.
 test fn acceptance_partition_pins_each_outcome_class() -> Bool {
   (stage_execution_outcome(row: passed_row_class()) == OutcomePassed)
     && (stage_execution_outcome(row: frontier_row_class()) == OutcomePassedWithFrontier)
