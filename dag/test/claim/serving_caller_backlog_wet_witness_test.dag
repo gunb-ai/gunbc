@@ -18,8 +18,12 @@ import gunbc.serving.caller_backlog {
   DurableAttemptCommitted, DurableAttemptFenceRefused, DurableAttemptNotWaiting,
   DurableAttemptUnknownWork, DurableAttemptStoreRefused, DurableAttemptKeyNotSlotAddressable,
   persist_waiting_durable, resume_waiting_durable, cancel_work_durable, commit_attempt_durable,
+  note_recovery_durable,
   WorkCancelled, WorkCompleted, WorkWaiting, WorkRecoveryBoundExceeded,
+  RecoveryEvent, RecoveryProbe, RecoveryRequest,
 }
+import std.nat { Nat }
+import v2.std.algebra { length }
 import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd }
 import extdeps.accounting.budget { Appropriation }
@@ -235,4 +239,119 @@ test fn persist_cancel_and_commit_resume_as_terminal_by_real_execution() -> Bool
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   cancelled && committed && cancel_resumed && commit_resumed && garbage.success && undecodable && removed.success
+}
+
+test fn persist_recovery_history_survives_resume_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let work = "logical-work-recovery" as LogicalWorkId
+  let reservation = "grant-work-a" as ReservationRef
+  let bound = 3
+  let persisted = persist_waiting_durable(
+    root: root,
+    snapshot: empty_caller_backlog,
+    work: work,
+    reservation: reservation,
+    generation: 2,
+  )
+  let snap0 = match persisted {
+    DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurablePhasePersisted { record: _ } => none
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
+  }
+  let after_probe = match snap0 {
+    Absent => none
+    Present { value: snap } =>
+      match note_recovery_durable(
+        root: root,
+        snapshot: snap,
+        work: work,
+        event: RecoveryEvent { kind: RecoveryProbe, succeeded: true },
+        bound: bound,
+      ) {
+        DurablePhasePersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+        DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+        DurablePersistIdempotent { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+        DurablePersistRefusedTerminal { phase: _ } => none
+        DurablePersistStoreRefused { detail: _ } => none
+        DurablePersistKeyNotSlotAddressable { work: _ } => none
+      }
+  }
+  let after_fail = match after_probe {
+    Absent => none
+    Present { value: snap } =>
+      match note_recovery_durable(
+        root: root,
+        snapshot: snap,
+        work: work,
+        event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+        bound: bound,
+      ) {
+        DurablePhasePersisted { record: r } => Present { value: r }
+        DurableWaitingPersisted { record: r } => Present { value: r }
+        DurablePersistIdempotent { record: r } => Present { value: r }
+        DurablePersistRefusedTerminal { phase: _ } => none
+        DurablePersistStoreRefused { detail: _ } => none
+        DurablePersistKeyNotSlotAddressable { work: _ } => none
+      }
+  }
+  let resume_root = root_path as NonEmptyStr
+  let resumed = resume_waiting_durable(root: resume_root, work: work)
+  let history_held = match resumed {
+    DurableResumedWaiting { record: r } =>
+      length(r.recovery) == 2
+        && (match r.recovery.first() {
+          Absent => false
+          Present { value: e } => match e.kind { RecoveryProbe => e.succeeded  RecoveryRequest => false }
+        })
+        && (match r.recovery.skip(n: 1).first() {
+          Absent => false
+          Present { value: e } => match e.kind { RecoveryRequest => !e.succeeded  RecoveryProbe => false }
+        })
+    DurableResumedTerminal { phase: _ } => false
+    DurableResumeUnknownWork => false
+    DurableResumeStoreUnreadable { detail: _ } => false
+    DurableResumePayloadUndecodable => false
+    DurableResumeWorkMismatch => false
+  }
+  let resumed_snap = match resumed {
+    DurableResumedWaiting { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurableResumedTerminal { phase: _ } => none
+    DurableResumeUnknownWork => none
+    DurableResumeStoreUnreadable { detail: _ } => none
+    DurableResumePayloadUndecodable => none
+    DurableResumeWorkMismatch => none
+  }
+  let bound_trips = match resumed_snap {
+    Absent => false
+    Present { value: snap } =>
+      match note_recovery_durable(
+        root: root,
+        snapshot: snap,
+        work: work,
+        event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+        bound: bound,
+      ) {
+        DurablePhasePersisted { record: r } =>
+          match r.phase {
+            WorkRecoveryBoundExceeded { deficit: d } => string_contains(s: d as String, pattern: "requests failed")
+            WorkWaiting => false
+            WorkCompleted => false
+            WorkCancelled => false
+          }
+        DurableWaitingPersisted { record: _ } => false
+        DurablePersistIdempotent { record: _ } => false
+        DurablePersistRefusedTerminal { phase: _ } => false
+        DurablePersistStoreRefused { detail: _ } => false
+        DurablePersistKeyNotSlotAddressable { work: _ } => false
+      }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  match after_fail { Present { value: _ } => true  Absent => false }
+    && history_held
+    && bound_trips
+    && removed.success
 }

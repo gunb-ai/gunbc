@@ -19,6 +19,7 @@ import gunbc.serving.caller_backlog {
   CancelledWaiting, CancelAlreadyTerminal, CancelUnknownWork,
   RetryComeBack, RetryTerminal,
   empty_caller_backlog, persist_waiting, snapshot_after_persist, offer_persisted,
+  encode_waiting, decode_waiting,
   resume_from_snapshot, view_after_controller_restart, resume_after_restart,
   waiting_survives_ready_supply, apply_ready_supply, apply_ready_supply_law, offer_against_ready_supply,
   KeepWaitingAcrossZeroSupply, ExpireWaitingOnZeroSupply,
@@ -259,4 +260,30 @@ test fn w_caller_backlog_bases_name_live_declarations() -> Bool {
     pool_roots: ["dag"],
     qualified_name: basis_qualified_name(r: r),
   )) == 1)
+}
+
+test fn w_encoded_waiting_roundtrips_recovery_history() -> Bool {
+  let recorded = CallerWorkRecord {
+    work: work_a,
+    reservation: reservation_a,
+    generation: 2,
+    phase: WorkWaiting,
+    recovery: [
+      RecoveryEvent { kind: RecoveryProbe, succeeded: true },
+      RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+    ],
+  }
+  match decode_waiting(payload: encode_waiting(record: recorded)) {
+    Absent => false
+    Present { value: back } =>
+      length(back.recovery) == 2
+        && (match back.recovery.first() {
+          Absent => false
+          Present { value: e } => match e.kind { RecoveryProbe => e.succeeded  RecoveryRequest => false }
+        })
+        && (match back.recovery.skip(n: 1).first() {
+          Absent => false
+          Present { value: e } => match e.kind { RecoveryRequest => !e.succeeded  RecoveryProbe => false }
+        })
+  }
 }
