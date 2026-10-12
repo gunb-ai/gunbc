@@ -2,7 +2,7 @@ module gunbc.instruments.native_emission_controls
 
 import std.types { Bool, Int, List, NonEmptyStr, Set, String }
 import v2.std.algebra { length }
-import std.list { duplicated_by_key }
+import std.list { duplicated_by_key, first_duplicate_by_key }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
 import std.resource_contract { Observation, Read }
 import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int }
@@ -418,6 +418,26 @@ fn generic_empty_map_turbofish_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a fold's accumulator closure parameter carries the accumulator's type whenever that type is
+// expressible in the enclosing fn (v1.compiler.emit_rust emit_rust_fold_method_call). Seeded with a
+// variant of a generic owner whose fields do not mention the parameter -- std.list
+// first_duplicate_by_key's FirstDuplicateNotFound { seen: empty_map() } -- the init alone does not
+// fix FirstDuplicateScan<T>, and a closure parameter emitted as `_` left rustc nothing to infer it
+// from: E0282 on the init and on the match over the result. The cases call the real kernel: the
+// first element whose key repeats, and nothing for a list without repeats.
+fn generic_fold_accumulator_annotation_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "generic_fold_accumulator_first_duplicate_is_the_first_repeat",
+      held: first_duplicate_by_key(xs: ["a", "b", "c", "b", "a"], key: x => x) == Present { value: "b" }
+    },
+    NativeEmissionCase {
+      identity: "generic_fold_accumulator_red_no_repeat_is_absent",
+      held: first_duplicate_by_key(xs: ["a", "b", "c"], key: x => x) == none
+    }
+  ]
+}
+
 // RULE: an effectful fold step is realized as a loop in the enclosing async frame
 // (v1.compiler.emit_rust emit_rust_effectful_fold_loop). Iterator::fold takes its step as a
 // synchronous closure, so a step that reaches an effectful callee put that callee's `.await?` inside
@@ -653,6 +673,8 @@ fn rc_match_clone_cases() -> List<NativeEmissionCase> {
 }
 
 data native_emission_expected_identities: List<String> = [
+  "generic_fold_accumulator_first_duplicate_is_the_first_repeat",
+  "generic_fold_accumulator_red_no_repeat_is_absent",
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
   "set_struct_eq_red_set_member_differs",
@@ -721,7 +743,7 @@ data native_emission_expected_identities: List<String> = [
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases())
+  concat(generic_fold_accumulator_annotation_cases(), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
