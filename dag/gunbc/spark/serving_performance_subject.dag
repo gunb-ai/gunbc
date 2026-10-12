@@ -14,7 +14,7 @@ import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.storage.types { PcieLink, PcieGeneration, Gen3, Gen4, Gen5 }
 import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.ninfer.ninfer_serve {
-  NinferKvDtype, NinferSpeculation, NinferServeLaunch, NinferMtp,
+  NinferKvDtype, NinferSpeculation, NinferMtp,
   NinferKvBf16, NinferKvInt8, NinferKvFp8, NinferKvNvfp4, NinferKvK8V4,
 }
 import gunbc.spark.serving_arm {
@@ -222,17 +222,6 @@ fn ninfer_speculation_wire(s: NinferSpeculation) -> NonEmptyStr {
     NinferMtp { draft_tokens: n, lm_head_draft: h } =>
       join(["ninfer-mtp-", to_string(n), if h { "-lmhead" } else { "" }], "") as NonEmptyStr
   }
-}
-
-fn ninfer_launch_profile_key(launch: NinferServeLaunch) -> String {
-  join([
-    "ninfer|", launch.model_id as String,
-    "|conc=", to_string(launch.max_concurrency),
-    "|ctx=", to_string(token_count_value(t: launch.max_context)),
-    "|kv=", ninfer_kv_dtype_wire(d: launch.kv_dtype) as String,
-    "|auto=", if launch.kv_capacity_auto { "1" } else { "0" },
-    "|spec=", ninfer_speculation_wire(s: launch.speculation) as String,
-  ], "")
 }
 
 // THE WEIGHT QUANTIZATION IS AN AXIS BUT NOT A FIELD: it is a fact about the checkpoint row
