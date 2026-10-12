@@ -2,6 +2,8 @@ module v2.test.claim.dag_acceptance
 
 import std.types { List }
 import std.algebra { FreeSemigroup }
+import v2.std.algebra { length }
+import std.content_hash { content_hash_atom }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { millisecond }
 import v2.std.node { Symbol }
@@ -14,6 +16,7 @@ import v2.std.diagnostic {
   Diagnostic,
   Diagnostics,
   ExternalContractUnknown,
+  NonEmptyDiagnostics,
   None,
   Some,
   Unavailable,
@@ -39,10 +42,16 @@ import v2.workflow.dag_acceptance {
   DagAcceptanceReceipt,
   DagCandidate,
   DagStageObligation,
+  ExecutorUnavailable,
   FullLedger,
   InferStage,
   InteractiveFailFast,
   NotRequiredByContract,
+  OutcomeNotRequired,
+  OutcomePassed,
+  OutcomePassedWithFrontier,
+  OutcomeRejected,
+  OutcomeUnfinished,
   ResolveStage,
   SkippedAfterDecisiveRejection,
   StageCostRow,
@@ -51,22 +60,30 @@ import v2.workflow.dag_acceptance {
   StagePassed,
   StagePassedWithFrontier,
   StageRejected,
+  StageDiagnosticRefusal,
   StageUndecided,
   TargetCompileDecided,
   TargetCompileExecutor,
   TargetCompileFailedUnparsed,
+  TargetCompileFailureUnparsed,
   TargetCompileObservation,
   TargetCompilerUnavailable,
   TokenizeStage,
   VerifierBudgetTotal,
   VerifierBudgetUnavailable,
   VerifierBudgetUnbounded,
+  acceptance_first_rejection,
   acceptance_verdict,
+  collect_labels,
   fail_fast_skip_reason,
   obligation_label,
   obligation_prerequisites,
+  row_frontier_label,
   row_obligation,
-  run_acceptance
+  row_rejection_label,
+  row_unfinished_label,
+  run_acceptance,
+  stage_execution_outcome
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -400,4 +417,150 @@ test fn acceptance_frontier_pass_is_not_a_clean_pass() -> Bool {
     && (row_kind(
           row: passed_row(obligation: InferStage, receipt: receipt, diagnostics: frontier_diagnostics())
         ) == ^row_passed_with_frontier)
+}
+
+data partition_control_note: String = "The nfr_reason_acceptance_row_projection rows dissolved by moving the label projections from the five-arm StageExecution onto the derived StageExecutionOutcome partition (stage_execution_outcome). This control pins the partition and every projection per outcome class so a flip of any partition arm or projection arm goes RED by execution: passed versus passed-with-frontier versus rejected versus not-required versus unfinished are each distinct classes, and each projection answers Present for exactly the class it is the label of. The split that exists for a reason is the not-required / unfinished cut inside StageNotRun: a stage skipped because the contract never asked for it is NOT unfinished work, and the projections must not label it. The verdict claims drive the real consumer acceptance_verdict (collect_labels over the four projections) through all three verdict branches, so the rung sits on the acceptance path, not on the partition in isolation."
+
+fn advisory_nonempty() -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: Diagnostic {
+      reason: ^some_advisory,
+      at: invariant_port_locus(port: ^acceptance_test_locus_port, invariant: ^some_advisory),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
+fn passed_row_class() -> StageExecution {
+  passed_row(obligation: InferStage, receipt: InferReceiptRow { node_count: 1 }, diagnostics: None)
+}
+
+fn frontier_row_class() -> StageExecution {
+  passed_row(obligation: InferStage, receipt: InferReceiptRow { node_count: 1 }, diagnostics: frontier_diagnostics())
+}
+
+fn rejected_row_class() -> StageExecution {
+  StageRejected {
+    obligation: ResolveStage,
+    refusal: StageDiagnosticRefusal { diagnostics: advisory_nonempty() }
+  }
+}
+
+fn not_required_row_class() -> StageExecution {
+  StageNotRun { obligation: InferStage, reason: NotRequiredByContract }
+}
+
+fn budget_row_class() -> StageExecution {
+  StageNotRun {
+    obligation: ResolveStage,
+    reason: VerifierBudgetUnavailable {
+      required: millisecond(40000),
+      budget_total: millisecond(1000),
+      already_spent: millisecond(0)
+    }
+  }
+}
+
+fn undecided_row_class() -> StageExecution {
+  StageUndecided {
+    obligation: TargetCompileStage { claim: rustc_target_compile_claim() },
+    cause: TargetCompileFailureUnparsed { exit_code: 131, stderr_length: 9000 }
+  }
+}
+
+test fn acceptance_partition_pins_each_outcome_class() -> Bool {
+  (stage_execution_outcome(row: passed_row_class()) == OutcomePassed)
+    && (stage_execution_outcome(row: frontier_row_class()) == OutcomePassedWithFrontier)
+    && (stage_execution_outcome(row: rejected_row_class()) == OutcomeRejected)
+    && (stage_execution_outcome(row: not_required_row_class()) == OutcomeNotRequired)
+    && (stage_execution_outcome(row: budget_row_class()) == OutcomeUnfinished)
+    && (stage_execution_outcome(row: undecided_row_class()) == OutcomeUnfinished)
+}
+
+test fn acceptance_projections_fold_over_the_partition() -> Bool {
+  // passed: no label answers
+  (row_rejection_label(row: passed_row_class()) == optional_absent())
+    && (row_unfinished_label(row: passed_row_class()) == optional_absent())
+    && (row_frontier_label(row: passed_row_class()) == optional_absent())
+  // passed-with-frontier: only the frontier label
+    && (row_frontier_label(row: frontier_row_class()) == optional_present(value: ^obligation_infer))
+    && (row_rejection_label(row: frontier_row_class()) == optional_absent())
+    && (row_unfinished_label(row: frontier_row_class()) == optional_absent())
+  // rejected: only the rejection label
+    && (row_rejection_label(row: rejected_row_class()) == optional_present(value: ^obligation_resolve))
+    && (row_unfinished_label(row: rejected_row_class()) == optional_absent())
+    && (row_frontier_label(row: rejected_row_class()) == optional_absent())
+  // not-required: NOTHING labels it — the split the control exists for
+    && (row_rejection_label(row: not_required_row_class()) == optional_absent())
+    && (row_unfinished_label(row: not_required_row_class()) == optional_absent())
+    && (row_frontier_label(row: not_required_row_class()) == optional_absent())
+  // unfinished via a paid-for stage that the budget left behind
+    && (row_unfinished_label(row: budget_row_class()) == optional_present(value: ^obligation_resolve))
+    && (row_rejection_label(row: budget_row_class()) == optional_absent())
+    && (row_frontier_label(row: budget_row_class()) == optional_absent())
+  // unfinished via an executed stage whose result is unknowable
+    && (row_unfinished_label(row: undecided_row_class()) == optional_present(value: ^toolchain_rustc))
+    && (row_rejection_label(row: undecided_row_class()) == optional_absent())
+    && (row_frontier_label(row: undecided_row_class()) == optional_absent())
+}
+
+test fn acceptance_first_rejection_folds_over_the_partition() -> Bool {
+  // the prior short-circuit is preserved
+  (acceptance_first_rejection(prior: optional_present(value: ^obligation_parse), row: rejected_row_class())
+      == optional_present(value: ^obligation_parse))
+    // without a prior only the rejected class answers
+    && (acceptance_first_rejection(prior: optional_absent(), row: rejected_row_class())
+      == optional_present(value: ^obligation_resolve))
+    && (acceptance_first_rejection(prior: optional_absent(), row: passed_row_class()) == optional_absent())
+    && (acceptance_first_rejection(prior: optional_absent(), row: frontier_row_class()) == optional_absent())
+    && (acceptance_first_rejection(prior: optional_absent(), row: not_required_row_class()) == optional_absent())
+    && (acceptance_first_rejection(prior: optional_absent(), row: budget_row_class()) == optional_absent())
+    && (acceptance_first_rejection(prior: optional_absent(), row: undecided_row_class()) == optional_absent())
+}
+
+fn partition_receipt(rows: List<StageExecution>) -> DagAcceptanceReceipt {
+  DagAcceptanceReceipt {
+    contract_name: ^acceptance_partition_control,
+    candidate_identity: content_hash_atom(value: ^acceptance_partition_control),
+    rows: rows
+  }
+}
+
+test fn acceptance_verdict_folds_over_the_partition() -> Bool {
+  // the real consumer, all three branches, precedence rejected > incomplete > satisfied+frontier
+  (match acceptance_verdict(receipt: partition_receipt(rows: [passed_row_class(), rejected_row_class(), frontier_row_class()])) {
+     AcceptanceContractRejected { first_rejection: f, further_rejections: rest } =>
+       (f == ^obligation_resolve) && (length(xs: rest) == 0)
+     _ => false
+   })
+    && (match acceptance_verdict(receipt: partition_receipt(rows: [passed_row_class(), not_required_row_class(), budget_row_class()])) {
+         AcceptanceContractIncomplete { first_unfinished: f, further_unfinished: rest } =>
+           (f == ^obligation_resolve) && (length(xs: rest) == 0)
+         _ => false
+       })
+    // not-required alone is satisfied (never incomplete): the split in the verdict fold too
+    && (match acceptance_verdict(receipt: partition_receipt(rows: [passed_row_class(), not_required_row_class()])) {
+         AcceptanceContractSatisfied { frontier_stages: f } => length(xs: f) == 0
+         _ => false
+       })
+    && (match acceptance_verdict(receipt: partition_receipt(rows: [passed_row_class(), frontier_row_class(), not_required_row_class()])) {
+         AcceptanceContractSatisfied { frontier_stages: f } =>
+           (length(xs: f) == 1) && (collect_labels(rows: [frontier_row_class()], select: row_frontier_label) == [^obligation_infer])
+         _ => false
+       })
+}
+
+test fn acceptance_collect_labels_folds_over_the_partition() -> Bool {
+  (collect_labels(rows: [passed_row_class(), rejected_row_class(), not_required_row_class()], select: row_rejection_label)
+      == [^obligation_resolve])
+    && (collect_labels(rows: [passed_row_class(), not_required_row_class(), frontier_row_class()], select: row_rejection_label)
+      == [])
+    && (collect_labels(rows: [not_required_row_class(), budget_row_class(), undecided_row_class()], select: row_unfinished_label)
+      == [^obligation_resolve, ^toolchain_rustc])
+    && (collect_labels(rows: [not_required_row_class(), passed_row_class(), rejected_row_class()], select: row_unfinished_label)
+      == [])
+    && (collect_labels(rows: [frontier_row_class(), rejected_row_class(), undecided_row_class()], select: row_frontier_label)
+      == [^obligation_infer])
+    && (collect_labels(rows: [passed_row_class(), rejected_row_class(), not_required_row_class()], select: row_frontier_label)
+      == [])
 }
