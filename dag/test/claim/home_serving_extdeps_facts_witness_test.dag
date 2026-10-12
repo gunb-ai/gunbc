@@ -1,0 +1,161 @@
+module test.claim.home_serving_extdeps_facts_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import std.measure {
+  bandwidth_count, watt_count, byte_size_count, gibibyte, gibibyte_to_byte_size, hardware_thread_count_value,
+  basis_point, basis_point_count,
+}
+import extdeps.storage.types { PcieLink, Gen3, Gen4, Gen5 }
+import extdeps.gpu.types { GpuModelCatalogRow, PcieAddInCard, SxmModule, gpu_package_form_eq }
+import extdeps.gpu.nvidia {
+  nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
+  nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog,
+  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog,
+  home_serving_add_in_card_catalog_rows, home_serving_reference_sxm_catalog_rows,
+  rtx_pro_pcie5_x16_endpoint,
+}
+import extdeps.ninfer.ninfer_serve {
+  NinferQwen35KvCapacityPlan, ninfer_qwen35_kv_capacity_admission,
+  Qwen35KvCapacityAdmitted, Qwen35KvCapacityRefused,
+}
+import gunbc.serving.flashinfer_cutlass_moe_scratch_observation {
+  flash_next_nvfp4_pro6000_tp2_ep_moe_scratch, moe_scratch_matches_launch,
+}
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn pcie5_x16(link: PcieLink?) -> Bool {
+  match link {
+    Absent => false
+    Present { value: l } => match l.generation {
+      Gen5 => l.lane_count == 16
+      Gen3 => false
+      Gen4 => false
+    }
+  }
+}
+
+test fn w_pro_5000_48_and_72_are_cited_add_in_cards() -> Bool {
+  gpu_package_form_eq(a: nvidia_rtx_pro_5000_48gb_catalog.package, b: PcieAddInCard)
+    && gpu_package_form_eq(a: nvidia_rtx_pro_5000_72gb_catalog.package, b: PcieAddInCard)
+    && byte_size_count(b: nvidia_rtx_pro_5000_48gb_catalog.memory.capacity) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 48)))
+    && byte_size_count(b: nvidia_rtx_pro_5000_72gb_catalog.memory.capacity) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 72)))
+    && bandwidth_count(b: nvidia_rtx_pro_5000_48gb_catalog.memory_bandwidth) == 1344000000000
+    && bandwidth_count(b: nvidia_rtx_pro_5000_72gb_catalog.memory_bandwidth) == 1344000000000
+    && (match nvidia_rtx_pro_5000_48gb_catalog.tdp_watts {
+      Present { value: w } => watt_count(w: w) == 300
+      Absent => false
+    })
+    && pcie5_x16(link: nvidia_rtx_pro_5000_48gb_catalog.interconnect)
+    && pcie5_x16(link: nvidia_rtx_pro_5000_72gb_catalog.interconnect)
+    && pcie5_x16(link: nvidia_rtx_pro_6000_workstation_catalog.interconnect)
+    && pcie5_x16(link: nvidia_rtx_pro_6000_max_q_catalog.interconnect)
+    && (match nvidia_rtx_pro_5000_48gb_catalog.execution_lane_count {
+      Present { value: t } => hardware_thread_count_value(t: t) == 14080
+      Absent => false
+    })
+}
+
+test fn w_b200_b300_are_sxm_without_a_pcie_add_in_endpoint() -> Bool {
+  gpu_package_form_eq(a: nvidia_b200_sxm_catalog.package, b: SxmModule)
+    && gpu_package_form_eq(a: nvidia_b300_sxm_catalog.package, b: SxmModule)
+    && (match nvidia_b200_sxm_catalog.interconnect {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && (match nvidia_b300_sxm_catalog.interconnect {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && byte_size_count(b: nvidia_b200_sxm_catalog.memory.capacity) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 180)))
+    && byte_size_count(b: nvidia_b300_sxm_catalog.memory.capacity) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 288)))
+    && (match nvidia_b200_sxm_catalog.execution_lane_count {
+      Absent => true
+      Present { value: _ } => false
+    })
+}
+
+fn catalog_model_in(rows: List<GpuModelCatalogRow>, model: NonEmptyStr) -> Bool {
+  fold(rows, init: false, f: (acc, r) => acc || (r.model as String) == (model as String))
+}
+
+test fn w_purchase_candidates_are_add_in_cards_and_sxm_are_references() -> Bool {
+  catalog_model_in(rows: home_serving_add_in_card_catalog_rows, model: nvidia_rtx_pro_5000_72gb_catalog.model)
+    && catalog_model_in(rows: home_serving_add_in_card_catalog_rows, model: nvidia_rtx_pro_6000_workstation_catalog.model)
+    && !catalog_model_in(rows: home_serving_add_in_card_catalog_rows, model: nvidia_b200_sxm_catalog.model)
+    && catalog_model_in(rows: home_serving_reference_sxm_catalog_rows, model: nvidia_b200_sxm_catalog.model)
+    && catalog_model_in(rows: home_serving_reference_sxm_catalog_rows, model: nvidia_b300_sxm_catalog.model)
+}
+
+test fn w_ninfer_qwen35_planner_admits_the_closed_interval() -> Bool {
+  match ninfer_qwen35_kv_capacity_admission(plan: NinferQwen35KvCapacityPlan {
+    max_concurrency: 8,
+    pages_of_max_context: 4,
+    kv_capacity_pages: 8,
+  }) {
+    Qwen35KvCapacityAdmitted { lo: lo, hi: hi } => lo == 8 && hi == 32
+    Qwen35KvCapacityRefused { cause: _ } => false
+  }
+}
+
+test fn w_ninfer_qwen35_planner_refuses_concurrency_outside_1_8() -> Bool {
+  match ninfer_qwen35_kv_capacity_admission(plan: NinferQwen35KvCapacityPlan {
+    max_concurrency: 9,
+    pages_of_max_context: 4,
+    kv_capacity_pages: 36,
+  }) {
+    Qwen35KvCapacityRefused { cause: _ } => true
+    Qwen35KvCapacityAdmitted { lo: _, hi: _ } => false
+  }
+}
+
+test fn w_ninfer_qwen35_planner_refuses_pages_outside_the_interval() -> Bool {
+  match ninfer_qwen35_kv_capacity_admission(plan: NinferQwen35KvCapacityPlan {
+    max_concurrency: 2,
+    pages_of_max_context: 8,
+    kv_capacity_pages: 7,
+  }) {
+    Qwen35KvCapacityRefused { cause: _ } => true
+    Qwen35KvCapacityAdmitted { lo: _, hi: _ } => false
+  }
+}
+
+test fn w_flashinfer_moe_scratch_is_pinned_launch_not_a_general_law() -> Bool {
+  let obs = flash_next_nvfp4_pro6000_tp2_ep_moe_scratch
+  moe_scratch_matches_launch(
+    obs: obs,
+    max_num_batched_tokens: 32768,
+    gpu_memory_utilization: basis_point(count: 8500),
+    tensor_parallel: 2,
+    expert_parallel: true,
+    weight_quant: "nvfp4" as NonEmptyStr,
+    accelerator_model: nvidia_rtx_pro_6000_workstation_catalog.model,
+  )
+    && !moe_scratch_matches_launch(
+      obs: obs,
+      max_num_batched_tokens: 8192,
+      gpu_memory_utilization: basis_point(count: 8500),
+      tensor_parallel: 2,
+      expert_parallel: true,
+      weight_quant: "nvfp4" as NonEmptyStr,
+      accelerator_model: nvidia_rtx_pro_6000_workstation_catalog.model,
+    )
+    && (match obs.standing {
+      TranscribedUncited { read_obligation: _ } => true
+      CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    })
+    && obs.started_at_tokens == 8192
+    && basis_point_count(bp: obs.gpu_memory_utilization) == 8500
+}
+
+test fn w_endpoint_capability_is_not_the_host_link() -> Bool {
+  rtx_pro_pcie5_x16_endpoint.lane_count == 16
+    && (match nvidia_b200_sxm_catalog.interconnect {
+      Absent => true
+      Present { value: _ } => false
+    })
+}

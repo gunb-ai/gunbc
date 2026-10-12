@@ -33,6 +33,7 @@ import std.machine_shape {
   MachineShapeRefused,
   UnknownDomain,
   UnknownLevel,
+  CatalogExecutionLanesUnstated,
   machine_shape_validate,
   machine_shape_is_single_domain,
   machine_shape_domain_lane_count,
@@ -156,6 +157,7 @@ test fn red_dangling_domain_refuses() -> Bool {
   match machine_shape_validate(shape: bad) {
     MachineShapeRefused { cause: UnknownDomain { id: id } } => id == dangling_domain
     MachineShapeRefused { cause: UnknownLevel { owner: _, level: _ } } => false
+    MachineShapeRefused { cause: CatalogExecutionLanesUnstated } => false
     MachineShapeOk { shape: _ } => false
   }
 }
@@ -176,6 +178,7 @@ test fn red_dangling_level_refuses() -> Bool {
     MachineShapeRefused { cause: UnknownLevel { owner: o, level: l } } =>
       o == rtx5090_domain && l == bad_level
     MachineShapeRefused { cause: UnknownDomain { id: _ } } => false
+    MachineShapeRefused { cause: CatalogExecutionLanesUnstated } => false
     MachineShapeOk { shape: _ } => false
   }
 }

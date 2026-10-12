@@ -291,7 +291,7 @@ test fn w_packet_product_without_vram_refuses() -> Bool {
   packet_binds(count: CountFixedByPool { gpus_per_instance: 2 }, vram: none) == "refused"
 }
 
-// Only the Server Edition page states the CUDA core count; the other two are an honest bet.
+// Workstation datasheet and Server page state 24,064; Max-Q still does not.
 test fn w_cuda_core_standing_is_cited_only_for_server() -> Bool {
   (match rtx_pro_6000_server_cuda_core_standing {
     CitedToAuthority { authority: _ } => true
@@ -299,8 +299,8 @@ test fn w_cuda_core_standing_is_cited_only_for_server() -> Bool {
     ObservedByReceipt { observed: _ } => false
   })
     && (match rtx_pro_6000_workstation_cuda_core_standing {
-      TranscribedUncited { read_obligation: _ } => true
-      CitedToAuthority { authority: _ } => false
+      TranscribedUncited { read_obligation: _ } => false
+      CitedToAuthority { authority: _ } => true
       ObservedByReceipt { observed: _ } => false
     })
     && (match rtx_pro_6000_max_q_cuda_core_standing {
@@ -331,7 +331,7 @@ test fn w_figure_citations_name_their_own_row_fields() -> Bool {
   row_cites_field(row: nvidia_rtx_pro_6000_workstation_catalog, decl_name: "nvidia_rtx_pro_6000_workstation_catalog", field_name: "memory_bandwidth")
     && row_cites_field(row: nvidia_rtx_pro_6000_max_q_catalog, decl_name: "nvidia_rtx_pro_6000_max_q_catalog", field_name: "memory_bandwidth")
     && row_cites_field(row: nvidia_rtx_pro_6000_server_catalog, decl_name: "nvidia_rtx_pro_6000_server_catalog", field_name: "execution_lane_count")
-    && (row_cites_field(row: nvidia_rtx_pro_6000_workstation_catalog, decl_name: "nvidia_rtx_pro_6000_workstation_catalog", field_name: "execution_lane_count") == false)
+    && row_cites_field(row: nvidia_rtx_pro_6000_workstation_catalog, decl_name: "nvidia_rtx_pro_6000_workstation_catalog", field_name: "execution_lane_count")
 }
 
 
