@@ -6,6 +6,7 @@ import v2.compiler.lexical_scope { ModuleRootBinding, declaration_names_value, m
 import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_front_end }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
 import v2.compiler.reference_site_collector {
+  HeadBindingUndecided,
   HeadBoundAtRootValue,
   HeadBoundInFrame,
   HeadLexicallyUnbound,
@@ -63,6 +64,7 @@ fn head_text(head: SiteHeadBinding) -> String {
   match head {
     HeadBoundInFrame => "frame"
     HeadBoundAtRootValue => "root"
+    HeadBindingUndecided => "undecided"
     HeadLexicallyUnbound => "unbound"
   }
 }
@@ -76,7 +78,7 @@ fn head_of_site(content: String, spelling: String) -> String {
       match acquisition_front_end(env: scope_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content) {
         Rejected { diagnostics: _ } => "front-end-refused"
         Accepted { value: front, diagnostics: _ } =>
-          match list_head(xs: collect_scoped_module_reference_sites(root: front.tree.root).sites |> filter(fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) == spelling })) {
+          match list_head(xs: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })).sites |> filter(fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) == spelling })) {
             HeadAbsent => "no-site"
             HeadFound { value: found } => head_text(head: found.head)
           }
@@ -131,6 +133,70 @@ test fn a_module_level_type_head_is_not_a_value_binding() -> Bool {
 
 test fn a_head_nothing_binds_is_unbound() -> Bool {
   head_of_site(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  v2.std.logic.and(a: true, b: true)\n}\n", spelling: "v2.std.logic.and") == "unbound"
+}
+
+// ---- Match arm and import: names the walk cannot classify ----------------------------------------------------
+//
+// A pattern atom in a field position either binds or names a payload constructor, and an imported name is a
+// type, a namespace or a value as the module that exports it says; both are decided by the symbol index,
+// which does not exist while a module is being read for what it references. So the collector answers
+// `undecided` for a head such a name spells, which is neither `frame` (that would hide a module reference
+// whose head is a constructor) nor `unbound` (that would probe storage for a name resolution binds, and for
+// a requester whose tree may not import the probed one, deny a valid program). Each `undecided` claim is
+// paired with an `unbound` claim that differs in the slot or the import alone.
+
+fn match_subject(arm: String, scrutinee: String) -> String {
+  concat("module v2.test.subject\n\ntype Slot = SlotHeld { version: Bool } | SlotEmpty\n\nfn subject(o: Slot) -> Bool {\n  match ", scrutinee, " {\n    ", arm, "\n    SlotEmpty => false\n  }\n}\n")
+}
+
+test fn a_match_arm_pattern_atom_is_undecided_in_its_arm() -> Bool {
+  head_of_site(content: match_subject(arm: "SlotHeld { version: held } => held.y", scrutinee: "o"), spelling: "held.y") == "undecided"
+}
+
+// The scrutinee sees the enclosing scope, not the arms' binders.
+test fn a_match_arm_pattern_atom_is_not_bound_in_the_scrutinee() -> Bool {
+  head_of_site(content: match_subject(arm: "SlotHeld { version: held } => true", scrutinee: "held.y"), spelling: "held.y") == "unbound"
+}
+
+// An arm's binders are its own: a sibling arm's body does not see them.
+test fn a_match_arm_pattern_atom_is_not_bound_in_a_sibling_arm() -> Bool {
+  head_of_site(
+    content: "module v2.test.subject\n\ntype Slot = SlotHeld { version: Bool } | SlotEmpty\n\nfn subject(o: Slot) -> Bool {\n  match o {\n    SlotHeld { version: held } => true\n    SlotEmpty => held.y\n  }\n}\n",
+    spelling: "held.y"
+  ) == "unbound"
+}
+
+// A nested pattern's field atoms are candidates too: the producer lists them in the pre-order resolution
+// binds them.
+test fn a_nested_pattern_atom_is_undecided_in_its_arm() -> Bool {
+  head_of_site(
+    content: "module v2.test.subject\n\ntype Inner = Leaf { value: Bool }\n\ntype Outer = Wrap { inner: Inner } | Bare\n\nfn subject(o: Outer) -> Bool {\n  match o {\n    Wrap { inner: Leaf { value: deep } } => deep.y\n    Bare => false\n  }\n}\n",
+    spelling: "deep.y"
+  ) == "undecided"
+}
+
+// A decided binder is still decided inside an arm: the enclosing parameter stays `frame`, so an undecided
+// scope never turns a head an Arrow already binds into a guess.
+test fn an_enclosing_parameter_stays_bound_inside_a_match_arm() -> Bool {
+  head_of_site(
+    content: "module v2.test.subject\n\ntype Slot = SlotHeld { version: Bool } | SlotEmpty\n\nfn subject(o: Slot, x: Bool) -> Bool {\n  match o {\n    SlotHeld { version: held } => x.y\n    SlotEmpty => false\n  }\n}\n",
+    spelling: "x.y"
+  ) == "frame"
+}
+
+// A head nothing binds, inside an arm, is still a candidate module reference: the arm's undecided names
+// are the pattern's and no others.
+test fn a_head_the_pattern_does_not_bind_is_unbound_inside_an_arm() -> Bool {
+  head_of_site(content: match_subject(arm: "SlotHeld { version: held } => v2.member", scrutinee: "o"), spelling: "v2.member") == "unbound"
+}
+
+test fn an_imported_name_is_undecided() -> Bool {
+  head_of_site(content: "module v2.test.subject\nimport std.thing { thing }\n\nfn subject() -> Bool {\n  thing.y\n}\n", spelling: "thing.y") == "undecided"
+}
+
+// The unbound edge of the pair: the same body, with no import to bind the head.
+test fn a_name_nothing_imports_is_unbound() -> Bool {
+  head_of_site(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  thing.y\n}\n", spelling: "thing.y") == "unbound"
 }
 
 // ---- what a module root binds, and which bindings name a value --------------------------------------------
@@ -198,8 +264,8 @@ test fn the_plain_collection_is_the_scoped_collection_with_the_head_dropped() ->
         Rejected { diagnostics: _ } => false
         Accepted { value: front, diagnostics: _ } =>
           join(list_map(xs: collect_module_reference_sites(root: front.tree.root).sites, f: fn(s) { qualified_name_to_dotted_string(qn: s.spelling) }), ",")
-            == join(list_map(xs: collect_scoped_module_reference_sites(root: front.tree.root).sites, f: fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) }), ",")
-            && scoped_reference_site_collection_is_total(collection: collect_scoped_module_reference_sites(root: front.tree.root))
+            == join(list_map(xs: collect_scoped_module_reference_sites(root: front.tree.root, imported: []).sites, f: fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) }), ",")
+            && scoped_reference_site_collection_is_total(collection: collect_scoped_module_reference_sites(root: front.tree.root, imported: []))
       }
   }
 }

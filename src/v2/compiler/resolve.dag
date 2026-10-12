@@ -28,6 +28,7 @@ import v2.compiler.lexical_scope {
   BindBinderSlot,
   BindBodySlot,
   BindValueSlot,
+  PatternBinderCandidate,
   SlotScopeOuter,
   SlotScopeParamsOverOuter,
   SlotScopeParamsOverTypeParams,
@@ -40,6 +41,7 @@ import v2.compiler.lexical_scope {
   bind_positional_slot,
   declaration_names_value,
   module_root_bindings,
+  pattern_binder_candidates,
   try_edge_declared_binding
 }
 import v2.std.declaration_marker {
@@ -236,7 +238,6 @@ import v2.std.node_query {
   NamedChildFound,
   NamedChildMissing,
   named_child_lookup,
-  construct_field_edges,
   construct_tag_reading,
   ConstructTagAuthored,
   ConstructTagElided,
@@ -712,29 +713,23 @@ fn binder_hides_visible_value_diagnostic(binder: Symbol, at: Node) -> Diagnostic
 // question the admission asks. map_insert silently overwrites, so a frame built by insertion cannot tell
 // a duplicate binder from a single one -- the duplicate is exactly what must refuse. An Arrow's list is
 // v2.compiler.lexical_scope arrow_domain_binder_names, the same binders arrow_domain_frame_binders
-// binds; a match arm's list (pattern_binder_name_list) mirrors resolve_pattern_binders and a `let`'s
-// (bind_binder_name_list) mirrors bind_frame_binders.
-// A match arm's list mirrors resolve_pattern_binders exactly, including its two exclusions: a wildcard
-// binds nothing, and a field target that names a CONSTRUCTOR is a nested pattern, not a binder.
+// binds; a match arm's list (pattern_binder_name_list) and resolve_pattern_binders read the same list
+// (pattern_binders) and a `let`'s (bind_binder_name_list) mirrors bind_frame_binders.
+// A match arm's binders are the candidates the pattern's syntax offers (v2.compiler.lexical_scope
+// pattern_binder_candidates, which module acquisition reads too) less the one exclusion that needs the
+// symbol index: a field target that names a CONSTRUCTOR is a nested pattern, not a binder.
+fn pattern_binders(ctx: ResolveContext, pat: Node) -> List<PatternBinderCandidate> {
+  fold(pattern_binder_candidates(pat: pat), init: [], f: fn(acc, c) {
+    if resolve_pattern_atom_names_constructor(ctx: ctx, id: c.name) {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: c)
+    }
+  })
+}
+
 fn pattern_binder_name_list(ctx: ResolveContext, pat: Node) -> List<Symbol> {
-  match construct_tag_optional(n: pat) {
-    Absent => []
-    Present { value: _ } =>
-      fold(construct_field_edges(n: pat), init: [], f: fn(acc, e) {
-        match e.target.kind {
-          TypeNode { connective: Atom { identity: id } } =>
-            if is_wildcard_pattern(pattern: e.target) {
-              acc
-            } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
-              acc
-            } else {
-              list_snoc_item(xs: acc, item: id)
-            }
-          TypeNode { connective: _ } => concat(acc, pattern_binder_name_list(ctx: ctx, pat: e.target))
-          ComputationNode { behavior: _ } => concat(acc, pattern_binder_name_list(ctx: ctx, pat: e.target))
-        }
-      })
-  }
+  list_map(xs: pattern_binders(ctx: ctx, pat: pat), f: fn(c) { c.name })
 }
 
 // A `let`'s list mirrors bind_frame_binders: the binder is the FIRST positional child, and that
@@ -2702,33 +2697,19 @@ fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bo
 }
 
 fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) -> FrameBinders {
-  match construct_tag_optional(n: pat) {
-    Absent => acc
-    Present { value: _ } =>
-      fold(construct_field_edges(n: pat), init: acc, f: fn(fb, e) {
-        match node_atom_identity_optional(node: e.target) {
-          Present { value: id } =>
-            if is_wildcard_pattern(pattern: e.target) {
-              fb
-            } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
-              fb
-            } else {
-              frame_binders_add(
-                fb: fb,
-                name: id,
-                binding: LexicalBinding {
-                  binder_site: e.target.occurrence_id,
-                  standing: match resolve_pattern_binder_declared_type(ctx: ctx, pat: pat, field: e) {
-                    PatternBinderFormal { field_type: ft } => LexicalOwedFormal { field_type: ft }
-                    PatternBinderUntyped => LexicalUntyped
-                  }
-                }
-              )
-            }
-          Absent => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: fb)
+  fold(pattern_binders(ctx: ctx, pat: pat), init: acc, f: fn(fb, c) {
+    frame_binders_add(
+      fb: fb,
+      name: c.name,
+      binding: LexicalBinding {
+        binder_site: c.field.target.occurrence_id,
+        standing: match resolve_pattern_binder_declared_type(ctx: ctx, pat: c.pattern, field: c.field) {
+          PatternBinderFormal { field_type: ft } => LexicalOwedFormal { field_type: ft }
+          PatternBinderUntyped => LexicalUntyped
         }
-      })
-  }
+      }
+    )
+  })
 }
 
 // A PATTERN BINDER'S TYPE IS THE VARIANT FIELD IT CAPTURES, AND RESOLVE DOES NOT WRITE IT. The field type

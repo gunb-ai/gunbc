@@ -5,6 +5,7 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import std.algebra { list_snoc_item }
 import v2.std.algebra { list_map }
 import v2.std.integer { Int }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {
   Arrow,
   ArrowResourceRequirementsEdge,
@@ -17,6 +18,8 @@ import v2.std.node {
   Edge,
   FirstPositionalAbsent,
   FirstPositionalFound,
+  Match,
+  MatchArmPatternEdge,
   Node,
   Positional,
   StructuralLabel,
@@ -28,6 +31,7 @@ import v2.std.node {
   positional_child_count,
   positional_edges
 }
+import v2.std.node_query { construct_field_edges, construct_tag_optional, find_core_child, is_wildcard_pattern }
 import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
@@ -220,19 +224,78 @@ fn bind_slot_sees_binder(slot: BindSlot) -> Bool {
   }
 }
 
+// ---- Match arm -----------------------------------------------------------------------------------------
+
+// A PATTERN'S CANDIDATE BINDERS, as one producer. An atom in a field position of a constructor pattern is
+// either a binder or the name of a payload constructor (a nested pattern), and a wildcard is neither
+// (v2.std.node_query is_wildcard_pattern). The binder-versus-constructor decision reads the symbol index
+// (v2.compiler.resolve resolve_pattern_atom_names_constructor), and that index does not exist until the
+// modules a program names have been acquired, so this producer decides what the pattern's own syntax decides
+// and stops there: it lists every atom that MAY bind, in the pre-order resolution binds them. Resolution
+// keeps the candidates the index does not name a constructor (v2.compiler.resolve pattern_binder_name_list,
+// resolve_pattern_binders), each with the construct and field edge that declare its type; module
+// acquisition runs before any index exists and can only say these names are undecided. Both read this one
+// traversal, so neither restates the other's.
+type PatternBinderCandidate {
+  name: Symbol
+  pattern: Node
+  field: Edge
+}
+
+fn pattern_binder_candidates(pat: Node) -> List<PatternBinderCandidate> {
+  match construct_tag_optional(n: pat) {
+    Absent => []
+    Present { value: _ } =>
+      fold(construct_field_edges(n: pat), init: [], f: fn(acc, e) {
+        match e.target.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if is_wildcard_pattern(pattern: e.target) {
+              acc
+            } else {
+              list_snoc_item(xs: acc, item: PatternBinderCandidate { name: id, pattern: pat, field: e })
+            }
+          TypeNode { connective: _ } => concat(acc, pattern_binder_candidates(pat: e.target))
+          ComputationNode { behavior: _ } => concat(acc, pattern_binder_candidates(pat: e.target))
+        }
+      })
+  }
+}
+
+// An arm whose pattern edge is not exactly one node binds nothing, as resolution reads it
+// (v2.compiler.resolve resolve_match_arm_walk walks such an arm under the enclosing scope).
+fn match_arm_candidate_names(arm: Node) -> List<Symbol> {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+    Accepted { value: pat, diagnostics: _ } => list_map(xs: pattern_binder_candidates(pat: pat), f: fn(c) { c.name })
+    Rejected { diagnostics: _ } => []
+  }
+}
+
 // ---- The value binders a child sees --------------------------------------------------------------------
 
 // WHICH VALUE BINDERS EACH CHILD OF A NODE SEES, as one fact derived from the slot tables above. A walk
 // that carries the value binders in scope (module acquisition's reference-site collector) asks it per child
-// instead of re-deciding where an Arrow's parameters and a `let`'s binder are visible. It names the value
-// binders these two constructs introduce and no others: a match arm's pattern binders, a loop's carriers and
-// the type parameters of an Arrow are bound by constructs whose binder-versus-constructor or kind decision
-// needs the resolution namespace, so a walk that reads only this table sees a SUBSET of the names resolution
-// sees, never a superset. A name this table does not bind is therefore not known to be unbound.
+// instead of re-deciding where an Arrow's parameters and a `let`'s binder are visible. Two answers, and the
+// difference between them is the point:
+//
+// DECIDED BINDERS are the names an Arrow's value parameters and a `let` introduce. Their binder-ness is a
+// fact of the syntax, so a walk may say a head they bind IS bound. A loop's carrier is bound by the `let`
+// that encloses the Loop (v2.compiler.resolve resolve_loop_node), so it is a decided binder of that `let`
+// and not a construct of its own, and the type parameters of an Arrow bind types and never the head of a
+// value projection.
+//
+// UNDECIDED NAMES are a match arm's pattern atoms (ChildSeesParentValuesAndUndecided). Whether an atom
+// binds or names a payload constructor needs the symbol index, which acquisition runs before, so the table
+// can say only that the atom MAY bind. A walk that read it as bound would hide a module reference whose
+// head is a constructor, and a walk that read it as unbound would probe a module for a name resolution
+// binds as a value; this table lets the walk say neither. The names are a SUPERSET of what resolution binds
+// and they are visible in the whole arm, including the tail of an arm-scope-exit `let` that resolution
+// ends them before (v2.std.node MatchArmScopeExitEdge): both only remove a probe, and a spelling that did
+// need its module then refuses at resolution, naming the spelling, because nothing was acquired for it.
 type ValueFrame
   = NoValueFrame
   | ArrowValueFrame { params: List<Symbol> }
   | BindValueFrame { binder: Symbol }
+  | MatchValueFrame
 
 fn node_value_frame(n: Node) -> ValueFrame {
   match n.kind {
@@ -242,6 +305,7 @@ fn node_value_frame(n: Node) -> ValueFrame {
         Present { value: b } => BindValueFrame { binder: b.name }
         Absent => NoValueFrame
       }
+    ComputationNode { behavior: Match } => MatchValueFrame
     TypeNode { connective: _ } => NoValueFrame
     ComputationNode { behavior: _ } => NoValueFrame
   }
@@ -251,17 +315,26 @@ type ChildValueScope
   = ChildSeesParentValues
   | ChildSeesNoValues
   | ChildSeesParentValuesAnd { names: List<Symbol> }
+  | ChildSeesParentValuesAndUndecided { names: List<Symbol> }
 
 // A TYPE-ROLE EDGE is resolved in the type scope, which holds type parameters and no value binder
 // (v2.compiler.resolve resolve_type_role_target), so a child on one sees no value at all. The Arrow's
 // ordinal counts ALL of its children and the Bind's counts its POSITIONAL children only, exactly as the
-// slot tables above are keyed.
+// slot tables above are keyed. A Match's counts all of its children too, as resolution's walk does
+// (v2.compiler.resolve resolve_match_node_walk): child 0 is the scrutinee, which sees the enclosing scope,
+// and every later child is an arm, which sees the candidates of its own pattern.
 fn child_value_scope(frame: ValueFrame, edge: Edge, ordinal: Int, positional_ordinal: Int) -> ChildValueScope {
   if edge_is_cast_target(e: edge) || edge_is_type_annotation(e: edge) {
     ChildSeesNoValues
   } else {
     match frame {
       NoValueFrame => ChildSeesParentValues
+      MatchValueFrame =>
+        if ordinal == 0 {
+          ChildSeesParentValues
+        } else {
+          ChildSeesParentValuesAndUndecided { names: match_arm_candidate_names(arm: edge.target) }
+        }
       ArrowValueFrame { params: ps } =>
         if arrow_slot_scope_binds_value_params(scope: arrow_slot_scope(slot: arrow_slot(e: edge, ordinal: ordinal))) {
           ChildSeesParentValuesAnd { names: ps }

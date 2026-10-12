@@ -32,6 +32,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
 import v2.compiler.reference_site_collector {
+  HeadBindingUndecided,
   HeadBoundAtRootValue,
   HeadBoundInFrame,
   HeadLexicallyUnbound,
@@ -116,12 +117,15 @@ import extdeps.communication.medium { Lossless, Medium }
 // `<root>/x/y.dag` for it would make the verdict depend on a file the program does not mention, so an
 // unrelated or malformed same-named module could change what a program means. Whether a head is bound is
 // decided from the lexical frames at the site (v2.compiler.lexical_scope), the producer resolution reads
-// too, never from the spelling's shape. THE FRAMES THIS READS ARE A SUBSET OF RESOLUTION'S: a match arm's
-// pattern binder, a loop carrier, a type parameter and an imported value are bound by constructs whose
-// binder-versus-constructor or kind decision needs the resolution namespace, so a head only one of those
-// binds is still a candidate here. The collision that leaves is exact: such a binder spelled like the first
-// segment of a module name AND the module `<head>.<field>` it would be probed as existing and being
-// unreadable or malformed.
+// too, never from the spelling's shape. THERE ARE THREE ANSWERS, NOT TWO. A head a decided binder binds (an
+// Arrow parameter, a `let` binder, a loop carrier, a module-level value) is a projection. A head nothing
+// binds is a candidate. A head a match arm's pattern atom or an import MAY bind is undecided: whether the atom
+// binds or names a payload constructor, and whether the import names a value, needs the resolution namespace,
+// which does not exist until this module has acquired what a program names. An undecided head requests
+// nothing, because the cost of guessing is not symmetric: probing for a name resolution binds as a value
+// reads a file the program never mentions and, for a requester whose tree may not import the probed one, denies
+// a valid program. What not requesting costs is a refusal, not a wrong answer: a spelling that did need its
+// module and got none is unbound at resolution and refuses there, naming the spelling.
 //
 // THE DECISIONS ARE v2.compiler.source_authority's, THE READS ARE THIS MODULE'S. That module owns the
 // pure decisions (which file a name is stored at, the prefix order, the tri-state probe, the
@@ -433,13 +437,15 @@ fn acquisition_reference_texts(collection: ScopedReferenceSiteCollection) -> Lis
   ).order
 }
 
-// Only a head no visible binder binds is a candidate module reference. The other two answers are
-// projections: they request nothing and read nothing.
+// Only a head nothing binds is a candidate module reference. A head a binder binds is a projection; a head the
+// walk could not classify (HeadBindingUndecided) might be one, and probing storage for it could deny a valid
+// program or read a file the program does not mention. Neither requests anything or reads anything.
 fn acquisition_head_is_candidate_module(head: SiteHeadBinding) -> Bool {
   match head {
     HeadLexicallyUnbound => true
     HeadBoundInFrame => false
     HeadBoundAtRootValue => false
+    HeadBindingUndecided => false
   }
 }
 
@@ -567,7 +573,12 @@ fn acquisition_member_requests(env: AcquisitionEnv, module: String, file: Module
     Rejected { diagnostics: d } =>
       AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
     Accepted { value: front, diagnostics: _ } =>
-      acquisition_sites_requests(front: front, sites: collect_scoped_module_reference_sites(root: front.tree.root), module: module, file: file)
+      acquisition_sites_requests(
+        front: front,
+        sites: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })),
+        module: module,
+        file: file
+      )
   }
 }
 

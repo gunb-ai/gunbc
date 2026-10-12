@@ -53,9 +53,17 @@ import v2.compiler.parse { PreparedGrammar, prepare_grammar }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.compiler.source_authority { ModuleFileRef, module_file_key }
+import v2.compiler.source_authority {
+  ModuleFileRef,
+  ReferenceNextReadDenied,
+  ReferenceNextReadFile,
+  ReferenceNextReadNone,
+  module_file_key,
+  reference_next_read,
+  reference_prefixes
+}
 import v2.std.algebra { HeadAbsent, HeadFound, length, list_head, list_map }
-import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
@@ -452,6 +460,144 @@ test fn malformed_same_named_module_does_not_change_projection_verdict() -> Bool
       modules: [projection_subject_member(), same_named_member()],
       reads: [key_of(member: projection_subject_member()), key_of(member: same_named_member())]
     ) == "read-not-requested:x"
+}
+
+// ---- a head only a construct the walk cannot classify binds is neither probed nor denied -----------------
+//
+// THE SUBJECT IS WHAT A MEMBER ASKS THE STORAGE LOOKUP FOR, composed with what the lookup then does with
+// the ask: the member's own requests (acquisition_member_requests, the real front end) and, for each, the
+// storage verdict for the member's tree (resolve_reference_over, the verdict the acquirer's lookup takes
+// before any read). The composition is the claim because the harm is in it. A head that a match arm's pattern
+// atom or an import MAY bind used to read as unbound, so `v2.member` in a DAG-tree module became a request,
+// the request reached a cross-tree denial (the dag tree may not import the v2 tree), and a valid program was
+// refused for a file it never mentioned. The classification alone ("not-requested") would hold with the
+// denial deleted, and the denial alone is held in v2.test.claim.source_layout_lookup; neither says the
+// combination, so each control below states both halves.
+//
+// THE PAIRED EXECUTION. The in-corpus specimen is gunbc.compute.attempt_lifecycle, whose
+// `CasReadablePresent { version: v2 } => ... v2.generation` is the fixture's shape; the built door over the
+// repository root compiles it on the required witnesses job.
+fn dag_member_read_under(env: AcquisitionEnv, content: String) -> AcquisitionMemberRead {
+  acquisition_member_requests(
+    env: env,
+    module: "test.subject",
+    file: ModuleFileRef { tree: DagTree {}, relative_path: "test/subject.dag" },
+    content: content
+  )
+}
+
+// What the lookup does first with one spelling a dag-tree member requests: the verdict it takes from the
+// candidate's name and tree alone, before any file is read (v2.compiler.source_authority reference_next_read,
+// the function the acquirer's lookup calls). "denied" is a refused program; "reads <module>" is the lookup
+// going on to read that module's file.
+fn dag_storage_verdict(spelling: String) -> String {
+  match reference_next_read(
+    layout: repository_storage_layout(),
+    from_tree: DagTree {},
+    from_module: "test.subject",
+    reference: spelling,
+    candidates: reference_prefixes(reference: spelling)
+  ) {
+    ReferenceNextReadDenied { module: _, file: _, reason: _ } => "denied"
+    ReferenceNextReadFile { module: named, file: _, rest: _ } => concat("reads ", named)
+    ReferenceNextReadNone { reference: _ } => "none"
+  }
+}
+
+// One spelling, as the composition sees it: "not-requested", or "requested" with the lookup's first verdict.
+fn dag_request_verdict(content: String, spelling: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match dag_member_read_under(env: member_env(prepared: prepared), content: content) {
+        AcquisitionMemberReadOk { requests: requests, test_markers: _ } =>
+          if length(xs: requests.references |> filter(fn(r) { r == spelling })) == 0 {
+            "not-requested"
+          } else {
+            concat("requested, ", dag_storage_verdict(spelling: spelling))
+          }
+        AcquisitionMemberReadRefused { refusal: refusal } => acquisition_refusal_text(refusal: refusal)
+      }
+  }
+}
+
+// Every qualified reference the member requests that the lookup denies, comma-joined; empty when none. It is
+// the property the harm is stated in (the program is refused), asked of the whole request list so that a
+// spelling the front end introduced beside the authored ones cannot hide a denial.
+fn dag_denied_requests(content: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match dag_member_read_under(env: member_env(prepared: prepared), content: content) {
+        AcquisitionMemberReadOk { requests: requests, test_markers: _ } =>
+          join(requests.references |> filter(fn(r) { dag_storage_verdict(spelling: r) == "denied" }), ",")
+        AcquisitionMemberReadRefused { refusal: refusal } => acquisition_refusal_text(refusal: refusal)
+      }
+  }
+}
+
+fn dag_subject_matching(arm: String) -> String {
+  concat("module test.subject\n\ntype Slot = SlotHeld { version: Bool } | SlotEmpty\n\nfn subject(o: Slot) -> Bool {\n  match o {\n    ", arm, "\n    SlotEmpty => false\n  }\n}\n")
+}
+
+// The counterexample: a pattern atom spelled like a layout root, projected in its own arm. The arm's result
+// is the only place the spelling appears, so any request it makes is a probe the program did not ask for.
+test fn a_dag_member_whose_match_arm_binds_a_root_name_is_neither_probed_nor_denied() -> Bool {
+  dag_request_verdict(content: dag_subject_matching(arm: "SlotHeld { version: v2 } => v2.member"), spelling: "v2.member") == "not-requested"
+    && dag_denied_requests(content: dag_subject_matching(arm: "SlotHeld { version: v2 } => v2.member")) == ""
+}
+
+// The real specimen's shape, `... => ... v2.generation` under a match on the slot read.
+test fn a_dag_member_projecting_a_match_bound_generation_is_neither_probed_nor_denied() -> Bool {
+  dag_request_verdict(content: dag_subject_matching(arm: "SlotHeld { version: v2 } => v2.generation"), spelling: "v2.generation") == "not-requested"
+    && dag_denied_requests(content: dag_subject_matching(arm: "SlotHeld { version: v2 } => v2.generation")) == ""
+}
+
+// The positive control the first claim is attributed to: differing in the pattern alone (the atom is not
+// spelled like the head), the same arm body names a module, is requested, and is denied. A walk that
+// requested nothing inside a match would pass the first claim and fail this one.
+test fn a_dag_member_naming_a_v2_module_inside_a_match_arm_is_requested_and_denied() -> Bool {
+  dag_request_verdict(content: dag_subject_matching(arm: "SlotHeld { version: held } => v2.member"), spelling: "v2.member") == "requested, denied"
+}
+
+// The scrutinee is not in any arm's scope: the same spelling there is not bound by the pattern beside it, so
+// it is a qualified reference and the lookup denies it. Without this the pair above is satisfied by a
+// collector that treated every spelling inside a match as bound.
+test fn a_dag_member_naming_a_v2_module_in_a_match_scrutinee_is_requested_and_denied() -> Bool {
+  dag_request_verdict(
+    content: "module test.subject\n\nfn subject(o: Bool) -> Bool {\n  match v2.member(a: o) {\n    true => true\n    false => false\n  }\n}\n",
+    spelling: "v2.member"
+  ) == "requested, denied"
+}
+
+// Genuine qualified references still reach the lookup: a dag-tree member naming a dag-tree module is
+// requested and the lookup goes on to read it, and naming a v2-tree module is requested and denied. A reader
+// that classified everything undecided requests nothing and fails both.
+test fn a_dag_member_naming_a_dag_module_is_requested_and_not_denied() -> Bool {
+  dag_request_verdict(content: subject_body(body: "std.logic.and(a: true, b: true)"), spelling: "std.logic.and") == "requested, reads std.logic.and"
+    && dag_denied_requests(content: subject_body(body: "std.logic.and(a: true, b: true)")) == ""
+}
+
+test fn a_dag_member_naming_a_v2_module_is_requested_and_denied() -> Bool {
+  dag_request_verdict(content: subject_body(body: "v2.std.logic.and(a: true, b: true)"), spelling: "v2.std.logic.and") == "requested, denied"
+}
+
+// An imported name is undecided too: whether it names a type, a namespace or a value is for the module that
+// exports it to say, and the symbol index that holds it does not exist while this member is being read. The
+// head `v2` is bound by the import and requests nothing; the control is the same body without the import.
+test fn a_dag_member_whose_import_binds_a_root_name_is_neither_probed_nor_denied() -> Bool {
+  dag_request_verdict(content: "module test.subject\nimport std.thing { v2 }\n\nfn subject() -> Bool {\n  v2.member\n}\n", spelling: "v2.member") == "not-requested"
+    && dag_denied_requests(content: "module test.subject\nimport std.thing { v2 }\n\nfn subject() -> Bool {\n  v2.member\n}\n") == ""
+}
+
+test fn a_dag_member_without_that_import_requests_the_head_as_a_module_and_is_denied() -> Bool {
+  dag_request_verdict(content: subject_body(body: "v2.member"), spelling: "v2.member") == "requested, denied"
+}
+
+// A loop carrier and an arrow parameter are decided binders, not undecided: they stay a projection, so a
+// head they bind requests nothing exactly as before.
+test fn a_dag_member_whose_parameter_is_spelled_like_a_root_requests_nothing() -> Bool {
+  dag_request_verdict(content: "module test.subject\n\nfn subject(v2: Bool) -> Bool {\n  v2.member\n}\n", spelling: "v2.member") == "not-requested"
 }
 
 // ---- the marker channel, read off the parse tree alone -----------------------------------------------------
