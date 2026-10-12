@@ -73,6 +73,8 @@ import extdeps.systemd.systemctl {
 }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire, systemd_time_span_of_seconds }
 import gunbc.live_deploy.repository_convergence_placement {
+  ConvergenceOneshot,
+  convergence_oneshot_unit_text,
   convergence_receipt_path,
   convergence_unit_doc,
   convergence_placement_entry_path,
@@ -1191,27 +1193,29 @@ fn emit_belt_unit_file_doc(file: SystemdUnitFile) -> Doc {
 //
 // The ExecStart names the tree explicitly rather than deriving it, because a host can run two slots
 // and the unit of one slot must not converge the other's tree.
-fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
+//
+// IT IS A CONVERGENCE ONESHOT, SO ITS SLICE AND START BOUND ARE NOT ITS OWN: this member supplies the
+// work and gunbc.live_deploy.repository_convergence_placement convergence_oneshot_unit_text places it.
+// It used to name the deployment's serving slice with no start bound; the af66aa62 production apply on
+// srv1 (2026-10-12) then waited behind it while the serving members held the slice over MemoryHigh.
+fn tree_remote_convergence_oneshot(spec: DeploymentSpec) -> ConvergenceOneshot {
   let svc = spec.service
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
-    unit: [Description {
-      text: "gunbc deployed tree remote convergence (origin URL for fleet desired observation)" as NonEmptyStr,
-    }],
-    service: [
-      ServiceType { mode: OneshotMode },
-      ServiceUser { name: svc.service_user },
-      ServiceGroup { name: svc.service_user },
-      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
-      WorkingDirectory { path: svc.repo_root },
-      ExecStart { command: join([
-        svc.serve_binary as String,
-        " run --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/deployed_tree_remote.dag --function ensure_deployed_tree_remote_wet",
-        " --arg repository_path=", svc.repo_root as String,
-      ], "") as NonEmptyStr },
-    ],
-    install: NotInstallable,
-  }))
+  ConvergenceOneshot {
+    description: "gunbc deployed tree remote convergence (origin URL for fleet desired observation)" as NonEmptyStr,
+    principal: svc.service_user,
+    working_directory: svc.repo_root,
+    environment_files: [] as List<NonEmptyStr>,
+    exec_start: join([
+      svc.serve_binary as String,
+      " run --source-root dag --source-root src/v2",
+      " --entry dag/gunbc/deployed_tree_remote.dag --function ensure_deployed_tree_remote_wet",
+      " --arg repository_path=", svc.repo_root as String,
+    ], "") as NonEmptyStr,
+  }
+}
+
+fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec)))
 }
 
 fn apply_tree_remote_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
