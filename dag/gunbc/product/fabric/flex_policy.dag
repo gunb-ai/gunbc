@@ -14,6 +14,7 @@ import extdeps.currency.currency { CurrencyCode }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply {
   EqualCostOfferTieBreak, PlacementAffinityKey, GrantDuration, ExactGrantDuration,
+  seconds_per_hour,
 }
 import product.fabric.execution { ReservationRef }
 import product.fabric.budget {
@@ -167,7 +168,7 @@ fn flex_liability_for_horizon(rate: MoneyPerHour, horizon: Second) -> MoneyAmoun
   measure_scale_fraction_ceil(
     m: rate.amount,
     num: second_count(s: horizon),
-    den: 3600,
+    den: seconds_per_hour(),
   )
 }
 
