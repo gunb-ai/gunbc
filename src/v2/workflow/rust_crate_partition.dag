@@ -280,6 +280,8 @@ fn stage0_std_primitive_modules() -> List<String> {
     "std_error_primitives",
     "std_emit_model",
     "std_measure",
+    "std_decimal",
+    "std_render_repeat_string_bootstrap",
     "std_types",
     "std_unicode_types"
   ]
@@ -525,6 +527,11 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "std_induction", to: "std_computation"),
     stage0_module_dag_edge(from: "std_induction", to: "std_termination"),
     stage0_module_dag_edge(from: "std_graph", to: "std_termination"),
+    stage0_module_dag_edge(from: "std_measure", to: "std_decimal"),
+    stage0_module_dag_edge(from: "std_decimal", to: "std_render_repeat_string_bootstrap"),
+    stage0_module_dag_edge(from: "std_decimal", to: "std_checked_arithmetic"),
+    stage0_module_dag_edge(from: "std_decimal", to: "std_error_primitives"),
+    stage0_module_dag_edge(from: "std_decimal", to: "std_types"),
     stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_dimensionless"),
     stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iec_80000_13"),
     stage0_module_dag_edge(from: "std_measure", to: "extdeps_units_iso8601"),
