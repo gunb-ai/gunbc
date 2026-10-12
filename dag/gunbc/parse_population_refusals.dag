@@ -22,44 +22,12 @@ fn nested_record_shorthand_keys() -> List<String> {
   ]
 }
 
-// Matches on an index expression (gunbc.rung_drop population_parse_indexed_match_scrutinee).
-fn indexed_match_scrutinee_keys() -> List<String> {
-  [
-    "dag:extdeps/linux/proc_mountinfo.dag",
-    "dag:gunbc/floor_cost_distribution.dag",
-    "dag:gunbc/gate_closure_decline_census.dag",
-    "dag:gunbc/instruments/native_emission_controls.dag"
-  ]
-}
-
-// The same construct inside a `test fn`, where the verb reports the marker cause (gunbc.rung_drop population_parse_indexed_match_scrutinee).
-fn indexed_match_scrutinee_in_test_keys() -> List<String> {
-  [
-    "dag:test/claim/cause_assertion_census_witness.dag",
-    "dag:test/claim/check_removal_residual_witness.dag",
-    "dag:test/claim/floor/floor_phase_attribution_witness.dag",
-    "dag:test/claim/runner/runner_capacity_operator_access_witness.dag",
-    "dag:test/claim/runner/runner_microvm_shakedown_workflow_witness.dag",
-    "dag:test/claim/runner/runner_placement_witness.dag"
-  ]
-}
-
 fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
   [
     RefusalClass {
       drop: "population_parse_nested_record_shorthand",
       cause: "parse_g0_tokens_remain",
       keys: nested_record_shorthand_keys()
-    },
-    RefusalClass {
-      drop: "population_parse_indexed_match_scrutinee",
-      cause: "parse_g0_tokens_remain",
-      keys: indexed_match_scrutinee_keys()
-    },
-    RefusalClass {
-      drop: "population_parse_indexed_match_scrutinee",
-      cause: "parse_declaration_marker_not_test",
-      keys: indexed_match_scrutinee_in_test_keys()
     }
   ]
 }
