@@ -98,15 +98,18 @@ fn escape_json_string(s: String) -> String {
 // is asked to be a Char at run time (gunbc.recurring_failure_mode char_brand_admits_any_int).
 type JsonEscapeRow { code_point: Int, spelled: String }
 
-data json_named_escape_rows: List<JsonEscapeRow> = [
+fn json_named_escape_rows() -> List<JsonEscapeRow> {
+  [
   JsonEscapeRow { code_point: 8, spelled: "\u{8}" },
   JsonEscapeRow { code_point: 9, spelled: "\u{9}" },
   JsonEscapeRow { code_point: 10, spelled: "\u{a}" },
   JsonEscapeRow { code_point: 12, spelled: "\u{c}" },
   JsonEscapeRow { code_point: 13, spelled: "\u{d}" },
-]
+  ]
+}
 
-data json_control_escape_rows: List<JsonEscapeRow> = [
+fn json_control_escape_rows() -> List<JsonEscapeRow> {
+  [
   JsonEscapeRow { code_point: 0, spelled: "\u{0}" },
   JsonEscapeRow { code_point: 1, spelled: "\u{1}" },
   JsonEscapeRow { code_point: 2, spelled: "\u{2}" },
@@ -134,7 +137,8 @@ data json_control_escape_rows: List<JsonEscapeRow> = [
   JsonEscapeRow { code_point: 29, spelled: "\u{1d}" },
   JsonEscapeRow { code_point: 30, spelled: "\u{1e}" },
   JsonEscapeRow { code_point: 31, spelled: "\u{1f}" },
-]
+  ]
+}
 
 fn json_escape_replace(s: String, delimiter: String, replacement: String) -> String {
   join(split(s: s, delimiter: delimiter), replacement)
@@ -156,7 +160,7 @@ fn json_escape_via_passes(s: String) -> String {
   let unslashed = json_escape_replace(s: s, delimiter: "\u{5c}", replacement: "\\\\")
   let quoted = json_escape_replace(s: unslashed, delimiter: "\u{22}", replacement: "\\\"")
   let named = fold(
-    json_named_escape_rows,
+    json_named_escape_rows(),
     init: quoted,
     f: fn(acc, row) {
       json_escape_replace(
@@ -167,7 +171,7 @@ fn json_escape_via_passes(s: String) -> String {
     },
   )
   fold(
-    json_control_escape_rows,
+    json_control_escape_rows(),
     init: named,
     f: fn(acc, row) {
       json_escape_replace(

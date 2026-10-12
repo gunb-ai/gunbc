@@ -52,32 +52,176 @@ pub struct TestProjection {
     pub type_env: Rc<TypeEnv>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct JsonControlEscape {
+    pub delimiter: String,
+    pub replacement: String,
+}
+
+pub fn json_control_escapes() -> Rc<Vec<Rc<JsonControlEscape>>> {
+    Rc::new(vec![
+        Rc::new(JsonControlEscape {
+            delimiter: "\x00".to_string(),
+            replacement: "\\u0000".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0001".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0002".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0003".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0004".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0005".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0006".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0007".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\b".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u000b".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\f".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "\x0d".to_string(),
+            replacement: "\\r".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u000e".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u000f".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0010".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0011".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0012".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0013".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0014".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0015".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0016".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0017".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0018".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0019".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001a".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001b".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001c".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001d".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001e".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001f".to_string(),
+        }),
+    ])
+}
+
 pub fn escape_json_string(s: String) -> String {
-    Rc::new(
-        Rc::new(
+    {
+        let named = Rc::new(
             Rc::new(
                 Rc::new(
-                    s.clone()
-                        .split(&"\\".to_string())
-                        .map(|s| s.to_string())
-                        .collect::<Vec<_>>(),
+                    Rc::new(
+                        s.clone()
+                            .split(&"\\".to_string())
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>(),
+                    )
+                    .join(&"\\\\".to_string())
+                    .split(&"\"".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
                 )
-                .join(&"\\\\".to_string())
-                .split(&"\"".to_string())
+                .join(&"\\\"".to_string())
+                .split(&"\n".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
             )
-            .join(&"\\\"".to_string())
-            .split(&"\n".to_string())
+            .join(&"\\n".to_string())
+            .split(&"\t".to_string())
             .map(|s| s.to_string())
             .collect::<Vec<_>>(),
         )
-        .join(&"\\n".to_string())
-        .split(&"\t".to_string())
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>(),
-    )
-    .join(&"\\t".to_string())
+        .join(&"\\t".to_string());
+        json_control_escapes().iter().cloned().fold(
+            named.clone(),
+            |acc: String, row: Rc<JsonControlEscape>| {
+                Rc::new(
+                    acc.split(&row.delimiter.clone())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                )
+                .join(&row.replacement.clone())
+            },
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

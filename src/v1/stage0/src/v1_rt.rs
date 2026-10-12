@@ -891,7 +891,7 @@ pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
         let cp = *focus.index(i);
         match u32::try_from(cp).ok().and_then(char::from_u32) {
             Some(ch) => out.push(ch),
-            None => panic!("chars_to_string: {} is not a Unicode scalar value (std.unicode.scalar NotUnicodeScalar); refusing to drop it silently", cp),
+            None => panic!("chars_to_string: {} is not a Unicode scalar value: runtime representation-invariant violation; refusing to drop or substitute it", cp),
         }
     }
     out
