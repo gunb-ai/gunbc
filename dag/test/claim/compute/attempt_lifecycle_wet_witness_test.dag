@@ -533,6 +533,11 @@ fn reuse_tree() -> GitObjectId {
 }
 
 fn reuse_commit(root_path: String) -> Bool {
+  reuse_commit_detail(root_path: root_path) == ""
+}
+
+// "" when the record was committed; otherwise what stopped it.
+fn reuse_commit_detail(root_path: String) -> String {
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
     leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
@@ -550,7 +555,13 @@ fn reuse_commit(root_path: String) -> Bool {
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: request, plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
     document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
-  log.success && g.success && c.success && (match committed { ComputeCommitted => true  _ => false })
+  if !(log.success && g.success && c.success) { "the staged build files could not be written" } else {
+    match committed {
+      ComputeCommitted => ""
+      ComputeCommitNotOwed => "the commit was not owed"
+      ComputeCommitRefused { detail } => join(["the commit was refused: ", detail], "")
+    }
+  }
 }
 
 fn reuse_served_without_production(root_path: String) -> Bool {
@@ -579,7 +590,8 @@ test fn the_production_leaf_attaches_to_a_committed_record_and_does_not_enter_pr
 // holds nothing the first computed: `gunbc run --function reuse_cold_cli --arg root=<dir>`, then
 // `--function reuse_warm_cli --arg root=<dir>`.
 fn reuse_cold_cli(root: String) -> ProcessExit {
-  if reuse_commit(root_path: root) { ExitSuccess } else { ExitFailure { code: 1, reason: "the build record was not committed" } }
+  let detail = reuse_commit_detail(root_path: root)
+  if detail == "" { ExitSuccess } else { ExitFailure { code: 1, reason: detail } }
 }
 
 fn reuse_warm_cli(root: String) -> ProcessExit {
