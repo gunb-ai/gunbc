@@ -11,5 +11,6 @@ Re-derive a timing with the emitted compiler built from the revision under test 
     time <emitted-compiler> census-infer docs/measurements/value_position_block_nests/single_d14/dag
 
 Run it at main and at the head. Before the fix wall time is exponential in `d` (3^d); after, flat.
-These are a measurement, not an enrolled control: no harness can bound a native run yet (see the
-row's next-rung trigger).
+The enrolled control is `gunbc test //gunbc/instruments:value-position-block-nests`: a NativeClaimDriver
+child that natively tokenizes, parses and normalizes `single_d14` and `multi_d14` under the binding's
+declared Millisecond deadline. These trees remain the measurement corpus; that label is the harness.
