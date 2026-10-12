@@ -1,0 +1,118 @@
+module test.claim.gpu_bench_warm_standing_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import std.measure { token_count, token_count_value }
+import extdeps.gpu_bench.request_v2 {
+  gpu_bench_parse_jsonl, GpuBenchRequestV2Parsed, GpuBenchRequestV2StreamUnreadable,
+  gpu_bench_request_v2_schema,
+}
+import gunbc.serving.gpu_bench_warm_standing {
+  gpu_bench_warm_standing, gpu_bench_warm_standing_with_ninfer_log, gpu_bench_capacity_ok_tokens,
+  WarmValid, WarmOverCapacity, WarmRejected, WarmCapacityUnread,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fx_ok_prime: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1,\"t_start\":1.0,\"t_first\":2.0,\"t_end\":2.1,\"prompt_tokens\":100,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1,\"t_start\":1.0,\"t_first\":2.0,\"t_end\":2.1,\"prompt_tokens\":80,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":2,\"session\":0,\"max_tokens\":512,\"t_start\":3.0,\"t_first\":3.1,\"t_end\":4.0,\"prompt_tokens\":101,\"completion_tokens\":512,\"status\":\"ok\",\"error\":null}\n"
+
+data fx_warm_error: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":1,\"retained\":1,\"session\":0,\"max_tokens\":1,\"t_start\":1.0,\"t_first\":2.0,\"t_end\":2.1,\"prompt_tokens\":50,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":1,\"session\":0,\"max_tokens\":512,\"t_start\":3.0,\"t_first\":null,\"t_end\":4.0,\"prompt_tokens\":null,\"completion_tokens\":null,\"status\":\"error\",\"error\":\"TimeoutError: timed out\"}\n"
+
+data fx_wrong_schema: String = "{\"schema\":\"gpu-bench/request/v1\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":1,\"retained\":1,\"session\":0,\"max_tokens\":1,\"t_start\":1.0,\"t_first\":2.0,\"t_end\":2.1,\"prompt_tokens\":50,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n"
+
+fn parsed_ok(text: String) -> Bool {
+  match gpu_bench_parse_jsonl(text: text) {
+    GpuBenchRequestV2Parsed { records: _ } => true
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+  }
+}
+
+test fn schema_identity_is_v2() -> Bool {
+  (gpu_bench_request_v2_schema as String) == "gpu-bench/request/v2"
+}
+
+test fn wrong_schema_refuses() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_wrong_schema) {
+    GpuBenchRequestV2StreamUnreadable { line: n, cause: c } => n == 1 && (c as String) == "schema is not gpu-bench/request/v2"
+    GpuBenchRequestV2Parsed { records: _ } => false
+  }
+}
+
+test fn working_set_under_capacity_is_valid() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_ok_prime) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing(records: rs, measured_kv: Present { value: token_count(count: 200) }) {
+        WarmValid { working_set_tokens: w, measured_kv_tokens: k } =>
+          token_count_value(t: w) == 180 && token_count_value(t: k) == 200
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmRejected { cause: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
+  }
+}
+
+test fn working_set_over_capacity_is_not_engine_evidence() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_ok_prime) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing(records: rs, measured_kv: Present { value: token_count(count: 100) }) {
+        WarmOverCapacity { working_set_tokens: w, measured_kv_tokens: k } =>
+          token_count_value(t: w) == 180 && token_count_value(t: k) == 100
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmRejected { cause: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
+  }
+}
+
+test fn warm_error_rejects() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_warm_error) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing(records: rs, measured_kv: Present { value: token_count(count: 1000) }) {
+        WarmRejected { cause: c } => (c as String) == "a prime or warm request did not complete"
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
+  }
+}
+
+test fn missing_measured_kv_is_unread() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_ok_prime) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing(records: rs, measured_kv: Absent) {
+        WarmCapacityUnread { cause: _ } => true
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmRejected { cause: _ } => false
+      }
+  }
+}
+
+test fn capacity_ok_line_reads_tokens() -> Bool {
+  match gpu_bench_capacity_ok_tokens(log: "CAPACITY_OK 1920000\n") {
+    Absent => false
+    Present { value: t } => token_count_value(t: t) == 1920000
+  }
+}
+
+test fn ninfer_replay_rejects_warm() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_ok_prime) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } =>
+      match gpu_bench_warm_standing_with_ninfer_log(records: rs, log: "CAPACITY_OK 1920000\nninfer_replayed_tokens_total 12\n") {
+        WarmRejected { cause: c } => string_contains(s: c as String, pattern: "replayed")
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
+  }
+}
+
+test fn parsed_ok_prime_fixture() -> Bool {
+  parsed_ok(text: fx_ok_prime)
+}

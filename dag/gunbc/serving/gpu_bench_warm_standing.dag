@@ -1,0 +1,154 @@
+module gunbc.serving.gpu_bench_warm_standing
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, token_count_value }
+import std.checked_arithmetic { checked_int_to_nat }
+import extdeps.gpu_bench.request_v2 {
+  GpuBenchRequestV2, GpuBenchPhase, GpuBenchPhasePrime, GpuBenchPhaseWarm, GpuBenchPhaseShort,
+  GpuBenchRequestStatus, GpuBenchRequestOk, GpuBenchRequestError,
+}
+
+// WARM-PERFORMANCE ELIGIBILITY FROM A GPU-BENCH V2 RECEIPT, not a rate. A tokens-per-second field
+// beside a working set the measured KV pool cannot hold is not engine evidence
+// (gunbc.recurring_failure_mode.benchmark_warm_capacity_violation_read_as_engine_performance).
+// CONSUMER: P4 home-serving Pareto; only WarmValid is a funded axis. Measured KV is a supplied
+// reading of the launch (CAPACITY_OK from the kit log), never an estimated footprint.
+
+type GpuBenchWarmStanding
+  = WarmValid { working_set_tokens: TokenCount, measured_kv_tokens: TokenCount }
+  | WarmOverCapacity { working_set_tokens: TokenCount, measured_kv_tokens: TokenCount }
+  | WarmRejected { cause: NonEmptyStr }
+  | WarmCapacityUnread { cause: NonEmptyStr }
+
+fn gpu_bench_is_prime(r: GpuBenchRequestV2) -> Bool {
+  match r.phase {
+    GpuBenchPhasePrime => true
+    GpuBenchPhaseWarm => false
+    GpuBenchPhaseShort => false
+  }
+}
+
+fn gpu_bench_is_warm(r: GpuBenchRequestV2) -> Bool {
+  match r.phase {
+    GpuBenchPhaseWarm => true
+    GpuBenchPhasePrime => false
+    GpuBenchPhaseShort => false
+  }
+}
+
+fn gpu_bench_request_failed(r: GpuBenchRequestV2) -> Bool {
+  match r.status {
+    GpuBenchRequestOk => false
+    GpuBenchRequestError { detail: _ } => true
+  }
+}
+
+fn gpu_bench_prompt_tokens_or_zero(r: GpuBenchRequestV2) -> Nat {
+  match r.prompt_tokens {
+    Absent => 0
+    Present { value: t } => token_count_value(t: t)
+  }
+}
+
+fn gpu_bench_prime_working_set_tokens(records: List<GpuBenchRequestV2>) -> Nat {
+  fold(records, init: 0, f: fn(acc, r) {
+    if gpu_bench_is_prime(r: r) {
+      acc + gpu_bench_prompt_tokens_or_zero(r: r)
+    } else {
+      acc
+    }
+  })
+}
+
+fn gpu_bench_prime_count(records: List<GpuBenchRequestV2>) -> Nat {
+  fold(records, init: 0, f: fn(acc, r) {
+    if gpu_bench_is_prime(r: r) { acc + 1 } else { acc }
+  })
+}
+
+fn gpu_bench_any_prime_or_warm_failed(records: List<GpuBenchRequestV2>) -> Bool {
+  any(records, r => (gpu_bench_is_prime(r: r) || gpu_bench_is_warm(r: r)) && gpu_bench_request_failed(r: r))
+}
+
+fn gpu_bench_warm_standing(records: List<GpuBenchRequestV2>, measured_kv: TokenCount?) -> GpuBenchWarmStanding {
+  if gpu_bench_prime_count(records: records) == 0 {
+    WarmRejected { cause: "no prime-phase request in the receipt" as NonEmptyStr }
+  } else {
+    if gpu_bench_any_prime_or_warm_failed(records: records) {
+      WarmRejected { cause: "a prime or warm request did not complete" as NonEmptyStr }
+    } else {
+      let working = token_count(count: gpu_bench_prime_working_set_tokens(records: records))
+      match measured_kv {
+        Absent => WarmCapacityUnread { cause: "measured KV capacity was not supplied" as NonEmptyStr }
+        Present { value: kv } =>
+          if token_count_value(t: working) > token_count_value(t: kv) {
+            WarmOverCapacity { working_set_tokens: working, measured_kv_tokens: kv }
+          } else {
+            WarmValid { working_set_tokens: working, measured_kv_tokens: kv }
+          }
+      }
+    }
+  }
+}
+
+fn gpu_bench_capacity_ok_tokens(log: String) -> TokenCount? {
+  if log == "" {
+    none
+  } else {
+    fold(split(s: log, delimiter: "\n"), init: none, f: fn(acc, line) {
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if string_contains(s: line, pattern: "CAPACITY_OK ") {
+            let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
+            match parse_int(s: last) {
+              Absent => none
+              Present { value: n } =>
+                match checked_int_to_nat(n: n) {
+                  Absent => none
+                  Present { value: cap } => Present { value: token_count(count: cap) }
+                }
+            }
+          } else {
+            none
+          }
+      }
+    })
+  }
+}
+
+fn gpu_bench_ninfer_replayed_tokens_total(log: String) -> Nat? {
+  if log == "" {
+    none
+  } else {
+    fold(split(s: log, delimiter: "\n"), init: none, f: fn(acc, line) {
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if string_contains(s: line, pattern: "ninfer_replayed_tokens_total ") && !string_contains(s: line, pattern: "#") {
+            let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
+            match parse_int(s: last) {
+              Absent => none
+              Present { value: n } => checked_int_to_nat(n: n)
+            }
+          } else {
+            none
+          }
+      }
+    })
+  }
+}
+
+fn gpu_bench_warm_standing_with_ninfer_log(records: List<GpuBenchRequestV2>, log: String) -> GpuBenchWarmStanding {
+  match gpu_bench_ninfer_replayed_tokens_total(log: log) {
+    Present { value: replayed } =>
+      if replayed > 0 {
+        WarmRejected { cause: "ninfer replayed tokens; prefix restore was not a snapshot hit" as NonEmptyStr }
+      } else {
+        gpu_bench_warm_standing(records: records, measured_kv: gpu_bench_capacity_ok_tokens(log: log))
+      }
+    Absent => gpu_bench_warm_standing(records: records, measured_kv: gpu_bench_capacity_ok_tokens(log: log))
+  }
+}
