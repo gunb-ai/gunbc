@@ -18,7 +18,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // WHAT THE DeepSeek V4.1 SM12 PATH ASKS OF A RUNTIME, READ FROM THE CODE THAT ASKS IT.
 //
-// THE DISTINCTION THIS MODULE KEEPS. gunbc.spark.serving_runtime_capability_probe asks five
+// THE DISTINCTION THIS MODULE KEEPS. retired gunbc.spark.serving_runtime_capability_probe (deleted #13779) asks five
 // questions of an IMAGE and records what it found; those questions are only as good as the demands
 // they stand in for, and until now those demands lived nowhere -- they were knowledge a probe author
 // had. Here they are declarations read from upstream at one revision, so a probe that stops matching

@@ -21,7 +21,7 @@ import gunbc.spark.serving_arm {
 // ── A PERFORMANCE MEASUREMENT NAMES THE PROFILE IT WAS TAKEN AGAINST, OR IT IS NOT A MEASUREMENT ─
 //
 // WHY THIS TYPE EXISTS, AND WHO ASKED FOR IT. Two modules carry every serving performance number
-// this repository has -- gunbc.spark.prefill_batch_sweep and gunbc.spark.tensor_parallel_comparison
+// this repository has -- retired gunbc.spark.prefill_batch_sweep (deleted #13779) and retired gunbc.spark.tensor_parallel_comparison (deleted #13779)
 // -- and BOTH open with the same paragraph: every coefficient expires with the model artifact it was
 // taken against, "these rows do not yet carry that subject structurally, and that is a known gap
 // rather than an oversight", and the type "belongs with the serving-observation substrate rather
@@ -36,7 +36,7 @@ import gunbc.spark.serving_arm {
 // decision about GLM and a coefficient measured on DeepSeek is a reader who happens to scroll to
 // the top of the file; with the subject in the type, the join refuses and names the axis.
 //
-// THIS IS THE SAME LAW gunbc.spark.vllm_serving_launch STATES ONE LEVEL UP, and both modules cite
+// THIS IS THE SAME LAW retired gunbc.spark.vllm_serving_launch (deleted #13779) STATES ONE LEVEL UP, and both modules cite
 // it by name. There, three KV readings from one unrendered unit were three incarnations and joining
 // them on host and group concluded the fleet's capacity was unstable. Here, two rates from two
 // profiles are two subjects, and joining them on "the Sparks" concludes something about hardware
@@ -75,7 +75,7 @@ type ServingPerformanceSubject sole_constructor {
 }
 
 // THE FACTORY IS THE ONLY WAY TO BUILD ONE, which is what `sole_constructor` buys and is the same
-// shape gunbc.spark.vllm_serving_launch uses for VllmServingLaunch. A subject assembled field by
+// shape retired gunbc.spark.vllm_serving_launch (deleted #13779) uses for VllmServingLaunch. A subject assembled field by
 // field in a consumer is a subject whose axis list that consumer decided; assembled here, adding an
 // axis breaks every construction site at once rather than leaving the old ones quietly short one
 // field.
@@ -131,7 +131,7 @@ fn serving_performance_subject(
 // gunbc.spark.serving_arm serving_launch_profile_key -- cold floor, ceiling, memory fraction, prefix
 // caching, Engram, modality, scheduler controls and both KV dtypes -- so two launches differing in any of
 // them are two subjects, while the named axes stay for diagnostics. SPECULATION IS PART OF THE LAUNCH:
-// the profile renders no speculative configuration (gunbc.spark.serving_arm_launch arm_engine_argv), so a
+// the profile renders no speculative configuration (retired gunbc.spark.serving_arm_launch (deleted #13779) arm_engine_argv), so a
 // launch's speculation is off, known, not unread. Only the realized collective transport is a reading.
 fn serving_subject_for_launch(
   checkpoint_revision: NonEmptyStr?,

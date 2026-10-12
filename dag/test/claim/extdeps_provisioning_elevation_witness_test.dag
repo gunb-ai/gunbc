@@ -50,7 +50,7 @@ test fn witness_sccache_chmod_is_non_interactive() -> Bool {
 test fn witness_docker_install_keyrings_is_non_interactive() -> Bool {
   string_contains(
     s: rendered_docker_install(),
-    pattern: "\n'/usr/bin/sudo' '-n' 'install' '-m' '0755' '-d' '/etc/apt/keyrings'\n",
+    pattern: "\n'/usr/bin/sudo' '-n' 'install' '-d' '-m' '00755' '/etc/apt/keyrings'\n",
   )
 }
 

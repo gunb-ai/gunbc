@@ -546,7 +546,7 @@ fn layout_reproduces_reported(layout: ResolvedKvLayout, reported: VllmReportedCa
 //
 // kv_cache_usage_perc is 1 - free_blocks / allocator_blocks, and a block holding a RETAINED
 // PREFIX-CACHE entry is not free. So the gauge rises with cache retention on an engine serving
-// nothing: gunbc.spark.pair_serving_observed recorded 96.5% at zero requests running, and the group
+// nothing: retired gunbc.spark.pair_serving_observed (deleted #13779) recorded 96.5% at zero requests running, and the group
 // B head read 53% with zero running on 2026-09-06. Any reading of this number as saturation, or any
 // attempt to divide it into a per-request cost, is measuring the cache and calling it the load.
 type AllocatorUsage sole_constructor {
@@ -600,7 +600,7 @@ fn allocator_usage(layout: ResolvedKvLayout, free_blocks: AllocatorBlockCount) -
 // layout is the upstream SHAPE, and binding a shape to the launch that exhibited it is an act of
 // observation, which lives in the gunbc layer. The plan record below is likewise the emission's
 // shape; a captured plan bound to a launch is a receipt the observing layer mints, exactly parallel
-// to gunbc.spark.vllm_kv_layout_observe's receipt over ResolvedKvLayout.
+// to retired gunbc.spark.vllm_kv_layout_observe (deleted #13779)'s receipt over ResolvedKvLayout.
 //
 // GROUPING/PADDING IS A FIRST-CLASS FIELD, not an inference: the hybrid allocator's decision how
 // groups share blocks (and what each group's ceil-to-block padding costs) is part of the plan the
@@ -1276,4 +1276,4 @@ fn request_block_equivalent_bytes(demand: KvAdmissionDemand, carve: KvAllocatorC
   byte_size(count: allocator_block_count_value(c: demand.population_blocks) * byte_size_count(b: carve.physical_pool_bytes_per_block))
 }
 
-data kv_layout_receipt_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc.spark.vllm_kv_layout_observe admit_kv_layout consumes ResolvedKvLayout. SUFFICIENT FOR: this module is not a dangling type museum; live capacity folds go through the receipt bound to a launch. THE ALLOCATION-PLAN RUNG: ResolvedKvAllocationPlan and its capture mint close the emission gap extdeps.vllm.kv_group_metadata documents -- the patched engine's emission that vouches for layer identities, page bytes, tokens per state, per-group usage and blocks at the requested length, with allocation_plan_reproduces_reported_capacity as the independent control. THE EMISSION PATCH IS A FOLLOW-UP: until a capture of the patched engine exists, every capture through the mint lands on the missing-field or revision wall, and the arm's cache fold keeps refusing for want of the roster." as NonEmptyStr)
+data kv_layout_receipt_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: retired gunbc.spark.vllm_kv_layout_observe (deleted #13779) admit_kv_layout consumes ResolvedKvLayout. SUFFICIENT FOR: this module is not a dangling type museum; live capacity folds go through the receipt bound to a launch. THE ALLOCATION-PLAN RUNG: ResolvedKvAllocationPlan and its capture mint close the emission gap extdeps.vllm.kv_group_metadata documents -- the patched engine's emission that vouches for layer identities, page bytes, tokens per state, per-group usage and blocks at the requested length, with allocation_plan_reproduces_reported_capacity as the independent control. THE EMISSION PATCH IS A FOLLOW-UP: until a capture of the patched engine exists, every capture through the mint lands on the missing-field or revision wall, and the arm's cache fold keeps refusing for want of the roster." as NonEmptyStr)

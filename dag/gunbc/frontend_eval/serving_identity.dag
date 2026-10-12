@@ -26,7 +26,7 @@ type ObservedServing {
 
 // WHAT A SESSION CANNOT OBSERVE AT THE ENDPOINT: the runtime image digest, the effective launch
 // configuration and the process generation are fleet-side facts. They are named by declaration
-// when known (the desired arm the fleet converged, e.g. gunbc.spark.glm_canary_converge
+// when known (the desired arm the fleet converged, e.g. retired gunbc.spark.glm_canary_converge (deleted #13779)
 // glm_canary_arm) and otherwise declared unobserved -- never inferred from the endpoint answering.
 type RuntimeProvenance
   = RuntimeDeclaredBy { desired: DeclarationRef }

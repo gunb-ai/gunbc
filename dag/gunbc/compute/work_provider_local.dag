@@ -1,5 +1,7 @@
 module gunbc.compute.work_provider_local
 
+import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
@@ -255,7 +257,7 @@ fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> S
 }
 
 fn compute_ensure_dir(instance: HostDashboardInstance, path: String) -> Bool {
-  match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: instance.repo_root as String, args: ["-d", "-m", "0755", path]) {
+  match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: instance.repo_root as String, args: coreutils_install_directories_arguments(mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse), paths: [path])) {
     ComputeExecOk { stdout: _, stderr: _ } => true
     ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
   }

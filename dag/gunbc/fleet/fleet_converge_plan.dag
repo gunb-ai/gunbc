@@ -118,7 +118,7 @@ import gunbc.fabric_allocation_store_substrate {
   AllocationStoreDirectoryPresentUnexpected,
   allocation_store_substrate_prestate_wire,
 }
-import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command, executor_privileged_operation_converge_command }
+import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command, executor_privileged_operation_converge_command, executor_privileged_operation_argv, EnsureOwnedDirectory, ExecutorPrivilegedOperation, executor_managed_directory_mode }
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationDecision,
   FabricCellObservationOutcome,
@@ -149,7 +149,7 @@ import gunbc.membership_reconcile {
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fleet_posix_accounts {
-  ci_runner_sudo_binary_path, SudoInstall, SudoSystemctl,
+  ci_runner_sudo_binary_path, SudoSystemctl,
 }
 import gunbc.fleet_converge_timer {
   fleet_converge_service_unit_name,
@@ -232,6 +232,7 @@ import gunbc.runner_service_activation {
   runner_activation_reachability_report,
   runner_activation_safety_report,
 }
+import extdeps.access.posix { file_mode_octal }
 
 type TimerRetirementMemberAt = NonEmptyStr
 
@@ -2252,6 +2253,19 @@ fn fleet_converge_lease_owner() -> NonEmptyStr {
   fleet_generation_writer()
 }
 
+// THE LEASE GUARD'S DIRECTORY IS THE GRANTED OPERATION, not its words re-typed: sudoers matches the
+// whole command, and gunbc.runner_host_grants renders the grant from this same operation, so the
+// words the guard runs and the words the grant admits cannot drift (they did: this argv spelled the
+// mode `755` beside an authority that now spells it with its set-id digit).
+fn fleet_converge_generation_store_ensure() -> ExecutorPrivilegedOperation {
+  EnsureOwnedDirectory {
+    path: fleet_converge_generation_store_dir as NonEmptyStr,
+    owner: fleet_converge_lease_owner(),
+    group: fleet_converge_lease_owner(),
+    mode: executor_managed_directory_mode,
+  }
+}
+
 data fleet_converge_generation_lock_path: String = fleet_generation_lock
 
 data fleet_converge_locked_apply_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_locked_apply_script — flock-guarded generation compare, apply.sh, and store commit in one shell transport; DISSOLVES WHEN bash-emit or host_effect_apply provides typed lease acquisition without medium-as-string concat")
@@ -2474,19 +2488,11 @@ fn fleet_converge_locked_apply_script(
       bash_build_word_lit(text: "-euo"),
       bash_build_word_lit(text: "pipefail"),
     ]),
-    bash_build_command_with_words(words: [
-      bash_build_word_lit(text: "sudo"),
-      bash_build_word_lit(text: "-n"),
-      bash_build_word_lit(text: ci_runner_sudo_binary_path(b: SudoInstall) as String),
-      bash_build_word_lit(text: "-d"),
-      bash_build_word_lit(text: "-m"),
-      bash_build_word_lit(text: "755"),
-      bash_build_word_lit(text: "-o"),
-      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
-      bash_build_word_lit(text: "-g"),
-      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
-      bash_build_word_lit(text: fleet_converge_generation_store_dir),
-    ]),
+    bash_build_command_with_words(words: concat(
+      [bash_build_word_lit(text: "sudo"), bash_build_word_lit(text: "-n")],
+      executor_privileged_operation_argv(op: fleet_converge_generation_store_ensure())
+        |> map(w => bash_build_word_lit(text: w as String)),
+    )),
     bash_build_command_with_words(words: concat(fleet_converge_locked_apply_flock_words(invoker: invoker), [
       bash_build_word_lit(text: "flock"),
       bash_build_word_lit(text: "-x"),
@@ -2882,10 +2888,10 @@ fn fleet_converge_allocation_store_plan_artifact(
           "# allocation-store",
           allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
           concat("ensure-directory:path=", spec.namespace_path as String),
-          concat("ensure-directory:mode=", spec.namespace_mode as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.namespace_mode)),
           "ensure-directory:owner=CellSubstrateRootOwned",
           concat("ensure-directory:path=", spec.path as String),
-          concat("ensure-directory:mode=", spec.mode as String),
+          concat("ensure-directory:mode=", file_mode_octal(mode: spec.mode)),
           "ensure-directory:owner=CellSubstrateRootOwned",
           "# allocation-store-refusals=0",
           "apply-admission:ready",
