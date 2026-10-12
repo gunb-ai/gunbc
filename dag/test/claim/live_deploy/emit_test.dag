@@ -108,6 +108,7 @@ import gunbc.live_deploy.operations {
   install_file_owned_command,
   deploy_stage_dir_var,
   deploy_cap_stage_dir_var,
+  deploy_apply_stage_dirs_exit_trap_command,
 }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command,
@@ -1767,6 +1768,15 @@ test fn apply_frame_merges_stderr_onto_stdout() -> Bool {
     s: pipeline_steps_text(steps: deploy_apply_frame_decide_steps(spec: deployment_spec_srv1())),
     pattern: "exec 2>&1",
   )
+}
+
+test fn apply_stage_dirs_exit_trap_is_the_grammar_serialized_line() -> Bool {
+  deploy_apply_stage_dirs_exit_trap_command()
+    == "'trap' ''\\''rm'\\'' '\\''-rf'\\'' \"$_gunbc_stage\" \"$_gunbc_cap_stage\"' 'EXIT'"
+    && string_contains(
+      s: pipeline_steps_text(steps: deploy_apply_frame_decide_steps(spec: deployment_spec_srv1())),
+      pattern: deploy_apply_stage_dirs_exit_trap_command(),
+    )
 }
 
 // MEASURED HOLE (bright-moth-475 srv1:~/bm475-prod-apply-c22acb7-2026-10-12.log): no
