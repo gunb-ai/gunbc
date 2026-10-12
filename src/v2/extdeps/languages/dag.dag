@@ -1813,8 +1813,10 @@ fn dag_grammar_field_init_list_helper() -> GrammarExpr {
 // block, and reading it as an anonymous record `{ x: x }` would be a silent misread.
 // The tagged list has the same ambiguity at a lowercase head: in `if flag { x } else { y }` the condition
 // `flag` is followed by a block, not by the record `flag { x }`. v1 separates them by an uppercase head,
-// which v2's grammar cannot read; a record is never directly followed by `else` except as the
-// then-branch of `if c then R { .. } else d`, so the closing brace is not followed by `else`.
+// which v2's grammar cannot read. The cut is the exact ambiguous shape: `{ name }` directly before `else`
+// (dag_grammar_block_of_one_name_before_else_expr) is a block, never a record. Every other record keeps
+// its place, including `if c then R { s: e } else d` and `R { s, t }`; the one declared limit is a
+// single-pun record as a then-branch, `if c then R { s } else d`, which refuses (spell `s: s`).
 fn dag_grammar_record_field_init_list_helper() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(
@@ -1920,17 +1922,30 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
   )
 }
 
+fn dag_grammar_block_of_one_name_before_else_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+    right: dag_grammar_sequence(
+      left: dag_grammar_binding_name_terminal(),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_rbrace),
+        right: dag_grammar_terminal(token_class: ^dag_token_kw_else)
+      )
+    )
+  )
+}
+
 fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_choice(
       left: dag_grammar_postfix_call_suffix_expr(),
       right: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+        left: grammar_expr_not_predicate(element: dag_grammar_block_of_one_name_before_else_expr()),
         right: dag_grammar_sequence(
-          left: dag_grammar_record_field_init_list_helper(),
+          left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
           right: dag_grammar_sequence(
-            left: dag_grammar_terminal(token_class: ^dag_token_rbrace),
-            right: grammar_expr_not_predicate(element: dag_grammar_terminal(token_class: ^dag_token_kw_else))
+            left: dag_grammar_record_field_init_list_helper(),
+            right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
           )
         )
       )

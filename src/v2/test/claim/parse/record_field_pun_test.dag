@@ -80,6 +80,18 @@ test fn a_pun_is_not_a_dropped_field_holds() -> Bool {
   same_tree(a: normalized_hash(tag: "df", text: dropped_field_source()), b: normalized_hash(tag: "tp2", text: top_pun_source())) == false
 }
 
+fn then_form_source(record: String) -> String {
+  "module probe.pun\n\ntype X {\n  s: Int\n  t: Int\n}\n\nfn f(c: Bool, s: Int, t: Int, d: X) -> X {\n  if c then " + record + " else d\n}\n"
+}
+
+test fn a_then_branch_record_before_else_is_still_a_record_holds() -> Bool {
+  parsed_ok(tag: "te", text: then_form_source(record: "X { s: s, t: t }"))
+}
+
+test fn a_then_branch_pun_record_of_two_fields_is_a_record_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "tp3", text: then_form_source(record: "X { s, t }")), b: normalized_hash(tag: "tl5", text: then_form_source(record: "X { s: s, t: t }")))
+}
+
 test fn a_block_headed_by_a_value_name_is_still_a_block_holds() -> Bool {
   parsed_ok(tag: "ifb", text: if_block_source())
 }
