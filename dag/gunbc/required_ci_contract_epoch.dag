@@ -4,8 +4,7 @@ import std.types { NonEmptyStr, String, List, Int }
 import std.contract_identity { ContractEpoch }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.optional { Absent, Present }
-import v2.std.algebra { list_map, fold_list, list_head, skip, HeadFound, HeadAbsent, length }
-import std.algebra { list_append }
+import std.algebra { list_append, list_map, fold_list, list_head, skip, HeadFound, HeadAbsent, length }
 import gunbc.emitted_subject_build_gate {
   EmittedSubjectBuildRow,
   EmittedSubjectExecutionContract,
@@ -20,6 +19,7 @@ import gunbc.emitted_subject_build_gate {
 }
 import gunbc.host.memory_envelope {
   MemoryEnvelopeContract,
+  MemoryEnvelopeRequirement,
   EnvelopeSlotRequired,
   EnvelopeNotRequested,
   EnvelopeRequirementUnreadable,
@@ -96,6 +96,7 @@ type RequiredCiCanonicalization
 type RequiredCiContractEpochDerivation
   = RequiredCiEpochDerived { epoch: ContractEpoch }
   | RequiredCiObligationIdentityDuplicated { identity: NonEmptyStr }
+  | RequiredCiMemoryRequirementUnreadable { raw: String }
 
 fn required_ci_emitted_subject_obligations() -> List<RequiredCiEmittedSubjectObligation> {
   list_map(xs: emitted_subject_build_rows(), f: fn(row) {
@@ -199,7 +200,7 @@ fn required_ci_refusal_class_digest(c: RefusalClass) -> String {
 fn required_ci_parse_population_digest(classes: List<RefusalClass>) -> String {
   required_ci_encode_list(
     encoded_elems: list_map(
-      xs: sort_by(classes, fn(c) { concat(required_ci_encode_str(s: c.drop), required_ci_encode_str(s: c.cause)) }),
+      xs: sort_by(classes, fn(c) { required_ci_refusal_class_digest(c: c) }),
       f: fn(c) { required_ci_refusal_class_digest(c: c) }
     )
   )
@@ -213,18 +214,39 @@ fn required_ci_execution_digest(contract: EmittedSubjectExecutionContract) -> St
   ])
 }
 
+fn required_ci_requirement_digest(requirement: MemoryEnvelopeRequirement) -> String {
+  match requirement {
+    EnvelopeSlotRequired =>
+      required_ci_encode_record(fields: [
+        required_ci_encode_field(name: "tag", encoded_value: required_ci_encode_str(s: "slot_required")),
+      ])
+    EnvelopeNotRequested =>
+      required_ci_encode_record(fields: [
+        required_ci_encode_field(name: "tag", encoded_value: required_ci_encode_str(s: "not_requested")),
+      ])
+    EnvelopeRequirementUnreadable { raw: raw } =>
+      required_ci_encode_record(fields: [
+        required_ci_encode_field(name: "tag", encoded_value: required_ci_encode_str(s: "unreadable")),
+        required_ci_encode_field(name: "raw", encoded_value: required_ci_encode_str(s: raw)),
+      ])
+  }
+}
+
 fn required_ci_memory_digest(contract: MemoryEnvelopeContract, step_bound: MemoryStepBound) -> String {
   required_ci_encode_record(fields: [
-    required_ci_encode_field(name: "requirement", encoded_value: required_ci_encode_str(s: match contract.requirement {
-      EnvelopeSlotRequired => "slot_required"
-      EnvelopeNotRequested => "not_requested"
-      EnvelopeRequirementUnreadable { raw: raw } => raw
-    })),
+    required_ci_encode_field(name: "requirement", encoded_value: required_ci_requirement_digest(requirement: contract.requirement)),
     required_ci_encode_field(name: "memory_max", encoded_value: required_ci_encode_int(n: byte_size_count(b: contract.memory_max))),
     required_ci_encode_field(name: "memory_swap_max", encoded_value: required_ci_encode_int(n: byte_size_count(b: contract.memory_swap_max))),
     required_ci_encode_field(name: "step_trip", encoded_value: match step_bound {
-      MemoryStepTripUnbound => required_ci_encode_str(s: "unbound")
-      MemoryStepTripBound { bytes: bytes } => required_ci_encode_int(n: byte_size_count(b: bytes))
+      MemoryStepTripUnbound =>
+        required_ci_encode_record(fields: [
+          required_ci_encode_field(name: "tag", encoded_value: required_ci_encode_str(s: "unbound")),
+        ])
+      MemoryStepTripBound { bytes: bytes } =>
+        required_ci_encode_record(fields: [
+          required_ci_encode_field(name: "tag", encoded_value: required_ci_encode_str(s: "bound")),
+          required_ci_encode_field(name: "bytes", encoded_value: required_ci_encode_int(n: byte_size_count(b: bytes))),
+        ])
     }),
   ])
 }
@@ -290,14 +312,47 @@ fn required_ci_obligation_digest_text(rows: List<RequiredCiObligation>) -> Strin
   fold_list(xs: rows, empty: "", cons: fn(acc, row) { concat(acc, required_ci_obligation_line(row: row)) })
 }
 
-fn required_ci_contract_epoch_of(rows: List<RequiredCiObligation>) -> RequiredCiContractEpochDerivation {
-  match required_ci_canonicalize(rows: rows) {
-    RequiredCiCanonical { rows: sorted } =>
-      RequiredCiEpochDerived {
-        epoch: serialize_content_hash(hash: content_hash_of_value(value: required_ci_obligation_digest_text(rows: sorted) as NonEmptyStr)) as ContractEpoch
+fn required_ci_requirement_unreadable_raw(requirement: MemoryEnvelopeRequirement) -> String? {
+  match requirement {
+    EnvelopeRequirementUnreadable { raw: raw } => Present { value: raw }
+    EnvelopeSlotRequired => Absent
+    EnvelopeNotRequested => Absent
+  }
+}
+
+fn required_ci_unreadable_requirement(rows: List<RequiredCiObligation>) -> String? {
+  fold_list(
+    xs: rows,
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: raw } => Present { value: raw }
+        Absent =>
+          match row {
+            MemoryEnvelopeObligation { contract: contract, step_bound: _ } =>
+              required_ci_requirement_unreadable_raw(requirement: contract.requirement)
+            RequiredContextObligation { name: _ } => Absent
+            EmittedSubjectObligation { subject: _ } => Absent
+            SourceLayoutObligation { default_tree: _, governed_roots: _, namespace_roots: _ } => Absent
+            PopulationParseObligation { classes: _ } => Absent
+          }
       }
-    RequiredCiDuplicateIdentity { identity: identity } =>
-      RequiredCiObligationIdentityDuplicated { identity: identity }
+    }
+  )
+}
+
+fn required_ci_contract_epoch_of(rows: List<RequiredCiObligation>) -> RequiredCiContractEpochDerivation {
+  match required_ci_unreadable_requirement(rows: rows) {
+    Present { value: raw } => RequiredCiMemoryRequirementUnreadable { raw: raw }
+    Absent =>
+      match required_ci_canonicalize(rows: rows) {
+        RequiredCiCanonical { rows: sorted } =>
+          RequiredCiEpochDerived {
+            epoch: serialize_content_hash(hash: content_hash_of_value(value: required_ci_obligation_digest_text(rows: sorted) as NonEmptyStr)) as ContractEpoch
+          }
+        RequiredCiDuplicateIdentity { identity: identity } =>
+          RequiredCiObligationIdentityDuplicated { identity: identity }
+      }
   }
 }
 
@@ -309,6 +364,7 @@ fn required_ci_contract_epoch_is_derived() -> Bool {
   match required_ci_contract_epoch_derivation {
     RequiredCiEpochDerived { epoch: _ } => true
     RequiredCiObligationIdentityDuplicated { identity: _ } => false
+    RequiredCiMemoryRequirementUnreadable { raw: _ } => false
   }
 }
 
@@ -317,6 +373,8 @@ fn required_ci_contract_epoch_yaml_value() -> String {
     RequiredCiEpochDerived { epoch: epoch } => epoch as String
     RequiredCiObligationIdentityDuplicated { identity: identity } =>
       concat("REFUSED-duplicate-identity:", identity as String)
+    RequiredCiMemoryRequirementUnreadable { raw: raw } =>
+      concat("REFUSED-unreadable-memory-requirement:", raw)
   }
 }
 

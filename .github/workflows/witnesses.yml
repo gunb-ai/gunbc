@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   CARGO_TERM_COLOR: always
-  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 4ab71da36610e240
+  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 6eef1638a85753a8
 jobs:
   v2-bootstrap:
     runs-on: [self-hosted, linux, arm64]

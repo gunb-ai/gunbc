@@ -3,8 +3,7 @@ module test.claim.contract_identity.required_ci_contract_epoch_derived
 import std.types { Bool, String, List }
 import std.optional { Present, Absent }
 import std.measure { byte_size }
-import std.algebra { Cons }
-import v2.std.algebra { list_reverse, list_map, length }
+import std.algebra { Cons, list_reverse, list_map, length }
 import gunbc.instrument_targets { v2_native_frontier_label }
 import gunbc.emitted_subject_build_gate {
   EmittedSubjectBuildRow,
@@ -12,7 +11,7 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_execution_contract,
   MemoryStepTripBound,
 }
-import gunbc.host.memory_envelope { MemoryEnvelopeContract }
+import gunbc.host.memory_envelope { MemoryEnvelopeContract, EnvelopeRequirementUnreadable }
 import gunbc.parse_population_refusals { RefusalClass }
 import gunbc.source_layout { LayoutTreeV2 }
 import gunbc.required_ci_contract_epoch {
@@ -33,6 +32,7 @@ import gunbc.required_ci_contract_epoch {
   RequiredCiObligation,
   RequiredCiEpochDerived,
   RequiredCiObligationIdentityDuplicated,
+  RequiredCiMemoryRequirementUnreadable,
 }
 
 fn production_epoch_text() -> String {
@@ -43,6 +43,7 @@ fn derived_epoch_text(rows: List<RequiredCiObligation>) -> String? {
   match required_ci_contract_epoch_of(rows: rows) {
     RequiredCiEpochDerived { epoch: epoch } => Present { value: epoch as String }
     RequiredCiObligationIdentityDuplicated { identity: _ } => Absent
+    RequiredCiMemoryRequirementUnreadable { raw: _ } => Absent
   }
 }
 
@@ -55,6 +56,7 @@ test fn production_rows_derive_an_epoch() -> Bool {
     && match required_ci_contract_epoch_derivation {
       RequiredCiEpochDerived { epoch: epoch } => (epoch as String) == production_epoch_text()
       RequiredCiObligationIdentityDuplicated { identity: _ } => false
+      RequiredCiMemoryRequirementUnreadable { raw: _ } => false
     }
 }
 
@@ -142,6 +144,7 @@ test fn a_duplicated_identity_refuses() -> Bool {
         RequiredCiObligationIdentityDuplicated { identity: _ } =>
           required_ci_contract_epoch_is_derived()
         RequiredCiEpochDerived { epoch: _ } => false
+        RequiredCiMemoryRequirementUnreadable { raw: _ } => false
       }
     _ => false
   }
@@ -284,6 +287,59 @@ test fn changing_memory_step_bound_moves_the_epoch() -> Bool {
   })
   match derived_epoch_text(rows: changed) {
     Present { value: epoch } => epoch != production_epoch_text()
+    Absent => false
+  }
+}
+
+test fn unreadable_memory_requirement_does_not_derive_an_epoch() -> Bool {
+  let changed = list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+        MemoryEnvelopeObligation {
+          contract: MemoryEnvelopeContract {
+            requirement: EnvelopeRequirementUnreadable { raw: "slot_required" },
+            memory_max: contract.memory_max,
+            memory_swap_max: contract.memory_swap_max,
+          },
+          step_bound: step_bound,
+        }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots }
+      PopulationParseObligation { classes: classes } => PopulationParseObligation { classes: classes }
+    }
+  })
+  match required_ci_contract_epoch_of(rows: changed) {
+    RequiredCiMemoryRequirementUnreadable { raw: raw } => raw == "slot_required"
+    RequiredCiEpochDerived { epoch: _ } => false
+    RequiredCiObligationIdentityDuplicated { identity: _ } => false
+  }
+}
+
+fn parse_rows_with_classes(classes: List<RefusalClass>) -> List<RequiredCiObligation> {
+  list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      PopulationParseObligation { classes: _ } => PopulationParseObligation { classes: classes }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      MemoryEnvelopeObligation { contract: contract, step_bound: step_bound } =>
+        MemoryEnvelopeObligation { contract: contract, step_bound: step_bound }
+      SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { default_tree: default_tree, governed_roots: governed_roots, namespace_roots: namespace_roots }
+    }
+  })
+}
+
+test fn tied_refusal_class_permutation_leaves_the_epoch_equal() -> Bool {
+  let a = RefusalClass { drop: "d", cause: "c", keys: ["k1"] }
+  let b = RefusalClass { drop: "d", cause: "c", keys: ["k2"] }
+  match derived_epoch_text(rows: parse_rows_with_classes(classes: [a, b])) {
+    Present { value: forward } =>
+      match derived_epoch_text(rows: parse_rows_with_classes(classes: [b, a])) {
+        Present { value: reverse } => forward == reverse
+        Absent => false
+      }
     Absent => false
   }
 }
