@@ -110,65 +110,40 @@ type DemandCensusStripped {
 }
 
 fn demand_census_strip(tree: Node, owner: QualifiedName) -> DemandCensusStripped {
-  let collected = demand_census_collect(node: tree, owner: owner)
-  if is_empty(xs: collected.authored) {
-    DemandCensusStripped { tree: tree, authored: collected.authored }
+  let authored = demand_census_authored_in(acc: Empty, node: tree, owner: owner)
+  if is_empty(xs: authored) {
+    DemandCensusStripped { tree: tree, authored: authored }
   } else {
-    DemandCensusStripped { tree: demand_census_elide_uses(node: collected.tree), authored: collected.authored }
+    DemandCensusStripped { tree: demand_census_elide_uses(node: tree), authored: authored }
   }
 }
 
-type DemandCensusCollected {
-  tree: Node
-  authored: List<AuthoredUsesFunction>
-}
-
-fn demand_census_collect(node: Node, owner: QualifiedName) -> DemandCensusCollected {
+// A fn declaration is not descended into: the clause belongs to the declaration's own signature,
+// and a fn body holds no fn declaration.
+fn demand_census_authored_in(acc: List<AuthoredUsesFunction>, node: Node, owner: QualifiedName) -> List<AuthoredUsesFunction> {
   if dag_node_is_fn_decl(node: node) {
     match parse_production_captured_child_optional(node: node) {
-      Absent => DemandCensusCollected { tree: node, authored: Empty }
+      Absent => acc
       Present { value: captured } =>
         match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
-          Absent => DemandCensusCollected { tree: node, authored: Empty }
-          Present { value: clause } => demand_census_collect_uses_fn(node: node, owner: owner, clause: clause)
+          Absent => acc
+          Present { value: clause } =>
+            list_snoc_item(xs: acc, item: AuthoredUsesFunction {
+              owner: owner,
+              name: dag_surface_kw_then_ident_from_captured(captured: captured),
+              types: demand_census_entry_types(clause: clause),
+              alias_bind: demand_census_alias_uniqueness(aliases: demand_census_entry_aliases(clause: clause))
+            })
         }
     }
   } else {
-    fold(node.children, init: DemandCensusCollected { tree: node_rebuild(n: node, children: Empty), authored: Empty }, f: fn(acc, e) {
-      let child = demand_census_collect(node: e.target, owner: owner)
-      DemandCensusCollected {
-        tree: node_rebuild(n: acc.tree, children: list_snoc_item(xs: acc.tree.children, item: Edge { label: e.label, target: child.tree })),
-        authored: fold_list(xs: child.authored, empty: acc.authored, cons: fn(a, f) { list_snoc_item(xs: a, item: f) })
-      }
-    })
+    fold(node.children, init: acc, f: fn(a, e) { demand_census_authored_in(acc: a, node: e.target, owner: owner) })
   }
 }
 
-fn demand_census_collect_uses_fn(node: Node, owner: QualifiedName, clause: Node) -> DemandCensusCollected {
-  let entries = demand_census_entries(clause: clause)
-  let authored = AuthoredUsesFunction {
-    owner: owner,
-    name: match parse_production_captured_child_optional(node: node) {
-      Absent => optional_absent()
-      Present { value: captured } => dag_surface_kw_then_ident_from_captured(captured: captured)
-    },
-    types: demand_census_entry_types(clause: clause),
-    alias_bind: demand_census_alias_uniqueness(entries: entries)
-  }
-  DemandCensusCollected { tree: node, authored: Cons { head: authored, tail: Empty } }
-}
-
-type AuthoredUsesEntry {
-  alias: Optional<Symbol>
-  type_expr: Optional<Node>
-}
-
-fn demand_census_entries(clause: Node) -> List<AuthoredUsesEntry> {
+fn demand_census_entry_aliases(clause: Node) -> List<Optional<Symbol>> {
   fold_list(xs: demand_census_entry_shells(acc: Empty, node: clause), empty: Empty, cons: fn(acc, entry) {
-    list_snoc_item(xs: acc, item: AuthoredUsesEntry {
-      alias: demand_census_entry_alias(entry: entry),
-      type_expr: demand_census_entry_type(entry: entry)
-    })
+    list_snoc_item(xs: acc, item: demand_census_entry_alias(entry: entry))
   })
 }
 
@@ -188,18 +163,18 @@ type AliasUniqScan
   | AliasScanConflict
   | AliasScanUnestablished
 
-fn demand_census_alias_uniqueness(entries: List<AuthoredUsesEntry>) -> UsesAliasBind {
-  match fold_list(xs: entries, empty: AliasScanUnique { seen: empty_map() }, cons: fn(acc, e) {
+fn demand_census_alias_uniqueness(aliases: List<Optional<Symbol>>) -> UsesAliasBind {
+  match fold_list(xs: aliases, empty: AliasScanUnique { seen: empty_map() }, cons: fn(acc, a) {
     match acc {
       AliasScanConflict => acc
       AliasScanUnestablished => acc
       AliasScanUnique { seen: seen } =>
-        match e.alias {
+        match a {
           Absent => AliasScanUnestablished
-          Present { value: a } =>
-            match map_lookup(m: seen, key: a) {
+          Present { value: n } =>
+            match map_lookup(m: seen, key: n) {
               Present { value: _ } => AliasScanConflict
-              Absent => AliasScanUnique { seen: map_insert(m: seen, key: a, value: true) }
+              Absent => AliasScanUnique { seen: map_insert(m: seen, key: n, value: true) }
             }
         }
     }
