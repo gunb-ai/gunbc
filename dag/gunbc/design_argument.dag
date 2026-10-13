@@ -6,8 +6,9 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.syllogism { Argument, Axiom, NonLogicalAxiom, Proposition }
 
 // A NONEMPTY COLLECTION OF DECLARATION REFERENCES IS FreeSemigroup. A domain with no home has
-// nothing to conform to; the empty inhabitant is unwritable (DESIGN section 3b cardinality /
-// absence).
+// nothing to conform to. Missing-head construction of that carrier is unwritable (MissingField /
+// head). A [] / Empty literal at a FreeSemigroup position is still the inhabitance seam owned by
+// cardinality-vertical-slice, not this first-slice construction wall.
 
 // EACH PROPOSITION CARRIES ITS OWN REVIEW READING, OR NONE. A DesignRow is one proposition of the
 // serial argument plus, where the proposition is checkable on a single change, the question a
