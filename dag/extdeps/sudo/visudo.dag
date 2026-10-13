@@ -1,0 +1,121 @@
+// THE VISUDO (SUDOERS-VALIDATE) OPERATION, UPSTREAM OF ITS CONSUMERS. Three sites validate sudoers
+// files through the same two commands -- the deploy preamble's pre-install syntax check of a staged
+// drop-in, its post-install policy check of the installed drop-in, and the microVM-controller
+// install's staged check -- and each had been spelling the argv as shell text. This module is the
+// single owner of the two typed commands so a future change to how the validate command renders
+// reaches every consumer at once, and so the argv a consumer runs is the argv the witness below
+// asserts, byte for byte.
+//
+// BOTH COMMANDS ARE ELEVATED: validating a file under /etc/sudoers.d requires root to read it, and
+// the elevation is recorded in the argv itself -- /usr/bin/sudo, its -n (non-interactive) flag, and
+// the visudo binary by absolute path. That is the same elevation shape extdeps.systemd.systemctl
+// records for daemon-reload: the sudo prefix is the argument to argv_command, and the command the
+// sudo runs is the tail. visudo is an ARGUMENT to sudo, not a program this repository execs, so it
+// carries no ProgramIdentity row here and no entry in the program roster -- the only thing that
+// execs is /usr/bin/sudo, already admitted.
+//
+// THE CHECK FLAG IS THE WHOLE POINT. visudo(8) -c is a check-only pass: it parses the file, prints
+// any error with a line number, and exits non-zero on the first parse failure. It does not edit,
+// does not require a tty, and does not lock. A consumer that needs the file to be syntactically
+// valid runs this command and reads the exit code: zero is valid, anything else is a parse failure
+// that must refuse the surrounding operation. The command never needs the output to decide, only
+// the exit code, which is why the op is an ArgvCommand and not a shell-text builder: the typed
+// transport reports the exit code, and a shell-text builder would force every consumer to re-parse
+// a rendered command line to recover the words it just rendered.
+//
+// THE POLICY CHECK ENFORCES OWNER AND MODE, NOT ONLY SYNTAX. visudo(8): -O enforces the default
+// owner and group of the file being checked, and -P its default mode, alongside -c. Without them a
+// file sudo will IGNORE for its ownership (root:ghrunner, say) still passes -c, because the parse
+// succeeds -- sudo refuses to read the file at run time, which is a different failure this check
+// must surface in advance. The policy command is therefore -c -O -P -f <file>, every flag a
+// separate word, and it is the check a consumer runs after installing a drop-in, not before,
+// because only the installed location has the ownership the check is about.
+//
+// THE BINARY PATH IS /usr/sbin/visudo, the same value gunbc.fleet.fleet_posix_accounts records in
+// its NOPASSWD grant roster as fleet_visudo_binary_path. extdeps cannot import gunbc.fleet, so the
+// row is spelled here and the witness below asserts the two agree in value, which is the strongest
+// coupling the dependency direction allows: if the fleet roster moves the binary, the witness
+// breaks, and the two spellings cannot silently disagree.
+
+module extdeps.sudo.visudo
+
+import std.types { NonEmptyStr, String }
+import extdeps.version { VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
+
+// visudo(8), the sudoers-file editor and validator. The man page is the authority for the flag
+// vocabulary this module records; the live page (1.8 series, through 1.8.27) documents -c, -f, -O
+// and -P, which is every flag the two commands below use. The anchor is the same URL shape the
+// rest of extdeps uses for a single man page: the page itself, not a section of a book.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sudo.ws/docs/man/visudo.man/"
+  }
+}
+
+data visudo_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+// THE MINIMUM VERSION IS A DOCUMENTARY FLOOR, NOT A RUNTIME PROBE. No consumer in this repository
+// runs `visudo --version` and branches on the result; the row exists so the flag vocabulary this
+// module records is tied to a version of the tool the cited page documents, the way
+// min_coreutils_version ties the coreutils flags to a coreutils release. The floor is 1.8.4, the
+// release the live visudo(8) page names as the one that added the check pass this module's -c
+// spelling relies on ("visudo versions 1.8.4 and higher" support the flexible check/debug pass the
+// page documents); the page's SYNOPSIS is visudo [-chIOPqsV] [[-f] sudoers], so every flag the two
+// commands below use is in that option set. A host running a sudo older than the 1.8 series could
+// in principle lack the check-pass behavior; none of the three consumers run on such a host, and
+// the refusal that surfaces on one is the non-zero exit from visudo itself, not a missing-flag
+// error this module would need to model.
+data min_visudo_version: VersionConstraint = ">= 1.8.4"
+
+// THE BINARY PATH, /usr/sbin/visudo, where the sudo package ships visudo on every distribution
+// this repository deploys to. It is the value gunbc.fleet.fleet_posix_accounts records as
+// fleet_visudo_binary_path in its NOPASSWD grant roster; extdeps cannot import gunbc.fleet, so the
+// value is spelled here and the witness below asserts the two agree, the strongest coupling the
+// dependency direction allows. Spelled as one literal rather than a directory-and-name join: the
+// path is the fact, not two facts joined, and the fleet roster spells it the same way.
+data visudo_binary_path: NonEmptyStr = "/usr/sbin/visudo"
+data visudo_binary_name: NonEmptyStr = "visudo"
+
+// THE SYNTAX CHECK: `sudo -n /usr/sbin/visudo -c -f <file>`. -c is check-only, -f names the file
+// to check instead of the default /etc/sudoers. The flag is the single word `-cf`, the combined
+// form visudo(8) documents, not two words: the deploy preamble's shell-text builder spelled it
+// `-cf` and this op must render the same argv the shell rendered, byte for byte, so a consumer
+// that swaps the shell builder for this op runs the identical command.
+fn visudo_check_command(file: String) -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: [
+      sudo_non_interactive_flag as String,
+      visudo_binary_path as String,
+      "-cf",
+      file,
+    ],
+  )
+}
+
+// THE POLICY CHECK: `sudo -n /usr/sbin/visudo -c -O -P -f <file>`. -c parses, -O enforces the
+// default owner and group, -P enforces the default mode, -f names the file. Every flag is a
+// separate word here, the form the deploy preamble's installed-location builder spelled, and the
+// reason -O and -P are separate rather than folded is that they are independent enforcement rules
+// a consumer might one day want to run one without the other; the combined form is not in
+// visudo(8) for these two. The check runs against the installed file, where ownership is the fact
+// under test, not the staged file, where it is not set yet.
+fn visudo_policy_check_command(file: String) -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: [
+      sudo_non_interactive_flag as String,
+      visudo_binary_path as String,
+      "-c",
+      "-O",
+      "-P",
+      "-f",
+      file,
+    ],
+  )
+}
