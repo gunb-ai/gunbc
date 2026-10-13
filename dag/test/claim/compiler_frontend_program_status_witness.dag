@@ -770,7 +770,7 @@ test fn xl2_prerequisites_partition_is_an_identity_join() -> Bool {
 // roster is delivered -- the producer is its own deliverable. No delivered-count conjunct:
 // outstanding is the complement of delivered, so delivered+outstanding==roster is always true.
 test fn xl2_stays_not_derivable_with_its_prerequisites_mostly_delivered() -> Bool {
-    && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
+  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
     && match rehearsal_producer_standing() {
          RehearsalProducerUnavailable { why: _, cause: _ } => true
          RehearsalProducerAvailable => false
