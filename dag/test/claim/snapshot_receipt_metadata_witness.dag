@@ -13,12 +13,15 @@ import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.dispatch_credential_snapshot {
   snapshot_receipt_metadata_decision,
+  snapshot_receipt_directory_decision,
   snapshot_receipt_version_join,
   SnapshotReceiptObservedMetadata,
   SnapshotReceiptObservedRegular,
   SnapshotReceiptObservedNotRegular,
   SnapshotReceiptMetadataAsDeclared,
   SnapshotReceiptMetadataRefused,
+  SnapshotReceiptDirectoryAsDeclared,
+  SnapshotReceiptDirectoryDecisionRefused,
   SnapshotReceiptNotRegularFile,
   SnapshotReceiptWrongOwner,
   SnapshotReceiptGroupOrOtherWritable,
@@ -47,22 +50,17 @@ fn fx_mode(octal: String) -> FileMode {
   }
 }
 
-fn fx_regular_obs(file_owner: String, file_octal: String, dir_owner: String, dir_octal: String) -> SnapshotReceiptObservedMetadata {
+fn fx_regular_obs(file_owner: String, file_octal: String) -> SnapshotReceiptObservedMetadata {
   SnapshotReceiptObservedRegular {
     file_owner: file_owner,
     file_mode: fx_mode(octal: file_octal),
-    dir_owner: dir_owner,
-    dir_mode: fx_mode(octal: dir_octal),
   }
 }
 
 test fn a_regular_receipt_as_declared_is_admitted() -> Bool {
   let d = cursor_worker_turn_snapshot_custody
   match snapshot_receipt_metadata_decision(
-    observed: fx_regular_obs(
-      file_owner: d.publisher as String, file_octal: "640",
-      dir_owner: d.publisher as String, dir_octal: "750",
-    ),
+    observed: fx_regular_obs(file_owner: d.publisher as String, file_octal: "640"),
     declared: d,
   ) {
     SnapshotReceiptMetadataAsDeclared => true
@@ -85,7 +83,7 @@ test fn a_symlink_observation_is_not_a_regular_file() -> Bool {
 test fn a_wrong_file_owner_or_group_writable_file_is_refused() -> Bool {
   let d = cursor_worker_turn_snapshot_custody
   let owner = match snapshot_receipt_metadata_decision(
-    observed: fx_regular_obs(file_owner: "operator", file_octal: "640", dir_owner: d.publisher as String, dir_octal: "750"),
+    observed: fx_regular_obs(file_owner: "operator", file_octal: "640"),
     declared: d,
   ) {
     SnapshotReceiptMetadataRefused { reason } =>
@@ -93,7 +91,7 @@ test fn a_wrong_file_owner_or_group_writable_file_is_refused() -> Bool {
     SnapshotReceiptMetadataAsDeclared => false
   }
   let writable = match snapshot_receipt_metadata_decision(
-    observed: fx_regular_obs(file_owner: d.publisher as String, file_octal: "660", dir_owner: d.publisher as String, dir_octal: "750"),
+    observed: fx_regular_obs(file_owner: d.publisher as String, file_octal: "660"),
     declared: d,
   ) {
     SnapshotReceiptMetadataRefused { reason } =>
@@ -105,29 +103,37 @@ test fn a_wrong_file_owner_or_group_writable_file_is_refused() -> Bool {
 
 test fn a_reader_owned_or_group_writable_directory_is_refused() -> Bool {
   let d = cursor_worker_turn_snapshot_custody
-  let owned = match snapshot_receipt_metadata_decision(
-    observed: fx_regular_obs(
-      file_owner: d.publisher as String, file_octal: "640",
-      dir_owner: d.reader as String, dir_octal: "755",
-    ),
+  let owned = match snapshot_receipt_directory_decision(
+    dir_owner: d.reader as String,
+    dir_mode: fx_mode(octal: "755"),
     declared: d,
   ) {
-    SnapshotReceiptMetadataRefused { reason } =>
+    SnapshotReceiptDirectoryDecisionRefused { reason } =>
       match reason { SnapshotReceiptDirectoryWrongOwner { observed: _, declared: _ } => true  _ => false }
-    SnapshotReceiptMetadataAsDeclared => false
+    SnapshotReceiptDirectoryAsDeclared => false
   }
-  let writable = match snapshot_receipt_metadata_decision(
-    observed: fx_regular_obs(
-      file_owner: d.publisher as String, file_octal: "640",
-      dir_owner: d.publisher as String, dir_octal: "770",
-    ),
+  let writable = match snapshot_receipt_directory_decision(
+    dir_owner: d.publisher as String,
+    dir_mode: fx_mode(octal: "770"),
     declared: d,
   ) {
-    SnapshotReceiptMetadataRefused { reason } =>
+    SnapshotReceiptDirectoryDecisionRefused { reason } =>
       match reason { SnapshotReceiptDirectoryGroupOrOtherWritable => true  _ => false }
-    SnapshotReceiptMetadataAsDeclared => false
+    SnapshotReceiptDirectoryAsDeclared => false
   }
   owned && writable
+}
+
+test fn a_publisher_owned_nonwritable_directory_is_admitted() -> Bool {
+  let d = cursor_worker_turn_snapshot_custody
+  match snapshot_receipt_directory_decision(
+    dir_owner: d.publisher as String,
+    dir_mode: fx_mode(octal: "750"),
+    declared: d,
+  ) {
+    SnapshotReceiptDirectoryAsDeclared => true
+    SnapshotReceiptDirectoryDecisionRefused { reason: _ } => false
+  }
 }
 
 fn fx_fleet_numeric_receipt_version() -> SmResolvedVersionIdentity {

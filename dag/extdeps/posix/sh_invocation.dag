@@ -218,6 +218,10 @@ fn posix_sh_receipt_object_body_program() -> Outcome<String> {
   ], set_e: false)
 }
 
+// THE WRAPPER IS A GRAMMAR ROW, NOT A DATA SPLICE. `bash_build_with_redir_from_file` emits
+// `exec < "$0"`: `$0` is an argv word, never concatenated into the program text. (A prior draft
+// prepended that line as a string because the grammar had no input redirect; that production
+// now exists, so this function does not concat.)
 fn posix_sh_receipt_object_program() -> Outcome<String> {
   bash_emit_stmts(statements: [
     bash_build_with_redir_from_file(
