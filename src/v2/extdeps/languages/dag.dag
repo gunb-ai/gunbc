@@ -1,6 +1,6 @@
 module v2.extdeps.languages.dag
 import std.coercion { unicode_scalar_unfold }
-import std.types { List }
+import std.types { Char, List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
 import v2.std.algebra_structure_signature { boolean_algebra_node, free_monoid_structure_node, ordered_ring_node }
@@ -230,7 +230,8 @@ import v2.std.integer { decimal_digits_to_magnitude, integer_decimal_magnitude_n
 import std.integer { int_to_decimal_string }
 import v2.std.text { String }
 import extdeps.numeric.base16 { base16_digit_rows }
-import std.unicode.types { unicode_scalar }
+import std.unicode.scalar { from_code_point }
+import std.error_primitives { Ok, Err }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
@@ -1806,6 +1807,31 @@ fn dag_grammar_field_init_list_helper() -> GrammarExpr {
   )
 }
 
+// A TAGGED RECORD'S FIELD LIST ADMITS THE PUN `R { s }` BESIDE `R { s: e }`, and only a tagged record's.
+// The pun is its own production (dag_grammar_field_init_pun_expr) beside field_init, disjoint from it by a
+// not-predicate on the named head, so the field's kind is a production identity the lowering dispatches
+// on. The headless list (dag_grammar_field_init_list_helper) keeps `name: e` only: `{ x }` there is a
+// block, and reading it as an anonymous record `{ x: x }` would be a silent misread.
+// The tagged list has the same ambiguity at a lowercase head: in `if flag { x } else { y }` the condition
+// `flag` is followed by a block, not by the record `flag { x }`. v1 separates them by an uppercase head,
+// which v2's grammar cannot read. The cut is the exact ambiguous shape: `{ name }` directly before `else`
+// (dag_grammar_block_of_one_name_before_else_expr) is a block, never a record. Every other record keeps
+// its place, including `if c then R { s: e } else d` and `R { s, t }`; the one declared limit is a
+// single-pun record as a then-branch, `if c then R { s } else d`, which refuses (spell `s: s`).
+fn dag_grammar_record_field_init_list_helper() -> GrammarExpr {
+  dag_grammar_optional(
+    element: dag_grammar_comma_list_expr(
+      item: dag_grammar_choice(
+        left: dag_grammar_nonterminal(production: ^dag_production_field_init),
+        right: dag_grammar_sequence(
+          left: grammar_expr_not_predicate(element: dag_grammar_arg_named_head_expr()),
+          right: dag_grammar_nonterminal(production: ^dag_production_field_init_pun)
+        )
+      )
+    )
+  )
+}
+
 fn dag_grammar_pattern_list_helper() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_comma_list_expr(
@@ -1897,15 +1923,34 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
   )
 }
 
+fn dag_grammar_block_of_one_name_before_else_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+    right: dag_grammar_sequence(
+      left: dag_grammar_binding_name_terminal(),
+      right: dag_grammar_sequence(
+        left: dag_grammar_repeat(element: dag_grammar_binding_name_terminal()),
+        right: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_rbrace),
+          right: dag_grammar_terminal(token_class: ^dag_token_kw_else)
+        )
+      )
+    )
+  )
+}
+
 fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
   dag_grammar_optional(
     element: dag_grammar_choice(
       left: dag_grammar_postfix_call_suffix_expr(),
       right: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+        left: grammar_expr_not_predicate(element: dag_grammar_block_of_one_name_before_else_expr()),
         right: dag_grammar_sequence(
-          left: dag_grammar_field_init_list_helper(),
-          right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+          left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+          right: dag_grammar_sequence(
+            left: dag_grammar_record_field_init_list_helper(),
+            right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+          )
         )
       )
     )
@@ -2095,6 +2140,15 @@ fn dag_grammar_field_init_expr() -> GrammarExpr {
     ),
     right: dag_grammar_nonterminal(production: ^dag_production_field_init_string_key)
   )
+}
+
+// THE PUN `s` IS THE FIELD `s: s`. Its name is the field's label and the reference that supplies the
+// value, so the list helper admits the pun only where no named head reads (a not-predicate over `name :` heading
+// the pun alternative AT THE CHOICE SITE, where the overlap proof reads it, as for the positional argument) and where the name is a referenceable value name
+// (`R { true }` and `R { true s }` would name a value no reference can name, so the pun never reads them (the list is not a record; downstream refuses the leftover), like every
+// keyword, whatever follows it; dag_grammar_value_name_unconditional, the same production a reference reads).
+fn dag_grammar_field_init_pun_expr() -> GrammarExpr {
+  dag_grammar_value_name_unconditional()
 }
 
 // THE STRING KEY IS THE CLASS-STAMPED STRING TERMINAL -- the one string terminal, whose node carries
@@ -3273,9 +3327,12 @@ fn dag_grammar_top_level_item_expr() -> GrammarExpr {
   )
 }
 
-// WHERE THE ITEMS END, AN IDENTIFIER FOLLOWED BY `fn` OR `data` IS A MARKER THAT IS NOT `test`, and
-// it refuses by name at the marker instead of leaving the rest of the module to the generic leftover
-// refusal. The guard follows the repeat, so it is not a choice alternative and adds no overlap; it is
+// WHERE THE ITEMS END, AN IDENTIFIER OTHER THAN `test` FOLLOWED BY `fn` OR `data` IS A MARKER THAT IS NOT
+// `test`. The word `test` is excluded by a not-predicate because it IS the marker: a marked declaration
+// whose own body fails to parse ends the items just before its `test`, and without the exclusion the guard
+// read that valid marker as a wrong one and reported the defect at the wrong place. Such a module now
+// takes the generic leftover refusal, located at the furthest failure. Any other word refuses by name at the marker instead of leaving the rest
+// of the module to the generic leftover refusal. The guard follows the repeat, so it is not a choice alternative and adds no overlap; it is
 // a not-predicate, so it captures nothing and the module's tree is the items'.
 fn dag_grammar_module_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -3285,10 +3342,15 @@ fn dag_grammar_module_expr() -> GrammarExpr {
       right: grammar_expr_not_predicate(
         element: grammar_expr_refuse_on_match(
           element: dag_grammar_sequence(
-            left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
-            right: dag_grammar_choice(
-              left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
-              right: dag_grammar_terminal(token_class: ^dag_token_kw_data)
+            left: grammar_expr_not_predicate(
+              element: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "test"))
+            ),
+            right: dag_grammar_sequence(
+              left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+              right: dag_grammar_choice(
+                left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
+                right: dag_grammar_terminal(token_class: ^dag_token_kw_data)
+              )
             )
           ),
           reason: DeclarationMarkerNotTest
@@ -3851,6 +3913,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_field_init_expr(),
     emitted: ^dag_surface_field_init
   )
+  let field_init_pun = dag_grammar_production(
+    name: ^dag_production_field_init_pun,
+    expression: dag_grammar_field_init_pun_expr(),
+    emitted: ^dag_surface_field_init_pun
+  )
   let field_init_string_key = dag_grammar_production(
     name: ^dag_production_field_init_string_key,
     expression: dag_grammar_field_init_string_key_expr(),
@@ -3999,6 +4066,7 @@ fn dag_grammar_root() -> GrammarRoot {
       block_expr,
       arg,
       field_init,
+      field_init_pun,
       field_init_string_key,
       match_expr,
       empty_block_body,
@@ -4467,7 +4535,7 @@ fn dag_zip_fold_closure_edges() -> List<Edge> {
 }
 
 // The field of an inhabitant record whose target is the type the record declares; every other
-// field states a fact about that type (std.kind roster_kind_index).
+// field states a fact about that type (v2.std.kind roster_kind_index).
 fn dag_declared_inhabitants_subject_field() -> Symbol {
   ^dag_inhabitant_field_atom
 }
@@ -5215,17 +5283,29 @@ fn dag_string_escape_value_optional(spelled: Int) -> Optional<Int> {
   )
 }
 
+// A code point that is not a Unicode scalar is not a hex digit: from_code_point's refusal is Absent
+// here, and every caller already reads Absent as DagStringDecodeMalformed.
 fn dag_string_hex_digit_optional(c: Int) -> Optional<Int> {
-  let spelled = from_code_point(cp: c)
-  fold_list(
-    xs: base16_digit_rows,
-    empty: optional_absent(),
-    cons: fn(found, row) { if (row.lower == spelled) || (row.upper == spelled) { optional_present(value: row.value) } else { found } }
-  )
+  match from_code_point(cp: c) {
+    Ok { value: spelled } =>
+      fold_list(
+        xs: base16_digit_rows,
+        empty: optional_absent(),
+        cons: fn(found, row) { if (row.lower == spelled) || (row.upper == spelled) { optional_present(value: row.value) } else { found } }
+      )
+    Err { value: _ } => optional_absent()
+  }
 }
 
+// THE ONE PLACE A DECODED CODE POINT BECOMES TEXT, and its scalar-ness is decided by
+// std.unicode.scalar from_code_point rather than by a guard at each caller: a \u{D800} or a
+// \u{110000} refuses here as DagStringDecodeMalformed, which dag_string_literal_escape_refusal
+// reports located.
 fn dag_string_decode_append(text: String, code_point: Int) -> DagStringDecode {
-  DagStringDecodeText { text: concat(text, from_code_point(cp: code_point)) }
+  match from_code_point(cp: code_point) {
+    Ok { value: spelled } => DagStringDecodeText { text: concat(text, spelled) }
+    Err { value: _ } => DagStringDecodeMalformed { spelled: code_point }
+  }
 }
 
 fn dag_string_decode_escape_step(t: String, c: Int) -> DagStringDecode {
@@ -5255,7 +5335,7 @@ fn dag_string_decode_hex_step(t: String, digits: Int, value: Int, c: Int) -> Dag
 
 fn dag_string_decode_unicode_step(t: String, digits: Int, value: Int, c: Int) -> DagStringDecode {
   if c == 125 {
-    if (digits > 0) && unicode_scalar(code_point: value) {
+    if digits > 0 {
       dag_string_decode_append(text: t, code_point: value)
     } else {
       DagStringDecodeMalformed { spelled: c }
@@ -5405,31 +5485,59 @@ fn dag_string_hex_text(value: Int) -> String {
   }
 }
 
-fn dag_string_encode_scalar(c: Int) -> String {
+// A scalar's text is decided by std.unicode.scalar from_code_point, the one authority: a value it
+// refuses (a surrogate or a value past U+10FFFF) is Absent here and the emitter refuses located
+// as dag_emit_string_scalar_not_unicode, never a dropped or defaulted character.
+fn dag_string_scalar_text_optional(cp: Int) -> Optional<String> {
+  match from_code_point(cp: cp) {
+    Ok { value: spelled } => optional_present(value: spelled)
+    Err { value: _ } => optional_absent()
+  }
+}
+
+fn dag_string_encode_scalar_optional(c: Char) -> Optional<String> {
   match dag_string_escape_spelled_optional(value: c) {
-    Present { value: spelled } => concat("\\", from_code_point(cp: spelled))
+    Present { value: spelled } =>
+      match dag_string_scalar_text_optional(cp: spelled) {
+        Present { value: t } => optional_present(value: concat("\\", t))
+        Absent => optional_absent()
+      }
     Absent =>
       if (c < 32) || (c == 127) {
-        concat("\\u\{", concat(dag_string_hex_text(value: c), "\}"))
+        optional_present(value: concat("\\u\{", concat(dag_string_hex_text(value: c), "\}")))
       } else {
-        from_code_point(cp: c)
+        dag_string_scalar_text_optional(cp: c)
       }
   }
 }
 
-fn dag_string_literal_encoded(value: String) -> String {
-  concat(
-    "\"",
-    concat(
-      fold(unicode_scalar_unfold(s: value), init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
-      "\""
-    )
+fn dag_string_body_encoded_optional(value: String) -> Optional<String> {
+  fold(
+    unicode_scalar_unfold(s: value),
+    init: optional_present(value: ""),
+    f: fn(acc, c) {
+      match acc {
+        Present { value: so_far } =>
+          match dag_string_encode_scalar_optional(c: c) {
+            Present { value: t } => optional_present(value: concat(so_far, t))
+            Absent => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    }
   )
 }
 
+fn dag_string_literal_encoded_optional(value: String) -> Optional<String> {
+  match dag_string_body_encoded_optional(value: value) {
+    Present { value: body } => optional_present(value: concat("\"", concat(body, "\"")))
+    Absent => optional_absent()
+  }
+}
+
 type DagStringTextFrame {
-  open: Int
-  close: Int
+  open: Char
+  close: Char
 }
 
 fn dag_string_text_frame_optional(token_class: Symbol) -> Optional<DagStringTextFrame> {
@@ -5452,14 +5560,19 @@ fn dag_string_template_part_class(token_class: Symbol) -> Bool {
     || (token_class == ^dag_token_string_template_tail)
 }
 
-fn dag_string_text_encoded(frame: DagStringTextFrame, value: String) -> String {
-  concat(
-    from_code_point(cp: frame.open),
-    concat(
-      fold(unicode_scalar_unfold(s: value), init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
-      from_code_point(cp: frame.close)
-    )
-  )
+fn dag_string_text_encoded_optional(frame: DagStringTextFrame, value: String) -> Optional<String> {
+  match dag_string_scalar_text_optional(cp: frame.open) {
+    Present { value: open } =>
+      match dag_string_body_encoded_optional(value: value) {
+        Present { value: body } =>
+          match dag_string_scalar_text_optional(cp: frame.close) {
+            Present { value: close } => optional_present(value: concat(open, concat(body, close)))
+            Absent => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    Absent => optional_absent()
+  }
 }
 
 fn dag_string_template_part_node_from_lexeme(token_class: Symbol, lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
@@ -8307,14 +8420,22 @@ fn dag_emit_class_terminal_spelling(lex: LexRules, token_class: Symbol, captured
     }
   } else if token_class == ^dag_token_string_literal {
     match dag_string_literal_value_optional(node: captured) {
-      Present { value: value } => outcome_accepted(value: dag_string_literal_encoded(value: value))
+      Present { value: value } =>
+        match dag_string_literal_encoded_optional(value: value) {
+          Present { value: encoded } => outcome_accepted(value: encoded)
+          Absent => dag_emit_refusal(reason: ^dag_emit_string_scalar_not_unicode, captured: captured)
+        }
       Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
     }
   } else if dag_string_template_part_class(token_class: token_class) {
     match dag_string_template_part_value_optional(node: captured) {
       Present { value: value } =>
         match dag_string_text_frame_optional(token_class: token_class) {
-          Present { value: frame } => outcome_accepted(value: dag_string_text_encoded(frame: frame, value: value))
+          Present { value: frame } =>
+            match dag_string_text_encoded_optional(frame: frame, value: value) {
+              Present { value: encoded } => outcome_accepted(value: encoded)
+              Absent => dag_emit_refusal(reason: ^dag_emit_string_scalar_not_unicode, captured: captured)
+            }
           Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
         }
       Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
