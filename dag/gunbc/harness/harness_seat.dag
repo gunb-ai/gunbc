@@ -708,8 +708,16 @@ fn harness_add_serving_candidate(
     ceiling: seats,
     receipt: harness_metrics_probe_receipt,
   )
+  let launch_names_replica = rented_replica_wire(id: launch.replica) == rented_replica_wire(id: replica)
+    && (match engine.launch {
+      ReplicaLaunchObserved { launch: seen, receipt: _ } => rented_replica_wire(id: seen.replica) == rented_replica_wire(id: replica)
+      ReplicaLaunchUnobserved { replica: _, obligation: _ } => true
+    })
   match admission {
     AdmissibleForClass { class: _, receipt: _ } =>
+      if !launch_names_replica {
+        harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: "the launch supplied for this candidate names another replica than its endpoint, so it is not the launch of the process this endpoint serves"), retryable: false)
+      } else {
       match admit_rented_offer(replica: replica, sources: sources, at: now, requirements: subject.work.requirements, demand: subject.demand, work: subject.work.id) {
         RentedCandidateAdmitted { candidate: c } =>
           if any(acc.candidates, e => (e.key as String) == (c.offer.id.key as String)) {
@@ -727,6 +735,7 @@ fn harness_add_serving_candidate(
           }
         RentedAdmissionRefused { detail: why } =>
           harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: why), retryable: false)
+      }
       }
     InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
       harness_no_candidate(acc: acc, note: serving_admission_detail(replica: replica, admission: admission), retryable: true)
