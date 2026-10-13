@@ -4,9 +4,9 @@ import std.types { List, NonEmptyStr, String }
 import extdeps.git.object_store { git_sha1_object_id }
 import std.optional { Absent, Present }
 import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
+import gunbc.namespace_cut.namespace_step0_subject_collector { Step0CommitIdentityUnreadable }
 import v2.workflow.namespace_xl2_rehearsal_census {
   Xl2RehearsalBaseUnobserved,
-  Xl2RevisionIdentityUnreadable,
   Xl2RehearsalRun,
   Xl2Strip,
   Xl2StrippedMember,
@@ -64,7 +64,7 @@ data xl2_control_revision_hex: String = "000000000000000000000000000000000000000
 
 fn xl2_control_rehearse(strip: Xl2Strip) -> Xl2RehearsalRun {
   match git_sha1_object_id(hex: xl2_control_revision_hex) {
-    Absent => Xl2RehearsalBaseUnobserved { cause: Xl2RevisionIdentityUnreadable { hex: xl2_control_revision_hex } }
+    Absent => Xl2RehearsalBaseUnobserved { cause: Step0CommitIdentityUnreadable { hex: xl2_control_revision_hex } }
     Present { value: oid } => xl2_rehearse_stripped(source_commit: oid, source_tree: oid, supplied: strip)
   }
 }
