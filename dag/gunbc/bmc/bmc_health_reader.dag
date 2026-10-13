@@ -1,4 +1,4 @@
-module gunbc.bmc_health_reader
+module gunbc.bmc.bmc_health_reader
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.host_identity { HostIdentity }

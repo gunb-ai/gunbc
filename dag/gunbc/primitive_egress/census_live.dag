@@ -9,7 +9,7 @@ import std.algebra { all_algebra_template_names }
 import std.primitive_projection { primitive_projection_roster }
 import std.primitive_identity { BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler }
 import extdeps.languages.rust.emit { rt_function_registry }
-import gunbc.v1_interpreter_primitive_surface { v1_interpreter_primitive_arms }
+import gunbc.v1.v1_interpreter_primitive_surface { v1_interpreter_primitive_arms }
 import gunbc.seed_growth_admission { seed_growth_roster_all_declarations }
 import v2.std.decl_ref_resolution { DeclarationRefResolution, resolve_declaration_ref_live }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -71,7 +71,7 @@ fn hand_roster_rows_absent_from_registry() -> List<String> {
 }
 
 // THE CONSUMER POPULATION, in up to three resolver walks because src/v1 and src/v2 cannot share
-// one prepared subject (gunbc.ci_layer_roots non_executing_witness_module_prefixes: twelve
+// one prepared subject (gunbc.ci.ci_layer_roots non_executing_witness_module_prefixes: twelve
 // last-segment collisions rebind silently under one pool). The admitted corpus is resolved as
 // dag ∪ src/v2 -- the witness layer roots -- walked as two entry prefixes (src/v2, then dag), and
 // the seed's own .dag as src/v1 against dag; no module is counted twice because every walk names
@@ -96,7 +96,7 @@ fn live_declaration_resolver(ref: DeclarationRef) -> DeclarationRefResolution {
 }
 
 // An equivalence witness counts only under the modules the floor discovers
-// (gunbc.ci_layer_roots witness_discovery_scan_dirs: dag/test/claim and src/v2/test/claim).
+// (gunbc.ci.ci_layer_roots witness_discovery_scan_dirs: dag/test/claim and src/v2/test/claim).
 data witness_module_prefixes: List<String> = ["test.claim.", "v2.test.claim."]
 data seed_pool_roots: List<String> = ["dag", "src/v1"]
 

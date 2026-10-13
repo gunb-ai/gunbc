@@ -17,8 +17,8 @@ import extdeps.cloud.gcp.secret_manager {
   SmResolvedVersionIdentityDecoded,
   SmResolvedVersionIdentityDecodeRefused,
 }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.bmc_custody_read {
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.bmc.bmc_custody_read {
   CustodyCredentialAbsent,
   CustodyCredentialHeld,
   CustodyCredentialUnreadable,
@@ -39,7 +39,7 @@ import gunbc.auth.netrc_binding {
   place_netrc_binding,
 }
 import extdeps.bmc.redfish { redfish_password_change_verdict, RedfishPasswordChangeRequired, RedfishPasswordChangeNotIndicated }
-import gunbc.bmc_onboarding {
+import gunbc.bmc.bmc_onboarding {
   BmcOnboardingPlan,
   srv1_onboarding_plan,
   srv2_onboarding_plan,

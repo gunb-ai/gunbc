@@ -40,9 +40,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // section 3 names.
 //
 // IT WAS NOT MERELY UNTIDY. The one arm that set them had TWO renderers, and they read the figures
-// from two homes -- extdeps.vllm.server's rows and gunbc.spark.native_serving_realization's own -- so the layer
+// from two homes -- extdeps.vllm.server's rows and retired gunbc.spark.native_serving_realization (deleted #13779)'s own -- so the layer
 // inversion was what made the drift between the two Group-B launch authorities possible at all. Both
-// figures now live with the deployment that chose them, at gunbc.spark.glm_group_b_launch, where the
+// figures now live with the deployment that chose them, at retired gunbc.spark.glm_group_b_launch (deleted #13779), where the
 // one launch specification reads them.
 
 // ── vLLM'S ENVIRONMENT VARIABLES, AS vLLM NAMES THEM ──────────────────────────────────────────

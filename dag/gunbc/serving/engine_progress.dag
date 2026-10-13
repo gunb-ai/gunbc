@@ -11,9 +11,9 @@ import gunbc.serving.serving_availability {
   EndpointProcessContinuity, EndpointProcessUnchanged, EndpointProcessWasReplaced, EndpointProcessContinuityUnread,
   serving_availability_after_launch_read,
 }
-import gunbc.spark.vllm_endpoint_process_launch {
-  VllmEndpointProcessLaunch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
-  vllm_endpoint_process_launch_key,
+import gunbc.serving.replica_endpoint_launch {
+  ReplicaEndpointLaunch, ReplicaLaunchObservation, ReplicaLaunchObserved, ReplicaLaunchUnobserved,
+  replica_endpoint_launch_key,
 }
 
 // ── AN EXPORTER THAT ANSWERS OVER AN ENGINE CORE THAT HAS STOPPED ───────────────────────────────
@@ -52,9 +52,9 @@ type EngineProgressSample {
 // treating either as a stall evicts a healthy route -- the false positive that would make this cut
 // worse than no cut.
 type EngineProgress
-  = EngineProgressed { endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, over: Second, observed_at: Timestamp, receipt: ObservationReceiptRef }
-  | EngineIdle { endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, observed_at: Timestamp, receipt: ObservationReceiptRef }
-  | EngineNotProgressing { endpoint: ServingRouteEndpoint, launch: VllmEndpointProcessLaunch, running: Nat, over: Second, bound: Second, observed_at: Timestamp, receipt: ObservationReceiptRef }
+  = EngineProgressed { endpoint: ServingRouteEndpoint, launch: ReplicaEndpointLaunch, over: Second, observed_at: Timestamp, receipt: ObservationReceiptRef }
+  | EngineIdle { endpoint: ServingRouteEndpoint, launch: ReplicaEndpointLaunch, observed_at: Timestamp, receipt: ObservationReceiptRef }
+  | EngineNotProgressing { endpoint: ServingRouteEndpoint, launch: ReplicaEndpointLaunch, running: Nat, over: Second, bound: Second, observed_at: Timestamp, receipt: ObservationReceiptRef }
   | EngineProgressUnread { endpoint: ServingRouteEndpoint, attempted_at: Timestamp, cause: NonEmptyStr }
 
 // THE EVALUATED VERDICT, SEALED, for the reason the other two are: the arm that says a route is not
@@ -66,14 +66,14 @@ type EngineProgressVerdict sole_constructor {
 fn engine_progress_text(p: EngineProgress) -> String {
   match p {
     EngineProgressed { endpoint: e, launch: l, over: o, observed_at: t, receipt: _ } =>
-      join([serving_route_endpoint_wire(e: e) as String, " engine advanced over ", to_string(second_count(s: o)), "s at ", t, " on ", vllm_endpoint_process_launch_key(launch: l) as String], "")
+      join([serving_route_endpoint_wire(e: e) as String, " engine advanced over ", to_string(second_count(s: o)), "s at ", t, " on ", replica_endpoint_launch_key(launch: l) as String], "")
     EngineIdle { endpoint: e, launch: _, observed_at: t, receipt: _ } =>
       join([serving_route_endpoint_wire(e: e) as String, " engine idle at ", t, ": no request was running, so a motionless counter is the healthy state"], "")
     EngineNotProgressing { endpoint: e, launch: l, running: r, over: o, bound: b, observed_at: t, receipt: _ } =>
       join([
         serving_route_endpoint_wire(e: e) as String, " engine produced no output for ", to_string(second_count(s: o)),
         "s with ", to_string(r), " request(s) running, past the ", to_string(second_count(s: b)),
-        "s step bound, at ", t, " on ", vllm_endpoint_process_launch_key(launch: l) as String,
+        "s step bound, at ", t, " on ", replica_endpoint_launch_key(launch: l) as String,
       ], "")
     EngineProgressUnread { endpoint: e, attempted_at: t, cause: c } =>
       join([serving_route_endpoint_wire(e: e) as String, " engine progress unread at ", t, ": ", c as String], "")
@@ -123,13 +123,13 @@ fn engine_progress_elapsed(before: EngineProgressSample, after: EngineProgressSa
 // what "the same endpoint process" means, and this asks it.
 fn engine_progress_continuity(
   endpoint: ServingRouteEndpoint,
-  before_launch: VllmEndpointProcessLaunchObservation,
-  after_launch: VllmEndpointProcessLaunchObservation,
+  before_launch: ReplicaLaunchObservation,
+  after_launch: ReplicaLaunchObservation,
   now: Timestamp,
 ) -> EndpointProcessContinuity {
   match before_launch {
-    LaunchUnobserved { group: _, obligation: o } => EndpointProcessContinuityUnread { endpoint: endpoint, attempted_at: now, cause: o }
-    LaunchObserved { launch: b, receipt: _ } =>
+    ReplicaLaunchUnobserved { replica: _, obligation: o } => EndpointProcessContinuityUnread { endpoint: endpoint, attempted_at: now, cause: o }
+    ReplicaLaunchObserved { launch: b, receipt: _ } =>
       serving_availability_after_launch_read(endpoint: endpoint, expected: b, observation: after_launch, now: now).reading
   }
 }
@@ -148,8 +148,8 @@ fn engine_progress_continuity(
 // Only past all five is the route not progressing.
 fn engine_progress_read(
   endpoint: ServingRouteEndpoint,
-  before_launch: VllmEndpointProcessLaunchObservation,
-  after_launch: VllmEndpointProcessLaunchObservation,
+  before_launch: ReplicaLaunchObservation,
+  after_launch: ReplicaLaunchObservation,
   before: EngineProgressSample?,
   after: EngineProgressSample?,
   bound: Second,
@@ -163,8 +163,8 @@ fn engine_progress_read(
         endpoint: endpoint,
         attempted_at: now,
         cause: join([
-          "the endpoint process was replaced between the samples (", vllm_endpoint_process_launch_key(launch: x) as String,
-          " then ", vllm_endpoint_process_launch_key(launch: o) as String,
+          "the endpoint process was replaced between the samples (", replica_endpoint_launch_key(launch: x) as String,
+          " then ", replica_endpoint_launch_key(launch: o) as String,
           "), and a restarted exporter's counters begin again, so neither movement nor stillness is a statement about work",
         ], "") as NonEmptyStr,
       }

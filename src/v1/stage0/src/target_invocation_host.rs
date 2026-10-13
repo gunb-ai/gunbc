@@ -283,8 +283,9 @@ pub enum TargetProducer {
     GenericIdentityCensus,
     InterpolationHoleCensus,
     RegenRoundCost,
-    /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
-    /// shape is a registry row naming its entry, never another variant.
+    /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
+    /// of the same shape is a registry row, never another variant. The Millisecond deadline is
+    /// read from `gunbc.instrument_targets` `native_claim_child_deadline_count` at spawn.
     NativeClaimProgram {
         entry: &'static str,
     },
@@ -314,6 +315,12 @@ fn self_host_source_roots() -> Vec<String> {
 fn v2_native_cli_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
 }
+
+/// Modules this producer evaluates by name at spawn. Parallel to
+/// `REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`: listing here is what makes that by-name
+/// evaluation legitimate rather than an undeclared reach. Not a floor-subject seed — the floor
+/// list must not grow this module's closure.
+const NATIVE_CLAIM_RUNTIME_AUTHORITY_MODULES: [&str; 1] = ["gunbc.instrument_targets"];
 
 /// `gunbc.instrument_targets` `emitted_crate_workspace_label`: the closure is emitted from the same
 /// corpus the self-host step emits from, so the two instruments measure one closure two ways.
@@ -399,6 +406,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("native-emission-controls"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_emission_controls.dag",
+            },
+        ),
+        (
+            instrument_label("value-position-block-nests"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/value_position_block_nests.dag",
             },
         ),
         (
@@ -1180,7 +1193,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 /// roster, which a reviewed pull request may carry (the required native-route lane publishes it). An owned
 /// correctness flip (`grew-by-owned-correctness-flip`) holds for the same reason: every added
 /// identity is owed debt under a declared, owned cause, and it too prints a proposed roster.
-/// (v1 PURPOSE admission, `gunbc.v1_maintenance_standing`: this arm only maps a v2 frontier
+/// (v1 PURPOSE admission, `gunbc.v1.v1_maintenance_standing`: this arm only maps a v2 frontier
 /// verdict word to its termination; the verdict itself is decided in `.dag`, so no seed growth.)
 /// `lost` and `unminted` are the observation
 /// not holding. `unminted` is a complete run with nothing to hold it to, and an empty roster read as
@@ -1526,6 +1539,82 @@ fn run_emitted_crate_workspace(source_roots: &[String]) -> InvocationOutcome {
 /// (`cli_run::classify_exit`): success is held, code 1 is an observation that did not hold, and code
 /// 2 -- a roster/row join that breaks, a status the rows do not support, a signal -- is no
 /// observation. The source roots are the instrument's own fact, as for every sibling here.
+fn native_claim_child_deadline_from_binding(
+    entry: &str,
+    label_name: &str,
+) -> Result<std::time::Duration, InvocationOutcome> {
+    const READER: &str = "dag/gunbc/instrument_targets.dag";
+    let authority = NATIVE_CLAIM_RUNTIME_AUTHORITY_MODULES[0];
+    let ungrounded = |detail: String| -> InvocationOutcome {
+        InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: NATIVE-CLAIM REFUSAL cause=NativeClaimDeadlineUngrounded \
+                 module={authority} entry={entry} — {detail}"
+            ),
+        }
+    };
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return Err(ungrounded(format!("resolve failed for {READER}: {cause}")));
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let value = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_claim_child_deadline_count",
+        &[(
+            Some("entry".to_string()),
+            crate::v1_interpreter::str_value(entry),
+        )],
+        true,
+    ) {
+        Ok(value) => value,
+        Err(cause) => {
+            return Err(ungrounded(format!(
+                "native_claim_child_deadline_count failed: {cause}"
+            )));
+        }
+    };
+    let crate::v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &value
+    else {
+        return Err(ungrounded(
+            "native_claim_child_deadline_count is not an Optional".to_string(),
+        ));
+    };
+    if ctx.sym_eq(*variant_name, "Absent") {
+        return Err(ungrounded(
+            "no NativeClaimProgramProducer binding for this entry".to_string(),
+        ));
+    }
+    if !ctx.sym_eq(*variant_name, "Present") {
+        return Err(ungrounded(
+            "native_claim_child_deadline_count is not Present or Absent".to_string(),
+        ));
+    }
+    match ctx.field(fields, "value") {
+        Some(crate::v1_interpreter::Value::Int(n)) if *n > 0 => {
+            Ok(std::time::Duration::from_millis(*n as u64))
+        }
+        Some(crate::v1_interpreter::Value::Int(n)) => Err(ungrounded(format!(
+            "native_claim_child_deadline_count returned {n}ms — a child deadline must be strictly positive"
+        ))),
+        other => Err(ungrounded(format!(
+            "native_claim_child_deadline_count expected a positive Int, got {other:?}"
+        ))),
+    }
+}
+
 fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
     let label_name = "native-claim";
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
@@ -1534,8 +1623,34 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
-    let run = match cli_run::run_native_claim_program(&v2_native_cli_source_roots(), entry) {
-        Ok(run) => run,
+    let deadline = match native_claim_child_deadline_from_binding(entry, label_name) {
+        Ok(deadline) => deadline,
+        Err(outcome) => return outcome,
+    };
+    let run = match cli_run::run_native_claim_program(
+        &v2_native_cli_source_roots(),
+        entry,
+        deadline,
+    ) {
+        Ok(cli_run::NativeClaimProgramAttempt::Completed(run)) => run,
+        Ok(cli_run::NativeClaimProgramAttempt::DeadlineExceeded {
+            entry,
+            budget,
+            elapsed,
+            closure_identity,
+            binary_identity,
+            seed_identity,
+            warning_count,
+        }) => {
+            return InvocationOutcome {
+                termination: Termination::ObservationDidNotHold,
+                message: format!(
+                    "{label_name}: deadline exceeded entry={entry} budget_ms={} elapsed_ms={} closure={closure_identity} binary={binary_identity} seed={seed_identity} warning_count={warning_count}",
+                    budget.as_millis(),
+                    elapsed.as_millis()
+                ),
+            };
+        }
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,
@@ -1602,12 +1717,14 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
     InvocationOutcome {
         termination,
         message: format!(
-            "{}{label_name}: entry={entry} closure={} binary={} seed={} warning_count={} status={status} -- {verdict}\n{}",
+            "{}{label_name}: entry={entry} closure={} binary={} seed={} warning_count={} status={status} child_wall_ms={} deadline_ms={} -- {verdict}\n{}",
             run.stdout,
             run.closure_identity,
             run.binary_identity,
             run.seed_identity,
             run.warning_count,
+            run.child_wall.as_millis(),
+            run.deadline.as_millis(),
             run.stderr.trim_end(),
         ),
     }
@@ -1967,7 +2084,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `gunbc.witness_v2_native_route` `native_route_default_pattern`, mirrored: the native test
+/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, mirrored: the native test
 /// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
 ///
 /// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
@@ -2533,11 +2650,11 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// rather than inside it so the routing tests stay a function of the operand alone.
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
-    // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.memory_cgroup_binding --
+    // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
     // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate
     // native_step_memory_trip, the slot's MemoryHigh less a declared headroom. The required
     // `witnesses` job passes that input only where a job owns a bounded cgroup
-    // (gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership decides; today a fleet job
+    // (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership decides; today a fleet job
     // is the deprivileged job user under a root unit and the governor's leaf lives at the cgroup
     // root, and the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall).
     // A refused bind stops the line: the run asked to be bounded and is not.
@@ -2590,13 +2707,13 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
 }
 
 /// Authority: `gunbc.emitted_subject_build_gate` `native_step_memory_envelope_env_name` and
-/// `native_step_memory_envelope_slot_value` (the latter the projection of `gunbc.memory_envelope`
-/// `EnvelopeSlotRequired`), pinned by `test.claim.compiler_gate_emit_build_lane_witness_test`
+/// `native_step_memory_envelope_slot_value` (the latter the projection of `gunbc.host.memory_envelope`
+/// `EnvelopeSlotRequired`), pinned by `test.claim.compiler_gate_emit_build_lane_witness`
 /// `the_seed_envelope_requirement_inputs_are_the_dag_rows`.
 const MEMORY_ENVELOPE_REQUIRED_ENV: &str = "GUNBC_MEMORY_ENVELOPE_REQUIRED";
 const MEMORY_ENVELOPE_SLOT_VALUE: &str = "slot";
 
-/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeRequirement`. Absent and unreadable are
+/// Authority: `gunbc.host.memory_envelope` `MemoryEnvelopeRequirement`. Absent and unreadable are
 /// different answers, exactly as for the bind request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MemoryEnvelopeRequirement {
@@ -2605,7 +2722,7 @@ enum MemoryEnvelopeRequirement {
     Unreadable { raw: String },
 }
 
-/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeGrain` / `memory_envelope_grain_label`.
+/// Authority: `gunbc.host.memory_envelope` `MemoryEnvelopeGrain` / `memory_envelope_grain_label`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MemoryEnvelopeGrain {
     Leaf,
@@ -2623,14 +2740,14 @@ impl MemoryEnvelopeGrain {
     }
 }
 
-/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeRefusalCause`.
+/// Authority: `gunbc.host.memory_envelope` `MemoryEnvelopeRefusalCause`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MemoryEnvelopeRefusalCause {
     GrainUnknown { raw: String },
     Absent { grain: MemoryEnvelopeGrain },
 }
 
-/// Authority: `gunbc.memory_envelope` `MemoryEnvelopeDecision`.
+/// Authority: `gunbc.host.memory_envelope` `MemoryEnvelopeDecision`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MemoryEnvelopeDecision {
     NotRequired,
@@ -2638,7 +2755,7 @@ enum MemoryEnvelopeDecision {
     Refused { cause: MemoryEnvelopeRefusalCause },
 }
 
-/// Mirror of `gunbc.memory_envelope` `memory_envelope_requirement_from_text`.
+/// Mirror of `gunbc.host.memory_envelope` `memory_envelope_requirement_from_text`.
 fn memory_envelope_requirement_from_text(raw: Option<&str>) -> MemoryEnvelopeRequirement {
     match raw {
         None => MemoryEnvelopeRequirement::NotRequested,
@@ -2647,7 +2764,7 @@ fn memory_envelope_requirement_from_text(raw: Option<&str>) -> MemoryEnvelopeReq
     }
 }
 
-/// THE PURE DECISION, mirroring `gunbc.memory_envelope` `memory_envelope_decision` arm for arm:
+/// THE PURE DECISION, mirroring `gunbc.host.memory_envelope` `memory_envelope_decision` arm for arm:
 /// every input is a parameter so the discriminating cases -- above all a slot requirement over a
 /// process no numeric memory.max binds, which must refuse -- are reachable from a test on any
 /// machine. `numeric_max_binds` is the governor's `binding_cap_cgroup_dir` walk, read once by the
@@ -2698,7 +2815,7 @@ fn memory_envelope_decision(
     }
 }
 
-/// THE PURE VERDICT, mirroring `gunbc.memory_envelope` `memory_envelope_verdict`: violated on any
+/// THE PURE VERDICT, mirroring `gunbc.host.memory_envelope` `memory_envelope_verdict`: violated on any
 /// OOM kill the step added, any swap resident at exit, an unreadable swap gauge, a swap peak that
 /// rose during the step, or a swap peak that could not be observed (`None`: no memory.swap.peak on
 /// this kernel) under a cgroup whose memory.swap.max is not zero -- unobservable is not "did not
@@ -3190,7 +3307,7 @@ fn floor_memory_qualification_lane() -> String {
 /// itself emits, which is the class
 /// `gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained`.
 /// THE MEASURED RUN BY PHASE: the child's seam beats, transcribed by the supervisor and folded by
-/// `gunbc.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
+/// `gunbc.floor.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
 /// them. `entry` is the held set the phase inherited, `peak` the largest over its own beats, and
 /// `left` what it left resident -- the next phase's entry, read from that row, so this renderer
 /// does no arithmetic of its own. A phase whose held set could not be represented prints the arm.
@@ -3320,7 +3437,7 @@ fn floor_phase_attribution_rendered(
     };
     let rows: Vec<&Value> = rows.iter().collect();
     let mut out = vec![format!(
-        "floor-phase-attribution: phases={} beats={} (held set per gunbc.floor_demand beat_held_set, bytes)",
+        "floor-phase-attribution: phases={} beats={} (held set per gunbc.floor.floor_demand beat_held_set, bytes)",
         rows.len(),
         beats.len()
     )];
@@ -3469,7 +3586,7 @@ fn typed_graph_exclusive_bytes_over(
             }
         }
     }
-    // THE HOST TRANSCRIBES, THE .dag FOLD DECIDES (gunbc.typed_graph_exclusive_bytes). Every
+    // THE HOST TRANSCRIBES, THE .dag FOLD DECIDES (gunbc.floor.typed_graph_exclusive_bytes). Every
     // reading crosses as primitives; a count past i64 refuses rather than clamping.
     const ENTRY: &str = "dag/gunbc/floor/typed_graph_exclusive_bytes.dag";
     let roots = vec!["dag".to_string(), "src/v2".to_string()];
@@ -3603,7 +3720,7 @@ fn typed_graph_exclusive_bytes_over(
         None => "<absent>".to_string(),
     };
     lines.push(format!(
-        "{label} graph_total={} sum_of_exclusives={} shared_or_unlisted={residual} (gunbc.typed_graph_exclusive_bytes; graph_total from the first run, every class from its own fresh resolve)",
+        "{label} graph_total={} sum_of_exclusives={} shared_or_unlisted={residual} (gunbc.floor.typed_graph_exclusive_bytes; graph_total from the first run, every class from its own fresh resolve)",
         bytes(ctx.field(fields, "graph_total")),
         bytes(ctx.field(fields, "sum_of_exclusives")),
     ));
@@ -3956,7 +4073,7 @@ mod native_route_termination_tests {
     #[test]
     fn a_refused_qualification_clamps_a_pass_to_unreached() {
         let out = native_member_outcome(
-            "//v2/test/parse:all",
+            "//v2/test/claim/parse:all",
             cli_run::NativeMemberTermination::ObservationHeld,
             false,
             "refused",
@@ -3971,7 +4088,7 @@ mod native_route_termination_tests {
     #[test]
     fn a_qualified_route_passes_a_pass_through() {
         let out = native_member_outcome(
-            "//v2/test/parse:all",
+            "//v2/test/claim/parse:all",
             cli_run::NativeMemberTermination::ObservationHeld,
             true,
             "held",
@@ -3985,7 +4102,7 @@ mod native_route_termination_tests {
     #[test]
     fn a_refused_qualification_does_not_demote_a_failure() {
         let out = native_member_outcome(
-            "//v2/test/parse:all",
+            "//v2/test/claim/parse:all",
             cli_run::NativeMemberTermination::ObservationDidNotHold,
             false,
             "refused",
@@ -4291,7 +4408,7 @@ fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
     use crate::v1_tests_claim_generic_identity_census as census;
     use std::rc::Rc;
     const FIXTURE: &str = "fixtures/generic_identity_census/a.dag";
-    const REPORT_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+    const REPORT_ENTRY: &str = "src/v2/compiler/compile.dag";
     let unreached = |detail: String| InvocationOutcome {
         termination: Termination::SubjectUnreached,
         message: format!("generic-identity-census: subject unreached: {detail}"),

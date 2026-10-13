@@ -885,7 +885,7 @@ fn open_rank_demand(rank: Nat, held: SystemMemoryComponent, others: List<SystemM
     collective_workspace: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmCollectiveWorkspace, receipt_kind: "CollectiveWorkspaceBound" as NonEmptyStr) }),
     activation_workspace: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmActivationWorkspace, receipt_kind: "ActivationWorkspaceBound" as NonEmptyStr) }),
     graph_capture: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmGraphCapture, receipt_kind: "GraphCaptureBound" as NonEmptyStr) }),
-    kv_cache: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: "required_kv_bytes derives from the workload intent over the group-aware resolved cache layout (extdeps.vllm.kv_layout), and the per-group metadata the layout prices is not vouched for by any emission this repository has read: the honest emission point is upstream vLLM's EngineCore.get_kv_cache_group_metadata (vllm/v1/engine/core.py at the pinned revision, modelled at extdeps.vllm.kv_group_metadata), which carries each group's kind, block size and window but NOT the layer counts and page bytes the layout needs -- that module's layout mint refuses construction from the emission alone, naming exactly the two absent fields, and no other authority this repository can cite vouches for them either. Until a capture vouches for them (a richer engine emission, or another cited authority beside the emission), every capture through gunbc.spark.vllm_kv_layout_observe lands KvLayoutUnreadable and this term stays open. Observed current_kv from a previous run is a readback and never a demand input" as NonEmptyStr }),
+    kv_cache: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: "required_kv_bytes derives from the workload intent over the group-aware resolved cache layout (extdeps.vllm.kv_layout), and the per-group metadata the layout prices is not vouched for by any emission this repository has read: the honest emission point is upstream vLLM's EngineCore.get_kv_cache_group_metadata (vllm/v1/engine/core.py at the pinned revision, modelled at extdeps.vllm.kv_group_metadata), which carries each group's kind, block size and window but NOT the layer counts and page bytes the layout needs -- that module's layout mint refuses construction from the emission alone, naming exactly the two absent fields, and no other authority this repository can cite vouches for them either. Until a capture vouches for them (a richer engine emission, or another cited authority beside the emission), every capture through retired gunbc.spark.vllm_kv_layout_observe (deleted #13779) lands KvLayoutUnreadable and this term stays open. Observed current_kv from a previous run is a readback and never a demand input" as NonEmptyStr }),
     fragmentation_allowance: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmFragmentationAllowance, receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr) }),
   }
 }
@@ -1946,7 +1946,7 @@ type ArmMemoryExperimentAdmission
 //   startup        the LAUNCH's engine ready timeout (its environment, or upstream's default)
 //   seat cohort    the profile's sequence ceiling x the per-seat cold price (~323s observed, 400 bound)
 //   churn window   the window the churn driver opens is a twelfth of the admitted runtime
-//                  (gunbc.spark.native_experiment_apply spark_churn_window_seconds), and the runtime
+//                  (retired gunbc.spark.native_experiment_apply (deleted #13779) spark_churn_window_seconds), and the runtime
 //                  contains the window twice (once as the window, once inside the tail), so the
 //                  allowance W must satisfy W >= T/12 with T = R + 2W + K; solving, W = ceil((R + K)/10),
 //                  where R is startup + seat cohort and K is the churn request timeout + cadence +
@@ -2865,7 +2865,7 @@ type ArmRankCacheSupply {
 // identities by suffix, sliding-window entries) the engine must allocate, each with the message that
 // names it. The folds take the roster from their caller; GLM-5.3-Flash's is derived from its hybrid
 // shape (glm_5_3_flash_expected_kv_roster: the same counts as before; the full-attention census message now names the suffixes it counts). DeepSeek V4.1 has
-// no derived roster yet: its allocation plan has never been read (gunbc.spark.vllm_allocation_plan_observe
+// no derived roster yet: its allocation plan has never been read (retired gunbc.spark.vllm_allocation_plan_observe (deleted #13779)
 // captures GLM's), so there is nothing for a V4.1 roster to be checked against until one is -- that
 // capture is the trigger for writing its roster from its own shape (extdeps.deepseek).
 type ExpectedGroupKind = ExpectMambaKind | ExpectFullAttentionKind | ExpectSlidingWindowKind { window: TokenCount }
@@ -3754,7 +3754,7 @@ type PrefillTransientShape {
 
 // THE DERIVED TERMS at one shape: exact formulas, no measured content. The logits cap is the
 // launch's VLLM_SPARSE_INDEXER_MAX_LOGITS_MB, carried on the shape because it is a deployment
-// decision (gunbc.spark.glm_group_b_launch glm_group_b_sparse_indexer_max_logits = 64 MiB for
+// decision (retired gunbc.spark.glm_group_b_launch (deleted #13779) glm_group_b_sparse_indexer_max_logits = 64 MiB for
 // Group B) and that module sits above this one in the import graph; the flashinfer
 // workspace imports the pinned default (the fleet launch carries no override).
 type PrefillTransientDemandTerms {

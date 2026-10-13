@@ -1,7 +1,7 @@
-module gunbc.ci_fleet
+module gunbc.ci.ci_fleet
 
-import gunbc.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
-import gunbc.fleet_intent {
+import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
+import gunbc.fleet.fleet_intent {
   ComputeHost,
   ExecutionSurface,
   PerformanceReceipt,
@@ -15,10 +15,10 @@ import gunbc.fleet_intent {
   srv4_host,
   fleet_host_memory_nominal_vs_usable_note,
 }
-import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
+import gunbc.fleet.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog, altra_q8030_catalog }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
 import product.host_identity { HostIdentity }
@@ -117,14 +117,14 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 }
 
 // The owned machines' offers are per-host facts; WHICH of them the CI fleet offers is the enrolled CI
-// population (gunbc.fleet_enrollment), so a host leaves or joins the offered set by its enrollment and
+// population (gunbc.fleet.fleet_enrollment), so a host leaves or joins the offered set by its enrollment and
 // never by an edit here. A provider guest has no offer in this catalog: its supply is its provider's
-// entitlement, admitted through gunbc.provider_guest_adoption rather than authored as an owned offer.
+// entitlement, admitted through gunbc.host.provider_guest_adoption rather than authored as an owned offer.
 // MT. COLLINS UNIT 1 AS A DISKLESS EPHEMERAL CI RUNNER HOST, AT ITS MEASURED ONE-SOCKET SHAPE.
 // Operator ruling 2026-10-03: the unit is admissible with socket 1 out (bent pins), so the offer
 // carries ONE processor. The board is a two-socket Mt. Collins, and offering its spec would admit
 // twice the CPU width the machine can run. Every one-socket boot in
-// gunbc.machine_intake_mtcollins1_socket1_investigation_observation read sockets 1, cpus 80,
+// gunbc.machine_intake.mtcollins1_socket1_investigation_observation read sockets 1, cpus 80,
 // numa_nodes 1, and the witness checks this offer's thread count against those readings.
 //
 // THE PART IDENTITY IS A BET, TYPED ON mtcollins1_socket0_cpu_part_standing (DESIGN §4d), not only
@@ -134,9 +134,9 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 // count; catalog model number and Hertz are TranscribedUncited until the census reads them.
 //
 // NO MEMORY DEVICES ARE LISTED. Nominal DIMM capacity is not what placement charges. Usable RAM
-// arrives as HostUsableRamMeasured, read by gunbc.host_memory_observation host_usable_ram_from_capture
-// from a census boot's meminfo receipt. Slot count is then gunbc.runner_slot_allocation
-// committed_width_of over that reading and gunbc.runner_slot_desired, never a hand-kept number.
+// arrives as HostUsableRamMeasured, read by gunbc.host.host_memory_observation host_usable_ram_from_capture
+// from a census boot's meminfo receipt. Slot count is then gunbc.runner.runner_slot_allocation
+// committed_width_of over that reading and gunbc.runner.runner_slot_desired, never a hand-kept number.
 //
 // NOT IN fleet_owned_compute_offer_catalog, and that is a declared frontier, not an omission.
 // Enrolment waits on the one-socket census boot's meminfo receipt (usable RAM and fixed overhead
@@ -211,7 +211,7 @@ data gunbc_ci_host_memory_deferral_note: String = fleet_host_memory_nominal_vs_u
 data gunbc_ci_host_memory_deferral_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.ci_fleet",
+    module_path: "gunbc.ci.ci_fleet",
     decl_name: "gunbc_ci_host",
     field: NamedField { field_name: "memory" },
   },

@@ -1,0 +1,482 @@
+module test.claim.serving.turn_admission_witness
+
+import std.measure { token_count, token_count_value }
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.selection { AvailableIndefinitely, NoTransitionRequired, NoFeasibleAlternativeUse }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.serving.replica_endpoint_launch {
+  ReplicaEndpointLaunch, ReplicaLaunchObservation, replica_endpoint_launch, ReplicaLaunchObserved, ReplicaLaunchUnobserved,
+  replica_endpoint_launch_key, replica_endpoint_launch_is,
+}
+import gunbc.serving.turn_admission {
+  ServingQueueReading, QueueDepthRead, GroupOccupied, QueueDepthUnread, GroupIdle, serving_co_tenancy,
+  serving_capacity_pressure, ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity,
+  CapacityPressureUnread,
+  ServingSeatStanding, SeatStandingRead, SeatStandingUnread, ServingGroupAdmission,
+  ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant,
+  AdmissibleForClass, InadmissibleQualityTurnInFlight, InadmissibleGroupNotIdle,
+  InadmissibleRouteHoldingForCapacity, InadmissibleClassCeilingReached, InadmissibleUnexplainedOccupancy,
+  AdmissibilityUnread,
+  serving_group_admission, serving_admission_detail, serving_availability, serving_transition_cost,
+  serving_opportunity_cost,
+  ServingTurnReuse, TurnReuseRead, TurnReuseUnread, ServingHostTierStanding, HostTierRetains,
+  HostTierEmpty, HostTierUnread, ServingSessionResidency, ReusedAtTurn, HostRestorable, MustReconstruct,
+  ResidencyUnread, TokenPrefixBroken, LaunchReplaced, PrefixMissedAndNotRetained,
+  serving_session_residency, serving_session_placement, ServingSessionRecord, NoSessionRecord, SessionRecord,
+  serving_session_standing, serving_unread_when_owner_unprobed,
+  ServingGpuPrefixStanding, GpuPrefixUnread, GpuPrefixCurrentlyEvicted,
+  ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica,
+}
+import gunbc.harness.harness_backend {
+  harness_gauge_count, harness_queue_from_body, harness_launch_from_body,
+  harness_capacity_pressure_from_body,
+}
+
+data w_replica: RentedReplicaIdentity = RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 0, served_name: "qwen-first-row" as NonEmptyStr }
+
+data probe_receipt: ObservationReceiptRef = "test.claim.serving.turn_admission_witness" as ObservationReceiptRef
+
+// EVERY ROW BELOW ASKS THE QUALITY-SENSITIVE QUESTION UNLESS IT SAYS OTHERWISE, which is what keeps
+// this file as the evidence it was. The law it was written against -- a turn whose stream is being
+// read requires an idle route -- is now the quality arm of a two-class relation rather than the
+// whole rule, and these controls assert that arm is unchanged in every case they already covered.
+// The tolerant arm's own positives and negatives are at test.claim.serving_routing_witness.
+fn admission_of(reading: ServingQueueReading) -> ServingGroupAdmission {
+  serving_group_admission(
+    incoming: InteractiveQualitySensitive,
+    tenancy: serving_co_tenancy(reading: reading),
+    pressure: serving_capacity_pressure(reading: reading),
+    seats: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    ceiling: 1,
+    receipt: probe_receipt,
+  )
+}
+
+fn admission_with_seats(reading: ServingQueueReading, seats: ServingSeatStanding) -> ServingGroupAdmission {
+  serving_group_admission(
+    incoming: InteractiveQualitySensitive,
+    tenancy: serving_co_tenancy(reading: reading),
+    pressure: serving_capacity_pressure(reading: reading),
+    seats: seats,
+    ceiling: 1,
+    receipt: probe_receipt,
+  )
+}
+
+fn metrics_body(waiting: String, running: String, start: String) -> String {
+  join([
+    "# HELP vllm:num_requests_waiting Number of requests waiting.\n",
+    "# TYPE vllm:num_requests_waiting gauge\n",
+    "vllm:num_requests_waiting\{model_name=\"deepseek\"} ", waiting, "\n",
+    "# TYPE vllm:num_requests_running gauge\n",
+    "vllm:num_requests_running\{model_name=\"deepseek\"} ", running, "\n",
+    "# HELP vllm:num_requests_waiting_by_reason Number of requests waiting, by reason.\n",
+    "# TYPE vllm:num_requests_waiting_by_reason gauge\n",
+    "vllm:num_requests_waiting_by_reason\{model_name=\"deepseek\",reason=\"capacity\"} ", waiting, "\n",
+    "vllm:num_requests_waiting_by_reason\{model_name=\"deepseek\",reason=\"other\"} 0.0\n",
+    "# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.\n",
+    "# TYPE process_start_time_seconds gauge\n",
+    "process_start_time_seconds ", start, "\n",
+  ], "")
+}
+
+// ── A POSITIVE FLOAT IS A COUNT, WHICH IS THE REGRESSION THIS CONTROL EXISTS FOR ──────────────
+//
+// The reading that shipped parsed the gauge value as an integer, failed on the ordinary float
+// rendering, and returned 1 for every positive value. So waiting=4.0 and running=3.0 both read as 1,
+// and those ones were used as counts. This control is discriminating in exactly that direction: it
+// goes red on the collapse, and it goes red on a parser that refuses floats altogether.
+test fn positive_float_gauges_parse_exactly() -> Bool {
+  match harness_queue_from_body(body: metrics_body(waiting: "4.0", running: "3.0", start: "1757200000.5")) {
+    QueueDepthRead { waiting: w, running: r, pressure: _ } => w == 4 && r == 3
+    QueueDepthUnread { obligation: _ } => false
+  }
+}
+
+test fn a_zero_float_gauge_is_zero_and_not_unread() -> Bool {
+  match harness_queue_from_body(body: metrics_body(waiting: "0.0", running: "0.0", start: "1757200000.5")) {
+    QueueDepthRead { waiting: w, running: r, pressure: _ } => w == 0 && r == 0
+    QueueDepthUnread { obligation: _ } => false
+  }
+}
+
+// A COUNT WITH A FRACTION IS NOT A COUNT THIS READER CAN NAME, so it produces no reading rather than
+// a plausible integer. The arm that rounded it to something would be the fabrication the whole
+// admission rule depends on not doing.
+test fn a_non_integral_gauge_is_unread_rather_than_rounded() -> Bool {
+  (match harness_queue_from_body(body: metrics_body(waiting: "1.5", running: "0.0", start: "1757200000.5")) {
+     QueueDepthUnread { obligation: o } => string_contains(s: o as String, pattern: "not an exact count")
+     QueueDepthRead { waiting: _, running: _, pressure: _ } => false
+   })
+    && (match harness_gauge_count(text: "1.5") { Absent => true  Present { value: _ } => false })
+    && (match harness_gauge_count(text: "12") { Present { value: n } => n == 12  Absent => false })
+    && (match harness_gauge_count(text: " 7.00 ") { Present { value: n } => n == 7  Absent => false })
+}
+
+// BOTH GAUGES OR NEITHER. A body carrying waiting and not running leaves the admission rule with
+// half an observation, and the half that would be defaulted is the one that decides.
+test fn a_body_missing_one_gauge_reads_neither() -> Bool {
+  let half = join([
+    "vllm:num_requests_waiting\{model_name=\"deepseek\"} 0.0\n",
+    "process_start_time_seconds 1757200000.5\n",
+  ], "")
+  match harness_queue_from_body(body: half) {
+    QueueDepthUnread { obligation: o } => string_contains(s: o as String, pattern: "running-requests series")
+    QueueDepthRead { waiting: _, running: _, pressure: _ } => false
+  }
+}
+
+// THE DISPOSITION IS READ BY ONE EXHAUSTIVE MATCH, not by a pair of Bool predicates over the same
+// coproduct. Production branches on the arms directly (gunbc.harness.harness_seat
+// harness_add_candidate); this witness needs a comparable value, so it derives one here, and because
+// the match is exhaustive a fourth admission arm reds this file instead of defaulting quietly.
+fn t_disposition(a: ServingGroupAdmission) -> String {
+  match a {
+    AdmissibleForClass { class: _, receipt: _ } => "admissible"
+    InadmissibleQualityTurnInFlight { held: _, basis: _ } => "pending-retry"
+    InadmissibleGroupNotIdle { occupied_by: _, basis: _ } => "pending-retry"
+    InadmissibleRouteHoldingForCapacity { held: _ } => "pending-retry"
+    InadmissibleClassCeilingReached { held: _, ceiling: _ } => "pending-retry"
+    InadmissibleUnexplainedOccupancy { occupants: _, seated: _ } => "pending-retry"
+    AdmissibilityUnread { obligation: _ } => "refused-measure"
+  }
+}
+
+// ── UNREAD IS NOT IDLE ────────────────────────────────────────────────────────────────────────
+//
+// The discriminating case for the third state. A consumer that cannot read the gauges is refused,
+// its cause says it was UNREAD rather than occupied, and the refusal is not retryable -- waiting
+// does not turn an unreadable group into a readable one, so the remedy is instrumentation.
+test fn unreadable_admission_evidence_never_admits() -> Bool {
+  let a = admission_of(reading: QueueDepthUnread { obligation: "the metrics endpoint did not answer" as NonEmptyStr })
+  (match a { AdmissibilityUnread { obligation: o } => string_contains(s: o as String, pattern: "did not answer")  _ => false })
+    && (t_disposition(a: a) != "admissible")
+    && (t_disposition(a: a) != "pending-retry")
+    && (t_disposition(a: a) == "refused-measure")
+    && string_contains(s: serving_admission_detail(replica: w_replica, admission: a), pattern: "occupancy unread, which is not idle")
+}
+
+// ── AN OCCUPIED GROUP IS NOT A WORSE CANDIDATE; IT IS NOT A CANDIDATE ─────────────────────────
+//
+// This is the whole reversal. The design this replaces bound the occupied group, priced its
+// co-tenancy on the opportunity axis, and let the ranking decide -- which places the arriving cold
+// prefill beside a live decode whenever the alternatives look worse. Here it is refused, and the
+// refusal is RETRYABLE, because the group frees itself.
+test fn an_occupied_group_refuses_a_fresh_cold_prefill() -> Bool {
+  let a = admission_of(reading: QueueDepthRead { waiting: 0, running: 1, pressure: RouteAdmittingMore })
+  (match a { InadmissibleUnexplainedOccupancy { occupants: n, seated: _ } => n == 1  _ => false })
+    && (t_disposition(a: a) != "admissible")
+    && (t_disposition(a: a) == "pending-retry")
+    && string_contains(s: serving_admission_detail(replica: w_replica, admission: a), pattern: "a turn nobody seated may be one somebody is reading")
+}
+
+// A GROUP WITH WORK WAITING IS NOT IDLE EITHER. The request admitted and waiting starts the moment
+// the engine frees, so a cold prefill placed in front of it produces the same overlap one scheduler
+// step later. A reading that looked only at the running gauge would admit here.
+test fn a_queued_group_is_not_idle() -> Bool {
+  let a = admission_of(reading: QueueDepthRead { waiting: 2, running: 0, pressure: RouteAdmittingMore })
+  (match a { InadmissibleUnexplainedOccupancy { occupants: n, seated: _ } => n == 2  _ => false })
+    && (t_disposition(a: a) != "admissible")
+}
+
+test fn an_idle_group_is_admissible_and_a_read_zero_is_a_reading() -> Bool {
+  let a = admission_of(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore })
+  (t_disposition(a: a) == "admissible")
+    && (t_disposition(a: a) != "pending-retry")
+    && (match serving_co_tenancy(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore }) { GroupIdle => true  _ => false })
+}
+
+// ── NOTHING IS PLACED WHEN NOTHING IS ADMISSIBLE, AND THE TWO REASONS STAY APART ──────────────
+//
+// A consumer that reads nothing gets neither group. A consumer whose groups are all busy gets
+// neither group either -- but the two answers differ in whether a retry is the remedy, and fusing
+// them would make an unreadable fleet look like a busy one.
+test fn no_admissible_group_and_the_reasons_do_not_fuse() -> Bool {
+  let unread = admission_of(reading: QueueDepthUnread { obligation: "this consumer does not read the served metrics" as NonEmptyStr })
+  let busy = admission_of(reading: QueueDepthRead { waiting: 0, running: 3, pressure: RouteAdmittingMore })
+  (t_disposition(a: unread) != "admissible")
+    && (t_disposition(a: busy) != "admissible")
+    && (t_disposition(a: busy) == "pending-retry")
+    && (t_disposition(a: unread) != "pending-retry")
+    && (t_disposition(a: unread) == "refused-measure")
+}
+
+// ── THE COST AXES CARRY NO ESTIMATE, WHICH IS THE OTHER HALF OF THE CUT ───────────────────────
+//
+// The refuted execution model priced a transition as a per-token cold prefill and an opportunity as
+// a whole-prefill victim stall. Both are withdrawn. An admitted candidate is idle, so it displaces
+// nothing and requires no transition, and nothing here can spell a measured number it did not
+// measure -- in particular there is no incumbency arm that would return a zero transition cost for a
+// conversation whose prefix nobody observed.
+test fn an_admitted_candidate_carries_no_priced_estimate() -> Bool {
+  (match serving_transition_cost() { NoTransitionRequired => true  _ => false })
+    && (match serving_opportunity_cost() { NoFeasibleAlternativeUse { receipt: r } => (r as String) == "gunbc.rung_drop.serving_cost_axes_asserted_unmeasured"  _ => false })
+    && (match serving_availability(receipt: probe_receipt) { AvailableIndefinitely { delay: d, receipt: _ } => d.count == 0  _ => false })
+}
+
+// ── A RESTART IS A NEW OFFER SUBJECT ──────────────────────────────────────────────────────────
+//
+// Keyed on the group, a group's first invocation and its successor are one offer, and the
+// predecessor's readiness, queue and capacity evidence price the successor. Keyed on the launch they
+// are two, which is what lets a seat taken against one engine fail to authorize a request against
+// the engine that replaced it.
+// AND THE ENDPOINT IS PART OF THE IDENTITY, not a passenger field: the same group reporting the same
+// process-start value from a different address is a different reading and a different subject. It was
+// a field the key and the equality both ignored, which is the shape where a carrier holds a fact its
+// identity does not agree to.
+test fn a_restarted_engine_is_a_different_offer_subject() -> Bool {
+  let first = replica_endpoint_launch(replica: w_replica, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
+  let second = replica_endpoint_launch(replica: w_replica, endpoint: "192.168.1.232" as NonEmptyStr, process_start_field: "1757209999.25" as NonEmptyStr)
+  let relocated = replica_endpoint_launch(replica: w_replica, endpoint: "192.168.1.240" as NonEmptyStr, process_start_field: "1757200000.5" as NonEmptyStr)
+  !replica_endpoint_launch_is(launch: first, other: second)
+    && replica_endpoint_launch_is(launch: first, other: first)
+    && ((replica_endpoint_launch_key(launch: first) as String) != (replica_endpoint_launch_key(launch: second) as String))
+    && !replica_endpoint_launch_is(launch: first, other: relocated)
+}
+
+// AND A LAUNCH THAT CANNOT BE NAMED IS NOT OFFERED, because the alternative is an offer keyed on the
+// group -- the identity the launch key exists to replace.
+test fn an_unnameable_launch_is_not_offered() -> Bool {
+  let no_process_line = join([
+    "vllm:num_requests_waiting\{model_name=\"deepseek\"} 0.0\n",
+    "vllm:num_requests_running\{model_name=\"deepseek\"} 0.0\n",
+  ], "")
+  (match harness_launch_from_body(replica: w_replica, address: "192.168.1.232", body: no_process_line) {
+     ReplicaLaunchUnobserved { replica: _, obligation: o } => string_contains(s: o as String, pattern: "cannot be named")
+     ReplicaLaunchObserved { launch: _, receipt: _ } => false
+   })
+    && (match harness_launch_from_body(replica: w_replica, address: "192.168.1.232", body: metrics_body(waiting: "0.0", running: "0.0", start: "1757200000.5")) {
+          ReplicaLaunchObserved { launch: l, receipt: _ } => (l.process_start_field as String) == "1757200000.5"
+          ReplicaLaunchUnobserved { replica: _, obligation: _ } => false
+        })
+}
+
+// ── A GRANTED SEAT IS OCCUPANCY THE GAUGES CANNOT YET SEE ─────────────────────────────────────
+//
+// THE DISCRIMINATING CASE, AND IT IS THE ONE THAT SHIPPED WRONG. The engine's gauges count what it
+// has been HANDED. A placement whose seat was granted a moment ago, whose caller has not sent its
+// request yet, reads zero on both gauges -- so a rule decided from the gauges alone admits a second
+// cold prefill onto a group already committed to one, which is the overlap the rule exists to
+// prevent. The seat ledger sees it, because a seat is taken before a request is sent.
+//
+// This control goes red on exactly the reading that shipped: gauges idle, one seat held, admitted.
+test fn a_held_seat_is_occupancy_even_when_the_gauges_read_zero() -> Bool {
+  let a = admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore }, seats: SeatStandingRead { quality_held: 1, tolerant_held: 0 })
+  (match a { InadmissibleGroupNotIdle { occupied_by: n, basis: _ } => n == 1  _ => false })
+    && (t_disposition(a: a) != "admissible")
+    && (t_disposition(a: a) == "pending-retry")
+}
+
+// AND AN UNREADABLE LEDGER IS NOT AN EMPTY ONE, which is the same rule the gauges already obey: a
+// pool that could not be read frees nobody by being waited for, so it is an obligation rather than a
+// retry.
+test fn an_unread_seat_ledger_never_admits() -> Bool {
+  let a = admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore }, seats: SeatStandingUnread { obligation: "the partition chain could not be walked" as NonEmptyStr })
+  (match a { AdmissibilityUnread { obligation: o } => string_contains(s: o as String, pattern: "partition chain")  _ => false })
+    && (t_disposition(a: a) != "admissible")
+    && (t_disposition(a: a) != "pending-retry")
+}
+
+// BOTH CLOCKS CLEAR IS THE ONLY ADMITTING STATE, and the positive control says so rather than
+// leaving the two refusals above to imply it.
+test fn a_group_idle_on_both_readings_is_the_only_admitted_state() -> Bool {
+  (t_disposition(a: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore }, seats: SeatStandingRead { quality_held: 0, tolerant_held: 0 })) == "admissible")
+    && (t_disposition(a: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 2, pressure: RouteAdmittingMore }, seats: SeatStandingRead { quality_held: 0, tolerant_held: 0 })) != "admissible")
+    && (t_disposition(a: admission_with_seats(reading: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore }, seats: SeatStandingRead { quality_held: 1, tolerant_held: 2 })) != "admissible")
+}
+
+// ── THE ROUTE'S OWN CAPACITY SIGNAL IS SELECTED BY LABEL, AND AN ABSENT FAMILY IS UNREAD ──────
+//
+// The capacity-reason series is one member of a family that renders one line per reason, so the
+// name-plus-brace prefix the other gauges use matches several lines at once. This control is
+// discriminating in that exact direction: the body below carries TWO reasons, and a reader that took
+// the first matching line, or refused the family for being non-unique, gives a different answer from
+// the one asserted here.
+//
+// AND AN ABSENT FAMILY REFUSES RATHER THAN READING ZERO, which is the fail-open this signal would
+// otherwise introduce: "no series" and "no pressure" are the same bytes to a careless reader, and
+// only one of them means the route said it will take more work.
+test fn the_capacity_reason_series_is_selected_by_label_and_its_absence_is_unread() -> Bool {
+  (match harness_capacity_pressure_from_body(body: metrics_body(waiting: "0.0", running: "0.0", start: "1757200000.5")) {
+     RouteAdmittingMore => true
+     _ => false
+   })
+    && (match harness_capacity_pressure_from_body(body: metrics_body(waiting: "3.0", running: "1.0", start: "1757200000.5")) {
+          RouteHoldingForCapacity { held: h } => h == 3
+          _ => false
+        })
+    && (match harness_capacity_pressure_from_body(body: join([
+         "vllm:num_requests_waiting\{model_name=\"deepseek\"} 0.0\n",
+         "vllm:num_requests_running\{model_name=\"deepseek\"} 0.0\n",
+       ], "")) {
+          CapacityPressureUnread { obligation: o } => string_contains(s: o as String, pattern: "capacity-reason waiting series")
+          _ => false
+        })
+}
+
+// AND THE SIGNAL REACHES ADMISSION FOR THE CLASS THAT CONSULTS IT. A tolerant turn arriving at a
+// route holding requests back for capacity is refused with room left under the declared ceiling --
+// which is the half of the law a ceiling alone cannot express.
+test fn a_route_holding_for_capacity_refuses_a_tolerant_turn_with_ceiling_to_spare() -> Bool {
+  match serving_group_admission(
+    incoming: BatchQualityTolerant,
+    tenancy: GroupIdle,
+    pressure: RouteHoldingForCapacity { held: 1 },
+    seats: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    ceiling: 4,
+    receipt: probe_receipt,
+  ) {
+    InadmissibleRouteHoldingForCapacity { held: h } => h == 1
+    _ => false
+  }
+}
+
+// ── WARM SESSION RESIDENCY ────────────────────────────────────────────────────────────────────
+fn residency_on(owner: String, current: String, intact: Bool, turn: ServingTurnReuse, host: ServingHostTierStanding) -> ServingSessionResidency {
+  residency_on_gpu(owner: owner, current: current, intact: intact, turn: turn, host: host, gpu: GpuPrefixUnread)
+}
+
+fn residency_on_gpu(owner: String, current: String, intact: Bool, turn: ServingTurnReuse, host: ServingHostTierStanding, gpu: ServingGpuPrefixStanding) -> ServingSessionResidency {
+  serving_session_residency(owner_launch: owner as NonEmptyStr, current_launch: current as NonEmptyStr, prefix_intact: intact, last_turn: turn, host: host, gpu: gpu)
+}
+
+fn reuse(cached: Nat, launch: String) -> ServingTurnReuse {
+  TurnReuseRead { cached_tokens: token_count(count: cached), launch: launch as NonEmptyStr, turn: "t7" as NonEmptyStr }
+}
+
+// An attributed hit is reuse AT THAT TURN, carrying its evidence -- not residency now.
+test fn an_attributed_hit_on_the_owning_launch_reads_reused_at_turn() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 512, launch: "L1"), host: HostTierUnread) {
+    ReusedAtTurn { cached_tokens: n, launch: l, turn: t } => token_count_value(t: n) == 512 && (l as String) == "L1" && (t as String) == "t7"
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED (A-evicted / B-hit): session A's own last response reported zero cached tokens
+// (its prefix was evicted) while session B hit on the same launch, advancing the engine-wide counters.
+// Engine counters are not read anywhere, so A cannot read reused; the same red runs on the
+// production fold in serving_session_attachment_witness_test.
+test fn an_evicted_session_does_not_inherit_a_neighbours_hit() -> Bool {
+  (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierUnread) {
+     ResidencyUnread { obligation: _ } => true
+     _ => false
+   })
+    && (match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty) {
+          ResidencyUnread { obligation: _ } => true
+          _ => false
+        })
+}
+
+// A reading attributed to another launch is not evidence about the owner.
+test fn a_reading_from_a_different_launch_is_unread() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 512, launch: "L2"), host: HostTierRetains) {
+    ResidencyUnread { obligation: _ } => true
+    _ => false
+  }
+}
+
+test fn a_broken_token_prefix_reads_must_reconstruct_even_with_hits() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: false, turn: reuse(cached: 512, launch: "L1"), host: HostTierRetains) {
+    MustReconstruct { cause: TokenPrefixBroken } => true
+    _ => false
+  }
+}
+
+test fn a_replaced_launch_reads_must_reconstruct() -> Bool {
+  match residency_on(owner: "L1", current: "L2", intact: true, turn: reuse(cached: 512, launch: "L1"), host: HostTierRetains) {
+    MustReconstruct { cause: LaunchReplaced } => true
+    _ => false
+  }
+}
+
+// Absent usage details (server not launched with them) is unread, never a miss or a hit.
+test fn an_unreported_turn_is_never_warm() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: TurnReuseUnread { obligation: "no prompt_tokens_details" as NonEmptyStr }, host: HostTierRetains) {
+    ResidencyUnread { obligation: _ } => true
+    _ => false
+  }
+}
+
+fn placed_on_l2(standing: ServingSessionResidency) -> ServingSessionPlacement {
+  serving_session_placement(residency: standing, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr)
+}
+
+test fn a_gpu_miss_is_host_restorable_only_when_the_host_tier_retains() -> Bool {
+  let unread_gpu_retains = residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierRetains)
+  let unread_gpu_empty = residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty)
+  let evicted_retains = residency_on_gpu(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierRetains, gpu: GpuPrefixCurrentlyEvicted)
+  let evicted_unread = residency_on_gpu(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierUnread, gpu: GpuPrefixCurrentlyEvicted)
+  let evicted_empty = residency_on_gpu(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty, gpu: GpuPrefixCurrentlyEvicted)
+  (match unread_gpu_retains { HostRestorable => match placed_on_l2(standing: unread_gpu_retains) { OwnedByAnotherReplica { owner: o } => (o as String) == "L1"  _ => false }  _ => false })
+    && (match unread_gpu_empty { ResidencyUnread { obligation: _ } => match placed_on_l2(standing: unread_gpu_empty) { OwnedByAnotherReplica { owner: _ } => true  _ => false }  _ => false })
+    && (match evicted_retains { HostRestorable => match placed_on_l2(standing: evicted_retains) { OwnedByAnotherReplica { owner: o } => (o as String) == "L1"  _ => false }  _ => false })
+    && (match evicted_unread { ResidencyUnread { obligation: _ } => match placed_on_l2(standing: evicted_unread) { OwnedByAnotherReplica { owner: _ } => true  _ => false }  _ => false })
+    && (match evicted_empty { MustReconstruct { cause: PrefixMissedAndNotRetained } => match placed_on_l2(standing: evicted_empty) { PlacementFree => true  _ => false }  _ => false })
+}
+
+fn idle_admission() -> ServingGroupAdmission {
+  AdmissibleForClass { class: BatchQualityTolerant, receipt: probe_receipt }
+}
+
+fn rec(owner: String) -> ServingSessionRecord {
+  SessionRecord { owner_launch: owner as NonEmptyStr, prefix_intact: true, last_turn: reuse(cached: 512, launch: owner) }
+}
+
+test fn a_warm_session_is_pinned_and_an_established_reconstruct_is_free() -> Bool {
+  (match serving_session_placement(residency: ReusedAtTurn { cached_tokens: token_count(count: 512), launch: "L1" as NonEmptyStr, turn: "t7" as NonEmptyStr }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+     OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
+     _ => false
+   })
+    && (match serving_session_placement(residency: HostRestorable, record: rec(owner: "L1"), candidate_launch: "L1" as NonEmptyStr) {
+          PlacementFree => true
+          _ => false
+        })
+    && (match serving_session_placement(residency: ResidencyUnread { obligation: "no reuse evidence" as NonEmptyStr }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+          OwnedByAnotherReplica { owner: _ } => true
+          _ => false
+        })
+    && (match serving_session_placement(residency: MustReconstruct { cause: TokenPrefixBroken }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+          PlacementFree => true
+          _ => false
+        })
+    && (match serving_session_placement(residency: MustReconstruct { cause: LaunchReplaced }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+          PlacementFree => true
+          _ => false
+        })
+}
+
+// THE DISCRIMINATING RED (review 5483778652): a completed cold turn (cached_tokens == 0) plus
+// HostTierEmpty is not current GPU eviction. vLLM retains cold-request cache blocks after completion.
+// Without GpuPrefixCurrentlyEvicted the standing is unread and the session stays pinned to L1.
+test fn a_completed_cold_turn_with_empty_host_is_unread_and_pinned() -> Bool {
+  match residency_on(owner: "L1", current: "L1", intact: true, turn: reuse(cached: 0, launch: "L1"), host: HostTierEmpty) {
+    ResidencyUnread { obligation: _ } =>
+      match serving_session_placement(residency: ResidencyUnread { obligation: "completed cold turn" as NonEmptyStr }, record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+        OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Missing owner standing is unread, which pins: L2 is not free. NoSessionRecord is the control.
+test fn owner_unprobed_is_unread_and_pins_to_the_recorded_owner() -> Bool {
+  (match serving_session_placement(residency: serving_unread_when_owner_unprobed(), record: rec(owner: "L1"), candidate_launch: "L2" as NonEmptyStr) {
+     OwnedByAnotherReplica { owner: o } => (o as String) == "L1"
+     _ => false
+   })
+    && (match serving_session_placement(residency: serving_unread_when_owner_unprobed(), record: NoSessionRecord, candidate_launch: "L2" as NonEmptyStr) {
+          PlacementFree => true
+          _ => false
+        })
+}
+
+// No record, no standing: nothing was placed whose residency could be read.
+test fn an_unrecorded_session_reads_unread_never_warm() -> Bool {
+  match serving_session_standing(record: NoSessionRecord, current_launch: "L1" as NonEmptyStr, host: HostTierRetains, gpu: GpuPrefixUnread) {
+    ResidencyUnread { obligation: _ } => true
+    _ => false
+  }
+}

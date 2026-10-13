@@ -1,4 +1,4 @@
-module gunbc.host_resource
+module gunbc.host.host_resource
 
 import std.types { String, Int, Bool }
 import product.host_identity { HostIdentity }

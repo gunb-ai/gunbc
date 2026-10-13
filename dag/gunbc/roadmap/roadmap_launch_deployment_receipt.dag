@@ -1,22 +1,22 @@
-module gunbc.roadmap_launch_deployment_receipt
+module gunbc.roadmap.roadmap_launch_deployment_receipt
 
-import gunbc.fleet_converge_scope { FleetConvergeScope, LaunchEnvironment }
+import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, LaunchEnvironment }
 
-import gunbc.fleet_converge_terminal { FullyApplied, PartiallyApplied, AwaitingCapability }
+import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied, AwaitingCapability }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.measure { second_count }
 import std.content_hash { content_hash_atom, content_hash_tagged_structural }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_object, json_array, json_bool, serialize_json }
 import gunbc.actions_run_binding { ActionsRunBinding, run_binding_names_workflow_file }
-import gunbc.fleet_converge_plan {
+import gunbc.fleet.fleet_converge_plan {
   fleet_converge_scope_wire,
   fleet_converge_scope_of_wire,
   fleet_converge_scope_matches,
   ScopeDecoded,
   ScopeUndecodable
 }
-import gunbc.fleet_converge_receipt {
+import gunbc.fleet.fleet_converge_receipt {
   FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
   fleet_converge_plan_receipt_identity_hex, fleet_converge_apply_receipt_identity_hex,
   fleet_converge_plan_receipt_json,
@@ -24,6 +24,7 @@ import gunbc.fleet_converge_receipt {
 }
 import gunbc.live_deploy.apply_receipt {
   LiveDeployApplyReceipt,
+  FleetTransactionProvenance, OperatorLocalApply,
   LiveDeployApplyConverged, LiveDeployApplyNotConverged,
   LiveDeployReadinessObserved, LiveDeployReadinessRefused,
   live_deploy_apply_receipt_identity_hex,
@@ -45,14 +46,14 @@ import gunbc.live_deploy.unit_standing {
   BeltEventPathStanding, BeltEventPathConverged, BeltEventPathRefused,
   dashboard_service_standing_text, belt_event_path_standing_text, belt_oneshot_standing_text,
 }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   TickExecuted, TickExecutionWithheld, belt_tick_receipt_identity_hex,
   BeltFootprintAdmission, FootprintAdmitted, FootprintRefused,
   BeltProviderPreflight, ProviderPreflightOk, ProviderPreflightRefused,
 }
-import gunbc.roadmap_belt { SpawnMode, ManualReady, spawn_mode_label }
-import gunbc.roadmap_launch_deployment_observe {
+import gunbc.roadmap.roadmap_belt { SpawnMode, ManualReady, spawn_mode_label }
+import gunbc.roadmap.roadmap_launch_deployment_observe {
   EventBacklogFact, EventBacklogClear, StaleBacklog, EventBacklogUnobserved, event_backlog_text, event_backlog_stage_label,
 }
 
@@ -368,13 +369,17 @@ fn dashboard_receipt_blockers(s: RoadmapLaunchDeploymentSubject, plan: PlanRecei
   match f {
     DashboardReceiptUnreadable { reason: r } => blocker(member: "dashboard_receipt", detail: r)
     DashboardReceiptRead { receipt: d } =>
+      match d.provenance {
+        OperatorLocalApply { host: _, principal: _ } =>
+          blocker(member: "dashboard_receipt", detail: "dashboard receipt is operator-local, not a fleet transaction")
+        FleetTransactionProvenance { run, expected_revision, fleet } =>
       concat(
         concat(
-          run_binding_blockers(member: "dashboard_receipt", s: s, run: d.run, expected_run_id: s.dashboard_run_id),
+          run_binding_blockers(member: "dashboard_receipt", s: s, run: run, expected_run_id: s.dashboard_run_id),
           concat(
             concat(
               if d.target != s.host { blocker(member: "dashboard_receipt", detail: join(["deploy targeted ", d.target, ", not ", s.host], "")) } else { [] },
-              if d.expected_revision != s.revision { blocker(member: "dashboard_receipt", detail: join(["deploy expected ", d.expected_revision, ", not R ", s.revision], "")) } else { [] },
+              if expected_revision != s.revision { blocker(member: "dashboard_receipt", detail: join(["deploy expected ", expected_revision, ", not R ", s.revision], "")) } else { [] },
             ),
             concat(
               if d.candidate_revision != s.revision { blocker(member: "dashboard_receipt", detail: join(["deploy candidate was ", d.candidate_revision, ", not R ", s.revision], "")) } else { [] },
@@ -395,18 +400,19 @@ fn dashboard_receipt_blockers(s: RoadmapLaunchDeploymentSubject, plan: PlanRecei
             },
             concat(
               concat(
-                if d.provenance.plan_run_id != s.plan_run_id { blocker(member: "dashboard_receipt", detail: join(["deploy provenance names plan run ", d.provenance.plan_run_id, ", not ", s.plan_run_id], "")) } else { [] },
-                if d.provenance.apply_run_id != s.apply_run_id { blocker(member: "dashboard_receipt", detail: join(["deploy provenance names apply run ", d.provenance.apply_run_id, ", not ", s.apply_run_id], "")) } else { [] },
+                if fleet.plan_run_id != s.plan_run_id { blocker(member: "dashboard_receipt", detail: join(["deploy provenance names plan run ", fleet.plan_run_id, ", not ", s.plan_run_id], "")) } else { [] },
+                if fleet.apply_run_id != s.apply_run_id { blocker(member: "dashboard_receipt", detail: join(["deploy provenance names apply run ", fleet.apply_run_id, ", not ", s.apply_run_id], "")) } else { [] },
               ),
               match plan {
                 PlanReceiptUnreadable { reason: _ } => []
                 PlanReceiptRead { receipt: p } =>
-                  if d.provenance.plan_artifact_hash != p.plan_artifact_hash { blocker(member: "dashboard_receipt", detail: join(["deploy provenance names plan bundle ", d.provenance.plan_artifact_hash, ", the plan minted ", p.plan_artifact_hash], "")) } else { [] }
+                  if fleet.plan_artifact_hash != p.plan_artifact_hash { blocker(member: "dashboard_receipt", detail: join(["deploy provenance names plan bundle ", fleet.plan_artifact_hash, ", the plan minted ", p.plan_artifact_hash], "")) } else { [] }
               },
             ),
           ),
         ),
       )
+      }
   }
 }
 
@@ -628,22 +634,27 @@ fn dashboard_provenance_blockers(plan: PlanReceiptFact, apply: ApplyReceiptFact,
   match f {
     DashboardReceiptUnreadable { reason: _ } => []
     DashboardReceiptRead { receipt: d } =>
+      match d.provenance {
+        OperatorLocalApply { host: _, principal: _ } =>
+          blocker(member: "dashboard_receipt", detail: "dashboard receipt is operator-local, not a fleet transaction")
+        FleetTransactionProvenance { run: _, expected_revision: _, fleet } =>
       concat(
         match plan {
           PlanReceiptUnreadable { reason: _ } => []
           PlanReceiptRead { receipt: p } =>
-            if d.provenance.plan_receipt_identity != fleet_converge_plan_receipt_identity_hex(r: p) {
-              blocker(member: "dashboard_receipt", detail: join(["dashboard cited plan receipt ", d.provenance.plan_receipt_identity, ", not the plan receipt this join read (", fleet_converge_plan_receipt_identity_hex(r: p), ")"], ""))
+            if fleet.plan_receipt_identity != fleet_converge_plan_receipt_identity_hex(r: p) {
+              blocker(member: "dashboard_receipt", detail: join(["dashboard cited plan receipt ", fleet.plan_receipt_identity, ", not the plan receipt this join read (", fleet_converge_plan_receipt_identity_hex(r: p), ")"], ""))
             } else { [] }
         },
         match apply {
           ApplyReceiptUnreadable { reason: _ } => []
           ApplyReceiptRead { receipt: a } =>
-            if d.provenance.apply_receipt_identity != fleet_converge_apply_receipt_identity_hex(r: a) {
-              blocker(member: "dashboard_receipt", detail: join(["dashboard cited apply receipt ", d.provenance.apply_receipt_identity, ", not the apply receipt this join read (", fleet_converge_apply_receipt_identity_hex(r: a), ")"], ""))
+            if fleet.apply_receipt_identity != fleet_converge_apply_receipt_identity_hex(r: a) {
+              blocker(member: "dashboard_receipt", detail: join(["dashboard cited apply receipt ", fleet.apply_receipt_identity, ", not the apply receipt this join read (", fleet_converge_apply_receipt_identity_hex(r: a), ")"], ""))
             } else { [] }
         },
       )
+      }
   }
 }
 
@@ -789,7 +800,10 @@ fn facts_lines(f: RoadmapLaunchDeploymentFacts) -> List<String> {
       ApplyReceiptUnreadable { reason: r } => join(["unreadable: ", r], "")
     }], ""),
     join(["dashboard_receipt: ", match f.dashboard_receipt {
-      DashboardReceiptRead { receipt: d } => join(["identity=", live_deploy_apply_receipt_identity_hex(r: d), " run=", d.run.run_id, " revision=", d.run.run_revision, " candidate=", d.candidate_revision, " tree=", d.candidate_tree_oid, " completed_at=", d.completed_at], "")
+      DashboardReceiptRead { receipt: d } => join(["identity=", live_deploy_apply_receipt_identity_hex(r: d), " ", match d.provenance {
+        FleetTransactionProvenance { run, expected_revision: _, fleet: _ } => join(["run=", run.run_id, " revision=", run.run_revision], "")
+        OperatorLocalApply { host, principal } => join(["operator_local host=", host as String, " principal=", principal as String], "")
+      }, " candidate=", d.candidate_revision, " tree=", d.candidate_tree_oid, " completed_at=", d.completed_at], "")
       DashboardReceiptUnreadable { reason: r } => join(["unreadable: ", r], "")
     }], ""),
     join(["deployed_tree: ", deployed_root_tree_standing_text(s: f.deployed_tree)], ""),

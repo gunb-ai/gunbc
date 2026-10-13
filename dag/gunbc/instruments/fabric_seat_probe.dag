@@ -22,8 +22,8 @@ import gunbc.harness.harness_seat { harness_turn_request,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, serving_co_tenancy_class_wire }
 import gunbc.harness.harness_cli { harness_seat_policy }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageServed }
-import gunbc.fabric_event_log {
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageServed }
+import gunbc.fabric.fabric_event_log {
   SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire, seat_acquisition_wire,
   PartitionReadOk, PartitionReadRefused, event_log_read_partition, EventAppended, EventAppendStale, EventAppendRefused,
   event_log_append, event_log_refusal_wire,
@@ -64,7 +64,7 @@ fn fabric_seat_probe(receipt: NonEmptyStr) -> ProcessExit {
     HarnessSeatPending { detail: d } => exit_failure(reason: join(["seat probe: placement pending: ", d], ""))
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => exit_failure(reason: "seat probe: an any-model bind answered with a hosted binding, which harness_requirement_placement never yields")
     HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => exit_failure(reason: "seat probe: an any-model bind answered with the operator endpoint, which holds no seat; the probe's class is refused by its quality floor")
-    HarnessSeatBound { url: u, grant: g, partition: p, ceiling: _, group_wire: gw, launch: launch, store: _, model: m, unit: _, class: c, seat: _ } => {
+    HarnessSeatBound { url: u, grant: g, partition: p, ceiling: _, replica_wire: gw, launch: launch, store: _, model: m, unit: _, class: c, seat: _ } => {
       let line = join([
         "host=", short, " group=", gw, " launch=", launch.process_start_field as String,
         " class=", serving_co_tenancy_class_wire(c: c) as String, " model=", m as String,

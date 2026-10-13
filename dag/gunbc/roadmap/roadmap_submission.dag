@@ -18,7 +18,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound,
 }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState,
   ProviderNotStarted,
   ProviderStarting, ProviderAwaitingSeat,
@@ -28,7 +28,7 @@ import gunbc.roadmap_provider_events {
   ProviderBudgetSpent,
   ProviderEventsRefused,
 }
-import gunbc.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
+import gunbc.roadmap.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope { RepositoryCommit, commit_at_reference }
 import std.minted_identity { MintedId }
@@ -48,7 +48,7 @@ import std.minted_identity { MintedId }
 // teach a filename the belt does not read.
 data submission_artifact_name: NonEmptyStr = ".gunbc-submission.json" as NonEmptyStr
 
-// THE SCHEMA IS A WALL RATHER THAN A HINT, on the precedent gunbc.roadmap_publish
+// THE SCHEMA IS A WALL RATHER THAN A HINT, on the precedent gunbc.roadmap.roadmap_publish
 // publication_receipt_schema_v2_note sets: a document whose schema is not exactly this string is
 // refused, so a future shape cannot be silently read as this one with members missing.
 data submission_schema: NonEmptyStr = "roadmap-submission/v1" as NonEmptyStr
@@ -444,10 +444,16 @@ type SubmissionObservation
   | SubmissionAbsent
   | SubmissionUndecodable { reason: String }
 
-// WHAT THE BELT OBSERVED IN THE ATTEMPT'S CAPTURE DIRECTORY for one head.
+// WHAT THE BELT OBSERVED IN THE ATTEMPT'S CAPTURE DIRECTORY for one head. NO CAPTURE IS TWO FACTS,
+// told apart by the commit step's own record: CaptureAbsent means the step that mints captures has
+// settled this attempt without one (preservation only -- the worker yielded), and CaptureNotAttempted
+// means it has not settled -- it has not run, or its last run failed or deferred -- so the capture is
+// still owed. Reading the second as the first is how an ended worker came to look yielded before
+// anything had captured it, and was never owed a capture (srv1 lab, 2026-10-12).
 type SubmissionCaptureObservation
   = CaptureForHead { capture: SubmissionCapture }
   | CaptureAbsent
+  | CaptureNotAttempted { reason: String }
   | CaptureUnreadable { reason: String }
 
 // THE CAPTURE FRESHNESS JUDGMENT, pure so a witness reaches every arm. A declaration whose digest
@@ -502,6 +508,7 @@ fn submission_candidate_decision(
 // keeps a disabled helper truthful: the state is owed, never discharged.
 type CandidateHandoffState
   = HandoffAwaitingWorker
+  | HandoffAwaitingCapture { reason: String }
   | HandoffYielded { reason: String }
   | HandoffEvidenceRefused { reason: String }
   | HandoffDeclaredBlocked { head_sha: String, readiness: SubmissionReadiness, explanation: String }
@@ -570,6 +577,7 @@ fn candidate_handoff_state_for_terminal(
       HandoffYielded {
         reason: "terminal without a captured submission: the belt's commit was preservation only, and no candidate advances to verification",
       }
+    CaptureNotAttempted { reason } => HandoffAwaitingCapture { reason: reason }
     CaptureUnreadable { reason } =>
       HandoffEvidenceRefused {
         reason: join(["the submission capture for this head cannot be established: ", reason], ""),
@@ -613,6 +621,7 @@ fn candidate_handoff_state_for_terminal(
 fn candidate_handoff_state_key(state: CandidateHandoffState) -> String {
   match state {
     HandoffAwaitingWorker => "awaiting-worker"
+    HandoffAwaitingCapture { reason: _ } => "awaiting-capture"
     HandoffYielded { reason: _ } => "yielded"
     HandoffEvidenceRefused { reason: _ } => "evidence-refused"
     HandoffDeclaredBlocked { head_sha: _, readiness, explanation: _ } =>

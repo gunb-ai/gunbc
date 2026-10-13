@@ -1,13 +1,13 @@
-module gunbc.fabric_storage_binding
+module gunbc.fabric.fabric_storage_binding
 
 import std.types { String, NonEmptyStr }
-import gunbc.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
-import gunbc.fabric_storage_placement { fabric_storage_placement_under, FabricStoragePlacement, FabricStoragePlaced, FabricStoragePlacementRefused, FabricStorageUnplaced }
-import gunbc.roadmap_dashboard_instance { prod_role_realization, prod_role_realization_refusal_detail }
+import gunbc.fabric.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_placement_under, FabricStoragePlacement, FabricStoragePlaced, FabricStoragePlacementRefused, FabricStorageUnplaced }
+import gunbc.roadmap.roadmap_dashboard_instance { prod_role_realization, prod_role_realization_refusal_detail }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced, FabricStorageBindingRefused, FabricStorageDoorSocket, FabricStorageServed }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced, FabricStorageBindingRefused, FabricStorageDoorSocket, FabricStorageServed }
 
-// THE RUNTIME PLACEMENT: the placement over the prod-role realization (gunbc.roadmap_dashboard_instance
+// THE RUNTIME PLACEMENT: the placement over the prod-role realization (gunbc.roadmap.roadmap_dashboard_instance
 // prod_role_realization). DECLARED DIVERGENCE from the actuated join (gunbc.live_deploy.desired
 // prod_role_actuated_realization): this module sits in desired's own import closure (via
 // fabric_event_log), so it cannot read the desired roster without a cycle. A holder nothing can install

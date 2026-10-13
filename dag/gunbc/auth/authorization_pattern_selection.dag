@@ -576,7 +576,7 @@ fn billing_text(b: BillingConsequence) -> String {
 }
 
 // THE PARAMETER EVIDENCE QUOTES THE ACTUAL VALUE, so the assessment cannot describe a closure other
-// than the one being decided (the same shape gunbc.spark.serving_deployment_selection uses).
+// than the one being decided (the same shape std.decision's parameter evidence already uses).
 fn parameter_dispositions(e: PrivilegedEffect) -> List<ParameterDisposition> {
   [
     ParameterBound { parameter: id_param_frequency, evidence: frequency_text(f: e.frequency) as NonEmptyStr },

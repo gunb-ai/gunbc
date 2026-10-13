@@ -49,7 +49,7 @@ data organization_self_hosted_runner_get_citation: ExternalAuthority = ExternalA
 // reach the caller as ShellSpawnRefused { program, cause } instead of aborting the evaluation with
 // no receipt; on ShellSpawnRefused the other three fields are absent, not fabricated, so a reader
 // matches outcome before it reads them. An executor prerequisite observed before the read
-// (gunbc.host_cli_dependency) is not this fact: it is a reading taken earlier, not the result of the
+// (gunbc.host.host_cli_dependency) is not this fact: it is a reading taken earlier, not the result of the
 // spawn that later failed.
 service github.CliOrgSelfHostedRunners {
   operation ListOrgRunnersPage {

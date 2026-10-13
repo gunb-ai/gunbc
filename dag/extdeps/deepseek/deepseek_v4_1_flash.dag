@@ -190,8 +190,9 @@ fn deepseek_v4_1_flash_yarn_scaled_positions() -> TokenCount {
 // revision, partitioned by name: `vision.`/`aligner.`/`image_*` = vision; `.engram.` = Engram;
 // `mtp.` = DSpark/MTP draft; everything else = backbone. The index metadata.total_size equals
 // that sum. This is an upstream-reported payload size until someone reads the bytes on the fleet
-// (ArtifactFootprint FootprintReportedExternally). Declared frontier: DSV41-2
-// (crisp-crane-661) gunbc.spark.serving_deployment_selection ArtifactFootprint.
+// (ArtifactFootprint FootprintReportedExternally). Live consumers of these bytes are
+// gunbc.fabric.engram_materialization and
+// test.claim.spark.engram_materialization_witness / test.claim.deepseek.deepseek_v4_1_flash_authority_witness_test.
 // ===========================================================================================
 
 data deepseek_v4_1_flash_safetensors_shard_count: Nat = 48
@@ -210,8 +211,8 @@ data deepseek_v4_1_flash_safetensors_payload_footprint: DeepseekV41SafetensorsPa
   draft_bytes: byte_size(count: 7932874632),
 }
 
-// PUBLISHER-REPORTED, NOT FLEET-READ. The standing is the Hub authority; DSV41-2 maps this onto
-// ArtifactFootprint.FootprintReportedExternally until a Spark reading exists. Trigger: a
+// PUBLISHER-REPORTED, NOT FLEET-READ. The standing is the Hub authority; the figure maps onto
+// ArtifactFootprint.FootprintReportedExternally until a fleet reading exists. Trigger: a
 // FootprintObservedOnFleet row keyed at this revision.
 data deepseek_v4_1_flash_payload_footprint_standing: CitedFigureStanding = CitedToAuthority {
   authority: extdeps_external_authority_anchor,
@@ -342,7 +343,7 @@ data deepseek_v4_1_flash_frontier_dsv41_2: List<FrontierRow> = deepseek_v4_1_fla
     "deepseek_v4_1_flash_engram" as NonEmptyStr,
     "deepseek_v4_1_flash_config_declares_engram_off_accelerator" as NonEmptyStr,
   ],
-  reason: "DSV41-2 crisp-crane-661 serving_deployment_selection consumes this fit/window fact",
+  reason: "gunbc.fabric.engram_materialization and the DeepSeek/engram inhabitance witnesses consume this fit/window fact",
   dissolution: unbound_dissolution(description: "ArtifactFootprint.FootprintReportedExternally rows keyed at this revision, until FootprintObservedOnFleet exists"),
 )
 

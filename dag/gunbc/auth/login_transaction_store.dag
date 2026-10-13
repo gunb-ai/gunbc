@@ -32,7 +32,7 @@ import extdeps.languages.json.parse {
   JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
 }
 import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 
 data login_transaction_file_suffix: String = ".json"

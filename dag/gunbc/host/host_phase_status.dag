@@ -1,20 +1,20 @@
-module gunbc.host_phase_status
+module gunbc.host.host_phase_status
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_standup {
+import gunbc.host.host_standup {
   HostStandupStep,
   PhaseDisposition,
   ModeledCompose,
   DeclaredGap,
   host_standup_spine,
 }
-import gunbc.host_assimilation_program { assimilation_program_for }
-import gunbc.fleet_enrollment { FleetParticipation, HostEnrollmentIntent, fleet_enrollments }
-import gunbc.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
-import gunbc.host_reach_identity_probe {
+import gunbc.host.host_assimilation_program { assimilation_program_for }
+import gunbc.fleet.fleet_enrollment { FleetParticipation, HostEnrollmentIntent, fleet_enrollments }
+import gunbc.host.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
+import gunbc.host.host_reach_identity_probe {
   observe_host_identity_converge,
   observe_reach_secrets_network,
 }
@@ -30,7 +30,7 @@ import gunbc.membership_reconcile {
   membership_write_count,
 }
 import gunbc.ownership { Ownership, Owned }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import product.host_identity { HostIdentity }
 import std.measure { millisecond }
 
@@ -159,7 +159,7 @@ fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
 // a table of hand-written facts (the self-host frontier shape, DESIGN §7: each cell is either
 // produced or it is a declared absence, never a silent assumption). Exactly one cell carries an
 // observation today — (srv3, prefix:os-install-actuated), which deduces its verdict through
-// gunbc.host_standup_assimilation_deduction; that deduction was ALREADY host-parameterized
+// gunbc.host.host_standup_assimilation_deduction; that deduction was ALREADY host-parameterized
 // (deduce_os_install_actuation_verdict takes fleet_slot: HostIdentity), so generalizing it was
 // reading the parameter it already had, not writing new machinery. CORRECTED 2026-08-09, by
 // execution: this sentence previously called that cell a REAL PRODUCER, and it is not one. Its DHCP
@@ -174,7 +174,7 @@ fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
 // Spark collector-fact enrollment for srv5/srv6 was about to do. NEXT-RUNG TRIGGER, named rather
 // than silently stalled (DESIGN §4b): observation provenance becomes a carried fact so authored and
 // executed are different states, and coverage counts only the executed one. Until then the honest
-// reading of the coverage number is ZERO. Controls: test.claim.host_phase_status
+// reading of the coverage number is ZERO. Controls: test.claim.host.host_phase_status_witness
 // witness_covered_cell_verdict_is_selected_by_authorship_alone and
 // witness_every_covered_cell_today_is_the_authored_one. Every other cell returns Absent, which
 // host_phase_verdict_from renders UnknownRefused. What must NOT happen here is the shape this
@@ -190,7 +190,7 @@ fn host_phase_cell_has_live_producer(c: HostPhaseCellStatus) -> Bool {
 // per-program observer beside it (a spark_* sibling would be the reconcile-spine §3
 // fork). The subject is the host's enrollment intent, so a producer can read what the
 // host is enrolled FOR without a second roster. Producers are PURE deductions over
-// committed typed observations (the srv3 lease-table pattern; gunbc.host_reach_identity_probe
+// committed typed observations (the srv3 lease-table pattern; gunbc.host.host_reach_identity_probe
 // for the two P0 cells) — the matrix never executes a transport, and observation never
 // repairs anything. A phase with no producer row returns none, which the verdict fold
 // renders UnknownRefused: absence of a producer is a counted debt, never a silent green.
@@ -339,7 +339,7 @@ fn host_phase_desired_disposition() -> PhaseDisposition {
   ModeledCompose {
     authorities: [
       DeclarationRef {
-        module_path: "gunbc.host_phase_status",
+        module_path: "gunbc.host.host_phase_status",
         decl_name: "host_phase_desired_disposition",
         field: WholeDeclaration,
       },

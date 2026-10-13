@@ -1,10 +1,10 @@
-module gunbc.roadmap_issue_command
+module gunbc.roadmap.roadmap_issue_command
 
 import std.types { String, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.entropy { Urandom }
 import std.encoding { base64_decode, Standard }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_event_log { EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, CarrierClosed, roadmap_event_append }
 

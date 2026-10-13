@@ -15,7 +15,7 @@ import gunbc.design.interaction { InteractionVerb, verb_key, ElementId, element_
 // component_wire_total cross-checks the terminal set against the wire vocabulary authority BOTH
 // directions — a wire label with no state row (labels_missing_state) and a state that fabricates a
 // label the wire never sends (states_missing_label) each red. This module is generic (no roadmap
-// deps); the instance that binds the belt vocabulary lives one layer up (gunbc.roadmap_component),
+// deps); the instance that binds the belt vocabulary lives one layer up (gunbc.roadmap.roadmap_component),
 // the same split as Component-type-here / dashboard_archetype-instance-in-archetype.
 
 type ComponentStateKind

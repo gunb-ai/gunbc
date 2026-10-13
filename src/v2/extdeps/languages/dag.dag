@@ -1644,7 +1644,7 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
 // tries them. Kept, they read as a second route to block forms that no input
 // can take, and as a second row emit could select backward.
 //
-// Evidence: `v2.test.parse.block_expr_as_binary_operand_parse` -- two arms red before this reorder
+// Evidence: `v2.test.claim.parse.block_expr_as_binary_operand_parse` -- two arms red before this reorder
 // (a `match` and an `if` heading a binary chain), three controls green on both sides (each block
 // form standing alone, and an operand that was never block-shaped).
 // A BINARY EXPRESSION NEVER BEGINS AS AN ARROW LAMBDA DOES: `name =>`, or `( name ,` -- a grouped
@@ -1865,13 +1865,33 @@ fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
   )
 }
 
+// An index suffix `[e]` is a postfix step beside the dotted and cast ones, so `xs[i]` is ONE
+// postfix expression. Before it the suffix did not exist and `xs[i]` parsed as `xs` followed by the
+// list literal `[i]`, two juxtaposed expressions that lowering read as the first alone or as a
+// second statement -- a silent misread (DESIGN section 5). v1 reads a `[` after any complete
+// operand as an index (02_parse parse_postfix, ExprIndex), so the juxtaposition this production
+// claims was never a program v1 accepted; the only reading it removes is that one. A slice `[a..b]`
+// has no production and refuses at parse, as it did.
+fn dag_grammar_postfix_index_suffix_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
+    right: dag_grammar_sequence(
+      left: dag_grammar_expr_list_helper(),
+      right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+    )
+  )
+}
+
 fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_nonterminal(production: ^dag_production_primary_expr),
     right: dag_grammar_repeat(
       element: dag_grammar_choice(
         left: dag_grammar_postfix_dot_suffix_expr(),
-        right: dag_grammar_postfix_as_suffix_expr()
+        right: dag_grammar_choice(
+          left: dag_grammar_postfix_as_suffix_expr(),
+          right: dag_grammar_postfix_index_suffix_expr()
+        )
       )
     )
   )
@@ -2486,12 +2506,11 @@ fn dag_grammar_type_alias_rhs_lead_expr() -> GrammarExpr {
 // that slot and widen past v1. Order is the same two optional drops: reversed or unknown
 // spellings remain tokens-remain refusals.
 //
-// PARSE ADMISSION IS NOT THE SEALING PROPERTY. Declared drop:
-// gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property. v1 mints
-// only sole_constructor via parsed_sole_constructor_properties. On the native route the
-// slot is read back off the parse by v2.compiler.body_lowering_fold
-// body_lower_type_decl_declared_modifiers and carried on NormalizedTree
-// type_declaration_modifiers; carrying it enforces nothing.
+// PARSE ADMISSION IS NOT THE SEALING PROPERTY. v1 mints only sole_constructor via
+// parsed_sole_constructor_properties. On the native route the slot is read back off the parse
+// by v2.compiler.body_lowering_fold body_lower_type_decl_declared_modifiers, carried on
+// NormalizedTree type_declaration_modifiers, and judged by v2.compiler.infer
+// infer_sole_constructor_diags.
 fn dag_grammar_type_decl_modifiers_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_optional(
@@ -4649,7 +4668,7 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 // carry NO spelling -- binding a spelling to them here would change what every reference resolves
 // to -- and name in `converges_on` the declaration each converges on once de-forked. Nothing binds
 // through `converges_on`; it is the de-fork lane's subject, read today only by the control that
-// holds the fork as it is (v2.test.claim.compiler.kernel_value_type_roster_witness_test).
+// holds the fork as it is (v2.test.claim.compiler.kernel_value_type_roster_witness).
 //
 // A kernel type with NO value-type node in a v2 std authority has no row: there is nothing for one
 // to point at. Float, Secret, Json, Unit and Bytes (std.types kernel_type_set) are in that state,
@@ -7095,13 +7114,6 @@ fn dag_round_trip_authorities_ready() -> Bool {
   dag_round_trip_trivia_fidelity_resolved()
 }
 
-fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
-  match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
-    NamedChildFound { target: id_node } => node_atom_identity_optional(node: id_node)
-    NamedChildMissing => Absent
-    NamedChildAmbiguous => Absent
-  }
-}
 
 fn dag_surface_identity_is_top_level_item(id: Symbol) -> Bool {
   fold_list(

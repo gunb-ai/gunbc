@@ -1,0 +1,151 @@
+module test.claim.examples.blackjack_simulation_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import examples.blackjack.cards { standard_deck }
+import examples.blackjack.round { BlackjackRules, Shoe, ShoeExhausted }
+import examples.blackjack.shuffle { ShuffleSeed, shuffle, next_seed }
+import examples.blackjack.simulation {
+    HitBelow,
+    Strategy,
+    SimulationPlan,
+    SeededShoe,
+    SimulationCompleted,
+    SimulationRefused,
+    simulate,
+    simulate_shoes,
+    summarize,
+    summary_reconciles,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rules() -> BlackjackRules {
+    BlackjackRules { dealer_hits_soft_17: false }
+}
+
+fn short_shoes() -> List<SeededShoe> {
+    let first_seed = ShuffleSeed { value: 7 }
+    let second_seed = next_seed(seed: first_seed)
+    let third_seed = next_seed(seed: second_seed)
+
+    [
+        SeededShoe {
+            seed: first_seed,
+            shoe: shuffle(deck: standard_deck, seed: first_seed),
+        },
+        SeededShoe {
+            seed: second_seed,
+            shoe: Shoe { cards: [] },
+        },
+        SeededShoe {
+            seed: third_seed,
+            shoe: shuffle(deck: standard_deck, seed: third_seed),
+        },
+    ]
+}
+
+fn plan() -> SimulationPlan {
+    SimulationPlan {
+        rounds: 3,
+        seed: ShuffleSeed { value: 7 },
+        rules: rules(),
+        strategy: HitBelow { threshold: 19 },
+    }
+}
+
+test fn simulate_shoes_stops_on_second_short_shoe() -> Bool {
+    match simulate_shoes(
+        shoes: short_shoes(),
+        rules: rules(),
+        strategy: HitBelow { threshold: 19 },
+    ) {
+        SimulationRefused {
+            round_index: round_index,
+            seed: seed,
+            cause: ShoeExhausted,
+        } =>
+            round_index == 1
+            && seed.value == next_seed(seed: ShuffleSeed { value: 7 }).value
+
+        SimulationRefused {
+            round_index: _,
+            seed: _,
+            cause: _,
+        } =>
+            false
+
+        SimulationCompleted { rounds: _ } =>
+            false
+    }
+}
+
+test fn simulate_plan_completes_requested_rounds() -> Bool {
+    match simulate(plan: plan()) {
+        SimulationCompleted { rounds: rounds } =>
+            rounds.length() == 3
+
+        SimulationRefused {
+            round_index: _,
+            seed: _,
+            cause: _,
+        } =>
+            false
+    }
+}
+
+test fn completed_simulation_summary_reconciles() -> Bool {
+    match simulate(plan: plan()) {
+        SimulationCompleted { rounds: rounds } =>
+            summary_reconciles(s: summarize(rounds: rounds))
+
+        SimulationRefused {
+            round_index: _,
+            seed: _,
+            cause: _,
+        } =>
+            false
+    }
+}
+
+test fn paired_strategies_reconcile_over_same_seeded_shoes() -> Bool {
+    let comparison_plan = SimulationPlan {
+        rounds: 5,
+        seed: ShuffleSeed { value: 23 },
+        rules: rules(),
+        strategy: HitBelow { threshold: 17 },
+    }
+
+    let shoes = seeded_shoes(plan: comparison_plan)
+
+    match simulate_shoes(
+        shoes: shoes,
+        rules: rules(),
+        strategy: HitBelow { threshold: 17 },
+    ) {
+        SimulationCompleted { rounds: seventeen_rounds } =>
+            match simulate_shoes(
+                shoes: shoes,
+                rules: rules(),
+                strategy: HitBelow { threshold: 19 },
+            ) {
+                SimulationCompleted { rounds: nineteen_rounds } =>
+                    seventeen_rounds.length() == nineteen_rounds.length()
+                    && summary_reconciles(s: summarize(rounds: seventeen_rounds))
+                    && summary_reconciles(s: summarize(rounds: nineteen_rounds))
+
+                SimulationRefused {
+                    round_index: _,
+                    seed: _,
+                    cause: _,
+                } =>
+                    false
+            }
+
+        SimulationRefused {
+            round_index: _,
+            seed: _,
+            cause: _,
+        } =>
+            false
+    }
+}

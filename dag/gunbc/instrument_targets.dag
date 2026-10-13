@@ -2,7 +2,7 @@ module gunbc.instrument_targets
 
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
-import gunbc.witness_v2_native_route { NativeRouteMemberRow }
+import gunbc.witness.v2_native_route { NativeRouteMemberRow }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
   NativeTestRefused
@@ -20,6 +20,7 @@ import gunbc.target_binding {
   EmittedCrateWorkspaceProducer,
   NativeClaimProgramProducer,
   NativeServeProgramProducer,
+  native_claim_deadline_if_entry,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused,
@@ -70,6 +71,9 @@ import gunbc.target_invocation {
   route_target_invocation,
 }
 import std.types { String, Bool, NonEmptyStr }
+import std.integer { Int }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 
 // THE REAL INSTRUMENT TARGETS, AND THEY ARE PRODUCTION ROWS RATHER THAN FIXTURE EXAMPLES.
 //
@@ -231,10 +235,10 @@ fn v2_native_cli_label() -> Label {
 
 // THE ENTRY EACH OF THE TWO SELF-HOST INSTRUMENTS EMITS, AS THE INSTRUMENT'S OWN FACT. Every
 // reader of these entries -- the required-lane resolution census, and the seed's native lane runner
-// whose constants test.claim.compiler_gate_emit_build_lane_witness_test holds against these rows --
+// whose constants test.claim.compiler_gate_emit_build_lane_witness holds against these rows --
 // takes them from here, so a moved subject cannot leave a stale closure reported as covered.
 fn self_host_entry() -> String {
-  "src/v2/compiler/00_compile.dag"
+  "src/v2/compiler/compile.dag"
 }
 
 fn v2_native_cli_entry() -> String {
@@ -305,9 +309,9 @@ fn type_declaration_use_census_label() -> Label {
 // an over-approximation of the direct edges, because the inline crate::<module>:: paths the
 // expression emitter writes are not returned as edges (gunbc.guarantee_stall
 // emitted_inline_crate_path_edges_unreturned_stall). And the crates carry no grounded interface
-// maps: that waits on host-effect emission of v2.compiler.source_authority
-// module_storage_bindings_for_source_roots (v2.workflow.rust_crate_partition
-// stage0_module_dag_interface_grounding). So a green says the derived partition compiles through
+// maps: that waits on the acquirer's contents supply (v2.compiler.module_acquisition
+// acquire_closure_of) reaching v2.workflow.rust_crate_partition
+// stage0_module_dag_interface_grounding. So a green says the derived partition compiles through
 // glob facades; it does not say each crate's public surface is minimal or grounded.
 fn emitted_crate_workspace_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "emitted-crate-workspace" } }
@@ -407,6 +411,13 @@ fn native_emission_controls_entry() -> String {
   "dag/gunbc/instruments/native_emission_controls.dag"
 }
 
+// THE VALUE-POSITION BLOCK NEST CONTROL: native tokenize/parse/normalize of the committed
+// docs/measurements/value_position_block_nests/{single,multi}_d14 fixtures, as a NativeClaimDriver
+// program. Seed emit of this entry does not lower those sources (they are files the child reads),
+// so a regression is visible only in the emitted child — and the binding's deadline makes that hang
+// exit 1. Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:value-position-block-nests`.
+
 // O(corpus) exact-head join of evaluation_store_address callers plus the fail-closed src/v2
 // call-form scan. Not a DiscoverySelection floor witness (enrolment_bound_without_ceiling);
 // not a required CI job. `gunbc test //gunbc/instruments:evaluation-store-address-exact-head`.
@@ -444,8 +455,8 @@ fn primitive_egress_census_seed_label() -> Label {
 // The unreached population, by identity, is the printed product; the exit says whether it is
 // empty. This is DESIGN section 3's "a product-layer dependent can stop resolving, stay broken,
 // and let every required lane report SUCCESS" measured rather than warned about, after
-// gunbc.site_pxe_edge_converge did exactly that on 2026-09-20 (gunbc#11607). The lane roster it
-// classifies is read from gunbc.compiler_gate_workflow, the authority that emits witnesses.yml.
+// gunbc.fleet.site_pxe_edge_converge did exactly that on 2026-09-20 (gunbc#11607). The lane roster it
+// classifies is read from gunbc.witness.compiler_gate_workflow, the authority that emits witnesses.yml.
 // `gunbc test //gunbc/instruments:required-lane-resolution-census`.
 fn required_lane_resolution_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "required-lane-resolution-census" } }
@@ -462,7 +473,7 @@ fn bare_reference_channel_outcome_label() -> Label {
 }
 
 // SELF-HOST BEHAVIORAL EQUIVALENCE, TAKEN ON PURPOSE (operator ruling 2026-09-27): runs every
-// tools.self_host_module_behavioral_transport_roster row for real and prints one receipt of
+// gunbc.instruments.self_host_module_behavioral_transport_roster row for real and prints one receipt of
 // gunbc.self_host_behavioral_equivalence_receipt to persist; the interlock milestone
 // SelfHostEmittedContractsHeld derives from the latest persisted receipt. Deliberately
 // not nightly and not per pull request, so this label is on no lane.
@@ -619,8 +630,30 @@ fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
 
+// EXPLICIT POLICY BUDGET, dated 2026-10-12 (DESIGN section 5): 600000 ms wall after emit and
+// build, shared by the five NativeClaimDriver bindings that are not the nest control
+// (native-crypto-vectors, native-app-attest, native-emission-controls,
+// dag-emit-real-grammar-round-trips, native-materialization-store-closure). It is a policy
+// envelope, not a measured child wall. TRIGGER TO REPLACE: a cgroup-bounded green of that
+// binding that prints child_wall_ms= (the same Instant the deadline uses); then this helper
+// splits per binding to that wall plus a stated margin, and this 600 s row retires.
+fn native_claim_policy_child_deadline() -> Millisecond {
+  millisecond(count: 600000)
+}
+
+// Wall budget for //gunbc/instruments:value-position-block-nests, set from the measured child
+// wall of this driver. Producer: `gunbc test //gunbc/instruments:value-position-block-nests`
+// on sunny-carp-272 at 1d1f4cf6d17, cgroup memory.max=25769803776, printed
+// child_wall_ms=1104 deadline_ms=15000 (same Instant). 15000 ms is 13.6× that green wall and
+// still BELOW the defective observation (srv1 RED elapsed_ms=15002 at this bound; census-infer
+// d10 was 80600 ms pre-fix; defective d14 is hours). Keep 15000 rather than a tighter multiple
+// so one noisy runner cannot false-RED a 1.1 s green.
+fn value_position_block_nests_child_deadline() -> Millisecond {
+  millisecond(count: 15000)
+}
+
 fn native_crypto_vectors_binding() -> TargetBinding {
-  TargetBinding { target: native_crypto_vectors_label() producer: NativeClaimProgramProducer { entry: native_crypto_vectors_entry() } }
+  TargetBinding { target: native_crypto_vectors_label() producer: NativeClaimProgramProducer { entry: native_crypto_vectors_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn v2_native_cli_binding() -> TargetBinding {
@@ -628,19 +661,31 @@ fn v2_native_cli_binding() -> TargetBinding {
 }
 
 fn native_app_attest_binding() -> TargetBinding {
-  TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() } }
+  TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn native_emission_controls_binding() -> TargetBinding {
-  TargetBinding { target: native_emission_controls_label() producer: NativeClaimProgramProducer { entry: native_emission_controls_entry() } }
+  TargetBinding { target: native_emission_controls_label() producer: NativeClaimProgramProducer { entry: native_emission_controls_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn dag_emit_real_grammar_round_trips_binding() -> TargetBinding {
-  TargetBinding { target: dag_emit_real_grammar_round_trips_label() producer: NativeClaimProgramProducer { entry: dag_emit_real_grammar_round_trips_entry() } }
+  TargetBinding { target: dag_emit_real_grammar_round_trips_label() producer: NativeClaimProgramProducer { entry: dag_emit_real_grammar_round_trips_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn native_materialization_store_closure_binding() -> TargetBinding {
-  TargetBinding { target: native_materialization_store_closure_label() producer: NativeClaimProgramProducer { entry: native_materialization_store_closure_entry() } }
+  TargetBinding { target: native_materialization_store_closure_label() producer: NativeClaimProgramProducer { entry: native_materialization_store_closure_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn value_position_block_nests_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "value-position-block-nests" } }
+}
+
+fn value_position_block_nests_entry() -> String {
+  "dag/gunbc/instruments/value_position_block_nests.dag"
+}
+
+fn value_position_block_nests_binding() -> TargetBinding {
+  TargetBinding { target: value_position_block_nests_label() producer: NativeClaimProgramProducer { entry: value_position_block_nests_entry() deadline: value_position_block_nests_child_deadline() } }
 }
 
 fn type_declaration_use_census_binding() -> TargetBinding {
@@ -801,7 +846,7 @@ fn instrument_targets() -> List<Label> {
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), native_serve_label()
+    native_emission_controls_label(), value_position_block_nests_label(), native_serve_label()
   ]
 }
 
@@ -819,8 +864,28 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), native_serve_binding()
+    native_emission_controls_binding(), value_position_block_nests_binding(), native_serve_binding()
   ]
+}
+
+fn native_claim_child_deadline_for_entry(entry: String) -> Optional<Millisecond> {
+  fold(instrument_bindings(), init: optional_absent(), f: (acc, b) =>
+    match acc {
+      Present { value: d } => optional_present(value: d)
+      Absent => native_claim_deadline_if_entry(producer: b.producer, want: entry)
+    }
+  )
+}
+
+// THE HOST READ POINT. Same projection as v2.workflow.floor_enrolment_margin
+// floor_enrolment_margin_budget_ms_count: Int milliseconds via millisecond_count, no
+// arithmetic of its own. The count is the binding row's deadline, not a second map.
+// Absent or non-positive is NativeClaimDeadlineUngrounded.
+fn native_claim_child_deadline_count(entry: String) -> Optional<Int> {
+  match native_claim_child_deadline_for_entry(entry: entry) {
+    Absent => optional_absent()
+    Present { value: d } => optional_present(value: millisecond_count(m: d))
+  }
 }
 
 // THE PRODUCTION ENTRY: the generic route, bound to the live population, in one place. Every

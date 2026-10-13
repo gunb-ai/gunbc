@@ -1,4 +1,4 @@
-module v2.test.loop_linear_bound.rung_3_4
+module v2.test.claim.loop_linear_bound.rung_3_4
 
 
 data claim_phase4_loop_linear_bound_module_roundtrip: TestClaim = RoundTripClaim {

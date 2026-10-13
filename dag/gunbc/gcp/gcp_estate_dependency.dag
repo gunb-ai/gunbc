@@ -1,9 +1,9 @@
-module gunbc.gcp_estate_dependency
+module gunbc.gcp.gcp_estate_dependency
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import gunbc.gcp_estate_observation {
+import gunbc.gcp.gcp_estate_observation {
   GcpEstateCensus,
   EstateObserved,
   EstateUnread,

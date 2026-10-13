@@ -18,9 +18,9 @@ import extdeps.vllm.metrics {
   vllm_waiting_reason_label, vllm_waiting_reason_capacity,
 }
 import extdeps.prometheus.client { ProcessStartTimeSeconds, prometheus_process_series_name }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
-import gunbc.spark.vllm_endpoint_process_launch {
-  vllm_endpoint_process_launch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
+import gunbc.serving.replica_endpoint_launch {
+  replica_endpoint_launch, ReplicaLaunchObservation, ReplicaLaunchObserved, ReplicaLaunchUnobserved,
 }
 import gunbc.serving.turn_admission {
   ServingQueueReading, QueueDepthRead, QueueDepthUnread,
@@ -28,8 +28,9 @@ import gunbc.serving.turn_admission {
 }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
-  serving_enrolled_routes, serving_route_endpoint_wire,
+  serving_route_endpoint_wire,
 }
+import gunbc.serving.rented_enrollment { rented_cohort_index, rented_enrolled_routes }
 import gunbc.serving.admitted_model {
   ServingModelAdmitted, ServingModelNotAdmitted, serving_admit_advertised,
 }
@@ -230,7 +231,7 @@ fn harness_models_front_door(standing: HarnessBackendStanding) -> FrontDoorRead 
 }
 
 // THE ROUTE'S AVAILABILITY AS PLACEMENT READS IT: launch, then models, then launch again.
-fn harness_route_availability(endpoint: ServingRouteEndpoint, before: VllmEndpointProcessLaunchObservation, standing: HarnessBackendStanding, after: VllmEndpointProcessLaunchObservation, now: Timestamp) -> ServingFrontDoorAvailabilityVerdict {
+fn harness_route_availability(endpoint: ServingRouteEndpoint, before: ReplicaLaunchObservation, standing: HarnessBackendStanding, after: ReplicaLaunchObservation, now: Timestamp) -> ServingFrontDoorAvailabilityVerdict {
   serving_availability_bracketing_read(endpoint: endpoint, before: before, front_door: harness_models_front_door(standing: standing), after: after, now: now)
 }
 
@@ -278,7 +279,7 @@ fn harness_roster_decline(acc: HarnessRosterFold, e: ServingRouteEndpoint, stand
     serving: acc.serving,
     declined: concat(acc.declined, [HarnessRouteDecline {
       endpoint: serving_route_endpoint_wire(e: e),
-      group_wire: fabric_group_wire(g: e.group),
+      group_wire: rented_replica_wire(id: e.replica),
       standing: standing,
     }]),
     unresolved: acc.unresolved,
@@ -287,7 +288,7 @@ fn harness_roster_decline(acc: HarnessRosterFold, e: ServingRouteEndpoint, stand
 
 fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> HarnessRosterFold {
   match route {
-    ServingRouteUnresolved { group: _, obligation: o } =>
+    ServingRouteUnresolved { replica: _, obligation: o } =>
       HarnessRosterFold { serving: acc.serving, declined: acc.declined, unresolved: concat(acc.unresolved, [o]) }
     ServingRouteResolved { endpoint: e, ceiling: _ } => {
       let standing = harness_observe_replica(endpoint: e)
@@ -296,7 +297,7 @@ fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> Harness
           HarnessRosterFold {
             serving: concat(acc.serving, [HarnessRouteServing {
               endpoint: serving_route_endpoint_wire(e: e),
-              group_wire: fabric_group_wire(g: e.group),
+              group_wire: rented_replica_wire(id: e.replica),
               model: m,
               unit: u,
             }]),
@@ -384,7 +385,7 @@ fn harness_roster_of(folded: HarnessRosterFold) -> HarnessBackendRoster {
 }
 
 fn harness_observe_roster() -> HarnessBackendRoster {
-  let folded = fold(serving_enrolled_routes(), init: HarnessRosterFold { serving: [], declined: [], unresolved: [] }, f: (acc, r) =>
+  let folded = fold(rented_enrolled_routes(index: rented_cohort_index), init: HarnessRosterFold { serving: [], declined: [], unresolved: [] }, f: (acc, r) =>
     harness_observe_route(acc: acc, route: r))
   let standing = operator_route_standing(route: harness_operator_route, reading: harness_observe_operator_reading(route: harness_operator_route))
   harness_roster_of(folded: harness_operator_roster_step(acc: folded, route: harness_operator_route, standing: standing))
@@ -600,13 +601,13 @@ fn harness_queue_from_body(body: String) -> ServingQueueReading {
 // THE LAUNCH DISCRIMINATOR IS CARRIED AS THE EXPORTED FIELD, BYTE FOR BYTE. Nothing here parses it
 // into a time: the only operation on it is equality between two readings of one endpoint, and
 // parsing would lose the discrimination between two launches inside one second while buying nothing.
-fn harness_launch_from_body(group: FabricGroup, address: String, body: String) -> VllmEndpointProcessLaunchObservation {
+fn harness_launch_from_body(replica: RentedReplicaIdentity, address: String, body: String) -> ReplicaLaunchObservation {
   match harness_metric_line_value(body: body, prefix: join([prometheus_process_series_name(s: ProcessStartTimeSeconds) as String, " "], ""), selector: SeriesByName) {
     Absent =>
-      LaunchUnobserved { group: group, obligation: "the served metrics carried no process start-time series, so which launch answered cannot be named and the group cannot be offered" as NonEmptyStr }
+      ReplicaLaunchUnobserved { replica: replica, obligation: "the served metrics carried no process start-time series, so which launch answered cannot be named and the group cannot be offered" as NonEmptyStr }
     Present { value: field } =>
-      LaunchObserved {
-        launch: vllm_endpoint_process_launch(group: group, endpoint: address as NonEmptyStr, process_start_field: trim(s: field) as NonEmptyStr),
+      ReplicaLaunchObserved {
+        launch: replica_endpoint_launch(replica: replica, endpoint: address as NonEmptyStr, process_start_field: trim(s: field) as NonEmptyStr),
         receipt: "gunbc.harness.metrics-probe" as ObservationReceiptRef,
       }
   }
@@ -616,7 +617,7 @@ fn harness_launch_from_body(group: FabricGroup, address: String, body: String) -
 // rendering by design, and prometheus switches to one past seven integer digits -- measured on the
 // enrolled group B head 2026-09-14, vllm:prompt_tokens_total 9.7885348e+07 -- so a parsed reader would
 // go permanently unreadable on exactly the long-lived engines this is for. Equality between two readings
-// of one exporter is the whole operation, which is the discipline vllm_endpoint_process_launch already
+// of one exporter is the whole operation, which is the discipline replica_endpoint_launch already
 // applies to the process-start field.
 fn harness_counter_field(body: String, metric: VllmServingMetric) -> NonEmptyStr? {
   match harness_metric_line_value(body: body, prefix: join([vllm_metric_name(m: metric) as String, "{"], ""), selector: SeriesByName) {
@@ -648,24 +649,24 @@ fn harness_progress_sample(body: String, at: EpochSecs) -> EngineProgressSample?
 
 type HarnessEngineReading {
   queue: ServingQueueReading
-  launch: VllmEndpointProcessLaunchObservation
+  launch: ReplicaLaunchObservation
   progress: EngineProgressSample?
 }
 
 fn harness_observe_engine_at(endpoint: ServingRouteEndpoint, at: EpochSecs) -> HarnessEngineReading {
   let url = harness_metrics_url(endpoint: endpoint)
-  let group = endpoint.group
+  let replica = endpoint.replica
   let read = harness_bounded_get(url: url)
   if !read.success {
     HarnessEngineReading {
       queue: QueueDepthUnread { obligation: join(["the metrics endpoint at ", url, " did not answer"], "") as NonEmptyStr },
-      launch: LaunchUnobserved { group: group, obligation: join(["the metrics endpoint at ", url, " did not answer, so which launch is serving is unknown"], "") as NonEmptyStr },
+      launch: ReplicaLaunchUnobserved { replica: replica, obligation: join(["the metrics endpoint at ", url, " did not answer, so which launch is serving is unknown"], "") as NonEmptyStr },
       progress: none,
     }
   } else {
     HarnessEngineReading {
       queue: harness_queue_from_body(body: read.body),
-      launch: harness_launch_from_body(group: group, address: serving_route_endpoint_wire(e: endpoint) as String, body: read.body),
+      launch: harness_launch_from_body(replica: replica, address: serving_route_endpoint_wire(e: endpoint) as String, body: read.body),
       progress: harness_progress_sample(body: read.body, at: at),
     }
   }

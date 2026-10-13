@@ -1,0 +1,30 @@
+module gunbc.heal_candidate_registry
+
+import std.types { List, String }
+import std.process { ProcessExit }
+import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
+import gunbc.heal_candidate { proposable_paths_of, heal_candidate_produce_over }
+
+// THE REGISTRY-WIDE CANDIDATE ENTRY, SPLIT FROM gunbc.heal_candidate SO THAT THE OTHER ENTRIES DO
+// NOT LOAD THE REGISTRY. Importing gunbc.generated_artifact_registry pulls every producer the
+// registry names -- the 2,659-file closure -- into whatever module imports it, so a candidate entry
+// for a population that needs none of it (gunbc.heal_candidate_stage0) cannot live beside the
+// registry-wide one.
+fn candidate_proposable_paths() -> List<String> {
+  proposable_paths_of(paths: committed_generated_artifact_paths())
+}
+
+// THE ENTRY THE HEAL WORKFLOW INVOKES, AND IT WRITES A MANIFEST WHETHER OR NOT ANYTHING DRIFTED.
+// The earlier shape wrote one only when the tree was dirty, which made the manifest's ABSENCE carry
+// two incompatible meanings downstream: the tree was clean, or the candidate was produced and did
+// not survive the artifact round trip. The publisher could not tell them apart, so it took the same
+// silent green for both -- a repair owed and never made, reported as nothing to do. An empty
+// entries list says "clean" in a way that cannot be confused with "missing", and the publisher
+// refuses on a manifest that is absent after a heal run that succeeded.
+//
+// A DRIFTED TREE STILL WRITES A COMPLETE, REREAD CANDIDATE. Every refusing state writes no manifest
+// at all, so no partial candidate can reach the publisher; but those states also exit non-zero, and
+// the publisher only runs when this phase concluded success.
+fn heal_candidate_produce_wet() -> ProcessExit {
+  heal_candidate_produce_over(root: ".", paths: candidate_proposable_paths())
+}
