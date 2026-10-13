@@ -382,11 +382,11 @@ type EventBacklogFact
 
 fn event_backlog_health_bounds() -> List<HostSpoolHealthBound> {
   concat([
-    HostSpoolHealthBound { stage: AttemptExitInbox, bound_seconds: second_count(s: event_backlog_drain_bound) },
+    HostSpoolHealthBound { stage: AttemptExitInbox, bound: event_backlog_drain_bound },
   ], match event_backlog_queued_bound() {
     Present { value: q } => [
-      HostSpoolHealthBound { stage: AttemptExitQueued, bound_seconds: second_count(s: q) },
-      HostSpoolHealthBound { stage: AttemptExitRunning, bound_seconds: second_count(s: q) },
+      HostSpoolHealthBound { stage: AttemptExitQueued, bound: q },
+      HostSpoolHealthBound { stage: AttemptExitRunning, bound: q },
     ]
     Absent => []
   })
@@ -398,13 +398,13 @@ fn event_backlog_health_bounds() -> List<HostSpoolHealthBound> {
 // spool's projection of that one queue-health type.
 fn event_backlog_judge(entries: List<EventBacklogEntry>) -> EventBacklogFact {
   match host_spool_health_judge(
-    entries: map(entries, e => HostSpoolHealthEntry { stage: e.stage, entry: e.entry, age_seconds: second_count(s: e.age) }),
+    entries: map(entries, e => HostSpoolHealthEntry { stage: e.stage, entry: e.entry, age: e.age }),
     bounds: event_backlog_health_bounds(),
   ) {
     HostSpoolHealthClear { depth_inbox: inbox, depth_queued: queued, depth_running: _ } =>
       EventBacklogClear { inbox: inbox, queued: queued }
-    HostSpoolHealthStale { stage: stage, entry: entry, age_seconds: age, bound_seconds: bound } =>
-      StaleBacklog { stage: stage, entry: entry, age: second(count: age), bound: second(count: bound) }
+    HostSpoolHealthStale { stage: stage, entry: entry, age: age, bound: bound } =>
+      StaleBacklog { stage: stage, entry: entry, age: age, bound: bound }
     HostSpoolHealthUnobserved { detail: detail } => EventBacklogUnobserved { detail: detail }
   }
 }

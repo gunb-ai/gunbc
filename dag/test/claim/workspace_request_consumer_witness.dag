@@ -8,7 +8,7 @@ import gunbc.workspace_allocation { WorkspaceRequest, SmallWorkspace, workspace_
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceOwnerSnapshot, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceWanted, WorkspaceRecorded, workspace_retired }
 import gunbc.workspace_request_consumer {
   workspace_consumer_select, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare,
-  workspace_consumer_retry_from_history, WorkspaceConsumerRetry, workspace_consumer_on_conflict,
+  workspace_consumer_retry_from_history, WorkspaceConsumerRetry,
 }
 
 import extdeps.shell
@@ -148,7 +148,9 @@ test fn enrolled_roster_discovers_a_customer_request_the_operator_pass_misses() 
 }
 
 test fn a_store_conflict_is_admissible_retry_until_the_law_exhausts_whole_history() -> Bool {
-  (match workspace_consumer_on_conflict() {
+  (match workspace_consumer_retry_from_history(history: [
+    RetryHistoryEvent { class: RealWorkFailure, at: 1 },
+  ], at: 1) {
     WorkspaceConsumerRetry => true
     _ => false
   }) && (match workspace_consumer_retry_from_history(history: [

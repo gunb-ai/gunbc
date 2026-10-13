@@ -1166,8 +1166,8 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
 }
 
 data harness_seat_retry_law: RetryLaw = RetryLaw {
-  initial_delay_seconds: 0,
-  delay_cap_seconds: 1,
+  initial_delay: second(count: 0),
+  delay_cap: second(count: 1),
   real_work_failure_bound: 3,
 }
 

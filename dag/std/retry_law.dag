@@ -4,6 +4,7 @@ import std.types { Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, Zero, Succ }
 import std.optional { Present, Absent }
 import std.checked_arithmetic { int_inclusive_max }
+import std.measure { Second, second, second_count }
 
 // ONE RETRY LAW. It decides only whether a retry is ADMISSIBLE and the earliest time it may run.
 // Which retry to take (now, later, or elsewhere) is a demand-policy selection; this module has
@@ -20,11 +21,10 @@ import std.checked_arithmetic { int_inclusive_max }
 //   - exhaustion and cancellation are persisted terminals carried in the history, never inferred
 //     from silence.
 //
-// Due times are EpochSecs: already the grant/expiry carrier, a total order, comparable without
-// string lexicography. ObservationInstant stays the observation-record instant (clock-domain
-// aware). v2.std.datetime Instant stays source/compiler wall-clock. std.types Seconds/Duration
-// and std.measure Second stay lengths, not instants. String timestamps compared with <= are
-// the nickname this law does not inhabit.
+// Due times are EpochSecs. Delays, caps, hints and jitter are std.measure Second — the length
+// already used by belt run bounds and event_backlog — not a second Nat beside the failure count
+// (DESIGN §2/§3). ObservationInstant stays the observation-record instant. v2.std.datetime Instant
+// stays source/compiler wall-clock. std.types Seconds/Duration are not this law's length carrier.
 
 type RetryObservedClass
   = RealWorkFailure
@@ -39,8 +39,8 @@ type RetryHistoryEvent {
 }
 
 type RetryLaw {
-  initial_delay_seconds: Nat
-  delay_cap_seconds: Nat
+  initial_delay: Second
+  delay_cap: Second
   real_work_failure_bound: Nat
 }
 
@@ -54,13 +54,15 @@ fn retry_min_nat(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
 }
 
-fn retry_max_nat(a: Nat, b: Nat) -> Nat {
-  if a > b { a } else { b }
+fn retry_min_second(a: Second, b: Second) -> Second {
+  if second_count(s: a) < second_count(s: b) { a } else { b }
 }
 
-// Double without crossing the machine Int bound or the declared cap. The fold is over a
-// bounded range of failure counts, never an open recursion.
-fn retry_capped_double(n: Nat, cap: Nat) -> Nat {
+fn retry_max_second(a: Second, b: Second) -> Second {
+  if second_count(s: a) > second_count(s: b) { a } else { b }
+}
+
+fn retry_capped_double_count(n: Nat, cap: Nat) -> Nat {
   if n >= cap {
     cap
   } else if (n as Int) > (int_inclusive_max() / 2) {
@@ -71,17 +73,17 @@ fn retry_capped_double(n: Nat, cap: Nat) -> Nat {
   }
 }
 
-fn retry_backoff_seconds(law: RetryLaw, real_work_failures: Nat) -> Nat {
+fn retry_backoff(law: RetryLaw, real_work_failures: Nat) -> Second {
   match real_work_failures {
-    Zero => Zero
+    Zero => second(count: Zero)
     Succ { prev: _ } =>
       fold(
         nat_range_inclusive(lo: Succ { prev: Zero }, hi: retry_min_nat(a: real_work_failures, b: retry_double_steps_cap)),
-        init: retry_min_nat(a: law.initial_delay_seconds, b: law.delay_cap_seconds),
+        init: retry_min_second(a: law.initial_delay, b: law.delay_cap),
         f: (acc, i) => match i {
           Zero => acc
           Succ { prev: Zero } => acc
-          Succ { prev: _ } => retry_capped_double(n: acc, cap: law.delay_cap_seconds)
+          Succ { prev: _ } => second(count: retry_capped_double_count(n: second_count(s: acc), cap: second_count(s: law.delay_cap)))
         },
       )
   }
@@ -119,14 +121,14 @@ fn retry_terminal_in_history(history: List<RetryHistoryEvent>) -> RetryAdmissibi
   })
 }
 
-// jitter_seconds is sampled by the realization and SUPPLIED; the law never draws entropy.
-// hint_seconds is an upstream Retry-After (or none): a lower bound on the delay, never a cap.
+// jitter is sampled by the realization and SUPPLIED; the law never draws entropy.
+// hint is an upstream Retry-After (or none): a lower bound on the delay, never a cap.
 fn retry_admissibility(
   law: RetryLaw,
   history: List<RetryHistoryEvent>,
   last_at: EpochSecs,
-  hint_seconds: Nat?,
-  jitter_seconds: Nat,
+  hint: Second?,
+  jitter: Second,
 ) -> RetryAdmissibility {
   match retry_terminal_in_history(history: history) {
     Present { value: t } => t
@@ -135,22 +137,22 @@ fn retry_admissibility(
       if failures >= law.real_work_failure_bound {
         RetryTerminalExhausted { real_work_failures: failures }
       } else {
-        let backoff = retry_backoff_seconds(law: law, real_work_failures: failures)
-        let hinted = match hint_seconds {
+        let backoff = retry_backoff(law: law, real_work_failures: failures)
+        let hinted = match hint {
           Absent => backoff
-          Present { value: h } => retry_max_nat(a: backoff, b: h)
+          Present { value: h } => retry_max_second(a: backoff, b: h)
         }
-        let delay = hinted + jitter_seconds
-        RetryAdmissible { earliest: last_at + delay, real_work_failures: failures }
+        let delay = second(count: second_count(s: hinted) + second_count(s: jitter))
+        RetryAdmissible { earliest: last_at + (second_count(s: delay) as Int), real_work_failures: failures }
       }
     }
   }
 }
 
-fn retry_hint_from_delta_seconds(seconds: Nat) -> Nat? {
-  Present { value: seconds }
+fn retry_hint_from_delta(delay: Second) -> Second? {
+  Present { value: delay }
 }
 
-fn retry_no_hint() -> Nat? {
+fn retry_no_hint() -> Second? {
   none
 }

@@ -1,6 +1,7 @@
 module gunbc.durable_handoff_host
 
 import std.types { String, Bool, List }
+import std.measure { Second, second_count }
 import std.optional { Present, Absent }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
@@ -62,24 +63,24 @@ fn host_spool_create_only_command(path: String) -> ArgvCommand {
 type HostSpoolHealthEntry {
   stage: HostSpoolStage
   entry: String
-  age_seconds: Int
+  age: Second
 }
 
 type HostSpoolHealthBound {
   stage: HostSpoolStage
-  bound_seconds: Int
+  bound: Second
 }
 
 type HostSpoolHealth
   = HostSpoolHealthClear { depth_inbox: Int, depth_queued: Int, depth_running: Int }
-  | HostSpoolHealthStale { stage: HostSpoolStage, entry: String, age_seconds: Int, bound_seconds: Int }
+  | HostSpoolHealthStale { stage: HostSpoolStage, entry: String, age: Second, bound: Second }
   | HostSpoolHealthUnobserved { detail: String }
 
-fn host_spool_bound_for(bounds: List<HostSpoolHealthBound>, stage: HostSpoolStage) -> Int? {
+fn host_spool_bound_for(bounds: List<HostSpoolHealthBound>, stage: HostSpoolStage) -> Second? {
   fold(bounds, init: none, f: (acc, b) => match acc {
     Present { value: v } => Present { value: v }
     Absent => if host_spool_stage_wire(stage: b.stage) == host_spool_stage_wire(stage: stage) {
-      Present { value: b.bound_seconds }
+      Present { value: b.bound }
     } else {
       none
     }
@@ -88,7 +89,7 @@ fn host_spool_bound_for(bounds: List<HostSpoolHealthBound>, stage: HostSpoolStag
 
 fn host_spool_health_is_stale(e: HostSpoolHealthEntry, bounds: List<HostSpoolHealthBound>) -> Bool {
   match host_spool_bound_for(bounds: bounds, stage: e.stage) {
-    Present { value: b } => e.age_seconds > b
+    Present { value: b } => second_count(s: e.age) > second_count(s: b)
     Absent => true
   }
 }
@@ -97,15 +98,15 @@ fn host_spool_health_judge(entries: List<HostSpoolHealthEntry>, bounds: List<Hos
   let stale = filter(entries, e => host_spool_health_is_stale(e: e, bounds: bounds))
   match fold(stale, init: none, f: (acc, e) => match acc {
     Absent => Present { value: e }
-    Present { value: o } => if e.age_seconds > o.age_seconds { Present { value: e } } else { Present { value: o } }
+    Present { value: o } => if second_count(s: e.age) > second_count(s: o.age) { Present { value: e } } else { Present { value: o } }
   }) {
     Present { value: o } =>
       match host_spool_bound_for(bounds: bounds, stage: o.stage) {
         Present { value: b } => HostSpoolHealthStale {
           stage: o.stage,
           entry: o.entry,
-          age_seconds: o.age_seconds,
-          bound_seconds: b,
+          age: o.age,
+          bound: b,
         }
         Absent => HostSpoolHealthUnobserved {
           detail: join(["no bound for stage ", host_spool_stage_wire(stage: o.stage)], ""),

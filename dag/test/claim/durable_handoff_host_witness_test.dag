@@ -1,6 +1,7 @@
 module test.claim.durable_handoff_host_witness
 
 import std.types { Bool, List }
+import std.measure { second, second_count }
 import gunbc.durable_handoff_host {
   HostSpoolNameAbsent, HostSpoolNamePresent, HostSpoolNameUnreadable,
   HostSpoolEntryCreated, HostSpoolEntryAlreadyPresent, HostSpoolEnqueueRefused,
@@ -24,27 +25,27 @@ test fn enqueue_is_create_only_and_does_not_overwrite() -> Bool {
 
 test fn queue_health_names_the_oldest_owed_entry_past_its_bound() -> Bool {
   let bounds = [
-    HostSpoolHealthBound { stage: AttemptExitInbox, bound_seconds: 60 },
-    HostSpoolHealthBound { stage: AttemptExitQueued, bound_seconds: 2700 },
+    HostSpoolHealthBound { stage: AttemptExitInbox, bound: second(count: 60) },
+    HostSpoolHealthBound { stage: AttemptExitQueued, bound: second(count: 2700) },
   ]
   let clear = host_spool_health_judge(entries: [
-    HostSpoolHealthEntry { stage: AttemptExitInbox, entry: "young", age_seconds: 10 },
-    HostSpoolHealthEntry { stage: AttemptExitQueued, entry: "ok", age_seconds: 100 },
+    HostSpoolHealthEntry { stage: AttemptExitInbox, entry: "young", age: second(count: 10) },
+    HostSpoolHealthEntry { stage: AttemptExitQueued, entry: "ok", age: second(count: 100) },
   ], bounds: bounds)
   let stale = host_spool_health_judge(entries: [
-    HostSpoolHealthEntry { stage: AttemptExitInbox, entry: "young", age_seconds: 10 },
-    HostSpoolHealthEntry { stage: AttemptExitInbox, entry: "old", age_seconds: 90 },
-    HostSpoolHealthEntry { stage: AttemptExitQueued, entry: "also-old", age_seconds: 80 },
+    HostSpoolHealthEntry { stage: AttemptExitInbox, entry: "young", age: second(count: 10) },
+    HostSpoolHealthEntry { stage: AttemptExitInbox, entry: "old", age: second(count: 90) },
+    HostSpoolHealthEntry { stage: AttemptExitQueued, entry: "also-old", age: second(count: 80) },
   ], bounds: bounds)
   (match clear { HostSpoolHealthClear { depth_inbox: i, depth_queued: q, depth_running: r } => i == 1 && q == 1 && r == 0  _ => false })
-    && (match stale { HostSpoolHealthStale { stage: _, entry: e, age_seconds: a, bound_seconds: b } => e == "old" && a == 90 && b == 60  _ => false })
+    && (match stale { HostSpoolHealthStale { stage: _, entry: e, age: a, bound: b } => e == "old" && second_count(s: a) == 90 && second_count(s: b) == 60  _ => false })
 }
 
 test fn a_stage_with_no_bound_is_unobserved_never_silently_young() -> Bool {
   match host_spool_health_judge(entries: [
-    HostSpoolHealthEntry { stage: AttemptExitDone, entry: "settled", age_seconds: 1 },
+    HostSpoolHealthEntry { stage: AttemptExitDone, entry: "settled", age: second(count: 1) },
   ], bounds: [
-    HostSpoolHealthBound { stage: AttemptExitInbox, bound_seconds: 60 },
+    HostSpoolHealthBound { stage: AttemptExitInbox, bound: second(count: 60) },
   ]) {
     HostSpoolHealthUnobserved { detail: d } => d == "no bound for stage done"
     _ => false
