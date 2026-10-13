@@ -42,7 +42,7 @@ import std.integer { int_to_decimal_string }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
 import v2.compiler.infer { InferredTree }
-import gunbc.instruments.type_declaration_use_census {
+import v2.compiler.type_declaration_use_census {
   TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
 }
 import v2.compiler.name_resolve {
@@ -3664,7 +3664,7 @@ fn native_census_import_cascade(attribution: NativeImportTargetAttribution) -> N
 // THE census-infer SUBJECT: ONE MODULE RESOLVED, THEN INFERRED. Shared by two folds, by agreement
 // (docs/plans/census-part-2-inference-design.md section 2a; the nominal-type plan's M0,
 // docs/plans/nominal-type-declaration-plan.md section 2): census part 2 reads the refused arm, one row
-// per chain; gunbc.instruments.type_declaration_use_census reads the resolved tree on BOTH infer arms
+// per chain; v2.compiler.type_declaration_use_census reads the resolved tree on BOTH infer arms
 // (declarations are resolve-level facts) and the inferred tree on the accepted one. It is the same
 // per-module infer the adjudicating lane demands (native_test_infer_resolved), so there is one infer
 // walk, not two. Unlike native_census_module_resolution it HOLDS the module's trees -- the folds need
@@ -3720,7 +3720,7 @@ fn native_census_module_inference(
 }
 
 // THE TYPE-DECLARATION CENSUS'S FOLD, DISPATCHED FROM THE census-infer WALK (the nominal-type plan's
-// M0, gunbc.instruments.type_declaration_use_census). A module the context refused or that did not
+// M0, v2.compiler.type_declaration_use_census). A module the context refused or that did not
 // resolve has no reference index and is UNREACHED with its stage and fatal reason; one that resolved
 // contributes its declarations, and its casts are typed by its inferred tree or, where infer refused,
 // counted undecided under the infer cause.
