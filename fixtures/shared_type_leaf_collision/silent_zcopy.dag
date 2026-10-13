@@ -1,3 +1,4 @@
+// Filename sorts after silent_share.dag so this copy declarer is last-write on leaf Mark.
 module stlc.silent_copy
 
 type Mark
