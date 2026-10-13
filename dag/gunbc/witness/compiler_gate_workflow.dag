@@ -364,7 +364,7 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
 // so the non-blocking reassurance arm of emit_build_standing_notice_for is unreachable from here.
 fn compiler_gate_emit_build_notice_lines() -> List<String> {
   list_append(
-    left: emit_build_standing_notice_for(standing: emit_build_standing, lane_blocks: true),
+    left: emit_build_standing_notice_for(standing: emit_build_standing, lane_blocks: true, required_context: required_ci_context_name as String),
     right: emit_build_memory_envelope_lines(ownership: gunbc_runner_slot_job_cgroup_ownership)
   )
 }

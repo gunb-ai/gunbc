@@ -289,12 +289,14 @@ test fn every_subject_step_passes_the_fault_experiment_input() -> Bool {
 fn advisory_red_probe_notice() -> String {
   join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
     known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
-  }, lane_blocks: false), "\n")
+  }, lane_blocks: false, required_context: required_ci_context_name as String), "\n")
 }
 
 test fn the_live_notice_is_green_and_blocking() -> Bool {
   let text = join(compiler_gate_emit_build_notice_lines(), "\n")
   string_contains(s: text, pattern: "BLOCKS your merge")
+    && string_contains(s: text, pattern: join(["`", required_ci_context_name as String, "`"], ""))
+    && (string_contains(s: text, pattern: "`witnesses`") == false)
     && (string_contains(s: text, pattern: "does NOT block") == false)
     && string_contains(s: text, pattern: "REAL FINDING")
     && (string_contains(s: text, pattern: "E0573") == false)
@@ -332,7 +334,7 @@ test fn the_notice_says_the_cause_line_does_not_discriminate() -> Bool {
 // THE REASSURANCE IS UNPRINTABLE ONCE THE STANDING FLIPS, rendered over a SUPPLIED standing because
 // in production the Green arm is reachable only by editing the data row.
 test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> Bool {
-  let green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: false), "\n")
+  let green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: false, required_context: required_ci_context_name as String), "\n")
   let red = advisory_red_probe_notice()
   (string_contains(s: green, pattern: "CURRENTLY EXPECTED") == false)
     && (string_contains(s: green, pattern: "E9999") == false)
@@ -357,9 +359,9 @@ test fn w_RED_a_blocking_rendering_never_prints_the_non_blocking_reassurance() -
   let probe = EmitBuildExpectedRed {
     known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
   }
-  let blocking_red = join(emit_build_standing_notice_for(standing: probe, lane_blocks: true), "\n")
-  let blocking_green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: true), "\n")
-  let advisory_red = join(emit_build_standing_notice_for(standing: probe, lane_blocks: false), "\n")
+  let blocking_red = join(emit_build_standing_notice_for(standing: probe, lane_blocks: true, required_context: required_ci_context_name as String), "\n")
+  let blocking_green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: true, required_context: required_ci_context_name as String), "\n")
+  let advisory_red = join(emit_build_standing_notice_for(standing: probe, lane_blocks: false, required_context: required_ci_context_name as String), "\n")
   (string_contains(s: blocking_red, pattern: "does NOT block") == false)
     && (string_contains(s: blocking_green, pattern: "does NOT block") == false)
     && string_contains(s: blocking_green, pattern: "BLOCKS your merge")

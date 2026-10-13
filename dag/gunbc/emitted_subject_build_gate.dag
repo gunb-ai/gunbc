@@ -344,19 +344,19 @@ data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedGreen
 // The retirement condition is PRINTED, so a reader who can see main self-host again knows the row
 // is stale and what edit retires it. Nothing mechanically flips the row when the condition holds:
 // that is review diligence, stated here rather than implied.
-fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding, lane_blocks: Bool) -> List<String> {
-  list_append(left: emit_build_lane_blocking_lines(lane_blocks: lane_blocks), right: emit_build_standing_lines(standing: standing, lane_blocks: lane_blocks))
+fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding, lane_blocks: Bool, required_context: String) -> List<String> {
+  list_append(left: emit_build_lane_blocking_lines(lane_blocks: lane_blocks, required_context: required_context), right: emit_build_standing_lines(standing: standing, lane_blocks: lane_blocks))
 }
 
-fn emit_build_lane_blocking_lines(lane_blocks: Bool) -> List<String> {
+fn emit_build_lane_blocking_lines(lane_blocks: Bool, required_context: String) -> List<String> {
   if lane_blocks {
     [
-      "emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.",
+      join(["emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `", required_context, "`."], ""),
     ]
   } else {
     [
       "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
-      "the required context is `witnesses`, and this job is not an input to it.",
+      join(["the required context is `", required_context, "`, and this job is not an input to it."], ""),
     ]
   }
 }
