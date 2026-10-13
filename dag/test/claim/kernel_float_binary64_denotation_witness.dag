@@ -3,7 +3,7 @@ module test.claim.kernel_float_binary64_denotation_witness
 import std.types { Bool, Int, List, String }
 import std.bit { Bit }
 import std.algebra { Ordering, Less, Equal, Greater }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.standards.ieee_754_2019 {
   BinaryInterchangeEncoding, EncodingAdmission, EncodingAdmitted, EncodingRefused,
   BiasedExponentFieldWidth, TrailingSignificandFieldWidth, binary32, binary64,

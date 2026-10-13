@@ -22,7 +22,7 @@ import gunbc.fleet.fleet_physical_inventory {
   dgx_spark_procurement_ledgers, dgx_spark_asset_identities,
   dgx_spark_serialized_assets, dgx_spark_micro_center_catalog_reference,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

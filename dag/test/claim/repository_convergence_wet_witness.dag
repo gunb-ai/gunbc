@@ -6,7 +6,7 @@ import gunbc.output_policy { OutcomeIsData }
 import gunbc.retained_shell_script { retained_runtime }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 import extdeps.shell
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

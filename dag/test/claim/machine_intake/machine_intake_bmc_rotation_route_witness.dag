@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.decl_ref { decl_field_ref }
 import std.scoped_authorization { AttemptIdentity }
 import std.content_hash { content_hash_of_value }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { length }
 import extdeps.uri { uri_https }
 import extdeps.external_authority { ExternalAuthority }

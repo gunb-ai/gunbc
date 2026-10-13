@@ -1,6 +1,6 @@
 module test.claim.plans.v2_closed_pr_recovery_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr }
 import gunbc.plans.v2_closed_pr_recovery {
   ClosedPrRecoveryRow, DeadWork, Scratch,

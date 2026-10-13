@@ -38,7 +38,7 @@ import v2.workflow.floor_eval_step_calibration {
   HostSpeedFactor, HostSpeedCalibrated,
   host_speed_reference_factor, host_speed_calibration_holds, host_speed_calibration_name,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Every fixture below is authored in this source; the module reaches nothing outside the
 // substrate inputs.

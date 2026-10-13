@@ -20,7 +20,7 @@ import gunbc.runner.runner_browser_toolchain {
 }
 import extdeps.exec.command { argv_words }
 import gunbc.filesystem_model { concat_lists }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

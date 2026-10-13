@@ -47,7 +47,7 @@ import gunbc.source_admission_selection {
   source_admission_is_unchanged_noop,
   source_admission_refusal_cause,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

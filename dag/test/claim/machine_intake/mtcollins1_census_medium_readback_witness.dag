@@ -1,7 +1,7 @@
 module test.claim.machine_intake.mtcollins1_census_medium_readback_witness
 
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
 import gunbc.host.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }

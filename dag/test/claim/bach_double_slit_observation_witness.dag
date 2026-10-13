@@ -28,7 +28,7 @@ import extdeps.physics.bach_et_al_2013_double_slit {
   SlitTwoSingleSlitDiffractionObserved,
   BothSlitsDoubleSlitDiffractionObserved,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

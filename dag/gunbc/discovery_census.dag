@@ -16,7 +16,7 @@ import v2.workflow.required_floor {
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane, DeclinedChangedWitnessOutsideDiscovery,
   required_floor_site_disposition,
 }
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import std.types { String, Bool, NonEmptyStr }
 import extdeps.bazel.target_pattern { TargetPattern, SubtreeTargets }

@@ -39,7 +39,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import extdeps.languages.json.emit { serialize_json }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

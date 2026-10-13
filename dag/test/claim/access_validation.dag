@@ -7,7 +7,7 @@ import std.access {
 }
 import extdeps.access.posix { PermissionBits, FilePermissions }
 import extdeps.access.rbac { Permission, RbacPolicy }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

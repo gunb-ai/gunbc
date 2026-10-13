@@ -9,7 +9,7 @@ import extdeps.tools.coreutils_truncate
 import extdeps.tools.gzip
 import extdeps.tools.sha256sum
 import extdeps.crypto.seeded_filler { seeded_filler_write, SeededFillerWritten, SeededFillerRefused }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

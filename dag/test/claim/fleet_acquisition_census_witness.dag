@@ -31,7 +31,7 @@ import gunbc.fleet.fleet_host_assembly {
   assembly_covers_component_roster,
   assembly_containments_join,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

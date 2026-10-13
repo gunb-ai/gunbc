@@ -21,7 +21,7 @@ import std.goal_assessment {
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
 import std.algebra { non_empty_to_list }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE INSTALLED PLANT. The order gates answer "should this be bought"; this
 // answers "is what is in the racks still what we need", and on this fleet today the honest answer

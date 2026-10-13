@@ -20,7 +20,7 @@ import gunbc.fleet.fleet_revision_acceptance {
   accept_required_ci_merge_group_runs, observe_default_branch_push, required_ci_refusal_message,
   admit_fleet_revision, FleetRevisionAccepted, RequiredCiAndDefaultBranchRevisionMismatch,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestResponseObserved, RestBodyRead }
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
 import test.claim.rest_exchange_replay { replay_frame, fixture_for }

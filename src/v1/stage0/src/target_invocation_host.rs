@@ -250,6 +250,32 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 pub enum V2NativeCensusReading {
     RefusalCensus,
     TypeDeclarationUse,
+    NativeProcessMemory { workload: NativeMeasuredWorkload },
+}
+
+/// `gunbc.instruments.native_process_memory_reading` `NativeCensusVerb`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeCensusVerb {
+    FrontEnd,
+    Infer,
+}
+
+impl NativeCensusVerb {
+    /// `native_census_verb_argv` and the `.dag` constructor name, in that order.
+    fn argv_and_variant(self) -> (&'static str, &'static str) {
+        match self {
+            Self::FrontEnd => ("census", "NativeCensusFrontEnd"),
+            Self::Infer => ("census-infer", "NativeCensusInfer"),
+        }
+    }
+}
+
+/// `gunbc.instruments.native_process_memory_reading` `NativeMeasuredWorkload`, narrowed to the arms a
+/// row binds today. `NativeSelfCompileWorkload` is a declared frontier there and gains an arm here
+/// when the native compile verb accepts the self-host closure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeMeasuredWorkload {
+    Census { verb: NativeCensusVerb },
 }
 
 /// `gunbc.target_binding` `TargetProducer`, narrowed to the members this seam realizes today.
@@ -372,6 +398,16 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("type-declaration-use-census"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::TypeDeclarationUse,
+            },
+        ),
+        (
+            instrument_label("native-process-memory-census"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::NativeProcessMemory {
+                    workload: NativeMeasuredWorkload::Census {
+                        verb: NativeCensusVerb::FrontEnd,
+                    },
+                },
             },
         ),
         (
@@ -865,6 +901,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_type_declaration_use_census(&self_host_source_roots()),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::NativeProcessMemory { workload },
+        } => run_native_process_memory(&self_host_source_roots(), workload),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
@@ -1396,7 +1435,23 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
             }
         }
     };
-    match cli_run::classify_cli_wire(&value, &ctx) {
+    reader_standing_outcome(
+        &ctx,
+        &value,
+        label_name,
+        "type_declaration_use_census_standing",
+    )
+}
+
+/// A reader's `CliWireResponse`, as the invocation outcome: exit 0 held, 1 did not hold, any other
+/// code no observation. Shared by every producer whose standing a `.dag` reader decides.
+fn reader_standing_outcome(
+    ctx: &crate::v1_interpreter::InterpContext,
+    value: &crate::v1_interpreter::Value,
+    label_name: &str,
+    reader: &str,
+) -> InvocationOutcome {
+    match cli_run::classify_cli_wire(value, ctx) {
         cli_run::CliWireClass::Printable { bytes, exit } => {
             let (termination, verdict) = match exit {
                 cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
@@ -1413,7 +1468,10 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
                     format!("the reader returned `{type_name}`, not a ProcessExit"),
                 ),
             };
-            InvocationOutcome { termination, message: format!("{bytes}{label_name}: {verdict}") }
+            InvocationOutcome {
+                termination,
+                message: format!("{bytes}{label_name}: {verdict}"),
+            }
         }
         cli_run::CliWireClass::Unprintable { cause } => InvocationOutcome {
             termination: Termination::Refused,
@@ -1422,7 +1480,7 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
         cli_run::CliWireClass::NotCliWire { type_name } => InvocationOutcome {
             termination: Termination::Refused,
             message: format!(
-                "{label_name}: type_declaration_use_census_standing returned `{type_name}`, not a CliWireResponse"
+                "{label_name}: {reader} returned `{type_name}`, not a CliWireResponse"
             ),
         },
         cli_run::CliWireClass::MalformedCliWire { detail } => InvocationOutcome {
@@ -1430,6 +1488,149 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
             message: format!("{label_name}: malformed CliWireResponse: {detail}"),
         },
     }
+}
+
+/// THE NATIVE PROCESS MEMORY PRODUCER. The host writes the one-module control root from the reader's
+/// own rows, runs the workload's verb over it and over the source roots on ONE prepared binary, each
+/// child reaped by `wait4`, and hands both readings to `native_process_memory_standing`, which decides.
+fn run_native_process_memory(
+    source_roots: &[String],
+    workload: NativeMeasuredWorkload,
+) -> InvocationOutcome {
+    use crate::v1_interpreter::{str_value, Value};
+    let label_name = "native-process-memory-census";
+    let unreached = |message: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message,
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/instruments/native_process_memory_reading.dag";
+    let (graph, source_indices) =
+        match cli_run::resolve_entry_graph(&cli_run::default_source_roots(), READER) {
+            Ok(resolved) => resolved,
+            Err(cause) => {
+                return unreached(format!(
+                    "{label_name}: resolve failed for {READER}: {cause}"
+                ))
+            }
+        };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let read_str = |function: &str| -> Result<String, String> {
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true) {
+            Ok(v) => match &v {
+                Value::Str(s) => Ok(s.to_string()),
+                _ => Err(format!("{label_name}: {function} is not a String")),
+            },
+            Err(cause) => Err(format!("{label_name}: {function} failed: {cause}")),
+        }
+    };
+    let write_control = |run_dir: &std::path::Path| -> Result<std::path::PathBuf, String> {
+        let tree = run_dir
+            .join("control")
+            .join(read_str("native_process_memory_control_tree")?);
+        let target = tree.join(read_str("native_process_memory_control_path")?);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{label_name}: {e}"))?;
+        }
+        std::fs::write(&target, read_str("native_process_memory_control_content")?)
+            .map_err(|e| format!("{label_name}: {e}"))?;
+        Ok(tree)
+    };
+    let NativeMeasuredWorkload::Census { verb } = workload;
+    let (argv, verb_variant) = verb.argv_and_variant();
+    let runs = match cli_run::run_native_process_memory_runs(source_roots, argv, write_control) {
+        Ok(runs) => runs,
+        Err(cause) => return unreached(cause),
+    };
+    // THE INPUT IS OBSERVED OR SAID TO BE UNOBSERVED, never invented (the same rule
+    // `run_required_v2_native_inner` states for GITHUB_SHA).
+    let input_identity = format!(
+        "roots={} tree={}",
+        source_roots.join(","),
+        std::env::var("GITHUB_SHA").unwrap_or_else(|_| "unobserved(GITHUB_SHA unset)".to_string())
+    );
+    let reading = |r: &cli_run::NativeChildMeasured| {
+        let terminal = r
+            .stdout
+            .lines()
+            .rev()
+            .find(|l| l.contains("\"_terminal\""))
+            .unwrap_or("");
+        let peak = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_child_maxrss",
+            &[(Some("raw_value".to_string()), Value::Int(r.maxrss_kib))],
+            true,
+        )
+        .map_err(|cause| format!("{label_name}: native_child_maxrss failed: {cause}"))?;
+        Ok::<Value, String>(Value::Record {
+            type_name: ctx.sym("NativeChildReading"),
+            fields: std::rc::Rc::new(vec![
+                (ctx.sym("peak"), peak),
+                (
+                    ctx.sym("elapsed"),
+                    Value::Record {
+                        type_name: ctx.sym("Measure"),
+                        fields: std::rc::Rc::new(vec![(
+                            ctx.sym("count"),
+                            Value::Int(r.elapsed_ns),
+                        )]),
+                    },
+                ),
+                (ctx.sym("exit_code"), Value::Int(i64::from(r.exit_code))),
+                (ctx.sym("signal"), Value::Int(i64::from(r.signal))),
+                (ctx.sym("terminal"), str_value(terminal)),
+            ]),
+        })
+    };
+    let (control_reading, workload_reading) =
+        match (reading(&runs.control), reading(&runs.workload)) {
+            (Ok(c), Ok(w)) => (c, w),
+            (Err(cause), _) | (_, Err(cause)) => return unreached(cause),
+        };
+    let variant = |type_name: &str, name: &str, fields: Vec<(&str, Value)>| Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(name),
+        fields: std::rc::Rc::new(fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect()),
+    };
+    let workload_value = variant(
+        "NativeMeasuredWorkload",
+        "NativeCensusWorkload",
+        vec![("verb", variant("NativeCensusVerb", verb_variant, vec![]))],
+    );
+    let args = [
+        (Some("workload".to_string()), workload_value),
+        (
+            Some("binary_identity".to_string()),
+            str_value(&runs.binary_identity),
+        ),
+        (
+            Some("input_identity".to_string()),
+            str_value(&input_identity),
+        ),
+        (Some("envelope".to_string()), str_value(&runs.envelope)),
+        (Some("control".to_string()), control_reading),
+        (Some("measured".to_string()), workload_reading),
+    ];
+    let value = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_process_memory_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => value,
+        Err(cause) => return unreached(format!("{label_name}: the reader failed: {cause}")),
+    };
+    reader_standing_outcome(&ctx, &value, label_name, "native_process_memory_standing")
 }
 
 /// THE V2-NATIVE CLI PRODUCER: does the v2-exclusive front door compile.
@@ -2649,6 +2850,24 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// (`gunbc.target_invocation` `assess_binary_freshness`), then route. Kept beside `test_verb`
 /// rather than inside it so the routing tests stay a function of the operand alone.
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
+    // THE MEASURED-SPAWN TRAMPOLINE, BEFORE ANY WORK, so this process's address space is still small
+    // (`cli_run::measured_spawn_trampoline`). Entered only through its reserved operand, which only
+    // the native process memory producer emits; the receipt variable beside any other operand refuses.
+    match cli_run::measured_spawn_route(
+        operand,
+        std::env::var_os(cli_run::MEASURED_SPAWN_RECEIPT_ENV),
+    ) {
+        cli_run::MeasuredSpawnRoute::NotRequested => {}
+        cli_run::MeasuredSpawnRoute::Enter(receipt) => {
+            std::process::exit(cli_run::measured_spawn_trampoline(receipt))
+        }
+        cli_run::MeasuredSpawnRoute::Refuse(message) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message,
+            }
+        }
+    }
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
     // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate

@@ -2,7 +2,7 @@ module test.claim.fabric.fabric_output_contract_resolution_witness
 
 import std.types { NonEmptyStr, Bool, String, Int, List }
 import std.measure { hardware_thread_count }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CensusObserved, CensusNotRunnable,
   census_rows_of_class, census_total_count,
@@ -15,6 +15,7 @@ import product.fabric.work { MaterializedProgram,
   resolve_output_obligations, OutputObligationsResolved, OutputObligationsUnreadable,
   OutputObligationsResolution, ObligationsJudgedAtJobStart, ObligationsJudgedAtAdmissionGate,
   WorkKeyDoesNotMatchContract,
+ WarmResidencyRequired,
 }
 import product.fabric.identity { WorkKey }
 
@@ -50,6 +51,7 @@ fn fixture_requirements() -> ExecutionRequirements {
     capabilities: "linux-arm64",
     trust_domain: "fleet-owned",
     isolation: shared_kernel_sandbox_profile(),
+    revocation: WarmResidencyRequired,
   }
 }
 

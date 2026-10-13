@@ -10,7 +10,7 @@ import extdeps.git.publication_transport {
   git_remote_ref_lease_word,
   git_remote_ref_cas_refspec,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

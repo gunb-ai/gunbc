@@ -40,7 +40,7 @@ import std.path_intent {
   nearest_ancestor_while_predicate,
 }
 import std.filesystem.types { RegularFile }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { FilePathParts, NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

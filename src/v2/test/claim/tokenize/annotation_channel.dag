@@ -1,9 +1,9 @@
 module v2.test.claim.tokenize.annotation_channel
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import v2.std.node { symbol_lexeme }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { fold_list, length }
 import std.source_annotation { LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.compilers.lexing {

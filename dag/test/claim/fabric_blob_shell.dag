@@ -1,7 +1,7 @@
 module test.claim.fabric_blob_shell
 
 import std.types { String, NonEmptyStr, Bool, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.cloudflare.r2 { R2S3Endpoint, R2JurisdictionDefault }

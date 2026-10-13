@@ -2,7 +2,7 @@ module test.claim.source_reference_repoint_witness
 
 import std.types { Bool, Int, List, String }
 import gunbc.namespace_cut.parsed_import_statement_production { parsed_import_observation_live }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.instruments.source_reference_repoint {
   SourceEdit, ReferenceRepoint, ImportMemberRetirement,
   apply_source_edits, module_path_repoint_edits, repointed_source_text, retired_source_text

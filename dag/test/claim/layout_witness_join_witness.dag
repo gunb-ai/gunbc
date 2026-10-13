@@ -2,7 +2,7 @@ module test.claim.layout_witness_join_witness
 
 import std.types { Bool, Int, List, String }
 import std.optional { Absent, Present }
-import v2.std.live_tree { SubstrateInputsOnly }
+import std.live_tree { SubstrateInputsOnly }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.cli.repository_layout { repository_path_of_module_file }
 import gunbc.parse_population_refusals { RefusalClass }
@@ -30,7 +30,7 @@ import gunbc.instruments.layout_witness_join {
   witness_set_join
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 // WITNESSES FOR THE WITNESS-SET IDENTITY JOIN (gunbc.instruments.layout_witness_join), the C4 admission
 // that the floor's discovered set of test-MARKED declarations is the same set, carried through the
