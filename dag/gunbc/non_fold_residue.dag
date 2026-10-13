@@ -113,10 +113,6 @@ data nfr_reason_json_natural_projection: String = "one-variant decode over JsonV
 
 data nfr_dissolve_json_natural_projection: DissolutionCondition = unbound_dissolution(description: "typed JSON member decoding lands in the JSON language authority (extdeps.languages.json) with a per-shape refusal carrier, so the envelope reads a natural through a total decode rather than a hand match over JsonValue, and the row deletes with that decoder")
 
-data nfr_reason_process_port_upsert_refusal_split: String = "one-special-variant split over ProcessPortObservation: PortObservationRefused threads the observe-leg reason into an Upsert Refuse decision, and the three non-refused arms (PortAbsent, PortObserved, PortObservedStaleExpected) share one arm that derives the decision from the verdict classify_process_port already computed exhaustively over the same coproduct — the second match re-discriminates a value the first fold has already partitioned. The refused arm and its wildcard landed with the NBD-proxy observe-side read-back (74b9a6e6a5, #8582, 2026-08-19; the fn itself dates from #6171) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_process_port_upsert_refusal_split: DissolutionCondition = unbound_dissolution(description: "classify_process_port returns a carrier that already binds the refusal reason to its verdict (verdict and decision from ONE total fold over ProcessPortObservation), so classify_process_port_upsert no longer re-matches the observation and the row deletes with the second match")
-
 data nfr_reason_acceptance_obligation_partition: String = "front-end-vs-back-end partition over DagStageObligation (eight arms): execute_obligation names the four back-end stages and routes the four front-end obligations through one wildcard StageNotRun/ExecutorUnavailable arm because they execute inside the staged front-end fold; is_front_end_obligation is the subset predicate (off-variant wildcard false); obligation_front_end_depth gives ResolveStage and every back-end obligation one shared depth. Each wildcard is the OTHER half of one partition, so enumerating it would clone one arm four or five times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
 data nfr_dissolve_acceptance_obligation_partition: DissolutionCondition = unbound_dissolution(description: "DagStageObligation carries a derived front-end/back-end partition from inhabitance — a total projection onto staged_front_end.FrontEndStage? that is the single authority for which obligations the front-end fold owns — so the three matches fold over the partition rather than the variant list, the wildcard arms become named cases, and the rows delete")
@@ -388,11 +384,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/scm/repository_envelope.dag::repository_natural_from_json" },
     reason: nfr_reason_json_natural_projection,
     dissolution: nfr_dissolve_json_natural_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/session_lease.dag::classify_process_port_upsert" },
-    reason: nfr_reason_process_port_upsert_refusal_split,
-    dissolution: nfr_dissolve_process_port_upsert_refusal_split,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::execute_obligation" },
