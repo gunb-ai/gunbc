@@ -1,4 +1,4 @@
-module gunbc.host_effect_nbd_proxy_serve
+module gunbc.host.host_effect_nbd_proxy_serve
 
 import std.types { String, NonEmptyStr, Int, List, Bool }
 import std.disposition { Disposition, Terminal }
@@ -45,8 +45,8 @@ import gunbc.session_lease {
   DrainMatchingStaleThenStart,
   classify_process_port_upsert,
 }
-import gunbc.host_effect { HostEffectTransport }
-import gunbc.srv3_actuate_shell_paths { srv3_bmcweb_token_path }
+import gunbc.host.host_effect { HostEffectTransport }
+import gunbc.srv3.srv3_actuate_shell_paths { srv3_bmcweb_token_path }
 import gunbc.systemd_run_transient { systemd_run_transient_read, SystemdRunTransientStarted, SystemdRunTransientRefused }
 import gunbc.systemctl_stop_run { systemctl_stop_run, SystemctlStopped, SystemctlStopRefused }
 import gunbc.systemctl_is_active_read { systemctl_is_active_read, UnitIsActiveCapture, UnitIsActiveCaptured, UnitIsActiveCaptureRefused }

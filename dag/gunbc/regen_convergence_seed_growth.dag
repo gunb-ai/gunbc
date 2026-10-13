@@ -1,7 +1,7 @@
 module gunbc.regen_convergence_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
 data regen_convergence_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {

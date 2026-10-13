@@ -2,18 +2,18 @@ module gunbc.open_node_partial_evidence
 
 import std.decl_ref { DeclarationRef }
 import std.types { CommitSha, Int }
-import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap.roadmap_model { RoadmapNodeIdentity }
 
 // ONE CARRIER FOR EVIDENCE THAT LANDED UNDER A ROADMAP NODE THAT IS STILL OPEN.
 //
 // gunbc.native_witness_transition_receipt named this generalization as a trigger rather than
 // pre-building it: partial evidence under an open node is not native-witness-specific, but it had
 // exactly one inhabitant, and minting the general shape for one inhabitant is uninhabited
-// generality. The second subject has now arrived -- the wet execution of tools.scm_acceptance under
+// generality. The second subject has now arrived -- the wet execution of gunbc.instruments.scm_acceptance under
 // 2-scm-native-write-spine-acceptance -- so the shape the trigger predicted is built here and that
 // module becomes an instantiation.
 //
-// THIS IS NOT AN ACCEPTANCE AND MUST NOT BE READ AS ONE. gunbc.roadmap_model
+// THIS IS NOT AN ACCEPTANCE AND MUST NOT BE READ AS ONE. gunbc.roadmap.roadmap_model
 // RoadmapAcceptanceReceipt remains the only fact node_accepted consults, and it requires the node's
 // criteria digest plus executed red-control and delivered handback evidence. A receipt here records
 // that ONE piece of evidence landed under a node that REMAINS OPEN, and moves nothing on the

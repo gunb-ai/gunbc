@@ -18,12 +18,12 @@ import product.capacity.event_chain {
   EventDecode, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
 }
 import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_string, member_nonempty, member_nat }
-import gunbc.fabric_event_log {
+import gunbc.fabric.fabric_event_log {
   PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition_with,
   EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append_with, event_log_refusal_wire, event_log_read_budget,
 }
-import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire, parse_fabric_group, fabric_group_of_host }
@@ -50,7 +50,7 @@ import gunbc.spark.pair_serving_authority {
 // occupancy on the event chain (a termed LeaseGrant settled by fabric_seat_acquire over a
 // partition head), and this is the same linearization fact about a different subject: one
 // partition `pair-serving-authority/<group>`, one event per transition, the head advanced by a
-// leased push. gunbc.fabric_event_log was generic in nothing but its seats until this module; it
+// leased push. gunbc.fabric.fabric_event_log was generic in nothing but its seats until this module; it
 // now reads and appends for any payload, and this module supplies the authority's codec.
 //
 // DESIRED AND ESTABLISHED ARE TWO FACTS, AND THIS IS WHERE THE SPLIT IS DECIDED. The source row is

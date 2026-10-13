@@ -1,4 +1,4 @@
-module gunbc.fleet_observation_capture_chunk
+module gunbc.fleet_observation.capture_chunk
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
@@ -30,11 +30,11 @@ import std.durable_compare_and_set {
   CasGenerationPublicationRefused,
   CasGenerationSpaceExhausted,
 }
-import gunbc.fleet_observation_collector_ownership { CollectorSessionId }
+import gunbc.fleet_observation.collector_ownership { CollectorSessionId }
 
 // BOUNDED DURABLE CAPTURE: the bytes, their identity, and what it takes to say they are kept.
-// Ownership is gunbc.fleet_observation_collector_ownership; the published fact is
-// gunbc.fleet_observation_observation_envelope. Raw chunks live in ARTIFACT storage, outside any
+// Ownership is gunbc.fleet_observation.collector_ownership; the published fact is
+// gunbc.fleet_observation.observation_envelope. Raw chunks live in ARTIFACT storage, outside any
 // small event index -- console lines are not routed through capacity transactions and no boot arm
 // is added to any pool-event enum.
 //

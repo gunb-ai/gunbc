@@ -4,13 +4,13 @@ import std.types { String, Bool, Int, NonEmptyStr, List, FilePath, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.nat { Nat }
 import std.measure { Measure, Count, One }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageServed }
-import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageServed }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused }
 import product.capacity.pool { Pool, NoReplenishment, pool_of }
 import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, SeatRequest }
 import product.capacity.lease { LeasePolicy, FencedResource }
-import gunbc.fabric_event_log {
+import gunbc.fabric.fabric_event_log {
   HeadObservation, HeadObserved, HeadObservationRefused, event_log_observe_head,
   PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition,
   EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,

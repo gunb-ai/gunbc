@@ -1,4 +1,4 @@
-module gunbc.incremental_floor_authority
+module gunbc.floor.incremental_floor_authority
 
 import std.types { String, List, Int, Bool }
 import std.disposition { Disposition, Terminal }
@@ -62,7 +62,7 @@ data incremental_floor_authority_disposition: Disposition = Terminal {
 // UNENROLLED IN PRODUCTION. The law executes: the witness beside this module drives every
 // conjunct to a discriminating RED and the conjunction to an accepted positive control. No
 // production consumer reads it, because none exists: the required floor is whole-corpus today
-// (`gunbc.witness_floor_workflow`), which is the one configuration under which this law is
+// (`gunbc.witness.witness_floor_workflow`), which is the one configuration under which this law is
 // trivially satisfied. NEXT-RUNG TRIGGER, naming the capability rather than an artifact: a floor
 // runner that can execute a proper subset of the roster and emit, per attempt, the receipt this
 // module's `FloorIncrementalAttempt` requires -- roster digests at both trees, the delta over

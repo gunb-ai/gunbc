@@ -24,11 +24,11 @@ import extdeps.git.plumbing {
 // behalf, so a roster scoped to the other two modules would no longer name every site.
 // Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv
 // site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2
-// (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review.
+// (gunbc.host.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review.
 
 // THE SEVENTEEN GIT ROWS THAT USED TO SIT HERE ARE DELETED RATHER THAN REPOINTED, and the
 // distinction is the point. Every row in this roster declares the same dissolution target,
-// gunbc.host_effect_realize host_effect_apply, which is a TRANSPORT (DESIGN section 3 (b)).
+// gunbc.host.host_effect_realize host_effect_apply, which is a TRANSPORT (DESIGN section 3 (b)).
 // That target is correct for the host-effect rows below -- rm, mkdir, cp, mv, chmod, sleep,
 // uname, ldd, sha256sum, cargo, rustc, execute -- and it was WRONG for the git rows: a git
 // operation's terminus is a modeled interface shape, which extdeps owns, and routing
@@ -42,7 +42,7 @@ import extdeps.git.plumbing {
 // a site with a stale one.
 
 data devboot_shell_typed_effects_dissolve_ref: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.host_effect_realize",
+  module_path: "gunbc.host.host_effect_realize",
   decl_name: "host_effect_apply",
   field: WholeDeclaration,
 }

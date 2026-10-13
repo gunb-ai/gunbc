@@ -10,7 +10,7 @@ import gunbc.dispatch_credential_snapshot { TakenCredentialSnapshot, taken_crede
 // or the snapshot the attempt's preparation TOOK, which carries its attempt and its executor itself
 // (gunbc.dispatch_credential_snapshot TakenCredentialSnapshot). "Without an attempt snapshot" is not
 // "without a credential": codex binds its custody CODEX_HOME in place under its lock, and those
-// obligations stay on its own route (gunbc.roadmap_dispatch_actuator codex_observed_inventory); the
+// obligations stay on its own route (gunbc.roadmap.roadmap_dispatch_actuator codex_observed_inventory); the
 // harness has no vendor credential at all.
 type SnapshotFreeExecutor
   = CodexWithoutSnapshot
@@ -30,7 +30,7 @@ fn attempt_launch_attempt(launch: AttemptLaunch) -> DispatchAttempt {
 // THE PREPARED LAUNCH IS THE ONLY THING A LAUNCH LEG CONSUMES, AND IT IS SEALED. The alternatives above
 // are an ordinary coproduct, which the seed route does not seal (f13), so the seal is on this outer
 // record (record literals are refused outside this file on both routes) and its one mint is
-// admit_callers-confined to the one preparation producer, gunbc.roadmap_dispatch_actuator
+// admit_callers-confined to the one preparation producer, gunbc.roadmap.roadmap_dispatch_actuator
 // attempt_selection_launching, which every draw goes through. The spawn plan, the provider argv and the
 // belt's discard read the executor, the attempt and the snapshot from this value, so three states
 // that used to be runtime refusals at the spawn have no expression there: a Claude or Cursor launch
@@ -60,7 +60,7 @@ fn prepare_attempt_launch(
   process_fingerprint: NonEmptyStr,
 ) -> AttemptLaunchPreparation
   admit_callers: [
-    decl_ref(module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "attempt_selection_launching"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "attempt_selection_launching"),
   ]
 {
   let prepared_for = attempt_launch_attempt(launch: launch)

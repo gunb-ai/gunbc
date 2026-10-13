@@ -36,7 +36,7 @@ import std.measure { minute_to_second }
 //
 // THE FLEET-CI POSTURE IS NOT REUSED, and that is a stated divergence: it serves gunbc's CI jobs and
 // egresses to GitHub; a workspace serves the operator and egresses nowhere. One posture name for
-// both would be the section 3 meaning fork gunbc.runner_fleet_ci_posture itself names. The TYPES are
+// both would be the section 3 meaning fork gunbc.runner.runner_fleet_ci_posture itself names. The TYPES are
 // reused, as that module reuses Spark's.
 data workspace_demo_use_posture: FirstPartySelfUsePosture = FirstPartySelfUsePosture {
   assertion: OperatorAllocation {
@@ -101,15 +101,15 @@ data workspace_demo_posture: CompliancePostureRevision = CompliancePostureRevisi
 // assertion of where the hosts are.
 fn workspace_demo_route() -> ProviderRoute {
   ProviderRoute {
-    provider: decl_ref(module_path: "gunbc.runner_slot_allocation", decl_name: "workspace_dedicated_slot_designations"),
-    service: decl_ref(module_path: "gunbc.runner_microvm_slot_unit", decl_name: "microvm_slot_unit_template_name"),
+    provider: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "workspace_dedicated_slot_designations"),
+    service: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_slot_unit_template_name"),
     region: workspace_demo_ref(name: "workspace_demo_use_posture"),
   }
 }
 
 fn workspace_demo_on_host_path() -> ProviderPathStanding {
   ProviderPathLocated {
-    operator: decl_ref(module_path: "gunbc.runner_slot_allocation", decl_name: "workspace_dedicated_slot_designations"),
+    operator: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "workspace_dedicated_slot_designations"),
     jurisdiction: workspace_demo_ref(name: "workspace_demo_use_posture"),
     evidence: workspace_demo_ref(name: "workspace_demo_use_posture"),
   }

@@ -1,14 +1,14 @@
 module gunbc.interpreter_eval_correctness_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
 // SEED-GROWTH RECEIPTS FOR TWO SEED-INTERPRETER CORRECTNESS REPAIRS, admitted under
-// gunbc.v1_maintenance_standing v1_seed_standing: the seed interpreter decides every claim verdict
+// gunbc.v1.v1_maintenance_standing v1_seed_standing: the seed interpreter decides every claim verdict
 // today, so a silent wrong answer there is silent wrongness in the v2 self-host program's evidence,
 // and the repair can only live where the evaluation happens. THE POPULATION IS DERIVED, AND HOW IS
-// STATED: tools.rust_item_census_instrument census was run on both changes (BuildBuddy, in a
+// STATED: gunbc.instruments.rust_item_census_instrument census was run on both changes (BuildBuddy, in a
 // self-made memory cgroup, origin/main merge base) and REFUSED both as unattributed -- "changed line
 // at HEAD falls outside every scanned item" in src/v1/stage0/src/v1_interpreter.rs, and for gunbc#12886
 // also "not readable at item grain" in src/bin/interp_recorded_fixture_witness.rs -- so the items

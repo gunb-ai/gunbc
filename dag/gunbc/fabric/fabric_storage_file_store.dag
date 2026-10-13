@@ -1,4 +1,4 @@
-module gunbc.fabric_storage_file_store
+module gunbc.fabric.fabric_storage_file_store
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import extdeps.shell
@@ -42,7 +42,7 @@ import extdeps.filesystem.filesystem_io {
 //
 // SINGLE WRITER, BY PLACEMENT (operator approval 2026-09-19). O_EXCL serializes writers only against
 // ONE store instance, so every writer reaches this store on the one host that holds it -- in process
-// there, and through the served endpoint (gunbc.fabric_storage_serve, reached by gunbc.fabric_storage_client)
+// there, and through the served endpoint (gunbc.fabric.fabric_storage_serve, reached by gunbc.fabric.fabric_storage_client)
 // from every other host -- and no host keeps a second writable copy. Replication
 // and failover are the program in docs/plans/fabric-storage.md, not this module.
 //
@@ -52,7 +52,7 @@ import extdeps.filesystem.filesystem_io {
 
 // THE ENTRY MODE IS THE PLACEMENT'S FACT, NOT THIS REALIZATION'S. Who reads the store's files is
 // decided by who the placement declares as its writers and readers
-// (gunbc.fabric_storage_placement fabric_storage_placed_file_root); a root built with no declared
+// (gunbc.fabric.fabric_storage_placement fabric_storage_placed_file_root); a root built with no declared
 // mode publishes at the writing process's umask, which is what a single-principal fixture wants and
 // what a store with two principals must not rely on.
 type FabricStorageFileRoot {

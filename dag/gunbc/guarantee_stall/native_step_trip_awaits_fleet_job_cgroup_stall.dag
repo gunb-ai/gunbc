@@ -12,17 +12,17 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // MemoryCgroupBindRefused, because memory_governor apply_memory_cgroup_bind creates its leaf at the
 // cgroup ROOT (a design for a process that is root of its own cgroup namespace, which the
 // remote-build containers are and a systemd-managed fleet host is not) and a fleet job runs as the
-// setpriv'd job user under a root unit (gunbc.runner_host_deploy). Nothing fell, so no drop's
+// setpriv'd job user under a root unit (gunbc.runner.runner_host_deploy). Nothing fell, so no drop's
 // previous rung is honest; what exists is a class below its ceiling with a named grounding.
 //
 // WHAT HOLDS MEANWHILE, and why `current` is Mitigatable rather than silence: every subject step
 // REQUIRES the slot's envelope (gunbc.emitted_subject_build_gate native_step_memory_envelope_env_name,
-// decided by gunbc.memory_envelope) -- gunbc test refuses a run that no cgroup with a numeric
+// decided by gunbc.host.memory_envelope) -- gunbc test refuses a run that no cgroup with a numeric
 // memory.max binds, and refuses a run that was OOM-killed or charged swap inside that cgroup, from
 // readings taken before the producer and at exit -- and the slot's own MemoryMax with
-// MemorySwapMax=0 (gunbc.runner_slot_desired) is the hard maximum once converged.
+// MemorySwapMax=0 (gunbc.runner.runner_slot_desired) is the hard maximum once converged.
 //
-// THE SWITCH is the fleet fact gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership:
+// THE SWITCH is the fleet fact gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership:
 // the gate's native_step_memory_inputs withholds the bind input while a job owns no bounded cgroup
 // and passes it the day the fact flips, with no other edit.
 data native_step_trip_awaits_fleet_job_cgroup_stall: GuaranteeStall = GuaranteeStall {
@@ -30,7 +30,7 @@ data native_step_trip_awaits_fleet_job_cgroup_stall: GuaranteeStall = GuaranteeS
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
   blocker: AwaitsOneGrounding {
-    grounding: "a job-owned, memory-bounded cgroup on every fleet runner: the runner unit delegated (Delegate=yes with DelegateSubgroup= so the unit's own processes leave the delegated root), a per-job cgroup staged at native_step_memory_trip with no swap by the root JIT wrapper before setpriv (gunbc.runner_lifecycle runner_lifecycle_jit_wrapper_path), and the governor's UnnecessaryLimitAlreadyBinds arm reading that bound as the step's own -- or the job user able to create the leaf itself. Applied to hosts by converge, which is the operator's effect; the fact that flips is gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership"
+    grounding: "a job-owned, memory-bounded cgroup on every fleet runner: the runner unit delegated (Delegate=yes with DelegateSubgroup= so the unit's own processes leave the delegated root), a per-job cgroup staged at native_step_memory_trip with no swap by the root JIT wrapper before setpriv (gunbc.runner.runner_lifecycle runner_lifecycle_jit_wrapper_path), and the governor's UnnecessaryLimitAlreadyBinds arm reading that bound as the step's own -- or the job user able to create the leaf itself. Applied to hosts by converge, which is the operator's effect; the fact that flips is gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership"
   },
   population: BoundedPopulation {
     members: [

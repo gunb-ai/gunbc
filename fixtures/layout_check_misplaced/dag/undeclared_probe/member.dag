@@ -1,0 +1,7 @@
+module undeclared_probe.member
+
+// THE LAYOUT CHECK'S UNDECLARED-NAMESPACE CONTROL. `undeclared_probe` is a namespace no row of
+// `gunbc.source_layout_namespaces` declares, and this file is stored at the position its module line
+// names, so the only fact `check-layout` can refuse it for is that the namespace was born without a
+// declared row. Outside every governed root for the reason `gunbc/misplaced.dag` beside it is.
+data undeclared_probe_member_value: Int = 1

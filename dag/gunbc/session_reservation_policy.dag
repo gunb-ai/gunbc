@@ -2,10 +2,10 @@ module gunbc.session_reservation_policy
 
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import gunbc.fleet_intent_network {
+import gunbc.fleet.fleet_intent_network {
   HostIdentity,
 }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import gunbc.session_residency {
   SessionResidencyEvidence,
   SessionsObservedPresent, SessionsObservedAbsent, SessionsOperatorDeclaredAbsent, SessionsUnobserved,
@@ -138,7 +138,7 @@ data srv2_session_aggregate_citation: SessionDemandReceiptCitation = SessionDema
 //    OOM-KILLED 52 processes. Demand there does not sit below 64 GiB; it is being clipped at it. An
 //    allowance equal to that cap would charge a number known to be too small for its own population.
 //
-// 2. THE CAP DOES NOT CONTAIN THE WHOLE POPULATION. `gunbc.host_converge` `session_knob_standing_for`
+// 2. THE CAP DOES NOT CONTAIN THE WHOLE POPULATION. `gunbc.host.host_converge` `session_knob_standing_for`
 //    renders the reservation as a cap ON sessions.slice, and the three ctrl-session scopes above run
 //    OUTSIDE it, so they are neither charged by it nor constrained by it and may grow independently.
 //    An allowance must cover AND constrain the same population; this one would do neither for part
