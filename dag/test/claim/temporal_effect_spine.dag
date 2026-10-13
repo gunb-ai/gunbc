@@ -1,8 +1,5 @@
 module test.claim.temporal_effect_spine
 
-import std.optional { Present, Absent }
-import std.durable_compare_and_set { cas_generation, cas_generation_first }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_intent_hash: ContentHash = content_hash_of_value(value: "temporal-spine-witness-intent-v1" as NonEmptyStr)

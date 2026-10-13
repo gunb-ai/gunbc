@@ -116,13 +116,22 @@ fn host_spool_health_is_stale(e: HostSpoolHealthEntry, bounds: List<HostSpoolHea
   }
 }
 
+type HostSpoolOldestStale
+  = HostSpoolNoStaleYet
+  | HostSpoolOldestSoFar { entry: HostSpoolHealthEntry }
+
 fn host_spool_health_judge(entries: List<HostSpoolHealthEntry>, bounds: List<HostSpoolHealthBound>) -> HostSpoolHealth {
   let stale = filter(entries, e => host_spool_health_is_stale(e: e, bounds: bounds))
-  match fold(stale, init: none as HostSpoolHealthEntry?, f: (acc, e) => match acc {
-    Absent => Present { value: e }
-    Present { value: o } => if second_count(s: e.age) > second_count(s: o.age) { Present { value: e } } else { Present { value: o } }
+  match fold(stale, init: HostSpoolNoStaleYet, f: (acc, e) => match acc {
+    HostSpoolNoStaleYet => HostSpoolOldestSoFar { entry: e }
+    HostSpoolOldestSoFar { entry: o } =>
+      if second_count(s: e.age) > second_count(s: o.age) {
+        HostSpoolOldestSoFar { entry: e }
+      } else {
+        HostSpoolOldestSoFar { entry: o }
+      }
   }) {
-    Present { value: o } =>
+    HostSpoolOldestSoFar { entry: o } =>
       match host_spool_bound_for(bounds: bounds, stage: o.stage) {
         Present { value: b } => HostSpoolHealthStale {
           stage: o.stage,
@@ -134,7 +143,7 @@ fn host_spool_health_judge(entries: List<HostSpoolHealthEntry>, bounds: List<Hos
           detail: join(["no bound for stage ", host_spool_stage_wire(stage: o.stage)], ""),
         }
       }
-    Absent => HostSpoolHealthClear {
+    HostSpoolNoStaleYet => HostSpoolHealthClear {
       depth_inbox: count(filter(entries, e => host_spool_stage_is_inbox(stage: e.stage))),
       depth_queued: count(filter(entries, e => host_spool_stage_is_queued(stage: e.stage))),
       depth_running: count(filter(entries, e => host_spool_stage_is_running(stage: e.stage))),
