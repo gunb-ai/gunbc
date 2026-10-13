@@ -2,7 +2,7 @@ module gunbc.declared_import_closure_binding
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.optional { Optional, Present, Absent }
-import gunbc.compile_clean_diagnostic_policy { UnlistedImportBindingSource, ListedImport, PoolCoincidence }
+import gunbc.compile_clean_diagnostic_policy { UnlistedImportBindingSource, ListedImport, PoolCoincidence, DefinerResolvable, AmbiguousLeaf }
 
 // THE CLASS B OBSERVATION SURFACE for declared-import-closure binding (#6985). Host twin of
 // observe_declared_import_closure_symbol_binding: compile an entry under primary-precedence
