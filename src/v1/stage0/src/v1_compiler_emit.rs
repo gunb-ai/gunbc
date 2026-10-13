@@ -3198,16 +3198,6 @@ pub enum NativeEffectHandler {
     NativeTransportHandler { transports: Rc<Vec<TransportKind>> },
     NativeCapabilityToken,
 }
-impl NativeEffectHandler {
-    pub fn transports(&self) -> Rc<Vec<TransportKind>> {
-        match self {
-            NativeEffectHandler::NativeTransportHandler {
-                transports: __val, ..
-            } => __val.clone(),
-            NativeEffectHandler::NativeCapabilityToken => panic!("no transports on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]

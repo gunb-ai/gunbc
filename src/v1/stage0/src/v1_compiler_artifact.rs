@@ -44,16 +44,6 @@ pub enum RustModuleRenderSelection {
     RenderEveryModule,
     RenderSelectedMirrors { basenames: Rc<Vec<String>> },
 }
-impl RustModuleRenderSelection {
-    pub fn basenames(&self) -> Rc<Vec<String>> {
-        match self {
-            RustModuleRenderSelection::RenderEveryModule => panic!("no basenames on unit variant"),
-            RustModuleRenderSelection::RenderSelectedMirrors {
-                basenames: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Artifact {

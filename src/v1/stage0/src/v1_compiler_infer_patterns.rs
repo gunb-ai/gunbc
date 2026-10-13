@@ -279,14 +279,6 @@ pub enum NodeLookupStatus {
     LookupResolved { node: Rc<Node> },
     LookupFailed,
 }
-impl NodeLookupStatus {
-    pub fn node(&self) -> Rc<Node> {
-        match self {
-            NodeLookupStatus::LookupResolved { node: __val, .. } => __val.clone(),
-            NodeLookupStatus::LookupFailed => panic!("no node on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -879,14 +871,6 @@ pub fn find_variant_child_keyed(
 pub enum ConstructorRoster {
     ConstructorsClosed { names: Rc<Vec<String>> },
     ConstructorsOpen,
-}
-impl ConstructorRoster {
-    pub fn names(&self) -> Rc<Vec<String>> {
-        match self {
-            ConstructorRoster::ConstructorsClosed { names: __val, .. } => __val.clone(),
-            ConstructorRoster::ConstructorsOpen => panic!("no names on unit variant"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

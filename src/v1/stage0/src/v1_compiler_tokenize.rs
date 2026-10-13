@@ -990,14 +990,6 @@ pub enum EscapeProcessResult {
     EscapesProcessed { text: String },
     EscapeProcessingRefused,
 }
-impl EscapeProcessResult {
-    pub fn text(&self) -> String {
-        match self {
-            EscapeProcessResult::EscapesProcessed { text: __val, .. } => __val.clone(),
-            EscapeProcessResult::EscapeProcessingRefused => panic!("no text on unit variant"),
-        }
-    }
-}
 
 pub fn make_processed_string_token(
     content: Rc<Vec<i64>>,

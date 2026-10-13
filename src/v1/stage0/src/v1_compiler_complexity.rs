@@ -267,18 +267,6 @@ pub enum ParserResultSource {
     },
     ParserResultOpaque,
 }
-impl ParserResultSource {
-    pub fn input(&self) -> DescentEvidence {
-        match self {
-            ParserResultSource::ParserResultAdvance { input: __val, .. } => __val.clone(),
-            ParserResultSource::ParserResultExpect { input: __val, .. } => __val.clone(),
-            ParserResultSource::ParserResultEat { input: __val, .. } => __val.clone(),
-            ParserResultSource::ParserResultCall { input: __val, .. } => __val.clone(),
-            ParserResultSource::ParserResultDirectState { input: __val, .. } => __val.clone(),
-            ParserResultSource::ParserResultOpaque => panic!("no input on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserProgressEdge {

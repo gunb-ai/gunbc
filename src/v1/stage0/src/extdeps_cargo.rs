@@ -114,17 +114,6 @@ pub enum CargoTarget {
     Example { name: String },
     Bench { name: String },
 }
-impl CargoTarget {
-    pub fn name(&self) -> String {
-        match self {
-            CargoTarget::Lib => panic!("no name on unit variant"),
-            CargoTarget::Bin { name: __val, .. } => __val.clone(),
-            CargoTarget::CargoTest { name: __val, .. } => __val.clone(),
-            CargoTarget::Example { name: __val, .. } => __val.clone(),
-            CargoTarget::Bench { name: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 pub fn cargo_target_source_path(
     target: Rc<CargoTarget>,

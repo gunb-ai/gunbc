@@ -449,14 +449,6 @@ pub enum CensusKnowledge {
     CensusLoaded { modules: Rc<HashMap<String, bool>> },
     CensusAbsent,
 }
-impl CensusKnowledge {
-    pub fn modules(&self) -> Rc<HashMap<String, bool>> {
-        match self {
-            CensusKnowledge::CensusLoaded { modules: __val, .. } => __val.clone(),
-            CensusKnowledge::CensusAbsent => panic!("no modules on unit variant"),
-        }
-    }
-}
 
 pub fn test_reference_debt_dissolution() -> Rc<DissolutionCondition> {
     crate::std_dissolution::unbound_dissolution("the reference is removed: a roll-up test that only re-asserts enrolled tests is deleted, or the shared logic moves into an ordinary fn that both callers use; the row is then deleted, which the equality budget forces".to_string())

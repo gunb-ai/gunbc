@@ -89,14 +89,6 @@ pub enum NatSubtraction {
     NatDifference { value: i64 },
     NatSubtrahendExceedsMinuend,
 }
-impl NatSubtraction {
-    pub fn value(&self) -> i64 {
-        match self {
-            NatSubtraction::NatDifference { value: __val, .. } => __val.clone(),
-            NatSubtraction::NatSubtrahendExceedsMinuend => panic!("no value on unit variant"),
-        }
-    }
-}
 
 pub fn nat_sub(a: Nat, b: Nat) -> Rc<NatSubtraction> {
     if (b.clone() > a.clone()) {
@@ -119,24 +111,6 @@ pub struct NatQuotient {
 pub enum NatDivision {
     NatQuotientRemainder { quotient: i64, remainder: i64 },
     NatDivisionByZero,
-}
-impl NatDivision {
-    pub fn quotient(&self) -> i64 {
-        match self {
-            NatDivision::NatQuotientRemainder {
-                quotient: __val, ..
-            } => __val.clone(),
-            NatDivision::NatDivisionByZero => panic!("no quotient on unit variant"),
-        }
-    }
-    pub fn remainder(&self) -> i64 {
-        match self {
-            NatDivision::NatQuotientRemainder {
-                remainder: __val, ..
-            } => __val.clone(),
-            NatDivision::NatDivisionByZero => panic!("no remainder on unit variant"),
-        }
-    }
 }
 
 pub fn nat_div_rem(a: Nat, b: Nat) -> Rc<NatDivision> {
@@ -311,14 +285,6 @@ pub fn decimal_digit_glyph(d: DecimalDigit) -> String {
 pub enum DecimalDigitSuccessor {
     DecimalDigitNext { digit: DecimalDigit },
     DecimalDigitCarry,
-}
-impl DecimalDigitSuccessor {
-    pub fn digit(&self) -> DecimalDigit {
-        match self {
-            DecimalDigitSuccessor::DecimalDigitNext { digit: __val, .. } => __val.clone(),
-            DecimalDigitSuccessor::DecimalDigitCarry => panic!("no digit on unit variant"),
-        }
-    }
 }
 
 pub fn decimal_digit_successor(d: DecimalDigit) -> Rc<DecimalDigitSuccessor> {

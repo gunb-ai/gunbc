@@ -270,31 +270,6 @@ pub enum VarBindingKind {
     MatchBoundBinding,
     ServiceValueBinding,
 }
-impl VarBindingKind {
-    pub fn parent_enum(&self) -> String {
-        match self {
-            VarBindingKind::LocalValueBinding => panic!("no parent_enum on unit variant"),
-            VarBindingKind::FunctionValueBinding => panic!("no parent_enum on unit variant"),
-            VarBindingKind::VariantValueBinding {
-                parent_enum: __val, ..
-            } => __val.clone(),
-            VarBindingKind::MatchBoundBinding => panic!("no parent_enum on unit variant"),
-            VarBindingKind::ServiceValueBinding => panic!("no parent_enum on unit variant"),
-        }
-    }
-    pub fn parent_identity(&self) -> Rc<VariantParentIdentity> {
-        match self {
-            VarBindingKind::LocalValueBinding => panic!("no parent_identity on unit variant"),
-            VarBindingKind::FunctionValueBinding => panic!("no parent_identity on unit variant"),
-            VarBindingKind::VariantValueBinding {
-                parent_identity: __val,
-                ..
-            } => __val.clone(),
-            VarBindingKind::MatchBoundBinding => panic!("no parent_identity on unit variant"),
-            VarBindingKind::ServiceValueBinding => panic!("no parent_identity on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredCallableIdentity {
@@ -325,14 +300,6 @@ pub enum LeafOwner {
     SingleOwner { module: String },
     LeafAmbiguous,
 }
-impl LeafOwner {
-    pub fn module(&self) -> String {
-        match self {
-            LeafOwner::SingleOwner { module: __val, .. } => __val.clone(),
-            LeafOwner::LeafAmbiguous => panic!("no module on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -348,16 +315,6 @@ pub enum CallSemantics {
         target: Rc<CallTargetIdentity>,
     },
     FunctionValueCallSemantics,
-}
-impl CallSemantics {
-    pub fn target(&self) -> Rc<CallTargetIdentity> {
-        match self {
-            CallSemantics::PlainCallSemantics { target: __val, .. } => __val.clone(),
-            CallSemantics::ResolvedDirectCallSemantics { target: __val, .. } => __val.clone(),
-            CallSemantics::LookupCallSemantics { target: __val, .. } => __val.clone(),
-            CallSemantics::FunctionValueCallSemantics => panic!("no target on unit variant"),
-        }
-    }
 }
 
 pub fn callable_identity(id: Rc<DeclaredCallableIdentity>) -> String {
@@ -943,15 +900,6 @@ pub enum DiagnosticGateDisposition {
     GateBlocking,
     GateAdvisoryTypecheck,
     GateRenderedUncounted { reason: String },
-}
-impl DiagnosticGateDisposition {
-    pub fn reason(&self) -> String {
-        match self {
-            DiagnosticGateDisposition::GateBlocking => panic!("no reason on unit variant"),
-            DiagnosticGateDisposition::GateAdvisoryTypecheck => panic!("no reason on unit variant"),
-            DiagnosticGateDisposition::GateRenderedUncounted { reason: __val, .. } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2498,17 +2446,6 @@ pub enum FunctionSizeEffect {
     TreeSizePreserving,
     TreeSizeReducing,
     PropertyContraction { domain_size: i64 },
-}
-impl FunctionSizeEffect {
-    pub fn domain_size(&self) -> i64 {
-        match self {
-            FunctionSizeEffect::TreeSizePreserving => panic!("no domain_size on unit variant"),
-            FunctionSizeEffect::TreeSizeReducing => panic!("no domain_size on unit variant"),
-            FunctionSizeEffect::PropertyContraction {
-                domain_size: __val, ..
-            } => __val.clone(),
-        }
-    }
 }
 
 pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {

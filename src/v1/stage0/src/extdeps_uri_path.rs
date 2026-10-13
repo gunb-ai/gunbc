@@ -268,14 +268,6 @@ pub enum PathTemplateMatch {
     },
     PathNotMatched,
 }
-impl PathTemplateMatch {
-    pub fn params(&self) -> Rc<Vec<Rc<PathParamBinding>>> {
-        match self {
-            PathTemplateMatch::PathMatched { params: __val, .. } => __val.clone(),
-            PathTemplateMatch::PathNotMatched => panic!("no params on unit variant"),
-        }
-    }
-}
 
 pub fn match_path_segments(path_only: String) -> Rc<Vec<String>> {
     if ((path_only.clone() == "/".to_string()) || (path_only.clone() == "".to_string())) {

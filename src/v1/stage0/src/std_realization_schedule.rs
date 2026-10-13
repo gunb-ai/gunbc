@@ -61,15 +61,6 @@ pub enum CostAxis<M> {
     CostAxisPredicted { value: M },
     CostAxisUnestablished,
 }
-impl<M: Clone> CostAxis<M> {
-    pub fn value(&self) -> M {
-        match self {
-            CostAxis::CostAxisMeasured { value: __val, .. } => __val.clone(),
-            CostAxis::CostAxisPredicted { value: __val, .. } => __val.clone(),
-            CostAxis::CostAxisUnestablished => panic!("no value on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -77,15 +68,6 @@ pub enum CostTimeAxis<S> {
     CostTimeMeasured { value: Rc<Measure<Time, S, i64>> },
     CostTimePredicted { value: Rc<Measure<Time, S, i64>> },
     CostTimeUnestablished,
-}
-impl<S: Clone> CostTimeAxis<S> {
-    pub fn value(&self) -> Rc<Measure<Time, S, i64>> {
-        match self {
-            CostTimeAxis::CostTimeMeasured { value: __val, .. } => __val.clone(),
-            CostTimeAxis::CostTimePredicted { value: __val, .. } => __val.clone(),
-            CostTimeAxis::CostTimeUnestablished => panic!("no value on unit variant"),
-        }
-    }
 }
 
 pub fn cost_time_axis_fork_disposition() -> Rc<Disposition> {
@@ -214,15 +196,6 @@ pub enum WitnessSpan {
         envelope: Rc<ScheduledWitnessEnvelope>,
     },
 }
-impl WitnessSpan {
-    pub fn seams(&self) -> Rc<Vec<Rc<WitnessSeam>>> {
-        match self {
-            WitnessSpan::SpanUndeclared => panic!("no seams on unit variant"),
-            WitnessSpan::SpanSeams { seams: __val, .. } => __val.clone(),
-            WitnessSpan::SpanEnrolled { seams: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
     match a.clone() {
@@ -294,16 +267,6 @@ pub enum RunnableBatchClampSource {
     RunnableUsesFloorPositionalClamp,
     RunnableOwnsBatchClamp { clamp: Rc<RunnableBatchClamp> },
 }
-impl RunnableBatchClampSource {
-    pub fn clamp(&self) -> Rc<RunnableBatchClamp> {
-        match self {
-            RunnableBatchClampSource::RunnableUsesFloorPositionalClamp => {
-                panic!("no clamp on unit variant")
-            }
-            RunnableBatchClampSource::RunnableOwnsBatchClamp { clamp: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -320,19 +283,6 @@ pub enum FloorWorkerTerminalReceipt {
         report: Rc<FloorWorkerTerminalReport>,
     },
     FloorWorkerTerminalReceiptMissing,
-}
-impl FloorWorkerTerminalReceipt {
-    pub fn report(&self) -> Rc<FloorWorkerTerminalReport> {
-        match self {
-            FloorWorkerTerminalReceipt::FloorWorkerTerminalReceiptObserved {
-                report: __val,
-                ..
-            } => __val.clone(),
-            FloorWorkerTerminalReceipt::FloorWorkerTerminalReceiptMissing => {
-                panic!("no report on unit variant")
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -369,23 +319,6 @@ pub enum FloorWorkerObservationOutcome {
     FloorWorkerRefused { detail: String },
     FloorWorkerFailed { detail: String },
     FloorWorkerDiedWithoutTerminalReceipt { detail: String },
-}
-impl FloorWorkerObservationOutcome {
-    pub fn detail(&self) -> String {
-        match self {
-            FloorWorkerObservationOutcome::FloorWorkerCompleted => {
-                panic!("no detail on unit variant")
-            }
-            FloorWorkerObservationOutcome::FloorWorkerRefused { detail: __val, .. } => {
-                __val.clone()
-            }
-            FloorWorkerObservationOutcome::FloorWorkerFailed { detail: __val, .. } => __val.clone(),
-            FloorWorkerObservationOutcome::FloorWorkerDiedWithoutTerminalReceipt {
-                detail: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -692,52 +625,6 @@ pub enum PreWalkExecution {
         claim_entry: String,
         claim_function: String,
     },
-}
-impl PreWalkExecution {
-    pub fn transport_entry(&self) -> String {
-        match self {
-            PreWalkExecution::NoPreWalkExecution => panic!("no transport_entry on unit variant"),
-            PreWalkExecution::TypedClaimSubprocess {
-                transport_entry: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-    pub fn transport_function(&self) -> String {
-        match self {
-            PreWalkExecution::NoPreWalkExecution => panic!("no transport_function on unit variant"),
-            PreWalkExecution::TypedClaimSubprocess {
-                transport_function: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-    pub fn source_roots(&self) -> Rc<Vec<String>> {
-        match self {
-            PreWalkExecution::NoPreWalkExecution => panic!("no source_roots on unit variant"),
-            PreWalkExecution::TypedClaimSubprocess {
-                source_roots: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-    pub fn claim_entry(&self) -> String {
-        match self {
-            PreWalkExecution::NoPreWalkExecution => panic!("no claim_entry on unit variant"),
-            PreWalkExecution::TypedClaimSubprocess {
-                claim_entry: __val, ..
-            } => __val.clone(),
-        }
-    }
-    pub fn claim_function(&self) -> String {
-        match self {
-            PreWalkExecution::NoPreWalkExecution => panic!("no claim_function on unit variant"),
-            PreWalkExecution::TypedClaimSubprocess {
-                claim_function: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

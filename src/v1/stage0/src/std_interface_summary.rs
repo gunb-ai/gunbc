@@ -37,16 +37,6 @@ pub enum InterfaceContract {
     ContractAbsent,
     SignatureContract { signature: SignatureFingerprint },
 }
-impl InterfaceContract {
-    pub fn signature(&self) -> SignatureFingerprint {
-        match self {
-            InterfaceContract::ContractAbsent => panic!("no signature on unit variant"),
-            InterfaceContract::SignatureContract {
-                signature: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,

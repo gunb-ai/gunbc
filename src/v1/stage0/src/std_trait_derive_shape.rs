@@ -137,22 +137,6 @@ pub enum PairCompletionBody {
     PairCompletionNegatedAddend,
     PairCompletionCanonicalQuotient,
 }
-impl PairCompletionBody {
-    pub fn pos(&self) -> Rc<PairCompletionArm> {
-        match self {
-            PairCompletionBody::PairCompletionSumOfProducts { pos: __val, .. } => __val.clone(),
-            PairCompletionBody::PairCompletionNegatedAddend => panic!("no pos on unit variant"),
-            PairCompletionBody::PairCompletionCanonicalQuotient => panic!("no pos on unit variant"),
-        }
-    }
-    pub fn neg(&self) -> Rc<PairCompletionArm> {
-        match self {
-            PairCompletionBody::PairCompletionSumOfProducts { neg: __val, .. } => __val.clone(),
-            PairCompletionBody::PairCompletionNegatedAddend => panic!("no neg on unit variant"),
-            PairCompletionBody::PairCompletionCanonicalQuotient => panic!("no neg on unit variant"),
-        }
-    }
-}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,

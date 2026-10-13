@@ -132,15 +132,6 @@ pub enum ParsedHrefScheme {
     RelativeHref,
     UnknownHref,
 }
-impl ParsedHrefScheme {
-    pub fn scheme(&self) -> UriScheme {
-        match self {
-            ParsedHrefScheme::HrefScheme { scheme: __val, .. } => __val.clone(),
-            ParsedHrefScheme::RelativeHref => panic!("no scheme on unit variant"),
-            ParsedHrefScheme::UnknownHref => panic!("no scheme on unit variant"),
-        }
-    }
-}
 
 pub fn href_is_relative_reference(s: String) -> bool {
     ((((v1_rt::starts_with(s.clone(), "/".to_string())

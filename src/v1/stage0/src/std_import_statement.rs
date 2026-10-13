@@ -28,24 +28,6 @@ pub enum ImportStatementParseCause {
     ImportStatementMalformed,
     ImportParseInstrumentAnomaly { detail: NonEmptyStr },
 }
-impl ImportStatementParseCause {
-    pub fn detail(&self) -> NonEmptyStr {
-        match self {
-            ImportStatementParseCause::SourceHasNoModuleDeclaration => {
-                panic!("no detail on unit variant")
-            }
-            ImportStatementParseCause::ModuleDeclarationPathMalformed => {
-                panic!("no detail on unit variant")
-            }
-            ImportStatementParseCause::ImportStatementMalformed => {
-                panic!("no detail on unit variant")
-            }
-            ImportStatementParseCause::ImportParseInstrumentAnomaly { detail: __val, .. } => {
-                __val.clone()
-            }
-        }
-    }
-}
 
 pub fn import_statement_parse_cause_label(cause: Rc<ImportStatementParseCause>) -> String {
     match (*cause.clone()).clone() {

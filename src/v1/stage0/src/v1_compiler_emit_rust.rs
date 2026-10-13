@@ -17188,15 +17188,6 @@ pub enum SealReading {
     ReferenceDoesNotSealConstruction,
     SealUndecidedForAmbiguousLeaf { leaf: String },
 }
-impl SealReading {
-    pub fn leaf(&self) -> String {
-        match self {
-            SealReading::ReferenceSealsConstruction => panic!("no leaf on unit variant"),
-            SealReading::ReferenceDoesNotSealConstruction => panic!("no leaf on unit variant"),
-            SealReading::SealUndecidedForAmbiguousLeaf { leaf: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 pub fn type_reference_seal_reading(
     type_expr: Rc<Node>,
@@ -18079,29 +18070,36 @@ pub fn emit_enum_from_children(
     }
 }
 
+pub fn field_is_addressable_authored_field(
+    f: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (crate::v1_std_core::field_node_name_at(f.clone(), source_indices.clone()) != "0".to_string())
+}
+
 pub fn find_shared_enum_fields(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> Rc<Vec<String>> {
     {
-        let fielded = Rc::new({
-            let mut __result = Vec::new();
-            for child in children.iter().cloned() {
-                if (((child.children.clone().len() as i64) > 0)
-                    && !variant_is_synthetic_positional_payload(
-                        child.children.clone(),
-                        env.source_indices.clone(),
-                    ))
-                {
-                    __result.push(child);
-                }
-            }
-            __result
-        });
-        if ((fielded.clone().len() as i64) == 0) {
+        if ((children.clone().len() as i64) == 0) {
             return Rc::new(vec![]);
         }
-        let first_fields = match fielded.clone().first().cloned() {
+        let first_fields = match children.clone().first().cloned() {
             Some(v) => Rc::new({
                 let mut __result = Vec::new();
-                for f in v.children.clone().iter().cloned() {
+                for f in Rc::new({
+                    let mut __result = Vec::new();
+                    for f in v.children.clone().iter().cloned() {
+                        if field_is_addressable_authored_field(
+                            f.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            __result.push(f);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
                     __result.push(crate::v1_compiler_infer_env::authored_name(
                         env.clone(),
                         f.clone(),
@@ -18116,10 +18114,24 @@ pub fn find_shared_enum_fields(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) ->
             for fname in first_fields.iter().cloned() {
                 if {
                     let mut __all = true;
-                    for variant in fielded.iter().cloned() {
+                    for variant in children.iter().cloned() {
                         if !({
                             let mut __found = false;
-                            for f in variant.children.clone().iter().cloned() {
+                            for f in Rc::new({
+                                let mut __result = Vec::new();
+                                for f in variant.children.clone().iter().cloned() {
+                                    if field_is_addressable_authored_field(
+                                        f.clone(),
+                                        env.source_indices.clone(),
+                                    ) {
+                                        __result.push(f);
+                                    }
+                                }
+                                __result
+                            })
+                            .iter()
+                            .cloned()
+                            {
                                 if (crate::v1_compiler_infer_env::authored_name(
                                     env.clone(),
                                     f.clone(),
@@ -28157,15 +28169,6 @@ pub enum IterOwnedReceiverCloneDisposition {
     IterOwnedReceiverCloneDropped,
     IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: String },
     IterOwnedReceiverCloneRetainedNotSimpleIdentifier,
-}
-impl IterOwnedReceiverCloneDisposition {
-    pub fn receiver_name(&self) -> String {
-        match self {
-            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneDropped => panic!("no receiver_name on unit variant"),
-            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: __val, .. } => __val.clone(),
-            IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedNotSimpleIdentifier => panic!("no receiver_name on unit variant"),
-        }
-    }
 }
 
 pub fn iter_owned_receiver_clone_disposition(

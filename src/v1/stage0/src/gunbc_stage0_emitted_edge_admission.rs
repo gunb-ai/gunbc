@@ -36,19 +36,6 @@ pub enum Stage0EmittedModuleOwner {
     Stage0EmittedModuleOwned { package_name: String },
     Stage0EmittedModuleNotCovered,
 }
-impl Stage0EmittedModuleOwner {
-    pub fn package_name(&self) -> String {
-        match self {
-            Stage0EmittedModuleOwner::Stage0EmittedModuleOwned {
-                package_name: __val,
-                ..
-            } => __val.clone(),
-            Stage0EmittedModuleOwner::Stage0EmittedModuleNotCovered => {
-                panic!("no package_name on unit variant")
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stage0EmittedEdgeCrossing {

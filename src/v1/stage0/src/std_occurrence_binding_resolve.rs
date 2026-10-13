@@ -44,30 +44,6 @@ pub enum OccurrenceCategoryBindingVerdict {
         declaration: OccurrenceCategory,
     },
 }
-impl OccurrenceCategoryBindingVerdict {
-    pub fn reference(&self) -> OccurrenceCategory {
-        match self {
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible => {
-                panic!("no reference on unit variant")
-            }
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                reference: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-    pub fn declaration(&self) -> OccurrenceCategory {
-        match self {
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible => {
-                panic!("no declaration on unit variant")
-            }
-            OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
-                declaration: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-}
 
 pub fn occurrence_category_binding_verdict(
     reference: OccurrenceCategory,

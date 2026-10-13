@@ -72,30 +72,6 @@ pub enum LiteralUnfolding {
     },
     UnicodeScalarSequenceUnfold,
 }
-impl LiteralUnfolding {
-    pub fn zero(&self) -> Rc<DeclarationRef> {
-        match self {
-            LiteralUnfolding::PeanoUnfold { zero: __val, .. } => __val.clone(),
-            LiteralUnfolding::UnicodeScalarSequenceUnfold => panic!("no zero on unit variant"),
-        }
-    }
-    pub fn succ(&self) -> Rc<DeclarationRef> {
-        match self {
-            LiteralUnfolding::PeanoUnfold { succ: __val, .. } => __val.clone(),
-            LiteralUnfolding::UnicodeScalarSequenceUnfold => panic!("no succ on unit variant"),
-        }
-    }
-    pub fn prev_field(&self) -> NonEmptyStr {
-        match self {
-            LiteralUnfolding::PeanoUnfold {
-                prev_field: __val, ..
-            } => __val.clone(),
-            LiteralUnfolding::UnicodeScalarSequenceUnfold => {
-                panic!("no prev_field on unit variant")
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LiteralHomomorphism {
@@ -387,19 +363,6 @@ pub enum KernelMintOwnership {
     DeclarationOwnsTheMint,
     DeclarationDoesNotOwnTheMint,
     KernelMintOwnershipAmbiguous { row_count: i64 },
-}
-impl KernelMintOwnership {
-    pub fn row_count(&self) -> i64 {
-        match self {
-            KernelMintOwnership::DeclarationOwnsTheMint => panic!("no row_count on unit variant"),
-            KernelMintOwnership::DeclarationDoesNotOwnTheMint => {
-                panic!("no row_count on unit variant")
-            }
-            KernelMintOwnership::KernelMintOwnershipAmbiguous {
-                row_count: __val, ..
-            } => __val.clone(),
-        }
-    }
 }
 
 pub fn kernel_mint_ownership(

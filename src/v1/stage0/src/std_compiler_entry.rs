@@ -29,15 +29,6 @@ pub enum NativeClaimTerminal {
     NativeClaimNotHeld { reason: String },
     NativeClaimNoObservation { reason: String },
 }
-impl NativeClaimTerminal {
-    pub fn reason(&self) -> String {
-        match self {
-            NativeClaimTerminal::NativeClaimHeld => panic!("no reason on unit variant"),
-            NativeClaimTerminal::NativeClaimNotHeld { reason: __val, .. } => __val.clone(),
-            NativeClaimTerminal::NativeClaimNoObservation { reason: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NativeClaimReport {
@@ -63,16 +54,6 @@ pub enum CompilerEntryDriver {
 pub enum NativeEffectClass {
     NativeEffectDeclaration { declaration: Rc<DeclarationRef> },
     NativeOutgoingHttp,
-}
-impl NativeEffectClass {
-    pub fn declaration(&self) -> Rc<DeclarationRef> {
-        match self {
-            NativeEffectClass::NativeEffectDeclaration {
-                declaration: __val, ..
-            } => __val.clone(),
-            NativeEffectClass::NativeOutgoingHttp => panic!("no declaration on unit variant"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -307,18 +288,6 @@ pub fn native_driver_cost_account(
 pub enum NativeDriverChildStanding {
     NativeDriverChildExited { stderr: String },
     NativeDriverChildStillRunning,
-}
-impl NativeDriverChildStanding {
-    pub fn stderr(&self) -> String {
-        match self {
-            NativeDriverChildStanding::NativeDriverChildExited { stderr: __val, .. } => {
-                __val.clone()
-            }
-            NativeDriverChildStanding::NativeDriverChildStillRunning => {
-                panic!("no stderr on unit variant")
-            }
-        }
-    }
 }
 
 #[derive(

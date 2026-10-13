@@ -7830,29 +7830,6 @@ pub enum CallArgumentFormalSelection {
     CallArgumentFormalSelected { formal_index: i64, formal: Rc<Node> },
     CallArgumentFormalUnavailable,
 }
-impl CallArgumentFormalSelection {
-    pub fn formal_index(&self) -> i64 {
-        match self {
-            CallArgumentFormalSelection::CallArgumentFormalSelected {
-                formal_index: __val,
-                ..
-            } => __val.clone(),
-            CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
-                panic!("no formal_index on unit variant")
-            }
-        }
-    }
-    pub fn formal(&self) -> Rc<Node> {
-        match self {
-            CallArgumentFormalSelection::CallArgumentFormalSelected { formal: __val, .. } => {
-                __val.clone()
-            }
-            CallArgumentFormalSelection::CallArgumentFormalUnavailable => {
-                panic!("no formal on unit variant")
-            }
-        }
-    }
-}
 
 pub fn call_argument_label_selects_formal_index(
     label: String,
@@ -23064,17 +23041,6 @@ pub enum ServiceConfigFieldJudgment {
     FieldDeferred { trigger: String },
     FieldCarriesNoReference,
 }
-impl ServiceConfigFieldJudgment {
-    pub fn trigger(&self) -> String {
-        match self {
-            ServiceConfigFieldJudgment::FieldJudged => panic!("no trigger on unit variant"),
-            ServiceConfigFieldJudgment::FieldDeferred { trigger: __val, .. } => __val.clone(),
-            ServiceConfigFieldJudgment::FieldCarriesNoReference => {
-                panic!("no trigger on unit variant")
-            }
-        }
-    }
-}
 
 pub fn service_config_field_judgment(field: String) -> Rc<ServiceConfigFieldJudgment> {
     match crate::v1_std_core::service_config_field_for_property_name(field.clone()) {
@@ -29346,15 +29312,6 @@ pub enum PeanoPatternReading {
     PeanoExact { k: i64 },
     PeanoAtLeast { k: i64, binder: Option<Rc<Node>> },
     PeanoPatternUnreadable,
-}
-impl PeanoPatternReading {
-    pub fn k(&self) -> i64 {
-        match self {
-            PeanoPatternReading::PeanoExact { k: __val, .. } => __val.clone(),
-            PeanoPatternReading::PeanoAtLeast { k: __val, .. } => __val.clone(),
-            PeanoPatternReading::PeanoPatternUnreadable => panic!("no k on unit variant"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

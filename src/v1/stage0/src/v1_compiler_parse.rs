@@ -462,21 +462,6 @@ pub enum ParsedOccurrenceRole {
     ParsedOccurrenceDeclaration { category: OccurrenceCategory },
     ParsedOccurrenceReference { category: OccurrenceCategory },
 }
-impl ParsedOccurrenceRole {
-    pub fn category(&self) -> OccurrenceCategory {
-        match self {
-            ParsedOccurrenceRole::ParsedOccurrenceUnclassified => {
-                panic!("no category on unit variant")
-            }
-            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                category: __val, ..
-            } => __val.clone(),
-            ParsedOccurrenceRole::ParsedOccurrenceReference {
-                category: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParsedNodeIdentityMint {
@@ -949,20 +934,6 @@ pub enum AdvanceResult {
     },
     AdvanceEof,
 }
-impl AdvanceResult {
-    pub fn token(&self) -> Rc<Token> {
-        match self {
-            AdvanceResult::AdvanceOk { token: __val, .. } => __val.clone(),
-            AdvanceResult::AdvanceEof => panic!("no token on unit variant"),
-        }
-    }
-    pub fn tokens(&self) -> Rc<TokenStream> {
-        match self {
-            AdvanceResult::AdvanceOk { tokens: __val, .. } => __val.clone(),
-            AdvanceResult::AdvanceEof => panic!("no tokens on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -1429,29 +1400,6 @@ pub enum ExpectedToken {
     ExpectQuestion,
     ExpectPipe,
 }
-impl ExpectedToken {
-    pub fn text(&self) -> String {
-        match self {
-            ExpectedToken::ExpectKeyword { text: __val, .. } => __val.clone(),
-            ExpectedToken::ExpectLBrace => panic!("no text on unit variant"),
-            ExpectedToken::ExpectRBrace => panic!("no text on unit variant"),
-            ExpectedToken::ExpectLParen => panic!("no text on unit variant"),
-            ExpectedToken::ExpectRParen => panic!("no text on unit variant"),
-            ExpectedToken::ExpectLBracket => panic!("no text on unit variant"),
-            ExpectedToken::ExpectRBracket => panic!("no text on unit variant"),
-            ExpectedToken::ExpectLt => panic!("no text on unit variant"),
-            ExpectedToken::ExpectGt => panic!("no text on unit variant"),
-            ExpectedToken::ExpectFatArrow => panic!("no text on unit variant"),
-            ExpectedToken::ExpectArrow => panic!("no text on unit variant"),
-            ExpectedToken::ExpectColon => panic!("no text on unit variant"),
-            ExpectedToken::ExpectComma => panic!("no text on unit variant"),
-            ExpectedToken::ExpectDot => panic!("no text on unit variant"),
-            ExpectedToken::ExpectEq => panic!("no text on unit variant"),
-            ExpectedToken::ExpectQuestion => panic!("no text on unit variant"),
-            ExpectedToken::ExpectPipe => panic!("no text on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportsResult {
@@ -1809,17 +1757,6 @@ pub enum ParserResultWitness {
     ParserWitnessEat,
     ParserWitnessCall { callee: Rc<ParserCallIdentity> },
     ParserWitnessOpaque,
-}
-impl ParserResultWitness {
-    pub fn callee(&self) -> Rc<ParserCallIdentity> {
-        match self {
-            ParserResultWitness::ParserWitnessAdvance => panic!("no callee on unit variant"),
-            ParserResultWitness::ParserWitnessExpect => panic!("no callee on unit variant"),
-            ParserResultWitness::ParserWitnessEat => panic!("no callee on unit variant"),
-            ParserResultWitness::ParserWitnessCall { callee: __val, .. } => __val.clone(),
-            ParserResultWitness::ParserWitnessOpaque => panic!("no callee on unit variant"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -11916,18 +11853,6 @@ pub enum OperationRequiresDeclaration {
     RequiresNone,
     RequiresOpaque,
     RequiresResources { members: Rc<Vec<Rc<Node>>> },
-}
-impl OperationRequiresDeclaration {
-    pub fn members(&self) -> Rc<Vec<Rc<Node>>> {
-        match self {
-            OperationRequiresDeclaration::RequiresUndeclared => {
-                panic!("no members on unit variant")
-            }
-            OperationRequiresDeclaration::RequiresNone => panic!("no members on unit variant"),
-            OperationRequiresDeclaration::RequiresOpaque => panic!("no members on unit variant"),
-            OperationRequiresDeclaration::RequiresResources { members: __val, .. } => __val.clone(),
-        }
-    }
 }
 
 pub fn operation_requires_declaration(

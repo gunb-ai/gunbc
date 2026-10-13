@@ -533,16 +533,6 @@ pub enum TextPlanEndpoint {
     TextPlanEndpointKeyed { endpoint: Rc<ConversionEndpoint> },
     TextPlanEndpointUnkeyed,
 }
-impl TextPlanEndpoint {
-    pub fn endpoint(&self) -> Rc<ConversionEndpoint> {
-        match self {
-            TextPlanEndpoint::TextPlanEndpointKeyed {
-                endpoint: __val, ..
-            } => __val.clone(),
-            TextPlanEndpoint::TextPlanEndpointUnkeyed => panic!("no endpoint on unit variant"),
-        }
-    }
-}
 
 pub fn text_plan_endpoint(rep: TextRepresentation) -> Rc<TextPlanEndpoint> {
     match rep.clone() {

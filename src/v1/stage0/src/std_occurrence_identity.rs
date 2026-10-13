@@ -91,14 +91,6 @@ pub enum OccurrenceCategoryModuleScopeExposureVerdict {
     OccurrenceCategoryModuleScopeExposed,
     OccurrenceCategoryModuleScopeNotExposed { category: OccurrenceCategory },
 }
-impl OccurrenceCategoryModuleScopeExposureVerdict {
-    pub fn category(&self) -> OccurrenceCategory {
-        match self {
-            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed => panic!("no category on unit variant"),
-            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeNotExposed { category: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 pub fn occurrence_category_module_scope_exposure_verdict(
     category: OccurrenceCategory,
@@ -139,14 +131,6 @@ pub fn occurrence_category_module_scope_exposure_verdict(
 pub enum OccurrenceCategoryClauseEDependencyInducingVerdict {
     OccurrenceCategoryClauseEDependencyInducing,
     OccurrenceCategoryClauseEDependencyNotInducing { category: OccurrenceCategory },
-}
-impl OccurrenceCategoryClauseEDependencyInducingVerdict {
-    pub fn category(&self) -> OccurrenceCategory {
-        match self {
-            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing => panic!("no category on unit variant"),
-            OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing { category: __val, .. } => __val.clone(),
-        }
-    }
 }
 
 pub fn occurrence_category_clause_e_dependency_inducing_verdict(

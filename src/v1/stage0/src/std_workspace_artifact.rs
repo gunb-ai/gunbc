@@ -23,22 +23,6 @@ pub enum IgnoreReason {
     OutsideSubstrate,
     SupersededAuthority { canonical: String },
 }
-impl IgnoreReason {
-    pub fn canonical(&self) -> String {
-        match self {
-            IgnoreReason::RegenerableFromSource => panic!("no canonical on unit variant"),
-            IgnoreReason::LocalCacheState => panic!("no canonical on unit variant"),
-            IgnoreReason::PerDeveloperState => panic!("no canonical on unit variant"),
-            IgnoreReason::HostOsMetadata => panic!("no canonical on unit variant"),
-            IgnoreReason::SessionRuntimeState => panic!("no canonical on unit variant"),
-            IgnoreReason::MayContainSecrets => panic!("no canonical on unit variant"),
-            IgnoreReason::OutsideSubstrate => panic!("no canonical on unit variant"),
-            IgnoreReason::SupersededAuthority {
-                canonical: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
 
 pub fn ignore_reason_label(r: Rc<IgnoreReason>) -> String {
     match (*r.clone()).clone() {

@@ -199,19 +199,6 @@ pub enum OperandDemand {
     DemandsRightOnlyWhenLeftIs { deciding: bool },
     DemandsRightOnlyWhenLeftIsAbsent,
 }
-impl OperandDemand {
-    pub fn deciding(&self) -> bool {
-        match self {
-            OperandDemand::DemandsBothOperands => panic!("no deciding on unit variant"),
-            OperandDemand::DemandsRightOnlyWhenLeftIs {
-                deciding: __val, ..
-            } => __val.clone(),
-            OperandDemand::DemandsRightOnlyWhenLeftIsAbsent => {
-                panic!("no deciding on unit variant")
-            }
-        }
-    }
-}
 
 pub fn operand_demand(op: BinOp) -> Rc<OperandDemand> {
     match op.clone() {

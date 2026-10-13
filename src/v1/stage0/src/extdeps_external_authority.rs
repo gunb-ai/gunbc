@@ -158,25 +158,6 @@ pub enum ScopeDecision {
         findings: Rc<Vec<Rc<ScopeFinding>>>,
     },
 }
-impl ScopeDecision {
-    pub fn finding_count(&self) -> i64 {
-        match self {
-            ScopeDecision::ScopeCoherent => panic!("no finding_count on unit variant"),
-            ScopeDecision::ScopeIncoherent {
-                finding_count: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-    pub fn findings(&self) -> Rc<Vec<Rc<ScopeFinding>>> {
-        match self {
-            ScopeDecision::ScopeCoherent => panic!("no findings on unit variant"),
-            ScopeDecision::ScopeIncoherent {
-                findings: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
 
 pub fn external_model_scope_foreign_subject_findings(
     m: Rc<DeclaredScopeFacts>,

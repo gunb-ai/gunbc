@@ -54,30 +54,6 @@ pub enum NrdfcParsed {
     },
     NrdfcParsedRefused,
 }
-impl NrdfcParsed {
-    pub fn transport(&self) -> Rc<OccurrenceTransport> {
-        match self {
-            NrdfcParsed::NrdfcParsedReady {
-                transport: __val, ..
-            } => __val.clone(),
-            NrdfcParsed::NrdfcParsedRefused => panic!("no transport on unit variant"),
-        }
-    }
-    pub fn inputs(&self) -> Rc<OccurrenceBindingCandidateInputs> {
-        match self {
-            NrdfcParsed::NrdfcParsedReady { inputs: __val, .. } => __val.clone(),
-            NrdfcParsed::NrdfcParsedRefused => panic!("no inputs on unit variant"),
-        }
-    }
-    pub fn module_path(&self) -> NonEmptyStr {
-        match self {
-            NrdfcParsed::NrdfcParsedReady {
-                module_path: __val, ..
-            } => __val.clone(),
-            NrdfcParsed::NrdfcParsedRefused => panic!("no module_path on unit variant"),
-        }
-    }
-}
 
 pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
     match (*crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source(file.clone(), source.clone())).clone() {

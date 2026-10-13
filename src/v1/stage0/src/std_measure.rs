@@ -334,16 +334,6 @@ pub enum MeasureSubtraction<Q, S> {
     MeasureDifference { value: Rc<Measure<Q, S, i64>> },
     MeasureSubtrahendExceedsMinuend,
 }
-impl<Q: Clone, S: Clone> MeasureSubtraction<Q, S> {
-    pub fn value(&self) -> Rc<Measure<Q, S, i64>> {
-        match self {
-            MeasureSubtraction::MeasureDifference { value: __val, .. } => __val.clone(),
-            MeasureSubtraction::MeasureSubtrahendExceedsMinuend => {
-                panic!("no value on unit variant")
-            }
-        }
-    }
-}
 
 pub fn measure_sub<Q, S>(
     a: Rc<Measure<Q, S, i64>>,
@@ -2008,24 +1998,6 @@ pub enum InstantOrder {
         left: Rc<ClockDomain>,
         right: Rc<ClockDomain>,
     },
-}
-impl InstantOrder {
-    pub fn left(&self) -> Rc<ClockDomain> {
-        match self {
-            InstantOrder::InstantBefore => panic!("no left on unit variant"),
-            InstantOrder::InstantSame => panic!("no left on unit variant"),
-            InstantOrder::InstantAfter => panic!("no left on unit variant"),
-            InstantOrder::InstantIncomparable { left: __val, .. } => __val.clone(),
-        }
-    }
-    pub fn right(&self) -> Rc<ClockDomain> {
-        match self {
-            InstantOrder::InstantBefore => panic!("no right on unit variant"),
-            InstantOrder::InstantSame => panic!("no right on unit variant"),
-            InstantOrder::InstantAfter => panic!("no right on unit variant"),
-            InstantOrder::InstantIncomparable { right: __val, .. } => __val.clone(),
-        }
-    }
 }
 
 pub fn compare_instants(a: Rc<ObservationInstant>, b: Rc<ObservationInstant>) -> Rc<InstantOrder> {

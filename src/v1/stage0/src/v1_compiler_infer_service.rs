@@ -188,25 +188,6 @@ pub enum CalleeEdge {
         call_site: Rc<SourceSpan>,
     },
 }
-impl CalleeEdge {
-    pub fn call_site(&self) -> Rc<SourceSpan> {
-        match self {
-            CalleeEdge::ResolvedCallee {
-                call_site: __val, ..
-            } => __val.clone(),
-            CalleeEdge::PrimitiveCallee => panic!("no call_site on unit variant"),
-            CalleeEdge::FunctionValueCallee {
-                call_site: __val, ..
-            } => __val.clone(),
-            CalleeEdge::LocalBindingCallee {
-                call_site: __val, ..
-            } => __val.clone(),
-            CalleeEdge::UnresolvedCallee {
-                call_site: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CalleeAccum {
@@ -263,14 +244,6 @@ pub fn callee_edge_of_semantics(
 pub enum CalleeEdgeDedup {
     Tracked { key: String },
     NotTracked,
-}
-impl CalleeEdgeDedup {
-    pub fn key(&self) -> String {
-        match self {
-            CalleeEdgeDedup::Tracked { key: __val, .. } => __val.clone(),
-            CalleeEdgeDedup::NotTracked => panic!("no key on unit variant"),
-        }
-    }
 }
 
 pub fn callee_edge_dedup_key(edge: Rc<CalleeEdge>) -> Rc<CalleeEdgeDedup> {

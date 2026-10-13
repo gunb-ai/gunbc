@@ -65,15 +65,6 @@ pub enum IdempotencyEvidence {
         reason: String,
     },
 }
-impl IdempotencyEvidence {
-    pub fn shape(&self) -> Rc<EffectShape<Rc<KeySource>>> {
-        match self {
-            IdempotencyEvidence::LatticeEffect { shape: __val, .. } => __val.clone(),
-            IdempotencyEvidence::IdentityEffect => panic!("no shape on unit variant"),
-            IdempotencyEvidence::NonIdempotent { shape: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     match (*shape.clone()).clone() {
@@ -194,17 +185,6 @@ pub enum CompositionVerdict {
     IdempotentComposition,
     BrokenBy { first_breaker: Rc<OperationEffect> },
 }
-impl CompositionVerdict {
-    pub fn first_breaker(&self) -> Rc<OperationEffect> {
-        match self {
-            CompositionVerdict::IdempotentComposition => panic!("no first_breaker on unit variant"),
-            CompositionVerdict::BrokenBy {
-                first_breaker: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-}
 
 pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
     effects.iter().cloned().fold(
@@ -265,14 +245,6 @@ pub enum MethodEffectShape {
         shape: Rc<EffectShape<Rc<KeySource>>>,
     },
     MethodHasNoEffectShape,
-}
-impl MethodEffectShape {
-    pub fn shape(&self) -> Rc<EffectShape<Rc<KeySource>>> {
-        match self {
-            MethodEffectShape::MethodShaped { shape: __val, .. } => __val.clone(),
-            MethodEffectShape::MethodHasNoEffectShape => panic!("no shape on unit variant"),
-        }
-    }
 }
 
 pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<MethodEffectShape> {
@@ -380,15 +352,6 @@ pub enum ModifierAgreement {
     Agrees,
     Disagrees { reason: String },
     DerivationUnknown { reason: String },
-}
-impl ModifierAgreement {
-    pub fn reason(&self) -> String {
-        match self {
-            ModifierAgreement::Agrees => panic!("no reason on unit variant"),
-            ModifierAgreement::Disagrees { reason: __val, .. } => __val.clone(),
-            ModifierAgreement::DerivationUnknown { reason: __val, .. } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -78,16 +78,6 @@ pub enum TypeRepr {
     StructRepr,
     EnumRepr { unit_only: bool },
 }
-impl TypeRepr {
-    pub fn unit_only(&self) -> bool {
-        match self {
-            TypeRepr::StructRepr => panic!("no unit_only on unit variant"),
-            TypeRepr::EnumRepr {
-                unit_only: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeSummary {
@@ -421,22 +411,6 @@ pub enum TypeDeclOccurrenceBinding {
     OccurrenceImported { identity: String },
     OccurrenceIsKernelName,
     OccurrenceUndecided,
-}
-impl TypeDeclOccurrenceBinding {
-    pub fn identity(&self) -> String {
-        match self {
-            TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
-                identity: __val, ..
-            } => __val.clone(),
-            TypeDeclOccurrenceBinding::OccurrenceImported {
-                identity: __val, ..
-            } => __val.clone(),
-            TypeDeclOccurrenceBinding::OccurrenceIsKernelName => {
-                panic!("no identity on unit variant")
-            }
-            TypeDeclOccurrenceBinding::OccurrenceUndecided => panic!("no identity on unit variant"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

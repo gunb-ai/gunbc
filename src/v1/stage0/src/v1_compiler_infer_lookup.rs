@@ -548,22 +548,6 @@ pub enum ConstructorDeclarationLookup {
         cause: Rc<DeclarationLookupFailure>,
     },
 }
-impl ConstructorDeclarationLookup {
-    pub fn identity(&self) -> Rc<ExactDeclarationIdentity> {
-        match self {
-            ConstructorDeclarationLookup::ExactConstructorDeclaration {
-                identity: __val, ..
-            } => __val.clone(),
-            ConstructorDeclarationLookup::NotAdmissionBearingReference => {
-                panic!("no identity on unit variant")
-            }
-            ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable {
-                identity: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-}
 
 pub fn constructor_declaration_for_admission(
     type_env: Rc<TypeEnv>,
@@ -1597,15 +1581,6 @@ pub enum DeclaredArgContract {
     ContractKnown { types: Rc<Vec<Rc<Node>>> },
     MethodUnresolved,
     ContractUnavailable,
-}
-impl DeclaredArgContract {
-    pub fn types(&self) -> Rc<Vec<Rc<Node>>> {
-        match self {
-            DeclaredArgContract::ContractKnown { types: __val, .. } => __val.clone(),
-            DeclaredArgContract::MethodUnresolved => panic!("no types on unit variant"),
-            DeclaredArgContract::ContractUnavailable => panic!("no types on unit variant"),
-        }
-    }
 }
 
 pub fn declared_arg_types_for_method(

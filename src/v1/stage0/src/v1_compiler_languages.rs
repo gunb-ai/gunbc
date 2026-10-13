@@ -280,16 +280,6 @@ pub enum ServiceReturnStrategy {
     ArrowReturn,
     ErrorTupleReturn { error_type: String },
 }
-impl ServiceReturnStrategy {
-    pub fn error_type(&self) -> String {
-        match self {
-            ServiceReturnStrategy::ArrowReturn => panic!("no error_type on unit variant"),
-            ServiceReturnStrategy::ErrorTupleReturn {
-                error_type: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
 
 pub fn service_self_param(spec: Rc<LanguageSpec>) -> String {
     match (*spec.service_method.clone()).clone() {
@@ -445,16 +435,6 @@ pub struct RecordLitSyntax {
 pub enum InterpStyle {
     FormatArgs { placeholder: String },
     InlineExpr,
-}
-impl InterpStyle {
-    pub fn placeholder(&self) -> String {
-        match self {
-            InterpStyle::FormatArgs {
-                placeholder: __val, ..
-            } => __val.clone(),
-            InterpStyle::InlineExpr => panic!("no placeholder on unit variant"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

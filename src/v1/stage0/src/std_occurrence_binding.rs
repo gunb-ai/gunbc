@@ -119,21 +119,6 @@ pub enum OccurrenceBindingFoldState<N: Clone> {
         rest_reversed: Rc<FreeMonoid<Rc<BindingCandidate<N>>>>,
     },
 }
-impl<N: Clone> OccurrenceBindingFoldState<N> {
-    pub fn first(&self) -> Rc<BindingCandidate<N>> {
-        match self {
-            OccurrenceBindingFoldState::OccurrenceBindingFoldZero => {
-                panic!("no first on unit variant")
-            }
-            OccurrenceBindingFoldState::OccurrenceBindingFoldOne { first: __val, .. } => {
-                __val.clone()
-            }
-            OccurrenceBindingFoldState::OccurrenceBindingFoldMany { first: __val, .. } => {
-                __val.clone()
-            }
-        }
-    }
-}
 
 impl<N: Clone + std::fmt::Debug> std::fmt::Debug for OccurrenceBindingFoldState<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

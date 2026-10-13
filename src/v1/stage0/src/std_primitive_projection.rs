@@ -51,17 +51,6 @@ pub enum ProjectionFidelity {
     ModeledProjection,
     DivergentProjection { divergence: NonEmptyStr },
 }
-impl ProjectionFidelity {
-    pub fn divergence(&self) -> NonEmptyStr {
-        match self {
-            ProjectionFidelity::HostRealizedSeam => panic!("no divergence on unit variant"),
-            ProjectionFidelity::ModeledProjection => panic!("no divergence on unit variant"),
-            ProjectionFidelity::DivergentProjection {
-                divergence: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PrimitiveProjection {

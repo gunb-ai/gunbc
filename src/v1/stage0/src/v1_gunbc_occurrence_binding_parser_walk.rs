@@ -34,30 +34,6 @@ pub enum ParsedOccurrenceBindingSource {
     },
     ParsedOccurrenceBindingSourceRefused,
 }
-impl ParsedOccurrenceBindingSource {
-    pub fn transport(&self) -> Rc<OccurrenceTransport> {
-        match self {
-            ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
-                transport: __val,
-                ..
-            } => __val.clone(),
-            ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
-                panic!("no transport on unit variant")
-            }
-        }
-    }
-    pub fn module_path(&self) -> NonEmptyStr {
-        match self {
-            ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
-                module_path: __val,
-                ..
-            } => __val.clone(),
-            ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
-                panic!("no module_path on unit variant")
-            }
-        }
-    }
-}
 
 pub fn parse_authored_occurrence_binding_source(
     file: String,

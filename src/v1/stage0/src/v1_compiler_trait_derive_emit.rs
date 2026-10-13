@@ -218,15 +218,6 @@ pub enum KeyedMapVerdict {
     NotKeyedMap,
     KeyedMapUndecidable { name: String },
 }
-impl KeyedMapVerdict {
-    pub fn name(&self) -> String {
-        match self {
-            KeyedMapVerdict::KeyedMap => panic!("no name on unit variant"),
-            KeyedMapVerdict::NotKeyedMap => panic!("no name on unit variant"),
-            KeyedMapVerdict::KeyedMapUndecidable { name: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 pub fn v1_type_expr_keyed_map_verdict(
     type_expr: Rc<Node>,

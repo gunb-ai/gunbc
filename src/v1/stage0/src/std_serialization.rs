@@ -36,16 +36,6 @@ pub enum VariantEncoding {
     UntaggedVariant,
     TaggedVariant,
 }
-impl VariantEncoding {
-    pub fn naming(&self) -> Rc<VariantNaming> {
-        match self {
-            VariantEncoding::StringVariant { naming: __val, .. } => __val.clone(),
-            VariantEncoding::InternallyTaggedObject { naming: __val, .. } => __val.clone(),
-            VariantEncoding::UntaggedVariant => panic!("no naming on unit variant"),
-            VariantEncoding::TaggedVariant => panic!("no naming on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoproductWireContract {

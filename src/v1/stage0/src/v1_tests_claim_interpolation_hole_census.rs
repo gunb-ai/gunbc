@@ -38,16 +38,6 @@ pub enum HoleShape {
     HoleCall,
     HoleOtherShape { label: String },
 }
-impl HoleShape {
-    pub fn label(&self) -> String {
-        match self {
-            HoleShape::HoleIdentifier => panic!("no label on unit variant"),
-            HoleShape::HoleDotted => panic!("no label on unit variant"),
-            HoleShape::HoleCall => panic!("no label on unit variant"),
-            HoleShape::HoleOtherShape { label: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -58,17 +48,6 @@ pub enum HoleTypeReading {
     HoleTypedOther { label: String },
     HoleUntyped,
 }
-impl HoleTypeReading {
-    pub fn label(&self) -> String {
-        match self {
-            HoleTypeReading::HoleTypedString => panic!("no label on unit variant"),
-            HoleTypeReading::HoleTypedInt => panic!("no label on unit variant"),
-            HoleTypeReading::HoleTypedBool => panic!("no label on unit variant"),
-            HoleTypeReading::HoleTypedOther { label: __val, .. } => __val.clone(),
-            HoleTypeReading::HoleUntyped => panic!("no label on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -78,22 +57,6 @@ pub enum HoleSite {
         operation: String,
         inputs: Rc<Vec<String>>,
     },
-}
-impl HoleSite {
-    pub fn operation(&self) -> String {
-        match self {
-            HoleSite::HoleInBody => panic!("no operation on unit variant"),
-            HoleSite::HoleInTransport {
-                operation: __val, ..
-            } => __val.clone(),
-        }
-    }
-    pub fn inputs(&self) -> Rc<Vec<String>> {
-        match self {
-            HoleSite::HoleInBody => panic!("no inputs on unit variant"),
-            HoleSite::HoleInTransport { inputs: __val, .. } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

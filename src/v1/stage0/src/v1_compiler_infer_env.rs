@@ -422,24 +422,6 @@ pub enum BareOccurrenceBinding {
     BareOccurrenceIsKernelName,
     BareOccurrenceUndecided,
 }
-impl BareOccurrenceBinding {
-    pub fn declaration(&self) -> Rc<Node> {
-        match self {
-            BareOccurrenceBinding::BareOccurrenceDeclaredInItsFile {
-                declaration: __val, ..
-            } => __val.clone(),
-            BareOccurrenceBinding::BareOccurrenceImportedByName {
-                declaration: __val, ..
-            } => __val.clone(),
-            BareOccurrenceBinding::BareOccurrenceIsKernelName => {
-                panic!("no declaration on unit variant")
-            }
-            BareOccurrenceBinding::BareOccurrenceUndecided => {
-                panic!("no declaration on unit variant")
-            }
-        }
-    }
-}
 
 pub fn symbol_index_bare_declarations(index: Rc<SymbolIndex>, name: String) -> Rc<Vec<Rc<Node>>> {
     match v1_rt::map_get(&index.global_bare.clone(), name.clone())
@@ -2062,21 +2044,6 @@ pub enum UnitVariantPhantomLookup {
     UnitVariantPhantomPresent { variant: Rc<Node> },
     UnitVariantPhantomAbsent,
     UnitVariantPhantomEvidenceUnavailable,
-}
-impl UnitVariantPhantomLookup {
-    pub fn variant(&self) -> Rc<Node> {
-        match self {
-            UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: __val, .. } => {
-                __val.clone()
-            }
-            UnitVariantPhantomLookup::UnitVariantPhantomAbsent => {
-                panic!("no variant on unit variant")
-            }
-            UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => {
-                panic!("no variant on unit variant")
-            }
-        }
-    }
 }
 
 pub fn lookup_unit_variant_phantom_type(

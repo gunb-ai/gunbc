@@ -400,14 +400,6 @@ pub enum ContainerSource {
     SameAsReceiver,
     Named { name: String },
 }
-impl ContainerSource {
-    pub fn name(&self) -> String {
-        match self {
-            ContainerSource::SameAsReceiver => panic!("no name on unit variant"),
-            ContainerSource::Named { name: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -780,14 +772,6 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
 pub enum CarrierRowMembership {
     RowPresent,
     RowAbsent { reason: String },
-}
-impl CarrierRowMembership {
-    pub fn reason(&self) -> String {
-        match self {
-            CarrierRowMembership::RowPresent => panic!("no reason on unit variant"),
-            CarrierRowMembership::RowAbsent { reason: __val, .. } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

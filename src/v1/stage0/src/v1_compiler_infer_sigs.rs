@@ -50,17 +50,6 @@ pub enum ResolvedFormals {
     },
     LocalFormalsAwaitingModuleContext,
 }
-impl ResolvedFormals {
-    pub fn formals(&self) -> Rc<Vec<Rc<ResolvedFormal>>> {
-        match self {
-            ResolvedFormals::DeclarationBoundFormals { formals: __val, .. } => __val.clone(),
-            ResolvedFormals::KernelGroundedFormals { formals: __val, .. } => __val.clone(),
-            ResolvedFormals::LocalFormalsAwaitingModuleContext => {
-                panic!("no formals on unit variant")
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncEnv {
@@ -271,18 +260,6 @@ pub enum NoDerivableSigReason {
     DerivationSigAmbiguous {
         candidates: Rc<Vec<Rc<CallableCandidate>>>,
     },
-}
-impl NoDerivableSigReason {
-    pub fn candidates(&self) -> Rc<Vec<Rc<CallableCandidate>>> {
-        match self {
-            NoDerivableSigReason::DerivationSigUnresolved => {
-                panic!("no candidates on unit variant")
-            }
-            NoDerivableSigReason::DerivationSigAmbiguous {
-                candidates: __val, ..
-            } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

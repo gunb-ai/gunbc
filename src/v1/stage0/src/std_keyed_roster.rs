@@ -57,21 +57,6 @@ pub enum KeyedRosterSecondRowScan<K: Clone, V: Clone> {
     KeyedRosterSecondRowScanAwaitingSecond,
     KeyedRosterSecondRowScanFound { row: Rc<KeyedRow<K, V>> },
 }
-impl<K: Clone, V: Clone> KeyedRosterSecondRowScan<K, V> {
-    pub fn row(&self) -> Rc<KeyedRow<K, V>> {
-        match self {
-            KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent => {
-                panic!("no row on unit variant")
-            }
-            KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond => {
-                panic!("no row on unit variant")
-            }
-            KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound { row: __val, .. } => {
-                __val.clone()
-            }
-        }
-    }
-}
 
 pub fn keyed_roster_locate_second_row<K: Clone, V: Clone>(
     rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,

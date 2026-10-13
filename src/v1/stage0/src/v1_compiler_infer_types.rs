@@ -342,18 +342,6 @@ pub enum TypeResolutionVerdict {
     ContainerSpellingUnresolvable { name: String },
     DivergentExpression,
 }
-impl TypeResolutionVerdict {
-    pub fn name(&self) -> String {
-        match self {
-            TypeResolutionVerdict::FullyResolved => panic!("no name on unit variant"),
-            TypeResolutionVerdict::UnderResolved => panic!("no name on unit variant"),
-            TypeResolutionVerdict::ContainerSpellingUnresolvable { name: __val, .. } => {
-                __val.clone()
-            }
-            TypeResolutionVerdict::DivergentExpression => panic!("no name on unit variant"),
-        }
-    }
-}
 
 pub fn combine_resolution_verdicts(
     acc: Rc<TypeResolutionVerdict>,

@@ -143,16 +143,6 @@ pub enum PositiveDescentAmount {
     OneStep,
     AdditionalStep { previous: Rc<PositiveDescentAmount> },
 }
-impl PositiveDescentAmount {
-    pub fn previous(&self) -> Rc<PositiveDescentAmount> {
-        match self {
-            PositiveDescentAmount::OneStep => panic!("no previous on unit variant"),
-            PositiveDescentAmount::AdditionalStep {
-                previous: __val, ..
-            } => __val.clone(),
-        }
-    }
-}
 
 pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -170,14 +160,6 @@ pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
 pub enum ProportionalDivisor {
     DivideByTwo,
     StrictlyLarger { inner: Rc<ProportionalDivisor> },
-}
-impl ProportionalDivisor {
-    pub fn inner(&self) -> Rc<ProportionalDivisor> {
-        match self {
-            ProportionalDivisor::DivideByTwo => panic!("no inner on unit variant"),
-            ProportionalDivisor::StrictlyLarger { inner: __val, .. } => __val.clone(),
-        }
-    }
 }
 
 pub fn proportional_divisor_to_int(d: Rc<ProportionalDivisor>) -> i64 {

@@ -50,14 +50,6 @@ pub enum PartitionProvenance {
     HandExplicit,
     PolicyDerived { policy: Rc<DeclarationRef> },
 }
-impl PartitionProvenance {
-    pub fn policy(&self) -> Rc<DeclarationRef> {
-        match self {
-            PartitionProvenance::HandExplicit => panic!("no policy on unit variant"),
-            PartitionProvenance::PolicyDerived { policy: __val, .. } => __val.clone(),
-        }
-    }
-}
 
 pub fn partition_provenance_hand_explicit() -> Rc<PartitionProvenance> {
     Rc::new(PartitionProvenance::HandExplicit)
@@ -103,14 +95,6 @@ pub enum PartitionR4ValidityCause {
 pub enum PartitionR4ValidityVerdict {
     PartitionR4Valid,
     PartitionR4Refused { cause: Rc<PartitionR4ValidityCause> },
-}
-impl PartitionR4ValidityVerdict {
-    pub fn cause(&self) -> Rc<PartitionR4ValidityCause> {
-        match self {
-            PartitionR4ValidityVerdict::PartitionR4Valid => panic!("no cause on unit variant"),
-            PartitionR4ValidityVerdict::PartitionR4Refused { cause: __val, .. } => __val.clone(),
-        }
-    }
 }
 
 pub fn list_unique_sorted_ids(items: Rc<Vec<NonEmptyStr>>) -> Rc<Vec<NonEmptyStr>> {

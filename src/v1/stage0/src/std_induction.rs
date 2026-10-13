@@ -798,14 +798,6 @@ pub enum ParamGrowth {
     OrderableGrowth { rank: GrowthRank },
     GrowthNotOrderable,
 }
-impl ParamGrowth {
-    pub fn rank(&self) -> GrowthRank {
-        match self {
-            ParamGrowth::OrderableGrowth { rank: __val, .. } => __val.clone(),
-            ParamGrowth::GrowthNotOrderable => panic!("no rank on unit variant"),
-        }
-    }
-}
 
 pub fn growth_rank_zero() -> GrowthRank {
     GrowthRank {

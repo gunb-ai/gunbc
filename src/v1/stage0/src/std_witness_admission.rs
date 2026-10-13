@@ -284,26 +284,6 @@ pub enum WitnessExpectedVerdict {
         cause: PreVerdictCause,
     },
 }
-impl WitnessExpectedVerdict {
-    pub fn phase(&self) -> PreVerdictPhase {
-        match self {
-            WitnessExpectedVerdict::ExpectWitnessHolds => panic!("no phase on unit variant"),
-            WitnessExpectedVerdict::ExpectAssertionFalse => panic!("no phase on unit variant"),
-            WitnessExpectedVerdict::ExpectTypedPreVerdictRefusal { phase: __val, .. } => {
-                __val.clone()
-            }
-        }
-    }
-    pub fn cause(&self) -> PreVerdictCause {
-        match self {
-            WitnessExpectedVerdict::ExpectWitnessHolds => panic!("no cause on unit variant"),
-            WitnessExpectedVerdict::ExpectAssertionFalse => panic!("no cause on unit variant"),
-            WitnessExpectedVerdict::ExpectTypedPreVerdictRefusal { cause: __val, .. } => {
-                __val.clone()
-            }
-        }
-    }
-}
 
 pub fn witness_execution_standing_axis_note() -> String {
     thread_local! {

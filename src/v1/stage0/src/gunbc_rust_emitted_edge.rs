@@ -30,14 +30,6 @@ pub enum EmittedEdgeTarget {
     EmittedModuleTarget { module: String },
     EmittedCrateRootTarget,
 }
-impl EmittedEdgeTarget {
-    pub fn module(&self) -> String {
-        match self {
-            EmittedEdgeTarget::EmittedModuleTarget { module: __val, .. } => __val.clone(),
-            EmittedEdgeTarget::EmittedCrateRootTarget => panic!("no module on unit variant"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmittedEdge {
