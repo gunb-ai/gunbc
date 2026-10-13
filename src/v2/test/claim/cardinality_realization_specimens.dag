@@ -136,6 +136,18 @@ fn tag_field_text(text: String) -> Int {
   }
 }
 
+// The accepted control: the string payload itself, "" when the member is not a readable string.
+fn field_string_payload(text: String) -> String {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } =>
+      match json_field_string(obj: v, key: "a") {
+        FieldRead { value: s } => s
+        _ => ""
+      }
+    JsonDocumentUnreadable { gap: _ } => ""
+  }
+}
+
 fn specimen_tags() -> FreeMonoid<Int> {
   [
     tag_flat(x: specimen_absent()),
@@ -177,6 +189,10 @@ test fn foreign_missing_null_and_invalid_stay_three_answers() -> Bool {
 // absent collection as an empty one, or a JSON null as a missing member, would give the neighbouring
 // specimen's tag. json_field_string's null reading is the DECLARED collapse (its own policy), so it
 // is asserted as such, beside, and is not a loss.
+test fn a_valid_foreign_string_retains_its_payload() -> Bool {
+  field_string_payload(text: "{\"a\":\"kept\"}") == "kept"
+}
+
 test fn the_collapsing_readings_differ_from_the_specimens() -> Bool {
   tag_nested(x: Absent) != tag_nested(x: specimen_present_absent())
     && tag_collection(x: Absent) != tag_collection(x: specimen_present_empty_collection())
