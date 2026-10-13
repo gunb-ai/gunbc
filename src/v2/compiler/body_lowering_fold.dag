@@ -1843,7 +1843,11 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
   }
 }
 
-// The operand read of raw parse: a production, a token, or a sequence the parse stamped.
+// The operand read of raw parse: a production, a token, or a sequence the parse stamped. A token is
+// classified by body_lower_atom_node_lowered_optional, the one atom classifier: this reader carried its
+// own copy of that chain without the string-literal arm, so a string literal reached here (a list
+// element, a map key) fell to the int-literal reading and was rebuilt as a bare atom, its decoded value
+// gone -- resolve then refused every string-keyed map (resolve_anonymous_map_key_text_unavailable).
 fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
@@ -1864,24 +1868,8 @@ fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
       }
       }
     Absent =>
-      match dag_node_is_int_literal_atom(node: node) {
-        true => body_lower_operand_ref_read_of(found: body_lower_int_literal_with_magnitude_optional(node: node))
-        false =>
-      match dag_binding_branded_atom_identity(node: node) {
-        Present { value: binding } =>
-          OperandRefLowered { lowered: body_lower_param_ref_atom(source: node, identity: binding) }
-        Absent =>
           match node_atom_identity_optional(node: node) {
-            Present { value: id } =>
-              if dag_lex_token_symbol(sym: id) {
-                if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
-                  OperandRefLowered { lowered: body_lower_param_ref_atom(source: node, identity: id) }
-                } else {
-                  body_lower_operand_ref_read_of(found: body_lower_int_literal_with_magnitude_optional(node: node))
-                }
-              } else {
-                OperandRefLowered { lowered: body_lower_param_ref_atom(source: node, identity: id) }
-              }
+            Present { value: _ } => body_lower_operand_ref_read_of(found: body_lower_atom_node_lowered_optional(stripped: node))
             Absent =>
               match sugar_sequence_pair_optional(node: node) {
                 Present { value: pair } =>
@@ -1910,8 +1898,6 @@ fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
                   }
               }
           }
-      }
-  }
   }
 }
 
