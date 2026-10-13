@@ -10,10 +10,11 @@ import std.optional { Optional, Present, Absent, optional_present, optional_abse
 import extdeps.bazel.target_pattern { TargetPattern, target_pattern_within }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
-  NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval
+  NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
+  NativeRouteMemberRow, NativeRouteTestIdentity, native_route_identity_qualified
 }
 import v2.workflow.v2_native_route {
-  NativeRouteReceipt, NativeRouteMemberRow, NativeRouteTestIdentity, native_route_identity_qualified,
+  NativeRouteReceipt,
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   NativeRouteAdmissionRefusalCause,
   JobNameMismatch, TestedTreeUnrecorded, PreparationSeedUnrecorded, EmittedClosureUnrecorded,

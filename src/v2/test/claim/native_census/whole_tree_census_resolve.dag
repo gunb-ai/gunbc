@@ -1,22 +1,22 @@
 module v2.test.claim.native_census.whole_tree_census_resolve
 
-import v2.compiler.compile {
-  NativeCensusModule,
+import v2.compiler.source_root_eval {
   NativeCensusModuleFileRefused,
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
-  NativeCensusModuleOutcome,
-  NativeCensusResidualRow,
   NativeCensusCompletenessObserved,
   NativeCensusCompletenessUnavailable,
+  NativeCensusCascadeNone,
+  NativeCensusClosureIndexUnavailable,
+  NativeCensusModule,
+  NativeCensusModuleOutcome,
+  NativeCensusResidualRow,
   NativeTestContext,
   native_census_module_completeness,
   native_census_module_resolution,
   native_census_modules,
   native_census_residual_rows,
   NativeCensusCauseGroup,
-  NativeCensusCascadeNone,
-  NativeCensusClosureIndexUnavailable,
   native_census_cause_groups_add_residual,
   native_census_cause_groups_empty,
   native_census_cause_groups_from_file_refusals,

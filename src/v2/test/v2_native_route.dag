@@ -8,13 +8,10 @@ import extdeps.bazel.target_pattern {
 }
 import v2.workflow.v2_native_route {
   native_route_admission_with, NativeRouteLivePairStanding, LivePairRequired, LivePairExpectedRed,
-  NativeRouteTestIdentity, native_route_identity_qualified, native_route_identities_unique,
-  native_route_identity_member,
   native_route_universe_member,
   native_route_identity_label, native_route_default_pattern,
   NativeRouteReference, FloorExpectedPass, FloorExpectedRed, FloorRouteGapRefusal,
   native_route_reference_for,
-  NativeRouteMemberRow,
   NativeRouteModuleSource,
   native_route_required_pass_identities,
   NativeRouteExclusionCause, CompilerFrontierAttributed, NativeEntryResolutionLimit,
@@ -45,7 +42,7 @@ import v2.workflow.compile_door_cause_ownership {
   FrontierRetirement, node_grounding_frontier_retirement
 }
 import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags }
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeLaneAcquired,
   NativeLaneAcquisition,
   native_lane_acquired,
@@ -64,7 +61,9 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStageEval,
   NativeTestFileRefusal,
   FileRefusalLink,
-  FileRefusalAtWholeFile
+  FileRefusalAtWholeFile,
+  NativeRouteTestIdentity, NativeRouteMemberRow,
+  native_route_identity_qualified, native_route_identities_unique, native_route_identity_member
 }
 import std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.diagnostic {

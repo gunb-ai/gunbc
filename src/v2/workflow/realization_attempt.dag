@@ -7,7 +7,13 @@ import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.name_resolve { Admission, ResolutionSubject, Import, ImportVisible }
 import v2.compiler.infer { InferredTree }
-import v2.compiler.compile { compile_inferred, TranslateTo, TranslateResult, EvalResult, CompileMode }
+import v2.compiler.compile {
+  compile_inferred,
+  CompileMode,
+  TranslateTo,
+  TranslateResult,
+  EvalResult
+}
 import v2.compiler.emit_produced { emit_produced_module }
 import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.extdeps.languages.dag { dag_language_model }

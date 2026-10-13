@@ -5,17 +5,17 @@ import std.algebra { count_where, is_empty, length }
 import std.optional { Present, Absent, optional_present, optional_absent }
 import std.content_hash { structural_content_hash }
 import v2.compiler.native_test_vocabulary {
-  NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
+  NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval,
+  NativeRouteTestIdentity
 }
-import v2.workflow.v2_native_route {
+import gunbc.witness.v2_native_route {
   NativeRouteExclusionCause, NativeRouteDivergenceCause,
   NativeEntryResolutionLimit, NativePassedExpectedRed, NativeReturnedOtherVerdict,
-  NativeRouteTestIdentity,
   NativeAgreementPass, NativeAgreementExpectedRed,
   NativeExclusion, CompilerFrontierAttributed,
   NativeRouteEmittedBuild
 }
-import v2.workflow.native_route_progress_guard {
+import gunbc.native_route_progress_guard {
   NativeRouteAttainment, AttainRefused, AttainDiverged, AttainAgreed,
   NativeBaselineAttainment, BaselineRefused, BaselineDiverged, BaselineAgreed,
   NativeCauseTransitionDisposition, NativeCauseTransitionRow,

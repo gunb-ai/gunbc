@@ -6,11 +6,11 @@ import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.compiler.native_test_vocabulary {
-  NativeTestStage, NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
+  NativeTestStage, NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval,
+  NativeRouteTestIdentity, native_route_identity_eq, native_route_identity_qualified
 }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, structural_content_hash, content_hash_eq_structural }
 import v2.workflow.v2_native_route {
-  NativeRouteTestIdentity, native_route_identity_eq, native_route_identity_qualified,
   NativeRouteDisposition,
   NativeAgreementPass, NativeAgreementExpectedRed, NativeAgreementRouteGap,
   NativeExclusion, NativeDivergence,

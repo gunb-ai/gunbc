@@ -13,7 +13,7 @@ import gunbc.guarantee_rung {
   MechanicallyPreventable,
   StructurallyGuaranteed
 }
-import v2.workflow.v2_native_route { native_route_universe_member }
+import gunbc.witness.v2_native_route { native_route_universe_member }
 import gunbc.derived_obligation_row {
   WitnessSubject,
   witness_subject,

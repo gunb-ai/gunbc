@@ -2,7 +2,7 @@ module v2.test.claim.compiler.dependency_demand_census
 
 import std.algebra { Cons, Empty, fold_list, length }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.compile { native_demand_census_report }
+import v2.compiler.source_root_eval { native_demand_census_report }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.dependency_demand { FunctionValueCalled, OpaqueOperationCalled }
 import v2.compiler.dependency_demand_census {

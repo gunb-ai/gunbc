@@ -10,7 +10,9 @@ import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
-  NativeTestFileRefusal, native_test_file_refusal_fatal_reason, native_test_verdict_text, native_test_stage_eq
+  NativeTestFileRefusal, native_test_file_refusal_fatal_reason, native_test_verdict_text, native_test_stage_eq,
+  NativeRouteTestIdentity, NativeRouteMemberRow, native_route_identity_qualified, native_route_identity_eq,
+  native_route_identity_member, native_route_identities_unique, native_route_member_row_text
 }
 import v2.std.diagnostic { Some, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.workflow.compile_door_cause_ownership {
@@ -129,38 +131,7 @@ fn native_route_default_pattern() -> TargetPattern {
   SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
 }
 
-// ONE TEST IDENTITY, STRUCTURED. The module qualified name and the declaration name are separate
-// observations — the emitted binary reports them separately, and the dotted spelling is DERIVED
-// here (never parsed back out of a string), the same derivation the floor's
-// witness_identity_qualified_name makes. Function names carry no dots, so the dotted form's last
-// segment is always the declaration; the split is unambiguous in both directions.
-type NativeRouteTestIdentity {
-  module: String
-  declaration: String
-}
-
-fn native_route_identity_qualified(identity: NativeRouteTestIdentity) -> String {
-  concat(concat(identity.module, "."), identity.declaration)
-}
-
-fn native_route_identity_eq(a: NativeRouteTestIdentity, b: NativeRouteTestIdentity) -> Bool {
-  a.module == b.module && a.declaration == b.declaration
-}
-
-fn native_route_identity_member(target: NativeRouteTestIdentity, xs: List<NativeRouteTestIdentity>) -> Bool {
-  any(xs: xs, predicate: fn(x) { native_route_identity_eq(a: x, b: target) })
-}
-
-// NO DUPLICATE IDENTITIES, asked the same way of the universe and of the observed population: an
-// identity appearing twice means the derivation double-counted a declaration or the harness
-// recorded one run twice, and both are harness defects, not results. Quadratic by construction —
-// the interpreter measured this shape over the full derived population at tens of seconds, and
-// the standing bare-minimum-cost ruling prices the fold, not the realized n.
-fn native_route_identities_unique(xs: List<NativeRouteTestIdentity>) -> Bool {
-  !any(xs: xs, predicate: fn(x) {
-    length(xs: filter(xs: xs, predicate: fn(y) { native_route_identity_eq(a: x, b: y) })) > 1
-  })
-}
+// NativeRouteTestIdentity / NativeRouteMemberRow live in v2.compiler.native_test_vocabulary.
 
 // THE REFERENCE EXPECTATION, PER MEMBER, FROM THE FLOOR'S OWN ROSTERS. Pairing a native verdict
 // against nothing proves nothing about agreement; the independently established expectation is
@@ -186,27 +157,6 @@ fn native_route_reference_for(
   } else {
     FloorExpectedPass
   }
-}
-
-// ONE ROW PER UNIVERSE MEMBER: the identity and the verdict the emitted native binary observed
-// for it. The verdict is the driver's NativeTestVerdict verbatim — Passed, ReturnedFalse,
-// ReturnedOther, or Refused at a named stage with the fatal reason — so the receipt carries what
-// the route observed, not a summary of it.
-type NativeRouteMemberRow {
-  identity: NativeRouteTestIdentity
-  verdict: NativeTestVerdict
-}
-
-// THE OPERATOR'S LINE FOR ONE ROW: the subject the lane keys on, then the verdict as the
-// vocabulary renders it. The driver prints this on stderr for every row that did not pass,
-// beside the JSON row it persists on stdout, so the command an operator runs names the failing
-// subject with its stage, its cause and where the cause is -- read off the same value the row
-// carries, never re-derived by the host from the bytes it wrote.
-fn native_route_member_row_text(row: NativeRouteMemberRow) -> String {
-  concat(
-    native_route_identity_qualified(identity: row.identity),
-    concat(" ", native_test_verdict_text(verdict: row.verdict))
-  )
 }
 
 // THE MODULE → SOURCE-PATH RELATION, OVER THE UNIVERSE'S OWN MODULES. A Context-stage row is a

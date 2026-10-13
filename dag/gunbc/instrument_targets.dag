@@ -2,10 +2,9 @@ module gunbc.instrument_targets
 
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
-import v2.workflow.v2_native_route { NativeRouteMemberRow }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
-  NativeTestRefused
+  NativeTestRefused, NativeRouteMemberRow
 }
 import gunbc.target_binding {
   TargetBinding,

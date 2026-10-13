@@ -1,15 +1,15 @@
 module v2.test.claim.name_resolve.explicit_fn_import_binds
 
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
+  NativeModuleResolveImportTargetFileRefused,
+  NativeModuleResolveRefused,
+  NativeModuleResolveAccepted,
   native_test_context_from_ingest,
   native_test_resolve_module,
   native_module_resolve_verdict,
   native_lane_file_refusal_index,
   NativeTestContext,
-  NativeModuleResolveVerdict,
-  NativeModuleResolveImportTargetFileRefused,
-  NativeModuleResolveRefused,
-  NativeModuleResolveAccepted
+  NativeModuleResolveVerdict
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
