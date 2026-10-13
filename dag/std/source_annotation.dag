@@ -3,7 +3,7 @@ import std.optional { Absent, Present }
 // The language-agnostic authority for source annotations, per DESIGN 4c. It names no .dag syntax and no lexical rule: a realization decides what its annotation syntax looks like and routes it through its own annotation channel, then lands rows of THIS shape. Both the v1 seed tokenizer and the v2 modeled tokenizer import from here rather than each minting a placement enum, because two spellings of one concept is the nicknaming defect this whole lane exists to remove.
 
 import std.coercion { unicode_scalar_unfold }
-import std.types { String, SourceSpan, List, Bool }
+import std.types { String, SourceSpan, List, Bool, Map }
 import std.occurrence_identity { OccurrenceId }
 
 // Placement is OBSERVED at capture, not reconstructed later, because it cannot be reconstructed later. Whitespace and line structure are consumed before the parser sees anything, so once they are gone `fn a() -> Int { 1 } // text` followed by `fn b()` leaves residue identical to a leading annotation on b — two opposite meanings, one byte pattern. LeadingAfterLineIndent means only indentation preceded the annotation on its line; TrailingAfterSemanticToken means a semantic token did. Placement does not decide WHERE a comment attaches -- its gap does (below) -- but it is kept on the row, because a renderer writing the comment back must know whether it sat on its own line or after code.
@@ -168,26 +168,17 @@ fn region_contains(extent: SourceSpan, origin: SourceSpan) -> Bool {
   extent.start <= origin.start && origin.end <= extent.end
 }
 
-// A scope's key within one roster: the file, an occurrence by its id, an erased region by its extent.
-fn annotation_scope_key(scope: AnnotationScope) -> String {
-  match scope {
-    FileScope => "file"
-    OccurrenceScope { occurrence: o } => concat("o", to_string(o.value))
-    ErasedSourceRegion { extent: e } => concat("e", to_string(e.start), "-", to_string(e.end))
-  }
-}
-
 // THE ROSTER INDEXED ONCE PER SOURCE: each scope's direct children, ordered by start. Built in one
 // pass plus one sort per sibling list, so locating a capture is a descent from the file through the
 // child containing it -- a binary search per level -- rather than a scan of every region for every
-// capture.
+// capture. The key is the scope value itself, not a text spelling of it.
 type AnnotationRegionIndex {
-  children: Map<String, List<AnnotationRegion>>
+  children: Map<AnnotationScope, List<AnnotationRegion>>
 }
 
 fn annotation_region_index(regions: List<AnnotationRegion>) -> AnnotationRegionIndex {
   let grouped = fold(regions, init: empty_map(), f: (acc, region) =>
-    let key = annotation_scope_key(scope: region.parent)
+    let key = region.parent
     match map_get(acc, key) {
       Present { value: siblings } => map_insert(acc, key, list_push(siblings, region))
       Absent => map_insert(acc, key, [region])
@@ -202,7 +193,7 @@ fn annotation_region_index(regions: List<AnnotationRegion>) -> AnnotationRegionI
 }
 
 fn annotation_children(index: AnnotationRegionIndex, scope: AnnotationScope) -> List<AnnotationRegion> {
-  match map_get(index.children, annotation_scope_key(scope: scope)) {
+  match map_get(index.children, scope) {
     Present { value: siblings } => siblings
     Absent => []
   }

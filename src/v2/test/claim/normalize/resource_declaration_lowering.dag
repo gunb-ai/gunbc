@@ -332,17 +332,16 @@ test fn default_tail_stream_is_what_tokenize_produces_holds() -> Bool {
   supplied_stream_matches_tokenize(text: default_tail_source, file: ^resource_lowering_probe, supplied: default_tail_stream())
 }
 
-// A well-formed io tail on a capability output field with a `from "k"` wire key: the shared io grammar admits it, and it refuses as a service's
-// set-aside member does -- the owned fatal service_realization_unreachable at the capability, with
-// interface_member_unmodeled pending at the tail -- never as the malformed-entry cause.
+// A well-formed io tail on a capability output field with a `from "k"` wire key: the shared io grammar admits it, and it refuses as
+// body_lowering_reason_resource_capability_realization_unconsumed at the capability -- never as the
+// malformed-entry cause and never under the deleted service set-aside blanket.
 data wire_key_tail_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability c {\n    output { o: Int from \"k\" }\n  }\n}\n"
 
-test fn a_wire_key_tail_refuses_as_a_service_set_aside_RED() -> Bool {
+test fn a_wire_key_tail_refuses_as_a_resource_realization_RED() -> Bool {
   match census_of_stream(tokens: wire_key_tail_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>
-      (diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_realization_unreachable)
-        && carries(ne: r, reason: ^body_lowering_reason_interface_member_unmodeled)
+      (diagnostics_fatal_reason(d: r) == ^body_lowering_reason_resource_capability_realization_unconsumed)
         && !carries(ne: r, reason: ^body_lowering_reason_resource_entry_unread)
   }
 }
