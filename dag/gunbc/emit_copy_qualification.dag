@@ -912,34 +912,3 @@ fn judge_growth_arm(
       }
   }
 }
-
-// A decision the seed emitter makes that v2's own emission does not yet make. The seed realizes a
-// self-tail-recursive list walk's Cons-tail as an index into the unchanged base list
-// (`v1.compiler.emit_rust` `tco_cursor_plan`); the skip realization in v2's template is where the
-// native successor must make the same decision.
-type EmitterDecisionOwner
-  = SeedEmitterDecides
-  | V2TemplateMustDecide { site: String }
-  | V2BodyLoweringMustDecide { site: String }
-
-type EmitterDecisionObligation {
-  decision: String
-  seed_site: String
-  v2_owner: EmitterDecisionOwner
-  trigger: String
-}
-
-data cursor_list_param_obligation: EmitterDecisionObligation = EmitterDecisionObligation {
-  decision: "cursor-eligible list parameter: every mention is a Cons-match scrutinee and every tail binder is passed at the parameter's own position of a self-call",
-  seed_site: "v1.compiler.emit_rust tco_cursor_plan",
-  v2_owner: V2TemplateMustDecide { site: "extdeps.languages.rust.emit: the Vector skip realization of a Cons tail" },
-  trigger: "item 3: the native successor emits Cons/TCO loops"
-}
-
-fn cursor_list_param_obligation_names_a_v2_site() -> Bool {
-  match cursor_list_param_obligation.v2_owner {
-    SeedEmitterDecides => false
-    V2TemplateMustDecide { site: _ } => true
-    V2BodyLoweringMustDecide { site: _ } => true
-  }
-}

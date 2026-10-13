@@ -16272,8 +16272,8 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
 // The invariant that makes plain subtraction safe: the cursor only advances by L inside an arm whose
 // condition proved `len - cursor >= L`, so `cursor <= len` always holds.
 //
-// v2's own emission makes this decision nowhere yet; its obligation is the typed row
-// `gunbc.emit_copy_qualification` `cursor_list_param_obligation`.
+// v2's own emission makes this decision nowhere yet: the Cons-tail skip realization in
+// `extdeps.languages.rust.emit` is where the native successor (item 3) must make it.
 type CursorTail {
   name: String
   depth: Int
