@@ -42,6 +42,12 @@ data kab_wrong_kind_source: String = "module v2.test.kab.wrong_kind\n\nimport v2
 
 data kab_two_types_source: String = "module v2.test.kab.two_types\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.type_opt2 { Optional }\ntype Unit = U\nfn f(x: Optional<Unit>) -> Unit { U }\n"
 
+data kab_data_n_source: String = "module v2.test.kab.data_n\n\ndata n: Int = 1\n"
+
+data kab_data_n_user_source: String = "module v2.test.kab.data_n_user\n\nimport v2.test.kab.data_n { n }\nfn h() -> Int { n }\n"
+
+data kab_data_n_as_type_source: String = "module v2.test.kab.data_n_as_type\n\nimport v2.test.kab.data_n { n }\nfn h(x: n) -> Int { 1 }\n"
+
 fn kab_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -59,7 +65,10 @@ fn kab_context() -> Outcome<NativeTestContext> {
     kab_read(text: kab_user_source, id: ^kab_user, path: "src/v2/test/fixture/kab/user.dag"),
     kab_read(text: kab_value_user_source, id: ^kab_value_user, path: "src/v2/test/fixture/kab/value_user.dag"),
     kab_read(text: kab_wrong_kind_source, id: ^kab_wrong_kind, path: "src/v2/test/fixture/kab/wrong_kind.dag"),
-    kab_read(text: kab_two_types_source, id: ^kab_two_types, path: "src/v2/test/fixture/kab/two_types.dag")
+    kab_read(text: kab_two_types_source, id: ^kab_two_types, path: "src/v2/test/fixture/kab/two_types.dag"),
+    kab_read(text: kab_data_n_source, id: ^kab_data_n, path: "src/v2/test/fixture/kab/data_n.dag"),
+    kab_read(text: kab_data_n_user_source, id: ^kab_data_n_user, path: "src/v2/test/fixture/kab/data_n_user.dag"),
+    kab_read(text: kab_data_n_as_type_source, id: ^kab_data_n_as_type, path: "src/v2/test/fixture/kab/data_n_as_type.dag")
   ])
 }
 
@@ -68,6 +77,8 @@ type KabVerdicts {
   value_user: NativeModuleResolveVerdict
   wrong_kind: NativeModuleResolveVerdict
   two_types: NativeModuleResolveVerdict
+  data_n_user: NativeModuleResolveVerdict
+  data_n_as_type: NativeModuleResolveVerdict
 }
 
 fn kab_verdicts() -> Optional<KabVerdicts> {
@@ -80,7 +91,9 @@ fn kab_verdicts() -> Optional<KabVerdicts> {
           user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.user", path: ^kab_user).verdict,
           value_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.value_user", path: ^kab_value_user).verdict,
           wrong_kind: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.wrong_kind", path: ^kab_wrong_kind).verdict,
-          two_types: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.two_types", path: ^kab_two_types).verdict
+          two_types: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.two_types", path: ^kab_two_types).verdict,
+          data_n_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_user", path: ^kab_data_n_user).verdict,
+          data_n_as_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_as_type", path: ^kab_data_n_as_type).verdict
         })
       }
   }
@@ -139,5 +152,23 @@ test fn two_type_optionals_remain_ambiguous_in_type_position() -> Bool {
   match kab_verdicts() {
     Absent => false
     Present { value: vs } => kab_refuses_with(v: vs.two_types, reason: ^resolve_reason_ambiguous_symbol)
+  }
+}
+
+// DATA VALUE IN VALUE POSITION. Lowering turns `data n` into a nullary Arrow, classified
+// CallableOccurrence. occurrence_category_binding_verdict admits CallableOccurrence as a
+// declaration for a LexicalValueOccurrence reference, so the value-position use stays eligible;
+// the same name in type position is wrong-kind (unbound).
+test fn a_data_value_resolves_in_value_position() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.data_n_user)
+  }
+}
+
+test fn a_data_value_in_type_position_is_unbound() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_refuses_with(v: vs.data_n_as_type, reason: ^resolve_reason_unbound_symbol)
   }
 }

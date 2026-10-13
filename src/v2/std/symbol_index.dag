@@ -46,6 +46,7 @@ import v2.std.type_binder {
 import std.occurrence_identity {
   CallableOccurrence,
   ConstructorOccurrence,
+  LexicalValueOccurrence,
   NamespaceSegmentOccurrence,
   OccurrenceCategory,
   TypeOccurrence
@@ -766,7 +767,7 @@ fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBinding
               TypeNode { connective: Disj } => TypeOccurrence
               TypeNode { connective: Instantiation } => TypeOccurrence
               TypeNode { connective: Occupancy } => TypeOccurrence
-              ComputationNode { behavior: _ } => CallableOccurrence
+              ComputationNode { behavior: _ } => LexicalValueOccurrence
             }
         }
       }
