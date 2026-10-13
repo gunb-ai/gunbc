@@ -214,7 +214,7 @@ data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished 
 // HistoricalReceipt rows and a historical receipt is not a population a re-add restores.
 //
 // ONE SITE WAS CARRIED HERE AND EDITED NOWHERE: `std.live_tree` `live_tree_disposition_stamp_provenance`
-// was commentary-as-data (DESIGN 4c) and was deleted when the module moved from v2.std.live_tree;
+// was commentary-as-data (DESIGN 4c) and was deleted when the module moved from std.live_tree;
 // its sibling `v1_compiler.cli_run` `parse_entry_live_tree_disposition` remains censused.
 //
 // THE FIVE WITNESS-TEST SITES (added 2026-09-01, XL-0-RECEIPT follow-on) are the last five rows

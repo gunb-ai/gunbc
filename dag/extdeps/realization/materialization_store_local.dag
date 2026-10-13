@@ -619,7 +619,7 @@ fn local_store_object_bytes(object: String) -> ByteSize {
 // its only fact is the head. Its canonical, versioned encoding is one header, the next ordinal, one
 // row per live object sorted by name, then one `doomed` row per evicted object whose delete the host
 // has not yet confirmed. A slot that does not decode REFUSES as corrupt, never reads as empty
-// (docs/plans/demand-engine-program.md section 2.8, EvaluationIndexCorrupt). The recovery is the
+// (`gunbc.plans.demand_engine_program` EvaluationIndexCorrupt). The recovery is the
 // operator's: delete the family's occupancy slot files; the next open's sweep then removes every
 // object the empty index no longer names, so a quarantine never leaves unaccounted bytes behind.
 //
