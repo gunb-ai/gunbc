@@ -24,7 +24,7 @@ import gunbc.fleet.fleet_probe_identity_observe {
   fleet_probe_identity_observe_receipt_body,
   fleet_probe_identity_receipt_path,
 }
-import v2.std.orchestration { EnvSet }
+import std.env_binding { EnvSet }
 import extdeps.exec.command { env_prefixed_command }
 import extdeps.tools.gcloud { gcloud_auth_list_accounts_command }
 
