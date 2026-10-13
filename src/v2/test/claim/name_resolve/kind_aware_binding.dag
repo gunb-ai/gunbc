@@ -148,8 +148,10 @@ test fn value_role_optional_binds_the_variant_beside_the_type() -> Bool {
   }
 }
 
-// WRONG KIND. Only the variant is imported; Optional<Unit> in type position is unbound, not a
-// silent bind of the constructor as a type.
+// WRONG KIND. Only the variant is imported; Optional<Unit> in type position is unbound. The
+// kernel excludes an inadmissible declaration then runs none/one/many
+// (occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds →
+// OccurrenceUnbound). WrongOccurrenceRole is a different cause (declaration vs reference role).
 test fn a_variant_optional_in_type_position_is_unbound() -> Bool {
   match kab_verdicts() {
     Absent => false
@@ -168,7 +170,7 @@ test fn two_type_optionals_remain_ambiguous_in_type_position() -> Bool {
 // DATA VALUE IN VALUE POSITION. Lowering turns `data n` into a nullary Arrow, classified
 // CallableOccurrence. occurrence_category_binding_verdict admits CallableOccurrence as a
 // declaration for a LexicalValueOccurrence reference, so the value-position use stays eligible;
-// the same name in type position is wrong-kind (unbound).
+// type position excludes it and the kernel fold is unbound (not a second diagnostic).
 test fn a_data_value_resolves_in_value_position() -> Bool {
   match kab_verdicts() {
     Absent => false

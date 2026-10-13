@@ -774,6 +774,10 @@ fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBinding
   }
 }
 
+// Inadmissible kind is excluded, then none/one/many. An excluded-only set is Unbound, not a
+// distinct wrong-kind refusal (std.occurrence_binding_resolve Inadmissible arm, refusal: none;
+// occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds). WrongOccurrenceRole
+// is the wrong *role* (declaration vs reference), not the wrong occurrence category.
 fn symbol_index_lexical_eligible(
   index: SymbolIndex,
   required: OccurrenceCategory,
