@@ -1,4 +1,4 @@
-module test.claim.native_route_progress_guard_witness
+module v2.test.claim.native_route_progress_guard_witness
 
 import std.types { List }
 import std.algebra { count_where, is_empty, length }

@@ -1119,7 +1119,7 @@ enum NativeMemberVerdict {
     Refused,
 }
 
-/// `gunbc.instrument_targets` `native_route_member_termination`'s result, mirrored.
+/// `v2.workflow.native_route_member_termination` `native_route_member_termination`'s result, mirrored.
 ///
 /// Three arms rather than four: `InvocationRefused` is not reachable from a population fold, so an
 /// arm for it here would be a constructor nothing can build -- the decoration DESIGN section 4b
@@ -1131,7 +1131,7 @@ pub enum NativeMemberTermination {
     SubjectUnreached,
 }
 
-/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored arm for arm INCLUDING the
+/// `v2.workflow.native_route_member_termination` `native_route_member_termination`, mirrored arm for arm INCLUDING the
 /// precedence, which is the one decision in that fold that could have gone the other way.
 ///
 /// A definite failure outranks an unobserved sibling; an unobserved member outranks the passes

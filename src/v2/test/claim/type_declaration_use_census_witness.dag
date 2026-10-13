@@ -1,4 +1,4 @@
-module test.claim.type_declaration_use_census_witness
+module v2.test.claim.type_declaration_use_census_witness
 
 import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.std.logic { Bool }

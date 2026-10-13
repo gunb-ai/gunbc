@@ -1,4 +1,4 @@
-module test.claim.native_frontier_ratchet_witness
+module v2.test.claim.native_frontier_ratchet_witness
 
 import std.algebra { is_empty, length }
 import std.optional { Present, Absent, optional_absent }

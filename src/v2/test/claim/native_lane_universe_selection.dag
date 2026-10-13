@@ -1,4 +1,4 @@
-module test.claim.native_lane_universe_selection
+module v2.test.claim.native_lane_universe_selection
 
 import std.types { List }
 import extdeps.bazel.target_pattern { TargetPatternParsed, TargetPatternRefused, parse_target_pattern }

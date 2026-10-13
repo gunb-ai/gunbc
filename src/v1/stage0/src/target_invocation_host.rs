@@ -2318,7 +2318,7 @@ pub fn native_route_default_pattern_text() -> String {
 /// `gunbc.recurring_failure_mode` `route_scoped_qualification_read_as_one_members_verdict`.
 ///
 /// The route now folds the population it actually emitted through
-/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored in the runner, so this
+/// `v2.workflow.native_route_member_termination` `native_route_member_termination`, mirrored in the runner, so this
 /// caller receives a MEMBER-SCOPED standing and reads it directly. The lane's qualification is
 /// still carried and still reported, because a route-integrity refusal is something an operator
 /// needs to see -- but it no longer decides this verb's exit status.
@@ -2376,7 +2376,7 @@ fn native_member_outcome(
         }
         cli_run::NativeMemberTermination::SubjectUnreached => Termination::SubjectUnreached,
     };
-    // `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored: the
+    // `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored: the
     // lane's qualification GATES a positive answer and nothing else. Several of its clauses are
     // what establish the verdict surface is trustworthy at all -- the false and true controls, and
     // MalformedSpecimenAccepted, whose own note says that when they fail every verdict in the
@@ -4283,7 +4283,7 @@ mod native_route_termination_tests {
         assert!(!within("//gunbc/instruments:self-host"));
     }
 
-    /// `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored here and
+    /// `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored here and
     /// given its own red. The `.dag` witness pins the fold; this pins that THIS host applies it.
     ///
     /// A REFUSED QUALIFICATION CANNOT YIELD A PASS (review 70107). Several qualification clauses

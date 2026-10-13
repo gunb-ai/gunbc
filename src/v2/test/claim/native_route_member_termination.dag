@@ -1,6 +1,9 @@
-module test.claim.native_route_member_termination
+module v2.test.claim.native_route_member_termination
 
-import gunbc.instrument_targets { native_route_member_termination }
+import v2.workflow.native_route_member_termination {
+  native_route_member_termination,
+  native_route_termination_under_qualification,
+}
 import gunbc.target_invocation {
   InvocationTermination,
   InvocationObservationHeld, InvocationObservationDidNotHold,
