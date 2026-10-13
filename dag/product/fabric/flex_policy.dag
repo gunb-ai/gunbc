@@ -8,7 +8,7 @@ import std.decimal { ExactDecimal }
 import std.measure {
   MoneyAmountMicro, MoneyPerHour, MoneyPerSecond,
   money_amount_micro, money_amount_micro_count, money_per_hour_micros,
-  measure_scale_fraction_ceil, Second, second_count,
+  measure_add, measure_le, measure_scale_fraction_ceil, Second, second_count,
   DecimalMoneyConversion, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
   exact_decimal_to_money_per_hour_ceil,
 }
@@ -196,23 +196,34 @@ fn standing_rate(row: FlexAcquisitionStanding) -> MoneyPerHour {
 }
 
 type FlexOccupancySum
-  = FlexOccupancySummed { micros: Nat, currency: CurrencyCode }
+  = FlexOccupancySummed { rate: MoneyPerHour }
   | FlexOccupancyCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
 
 fn occupancy_sum(occupancy: FlexFleetOccupancy, currency: CurrencyCode) -> FlexOccupancySum {
-  fold(occupancy.standing, init: FlexOccupancySummed { micros: 0, currency: currency }, f: (acc, row) =>
-    match acc {
-      FlexOccupancyCurrencyMismatch { left: l, right: r } =>
-        FlexOccupancyCurrencyMismatch { left: l, right: r }
-      FlexOccupancySummed { micros: n, currency: c } => {
-        let rate = standing_rate(row: row)
-        if rate.currency != c {
-          FlexOccupancyCurrencyMismatch { left: c, right: rate.currency }
-        } else {
-          FlexOccupancySummed { micros: n + money_per_hour_micros(q: rate), currency: c }
+  fold(
+    occupancy.standing,
+    init: FlexOccupancySummed {
+      rate: MoneyPerHour { amount: money_amount_micro(count: 0), currency: currency },
+    },
+    f: (acc, row) =>
+      match acc {
+        FlexOccupancyCurrencyMismatch { left: l, right: r } =>
+          FlexOccupancyCurrencyMismatch { left: l, right: r }
+        FlexOccupancySummed { rate: summed } => {
+          let rate = standing_rate(row: row)
+          if rate.currency != summed.currency {
+            FlexOccupancyCurrencyMismatch { left: summed.currency, right: rate.currency }
+          } else {
+            FlexOccupancySummed {
+              rate: MoneyPerHour {
+                amount: measure_add(a: summed.amount, b: rate.amount),
+                currency: summed.currency,
+              },
+            }
+          }
         }
-      }
-    })
+      },
+  )
 }
 
 fn occupy_pending(occupancy: FlexFleetOccupancy, bid: MoneyPerHour) -> FlexFleetOccupancy {
@@ -388,9 +399,7 @@ fn flex_bid_admission(
   account: MoneyAccount,
   attempt: FlexBidAttempt<NonEmptyStr>,
 ) -> FlexBidAdmission {
-  if window.remaining == 0 {
-    FlexBidRefused { cause: FlexNoAcquisitionRemaining }
-  } else if account.currency != policy.fleet_rate_cap.currency {
+  if account.currency != policy.fleet_rate_cap.currency {
     refuse_currency(left: account.currency, right: policy.fleet_rate_cap.currency)
   } else {
     match join_attempt_candidates(attempt: attempt) {
@@ -457,16 +466,20 @@ fn flex_bid_after_min(
                     }
                 }
               FlexNewAcquisition =>
-                flex_admit_new(
-                  policy: policy,
-                  occupancy: occupancy,
-                  window: window,
-                  account: account,
-                  attempt: attempt,
-                  min_rate: min_rate,
-                  bid: ceiling,
-                  joined: joined,
-                )
+                if window.remaining == 0 {
+                  FlexBidRefused { cause: FlexNoAcquisitionRemaining }
+                } else {
+                  flex_admit_new(
+                    policy: policy,
+                    occupancy: occupancy,
+                    window: window,
+                    account: account,
+                    attempt: attempt,
+                    min_rate: min_rate,
+                    bid: ceiling,
+                    joined: joined,
+                  )
+                }
             }
         }
       }
@@ -492,15 +505,12 @@ fn flex_existing_unchanged(
         match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency) {
           FlexOccupancyCurrencyMismatch { left: occupied_left, right: occupied_right } =>
             refuse_currency(left: occupied_left, right: occupied_right)
-          FlexOccupancySummed { micros: occupied, currency: occupied_currency } =>
-            if !(occupied <= money_per_hour_micros(q: policy.fleet_rate_cap)) {
+          FlexOccupancySummed { rate: occupied } =>
+            if !measure_le(a: occupied.amount, b: policy.fleet_rate_cap.amount) {
               FlexBidRefused {
                 cause: FlexRateCapOccupied {
                   cap: policy.fleet_rate_cap,
-                  occupied: MoneyPerHour {
-                    amount: money_amount_micro(count: occupied),
-                    currency: occupied_currency,
-                  },
+                  occupied: occupied,
                   proposed: current,
                 },
               }
@@ -529,16 +539,16 @@ fn flex_admit_new(
 ) -> FlexBidAdmission {
   match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency) {
     FlexOccupancyCurrencyMismatch { left: l, right: r } => refuse_currency(left: l, right: r)
-    FlexOccupancySummed { micros: occupied, currency: c } => {
-      if bid.currency != c {
-        refuse_currency(left: c, right: bid.currency)
+    FlexOccupancySummed { rate: occupied } => {
+      if bid.currency != occupied.currency {
+        refuse_currency(left: occupied.currency, right: bid.currency)
       } else {
-        let proposed = occupied + money_per_hour_micros(q: bid)
-        if !(proposed <= money_per_hour_micros(q: policy.fleet_rate_cap)) {
+        let proposed_amount = measure_add(a: occupied.amount, b: bid.amount)
+        if !measure_le(a: proposed_amount, b: policy.fleet_rate_cap.amount) {
           FlexBidRefused {
             cause: FlexRateCapOccupied {
               cap: policy.fleet_rate_cap,
-              occupied: MoneyPerHour { amount: money_amount_micro(count: occupied), currency: c },
+              occupied: occupied,
               proposed: bid,
             },
           }
@@ -707,7 +717,7 @@ fn flex_admit_revocable_target(
                               request: MoneyReservationRequest {
                                 reference: attempt.reservation,
                                 generation: attempt.generation,
-                                maximum_liability: liability,
+                                maximum_liability: projected,
                                 currency: bid.currency,
                               },
                             ) {
