@@ -20,7 +20,7 @@ import gunbc.build_cache.build_cache_latency_probe {
   peer_combined_median,
   gunbc_build_latency_divergence_policy,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

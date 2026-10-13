@@ -6920,7 +6920,7 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if !skip_enabled {
         return Ok(false);
     }
-    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
+    // Fail-closed on the substrate-declared disposition (std.live_tree): a
     // `ReadsLiveTree` entry reads state outside its resolved closure, so the diff
     // cannot bound its inputs — it never predict-skips. Replaces the deleted
     // entry-text classifier (`entry_text_indicates_live_host_scan`); the disposition
@@ -16241,7 +16241,7 @@ fn closure_name_census(
 /// gate parity by construction: it is exactly the module set the root's whole-tree
 /// gate compile holds in its closure census, so a bare name a module resolves
 /// under the gate resolves identically here (e.g. a dag witness's bare
-/// `LiveTreeDisposition`, declared only in `v2.std.live_tree` but import-reached
+/// `LiveTreeDisposition`, declared only in `std.live_tree` but import-reached
 /// from the dag tree). Built lazily, cached per root.
 fn tree_bare_census_for_root(
     index: &MultiEntryIndex,
@@ -22339,7 +22339,7 @@ pub struct DiscoveryRow {
     pub label: String,
     pub entry: String,
     pub function: String,
-    /// Declared live-tree disposition of this row's ENTRY file (`v2.std.live_tree`):
+    /// Declared live-tree disposition of this row's ENTRY file (`std.live_tree`):
     /// `true` = ReadsLiveTree (undeclared defaults here, fail-closed — never
     /// predict-skip), `false` = declared SubstrateInputsOnly (selection-eligible).
     pub reads_live_tree: bool,
@@ -22376,7 +22376,7 @@ pub struct DeferredDiscoveryRow {
     pub function: String,
     /// Which exclusion substring matched (`witness_exclusion_substrings` authority).
     pub exclude_reason: String,
-    /// Entry-grain live-tree disposition (`v2.std.live_tree`); undeclared = true.
+    /// Entry-grain live-tree disposition (`std.live_tree`); undeclared = true.
     pub reads_live_tree: bool,
 }
 
@@ -24758,7 +24758,7 @@ fn call_floor_row_precompute_would_skip(
 // `entry_text_indicates_live_host_scan` + the `floor:host_scaffold` marker) lived here.
 // It is dissolved into the substrate-declared `reads_live_tree` disposition: each
 // witness entry file declares `data live_tree_disposition: LiveTreeDisposition = ...`
-// (`v2.std.live_tree`); undeclared = ReadsLiveTree = never predict-skip (fail-closed).
+// (`std.live_tree`); undeclared = ReadsLiveTree = never predict-skip (fail-closed).
 // Declaration grade also closes the former cross-file deficit that was documented here
 // (a live read hidden behind an import was invisible to entry-text scanning): the
 // entry's own row asserts the fact for the whole evaluation, wherever the read hides.
@@ -24769,9 +24769,8 @@ fn call_floor_row_precompute_would_skip(
 // THAT CADENCE IS GONE: `falsifier.yml` was deleted by the 2026-08-15 floor cut and sits
 // on DESIGN's unguarded list awaiting its own re-add, so the sentence was true when
 // written and became false when the workflow died, with nothing to notice. One claim in
-// three places — here, `v2.std.live_tree` `live_tree_disposition_note`, and that module's
-// `live_tree_disposition_stamp_provenance` — all three corrected together, because a claim
-// with three homes corrected in one still has two authorities (DESIGN §3).
+// the authority module `std.live_tree` now carries it once as an annotation on
+// `LiveTreeDisposition` (DESIGN §3, §4c).
 //
 // WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. `reads_live_tree_effective` consults
 // this declaration FIRST and falls through to `effect_reach_derived_reads_live_tree_for_entry`
@@ -24810,7 +24809,7 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
         };
         let rest = rest.trim_start();
         // Qualification-invariant (namespace lane): the annotation may be the bare
-        // authority name or its qualified projection (v2.std.live_tree.LiveTreeDisposition);
+        // authority name or its qualified projection (std.live_tree.LiveTreeDisposition);
         // compare the last dot-segment, mirroring type_name_compatible's mixed-spelling
         // rule. The typechecked roster compile remains the authority behind this text scan.
         let (annotation, rest) = match rest.find(|c: char| c.is_whitespace() || c == '=') {
@@ -26398,7 +26397,7 @@ new file mode 100644
 
     #[test]
     fn live_tree_disposition_declared_substrate_only_is_selection_eligible() {
-        let source = "module m\n\nimport v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn pure_holds() -> Bool { true }\n";
+        let source = "module m\n\nimport std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn pure_holds() -> Bool { true }\n";
         assert!(!super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
     }
 

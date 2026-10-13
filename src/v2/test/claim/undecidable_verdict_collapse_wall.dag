@@ -16,7 +16,7 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Empty, length }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import v2.std.node {
   Conj,

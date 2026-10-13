@@ -14,7 +14,7 @@ import v2.lens.module_graph {
   reference_derived_pool_from_located_roots,
   reference_edges_for_located_root_sites,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Atom,
   Conj,

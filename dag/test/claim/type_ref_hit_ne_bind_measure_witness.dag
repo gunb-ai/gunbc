@@ -17,7 +17,7 @@ import gunbc.type_ref_hit_ne_bind_measure.authority {
   type_ref_hit_ne_bind_measure_rung_note
 }
 import std.types { String, Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

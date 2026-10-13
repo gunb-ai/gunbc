@@ -25,7 +25,7 @@ import gunbc.harness.harness_turn {
 // completion into the same blocks the messages shape yields, and encode the same blocks back into
 // the chat shape's envelopes. The fixture's reasoning_content is the field the encoder re-renders
 // when tools are defined; its tool call carries arguments as the JSON STRING vLLM emits.
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 fn fixture_completion() -> String {
   "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":\"Listing now.\",\"reasoning_content\":\"The user wants files, so list them.\",\"tool_calls\":[{\"id\":\"chatcmpl-tool-1\",\"type\":\"function\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{\\\"command\\\": \\\"ls\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":365,\"completion_tokens\":41}}"

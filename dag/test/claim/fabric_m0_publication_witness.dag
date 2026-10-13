@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.measure { hardware_thread_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.scoped_authorization { AttemptIdentity }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.work { MaterializedProgram,

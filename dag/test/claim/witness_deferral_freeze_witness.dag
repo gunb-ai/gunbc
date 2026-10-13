@@ -28,7 +28,7 @@ import std.witness_admission {
   FrozenBaselineDebtGrew
 }
 import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, List, Bool }
 import std.disposition { Disposition, Scaffold }
 import gunbc.cli_run_witness_deferral_freeze_scaffold {

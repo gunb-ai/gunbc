@@ -6,7 +6,7 @@ import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, mac_addres
 import std.content_hash { content_hash_of_value }
 import extdeps.uri { Uri, Https, Tftp }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import product.placement_supply { SiteIdentity }
 import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }

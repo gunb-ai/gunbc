@@ -1,7 +1,7 @@
 module test.claim.accelerator_demo_gpu_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 fn witness_m5_vendor_grounds_on_apple_entity() -> Bool {
   extdeps.gpu.apple.apple_m5_gpu_catalog.vendor == extdeps.vendor.apple.apple

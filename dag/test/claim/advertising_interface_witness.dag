@@ -19,7 +19,7 @@ import extdeps.advertising.meta_ads {
 }
 import extdeps.advertising.types { AdPriceDetermination, AuctionDetermined, RateUnavailable }
 import std.types { list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

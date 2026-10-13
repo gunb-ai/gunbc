@@ -21,7 +21,7 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_over_fleet_ssh,
 }
 import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_home }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

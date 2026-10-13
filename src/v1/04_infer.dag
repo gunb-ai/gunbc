@@ -15334,7 +15334,7 @@ fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<
 // cross-tree references are qualified, the migration direction. The cli_run reconcile additionally
 // underlays each typechecked module's OWN tree-closure bare census (root modules plus
 // import-reached pool modules — gate parity by construction: e.g. dag witnesses' bare
-// LiveTreeDisposition is declared only in v2.std.live_tree but import-reached from the dag tree).
+// LiveTreeDisposition is declared only in std.live_tree but import-reached from the dag tree).
 
 fn build_symbol_index_census_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let raw = build_symbol_index_census_raw_nodes(module_nodes: module_nodes, source_indices: source_indices)

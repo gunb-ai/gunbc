@@ -1,7 +1,7 @@
 module test.claim.cross_file_binding_assembly_witness
 
 import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { Bool, String, Int, NonEmptyStr, SourceSpan, FilePath }
 import std.occurrence_identity {
   OccurrenceId,

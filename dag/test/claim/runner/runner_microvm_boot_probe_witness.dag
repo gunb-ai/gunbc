@@ -20,7 +20,7 @@ import gunbc.runner.runner_microvm_boot_probe {
   runner_microvm_boot_probe_bounded_command,
 }
 import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

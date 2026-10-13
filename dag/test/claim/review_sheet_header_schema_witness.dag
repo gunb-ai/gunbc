@@ -24,7 +24,7 @@ module test.claim.review_sheet_header_schema_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
 import gunbc.review_sheet_projection {
   ReviewSheetSchema,

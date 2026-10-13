@@ -19,7 +19,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, Some, diagnostics_fatal_reason }
 import v2.std.integer { integer_int_type_node }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
 import std.optional { Absent, Present }

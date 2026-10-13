@@ -1,0 +1,11 @@
+module std.live_tree
+
+// Declared witness input-domain disposition: whether a witness entry's evaluation reads the live
+// host tree (filesystem/corpus state outside its resolved substrate closure). The authority is a
+// `data live_tree_disposition: LiveTreeDisposition = ...` row in the witness entry file itself.
+// An undeclared entry is ReadsLiveTree on the affected-set selection path. A SubstrateInputsOnly
+// row is author- or machine-stamped and re-checked by nothing beyond the v2.std.effect_reach
+// derivation, whose detection ceiling is declared there; it is not a verified fact.
+type LiveTreeDisposition
+  = ReadsLiveTree
+  | SubstrateInputsOnly

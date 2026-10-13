@@ -2,7 +2,7 @@ module test.claim.legacy_binding_projection_witness
 
 import std.types { String, Bool, Int, List, SourceSpan }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.occurrence_identity {

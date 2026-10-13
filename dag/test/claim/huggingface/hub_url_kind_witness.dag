@@ -7,7 +7,7 @@ import extdeps.huggingface.hub {
 }
 import extdeps.uri { uri_wire }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 data same_path: NonEmptyStr = "org/same" as NonEmptyStr
 data rev: NonEmptyStr = "abc" as NonEmptyStr

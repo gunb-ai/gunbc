@@ -1,7 +1,7 @@
 module test.claim.host_convergence_protocol_witness
 
 import std.types { Bool, String, List, NonEmptyStr, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,

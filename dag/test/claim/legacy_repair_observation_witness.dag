@@ -1,7 +1,7 @@
 module test.claim.legacy_repair_observation_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.observation_completeness {
