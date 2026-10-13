@@ -1042,7 +1042,20 @@ pub fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
     dag_expr
 }
 
-pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
+pub fn rust_host_string_contains_bridge_applies(module_path: String, name: String) -> bool {
+    match crate::std_primitive_projection::primitive_projection_row_for_declaration(
+        crate::std_decl_ref::decl_ref(module_path.clone(), name.clone()),
+    ) {
+        Some(row) => {
+            (crate::std_primitive_projection::primitive_identity_runtime_name(
+                row.primitive.clone(),
+            ) == "string_contains".to_string())
+        }
+        std::option::Option::None => false,
+    }
+}
+
+pub fn rust_host_string_op_fn_emit(name: String, module_path: String) -> Option<String> {
     if (name.clone() == "trim".to_string()) {
         Some(v1_rt::concat(
             v1_rt::concat(
@@ -1052,10 +1065,13 @@ pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
             "}\n".to_string(),
         ))
     } else {
-        if (name.clone() == "string_contains".to_string()) {
+        if rust_host_string_contains_bridge_applies(module_path.clone(), name.clone()) {
             Some(v1_rt::concat(
                 v1_rt::concat(
-                    "pub fn string_contains(s: String, pattern: String) -> bool {\n".to_string(),
+                    v1_rt::concat(
+                        v1_rt::concat("pub fn ".to_string(), name.clone()),
+                        "(s: String, pattern: String) -> bool {\n".to_string(),
+                    ),
                     "    v1_rt::string_contains(&s, pattern)\n".to_string(),
                 ),
                 "}\n".to_string(),
@@ -19769,7 +19785,7 @@ pub fn emit_fn_def(
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let host_text_op = rust_host_string_op_fn_emit(name.clone());
+        let host_text_op = rust_host_string_op_fn_emit(name.clone(), scope.module_name.clone());
         if (host_text_op.clone() != std::option::Option::None) {
             return match host_text_op.clone() {
                 Some(op_fn) => op_fn.clone(),

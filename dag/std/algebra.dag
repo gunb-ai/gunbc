@@ -1204,7 +1204,8 @@ fn trim(s: String) -> String {
 // refuses to share `non_empty` with algebra. HostRealizedSeam is not an algebra-only class
 // (`map_insert` lives on `v2.std.collection`). Contract: std.primitives string_contains_contract.
 // Runtime bridge exists (`rt_function_registry` string_contains → v1_rt::string_contains), so this
-// is a HostRealizedSeam self-call. Native emit: rust_host_string_op_fn_emit. Import
+// is a HostRealizedSeam self-call. Native emit: rust_host_string_op_fn_emit, selected by this
+// declaration's projection row (not by the bare name `string_contains`). Import
 // std.algebra { string_contains }; bare string_contains is the same Class B pool coincidence as trim.
 fn string_contains(s: String, pattern: String) -> Bool {
   string_contains(s: s, pattern: pattern)
