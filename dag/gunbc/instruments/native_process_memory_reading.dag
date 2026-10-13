@@ -22,6 +22,13 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 // still RusageChildren-shaped in extdeps.posix.rusage terms -- a terminated child's usage, in Linux's
 // kibibyte unit -- which is the existing model; it is not a second unit authority.
 //
+// AND WHY THROUGH A TRAMPOLINE. Linux seeds a process's ru_maxrss at exec from the high-water mark of
+// the address space it replaces. Spawned straight from the seed -- which has just emitted the closure in
+// process -- the native child inherited the seed's peak: the first real run reported one identical figure
+// for a control that ended at once and for the whole-tree census, and this reader's control refused it. The host therefore
+// spawns through the seed executable re-entered before it does any work, whose address space is small;
+// that trampoline spawns and reaps the native child and hands back the child's rusage.
+//
 // THE CONTROL RUN IS THE DISCRIMINATING RED. The same prepared binary runs the same verb over a
 // one-module control root first. If the measurement were not the native child's (a cumulative
 // RUSAGE_CHILDREN reading, a cgroup peak, a constant), both runs would report the same dominating
@@ -184,11 +191,18 @@ fn native_process_memory_standing(
   }
 }
 
-// The control root: one module, so its peak is the binary's floor for this verb.
+// The control root: one module, so its peak is the binary's floor for this verb. The binary binds a
+// source root only when its directory is named for a governed tree (v2.cli.repository_layout
+// repository_tree_of_root_argument), so the control's root is a `dag` directory and its module lives in
+// that tree's `test` namespace.
+fn native_process_memory_control_tree() -> String {
+  "dag"
+}
+
 fn native_process_memory_control_path() -> String {
-  "ctl/one.dag"
+  "test/native_process_memory_control.dag"
 }
 
 fn native_process_memory_control_content() -> String {
-  "module ctl.one\n\nfn one() -> Int {\n  1\n}\n"
+  "module test.native_process_memory_control\n\nfn one() -> Int {\n  1\n}\n"
 }

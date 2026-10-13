@@ -4299,7 +4299,7 @@ pub fn run_type_declaration_use_census_runs(
     })
 }
 
-/// ONE NATIVE CHILD, REAPED BY `wait4` SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
+/// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
 /// this process folds in every child it ever reaped -- cargo and rustc included -- so it cannot
 /// answer for the native binary alone; `wait4` returns the usage of the one pid it reaps. The host
 /// decides nothing: `gunbc.instruments.native_process_memory_reading` reads these fields.
@@ -4322,54 +4322,145 @@ pub struct NativeProcessMemoryRuns {
     pub workload: NativeChildMeasured,
 }
 
-fn run_native_child_measured(
-    binary: &std::path::Path,
-    args: &[String],
-) -> Result<NativeChildMeasured, String> {
-    use std::io::Read;
+/// The environment variable that turns the seed executable into the measured-spawn trampoline: its
+/// value is the receipt path, and the argv to spawn is read from `<receipt>.argv`, one argument per
+/// line. Read at the top of `gunbc test` (`target_invocation_host::test_verb_checked`), before any
+/// work: the generated `main` is not edited for it.
+pub const MEASURED_SPAWN_RECEIPT_ENV: &str = "GUNBC_MEASURED_SPAWN_RECEIPT";
+
+/// THE TRAMPOLINE. Linux seeds a process's `ru_maxrss` at exec from the high-water mark of the
+/// address space it replaces, so a child spawned straight from the seed (which has just emitted the
+/// closure in process) inherits the seed's peak. Re-entered as this function before doing any work,
+/// the seed's address space is small; the native child it spawns starts from that, and its `wait4`
+/// rusage is its own. Writes `maxrss_kib elapsed_ns exit_code signal` to the receipt path and
+/// returns the process exit code: 0 when the receipt was written, 2 when nothing was observed.
+pub fn measured_spawn_trampoline(receipt: std::ffi::OsString) -> i32 {
+    let mut argv_path = receipt.clone();
+    argv_path.push(".argv");
+    let argv_text = match std::fs::read_to_string(&argv_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("measured-spawn trampoline: reading {argv_path:?}: {e}");
+            return 2;
+        }
+    };
+    let mut argv = argv_text.lines();
+    let Some(binary) = argv.next() else {
+        eprintln!("measured-spawn trampoline: no binary to spawn");
+        return 2;
+    };
     let started = std::time::Instant::now();
-    let mut child = Command::new(binary)
-        .args(args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            format!(
-                "NATIVE-PROCESS-MEMORY REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-                binary.display()
-            )
-        })?;
+    let child = Command::new(&binary)
+        .args(argv)
+        .env_remove(MEASURED_SPAWN_RECEIPT_ENV)
+        .spawn();
+    let child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("measured-spawn trampoline: spawning {binary:?}: {e}");
+            return 2;
+        }
+    };
     let pid = child.id() as libc::pid_t;
-    let mut stdout = Vec::new();
-    if let Some(mut out) = child.stdout.take() {
-        out.read_to_end(&mut stdout).map_err(|e| {
-            format!("NATIVE-PROCESS-MEMORY REFUSAL cause=NativeRunStdoutUnreadable — {e}")
-        })?;
-    }
     let mut status: libc::c_int = 0;
     let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
     let waited = unsafe { libc::wait4(pid, &mut status, 0, &mut usage) };
     let elapsed = started.elapsed();
     if waited != pid {
-        return Err(format!(
-            "NATIVE-PROCESS-MEMORY REFUSAL cause=Wait4Failed — {}",
+        eprintln!(
+            "measured-spawn trampoline: wait4 failed: {}",
             std::io::Error::last_os_error()
-        ));
+        );
+        return 2;
     }
     let (exit_code, signal) = if libc::WIFSIGNALED(status) {
         (-1, libc::WTERMSIG(status))
     } else {
         (libc::WEXITSTATUS(status), 0)
     };
-    let stdout = String::from_utf8(stdout).map_err(|cause| {
-        format!("NATIVE-PROCESS-MEMORY REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
-    })?;
+    let line = format!(
+        "{} {} {exit_code} {signal}\n",
+        usage.ru_maxrss,
+        elapsed.as_nanos()
+    );
+    match std::fs::write(&receipt, line) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("measured-spawn trampoline: writing {receipt:?}: {e}");
+            2
+        }
+    }
+}
+
+fn run_native_child_measured(
+    binary: &std::path::Path,
+    args: &[String],
+    receipt: &std::path::Path,
+) -> Result<NativeChildMeasured, String> {
+    use std::io::Read;
+    let refusal = |cause: &str, detail: String| {
+        format!("NATIVE-PROCESS-MEMORY REFUSAL cause={cause} — {detail}")
+    };
+    let _ = std::fs::remove_file(receipt);
+    let argv: Vec<String> = std::iter::once(binary.to_string_lossy().into_owned())
+        .chain(args.iter().cloned())
+        .collect();
+    if argv.iter().any(|a| a.contains('\n')) {
+        return Err(refusal("ArgvNotLineSafe", format!("{argv:?}")));
+    }
+    let mut argv_path = receipt.as_os_str().to_owned();
+    argv_path.push(".argv");
+    std::fs::write(&argv_path, argv.join("\n"))
+        .map_err(|e| refusal("TrampolineArgvUnwritable", e.to_string()))?;
+    let trampoline =
+        std::env::current_exe().map_err(|e| refusal("TrampolineUnlocated", e.to_string()))?;
+    let mut child = Command::new(&trampoline)
+        .args(["test", "//measured-spawn"])
+        .env(MEASURED_SPAWN_RECEIPT_ENV, receipt)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            refusal(
+                "TrampolineSpawnFailed",
+                format!("{}: {e}", trampoline.display()),
+            )
+        })?;
+    let mut stdout = Vec::new();
+    if let Some(mut out) = child.stdout.take() {
+        out.read_to_end(&mut stdout)
+            .map_err(|e| refusal("NativeRunStdoutUnreadable", e.to_string()))?;
+    }
+    let status = child
+        .wait()
+        .map_err(|e| refusal("TrampolineWaitFailed", e.to_string()))?;
+    if !status.success() {
+        return Err(refusal(
+            "TrampolineObservedNothing",
+            format!("the trampoline exited {status}"),
+        ));
+    }
+    let text = std::fs::read_to_string(receipt)
+        .map_err(|e| refusal("TrampolineReceiptUnreadable", e.to_string()))?;
+    let fields: Vec<i64> = text
+        .split_whitespace()
+        .map(|f| f.parse::<i64>())
+        .collect::<Result<_, _>>()
+        .map_err(|e| refusal("TrampolineReceiptMalformed", format!("{text:?}: {e}")))?;
+    let [maxrss_kib, elapsed_ns, exit_code, signal] = fields[..] else {
+        return Err(refusal(
+            "TrampolineReceiptMalformed",
+            format!("{text:?} is not four fields"),
+        ));
+    };
+    let stdout = String::from_utf8(stdout)
+        .map_err(|cause| refusal("NativeRunStdoutNotUtf8", cause.to_string()))?;
     Ok(NativeChildMeasured {
         stdout,
-        maxrss_kib: usage.ru_maxrss as i64,
-        elapsed_ns: i64::try_from(elapsed.as_nanos()).unwrap_or(i64::MAX),
-        exit_code,
-        signal,
+        maxrss_kib,
+        elapsed_ns,
+        exit_code: exit_code as i32,
+        signal: signal as i32,
     })
 }
 
@@ -4381,13 +4472,22 @@ pub fn run_native_process_memory_runs(
     let envelope =
         host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution());
     let preparation = prepare_emitted_compiler(source_roots)?;
+    let receipt = std::env::temp_dir().join(format!(
+        "gunbc-native-process-memory-{}.rusage",
+        std::process::id()
+    ));
     let control = run_native_child_measured(
         &preparation.binary_path,
         &[verb.to_string(), control_root.to_string()],
+        &receipt,
     )?;
     let mut args = vec![verb.to_string()];
     args.extend(source_roots.iter().cloned());
-    let workload = run_native_child_measured(&preparation.binary_path, &args)?;
+    let workload = run_native_child_measured(&preparation.binary_path, &args, &receipt)?;
+    let _ = std::fs::remove_file(&receipt);
+    let mut argv_path = receipt.into_os_string();
+    argv_path.push(".argv");
+    let _ = std::fs::remove_file(argv_path);
     Ok(NativeProcessMemoryRuns {
         binary_identity: preparation.binary_identity.clone(),
         envelope,

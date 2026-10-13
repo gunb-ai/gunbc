@@ -1536,18 +1536,21 @@ fn run_native_process_memory(
     let control_root = std::path::Path::new("target")
         .join(label_name)
         .join("control");
-    let written = (|| -> Result<(), String> {
+    let written = (|| -> Result<std::path::PathBuf, String> {
         let _ = std::fs::remove_dir_all(&control_root);
-        let target = control_root.join(read_str("native_process_memory_control_path")?);
+        let tree = control_root.join(read_str("native_process_memory_control_tree")?);
+        let target = tree.join(read_str("native_process_memory_control_path")?);
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("{label_name}: {e}"))?;
         }
         std::fs::write(&target, read_str("native_process_memory_control_content")?)
-            .map_err(|e| format!("{label_name}: {e}"))
+            .map_err(|e| format!("{label_name}: {e}"))?;
+        Ok(tree)
     })();
-    if let Err(cause) = written {
-        return unreached(cause);
-    }
+    let control_root = match written {
+        Ok(tree) => tree,
+        Err(cause) => return unreached(cause),
+    };
     let NativeMeasuredWorkload::Census { verb } = workload;
     let (argv, verb_variant) = verb.argv_and_variant();
     let runs = match cli_run::run_native_process_memory_runs(
@@ -2836,6 +2839,11 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// (`gunbc.target_invocation` `assess_binary_freshness`), then route. Kept beside `test_verb`
 /// rather than inside it so the routing tests stay a function of the operand alone.
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
+    // THE MEASURED-SPAWN TRAMPOLINE, BEFORE ANY WORK, so this process's address space is still small
+    // (`cli_run::measured_spawn_trampoline`). Entered only by the native process memory producer.
+    if let Some(receipt) = std::env::var_os(cli_run::MEASURED_SPAWN_RECEIPT_ENV) {
+        std::process::exit(cli_run::measured_spawn_trampoline(receipt));
+    }
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
     // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate
