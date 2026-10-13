@@ -29,8 +29,6 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates, Witness }
-import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_derived_equality, nfr_reason_structural_eq_mint }
 
 type OwnershipFact {
   dependencies: List<ClassifiedDependencyView<OwnershipMode>>
@@ -81,36 +79,11 @@ fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> 
   }
 }
 
-fn ownership_mode_eq(a: OwnershipMode, b: OwnershipMode) -> Bool {
-  match a {
-    OwnedContainment => match b {
-      OwnedContainment => true
-      _ => false
-    }
-    SharedRead => match b {
-      SharedRead => true
-      _ => false
-    }
-    RequiresAccessWitness => match b {
-      RequiresAccessWitness => true
-      _ => false
-    }
-    BorrowedDependency => match b {
-      BorrowedDependency => true
-      _ => false
-    }
-    UnknownOwnership => match b {
-      UnknownOwnership => true
-      _ => false
-    }
-  }
-}
-
 fn ownership_classified_eq(
   a: ClassifiedDependencyView<OwnershipMode>,
   b: ClassifiedDependencyView<OwnershipMode>
 ) -> Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: ownership_mode_eq)
+  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { a == b })
 }
 
 fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
@@ -120,11 +93,3 @@ fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "src/v2/lens/ownership.dag::ownership_mode_eq" },
-      reason: nfr_reason_structural_eq_mint,
-      dissolution: nfr_dissolve_derived_equality,
-    },
-]

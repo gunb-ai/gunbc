@@ -15,11 +15,6 @@ import std.upsert_decision {
   Apply,
   Refuse,
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-
-
-
 type ProcessPortScope {
   listen_port: Int
   expected_owner_label: NonEmptyStr
@@ -54,46 +49,16 @@ type ProcessLeasePlan
   = Start
   | DrainMatchingStaleThenStart
 
+// ONE total fold over the closed coproduct ProcessPortObservation is the single authority
+// (classify_process_port_upsert below); this fn is its verdict projection, so there is no second
+// match over the observation. PortObservationRefused keeps threading its real observe-leg refusal
+// reason into the decision (decision_for_process_port_verdict only sees the verdict, which would
+// erase the reason a second time).
 fn classify_process_port(
   scope: ProcessPortScope,
   obs: ProcessPortObservation,
 ) -> ObservationVerdict {
-  match obs {
-    PortAbsent => Absent
-    PortInaccessible => Inaccessible
-    PortObservationRefused { reason: _ } => UnknownRefused
-    PortObserved {
-      observed_port: port,
-      pid: _,
-      cmdline: _,
-      process_fingerprint: fingerprint,
-    } =>
-      if port != scope.listen_port {
-        Inaccessible
-      } else {
-        if fingerprint == scope.expected_process_fingerprint {
-          Converged
-        } else {
-          Conflict
-        }
-      }
-    PortObservedStaleExpected {
-      observed_port: port,
-      pid: _,
-      cmdline: _,
-      process_fingerprint: fingerprint,
-      stale_reason: _,
-    } =>
-      if port != scope.listen_port {
-        Inaccessible
-      } else {
-        if fingerprint == scope.expected_process_fingerprint {
-          Drifted
-        } else {
-          Conflict
-        }
-      }
-  }
+  classify_process_port_upsert(scope: scope, obs: obs).verdict
 }
 
 fn decision_for_process_port_verdict(
@@ -109,35 +74,67 @@ fn decision_for_process_port_verdict(
   }
 }
 
-// PortObservationRefused carries the real refusal reason from the observe leg (e.g. "systemctl
-// is-active refused ..."); decision_for_process_port_verdict only sees the verdict, so the
-// UnknownRefused arm there answers with a fixed fallback string. Threading the real reason means
-// this fn cannot build the decision purely from the verdict for this one observation shape --
-// routing through the verdict here would erase the reason a second time.
+// ONE total fold over the closed coproduct ProcessPortObservation (this fn) is the single
+// authority for the (verdict, decision) pair; classify_process_port is a projection of it
+// (.verdict), so nothing second re-discriminates the observation (DESIGN §3). Every arm returns
+// the same verdict it gets today; only PortObservationRefused binds its real observe-leg refusal
+// reason into the decision -- decision_for_process_port_verdict only sees the verdict, so routing
+// it through there would erase the reason a second time (the split the ratchet rostered).
 fn classify_process_port_upsert(
   scope: ProcessPortScope,
   obs: ProcessPortObservation,
 ) -> std.upsert_decision.UpsertClassification<ProcessLeasePlan> {
-  let verdict = classify_process_port(scope: scope, obs: obs)
   match obs {
+    PortAbsent =>
+      UpsertClassification {
+        verdict: Absent,
+        decision: decision_for_process_port_verdict(verdict: Absent),
+      }
+    PortInaccessible =>
+      UpsertClassification {
+        verdict: Inaccessible,
+        decision: decision_for_process_port_verdict(verdict: Inaccessible),
+      }
     PortObservationRefused { reason: why } =>
-      UpsertClassification { verdict: verdict, decision: Refuse { reason: why } }
-    _ =>
+      UpsertClassification { verdict: UnknownRefused, decision: Refuse { reason: why } }
+    PortObserved {
+      observed_port: port,
+      pid: _,
+      cmdline: _,
+      process_fingerprint: fingerprint,
+    } =>
+      let verdict = if port != scope.listen_port {
+        Inaccessible
+      } else {
+        if fingerprint == scope.expected_process_fingerprint {
+          Converged
+        } else {
+          Conflict
+        }
+      }
+      UpsertClassification {
+        verdict: verdict,
+        decision: decision_for_process_port_verdict(verdict: verdict),
+      }
+    PortObservedStaleExpected {
+      observed_port: port,
+      pid: _,
+      cmdline: _,
+      process_fingerprint: fingerprint,
+      stale_reason: _,
+    } =>
+      let verdict = if port != scope.listen_port {
+        Inaccessible
+      } else {
+        if fingerprint == scope.expected_process_fingerprint {
+          Drifted
+        } else {
+          Conflict
+        }
+      }
       UpsertClassification {
         verdict: verdict,
         decision: decision_for_process_port_verdict(verdict: verdict),
       }
   }
 }
-
-data nfr_reason_process_port_upsert_refusal_split: String = "one-special-variant split over ProcessPortObservation: PortObservationRefused threads the observe-leg reason into an Upsert Refuse decision, and the three non-refused arms (PortAbsent, PortObserved, PortObservedStaleExpected) share one arm that derives the decision from the verdict classify_process_port already computed exhaustively over the same coproduct — the second match re-discriminates a value the first fold has already partitioned. The refused arm and its wildcard landed with the NBD-proxy observe-side read-back (74b9a6e6a5, #8582, 2026-08-19; the fn itself dates from #6171) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_process_port_upsert_refusal_split: DissolutionCondition = unbound_dissolution(description: "classify_process_port returns a carrier that already binds the refusal reason to its verdict (verdict and decision from ONE total fold over ProcessPortObservation), so classify_process_port_upsert no longer re-matches the observation and the row deletes with the second match")
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/session_lease.dag::classify_process_port_upsert" },
-      reason: nfr_reason_process_port_upsert_refusal_split,
-      dissolution: nfr_dissolve_process_port_upsert_refusal_split,
-    },
-]

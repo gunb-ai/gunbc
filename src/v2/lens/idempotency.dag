@@ -35,8 +35,6 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates, Witness }
-import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_derived_equality, nfr_reason_structural_eq_mint }
 
 type IdempotencyFact {
   dependencies: List<ClassifiedDependencyView<IdempotencyVerdict>>
@@ -108,24 +106,11 @@ fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -
   }
 }
 
-fn idempotency_verdict_eq(a: IdempotencyVerdict, b: IdempotencyVerdict) -> Bool {
-  match a {
-    AlgebraicIdempotenceProven { law: a_law } => match b {
-      AlgebraicIdempotenceProven { law: b_law } => a_law == b_law
-      _ => false
-    }
-    RequiresAlgebraWitness => match b {
-      RequiresAlgebraWitness => true
-      _ => false
-    }
-  }
-}
-
 fn idempotency_classified_eq(
   a: ClassifiedDependencyView<IdempotencyVerdict>,
   b: ClassifiedDependencyView<IdempotencyVerdict>
 ) -> Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: idempotency_verdict_eq)
+  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { a == b })
 }
 
 fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
@@ -135,11 +120,3 @@ fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "src/v2/lens/idempotency.dag::idempotency_verdict_eq" },
-      reason: nfr_reason_structural_eq_mint,
-      dissolution: nfr_dissolve_derived_equality,
-    },
-]

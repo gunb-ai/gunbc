@@ -21,7 +21,7 @@ import v2.lens.enforcement.vocab {
   ReceiptRef, HasReceiptRef, NoReceiptRef,
   consumer_kind_eq
 }
-import v2.lens.enforcement.contract { LensContract, EnrollmentDiscoveryReceipt, Cost, lens_id_v0_eq }
+import v2.lens.enforcement.contract { LensContract, EnrollmentDiscoveryReceipt, Cost }
 import std.realization_schedule { ScheduleWitnessEntry, schedule_witness_entry_eq }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
@@ -210,7 +210,7 @@ fn red_control_status_for(probe: Node) -> RedControlStatus {
 }
 
 fn red_control_status_for_contract(contract: LensContract) -> RedControlStatus {
-  if lens_id_v0_eq(left: contract.entry.lens_id, right: Cost) {
+  if (contract.entry.lens_id == Cost) {
     red_control_status_for(probe: cost_red_control_probe)
   } else {
     RedControlAbsent
