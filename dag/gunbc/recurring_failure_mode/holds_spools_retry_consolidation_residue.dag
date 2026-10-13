@@ -20,6 +20,8 @@ data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringF
 
     "SITE — spark transfer RestartSec/StartLimit* are systemd unit properties whose numbers are taken from spark_transfer_retry_law, but the unit still restarts without asking retry_admissibility. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the transfer supervisor consumes retry_admissibility for whether another start is admissible; RestartSec is the law's earliest delay, not a second bound.",
 
+    "SITE — retry_hint_from_http maps a real HttpRetryAfter into RetryHint on the hosted 429 classify path (hosted_http_failure_wire), and retry_admissibility refuses RetryHintUnresolved, but no retrying client yet feeds that hint into a retry decision. Hosted POST /chat/completions is not idempotent and must not. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the first retrying idempotent HTTP client (not chat POST) passes retry_hint_from_http into retry_admissibility; spark RestartSec is not that client.",
+
     "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration. Age-based recovery at four sites is a different class: gunbc.recurring_failure_mode.hold_recovered_by_age_not_observed_holder_death.",
   ],
 
@@ -31,6 +33,8 @@ data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringF
     decl_ref(module_path: "std.durable_transfer", decl_name: "LocalCommitStanding"),
     decl_ref(module_path: "gunbc.fleet_observation_capture_chunk", decl_name: "LocalCommitStanding"),
     decl_ref(module_path: "gunbc.spark.model_snapshot_materialize", decl_name: "spark_transfer_retry_law"),
+    decl_ref(module_path: "gunbc.retry_http_hint", decl_name: "retry_hint_from_http"),
+    decl_ref(module_path: "gunbc.harness.hosted_failure", decl_name: "hosted_http_failure_wire"),
     decl_ref(module_path: "gunbc.recurring_failure_mode.hold_recovered_by_age_not_observed_holder_death", decl_name: "hold_recovered_by_age_not_observed_holder_death"),
   ],
 }

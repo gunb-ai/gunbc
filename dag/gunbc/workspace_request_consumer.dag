@@ -6,6 +6,7 @@ import std.measure { second }
 import std.retry_law {
   RetryLaw, RetryHistoryEvent, RealWorkFailure, retry_admissibility, retry_no_hint,
   RetryAdmissible, RetryAdmissibleNow, RetryTerminalExhausted, RetryTerminalCancelled, RetryAlreadySucceeded,
+  RetryHintUnreadable,
 }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
@@ -50,6 +51,7 @@ fn workspace_consumer_retry_from_history(history: List<RetryHistoryEvent>) -> Wo
       WorkspaceConsumerRefused { reason: "workspace store conflicts exhausted the retry law" }
     RetryTerminalCancelled { by: who } => WorkspaceConsumerRefused { reason: who as String }
     RetryAlreadySucceeded => WorkspaceConsumerIdle
+    RetryHintUnreadable { cause: c } => WorkspaceConsumerRefused { reason: c as String }
   }
 }
 

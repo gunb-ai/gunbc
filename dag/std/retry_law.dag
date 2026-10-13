@@ -44,12 +44,18 @@ type RetryLaw {
   real_work_failure_bound: Nat
 }
 
+type RetryHint
+  = RetryHintNone
+  | RetryHintDelay { delay: Second }
+  | RetryHintUnresolved { cause: NonEmptyStr }
+
 type RetryAdmissibility
   = RetryAdmissible { earliest: EpochSecs, real_work_failures: Nat }
   | RetryAdmissibleNow { real_work_failures: Nat }
   | RetryTerminalExhausted { real_work_failures: Nat }
   | RetryTerminalCancelled { by: NonEmptyStr }
   | RetryAlreadySucceeded
+  | RetryHintUnreadable { cause: NonEmptyStr }
 
 fn retry_min_nat(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
@@ -124,42 +130,61 @@ fn retry_terminal_in_history(history: List<RetryHistoryEvent>) -> RetryAdmissibi
 
 // jitter is sampled by the realization and SUPPLIED; the law never draws entropy.
 // hint is an upstream Retry-After (or none): a lower bound on the delay, never a cap.
+// An unreadable hint is RetryHintUnreadable — not RetryHintNone. Treating unknown as
+// absent would let backoff run earlier than the upstream named (DESIGN §5).
 // earliest is last RealWorkFailure in history plus the delay. No last failure is
 // RetryAdmissibleNow — not epoch 0. The caller does not supply a second clock (DESIGN §3, §5).
 fn retry_admissibility(
   law: RetryLaw,
   history: List<RetryHistoryEvent>,
-  hint: Second?,
+  hint: RetryHint,
   jitter: Second,
 ) -> RetryAdmissibility {
   match retry_terminal_in_history(history: history) {
     Present { value: t } => t
-    Absent => {
-      let failures = retry_count_real_work_failures(history: history)
-      if failures >= law.real_work_failure_bound {
-        RetryTerminalExhausted { real_work_failures: failures }
-      } else {
-        match retry_last_real_work_failure_at(history: history) {
-          Absent => RetryAdmissibleNow { real_work_failures: failures }
-          Present { value: last_at } => {
-            let backoff = retry_backoff(law: law, real_work_failures: failures)
-            let hinted = match hint {
-              Absent => backoff
-              Present { value: h } => retry_max_second(a: backoff, b: h)
-            }
-            let delay = second(count: second_count(s: hinted) + second_count(s: jitter))
-            RetryAdmissible { earliest: last_at + (second_count(s: delay) as Int), real_work_failures: failures }
-          }
+    Absent => match hint {
+      RetryHintUnresolved { cause: c } => RetryHintUnreadable { cause: c }
+      RetryHintNone => retry_admissibility_given_delay(
+        law: law, history: history, hinted_delay: none, jitter: jitter)
+      RetryHintDelay { delay: h } => retry_admissibility_given_delay(
+        law: law, history: history, hinted_delay: Present { value: h }, jitter: jitter)
+    }
+  }
+}
+
+fn retry_admissibility_given_delay(
+  law: RetryLaw,
+  history: List<RetryHistoryEvent>,
+  hinted_delay: Second?,
+  jitter: Second,
+) -> RetryAdmissibility {
+  let failures = retry_count_real_work_failures(history: history)
+  if failures >= law.real_work_failure_bound {
+    RetryTerminalExhausted { real_work_failures: failures }
+  } else {
+    match retry_last_real_work_failure_at(history: history) {
+      Absent => RetryAdmissibleNow { real_work_failures: failures }
+      Present { value: last_at } => {
+        let backoff = retry_backoff(law: law, real_work_failures: failures)
+        let hinted = match hinted_delay {
+          Absent => backoff
+          Present { value: h } => retry_max_second(a: backoff, b: h)
         }
+        let delay = second(count: second_count(s: hinted) + second_count(s: jitter))
+        RetryAdmissible { earliest: last_at + (second_count(s: delay) as Int), real_work_failures: failures }
       }
     }
   }
 }
 
-fn retry_hint_from_delta(delay: Second) -> Second? {
-  Present { value: delay }
+fn retry_hint_from_delta(delay: Second) -> RetryHint {
+  RetryHintDelay { delay: delay }
 }
 
-fn retry_no_hint() -> Second? {
-  none
+fn retry_no_hint() -> RetryHint {
+  RetryHintNone
+}
+
+fn retry_hint_unresolved(cause: NonEmptyStr) -> RetryHint {
+  RetryHintUnresolved { cause: cause }
 }
