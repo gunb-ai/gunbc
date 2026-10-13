@@ -243,6 +243,7 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_alias_decl, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadKwThenIdent }),
     name_row(production: ^dag_production_field_init, disposition: NameRoleRead { role: ReferenceRole, category: FieldOccurrence, reader: ReadFieldInitLabel }),
     name_row(production: ^dag_production_field_init_string_key, disposition: NamesAreReferences),
+    name_row(production: ^dag_production_field_init_pun, disposition: NamesAreReferences),
     name_row(production: ^dag_production_arg, disposition: NameRoleRead { role: ReferenceRole, category: LexicalValueOccurrence, reader: ReadNamedArgLabel }),
     name_row(production: ^dag_production_field_pattern, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadFieldPatternName }),
     name_row(production: ^dag_production_test_fn_decl, disposition: NamesAreMarkers),

@@ -24,7 +24,8 @@ import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, Tru
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { current_runner_slot_profile }
 import product.fabric.demand {
-  Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, ObservationReceiptRef,
+  Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, ObservationReceiptRef, admission_terms,
+  debt_payoff_objective,
 }
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, QuotedFlatPerGrant, ObservedSupply,
@@ -96,15 +97,16 @@ fn c_demand(key: DemandKey, reservation: Nat) -> Demand<NonEmptyStr> {
     work: FabricIdentity { principal: "operator", key: "work-1" },
     origin: "gunbc.observation.pr-1",
     submitted_at: "2026-08-27T00:00:00Z",
-    admission: AdmissionTerms {
-      deadline: none,
+    admission: admission_terms(
       buy: BuyTerms {
         budget_account: "fleet-ci",
         currency: Usd,
         reservation_price: money_amount_micro(count: reservation),
         maximum_buy_order: money_amount_micro(count: 1000),
       },
-    },
+      deadline: none,
+      objective: debt_payoff_objective,
+    ),
     satisfaction: SatisfactionRequirement {
       terminal_receipt_may_satisfy: true,
       new_attempt_required: false,
