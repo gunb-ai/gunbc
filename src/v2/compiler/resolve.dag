@@ -236,7 +236,7 @@ import v2.std.node {
   ArrowBodyEdge,
   BinderDefaultEdge,
 }
-import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   field_projection_edge_field_optional,
   field_projection_optional,
@@ -600,7 +600,8 @@ type ResolveContext {
   under_module_root: Bool
   declaring: DeclaringPosition
   // WHICH KIND THE REFERENCE AT THIS WALK OWES, before none/one/many. Type-role walks
-  // (resolve_type_role_target, arrow domain/codomain types) carry TypeOccurrence; value walks
+  // (resolve_type_role_target, arrow domain/codomain types, type-declaration members) carry
+  // TypeOccurrence; value walks
   // carry LexicalValueOccurrence, which the kernel also admits for constructors and callables.
   // Eligibility is v2.std.symbol_index symbol_index_lexical_lookup_for, which applies
   // std.occurrence_binding_resolve occurrence_category_binding_verdict to the collected
@@ -1034,6 +1035,24 @@ fn resolve_ctx_type_role(ctx: ResolveContext, scope: Scope) -> ResolveContext {
     ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope),
     category: TypeOccurrence
   )
+}
+
+// A TYPE DECLARATION'S MEMBER IS A TYPE POSITION. Record field types, variant payloads and
+// alias right-hand sides look up names as TypeOccurrence (the same eligibility as a fn
+// parameter type). Keeping the module-root LexicalValueOccurrence would bind a colliding
+// constructor and silently drop the type (DESIGN section 5). Arrow members stay value-rooted:
+// their domain/codomain slots switch on their own. Scope is not swapped here — a type
+// declaration's <T> lives on `scope` via resolve_type_param_frame, not on type_scope.
+fn resolve_type_decl_member_uses_type_role(target: Node) -> Bool {
+  match type_decl_view(target: target) {
+    PlainTypeDecl { member: member } =>
+      match member.kind {
+        TypeNode { connective: Arrow } => false
+        TypeNode { connective: _ } => true
+        ComputationNode { behavior: _ } => false
+      }
+    _ => true
+  }
 }
 
 // THE ONE TYPE-ROLE ENTRY. A type expression carried in a body -- a cast's target
@@ -4212,8 +4231,13 @@ fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
     } else {
       ctx
     }
+    let walk_ctx = if resolve_type_decl_member_uses_type_role(target: e.target) {
+      resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
+    } else {
+      child_ctx
+    }
     resolve_node_walk(
-      ctx: resolve_ctx_with_declaring(ctx: child_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, e: e)),
+      ctx: resolve_ctx_with_declaring(ctx: walk_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, e: e)),
       n: e.target
     )
   }
@@ -4265,7 +4289,12 @@ fn resolve_children_homogeneous_scope(
     if edge_is_type_params(e: e) {
       child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: ctx, conj: e.target))
     } else {
-      child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: child_ctx, e: e))
+      let edge_ctx = if edge_is_type_body(e: e) || edge_is_type_alias(e: e) {
+        resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
+      } else {
+        child_ctx
+      }
+      child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: edge_ctx, e: e))
     }
   }))
 }

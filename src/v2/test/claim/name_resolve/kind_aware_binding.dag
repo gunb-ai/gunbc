@@ -58,6 +58,12 @@ data kab_rec_user_source: String = "module v2.test.kab.rec_user\n\nimport v2.tes
 
 data kab_rec_ctor_source: String = "module v2.test.kab.rec_ctor\n\nimport v2.test.kab.rec\nimport v2.test.kab.rec { Rec, Unit, U }\nfn f() -> Rec { Rec { value: U } }\n"
 
+data kab_record_field_source: String = "module v2.test.kab.record_field\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Optional }\ntype Unit = U\ntype Box { v: Optional<Unit> }\n"
+
+data kab_alias_rhs_source: String = "module v2.test.kab.alias_rhs\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Optional }\ntype Unit = U\ntype Box = Optional<Unit>\n"
+
+data kab_variant_payload_source: String = "module v2.test.kab.variant_payload\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Optional }\ntype Unit = U\ntype Box = Wrap { v: Optional<Unit> }\n"
+
 fn kab_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -83,7 +89,10 @@ fn kab_context() -> Outcome<NativeTestContext> {
     kab_read(text: kab_qual_ctor_source, id: ^kab_qual_ctor, path: "src/v2/test/fixture/kab/qual_ctor.dag"),
     kab_read(text: kab_rec_source, id: ^kab_rec, path: "src/v2/test/fixture/kab/rec.dag"),
     kab_read(text: kab_rec_user_source, id: ^kab_rec_user, path: "src/v2/test/fixture/kab/rec_user.dag"),
-    kab_read(text: kab_rec_ctor_source, id: ^kab_rec_ctor, path: "src/v2/test/fixture/kab/rec_ctor.dag")
+    kab_read(text: kab_rec_ctor_source, id: ^kab_rec_ctor, path: "src/v2/test/fixture/kab/rec_ctor.dag"),
+    kab_read(text: kab_record_field_source, id: ^kab_record_field, path: "src/v2/test/fixture/kab/record_field.dag"),
+    kab_read(text: kab_alias_rhs_source, id: ^kab_alias_rhs, path: "src/v2/test/fixture/kab/alias_rhs.dag"),
+    kab_read(text: kab_variant_payload_source, id: ^kab_variant_payload, path: "src/v2/test/fixture/kab/variant_payload.dag")
   ])
 }
 
@@ -98,6 +107,9 @@ type KabVerdicts {
   qual_ctor: NativeModuleResolveVerdict
   rec_user: NativeModuleResolveVerdict
   rec_ctor: NativeModuleResolveVerdict
+  record_field: NativeModuleResolveVerdict
+  alias_rhs: NativeModuleResolveVerdict
+  variant_payload: NativeModuleResolveVerdict
 }
 
 fn kab_verdicts() -> Optional<KabVerdicts> {
@@ -116,7 +128,10 @@ fn kab_verdicts() -> Optional<KabVerdicts> {
           qual_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_type", path: ^kab_qual_type).verdict,
           qual_ctor: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_ctor", path: ^kab_qual_ctor).verdict,
           rec_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.rec_user", path: ^kab_rec_user).verdict,
-          rec_ctor: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.rec_ctor", path: ^kab_rec_ctor).verdict
+          rec_ctor: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.rec_ctor", path: ^kab_rec_ctor).verdict,
+          record_field: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.record_field", path: ^kab_record_field).verdict,
+          alias_rhs: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.alias_rhs", path: ^kab_alias_rhs).verdict,
+          variant_payload: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.variant_payload", path: ^kab_variant_payload).verdict
         })
       }
   }
@@ -229,5 +244,28 @@ test fn a_record_construct_tag_resolves() -> Bool {
   match kab_verdicts() {
     Absent => false
     Present { value: vs } => kab_accepted(v: vs.rec_ctor)
+  }
+}
+
+// TYPE-DECLARATION MEMBERS ARE TYPE POSITIONS. The same two Optional imports as kab_user;
+// a colliding constructor must not bind a record field, alias RHS, or variant payload.
+test fn a_record_field_type_optional_resolves_beside_a_same_spelling_variant() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.record_field)
+  }
+}
+
+test fn an_alias_rhs_optional_resolves_beside_a_same_spelling_variant() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.alias_rhs)
+  }
+}
+
+test fn a_variant_payload_optional_resolves_beside_a_same_spelling_variant() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.variant_payload)
   }
 }
