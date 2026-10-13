@@ -1265,7 +1265,7 @@ fn add_valued_contribution(acc: ValuedSum, contribution: ValuedContribution) -> 
       match contribution {
         ValuedContributionNeeds { need: n } => ValuedSumNeeds { needs: concat(ns, [n]) }
         ValuedContributionRefused { defect: d } => ValuedSumRefused { defects: [d] }
-        ValuedContributionReady { micros: _ } => ValuedSumNeeds { needs: ns }
+        ValuedContributionReady { micros: _ } => acc
       }
     ValuedSumRefused { defects: ds } => ValuedSumRefused { defects: ds }
     ValuedSumReady { micros: so_far } =>

@@ -7,13 +7,11 @@ import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, money_amount_m
 import extdeps.currency.currency { CurrencyCode, Usd }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
 import std.algebra { Cons, Empty }
-import std.pareto { LowerIsBetter }
 import extdeps.external_authority { TranscribedUncited }
 import std.decision {
-  ObjectiveTerm, ObjectiveMeasure, TermSetJoin, TermSetsJoinComplete,
-  ObjectiveUnderModeled, ObjectiveDeclaresUnwarrantedTerms,
+  ObjectiveTerm,
   TermValuations, ValuationAxes,
-  HardConstraint, term_set_join,
+  HardConstraint,
   ValuedObjectiveMeasure, NetValue, CostPerAcceptedUnit,
 }
 
@@ -133,10 +131,11 @@ type BuyTerms {
 // a fact the market can actually act on -- and not a tier.
 // THE FOUR OBJECTIVE TERMS, one per unit the brief names. They are buyer-policy
 // identities, not cited physical figures: ground is TranscribedUncited naming
-// that fact. CONSUMERS: fabric_demand_objective_terms (the required join
-// population); TermValuations on every DemandObjective; Pareto axes in
+// that fact. CONSUMERS: fabric_demand_objective_terms / fabric_demand_required_term_ids
+// (witness assessment closure); TermValuations on every DemandObjective; Pareto axes in
 // test.claim.fabric.valued_objective_witness (same identities, so a valued
-// term is a funded axis).
+// term is a funded axis). Completeness of the four is TermValuations construction,
+// not a join that restates the roster.
 data term_money: ObjectiveTerm = ObjectiveTerm {
   identity: decl_ref(module_path: "product.fabric.demand", decl_name: "term_money"),
   ground: TranscribedUncited { read_obligation: "money is a buyer-policy term, not a cited physical figure" as NonEmptyStr },
@@ -161,7 +160,7 @@ fn fabric_demand_objective_terms() -> List<ObjectiveTerm> {
   [term_money, term_delay, term_interruption, term_accepted_work]
 }
 
-// CONSUMER: demand_objective_join (required identities).
+// CONSUMER: test.claim.fabric.valued_objective_witness closed_assessment.
 fn fabric_demand_required_term_ids() -> List<DeclarationRef> {
   map(fabric_demand_objective_terms(), t => t.identity)
 }
@@ -179,28 +178,6 @@ fn fabric_valuation_axes() -> ValuationAxes {
     interruption: term_interruption.identity,
     accepted_work: term_accepted_work.identity,
   }
-}
-
-fn demand_objective_as_measure(objective: DemandObjective) -> ObjectiveMeasure {
-  ObjectiveMeasure {
-    identity: objective.profile,
-    goal: LowerIsBetter,
-    terms: map(fabric_demand_objective_terms(), t => ObjectiveTerm {
-      identity: t.identity,
-      ground: TranscribedUncited { read_obligation: "valuation rate is buyer policy" as NonEmptyStr },
-    }),
-  }
-}
-
-// CONSUMER: demand_delay_valuation (production select_supply delay);
-// test.claim.fabric.valued_objective_witness. The two profile rows
-// are constructed to join complete; a missing term is ObjectiveUnderModeled.
-fn demand_objective_join(objective: DemandObjective) -> TermSetJoin {
-  term_set_join(
-    terms: fabric_demand_required_term_ids(),
-    objective: demand_objective_as_measure(objective: objective),
-    subject: objective.profile,
-  )
 }
 
 fn usd_rate(count: Nat) -> MoneyPerSecond {

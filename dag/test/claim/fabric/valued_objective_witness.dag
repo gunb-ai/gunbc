@@ -31,7 +31,6 @@ import std.decision {
   PhysicalModelEstablished,
   CausalModelEstablished,
   FleetObservedCoupling,
-  TermSetsJoinComplete,
   CostPerAcceptedUnit,
   NetValue,
   RealizationSelectionRefused,
@@ -39,7 +38,7 @@ import std.decision {
 import product.fabric.demand {
   term_money, term_delay, term_interruption, term_accepted_work,
   debt_payoff_objective, latency_sensitive_objective, DemandObjective,
-  demand_objective_join, demand_delay_valuation, admission_hard_constraints,
+  demand_delay_valuation, admission_hard_constraints,
   admission_terms, BuyTerms, fabric_demand_required_term_ids,
   fabric_valuation_axes,
 }
@@ -237,17 +236,6 @@ fn cap_buy() -> BuyTerms {
     currency: Usd,
     reservation_price: money_amount_micro(count: 40),
     maximum_buy_order: money_amount_micro(count: 40),
-  }
-}
-
-test fn profiles_join_complete() -> Bool {
-  match demand_objective_join(objective: debt_payoff_objective) {
-    TermSetsJoinComplete =>
-      match demand_objective_join(objective: latency_sensitive_objective) {
-        TermSetsJoinComplete => true
-        _ => false
-      }
-    _ => false
   }
 }
 
