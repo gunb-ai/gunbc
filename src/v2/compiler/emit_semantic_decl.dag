@@ -38,8 +38,7 @@ import v2.std.diagnostic {
 import v2.std.node { Atom, Disj, Conj, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
-import std.algebra { Empty }
-import v2.std.algebra { contains }
+import std.algebra { Empty, contains }
 
 fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {

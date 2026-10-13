@@ -2,7 +2,7 @@ module gunbc.instruments.seed_build_artifacts_regen
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import gunbc.generated_artifact { artifact_path }
 import gunbc.seed_build_artifact_emit {
   seed_build_artifacts, seed_build_artifact_body,

@@ -5,7 +5,7 @@ import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal
 import v2.compiler.self_host.seed_retention_frontier {
   seed_retention_frontier_top_level_src_basenames
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.text { String }
 
 // THE BRIDGE, AND WHY THERE HAS TO BE ONE. v2.compiler.self_host.seed_retention_frontier is

@@ -11,7 +11,7 @@ import v2.workflow.required_floor {
   first_required_gate_match, required_gate_selectors,
 }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Every fixture below is authored in this source; the module reaches nothing outside the
 // substrate inputs.

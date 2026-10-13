@@ -27,7 +27,7 @@ import extdeps.boards.asrock_rack {
   asrock_altrad8ud_extent_depth,
 }
 import std.measure { Micrometer, micrometer_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WITNESS 1 — THE POSITIVE CONTROL. An inferred hole admits a standoff. Without this, every witness

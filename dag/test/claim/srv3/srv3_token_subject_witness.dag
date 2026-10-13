@@ -11,7 +11,7 @@ import gunbc.host.host_effect_realize {
   Srv3PathMode,
   srv3_token_argv,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

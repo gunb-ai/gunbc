@@ -3,8 +3,8 @@ module v2.test.claim.generated_dag_artifacts_at_rule_position
 import std.types { Bool, List }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
-import v2.std.algebra { length, list_map }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.algebra { length, list_map }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.compiler.source_authority {
   LayoutFileHeader,
   LayoutHolds,

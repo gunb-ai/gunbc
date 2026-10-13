@@ -21,7 +21,7 @@ import std.import_statement {
   strip_import_statements,
   strip_one_import_statement,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.namespace_cut.parsed_import_statement_production { parsed_import_statements_live }
 
 // EXECUTED EVIDENCE FOR THE STILL-LIVE TYPED PARSE AND REWRITE CAPABILITY. The v1 canary receipt,

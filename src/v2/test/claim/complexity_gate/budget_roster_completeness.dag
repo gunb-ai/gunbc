@@ -9,8 +9,7 @@ import v2.lens.complexity {
   complexity_lens,
   incomplete_complexity
 }
-import v2.std.algebra { fold_list, is_empty }
-import std.algebra { list_append }
+import std.algebra { list_append, fold_list, is_empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body
@@ -23,7 +22,7 @@ import v2.test.claim.complexity_gate.subject_complexity_budget_roster {
   complexity_declared_budget_for_row,
   complexity_subject_budget_rows
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

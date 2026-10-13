@@ -19,7 +19,7 @@ import product.electrical.connectivity {
   terminal_ref,
   terminal_ref_equal,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

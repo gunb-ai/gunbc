@@ -1,6 +1,6 @@
 module test.claim.approval_broker_cutover_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, NonEmptyStr, Int, Port }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.running_release_identity { running_release_revision_key }

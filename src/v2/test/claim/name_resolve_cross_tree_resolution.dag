@@ -16,7 +16,6 @@ import v2.extdeps.languages.dag {
   dag_surface_edge,
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_node }
 import v2.std.cross_tree.import_model { DagTree, SourceRootSet, V2Tree }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,
@@ -31,7 +30,7 @@ import v2.std.diagnostic {
   locus_eq,
   invariant_port_locus
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.namespace_graft { module_header_containment_graft }
 import v2.std.node {
   Atom,
@@ -41,6 +40,7 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
+  fold_list_node
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.resolution_policy { ImportScoped }

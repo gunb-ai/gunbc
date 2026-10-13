@@ -2,7 +2,7 @@ module v2.test.claim.reference_closure
 
 import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
@@ -14,13 +14,12 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.reference_closure { ReferenceOwnerless, ReferenceOwnership, ReferencesOwned, reference_closure_ownership }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest, text_set_of }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
-import v2.std.algebra { fold_list }
 import std.optional { Absent, Optional, Present }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import v2.std.resolution_policy { default_name_resolution_policy }

@@ -20,7 +20,7 @@ import gunbc.runner.memory_per_vcpu_convention {
   non_conforming_count,
   convention_is_universal,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -35,11 +35,10 @@ import v2.test.claim.manual.sg2_type_expression_projection {
   sg2_project_instantiation_emitted,
   sg2_type_expr_target
 }
-import v2.std.algebra { bag_eq, length }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, bag_eq, length }
 import v2.std.diagnostic { Accepted, None, Rejected, diagnostics_fatal_reason }
 import v2.std.node { Symbol }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

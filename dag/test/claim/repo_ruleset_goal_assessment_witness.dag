@@ -6,7 +6,7 @@ import std.goal_assessment {
   GoalDiverged,
   GoalIndeterminate,
 }
-import v2.std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list }
 import extdeps.github.rulesets {
   BypassRosterObserved,
   BypassRosterUnavailable,

@@ -29,7 +29,7 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason,
   diagnostics_list_has_reason
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Arrow,
   Atom,

@@ -11,7 +11,7 @@ import v2.workflow.floor_enrolment_margin {
   EnrolmentExpensivenessDeadBand, EnrolmentCostAbsent,
   enrolment_margin_standing_name, enrolment_margin_blocking_cause,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

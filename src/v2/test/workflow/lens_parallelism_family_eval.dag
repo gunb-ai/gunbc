@@ -19,7 +19,7 @@ import v2.test.lens_parallelism.data_dependency {
   parallelism_claim_tree,
   parallelism_root
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

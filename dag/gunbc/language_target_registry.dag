@@ -92,7 +92,7 @@ import std.language_target_identity {
 // target_ast_vocab_module_prefixes directly, so a module added to the lens would appear here
 // automatically as an unidentified surface and the second-hardcoded-roster fork would close by
 // construction. THAT IMPORT DOES NOT COMPILE TODAY, and the blocker is not in this module: the lens
-// fails to resolve fold_list and list_snoc_item from v2.std.algebra even when compiled from its OWN
+// fails to resolve fold_list and list_snoc_item from std.algebra even when compiled from its OWN
 // source root as the entry — measured 2026-08-04. That is the Class B pool-membership defect
 // DESIGN's import-strip open thread describes: a module's bare cross-module references resolve only
 // when some unrelated import elsewhere in the assembled closure has already dragged the target into

@@ -3,7 +3,7 @@ module std.declaring_identity_spelling
 import std.types { Bool }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, retires_dissolution }
-import v2.std.algebra { is_prefix_of, list_reverse }
+import std.algebra { is_prefix_of, list_reverse }
 import v2.std.qualified_name { QualifiedName }
 
 // XL-3: whether one mention is spelled as the identity that declared its target.

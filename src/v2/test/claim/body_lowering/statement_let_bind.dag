@@ -14,7 +14,7 @@ import v2.extdeps.languages.dag { dag_int_literal_magnitude_node_optional, dag_n
 import v2.std.node { Bind, ComputationNode, Authored, Node, Positional, node_subtree_nodes, StructuralLabel }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { ByteRange, DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual, WholeFile }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

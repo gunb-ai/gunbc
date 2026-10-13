@@ -2,16 +2,9 @@ module v2.compiler.resolution_provenance
 
 import std.types { List }
 
-import std.algebra { Empty, FreeMonoid, list_snoc_item }
+import std.algebra { Empty, FreeMonoid, list_snoc_item, contains, fold_list, is_empty, length, list_map }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr }
-import v2.std.algebra {
-  contains,
-  fold_list,
-  is_empty,
-  length,
-  list_map,
-}
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Symbol, EdgeLabel, label_sort_key }
 import std.optional {

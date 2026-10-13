@@ -13,16 +13,15 @@ import v2.compiler.compile {
 }
 import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
 

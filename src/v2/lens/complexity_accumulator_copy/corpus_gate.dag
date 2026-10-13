@@ -1,7 +1,7 @@
 module v2.lens.complexity_accumulator_copy.corpus_gate
 
 import std.types { List }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_reverse }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SubstrateMandatoryTag }
 import v2.lens.common.source_analysis_standing { SourceAnalysisNotEstablishedCause }
@@ -18,7 +18,6 @@ import v2.lens.complexity_accumulator_copy.roster_gate {
   ingest_findings
 }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
-import v2.std.algebra { list_reverse }
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
 import std.optional { Absent, Present }

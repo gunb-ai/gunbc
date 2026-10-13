@@ -39,7 +39,7 @@ import gunbc.host.provider_guest_adoption {
   KvmDeviceAbsentOnGuest,
   adopt_provider_guest,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

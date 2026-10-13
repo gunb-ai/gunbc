@@ -16,7 +16,7 @@ import gunbc.commit_workflow {
 import gunbc.ci.ci_gate { GeneratedArtifactDriftGate }
 import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

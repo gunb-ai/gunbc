@@ -24,7 +24,7 @@ import v2.std.decl_facts_skeleton {
   skeleton_authored_string_absent_from_marshal_atom_channel,
 }
 import v2.std.decl_index { DeclFact, decl_facts_at }
-import v2.std.algebra { HeadAbsent, HeadFound, list_head }
+import std.algebra { HeadAbsent, HeadFound, list_head }
 import std.types { List, String }
 import test.fixture.decl_facts_authored_string_channel.specimens
 import v2.std.data_initializer_identity {

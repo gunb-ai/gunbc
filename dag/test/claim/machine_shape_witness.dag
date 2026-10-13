@@ -37,7 +37,7 @@ import std.machine_shape {
   machine_shape_is_single_domain,
   machine_shape_domain_lane_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

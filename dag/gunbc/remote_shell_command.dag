@@ -1,7 +1,7 @@
 module gunbc.remote_shell_command
 
 import std.types { String, List, NonEmptyStr, Bool, Int }
-import v2.std.algebra { list_map }
+import std.algebra { list_map }
 import extdeps.posix.shell_command_language { posix_single_quote }
 
 // CliSurface -> shell simple-command tree -> shell-word serialization -> one RFC 4254 command

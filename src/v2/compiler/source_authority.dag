@@ -17,25 +17,14 @@ import v2.compiler.parse {
 }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import std.coercion { unicode_scalar_unfold }
+import std.unicode.scalar { ascii_lowercase }
 import v2.compiler.tokenize { char_in_class, tokenize }
 import v2.extdeps.languages.dag {
   dag_language_model,
   qualified_name_from_module_node
 }
 import v2.std.compilers.lexing { IdentContinueChar, IdentStartChar, TokenStream }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
-import v2.std.algebra {
-  HeadAbsent,
-  HeadFound,
-  fold_list,
-  is_empty,
-  length,
-  list_find_first,
-  list_head,
-  list_map,
-  list_reverse,
-  skip
-}
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim, HeadAbsent, HeadFound, fold_list, is_empty, length, list_find_first, list_head, list_map, list_reverse, skip }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
@@ -1599,11 +1588,10 @@ fn ascii_case_fold_from(s: String, at: Int, acc: List<String>) -> List<String> {
     acc
   } else {
     let ch = substring(s: s, start: at, end: at + 1)
-    let cp = code_point(ch)
     ascii_case_fold_from(
       s: s,
       at: at + 1,
-      acc: list_snoc_item(xs: acc, item: if cp >= 65 && cp <= 90 { from_code_point(cp + 32) } else { ch })
+      acc: list_snoc_item(xs: acc, item: ascii_lowercase(s: ch))
     )
   }
 }
