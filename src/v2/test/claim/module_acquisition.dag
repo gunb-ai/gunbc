@@ -20,6 +20,7 @@ import v2.compiler.module_acquisition {
   AcquisitionMarkersRefused,
   AcquisitionMemberRead,
   AcquisitionMemberRefused,
+  AcquisitionMemberIdentityDisagrees,
   AcquisitionMemberSitesUnreadable,
   AcquisitionLookupRefused,
   AcquisitionMemberReadOk,
@@ -66,6 +67,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority {
   ModuleFileRef,
+  ReferenceModuleHeaderRefused,
   ReferenceModuleLineDisagrees,
   ReferenceModuleLineMissing,
   ReferenceNextReadDenied,
@@ -1059,6 +1061,7 @@ test fn a_forbidden_dag_to_v2_acquisition_refuses_without_reading() -> Bool {
                   ReferenceRefused { module: _, file: _, cause: _ } => false
                   ReferenceModuleLineMissing { module: _, file: _ } => false
                   ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+                  ReferenceModuleHeaderRefused { module: _, file: _, cause: _ } => false
                 }
             AcquisitionGrammarUnprepared { diagnostics: _ } => false
             AcquisitionEntryUnderivable { entry: _, cause: _ } => false
@@ -1066,6 +1069,7 @@ test fn a_forbidden_dag_to_v2_acquisition_refuses_without_reading() -> Bool {
             AcquisitionUnknownModule { request: _ } => false
             AcquisitionMemberRefused { module: _, file: _, diagnostics: _ } => false
             AcquisitionMemberSitesUnreadable { module: _, file: _ } => false
+            AcquisitionMemberIdentityDisagrees { module: _, file: _, declared: _ } => false
           }
         AcquisitionAdvanced { state: _ } => false
       }
