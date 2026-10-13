@@ -251,26 +251,26 @@ pub fn collisions_from_sources(
 
 pub fn subject_report(
     rows: Rc<Vec<Rc<LeafCollisionRow>>>,
-    build: SubjectBuild,
+    build: Rc<SubjectBuild>,
 ) -> Rc<SubjectCollisionReport> {
     Rc::new(SubjectCollisionReport {
         rows: rows.clone(),
-        build: build.clone(),
+        build: (*build.clone()).clone(),
     })
 }
 
-pub fn build_accepted() -> SubjectBuild {
-    SubjectBuild::BuildAccepted
+pub fn build_accepted() -> Rc<SubjectBuild> {
+    Rc::new(SubjectBuild::BuildAccepted)
 }
 
-pub fn build_refused(diagnostic: String) -> SubjectBuild {
-    SubjectBuild::BuildRefused {
+pub fn build_refused(diagnostic: String) -> Rc<SubjectBuild> {
+    Rc::new(SubjectBuild::BuildRefused {
         diagnostic: diagnostic.clone(),
-    }
+    })
 }
 
-pub fn build_not_attempted() -> SubjectBuild {
-    SubjectBuild::BuildNotAttempted
+pub fn build_not_attempted() -> Rc<SubjectBuild> {
+    Rc::new(SubjectBuild::BuildNotAttempted)
 }
 
 pub fn report_has_different_sharing(report: Rc<SubjectCollisionReport>) -> bool {

@@ -4449,7 +4449,7 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     fn subject_build_of_cargo(
         entry: &str,
         graph: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
-    ) -> Result<census::SubjectBuild, String> {
+    ) -> Result<Rc<census::SubjectBuild>, String> {
         let emit = emit_rust(graph);
         match super::emitted_closure_compile_host::cargo_verdict_of_emit(entry, &emit) {
             Err(cause) => Err(cause),
