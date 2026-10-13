@@ -73,11 +73,6 @@ fn local_tidy_path_matches_glob(path: String, glob: String) -> Bool {
   }
 }
 
-// Total dispatch over the closed coproduct LocalTidyCheck: one explicit arm per variant, no
-// wildcard/else fallback. The former `_ =>` glob fallback was the one-special-variant residue
-// rostered at `dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger` in non_fold_residue.dag;
-// totalizing the arm dissolves it and the row deletes. A variant added to LocalTidyCheck now fails
-// closed (non-exhaustive match) rather than being silently routed into the glob fallback.
 fn local_tidy_path_matches_trigger(path: String, check: LocalTidyCheck) -> Bool {
   match check {
     LocalTidyCargoFmtCheck => path_is_rust_monolith(path: path)
