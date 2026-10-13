@@ -88,9 +88,9 @@ fn native_route_termination_step(
 //
 // SO THE EXTENT IS DECLARED BY THE CALLER AND CHECKED HERE. `universe` is how many identities the
 // selection contained and `file_refusals` is how many sources could not be read at all; a caller
-// cannot compute a termination without stating both, which is DESIGN section 5's construction over
-// validation applied to the fold's own contract -- the incomplete call is not merely detected, it
-// is unwritable.
+// cannot compute a termination without stating both. That is arity, not construction: a wrong
+// count is still writable, and the fold only refuses when the stated numbers disagree with the
+// rows. The incomplete *call* (rows alone) is unwritable; a lying complete call is not.
 //
 // A FILE REFUSAL COUNTS EVEN WHEN THE ROW COUNT MATCHES. A source that refused may hold identities
 // discovery never saw, so the universe itself can be short without any row going missing. Treating
