@@ -4299,6 +4299,103 @@ pub fn run_type_declaration_use_census_runs(
     })
 }
 
+/// ONE NATIVE CHILD, REAPED BY `wait4` SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
+/// this process folds in every child it ever reaped -- cargo and rustc included -- so it cannot
+/// answer for the native binary alone; `wait4` returns the usage of the one pid it reaps. The host
+/// decides nothing: `gunbc.instruments.native_process_memory_reading` reads these fields.
+pub struct NativeChildMeasured {
+    pub stdout: String,
+    /// `ru_maxrss` verbatim (Linux: kibibytes, `extdeps.linux.rusage`).
+    pub maxrss_kib: i64,
+    pub elapsed_ns: i64,
+    pub exit_code: i32,
+    /// 0 when the child exited; else the terminating signal.
+    pub signal: i32,
+}
+
+/// The runs `gunbc test //gunbc/instruments:native-process-memory-census` reads, over ONE prepared
+/// binary: the one-module control root first, then the source roots.
+pub struct NativeProcessMemoryRuns {
+    pub binary_identity: String,
+    pub envelope: String,
+    pub control: NativeChildMeasured,
+    pub workload: NativeChildMeasured,
+}
+
+fn run_native_child_measured(
+    binary: &std::path::Path,
+    args: &[String],
+) -> Result<NativeChildMeasured, String> {
+    use std::io::Read;
+    let started = std::time::Instant::now();
+    let mut child = Command::new(binary)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            format!(
+                "NATIVE-PROCESS-MEMORY REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+                binary.display()
+            )
+        })?;
+    let pid = child.id() as libc::pid_t;
+    let mut stdout = Vec::new();
+    if let Some(mut out) = child.stdout.take() {
+        out.read_to_end(&mut stdout).map_err(|e| {
+            format!("NATIVE-PROCESS-MEMORY REFUSAL cause=NativeRunStdoutUnreadable — {e}")
+        })?;
+    }
+    let mut status: libc::c_int = 0;
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    let waited = unsafe { libc::wait4(pid, &mut status, 0, &mut usage) };
+    let elapsed = started.elapsed();
+    if waited != pid {
+        return Err(format!(
+            "NATIVE-PROCESS-MEMORY REFUSAL cause=Wait4Failed — {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    let (exit_code, signal) = if libc::WIFSIGNALED(status) {
+        (-1, libc::WTERMSIG(status))
+    } else {
+        (libc::WEXITSTATUS(status), 0)
+    };
+    let stdout = String::from_utf8(stdout).map_err(|cause| {
+        format!("NATIVE-PROCESS-MEMORY REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
+    })?;
+    Ok(NativeChildMeasured {
+        stdout,
+        maxrss_kib: usage.ru_maxrss as i64,
+        elapsed_ns: i64::try_from(elapsed.as_nanos()).unwrap_or(i64::MAX),
+        exit_code,
+        signal,
+    })
+}
+
+pub fn run_native_process_memory_runs(
+    source_roots: &[String],
+    verb: &str,
+    control_root: &str,
+) -> Result<NativeProcessMemoryRuns, String> {
+    let envelope =
+        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution());
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let control = run_native_child_measured(
+        &preparation.binary_path,
+        &[verb.to_string(), control_root.to_string()],
+    )?;
+    let mut args = vec![verb.to_string()];
+    args.extend(source_roots.iter().cloned());
+    let workload = run_native_child_measured(&preparation.binary_path, &args)?;
+    Ok(NativeProcessMemoryRuns {
+        binary_identity: preparation.binary_identity.clone(),
+        envelope,
+        control,
+        workload,
+    })
+}
+
 /// What the adjudicating run decided, carried out of the body as a value.
 struct NativeRunAdmission {
     admitted: bool,
