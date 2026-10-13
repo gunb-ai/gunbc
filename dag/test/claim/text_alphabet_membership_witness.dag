@@ -89,6 +89,16 @@ test fn posix_name_refuses_a_hyphen() -> Bool {
   !posix_name_ok(name: "a-b")
 }
 
+// The continue alphabet at a LATER position, on kernel text walked by host position: a trailing
+// refused character and an interior digit decide differently, so the walk reaches the last index.
+test fn posix_name_refuses_a_trailing_hyphen() -> Bool {
+  !posix_name_ok(name: "ab-")
+}
+
+test fn posix_name_admits_a_digit_after_the_first_position() -> Bool {
+  posix_name_ok(name: "a1")
+}
+
 // THE REMAINING SWITCHED CONSUMERS OF THE SAME OPERATION, each run at its own production entry.
 
 test fn bash_path_operand_admits_an_alphabet_word() -> Bool {

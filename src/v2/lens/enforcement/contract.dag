@@ -5,7 +5,7 @@ import v2.std.text { String }
 import std.algebra { list_snoc_item, length, fold_list, contains, for_all }
 import v2.std.integer { Int }
 import v2.lens.registry {
-  LensRegistryEntryV0, LensIdV0, lens_id_v0_eq, Cost,
+  LensRegistryEntryV0, LensIdV0, Cost,
   ComplexityDerivedKernel, ComplexityOptimality,
   lens_registry_v0_cost,
   lens_registry_v0_complexity_derived_kernel,
