@@ -2322,7 +2322,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Decide every name one canonical way",
           boundary: "The namespace cut as gunbc.namespace_cut.namespace_cut_stage stages it: F-0, XL-0 to XL-4 (evidence and the reference-derived graph), ACT-0 and XL-5 (waves), XL-6 (atomic cutover), XL-7 (grammar deletion). Rows are the stages that still have open work. The stage chain itself stays in the module.",
-          approach: "XL-2 and XL-3 wait on frontend prerequisites (ServiceModuleLowering, UsesClauseCarrier, ResolverBoundDeclaringIdentity; LoweringOccurrenceProjection is delivered, gunbc#13828). Service-member carriers landed on gunbc#13833; that arm stays Outstanding until a follow-up names its merge SHA. The declaration-identity switch-over is the XL-6 construction, built in shadow now. Per the 2026-09-12 interlock edge, XL-6 and XL-7 run after seed retirement.",
+          approach: "XL-2 and XL-3 wait on frontend prerequisites (UsesClauseCarrier, ResolverBoundDeclaringIdentity; LoweringOccurrenceProjection is delivered, gunbc#13828; ServiceModuleLowering is delivered, gunbc#13833, 7c9319cbaf). The declaration-identity switch-over is the XL-6 construction, built in shadow now. Per the 2026-09-12 interlock edge, XL-6 and XL-7 run after seed retirement.",
           red_control: "ACT-0 release stays blocked while gunbc.rung_drop namespace_wave_admission_wall_removed stands or any act0_release_milestones entry is OUTSTANDING. A name answered two ways after XL-6 is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
           handback: "XL-7 delivered: import is a typed, located parse error, and the legacy deciding mechanisms are deleted."
@@ -2978,15 +2978,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "xl2-body-lowering",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/compiler_frontend_program_status.dag"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
           headline: "Every lowered node keeps its occurrence, and service modules lower",
-          boundary: "gunbc.compiler_frontend_program_status: ServiceModuleLowering stays PrerequisiteOutstanding until gunbc#13833's merge SHA can be named (carriers landed, ServiceSetAside deleted, claim-runs at 4ff78bc650). LoweringOccurrenceProjection is Delivered (gunbc#13828, cdbaa92531d). Also Outstanding: UsesClauseCarrier.",
+          boundary: "gunbc.compiler_frontend_program_status: ServiceModuleLowering is PrerequisiteDelivered (gunbc#13833, merge 7c9319cbaf, measured_at 4ff78bc650). LoweringOccurrenceProjection is Delivered (gunbc#13828, cdbaa92531d). Outstanding: UsesClauseCarrier.",
           displaced_cost: "A fn with a uses clause still refuses its module at lowering, so those references stay outside the XL-2 residual.",
-          first_slice: "After #13833 lands, flip ServiceModuleLowering to PrerequisiteDelivered with the merge SHA. UsesClauseCarrier stays outstanding.",
+          first_slice: "UsesClauseCarrier: a fn declaring a uses clause reaches the census instead of refusing its module at lowering.",
           red_control: "A uses-clause fn refused at lowering keeps UsesClauseCarrier OUTSTANDING.",
           out_of_scope: "The rehearsal itself. Service-member carriers are delivered; do not redesign them.",
           handback: "The remaining outstanding arms PrerequisiteDelivered, with evidence rows."
-        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design."), on: "2026-10-13", note: "Service-member carriers landed on gunbc#13833; the standing stays Outstanding until the merge SHA exists.")),
+        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design."), on: "2026-10-13", note: "Service-member carriers landed on gunbc#13833; the standing stays Outstanding until the merge SHA exists."), on: "2026-10-13", note: "ServiceModuleLowering flipped to PrerequisiteDelivered citing merge 7c9319cbaf.")),
       parent: in_project(project: "v2-frontend", contribution: "The remaining XL-2 lowering gap (uses-clause carrier) keeps those modules' references out of the census namespace XL-2 needs."),
     ),
     roadmap_node(
@@ -6111,7 +6111,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
       line: ticket(t: fields(
         headline: "Redundant presence and nonempty carriers are deleted by complete cohort",
-        boundary: "Consolidate std.constructors Cardinality, v2.std.node_query DeclaredField, v2.std.algebra head and tail results, v2.std.diagnostic and gunbc.design_argument nonempty carriers (including ConformanceHomes and ConformanceHomeGroups where their contracts are only nonempty sequences) into Optional, FreeMonoid and FreeSemigroup. Keep independent cause, progress, policy and foreign-state information; preserve ordering and specialized equality deliberately.",
+        boundary: "Consolidate std.constructors Cardinality, v2.std.node_query DeclaredField, std.algebra head and tail results, v2.std.diagnostic and gunbc.design_argument nonempty carriers (including ConformanceHomes and ConformanceHomeGroups where their contracts are only nonempty sequences) into Optional, FreeMonoid and FreeSemigroup. Keep independent cause, progress, policy and foreign-state information; preserve ordering and specialized equality deliberately.",
         displaced_cost: "Each rival carrier is a meaning fork.",
         first_slice: "The first cohort, including the registry's own hand-written nonempty records.",
         red_control: "A new domain-specific NonEmpty record replacing another keeps this red.",
@@ -6160,15 +6160,15 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       id: "cardinality-vertical-slice",
       owner: "compiler-guarantee",
       carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
         headline: "The operator's seam, end to end: a 0..n producer cannot feed a 1..n consumer",
-        boundary: "One path, not a census: bare List = 0..inf, literal [] = 0..0, nonempty literal = n..n; map preserves, filter floors to 0, concat adds; the interval is an interface fact in InterfaceSummary's contract slot, actual-within-required enforced at function boundaries with a located seam refusal. The seam direction (2026-07-04) and candidate lattice exist; the in-tree fold-propagation rows are manual value-level specimens — binding-level propagation starts here. Construction-wall first candidate: type Refined<B> sole_constructor, which is why the sole-constructor completeness audit is a declared prerequisite edge.",
+        boundary: "One path, not a census: bare List / FreeMonoid = 0..inf, literal [] = 0..0, FreeSemigroup is the nonempty value carrier (1..inf); a nonempty literal is n..n of that carrier; map preserves, filter floors to 0, concat adds; the interval is an interface fact in InterfaceSummary's contract slot, actual-within-required enforced at function boundaries with a located seam refusal. The seam direction (2026-07-04) and candidate lattice exist; the in-tree fold-propagation rows are manual value-level specimens — binding-level propagation starts here. Construction-wall first candidate: type Refined<B> sole_constructor, which is why the sole-constructor completeness audit is a declared prerequisite edge.",
         displaced_cost: "The canonical motivating specimen — simple, structural, explainable without compiler expertise; the first differentiating class an outside reader can verify.",
-        first_slice: "The seam check on explicit intervals (no inference): producer-admits-zero into consumer-requires-nonempty refuses; proven-nonempty control compiles.",
-        red_control: "The census's cardinality probe pair, plus filter-then-require-nonempty refusing unless a stronger proof intervenes.",
+        first_slice: "The seam check on explicit intervals (no inference): producer-admits-zero into a FreeSemigroup consumer refuses; a proven FreeSemigroup control compiles.",
+        red_control: "The census's cardinality probe pair, plus filter-then-require-nonempty (FreeSemigroup consumer) refusing unless a stronger proof intervenes.",
         out_of_scope: "The unwritable-seam construction wall beyond the first candidate; general refinement predicates (undecidable, permanently); width/overflow axes beyond the slice.",
-        handback: "The lattice fragment landed, the seam judgment site, both probe receipts."
-      ), on: "2026-09-24", note: "Moved from the brief at the 100-word re-cut (context, not an obligation): (v2.std.refinement refined_vacuous_stub_pack, the forged Rejected-arm mint this candidate used to reference, is deleted outright — not merely fixed — as of the delete-first replacement in gunbc.std.refinement; the wall question below is unaffected and still open)"), on: "2026-09-30", note: "Not yet centered: vertical slice across infer; lane judgment.")),
+        handback: "The lattice fragment landed, the seam judgment site naming FreeSemigroup as the nonempty carrier, both probe receipts."
+      ), on: "2026-09-24", note: "Moved from the brief at the 100-word re-cut (context, not an obligation): (v2.std.refinement refined_vacuous_stub_pack, the forged Rejected-arm mint this candidate used to reference, is deleted outright — not merely fixed — as of the delete-first replacement in gunbc.std.refinement; the wall question below is unaffected and still open)"), on: "2026-09-30", note: "Not yet centered: vertical slice across infer; lane judgment."), on: "2026-10-13", note: "Named FreeSemigroup as the nonempty value carrier (cardinality-absence ruling 5). Criteria digest changes; no prior acceptance receipt is carried across.")),
       dispatch: dispatchable(),
       parent: in_project(project: "cardinality-absence", contribution: "A 0..n producer cannot feed a 1..n consumer: the program's missing bound model, delivered with its consumer."),
     ),

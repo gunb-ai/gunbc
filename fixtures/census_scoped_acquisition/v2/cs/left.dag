@@ -1,0 +1,5 @@
+module v2.cs.left
+
+import v2.cs.broken { broken_value }
+
+data left_value: Int = broken_value

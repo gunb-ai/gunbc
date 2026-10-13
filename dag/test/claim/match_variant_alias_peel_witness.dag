@@ -1,0 +1,108 @@
+module test.claim.match_variant_alias_peel_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_count_at_key,
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// Durable witness for the retired failure mode gunbc.recurring_failure_mode
+// match_variant_lookup_does_not_peel_type_alias (gunbc#10699).
+//
+// The receipt's NEXT-RUNG TRIGGER: "match-variant membership is decided on the
+// alias-erased coproduct, sufficient that a Cons arm on a List<T> binder compiles
+// when List is declared equal to FreeMonoid." When that probe was measured it was
+// refused ("variant Cons not found in type List"); on current main the same shape
+// compiles, and the negative probe is refused naming the COPRODUCT, not the alias
+// ("variant Present not found in type FreeMonoid"). This witness enforces both
+// directions so the peel cannot regress:
+//
+//  - a Cons/Empty arm on a binder declared through the container-typed generic alias
+//    List (the SPECIMEN) produces no "variant Cons not found" refusal,
+//  - a Cons/Empty arm on a binder declared through a local, non-List generic alias
+//    Bag<T> = FreeMonoid<T> produces no such refusal (the peel is not a List
+//    special-case),
+//  - a genuinely wrong variant (Present, a variant of Optional, not of FreeMonoid) on
+//    either binder is still refused, exactly once, as a blocking VariantNotFound whose
+//    subject is that variant — the lookup resolves the coproduct's real variants, it
+//    does not accept any name.
+//
+// PRECISION (gunbc.compile_diagnostic_census authority): a CensusObserved carries the
+// WHOLE compile's rows, the imported std closure included, so asserting a whole-compile
+// blocking count of zero on an importing fixture is unauthorable. Each assertion is
+// therefore scoped to a class AND subject_name — the form that module names as exact —
+// so it reads only the diagnostic this fixture's match would produce, and a regressed
+// peel (Cons not found in List) reappears as a blocking VariantNotFound whose subject is
+// Cons and fails the positive wall.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+// The census instrument resolves the fixture against the live tree (std.types,
+// std.algebra, std.optional), so this witness reads the live checkout.
+
+// THE SPECIMEN (gunbc#10699): a Cons arm on a binder declared List<AlgebraTypeTemplate>,
+// where List<element> = FreeMonoid<element>. Container-typed generic alias; the variant
+// lookup must peel it to the declaring coproduct FreeMonoid and accept Cons/Empty.
+data red_specimen_source: String = "module std_alias_variant_red\nimport std.types { Int, List }\nimport std.algebra { Cons, Empty, AlgebraTypeTemplate }\nfn is_collection_filter_param_types(param_types: List<AlgebraTypeTemplate>) -> Int {\n  match param_types {\n    Cons { head: _, tail: _ } => 1\n    Empty => 0\n  }\n}\n"
+
+// DIRECT COPRODUCT SPELLING: the same match on a binder spelled with the coproduct
+// itself. Pins that the variants are valid on FreeMonoid, so the SPECIMEN isolates the
+// alias peel specifically rather than a coproduct defect.
+data freespelled_source: String = "module std_alias_variant_freespelled\nimport std.types { Int }\nimport std.algebra { Cons, Empty, FreeMonoid, AlgebraTypeTemplate }\nfn is_collection_filter_param_types_freespelled(param_types: FreeMonoid<AlgebraTypeTemplate>) -> Int {\n  match param_types {\n    Cons { head: _, tail: _ } => 1\n    Empty => 0\n  }\n}\n"
+
+// GENERICALITY: a LOCAL generic alias that is NOT List. Bag<T> = FreeMonoid<T> is a
+// user (non-container) generic alias use, so it peels through the generic-alias branch
+// of the variant lookup; List peels through the container branch. Both must reach the
+// declaring coproduct and accept Cons/Empty.
+data bag_positive_source: String = "module std_alias_variant_bag\nimport std.types { Int }\nimport std.algebra { Cons, Empty, FreeMonoid }\ntype Bag<T> = FreeMonoid<T>\nfn is_bag_nonempty(values: Bag<Int>) -> Bool {\n  match values {\n    Cons { head: _, tail: _ } => true\n    Empty => false\n  }\n}\n"
+
+// NEGATIVE CONTROL (SPECIMEN shape, wrong variant): Present is a variant of Optional,
+// NOT of FreeMonoid. On a List<Int> binder (= FreeMonoid<Int>) it must be refused, and
+// the subject of the refusal is the variant I spelled — proving the lookup checks the
+// coproduct's real variants rather than accepting any name.
+data neg_list_source: String = "module std_alias_variant_neg_list\nimport std.types { Int, List }\nimport std.algebra { Cons, Empty }\nimport std.optional { Present }\nfn probe_wrong_variant_on_list(param_types: List<Int>) -> Int {\n  match param_types {\n    Present { value: _ } => 0\n    Cons { head: _, tail: _ } => 1\n    Empty => 2\n  }\n}\n"
+
+// NEGATIVE CONTROL (Bag shape, wrong variant): same refusal through the local alias.
+data neg_bag_source: String = "module std_alias_variant_neg_bag\nimport std.types { Int }\nimport std.algebra { Cons, Empty, FreeMonoid }\nimport std.optional { Present }\ntype Bag<T> = FreeMonoid<T>\nfn probe_wrong_variant_on_bag(values: Bag<Int>) -> Int {\n  match values {\n    Present { value: _ } => 0\n    Cons { head: _, tail: _ } => 1\n    Empty => 2\n  }\n}\n"
+
+// Class+subject scoped blocking count — the exact form the census authority names, so it
+// reads only this fixture's diagnostic, not the imported std closure's. Returns -1 when
+// the census is not runnable, so every wall fails closed instead of reading a zero out
+// of a could-not-measure.
+fn variant_not_found_blocking_count(source: String, subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "VariantNotFound", subject_name: subject, blocking: true)
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// THE SPECIMEN: a Cons arm on a List binder produces no "variant Cons not found" refusal.
+// If the container-alias peel regressed, a blocking VariantNotFound{Cons} reappears and
+// this fails.
+test fn w_red_specimen_list_binder_cons_arm_peels() -> Bool {
+  variant_not_found_blocking_count(source: red_specimen_source, subject: "Cons") == 0
+}
+
+// The coproduct spelling produces no such refusal either: the variants are valid on
+// FreeMonoid itself, so the SPECIMEN isolates the alias peel.
+test fn w_freespelled_coproduct_cons_arm_peels() -> Bool {
+  variant_not_found_blocking_count(source: freespelled_source, subject: "Cons") == 0
+}
+
+// GENERICALITY: a Cons arm on a Bag<Int> binder (local alias, not List) produces no such
+// refusal — the peel is not a List special-case.
+test fn w_bag_binder_cons_arm_peels() -> Bool {
+  variant_not_found_blocking_count(source: bag_positive_source, subject: "Cons") == 0
+}
+
+// The wrong variant is STILL REFUSED on the List binder: exactly one blocking
+// VariantNotFound, and its subject is the variant I spelled (Present).
+test fn w_list_binder_present_variant_refused_named() -> Bool {
+  variant_not_found_blocking_count(source: neg_list_source, subject: "Present") == 1
+}
+
+// The wrong variant is STILL REFUSED on the Bag binder too, through the local alias.
+test fn w_bag_binder_present_variant_refused_named() -> Bool {
+  variant_not_found_blocking_count(source: neg_bag_source, subject: "Present") == 1
+}
