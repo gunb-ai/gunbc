@@ -3,6 +3,7 @@ module test.claim.snapshot_receipt_metadata_witness
 import std.logic { Bool }
 import std.types { String }
 import std.optional { Present, Absent }
+import std.filesystem { path_parent_directory }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.access.posix { file_mode_of_octal_text, FileMode, PermissionBits }
 import gunbc.worker_turn_snapshot_custody { cursor_worker_turn_snapshot_custody }
@@ -134,6 +135,11 @@ fn fx_fleet_numeric_receipt_version() -> SmResolvedVersionIdentity {
     ["projects/", fleet_secrets_project_number, "/secrets/", cursor_worker_turn_snapshot_custody.secret.secret as String, "/versions/", cursor_worker_turn_snapshot_custody.secret.version as String],
     "",
   ) as SmResolvedVersionIdentity
+}
+
+test fn path_parent_directory_drops_the_last_segment() -> Bool {
+  path_parent_directory(path: "/tmp/fixture/custody.gunbc-export-receipt") == "/tmp/fixture"
+    && path_parent_directory(path: "/receipt") == "/"
 }
 
 test fn the_fleet_project_id_joins_the_canonical_numeric_receipt() -> Bool {

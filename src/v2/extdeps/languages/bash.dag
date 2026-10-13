@@ -2691,3 +2691,7 @@ fn bash_redir_to_file_target_model(path: String) -> TargetModel {
 fn bash_redir_stderr_to_file_source_text(path: String) -> String {
   concat("2> ", path)
 }
+
+fn bash_redir_from_file_source_text(path: String) -> String {
+  concat("< ", path)
+}

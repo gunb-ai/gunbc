@@ -225,7 +225,7 @@ import gunbc.host.host_axis_caps {
   host_axis_caps_author_before_revert_enforced,
 }
 import gunbc.ownership { Ownership }
-import std.algebra { list_tail, TailFound, TailAbsent }
+import std.filesystem { path_parent_directory }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
@@ -1654,10 +1654,7 @@ fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
 // install_d_owned_command would silently re-own a live directory to satisfy a twin.
 
 fn path_parent_dir(path: String) -> String {
-  match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
-    TailAbsent => "/"
-    TailFound { tail: rest } => join(reverse(rest), "/")
-  }
+  path_parent_directory(path: path)
 }
 // THE 0755 IS A SHARED CONSTANT, NOT A DERIVED FACT, and every member still on it inherits it
 // regardless of what that member's readers and writers actually need. That is why

@@ -14,7 +14,7 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_command_with_words,
   bash_build_assign, bash_build_exit, bash_build_or_else, bash_build_command_from_lits,
-  bash_build_and_then,
+  bash_build_and_then, bash_build_with_redir_from_file,
 }
 import extdeps.tools.stat { stat_program }
 
@@ -219,11 +219,22 @@ fn posix_sh_receipt_object_body_program() -> Outcome<String> {
 }
 
 fn posix_sh_receipt_object_program() -> Outcome<String> {
-  match posix_sh_receipt_object_body_program() {
-    Accepted { value: body, diagnostics: d } =>
-      Accepted { value: concat("exec < \"$0\"\n", body), diagnostics: d }
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-  }
+  bash_emit_stmts(statements: [
+    bash_build_with_redir_from_file(
+      inner: bash_build_command_from_lits(lits: ["exec"]),
+      path: bash_build_word_var(name: "0"),
+    ),
+    bash_build_and_then(
+      left: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: stat_program().invocation as String),
+        bash_build_word_lit(text: "-L"),
+        bash_build_word_lit(text: "-c"),
+        bash_build_word_lit(text: "%F|%U|%a"),
+        bash_build_word_lit(text: "/dev/stdin"),
+      ]),
+      right: bash_build_command_from_lits(lits: ["cat"]),
+    ),
+  ], set_e: false)
 }
 
 type PosixShReceiptObjectCommand
