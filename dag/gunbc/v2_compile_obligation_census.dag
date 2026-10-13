@@ -13,7 +13,7 @@ import gunbc.guarantee_rung {
   MechanicallyPreventable,
   StructurallyGuaranteed
 }
-import gunbc.witness.v2_native_route { native_route_universe_member }
+import gunbc.native_route_universe { native_route_universe_member }
 import gunbc.derived_obligation_row {
   WitnessSubject,
   witness_subject,
@@ -190,7 +190,7 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
 // in the only sense the census ever meant.
 //
 // SO THE ROSTER IS ASKED, NOT ASSUMED, exactly like the interpreted column: the lane declares its
-// own universe predicate, v2.workflow.v2_native_route native_route_universe_member, and this
+// own universe predicate, gunbc.native_route_universe native_route_universe_member, and this
 // module calls it rather than re-deriving the prefix. A census that hand-authored "RouteGapHeld"
 // after the lane landed would have been the stale present-tense coverage claim in reverse — a
 // pessimistic one, which is not more honest, only wrong in the safer direction.

@@ -6,9 +6,9 @@ import extdeps.bazel.label { LabelParsed, LabelRefused, render_label }
 import extdeps.bazel.target_pattern {
   TargetPattern, TargetPatternParsed, TargetPatternRefused, parse_target_pattern, target_pattern_matches
 }
+import gunbc.native_route_universe { native_route_universe_member }
 import v2.workflow.v2_native_route {
   native_route_admission_with, NativeRouteLivePairStanding, LivePairRequired, LivePairExpectedRed,
-  native_route_universe_member,
   native_route_identity_label, native_route_default_pattern,
   NativeRouteReference, FloorExpectedPass, FloorExpectedRed, FloorRouteGapRefusal,
   native_route_reference_for,

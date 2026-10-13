@@ -16,9 +16,11 @@ import v2.workflow.v2_native_route {
   native_route_label_in_package,
   native_route_module_package_text,
   native_route_default_pattern,
+  required_v2_native_job_name
+}
+import gunbc.native_route_universe {
   native_route_universe_member,
   native_route_universe_prefix,
-  required_v2_native_job_name
 }
 // THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside
 // native_route_admission, and the emitted crate carries a module only when this closure reaches it.

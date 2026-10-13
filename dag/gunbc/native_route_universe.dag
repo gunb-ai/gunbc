@@ -1,0 +1,12 @@
+module gunbc.native_route_universe
+
+import std.types { String }
+
+// THE UNIVERSE IS A PREFIX, NOT A ROSTER. Homed here so a dag consumer (the compile-obligation
+// census) can test membership without importing v2.workflow or the witness fold. The prefix is
+// the same `v2.test.` the required floor gates on. One fact: prefix plus member.
+data native_route_universe_prefix: String = "v2.test."
+
+fn native_route_universe_member(module_qn: String) -> Bool {
+  starts_with(s: module_qn, prefix: native_route_universe_prefix)
+}

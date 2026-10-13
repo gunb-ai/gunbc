@@ -24,6 +24,10 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags }
+import gunbc.native_route_universe {
+  native_route_universe_prefix,
+  native_route_universe_member,
+}
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
@@ -55,22 +59,7 @@ import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags 
 // all cite this declaration; no second spelling of the job name anywhere.
 data required_v2_native_job_name: String = "required-v2-native"
 
-// THE UNIVERSE IS A PREFIX, NOT A ROSTER. The population is DERIVED from the tree's test
-// discovery by prefix membership — a hand-listed roster would silently drift from the tree it
-// claims to cover. The prefix is the same `v2.test.` the required floor gates on
-// (v2.workflow.required_floor required_gate_prefixes): the native lane's universe is the floor's
-// witness universe asked of a different route. The universe is derived INSIDE the emitted native
-// compiler from the floor's own discovery producer (v2.workflow.floor_discovery_producer), read
-// per source beside that source's authored module header, and carried on the receipt; admission
-// checks its shape and joins the observed population against it exactly. The seed derived it
-// through the v1 interpreter until 2026-09-10; the derivation and this admission are now the same
-// process, and what the join still discriminates is discovery's textual answer against the
-// execution route's — two readings of the same bytes, not two processes.
-data native_route_universe_prefix: String = "v2.test."
-
-fn native_route_universe_member(module_qn: String) -> Bool {
-  starts_with(s: module_qn, prefix: native_route_universe_prefix)
-}
+// Universe prefix + member: gunbc.native_route_universe (one fact; dag-safe for the census).
 
 // A TARGET PATTERN SELECTS THE UNIVERSE, AND THE MATCHING IS `extdeps.bazel.target_pattern`'S.
 //
