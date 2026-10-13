@@ -177,6 +177,10 @@ type AnnotationRegionIndex {
   children: Map<AnnotationScope, List<AnnotationRegion>>
 }
 
+fn region_extent_start(r: AnnotationRegion) -> Int {
+  r.extent.start
+}
+
 fn annotation_region_index(regions: List<AnnotationRegion>) -> AnnotationRegionIndex {
   let grouped_seed: Map<AnnotationScope, List<AnnotationRegion>> = empty_map()
   let grouped = fold(regions, init: grouped_seed, f: (acc, region) =>
@@ -189,7 +193,7 @@ fn annotation_region_index(regions: List<AnnotationRegion>) -> AnnotationRegionI
   AnnotationRegionIndex {
     children: fold(map_support_keys(m: grouped), init: children_seed, f: (acc, key) =>
       match map_lookup(m: grouped, key: key) {
-        Present { value: siblings } => map_insert(m: acc, key: key, value: list_sort_by_key(xs: siblings, key: r => r.extent.start, order: int_total_order))
+        Present { value: siblings } => map_insert(m: acc, key: key, value: list_sort_by_key(xs: siblings, key: region_extent_start, order: int_total_order))
         Absent => acc
       }),
   }
@@ -207,7 +211,8 @@ fn annotation_children(index: AnnotationRegionIndex, scope: AnnotationScope) -> 
 fn siblings_starting_at_or_before(siblings: List<AnnotationRegion>, at: Int, lo: Int, hi: Int) -> Int {
   if lo >= hi { lo } else {
     let mid = (lo + hi) / 2
-    match list_at_optional(xs: siblings, index: mid) {
+    let item: AnnotationRegion? = list_at_optional(xs: siblings, index: mid)
+    match item {
       Present { value: r } =>
         if r.extent.start <= at {
           siblings_starting_at_or_before(siblings: siblings, at: at, lo: mid + 1, hi: hi)

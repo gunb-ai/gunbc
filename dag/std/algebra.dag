@@ -263,7 +263,11 @@ type MapIntroductionEntry<K, V> {
 
 fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> Map<K, V> {
   let entries_seed: Map<K, V> = empty_map()
-  entries |> fold(init: entries_seed, f: (acc, entry) => map_insert(acc, entry.key, entry.value))
+  entries |> fold(init: entries_seed, f: map_entry_insert)
+}
+
+fn map_entry_insert<K, V>(acc: Map<K, V>, entry: MapIntroductionEntry<K, V>) -> Map<K, V> {
+  map_insert(acc, entry.key, entry.value)
 }
 
 // MOVED HERE from `v2.std.collection` by the change that split `PartialFunction`. They are the
