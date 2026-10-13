@@ -11,9 +11,9 @@ import std.machine_shape {
 }
 import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count }
 import std.content_hash { ContentHash, Fnv1a64 }
-import v2.std.algebra { length }
+import std.algebra { length }
 import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, TypeNode, content_hash }
 import v2.workflow.locality_affinity {
   AffinityClaim,

@@ -28,7 +28,7 @@ import gunbc.fleet.fleet_install_transport_observations {
   srv3_configfs_reinstall_path_standing,
   srv3_configfs_transport_observations,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

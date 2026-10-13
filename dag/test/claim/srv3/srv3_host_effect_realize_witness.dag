@@ -18,7 +18,7 @@ import gunbc.host.host_effect_realize {
 }
 import gunbc.fleet.fleet_intent { srv1_host }
 import std.realization_reconcile { NotConverged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.package_managers.apt { apt_installed_bin_path, apt_bin_dir }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }

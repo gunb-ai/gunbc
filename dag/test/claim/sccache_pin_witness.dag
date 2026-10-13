@@ -28,7 +28,7 @@ import extdeps.cache.pin {
   sccache_binary_artifact_subject_projected_pin_as_pin,
   sccache_binary_artifact_pin_key_of,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

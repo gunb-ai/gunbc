@@ -12,7 +12,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.systemd { parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity }
 import std.optional { Present, Absent }
 import std.measure { byte_size_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fabric.fabric_cell_observation_admission {
   fabric_cell_observation_outcome,
   FabricCellObservationDecision,

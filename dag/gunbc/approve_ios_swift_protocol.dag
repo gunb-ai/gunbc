@@ -1,7 +1,7 @@
 module gunbc.approve_ios_swift_protocol
 
 import std.types { String, List }
-import v2.std.algebra { list_append }
+import std.algebra { list_append }
 import std.optional { Present }
 import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftCommentedDecl, SwiftDocLineComment, SwiftLineComment,

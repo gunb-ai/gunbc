@@ -10,7 +10,7 @@ import extdeps.languages.rust.emit {
 }
 import extdeps.languages.python.emit { python_method_templates_flat }
 import extdeps.languages.go.emit { go_method_templates_flat }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

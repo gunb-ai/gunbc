@@ -3,7 +3,7 @@ module v2.test.claim.lexical_scope
 import std.types { Bool, List }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.lexical_scope { ModuleRootBinding, declaration_names_value, module_root_bindings }
-import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_front_end }
+import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_env_over, acquisition_front_end }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
 import v2.compiler.reference_site_collector {
   HeadBindingUndecided,
@@ -19,10 +19,10 @@ import v2.compiler.reference_site_collector {
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { HeadAbsent, HeadFound, list_head, list_map }
+import std.algebra { HeadAbsent, HeadFound, list_head, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { symbol_lexeme }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -52,12 +52,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `Box.tree` below is `unbound` and not `root`). The frames themselves are one producer both read.
 
 fn scope_env(prepared: PreparedGrammar) -> AcquisitionEnv {
-  AcquisitionEnv {
+  acquisition_env_over(
     layout: repository_storage_layout(),
     bindings: [],
     lex: prepare_lex_rules(rules: dag_language_model().lex),
     grammar: prepared
-  }
+  )
 }
 
 fn head_text(head: SiteHeadBinding) -> String {

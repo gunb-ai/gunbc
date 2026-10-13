@@ -13,7 +13,7 @@ import gunbc.compiler_diagnostic_seed_projection_disposition {
 import gunbc.seed_growth_admission { ExistingSeedItemModified, HandRustDeleted, SeedGrowthChangeDisposition }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, List, NonEmptyStr, String }
-import v2.std.algebra { fold_list, length, list_map }
+import std.algebra { fold_list, length, list_map }
 
 // WHAT THIS WITNESS ASSERTS, AND WHY IT IS NOT THE PROSE-SELF-MATCH ANTIPATTERN.
 //

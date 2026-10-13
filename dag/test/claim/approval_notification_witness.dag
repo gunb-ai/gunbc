@@ -1,6 +1,6 @@
 module test.claim.approval_notification_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.auth.approval_notification {
   approval_ntfy_topic, approval_cache_policy, approval_notification,
   approval_notification_priority, access_lifetime_sentence,

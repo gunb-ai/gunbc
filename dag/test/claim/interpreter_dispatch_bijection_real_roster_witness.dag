@@ -3,7 +3,7 @@ module test.claim.interpreter_dispatch_bijection_real_roster_witness
 import gunbc.instruments.interpreter_dispatch_bijection_real_roster_transport {
   run_interpreter_dispatch_bijection_real_roster_red
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

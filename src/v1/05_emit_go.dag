@@ -1,5 +1,6 @@
 module v1.compiler.emit_go
 
+import std.unicode.scalar { ascii_lowercase }
 import std.syntax { LiteralValue, BinOp }
 import v1.std.core {
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
@@ -94,7 +95,7 @@ import v1.compiler.emit {
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
   escape_json_string, module_to_filename, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent,
-  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
+  to_snake, to_screaming_snake, is_upper,
   sanitize_service_name, capitalize_first, service_var_name,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
   test_function_name,
@@ -252,7 +253,7 @@ fn emit_go_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
 fn go_package_name(module_name: String) -> String {
   let parts = module_name |> split(delimiter: ".")
   match parts |> last {
-    Present { value: last_part } => last_part |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
+    Present { value: last_part } => ascii_lowercase(s: last_part)
     Absent => "main"
   }
 }

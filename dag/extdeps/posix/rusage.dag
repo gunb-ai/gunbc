@@ -13,26 +13,25 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// getrusage(2) AS THE PORTABLE RESOURCE-USAGE INTERFACE, modeled because the repository was reading
-// a Linux-only file for a fact POSIX already exposes everywhere. Peak resident set size was taken
-// from /proc/self/status VmHWM, which exists on exactly one kernel family; getrusage with
-// RUSAGE_SELF returns the same quantity in ru_maxrss on every conforming implementation, and the
-// corpus's own v1 seed already depends on libc, so the portable call needs no new dependency.
+// getrusage(2) AS THE PORTABLE RESOURCE-USAGE INTERFACE: ru_maxrss is POSIX's peak resident set size,
+// and it is the interface the corpus uses where the process's own address space is the subject.
 //
-// THE SECTION 3 POINT THIS CORRECTS, because it is the general lesson rather than a macOS detail:
-// reading VmHWM through procfs is a TRANSPORT, one of N, not a fact about the observation. Treating
-// the transport's platform limits as the observation's limits is how 'peak RSS is unavailable on
-// macOS' came to be believed — it is not, it was simply never asked for the portable way. The right
-// shape is not two transports selected by platform either; it is ONE portable call, with the
-// platform divergence pushed down to the single axis where it genuinely exists.
+// IT IS NOT THE SAME QUANTITY AS LINUX /proc/self/status VmHWM WHEN THE PROCESS WAS SPAWNED. Linux
+// seeds ru_maxrss at exec from the high-water of the address space the exec replaced, so a process
+// spawned from a large parent (and a child reaped by wait4 from one) reports the PARENT's peak.
+// VmHWM belongs to the mm the exec created and is not inherited. An earlier version of this note
+// called the two the same quantity and VmHWM a mere transport; that was wrong exactly in this case,
+// and the repository reads VmHWM on Linux for it (gunbc.recurring_failure_mode
+// a_child_peak_resident_inherits_the_predecessor_address_space). Whether ru_maxrss is inherited on
+// other hosts is unverified here; a reader of ru_maxrss owns showing its subject was not spawned
+// from a larger process.
 //
-// THAT AXIS IS THE UNIT, and it is a specification-level fact rather than an implementation quirk:
-// POSIX defines ru_maxrss's meaning and DOES NOT SPECIFY ITS UNIT. Implementations therefore differ
-// legitimately and permanently — no future release reconciles them — which is why RusageMaxrssUnit
-// is modeled here as an open question this module refuses to answer, and answered instead by
-// extdeps.linux.rusage and extdeps.darwin.rusage each speaking for their own implementation. A
-// conversion that assumed either unit would be wrong on half the fleet by a factor of 1024,
-// silently, in the direction that looks plausible.
+// THE UNIT IS THE OTHER DIVERGENCE, and it is a specification-level fact: POSIX defines ru_maxrss's
+// meaning and DOES NOT SPECIFY ITS UNIT. Implementations differ legitimately and permanently, which
+// is why RusageMaxrssUnit is an open question this module refuses to answer, answered instead by
+// extdeps.linux.rusage and extdeps.darwin.rusage each for their own implementation. A conversion
+// that assumed either unit would be wrong by a factor of 1024, silently, in the direction that
+// looks plausible.
 
 type RusageWho
   = RusageSelf

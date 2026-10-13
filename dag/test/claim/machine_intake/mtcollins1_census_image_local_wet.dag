@@ -54,7 +54,7 @@ import gunbc.provisioning.seeded_install_media_publish {
   SeededImageRecordDiverged,
   resolve_seeded_image,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

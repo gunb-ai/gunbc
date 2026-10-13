@@ -4,8 +4,8 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { content_hash_equal }
 import std.measure { positive_millisecond, PositiveMeasureSuccessor }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { length }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { length }
 import extdeps.bmc.redfish_telemetry {
   RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint, RedfishTemperatureCelsius, RedfishReadingValue, RedfishHealthOk, RedfishStateEnabled,
 }

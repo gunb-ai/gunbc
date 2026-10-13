@@ -1,10 +1,11 @@
 module test.claim.serving.serving_session_attachment_witness
 
-import std.measure { token_count }
+import std.measure { token_count, money_amount_micro }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import product.fabric.demand { ObservationReceiptRef }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.fabric.demand { ObservationReceiptRef, admission_terms, BuyTerms, debt_payoff_objective }
+import extdeps.currency.currency { Usd }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.replica_endpoint_launch {
   ReplicaEndpointLaunch, ReplicaLaunchObservation, ReplicaLaunchObserved, replica_endpoint_launch,
@@ -73,6 +74,16 @@ fn w_subject() -> HarnessTurnSubject {
   harness_turn_subject(
     request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness"]),
     attempt: "a-1" as NonEmptyStr,
+    admission: admission_terms(
+      buy: BuyTerms {
+        budget_account: "witness",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: 0),
+        maximum_buy_order: money_amount_micro(count: 0),
+      },
+      deadline: none,
+      objective: debt_payoff_objective,
+    ),
   )
 }
 

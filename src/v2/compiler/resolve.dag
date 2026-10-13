@@ -76,8 +76,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
-import v2.std.algebra { fold_list, length, list_find_first, skip }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -2445,7 +2444,7 @@ fn child_walk_init() -> ChildWalk {
 // ONE CONCATENATION PER REFUSED CHILD, NOT ONE PUSH PER CHAIN (review 70392): a child's `rest`
 // arrives already built, so it is joined whole rather than re-walked at every level it crosses on
 // its way to the module root. list_snoc_item and list_append are the persistent carrier's push and
-// concat (v2.std.algebra), neither of which copies its left operand.
+// concat (std.algebra), neither of which copies its left operand.
 fn child_walk_refused(
   w: ChildWalk,
   first: NonEmptyDiagnostics,

@@ -6,7 +6,7 @@ import extdeps.ocp.mt_jade.subject { mt_jade_board_authority }
 import gunbc.board_authority_binding { observed_board_authority }
 import test.fixture.board_fru_observation { collins_fru_read, jade_fru_read, asrock_fru_read }
 import std.types { Bool, NonEmptyStr, String, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host {

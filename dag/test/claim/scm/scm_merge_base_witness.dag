@@ -23,7 +23,7 @@ module test.claim.scm.scm_merge_base_witness
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.minted_identity { MintedId, MintedIdAllocator }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.object_store {
   ObjectStore, ObjectId, empty_store, object_id_eq,
   CorpusManifestEntry, CorpusManifestObjectRef, CorpusManifestTarget,

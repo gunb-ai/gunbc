@@ -13,7 +13,7 @@ import v2.extdeps.languages.dag {
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
 import std.optional { Absent, Present }
 import v2.std.text { String }
@@ -168,6 +168,16 @@ test fn malformed_numeric_string_escapes_refuse() -> Bool {
     && (slv_decode_refusal(lexeme: "\"\\u\{d800\}\"") == ^dag_string_literal_escape_malformed)
     && (slv_decode_refusal(lexeme: "\"\\u\{1234567\}\"") == ^dag_string_literal_escape_malformed)
     && (slv_decode_refusal(lexeme: "\"\\u12\"") == ^dag_string_literal_escape_malformed)
+}
+
+// THE SCALAR BOUNDARY IS DECIDED BY std.unicode.scalar from_code_point, NOT BY A GUARD IN THE
+// DECODER: both surrogate ends and the first value past U+10FFFF refuse, and the neighbours just
+// inside each boundary decode, so a decoder that stopped consulting from_code_point reds here.
+test fn a_non_scalar_unicode_escape_refuses_at_the_scalar_boundary() -> Bool {
+  (slv_decode_refusal(lexeme: "\"\\u\{D800\}\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_refusal(lexeme: "\"\\u\{DFFF\}\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_refusal(lexeme: "\"\\u\{110000\}\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_value(lexeme: "\"\\u\{D7FF\}\\u\{E000\}\\u\{10FFFF\}\"") == "\u{D7FF}\u{E000}\u{10FFFF}")
 }
 
 test fn two_different_string_literals_are_two_different_nodes() -> Bool {

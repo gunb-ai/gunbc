@@ -1,6 +1,6 @@
 module test.claim.run_attempt_census_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int }
 import std.page_fold { PageFoldOutcome, PagesClosed, PagesRefused, PageFoldSubject, PageBudgetExhausted, OffsetPage }
 import gunbc.ci.run_attempt_census {

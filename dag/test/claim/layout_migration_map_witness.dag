@@ -21,7 +21,7 @@ import gunbc.instruments.layout_migration_map {
   plan_migration
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 // WITNESSES FOR THE MOVE-AND-RENAME PLANNER OF THE SOURCE-LAYOUT CUTOVER
 // (gunbc.instruments.layout_migration_map). The planner decides, for every governed file, which of

@@ -3,7 +3,7 @@ module test.claim.filesystem_list_hermetic_witness
 
 import extdeps.filesystem.filesystem_io
 import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.file_system { Filesystem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

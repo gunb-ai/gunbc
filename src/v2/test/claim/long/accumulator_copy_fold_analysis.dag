@@ -1,10 +1,10 @@
 module v2.test.claim.long.accumulator_copy_fold_analysis
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 
 import v2.std.node { Authored, StructuralLabel, Positional, Edge, Node, ComputationNode, TypeNode, Transform, Atom }
 
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -295,7 +295,7 @@ fn rebuilt_edge(e: Edge) -> Edge {
 fn break_mystery_head(n: Node) -> Node {
   Node {
     kind: n.kind,
-    children: v2.std.algebra.list_reverse(xs: fold(n.children, init: no_edges(), f: fn(acc, e) {
+    children: std.algebra.list_reverse(xs: fold(n.children, init: no_edges(), f: fn(acc, e) {
       edge_list_prepend(item: rebuilt_edge(e: e), xs: acc)
     })),
     occurrence_id: n.occurrence_id

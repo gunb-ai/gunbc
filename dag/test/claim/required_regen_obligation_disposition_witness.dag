@@ -34,7 +34,7 @@ import gunbc.required_regen_obligation_disposition {
   conformance_is_observed
 }
 import std.decl_ref { decl_ref }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Declared explicitly: a witness that declares no disposition is treated as ReadsLiveTree and
 // DECLINED -- discovered, counted, never executed. Every assertion here reads substrate values

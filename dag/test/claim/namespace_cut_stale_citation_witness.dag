@@ -25,7 +25,7 @@ import gunbc.namespace_cut.namespace_cut_subject_observation {
   verdict_word_present,
   unobservable_reason,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

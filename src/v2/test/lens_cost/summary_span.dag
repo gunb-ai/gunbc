@@ -6,7 +6,7 @@ import v2.lens.cost.summary {
   summary_parallel,
   summary_sequential
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Succ, Zero }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,6 +1,5 @@
 module v2.test.claim.normalize.census_mode
 
-import v2.std.algebra { list_map }
 
 import v2.compiler.normalize { normalize, normalize_census }
 import v2.compiler.normalized_tree {
@@ -31,7 +30,7 @@ import std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.node { Node, Symbol, Authored }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, list_map }
 
 // CENSUS MODE'S CONTROLS (gen-two door, PR-b). A module outside the compiled closure is normalized to
 // census grade -- every declaration, no fn body -- so a body the lowering cannot yet read cannot

@@ -4,8 +4,7 @@ import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
 import std.disposition { SubstrateMandatoryTag }
 import std.decl_ref { decl_ref }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { length }
+import std.algebra { Cons, Empty, length }
 import v2.std.integer { Int }
 import std.optional {
   Absent,

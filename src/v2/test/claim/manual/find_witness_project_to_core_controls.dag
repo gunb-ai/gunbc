@@ -2,7 +2,7 @@ module v2.test.claim.manual.find_witness_project_to_core_controls
 
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn control_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
   CandidateSet {

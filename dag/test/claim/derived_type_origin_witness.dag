@@ -38,11 +38,11 @@ fn call_plan_constructor() -> DeclarationRef {
 }
 
 fn fold_list_t() -> DeclarationRef {
-  decl_type_parameter_ref(module_path: "v2.std.algebra", decl_name: "fold_list", parameter: "T")
+  decl_type_parameter_ref(module_path: "std.algebra", decl_name: "fold_list", parameter: "T")
 }
 
 fn fold_non_empty_t() -> DeclarationRef {
-  decl_type_parameter_ref(module_path: "v2.std.algebra", decl_name: "fold_non_empty", parameter: "T")
+  decl_type_parameter_ref(module_path: "std.algebra", decl_name: "fold_non_empty", parameter: "T")
 }
 
 // L3: the kernel element child is never a generic parameter, whatever it is spelled.

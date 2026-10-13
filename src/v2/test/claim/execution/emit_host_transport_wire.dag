@@ -33,7 +33,7 @@ import v2.std.host_transport {
 }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

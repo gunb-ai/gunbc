@@ -6,7 +6,7 @@ import extdeps.http.server {
   text_html_utf8, text_plain_utf8, application_json_utf8,
   text_javascript_utf8, application_octet_stream,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -59,7 +59,7 @@ import product.compute_board.admission {
   refusal_set_count,
   refuses_with_exactly_named_cause,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data fixture_design: ElectricalDesignIdentity = "test.compute_board_admission.fixture" as ElectricalDesignIdentity
 

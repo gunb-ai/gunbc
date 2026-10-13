@@ -4,7 +4,7 @@ import gunbc.roadmap.roadmap_project { membership_index }
 import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapDependencies, GapCentering }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsObserved, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved,
   RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound,

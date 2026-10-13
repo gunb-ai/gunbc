@@ -2,7 +2,7 @@ module test.claim.action_use_admission_witness
 
 import extdeps.filesystem.filesystem_io
 import std.types { Bool, Int, List, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { Workflow, Job, Step, UsesStep, WorkflowDispatch, RunnerSpec, HostedRunner, UbuntuLatest }
 import extdeps.github.action_release {
   ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction, action_release_uses_text,

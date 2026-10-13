@@ -51,7 +51,7 @@ import product.pcb.footprint {
   admitted_footprints_rows,
   footprint_pad_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

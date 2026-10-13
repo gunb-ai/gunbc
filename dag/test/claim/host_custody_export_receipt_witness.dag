@@ -3,7 +3,7 @@ module test.claim.host_custody_export_receipt_witness
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
 import std.dissolution { UnboundDissolution, BoundDissolution }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import gunbc.host_custody_export_receipt {
