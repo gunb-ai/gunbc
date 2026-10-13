@@ -5,6 +5,7 @@ import std.types { HttpStatus, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.repository { gunbc_repository }
 import gunbc.witness.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
+import gunbc.required_ci_contract_epoch { required_ci_context_name }
 import gunbc.witness.witness_floor_lanes { required_lanes_roster }
 import std.measure { Minute, minute, minute_count, measure_add, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import gunbc.ensure {
@@ -139,15 +140,13 @@ import std.goal_assessment {
 // bump). A PUT that preserves the roster but cannot read it back afterwards also fails the
 // trigger. #10204 merging is not the trigger.
 //
-// THE ONE FACT THAT STOPS BEING A NICKNAME. The required context's name is imported from
-// gunbc.witness.witness_floor_workflow witness_floor_workflow_job_id -- the same row the emitted workflow
-// names its aggregation job with. Before this module those were two strings that happened to agree;
-// now they are one fact read in two directions, so renaming the job cannot leave the ruleset naming
-// a context nothing publishes (DESIGN section 3). That failure mode is specifically quiet: a
-// required context that no job publishes leaves the check permanently pending rather than red.
-// See the module-leading annotation. This row exists because the module's subject is a fact about
-// the world rather than about the tree, and a reader arriving from gunbc.witness.witness_floor_workflow
-// needs the pointer.
+// THE ONE FACT THAT STOPS BEING A NICKNAME. The required context's name is
+// gunbc.required_ci_contract_epoch required_ci_context_name -- the same row the emitted required job
+// uses as its id (compiler_gate_required_job_id / witness_floor_workflow_job_id). Before this
+// module those were two strings that happened to agree; now they are one fact read in two
+// directions, so renaming the job cannot leave the ruleset naming a context nothing publishes
+// (DESIGN section 3). That failure mode is specifically quiet: a required context that no job
+// publishes leaves the check permanently pending rather than red.
 
 // WHY THE RULESET IS ADDRESSED BY ID RATHER THAN BY NAME. GitHub's update endpoint is
 // PUT /repos/{owner}/{repo}/rulesets/{ruleset_id}; the name is a mutable label and two rulesets may
@@ -176,7 +175,7 @@ fn required_contexts_declaration_refusals(contexts: List<String>) -> List<String
 }
 
 fn desired_required_contexts() -> List<String> {
-  [witness_floor_workflow_job_id]
+  [required_ci_context_name as String]
 }
 
 data desired_ruleset_enforcement: RulesetEnforcement = RulesetActive

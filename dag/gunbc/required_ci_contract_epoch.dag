@@ -1,49 +1,105 @@
 module gunbc.required_ci_contract_epoch
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, List }
 import std.contract_identity { ContractEpoch }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import v2.std.algebra { list_map, fold_list }
+import std.algebra { list_append }
+import gunbc.emitted_subject_build_gate {
+  emitted_subject_build_rows,
+  emitted_subject_build_label_text,
+}
 
 // THE REQUIRED CI CONTRACT'S DECLARED EFFECTIVE EPOCH, in one place, because both sides of the
 // comparison must read the SAME authority or the comparison is between two independently writable
 // answers rather than between an observation and a requirement.
 //
 // WHY THIS IS ITS OWN MODULE AND NOT A ROW IN EITHER CONSUMER. Two modules need this value for
-// opposite reasons: gunbc.witness.witness_floor_workflow EMITS it into the workflow the required run
+// opposite reasons: gunbc.witness.compiler_gate_workflow EMITS it into the workflow the required run
 // executes, so the epoch is observable at the exact commit that ran; gunbc.fleet.fleet_revision_acceptance
 // REQUIRES it, so fleet admission can refuse a contract whose obligations were revised under an
 // unchanged name. Putting the value in either consumer would make the other import its peer for a
 // single datum and would give the emitting side authority over what the judging side requires --
 // which is the layer inversion §3 names, and would also make the epoch trivially self-satisfying.
 //
-// WHAT BUMPING THIS MEANS, since the value is only as honest as the discipline around it. Bump it
-// when the Required CI contract's OBLIGATIONS change materially under an unchanged name: what the
-// floor admits, what it refuses, or what a success entitles a consumer to conclude. Do NOT bump it
-// for a change in what the contract does internally -- the phase roster is the contract's own
-// business, and an identity that moved with the roster would make every added phase a breaking
-// change to fleet admission, which is the exact backwards rule this identity's own note forbids.
+// WHAT MOVES THIS VALUE. The epoch is a digest of required_ci_obligation_rows: what a green result
+// entitles a consumer to conclude, plus the required context name. Adding, removing, or renaming an
+// obligation row moves it. Do NOT digest the workflow text or the step list -- an internal change
+// (a prelude step, a timeout, a cache key) must not move fleet admission. The residual manual
+// question, now that materiality is the row set, is whether a new step adds an obligation row.
 //
-// THE HONEST RUNG, stated so it is not over-read: a cross-epoch admission is MECHANICALLY PREVENTED
-// by the production join that compares this required value against the observed one. An UNBUMPED
-// material change is not -- nothing here derives materiality, so that half is declared-version
-// diligence until a contract-surface digest or a classifier distinguishes material from internal
-// change. That distinction is the next-rung trigger for this row, and it is a capability, not an
-// artifact: acceptance deriving contract materiality from the contract's own surface.
-//
-// BUMPED 2026-10-09 (operator ruling, the v1 withdrawal). Until then a success of the required
-// context also meant the v1 interpreter had folded the rostered witnesses, the stage0 mirrors and the
-// registry-rostered generated artifacts matched their authorities, and the v1 unit tests passed. From
-// this epoch it means only that the seed emitted the two retained v2 closures and the emitted crates built and
-// started (gunbc.witness.compiler_gate_workflow header; the loss is gunbc.rung_drop
-// v1_required_lanes_withdrawn). That is a change in what a success entitles a consumer to conclude.
-//
-// BUMPED 2026-10-10 (the source layout cutover, gunbc.plans.source_layout_authority). The v2-native-cli
-// subject step now also judges the repository's source layout and parses its module population: a
-// success entitles a consumer to conclude that every governed file stands where the storage rule puts
-// it and that every module the declared namespaces store parses, and a compile that reads a module
-// outside the closure it was asked for now refuses. A bare module name no longer resolves anywhere a
-// required step compiles. That is a change in what a success entitles a consumer to conclude, under the
-// unchanged required context name.
-data required_ci_contract_epoch: ContractEpoch = "2026-10-10.1" as ContractEpoch
+// THE HONEST RUNG. A cross-epoch admission is MECHANICALLY PREVENTED by the production join that
+// compares this required value against the observed one. Materiality is DERIVED from the obligation
+// rows. What remains diligence is classifying a change as an obligation rather than as the
+// contract's own business.
+
+// THE REQUIRED CONTEXT NAME, one spelling. gunbc.witness.compiler_gate_workflow's job id,
+// gunbc.witness.witness_floor_workflow_job_id, and gunbc.repo.repo_ruleset desired_required_contexts
+// all read this. A second literal "v2-bootstrap" beside it is the nickname this module exists to
+// close (operator-approved name, 2026-10-10).
+data required_ci_context_name: NonEmptyStr = "v2-bootstrap" as NonEmptyStr
+
+// ONE ROW PER OBLIGATION, NEVER PER STEP. The kind is what a green entitles a consumer to conclude;
+// the key is the stable identity of that obligation (a subject label, a verb, the context name).
+type RequiredCiObligation {
+  kind: NonEmptyStr
+  key: NonEmptyStr
+}
+
+data required_ci_obligation_kind_context: NonEmptyStr = "required_context_name" as NonEmptyStr
+data required_ci_obligation_kind_emitted_subject: NonEmptyStr = "emitted_subject_built_and_started" as NonEmptyStr
+data required_ci_obligation_kind_memory_envelope: NonEmptyStr = "memory_envelope" as NonEmptyStr
+data required_ci_obligation_kind_layout_check: NonEmptyStr = "source_layout_check" as NonEmptyStr
+data required_ci_obligation_kind_population_parse: NonEmptyStr = "population_parse" as NonEmptyStr
+
+// Layout check and population parse are the post-cutover obligations the v2-native-cli subject
+// discharges (v2.cli.compile_cli cli_verb_check_layout / cli_verb_parse_population, run from
+// gunbc.instrument_targets v2-native-cli). The keys are the obligation identities, not a citation
+// of that module, so this contract module does not import the CLI closure.
+data required_ci_layout_check_key: NonEmptyStr = "check-layout" as NonEmptyStr
+data required_ci_population_parse_key: NonEmptyStr = "parse-population" as NonEmptyStr
+data required_ci_memory_envelope_key: NonEmptyStr = "GUNBC_MEMORY_ENVELOPE_REQUIRED" as NonEmptyStr
+
+fn required_ci_obligation(kind: NonEmptyStr, key: NonEmptyStr) -> RequiredCiObligation {
+  RequiredCiObligation { kind: kind, key: key }
+}
+
+fn required_ci_emitted_subject_obligations() -> List<RequiredCiObligation> {
+  list_map(xs: emitted_subject_build_rows(), f: fn(row) {
+    required_ci_obligation(
+      kind: required_ci_obligation_kind_emitted_subject,
+      key: emitted_subject_build_label_text(row: row) as NonEmptyStr,
+    )
+  })
+}
+
+fn required_ci_obligation_rows() -> List<RequiredCiObligation> {
+  list_append(
+    left: [required_ci_obligation(kind: required_ci_obligation_kind_context, key: required_ci_context_name)],
+    right: list_append(
+      left: required_ci_emitted_subject_obligations(),
+      right: [
+        required_ci_obligation(kind: required_ci_obligation_kind_memory_envelope, key: required_ci_memory_envelope_key),
+        required_ci_obligation(kind: required_ci_obligation_kind_layout_check, key: required_ci_layout_check_key),
+        required_ci_obligation(kind: required_ci_obligation_kind_population_parse, key: required_ci_population_parse_key),
+      ],
+    ),
+  )
+}
+
+fn required_ci_obligation_line(row: RequiredCiObligation) -> String {
+  concat(concat(concat(row.kind as String, "\t"), row.key as String), "\n")
+}
+
+fn required_ci_obligation_digest_text(rows: List<RequiredCiObligation>) -> String {
+  fold_list(xs: rows, empty: "", cons: fn(acc, row) { concat(acc, required_ci_obligation_line(row: row)) })
+}
+
+fn required_ci_contract_epoch_of(rows: List<RequiredCiObligation>) -> ContractEpoch {
+  serialize_content_hash(hash: content_hash_of_value(value: required_ci_obligation_digest_text(rows: rows) as NonEmptyStr)) as ContractEpoch
+}
+
+data required_ci_contract_epoch: ContractEpoch = required_ci_contract_epoch_of(rows: required_ci_obligation_rows())
 
 // The env member name the workflow authority emits and the exact-commit reader looks up. It is
 // declared here beside the value because the KEY and the VALUE are one fact about how this epoch is

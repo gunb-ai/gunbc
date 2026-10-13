@@ -2,7 +2,7 @@ module gunbc.witness.witness_floor_workflow
 
 
 import std.measure { Minute, minute, minute_count }
-import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key, required_ci_context_name }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import gunbc.roadmap.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
@@ -205,7 +205,7 @@ import std.types { Bool, List, String, Int }
 // each other and still start together; only the aggregator waits, and it does nothing but read
 // two results. Each lane job's log is findable by its lane name, and the aggregator's own output
 // names which lane to open.
-data witness_floor_workflow_job_id: String = "witnesses"
+data witness_floor_workflow_job_id: String = required_ci_context_name as String
 
 // The workflow's own name, hoisted to a declaration because a second consumer now joins on
 // it. gunbc.fleet.fleet_desired_admission refuses a workflow_run payload whose workflow_name is

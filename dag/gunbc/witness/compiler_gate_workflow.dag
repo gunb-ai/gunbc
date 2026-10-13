@@ -16,7 +16,8 @@ module gunbc.witness.compiler_gate_workflow
 // declared drop gunbc.rung_drop v1_required_lanes_withdrawn, and its trigger names the native
 // compiler judging that population, never the return of these lanes.
 //
-// WHAT REMAINS IS ONE JOB, `witnesses` -- the id the repository ruleset requires, so the job's own
+// WHAT REMAINS IS ONE JOB, `v2-bootstrap` (gunbc.required_ci_contract_epoch required_ci_context_name)
+// -- the id the repository ruleset requires, so the job's own
 // check IS the required context and no aggregate reads it: the seed emits the two retained v2
 // closures, cargo builds the emitted crates, and the built binaries are started
 // (gunbc.emitted_subject_build_gate states the subject). Every run emits and builds both products
@@ -35,17 +36,17 @@ module gunbc.witness.compiler_gate_workflow
 //
 // FORK PULL REQUESTS CARRY NO REQUIRED CONTEXT. The job keeps the fleet guard
 // (compiler_gate_fleet_job_condition): fork code does not run on the fleet, so on a fork pull
-// request the job is skipped and the `witnesses` check is never produced -- the head is UNOBSERVED
+// request the job is skipped and the required check is never produced -- the head is UNOBSERVED
 // and cannot merge until a same-repository branch carries it. The deleted aggregate excused that
 // skip with a notice and a green context; a green over no verdict is the fail-open DESIGN section
 // 5 refuses, and nothing in this repository lands from a fork.
 //
-// THE NAME `witnesses` NOW CARRIES A DIFFERENT CONTRACT, AND THE EPOCH SAYS SO. The ruleset requires a
-// context of that name and it lives outside the repository, so the job keeps the id; what a
-// success entitles a consumer to conclude changed materially, which is the case
-// gunbc.required_ci_contract_epoch says to bump for. The epoch moved in the change that made this
-// cut, so gunbc.fleet.fleet_revision_acceptance cannot admit a revision judged under the old contract as
-// though it were judged under this one, nor the reverse.
+// THE JOB ID IS THE CONTRACT NAME. It was `witnesses` through the v1 withdrawal, which kept the
+// spelling while the obligations changed (epoch bump). The name is now `v2-bootstrap`, the
+// operator-approved spelling of what the job actually does, and gunbc.required_ci_contract_epoch
+// required_ci_context_name is the one authority both the emitter and the ruleset read. The epoch is
+// a digest of the obligation rows, so a material change of those obligations cannot keep the old
+// identity.
 //
 // THE REQUIRED JOB RUNS ON THE FLEET (operator ruling 2026-09-28: no lane the required context
 // reads runs on a hosted runner), and compiler_gate_merge_path_runs_on_the_fleet refuses emission
@@ -124,7 +125,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership
 // it. witnesses.yml lost the member at 85c1356300c and fleet-desired has refused every push to main
 // since (8 runs, 2026-09-19T23:50Z onward) with RequiredCiEpochAbsent, against 52 consecutive
 // greens before it.
-import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key, required_ci_context_name }
 
 // THE HOSTED BUILD PRELUDE. No job of this workflow uses it: gunbc.instruments.instrument_dispatch_workflow builds
 // `gunbc` on a hosted runner through it. It was the whole job of the `compiler` lane the 2026-09-28
@@ -269,10 +270,10 @@ fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
 // steps it carries. It carries the exposure the header names: a superseded pull-request run is
 // cancelled, and fleet_compile_cancellation_standing still reads NotSafe. THE WALL IS MEASURED ON
 // THIS RUNNER CLASS BY THIS JOB'S OWN RUNS and is not restated here (DESIGN section 6: name the
-// instrument, never transcribe its output) -- the producer is the `witnesses` job of any run of this
+// instrument, never transcribe its output) -- the producer is the required job of any run of this
 // workflow, and the two instrument steps carry one label each so the split between the two
 // compilations is readable from the step timings rather than inferred.
-data compiler_gate_required_job_id: String = "witnesses"
+data compiler_gate_required_job_id: String = required_ci_context_name as String
 
 // THE TIMEOUT IS A BOUND, NOT A BUDGET, and it is deliberately well above the measured wall: a
 // timeout that trims a slow-but-honest run converts a subject verdict into silence on the required

@@ -14,6 +14,7 @@ import gunbc.witness.compiler_gate_workflow {
   compiler_gate_emit_build_notice_lines,
   compiler_gate_emit_build_step
 }
+import gunbc.required_ci_contract_epoch { required_ci_context_name }
 import gunbc.emitted_subject_build_gate {
   NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed, EmittedBuildSignature,
   emit_build_standing_notice_for,
@@ -39,7 +40,7 @@ import extdeps.filesystem.filesystem_io
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 
 // WHAT THIS FILE DISCRIMINATES, after the operator ruling of 2026-10-09 collapsed the emit-build
-// lane and the aggregate that read it into ONE required job named `witnesses`: that the workflow
+// lane and the aggregate that read it into ONE required job (now `v2-bootstrap`): that the workflow
 // runs exactly that job and nothing beside it; that the job's steps invoke the two declared
 // instrument labels rather than a spelling of them, one step per subject; that every subject step
 // asks for a FRESH product and the job binds no native product store, so a restored final product
@@ -88,7 +89,7 @@ fn step_env_has(step: Step, key: String, value: String) -> Bool {
 // job (an aggregate regrown, a lane returned) reds this, and so does a workflow that lost the job.
 test fn the_workflow_runs_exactly_the_required_job() -> Bool {
   let ids = compiler_gate_workflow.jobs |> map(j => j.id)
-  compiler_gate_required_job_id == "witnesses"
+  compiler_gate_required_job_id == (required_ci_context_name as String)
     && any(ids, id => id == compiler_gate_required_job_id)
     && all(ids, id => id == compiler_gate_required_job_id)
 }
@@ -104,7 +105,7 @@ test fn w_RED_the_withdrawn_lanes_are_not_jobs() -> Bool {
 }
 
 // THE JOB IS FLEET-GUARDED: fork code does not run on the fleet, so a fork pull request produces no
-// `witnesses` check (unobserved, never excused). The guard is the one authority
+// required check (unobserved, never excused). The guard is the one authority
 // (compiler_gate_fleet_job_condition) rather than a second spelling of it.
 test fn the_required_job_is_fleet_guarded() -> Bool {
   match compiler_gate_required_job().if_condition {

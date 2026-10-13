@@ -21,9 +21,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   CARGO_TERM_COLOR: always
-  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-10-10.1
+  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 22f201494894fff3
 jobs:
-  witnesses:
+  v2-bootstrap:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
