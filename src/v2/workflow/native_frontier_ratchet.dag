@@ -8,6 +8,7 @@ import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import extdeps.bazel.target_pattern { TargetPattern, target_pattern_within }
+import gunbc.native_route_universe { native_route_default_pattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
@@ -26,7 +27,7 @@ import v2.workflow.v2_native_route {
   MalformedControlAcceptedByRoute, OldRouteControlNeverInstalled, EmittedBuildRustcUnrecorded,
   EmittedBuildCompilerUnbound, EmittedBuildWarningsNotDenied, EmittedBuildNotClean,
   native_route_admission_refusal_cause_name,
-  native_route_default_pattern, native_route_reference_for, native_route_disposition,
+  native_route_reference_for, native_route_disposition,
   NativeRouteExclusionCause, CompilerFrontierAttributed, NativeEntryResolutionLimit, NativeEvalBoundary, UnattributedRefusal,
   NativeRouteDivergenceCause, NativePassedExpectedRed, NativeFalseExpectedPass, NativeReturnedOtherVerdict, NativeReachedRouteGap
 }

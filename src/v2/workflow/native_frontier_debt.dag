@@ -14,7 +14,7 @@ import v2.workflow.native_route_progress_guard { NativeProgressDispositionRow, N
 //
 // WHAT KIND OF LITERAL THIS IS (DESIGN section 5). A monotone debt contract over a closed,
 // independently discovered subject universe. The universe is DISCOVERED, never authored: it is the
-// set of identities `v2.workflow.v2_native_route` `native_route_default_pattern` plans, derived
+// set of identities `gunbc.native_route_universe` `native_route_default_pattern` plans, derived
 // from the marked declarations of the tree's own `v2` modules by the emitted binary on every run.
 // The roster persists the universe its minting run discovered, so that each later run's discovered
 // universe is joined to it at identity grain. Membership is joined

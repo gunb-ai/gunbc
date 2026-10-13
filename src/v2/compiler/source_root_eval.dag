@@ -13,14 +13,14 @@ import v2.workflow.v2_native_route {
   native_route_live_control_false_declaration,
   native_route_live_control_module,
   native_route_live_control_true_declaration,
-  native_route_label_in_package,
-  native_route_module_package_text,
   native_route_package_text_module,
-  native_route_default_pattern,
-  native_route_module_probe_declaration,
   required_v2_native_job_name
 }
 import gunbc.native_route_universe {
+  native_route_default_pattern,
+  native_route_label_in_package,
+  native_route_module_package_text,
+  native_route_module_probe_declaration,
   native_route_universe_member,
 }
 // THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside

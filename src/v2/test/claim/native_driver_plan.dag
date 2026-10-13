@@ -6,7 +6,7 @@ import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitFailure, ExitSuccess }
 import extdeps.bazel.target_pattern { render_target_pattern }
-import v2.workflow.v2_native_route { native_route_default_pattern }
+import gunbc.native_route_universe { native_route_default_pattern }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import v2.compiler.source_root_eval {
   NativeDriverAdjudicate,

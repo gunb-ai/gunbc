@@ -4,9 +4,14 @@ import std.algebra { list_append, list_snoc_item, count_where, fold_list, is_emp
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present }
-import std.types { NonEmptyStr, List }
-import extdeps.bazel.label { LabelParse, LabelParsed, LabelRefused, PackagePath, parse_label }
-import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern, target_pattern_matches }
+import std.types { List }
+import extdeps.bazel.label { LabelParse, LabelParsed, LabelRefused }
+import extdeps.bazel.target_pattern { target_pattern_matches }
+import gunbc.native_route_universe {
+  native_route_default_pattern,
+  native_route_label_in_package,
+  native_route_module_package_text,
+}
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
@@ -88,22 +93,13 @@ data required_v2_native_job_name: String = "required-v2-native"
 // upstream's own `parse_label`: its segment and target-name refusals apply to an identity exactly
 // as they apply to an operator's label, and no second parser decides what a well-formed package
 // is. A refused identity label is a typed refusal of the universe, never a silent exclusion.
-// ONE PACKAGE TEXT PER MODULE: the namespace segments joined with the upstream's separator.
-// The producer computes it once per module and parses each declaration against it, so a module's
-// namespace is folded once, not once per declaration.
-fn native_route_module_package_text(module_qn: String) -> String {
-  fold_list(
-    xs: split(s: module_qn, delimiter: "."),
-    empty: "",
-    cons: fn(acc, segment) {
-      if acc == "" { concat("", segment) } else { concat(concat(acc, "/"), segment) }
-    }
-  )
-}
+// PACKAGE TEXT, LABEL-IN-PACKAGE, DEFAULT PATTERN, PROBE DECLARATION, AND MODULE MEMBERSHIP are
+// authored once in gunbc.native_route_universe (the dag-safe sliver). This module imports them.
+// native_route_package_text_module is the inverse fold and is not on that sliver.
 
 // THE SAME CORRESPONDENCE READ FROM THE PACKAGE SIDE: the module whose namespace segments are the
-// package's segments. It lives here, beside native_route_module_package_text, so the one fact has one
-// home; a consumer holding a package (the census subject's label) names the module through it rather
+// package's segments. It lives here, beside the imported native_route_module_package_text, so a
+// consumer holding a package (the census subject's label) names the module through it rather
 // than re-folding the separator itself.
 fn native_route_package_text_module(package_text: String) -> String {
   fold_list(
@@ -113,10 +109,6 @@ fn native_route_package_text_module(package_text: String) -> String {
       if acc == "" { concat("", segment) } else { concat(concat(acc, "."), segment) }
     }
   )
-}
-
-fn native_route_label_in_package(package_text: String, declaration: String) -> LabelParse {
-  parse_label(text: concat(concat(concat("//", package_text), ":"), declaration))
 }
 
 fn native_route_identity_label(module_qn: String, declaration: String) -> LabelParse {
@@ -147,19 +139,13 @@ fn native_route_identity_label(module_qn: String, declaration: String) -> LabelP
 // WHAT NO BOUNDARY COVERS is the marked declarations under `dag/test/manual`, which neither this
 // pattern nor `gunbc.discovery_census` `claim_route_universe` selects
 // (`gunbc.recurring_failure_mode` `test_identity_restated_as_a_location_predicate_beside_the_marker`).
-fn native_route_default_pattern() -> TargetPattern {
-  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr] } }
-}
-
-// THE DECLARATION A MODULE IS LABELED WITH when only its package is in question: a package or subtree
-// pattern admits any declaration, so the module-grain probes (this boundary's, and the lane's
-// acquisition probe in v2.compiler.compile) spell the same one.
-data native_route_module_probe_declaration: String = "any_declaration"
+// native_route_default_pattern and native_route_module_probe_declaration are imported from
+// gunbc.native_route_universe; they are not re-authored here.
 
 // WHETHER A LABEL LIES INSIDE THE ROUTE BOUNDARY, decided by the matcher against the default pattern
 // and by nothing else. A label that cannot be formed is outside: unlike the lane's acquisition probe,
 // which widens the acquisition by one module when a name cannot be judged, a boundary claim is made
-// of a label or not at all.
+// of a label or not at all. Module-grain membership is native_route_universe_member on the sliver.
 fn native_route_label_in_boundary(parse: LabelParse) -> Bool {
   match parse {
     LabelRefused { cause: _ } => false
@@ -170,15 +156,6 @@ fn native_route_label_in_boundary(parse: LabelParse) -> Bool {
 fn native_route_identity_in_boundary(identity: NativeRouteTestIdentity) -> Bool {
   native_route_label_in_boundary(
     parse: native_route_identity_label(module_qn: identity.module, declaration: identity.declaration)
-  )
-}
-
-fn native_route_module_in_boundary(module_qn: String) -> Bool {
-  native_route_label_in_boundary(
-    parse: native_route_label_in_package(
-      package_text: native_route_module_package_text(module_qn: module_qn),
-      declaration: native_route_module_probe_declaration
-    )
   )
 }
 
