@@ -5,7 +5,7 @@ import gunbc.compile_diagnostic_census {
   CensusNotRunnable,
   census_count_at_key,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // Durable witness for the retired failure mode gunbc.recurring_failure_mode
 // match_variant_lookup_does_not_peel_type_alias (gunbc#10699).
