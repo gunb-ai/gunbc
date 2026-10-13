@@ -179,6 +179,20 @@ fn serving_engine_vllm(
   }
 }
 
+fn serving_engine_ninfer(
+  kv_dtype: NinferKvDtype?,
+  speculation: NinferSpeculation?,
+  max_concurrency: Nat?,
+  kv_capacity_auto: Bool?,
+) -> ServingEngineRequest {
+  EngineNinfer {
+    kv_dtype: kv_dtype,
+    speculation: speculation,
+    max_concurrency: max_concurrency,
+    kv_capacity_auto: kv_capacity_auto,
+  }
+}
+
 // ── THE SUBJECT OF A LAUNCH IS DERIVED FROM THE PROFILE THAT LAUNCHED ───────────────────────────
 //
 // THE TWO HAND-BUILT LIVE SUBJECTS THIS REPLACES each filled the axes from a different source -- the
