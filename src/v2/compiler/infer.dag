@@ -1925,7 +1925,7 @@ fn refinement_declaration(index: SymbolIndex, reference: Node) -> Optional<Refin
 // A REFINEMENT DECLARATION READ FROM ITS DECLARED NODE: the where-clause production edge and the
 // carrier's type expression, or Absent when the node is not a refinement. The one reader of that
 // shape -- refinement_declaration above reaches it through the symbol index, and
-// gunbc.instruments.type_declaration_use_census reaches it from a module member it already holds.
+// v2.compiler.type_declaration_use_census reaches it from a module member it already holds.
 fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration> {
   match find_labeled_child(root: decl, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_where_refinement_clause)) {
     Rejected { diagnostics: _ } => Absent
