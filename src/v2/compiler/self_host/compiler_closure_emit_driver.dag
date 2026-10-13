@@ -11,7 +11,6 @@ import v2.compiler.source_authority {
   SourceRef,
   SourceRootIngest,
   SourceRootProvenanceCoverageReceipt,
-  discovered_source_refs_digest_eq,
   discovered_source_refs_digest_for_refs,
   source_root_closure_ref_transport_complete,
   source_root_ref_transport_coverage_admits
@@ -72,10 +71,7 @@ fn closure_emit_driver_population_agrees(
   receipt: SourceRootProvenanceCoverageReceipt,
   refs: List<SourceRef>
 ) -> Bool {
-  discovered_source_refs_digest_eq(
-    left: receipt.discovered_source_refs_digest,
-    right: discovered_source_refs_digest_for_refs(refs: refs)
-  )
+  receipt.discovered_source_refs_digest == discovered_source_refs_digest_for_refs(refs: refs)
 }
 
 // The admission decision is its own total function, separate from the drive,
