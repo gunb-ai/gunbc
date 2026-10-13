@@ -32,7 +32,7 @@ import extdeps.bazel.target_pattern {
 //
 // THERE ARE TWO EXECUTORS AND THE OPERAND SAYS WHICH, BY CONTAINMENT RATHER THAN BY SPELLING.
 // The native test route owns one universe, and that universe is itself a target pattern
-// (`gunbc.witness.v2_native_route` `native_route_default_pattern`, `//v2/test/...`). So "does this
+// (`gunbc.witness.v2_native_route` `native_route_default_pattern`, `//v2/...`). So "does this
 // operand belong to the native route" is the cited authority's own containment question, asked
 // once, here: `extdeps.bazel.target_pattern` `target_pattern_within`. An operand inside it --
 // single target or set form alike -- is `TestOperandNativeRoute` and enters the native
@@ -43,7 +43,9 @@ import extdeps.bazel.target_pattern {
 // THE UNIVERSE IS A PARAMETER, NOT A ROW THIS MODULE REACHES FOR, for the same reason
 // `route_target_invocation_in` takes its index: folding the lane's own rows in here would leave
 // this function checkable only against a transcription of them, which is the change detector
-// DESIGN's oracle rule rejects. The production caller supplies `native_route_default_pattern`.
+// DESIGN's oracle rule rejects. The production caller is the seed's `test_verb`, which supplies the
+// pattern it parses from the constant `gunbc.native_route_seed_boundary_emit` renders from
+// `native_route_default_pattern`, so the seed holds no spelling of the universe of its own.
 //
 // THE REFUSAL IS THE AUTHORITY'S OWN CAUSE, CARRIED TYPED. `PatternNotAbsolute` and
 // `PatternAllTargetsUnsupported` have different remedies from each other and from every
@@ -90,7 +92,7 @@ fn admit_test_operand(
 
 // A SET FORM OUTSIDE EVERY ROUTE'S UNIVERSE HAS NO EXECUTOR, AND THAT IS WHAT THIS REFUSES.
 //
-// Two executors enumerate a population: the native test route (`//v2/test/...`) and the claim
+// Two executors enumerate a population: the native test route (`//v2/...`) and the claim
 // route (`//test/claim/...`, the discovered witness claims). The retirement trigger this arm used to
 // carry -- "an executor that enumerates a population outside the native universe" -- is satisfied
 // for the claim population, so `//test/claim/...` is no longer refused here. A set form outside
