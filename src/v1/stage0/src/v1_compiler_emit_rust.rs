@@ -3994,7 +3994,10 @@ pub fn type_node_has_closure_unbound_generic_atom(
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let leaf_name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        if (((n.children.clone().len() as i64) == 0) && (leaf_name.clone() != "".to_string())) {
+        if ((((n.children.clone().len() as i64) == 0) && (leaf_name.clone() != "".to_string()))
+            && !((n.inferred.clone() == std::option::Option::None)
+                && crate::v1_compiler_infer_env::node_is_kernel_mint(n.clone())))
+        {
             if type_leaf_is_unbound_in_closure_scope(
                 leaf_name.clone(),
                 generic_param_names.clone(),
