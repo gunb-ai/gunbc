@@ -1,8 +1,7 @@
 module v2.std.member_declaration_kind
 
 import std.types { List }
-import std.algebra { FreeMonoid }
-import v2.std.algebra { fold_list }
+import std.algebra { FreeMonoid, fold_list }
 import v2.std.collection { Map, empty_map, map_contains_key, map_insert }
 import v2.std.integer { Int }
 import v2.std.node { Symbol }

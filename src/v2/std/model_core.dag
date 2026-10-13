@@ -10,7 +10,7 @@ import v2.std.diagnostic {
   UserInputBoundary,
   WholeFile
 }
-import v2.std.algebra {
+import std.algebra {
   fold_list
 }
 import v2.std.algebra_structure_signature { bool_boolean_algebra_node, bool_boolean_algebra_type_node, field_reciprocal_nonzero_precondition_node, field_reciprocal_operation_node }

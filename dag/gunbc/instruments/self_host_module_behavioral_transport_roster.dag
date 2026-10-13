@@ -10,7 +10,7 @@ import gunbc.instruments.self_host_curated_seed_linked_harness {
   CsslSetupRefused,
   cssl_seed_linked_behavioral_receipt
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import std.optional {
   Optional,
   Absent,

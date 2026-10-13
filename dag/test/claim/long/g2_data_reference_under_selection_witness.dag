@@ -29,7 +29,7 @@ import v2.lens.live_read_classification {
   live_read_selection_manifest_live,
   classification_has_runtime_read
 }
-import v2.std.algebra {
+import std.algebra {
   list_head,
   HeadFound,
   HeadAbsent

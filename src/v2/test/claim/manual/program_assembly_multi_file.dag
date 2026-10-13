@@ -28,7 +28,6 @@ import v2.extdeps.languages.dag {
   dag_surface_edge,
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_node }
 import v2.std.artifact { Artifact, SourceFile, TestClaimArtifact }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic {
@@ -47,6 +46,7 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
+  fold_list_node
 }
 import v2.std.qualified_name { QualifiedName }
 

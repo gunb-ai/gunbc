@@ -2,8 +2,7 @@ module gunbc.floor.floor_non_verdict_classification
 
 import std.types { String, List }
 import v2.std.integer { Int }
-import v2.std.algebra { count_where, fold_list, length }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, count_where, fold_list, length }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 
 // WHY THIS CARRIER EXISTS. v2.workflow.floor_non_verdict carries fifteen identities that the

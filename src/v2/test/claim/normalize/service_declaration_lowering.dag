@@ -7,12 +7,11 @@ import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_match
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NonEmptyDiagnostics, Outcome, Rejected, Some, bind_outcome, diagnostics_fatal_reason }
-import v2.std.algebra { fold_list }
 import std.optional { Absent, Present }
 import v2.std.integer { Int }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 
 // DECLARATION-GRADE SERVICE LOWERING (v2.compiler.body_lowering_fold body_lower_service_decl). A
 // service lowers to its interface -- a named product of function types -- and sets its realization

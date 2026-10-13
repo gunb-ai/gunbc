@@ -19,7 +19,7 @@ import std.measure {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.observation { Done, observation_durations_wall }
-import v2.std.algebra { count_where, for_all }
+import std.algebra { count_where, for_all }
 import v2.std.text { String }
 
 // Executing consumer for the mandatory-migration disclosure (gunbc.witness.witness_row_cost). THE PAIR IS

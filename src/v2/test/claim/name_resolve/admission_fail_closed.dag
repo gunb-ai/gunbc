@@ -28,8 +28,7 @@ import v2.extdeps.languages.dag {
   dag_named_edge,
   dag_surface_edge,
 }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, fold_list_node }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.std.collection { empty_map }
 import v2.std.diagnostic {
   Accepted,
@@ -43,7 +42,7 @@ import v2.std.diagnostic {
   non_empty_diagnostics_eq
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node }
 import v2.std.resolution_policy { ImportScoped }
 
 test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {

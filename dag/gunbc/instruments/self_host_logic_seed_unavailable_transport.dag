@@ -9,7 +9,7 @@ import extdeps.gunbc
 import std.types { NonEmptyStr, list_length }
 import std.logic { Bool }
 import std.integer { Int }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence }
 import gunbc.instruments.emitted_crate_harness_manifest {
   derive_harness_manifest_in_place,

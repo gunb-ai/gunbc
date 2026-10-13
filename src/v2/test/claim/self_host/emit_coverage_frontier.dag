@@ -13,7 +13,7 @@ import v2.compiler.self_host.emit_coverage_frontier {
   EmitCoverageFrontierRow,
   SelfEmittedNative
 }
-import v2.std.algebra { length }
+import std.algebra { length }
 import v2.std.text { String }
 
 test fn witness_roster_total_holds() -> Bool {
