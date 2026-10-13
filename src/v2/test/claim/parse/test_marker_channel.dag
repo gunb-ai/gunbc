@@ -239,7 +239,7 @@ test fn that_refusal_is_located_at_the_body_token_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       match diagnostics_fatal(d: d).at {
-        Textual { file: _, extent: ByteRange { start: s, end: _ } } => s >= 44
+        SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: s, end: _ } } => s >= 44
         _ => false
       }
   }
