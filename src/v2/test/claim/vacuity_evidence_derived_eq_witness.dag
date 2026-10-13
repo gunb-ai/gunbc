@@ -3,8 +3,7 @@ module v2.test.claim.vacuity_evidence_derived_eq_witness
 import v2.lens.vacuity {
   ProvenDuplicate,
   ProvenIndependent,
-  Unknown,
-  VacuityEvidence
+  Unknown
 }
 
 // D1 derived-equality backfill (nfr_dissolve_derived_equality payoff) for

@@ -88,7 +88,8 @@ fn vacuity_consumer_witness_live_shadows() -> List<VacuitySiteKey> {
     xs: vacuity_consumer_witness_classified_sites(),
     empty: std.algebra.Empty,
     cons: fn(acc, site) {
-      if vacuity_consumer_witness_evidence_for_site(site: site) == ProvenDuplicate {
+      let wanted = ProvenDuplicate
+      if vacuity_consumer_witness_evidence_for_site(site: site) == wanted {
         list_append(left: acc, right: [site])
       } else {
         acc
