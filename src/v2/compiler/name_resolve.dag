@@ -949,6 +949,11 @@ type ContextWalk {
 
 // The admitted namespace is built over the context's own index, so that index is the one this
 // resolution consulted. A refused context resolved nothing.
+// Member lookup during the walk is kind-aware: v2.compiler.resolve
+// lookup_symbol_index_atom_identity filters the lexical population with
+// std.occurrence_binding_resolve occurrence_category_binding_verdict before
+// symbol_index_lexical_selection (none/one/many). This door only admits the
+// subject; it does not pick among same-spelling kinds.
 fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission) -> ContextResolved {
   let walked = resolve_walk_in_context(context: context, admission: admission)
   match walked.context {

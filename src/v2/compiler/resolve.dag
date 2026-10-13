@@ -55,6 +55,19 @@ import v2.std.declaration_marker {
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.occurrence_identity {
+  CallableOccurrence,
+  ConstructorOccurrence,
+  LexicalValueOccurrence,
+  NamespaceSegmentOccurrence,
+  OccurrenceCategory,
+  TypeOccurrence
+}
+import std.occurrence_binding_resolve {
+  OccurrenceCategoryBindingAdmissible,
+  OccurrenceCategoryBindingInadmissible,
+  occurrence_category_binding_verdict
+}
 import v2.extdeps.languages.dag {
   dag_kernel_string_type_spelling,
   dag_string_literal_value_optional,
@@ -154,11 +167,14 @@ import v2.std.symbol_index {
   symbol_index_absolute_candidates,
   RecordTypePayload,
   VariantArmPayload,
+  symbol_index_binds_namespace_body_at,
   symbol_index_declared_payload_at,
   symbol_index_declares_resource_at,
   symbol_index_global_unique_lookup,
   symbol_index_declaring_path_of,
+  symbol_index_lexical_collect,
   symbol_index_lexical_lookup,
+  symbol_index_lexical_selection,
   symbol_index_declared_binders_at,
   symbol_index_declared_type_params_at,
   symbol_index_declares_primitive_contract_at,
@@ -589,6 +605,13 @@ type ResolveContext {
   lm: LanguageModel
   under_module_root: Bool
   declaring: DeclaringPosition
+  // WHICH KIND THE REFERENCE AT THIS WALK OWES, before none/one/many. Type-role walks
+  // (resolve_type_role_target, arrow domain/codomain types) carry TypeOccurrence; value walks
+  // carry LexicalValueOccurrence, which the kernel also admits for constructors and callables.
+  // Eligibility is std.occurrence_binding_resolve occurrence_category_binding_verdict — the
+  // namespace-binding-kernel exclusion — applied to the collected lexical population, then
+  // v2.std.symbol_index symbol_index_lexical_selection is the same 0/1/many fold.
+  reference_category: OccurrenceCategory
 }
 
 // WHERE THE WALK STANDS IN THE CONTAINMENT TREE, IN THE PATH v2.compiler.symbol_index_fill KEYS
@@ -965,7 +988,8 @@ fn resolve_ctx_init(
     position: namespace.module_qn,
     lm: lm,
     under_module_root: false,
-    declaring: resolve_declaring_root(namespace: namespace)
+    declaring: resolve_declaring_root(namespace: namespace),
+    reference_category: LexicalValueOccurrence
   }
 }
 
@@ -978,7 +1002,8 @@ fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    reference_category: ctx.reference_category
   }
 }
 
@@ -991,16 +1016,39 @@ fn resolve_ctx_with_type_scope(ctx: ResolveContext, type_scope: Scope) -> Resolv
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    reference_category: ctx.reference_category
   }
+}
+
+fn resolve_ctx_with_reference_category(ctx: ResolveContext, category: OccurrenceCategory) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    type_scope: ctx.type_scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root,
+    declaring: ctx.declaring,
+    reference_category: category
+  }
+}
+
+fn resolve_ctx_type_role(ctx: ResolveContext, scope: Scope) -> ResolveContext {
+  resolve_ctx_with_reference_category(
+    ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope),
+    category: TypeOccurrence
+  )
 }
 
 // THE ONE TYPE-ROLE ENTRY. A type expression carried in a body -- a cast's target
 // (v2.std.type_binder <cast-target>) or a let's annotation (<type-annotation>) -- resolves here: in the type-role
 // frame, so the enclosing fn's <T> binds it and no value binder can, and an undeclared name refuses
-// located at that name.
+// located at that name. The walk's required kind is TypeOccurrence so a colliding constructor of
+// the same spelling is not a candidate (namespace-binding-kernel eligibility before 0/1/many).
 fn resolve_type_role_target(ctx: ResolveContext, target: Node) -> ResolveNodeWalk {
-  resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: ctx.type_scope), n: target)
+  resolve_node_walk(ctx: resolve_ctx_type_role(ctx: ctx, scope: ctx.type_scope), n: target)
 }
 
 fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveContext {
@@ -1012,7 +1060,8 @@ fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveCon
     position: qualified_name_snoc(qn: ctx.position, segment: segment),
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    reference_category: ctx.reference_category
   }
 }
 
@@ -1025,7 +1074,8 @@ fn resolve_ctx_leaving_containment(ctx: ResolveContext) -> ResolveContext {
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    reference_category: ctx.reference_category
   }
 }
 
@@ -1050,7 +1100,8 @@ fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition)
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: declaring
+    declaring: declaring,
+    reference_category: ctx.reference_category
   }
 }
 
@@ -1108,7 +1159,8 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    reference_category: ctx.reference_category
   }
 }
 
@@ -1443,16 +1495,89 @@ fn lookup_symbol_index_atom_identity(
   ctx: ResolveContext,
   name: Symbol
 ) -> SymbolIndexAtomLookup {
-  match symbol_index_lexical_lookup(
-    index: ctx.namespace.symbol_index,
-    position: symbol_index_lookup_position(ctx: ctx),
-    name: name
+  match symbol_index_lexical_selection(
+    candidates: lexical_candidates_eligible_for(
+      index: ctx.namespace.symbol_index,
+      candidates: symbol_index_lexical_collect(
+        index: ctx.namespace.symbol_index,
+        position: symbol_index_lookup_position(ctx: ctx),
+        name: name,
+        acc: Empty
+      ),
+      required: ctx.reference_category
+    )
   ) {
     LexicalHit { node: _, path: path } => SymbolIndexAtomHit { path: path }
     LexicalAmbiguous { candidates: candidates } =>
       SymbolIndexAtomAmbiguous { class: AmbiguousOnLexicalChain { candidates: candidates } }
     LexicalUnbound => SymbolIndexAtomUnbound
   }
+}
+
+// THE DECLARATION'S OCCURRENCE CATEGORY, from facts the index already stores. A unique variant
+// alias and a variant arm are ConstructorOccurrence (DeclaredPayloadKind VariantArmPayload). A
+// record type is TypeOccurrence (RecordTypePayload). A resource is TypeOccurrence. A namespace
+// body is NamespaceSegmentOccurrence. Everything else is read from the stored node: a coproduct
+// or other type form is TypeOccurrence, an Arrow is CallableOccurrence, a computation is a
+// lexical value. This is not a second admissibility algebra: it only names the declaration so
+// occurrence_category_binding_verdict can exclude it.
+fn declaration_occurrence_category(index: SymbolIndex, path: QualifiedName) -> OccurrenceCategory {
+  match symbol_index_declared_payload_at(index: index, qualified_path: path) {
+    Present { value: kind } =>
+      match kind {
+        VariantArmPayload => ConstructorOccurrence
+        RecordTypePayload => TypeOccurrence
+      }
+    Absent =>
+      if symbol_index_declares_resource_at(index: index, qualified_path: path) {
+        TypeOccurrence
+      } else {
+        if symbol_index_binds_namespace_body_at(index: index, qualified_path: path) {
+          NamespaceSegmentOccurrence
+        } else {
+          match symbol_index_entry_at(index: index, qualified_path: path) {
+            Present { value: node } => declaration_category_from_node(node: node)
+            Absent => LexicalValueOccurrence
+          }
+        }
+      }
+  }
+}
+
+fn declaration_category_from_node(node: Node) -> OccurrenceCategory {
+  match node.kind {
+    TypeNode { connective: Arrow } => CallableOccurrence
+    TypeNode { connective: Disj } => TypeOccurrence
+    TypeNode { connective: Occupancy } => TypeOccurrence
+    TypeNode { connective: Instantiation } => TypeOccurrence
+    TypeNode { connective: Conj } => TypeOccurrence
+    TypeNode { connective: Atom { identity: _ } } => TypeOccurrence
+    ComputationNode { behavior: _ } => LexicalValueOccurrence
+  }
+}
+
+// KERNEL ELIGIBILITY BEFORE THE CANONICAL FOLD. Wrong-kind candidates are dropped; the residue
+// is handed to symbol_index_lexical_selection (none/one/many). The verdict is
+// std.occurrence_binding_resolve occurrence_category_binding_verdict, the same relation
+// occurrence_binding_from_candidates is handed after category exclusion.
+fn lexical_candidates_eligible_for(
+  index: SymbolIndex,
+  candidates: FreeMonoid<LexicalBindingCandidate>,
+  required: OccurrenceCategory
+) -> FreeMonoid<LexicalBindingCandidate> {
+  fold_list(
+    xs: candidates,
+    empty: Empty,
+    cons: fn(acc, candidate) {
+      match occurrence_category_binding_verdict(
+        reference: required,
+        declaration: declaration_occurrence_category(index: index, path: candidate.path)
+      ) {
+        OccurrenceCategoryBindingAdmissible => list_snoc_item(xs: acc, item: candidate)
+        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => acc
+      }
+    }
+  )
 }
 
 // feature:indexed-variant-path-projectable acceptance condition at the producer seam, required for conformance with docs/plans/namespace-resolution-design.md section 13 unique-on-chain: resolve the reference's FIRST segment to the unique binder on its ancestor chain, then project every remaining segment downward through the containment tree. try_resolve_qualified_name_node must therefore accept an authored Type.Variant path by projecting it from the referencing position onto the type-to-variant containment path that symbol_index_fill_containment_node already indexes. The feature is UNFIRED while this function sends the authored path directly to symbol_index_lookup as though every dotted path were corpus-root absolute: UpdateVersionPersistence.Persistent therefore refuses even though the full module.UpdateVersionPersistence.Persistent path is indexed. It fires only when an executing positive control resolves the type-relative path to that exact indexed variant; zero binders produces a located unresolved refusal; two or more binders produces a located Ambiguous refusal carrying the full candidate list rather than picking; and shadowing refuses rather than silently rebinding. This belongs to the namespace-only-resolution lane's producer-side changeover, not to a consumer workaround or a new syntax preference.
@@ -4403,7 +4528,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
           w: acc,
           e: e,
           r: resolve_arrow_domain_walk(
-            type_ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: slot_scope),
+            type_ctx: resolve_ctx_type_role(ctx: inner_ctx, scope: slot_scope),
             default_ctx: inner_ctx,
             domain: e.target
           )
@@ -4412,7 +4537,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
         child_walk_step(
           w: acc,
           e: e,
-          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: slot_scope), n: e.target)
+          r: resolve_node_walk(ctx: resolve_ctx_type_role(ctx: inner_ctx, scope: slot_scope), n: e.target)
         )
     }
   }))

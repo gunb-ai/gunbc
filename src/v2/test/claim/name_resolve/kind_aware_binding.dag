@@ -1,0 +1,143 @@
+module v2.test.claim.name_resolve.kind_aware_binding
+
+import v2.compiler.compile {
+  native_test_context_from_ingest,
+  native_lane_file_refusal_index,
+  native_module_resolve_verdict,
+  NativeTestContext,
+  NativeModuleResolveVerdict,
+  NativeModuleResolveAccepted,
+  NativeModuleResolveRefused
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.types { Bool }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Production lookup is kind-aware: a type-role Optional and a constructor Optional of the same
+// spelling are not one ambiguous name. Eligibility is
+// std.occurrence_binding_resolve occurrence_category_binding_verdict applied to the lexical
+// population before symbol_index_lexical_selection (v2.compiler.resolve
+// lookup_symbol_index_atom_identity). These claims run the native prepare/resolve route.
+
+data kab_type_opt_source: String = "module v2.test.kab.type_opt\n\ntype Optional<T> = Missing | Held { value: T }\n"
+
+data kab_type_opt2_source: String = "module v2.test.kab.type_opt2\n\ntype Optional<T> = OtherMiss | OtherHeld { value: T }\n"
+
+data kab_card_source: String = "module v2.test.kab.card\n\ntype Card = Need | Optional\n"
+
+data kab_user_source: String = "module v2.test.kab.user\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Optional }\ntype Unit = U\nfn f(x: Optional<Unit>) -> Unit { U }\n"
+
+data kab_value_user_source: String = "module v2.test.kab.value_user\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Card, Optional }\nfn g() -> Card { Optional }\n"
+
+data kab_wrong_kind_source: String = "module v2.test.kab.wrong_kind\n\nimport v2.test.kab.card { Optional }\ntype Unit = U\nfn f(x: Optional<Unit>) -> Unit { U }\n"
+
+data kab_two_types_source: String = "module v2.test.kab.two_types\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.type_opt2 { Optional }\ntype Unit = U\nfn f(x: Optional<Unit>) -> Unit { U }\n"
+
+fn kab_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+fn kab_context() -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest(ingest: [
+    kab_read(text: kab_type_opt_source, id: ^kab_type_opt, path: "src/v2/test/fixture/kab/type_opt.dag"),
+    kab_read(text: kab_type_opt2_source, id: ^kab_type_opt2, path: "src/v2/test/fixture/kab/type_opt2.dag"),
+    kab_read(text: kab_card_source, id: ^kab_card, path: "src/v2/test/fixture/kab/card.dag"),
+    kab_read(text: kab_user_source, id: ^kab_user, path: "src/v2/test/fixture/kab/user.dag"),
+    kab_read(text: kab_value_user_source, id: ^kab_value_user, path: "src/v2/test/fixture/kab/value_user.dag"),
+    kab_read(text: kab_wrong_kind_source, id: ^kab_wrong_kind, path: "src/v2/test/fixture/kab/wrong_kind.dag"),
+    kab_read(text: kab_two_types_source, id: ^kab_two_types, path: "src/v2/test/fixture/kab/two_types.dag")
+  ])
+}
+
+type KabVerdicts {
+  user: NativeModuleResolveVerdict
+  value_user: NativeModuleResolveVerdict
+  wrong_kind: NativeModuleResolveVerdict
+  two_types: NativeModuleResolveVerdict
+}
+
+fn kab_verdicts() -> Optional<KabVerdicts> {
+  match kab_context() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        optional_present(value: KabVerdicts {
+          user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.user", path: ^kab_user).verdict,
+          value_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.value_user", path: ^kab_value_user).verdict,
+          wrong_kind: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.wrong_kind", path: ^kab_wrong_kind).verdict,
+          two_types: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.two_types", path: ^kab_two_types).verdict
+        })
+      }
+  }
+}
+
+fn kab_accepted(v: NativeModuleResolveVerdict) -> Bool {
+  match v {
+    NativeModuleResolveAccepted { resolved: _ } => true
+    _ => false
+  }
+}
+
+fn kab_fatal(v: NativeModuleResolveVerdict) -> Optional<Symbol> {
+  match v {
+    NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      optional_present(value: diagnostics_fatal_reason(d: d))
+    _ => optional_absent()
+  }
+}
+
+fn kab_refuses_with(v: NativeModuleResolveVerdict, reason: Symbol) -> Bool {
+  match kab_fatal(v: v) {
+    Present { value: r } => r == reason
+    Absent => false
+  }
+}
+
+// THE THREE-LINE REPRO. Importing the type Optional and the Card variant Optional must not refuse
+// Optional<Unit> in type position: the variant is ineligible before none/one/many.
+test fn type_role_optional_resolves_beside_a_same_spelling_variant() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.user)
+  }
+}
+
+// THE VALUE-ROLE DUAL. The same two imports bind the variant in a constructor position.
+test fn value_role_optional_binds_the_variant_beside_the_type() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.value_user)
+  }
+}
+
+// WRONG KIND. Only the variant is imported; Optional<Unit> in type position is unbound, not a
+// silent bind of the constructor as a type.
+test fn a_variant_optional_in_type_position_is_unbound() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_refuses_with(v: vs.wrong_kind, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+
+// GENUINE AMBIGUITY. Two type declarations named Optional stay many after eligibility.
+test fn two_type_optionals_remain_ambiguous_in_type_position() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_refuses_with(v: vs.two_types, reason: ^resolve_reason_ambiguous_symbol)
+  }
+}

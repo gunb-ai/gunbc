@@ -1,6 +1,6 @@
 module v2.test.claim.resolve.namespace_only_policy
 
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { LexicalValueOccurrence, OccurrenceSynthetic }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
   NotDeclaring,
@@ -80,7 +80,8 @@ fn policy_pilot_resolve(
       position: position,
       lm: dag_language_model(),
       under_module_root: true,
-      declaring: NotDeclaring
+      declaring: NotDeclaring,
+      reference_category: LexicalValueOccurrence
     },
     n: policy_pilot_atom(identity: identity),
     identity: identity
@@ -124,7 +125,8 @@ fn policy_pilot_resolve_rejects_with_reason(
       position: position,
       lm: dag_language_model(),
       under_module_root: true,
-      declaring: NotDeclaring
+      declaring: NotDeclaring,
+      reference_category: LexicalValueOccurrence
     },
     n: policy_pilot_atom(identity: identity),
     identity: identity
