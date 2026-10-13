@@ -279,13 +279,7 @@ import v2.extdeps.languages.bash_build {
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.node { Node }
-import gunbc.ci.ci_deploy_access {
-  DeployAccess,
-  ci_deploy_srv1_access_or_refusal,
-  DeployAccessReady,
-  DeployAccessJobPrincipalRefused,
-  deploy_access_job_principal_refused_emit_poison,
-}
+import gunbc.ci.ci_deploy_access { DeployAccess }
 import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_install_shell }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import v2.workflow.effect_plan_bash_materialize { BashBoundOperationInvocation }
@@ -2144,8 +2138,9 @@ fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // job before the install step runs.
 //
 // THE COPY IS LOCAL, AND THAT IS A PROPERTY OF THE TRANSPORT RATHER THAN A HOPE. The job runs on a
-// self-hosted runner labelled with the dispatch's own host input, and gunbc.ci.ci_deploy_access
-// ci_deploy_srv1_access_or_refusal binds LocalShell -- so the script executes ON the target host,
+// self-hosted runner labelled with the dispatch's own host input, and the DeployAccess the gated
+// dispatch hands this emitter binds LocalShell (gunbc.ci.ci_deploy_access ci_deploy_srv1_access for the
+// CI entry, ci_deploy_srv1_operator_local_access for the operator-local one) -- so the script executes ON the target host,
 // and "$PWD" is that job's checkout. The same fact is what makes the rsync above work; the binary
 // copy is not reaching any further than the tree copy already does. Were the transport ever remote,
 // both would break together and loudly, rather than this one silently copying a file that is not
@@ -3570,7 +3565,6 @@ fn apply_intent_from_effects(
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
-  principal: GroundedPosixPrincipal,
 ) -> Pipeline {
   Pipeline {
     steps: concat(
@@ -3583,7 +3577,7 @@ fn apply_intent_from_effects(
         concat(
           deploy_memory_cap_apply_steps(spec: spec, authorization: cap_authorization),
           concat(
-            flat_map(spec.steps, step => apply_step_effects(principal: principal, step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
+            flat_map(spec.steps, step => apply_step_effects(principal: access.principal, step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
             deploy_apply_receipt_steps(spec: spec)
           )
         )
@@ -3730,13 +3724,13 @@ fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: Re
 fn approval_broker_dark_install_intent(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
-  principal: GroundedPosixPrincipal,
+  access: DeployAccess,
 ) -> Pipeline {
   Pipeline {
     steps: concat(
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
+        apply_approval_broker_unit_write_steps(principal: access.principal, spec: spec, revision: revision),
       ),
       concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
     ),
@@ -3754,12 +3748,12 @@ data approval_broker_dark_install_not_owner_poison: String = "__GUNBC_DEPLOY_REF
 
 data approval_broker_dark_install_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker DARK INSTALL intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so stage 1 of the cutover fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen)\n"
 
-fn approval_broker_dark_install_script(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> String {
+fn approval_broker_dark_install_script(spec: DeploymentSpec, revision: ReleaseRevisionBinding, access: DeployAccess) -> String {
   if !deployment_owns_the_host_approval_broker(spec: spec) {
     join([approval_broker_dark_install_not_owner_poison, spec.instance_id as String, "\n"], "")
   } else {
     emit_pipeline_or_poison(
-      p: approval_broker_dark_install_intent(principal: principal, spec: spec, revision: revision),
+      p: approval_broker_dark_install_intent(access: access, spec: spec, revision: revision),
       refused: approval_broker_dark_install_emit_refused_poison,
     )
   }
@@ -3770,56 +3764,46 @@ fn live_deploy_apply_script_for(
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
-  principal: GroundedPosixPrincipal,
+  access: DeployAccess,
 ) -> String {
-  match ci_deploy_srv1_access_or_refusal() {
-    DeployAccessJobPrincipalRefused { refusal: r } =>
-      deploy_access_job_principal_refused_emit_poison(refusal: r)
-    DeployAccessReady { access: access } =>
-      match membership_effects(plan: deployment_apply_plan(spec: spec)) {
-        EffectsReady { effects: es } =>
-          emit_pipeline_or_poison(
-            p: apply_intent_from_effects(principal: principal, 
-              spec: spec,
-              effects: es,
-              access: access,
-              plan: plan,
-              cap_authorization: cap_authorization,
-              oidc_now: oidc_now,
-            ),
-            refused: live_deploy_apply_emit_refused_poison
-          )
-        ApplyRefused { refusals: rs } =>
-          live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
-      }
+  match membership_effects(plan: deployment_apply_plan(spec: spec)) {
+    EffectsReady { effects: es } =>
+      emit_pipeline_or_poison(
+        p: apply_intent_from_effects(
+          spec: spec,
+          effects: es,
+          access: access,
+          plan: plan,
+          cap_authorization: cap_authorization,
+          oidc_now: oidc_now,
+        ),
+        refused: live_deploy_apply_emit_refused_poison
+      )
+    ApplyRefused { refusals: rs } =>
+      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
   }
 }
 
-fn live_deploy_retract_script_for(spec: DeploymentSpec) -> String {
+fn live_deploy_retract_script_for(spec: DeploymentSpec, access: DeployAccess) -> String {
   match spec.target.tailscale_client {
     ScopedRemovalUnsupported { observed: v } =>
       retract_unsupported_client_poison(observed: semver_version_label(v: v))
     ScopedRemovalUnobserved { reason: r } =>
       retract_unobserved_client_poison(reason: r)
     ScopedRemovalSupported { observed: _ } =>
-      live_deploy_retract_script_with_scoped_removal(spec: spec)
+      live_deploy_retract_script_with_scoped_removal(spec: spec, access: access)
   }
 }
 
-fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec) -> String {
-  match ci_deploy_srv1_access_or_refusal() {
-    DeployAccessJobPrincipalRefused { refusal: r } =>
-      deploy_access_job_principal_refused_emit_poison(refusal: r)
-    DeployAccessReady { access: access } =>
-      match membership_effects(plan: deployment_retract_plan(spec: spec)) {
-        EffectsReady { effects: es } =>
-          emit_pipeline_or_poison(
-            p: retract_intent_from_effects(spec: spec, effects: es, access: access),
-            refused: live_deploy_retract_emit_refused_poison
-          )
-        ApplyRefused { refusals: rs } =>
-          live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
-      }
+fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec, access: DeployAccess) -> String {
+  match membership_effects(plan: deployment_retract_plan(spec: spec)) {
+    EffectsReady { effects: es } =>
+      emit_pipeline_or_poison(
+        p: retract_intent_from_effects(spec: spec, effects: es, access: access),
+        refused: live_deploy_retract_emit_refused_poison
+      )
+    ApplyRefused { refusals: rs } =>
+      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
   }
 }
 
@@ -3827,9 +3811,10 @@ fn live_deploy_apply_script_for_wet(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
-  principal: GroundedPosixPrincipal,
+  access: DeployAccess,
 ) -> String {
-  live_deploy_apply_script_for(principal: principal, 
+  live_deploy_apply_script_for(
+    access: access,
     spec: spec,
     plan: plan,
     cap_authorization: cap_authorization,
