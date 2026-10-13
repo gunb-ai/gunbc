@@ -1249,6 +1249,18 @@ service git.Core {
     }
   }
 
+  operation WorktreeAddInRepo {
+    requires opaque
+    input { repo: FilePath, path: FilePath, start_point: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["git", "-C", "{repo}", "worktree", "add", "--quiet", "{path}", "{start_point}"]
+    }
+  }
+
   operation WriteTreeInRepo {
     requires opaque
     input { repository_path: String }

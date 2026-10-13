@@ -807,6 +807,21 @@ type PublicationHelperPrepared
   = PreparedOutcome { outcome: PublicationHelperOutcome }
   | PreparedAdmitted { entry: String, subject: RoadmapPublicationSubject }
 
+fn any_prepared_admitted(prepared: List<PublicationHelperPrepared>) -> Bool {
+  any(prepared, p => match p {
+    PreparedAdmitted { entry: _, subject: _ } => true
+    PreparedOutcome { outcome: _ } => false
+  })
+}
+
+fn publication_helper_outcome_without_mint(prepared: PublicationHelperPrepared) -> PublicationHelperOutcome {
+  match prepared {
+    PreparedOutcome { outcome } => outcome
+    PreparedAdmitted { entry: _, subject: _ } =>
+      HelperSpoolRefused { detail: "an admitted request reached the no-mint arm, which is a helper defect" }
+  }
+}
+
 fn publication_helper_stage_admitted(
   instance_root: String,
   entry: String,
@@ -988,9 +1003,9 @@ fn publication_helper_capability_admits(
 // FAILS is its own outcome rather than a silence, because the alternative is a subject re-observed
 // on every run forever with nothing saying why.
 // STAGE EVERY PENDING CANDIDATE BEFORE THE MINT. Fetch from the worker git dir is git in a
-// worker-writable repo; the token must not be in the process yet (operator 2026-10-13). One mint
-// per run still holds: the environment does not change between requests, and probing per request
-// would multiply a process spawn by the request count for an answer that cannot differ.
+// worker-writable repo; the token must not be in the process yet (operator 2026-10-13). Mint only
+// when at least one PreparedAdmitted exists: an empty spool or a run of terminal refusals must not
+// sign a JWT. When something is admitted, one mint per run still holds.
 //
 // AN UNLISTABLE REQUEST SPOOL REFUSES AND DOES NOT WIDEN. There is no arm that answers `assume
 // there is nothing to do` -- that is the empty-observation narrow, and it would render a helper
@@ -1012,11 +1027,15 @@ fn publication_helper_run_once(instance_root: String) -> List<PublicationHelperO
       filter(xs: split(s: requests.entries, delimiter: "\n"), f: e => trim(e) != ""),
       entry => publication_helper_prepare_entry(instance_root: instance_root, entry: trim(entry)),
     )
-    let credential = publication_helper_credential()
-    map(
-      prepared,
-      p => publication_helper_finish_prepared(instance_root: instance_root, credential: credential, prepared: p),
-    )
+    if !any_prepared_admitted(prepared: prepared) {
+      map(prepared, p => publication_helper_outcome_without_mint(prepared: p))
+    } else {
+      let credential = publication_helper_credential()
+      map(
+        prepared,
+        p => publication_helper_finish_prepared(instance_root: instance_root, credential: credential, prepared: p),
+      )
+    }
   }
 }
 

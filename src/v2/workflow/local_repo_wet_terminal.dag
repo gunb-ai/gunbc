@@ -967,6 +967,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_publication_push_real_execution", function: "stage_linked_worktree_into_persistent_mirror_by_real_execution" },
+      entry: "dag/test/claim/roadmap/roadmap_publication_push_real_execution.dag",
+      function: "stage_linked_worktree_into_persistent_mirror_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_publication_push_real_execution", function: "push_from_bare_mirror_to_a_file_remote_by_real_execution" },
+      entry: "dag/test/claim/roadmap/roadmap_publication_push_real_execution.dag",
+      function: "push_from_bare_mirror_to_a_file_remote_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_publication_push_real_execution", function: "refused_push_to_a_missing_remote_shreds_by_real_execution" },
+      entry: "dag/test/claim/roadmap/roadmap_publication_push_real_execution.dag",
+      function: "refused_push_to_a_missing_remote_shreds_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_publication_push_real_execution", function: "a_worktree_without_a_gitdir_file_or_directory_refuses_by_real_execution" },
+      entry: "dag/test/claim/roadmap/roadmap_publication_push_real_execution.dag",
+      function: "a_worktree_without_a_gitdir_file_or_directory_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.contract_identity.required_ci_epoch_real_execution_witness", function: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution" },
       entry: "dag/test/claim/contract_identity/required_ci_epoch_real_execution_witness.dag",
       function: "a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution",

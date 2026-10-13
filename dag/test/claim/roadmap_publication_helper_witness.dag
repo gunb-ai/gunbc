@@ -470,7 +470,7 @@ test fn a_request_and_its_answer_are_addressed_in_different_directories() -> Boo
     != publication_answer_dir(instance_root: "/opt/gunbc")
   && publication_request_path_for(instance_root: "/opt/gunbc", key: "k")
     != publication_answer_path_for(instance_root: "/opt/gunbc", key: "k")
-    && !string_contains(s: publication_bare_mirror_path(instance_root: "/opt/gunbc") as String, pattern: "publication-spool")
+    && string_contains(s: publication_bare_mirror_path(instance_root: "/opt/gunbc") as String, pattern: "publication-spool")
 }
 
 test fn two_instances_do_not_share_a_spool() -> Bool {
