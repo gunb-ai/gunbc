@@ -43,7 +43,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data visudo_authority: ExternalAuthority = extdeps_external_authority_anchor
 
 data visudo_binary_path: NonEmptyStr = "/usr/sbin/visudo"
-data visudo_binary_name: NonEmptyStr = "visudo"
 
 // -cf is the SINGLE combined word, not two words: the shell builder the swap replaces spelled it
 // `-cf`, and the op must render the argv the shell rendered, byte for byte.
