@@ -2322,7 +2322,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Decide every name one canonical way",
           boundary: "The namespace cut as gunbc.namespace_cut.namespace_cut_stage stages it: F-0, XL-0 to XL-4 (evidence and the reference-derived graph), ACT-0 and XL-5 (waves), XL-6 (atomic cutover), XL-7 (grammar deletion). Rows are the stages that still have open work. The stage chain itself stays in the module.",
-          approach: "XL-2 and XL-3 wait on frontend prerequisites (LoweringOccurrenceProjection, ServiceModuleLowering, ResolverBoundDeclaringIdentity). The declaration-identity switch-over is the XL-6 construction, built in shadow now. Per the 2026-09-12 interlock edge, XL-6 and XL-7 run after seed retirement.",
+          approach: "XL-2 and XL-3 wait on frontend prerequisites (LoweringOccurrenceProjection, UsesClauseCarrier, ResolverBoundDeclaringIdentity; ServiceModuleLowering is delivered, gunbc#13833). The declaration-identity switch-over is the XL-6 construction, built in shadow now. Per the 2026-09-12 interlock edge, XL-6 and XL-7 run after seed retirement.",
           red_control: "ACT-0 release stays blocked while gunbc.rung_drop namespace_wave_admission_wall_removed stands or any act0_release_milestones entry is OUTSTANDING. A name answered two ways after XL-6 is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
           handback: "XL-7 delivered: import is a typed, located parse error, and the legacy deciding mechanisms are deleted."
@@ -2883,16 +2883,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "xl2-body-lowering",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/compiler_frontend_program_status.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Every lowered node keeps its occurrence, and service modules lower",
-          boundary: "The two xl2_prerequisites still PrerequisiteOutstanding in gunbc.compiler_frontend_program_status: LoweringOccurrenceProjection (#12108 to #12793 largely landed) and ServiceModuleLowering (a carrier for interface members; gunbc.recurring_failure_mode service_interface_member_has_no_carrier).",
-          displaced_cost: "Service modules refuse whole at normalize, so their references are outside the XL-2 residual instead of counted in it.",
-          first_slice: "Close the LoweringOccurrenceProjection residue, then design the service-member carrier.",
-          red_control: "A rebuilt atom without its occurrence, or a service module refused at normalize, keeps the prerequisite OUTSTANDING.",
-          out_of_scope: "The rehearsal itself.",
-          handback: "Both prerequisites PrerequisiteDelivered, with evidence rows."
-        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design.")),
-      parent: in_project(project: "v2-frontend", contribution: "The last two XL-2 prerequisites are lowering gaps; closing them puts every module's references into the census namespace XL-2 needs."),
+          boundary: "gunbc.compiler_frontend_program_status: ServiceModuleLowering is PrerequisiteDelivered (gunbc#13833; carriers landed, ServiceSetAside deleted). Still PrerequisiteOutstanding: LoweringOccurrenceProjection and UsesClauseCarrier.",
+          displaced_cost: "A rebuilt atom without its occurrence, or a fn with a uses clause, still refuses its module at lowering, so those references stay outside the XL-2 residual.",
+          first_slice: "Close LoweringOccurrenceProjection (gunbc#13828 in flight). UsesClauseCarrier stays outstanding.",
+          red_control: "A rebuilt atom without its occurrence keeps LoweringOccurrenceProjection OUTSTANDING. A uses-clause fn refused at lowering keeps UsesClauseCarrier OUTSTANDING.",
+          out_of_scope: "The rehearsal itself. Service-member carriers are delivered; do not redesign them.",
+          handback: "The remaining outstanding arms PrerequisiteDelivered, with evidence rows."
+        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design."), on: "2026-10-13", note: "ServiceModuleLowering delivered on gunbc#13833; the next slice is not a service-member carrier.")),
+      parent: in_project(project: "v2-frontend", contribution: "The remaining XL-2 lowering gaps (occurrence projection, uses-clause carrier) keep those modules' references out of the census namespace XL-2 needs."),
     ),
     roadmap_node(
       identity: "rn_BNEYWCR707T5D0BRH8G6VZKGY5",
