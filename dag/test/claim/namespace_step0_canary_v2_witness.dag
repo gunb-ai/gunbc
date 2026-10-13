@@ -9,7 +9,7 @@ import std.content_hash {
 }
 import std.decl_ref { DeclarationRef }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.namespace_cut.namespace_step0_subject_collector { Step0PopulationIdentity, Step0SubjectMember }
 import gunbc.namespace_cut.namespace_step0_candidate_run {
   Step0SubjectPartition,

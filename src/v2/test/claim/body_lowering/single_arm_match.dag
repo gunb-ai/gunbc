@@ -1,6 +1,6 @@
 module v2.test.claim.body_lowering.single_arm_match
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import v2.compiler.reference_conservation_admission {
   ExplainedDrop,
   no_explained_drops,
@@ -9,7 +9,7 @@ import v2.compiler.reference_conservation_admission {
 }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.test.claim.body_lowering.normalize_outcome_helpers {
   body_lowering_normalize_outcome
 }

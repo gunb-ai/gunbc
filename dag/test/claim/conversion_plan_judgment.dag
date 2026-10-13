@@ -9,7 +9,7 @@ import std.coercion {
   HostText, CodePointSequence, NotText, TextRepresentationUnidentified,
 }
 import gunbc.structural_realization_bindings { conversion_plan_rows, unicode_scalar_literal_homomorphism }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

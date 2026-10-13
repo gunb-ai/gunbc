@@ -10,7 +10,7 @@ import std.literal_elaboration {
   KernelNamedImportCollides,
   KernelNamedImportMintAmbiguous,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,

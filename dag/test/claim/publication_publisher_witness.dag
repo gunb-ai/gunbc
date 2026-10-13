@@ -69,7 +69,7 @@ import gunbc.instruments.publication_push_shadow {
   shadow_refusal_count,
   shadow_would_refuse_ordinary_session,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

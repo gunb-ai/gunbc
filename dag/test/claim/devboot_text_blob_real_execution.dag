@@ -13,7 +13,7 @@ import extdeps.git.plumbing
 import extdeps.git.plumbing { GitWorktreeAt, GitRepositoryAddress, GitDirectoryAt }
 import gunbc.devboot.transport { devboot_store_address }
 import gunbc.devboot.build { stage_text_blob, GitOidPresent, GitOidCommandFailed }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,7 +1,7 @@
 module test.claim.runner.runner_unit_file_witness
 
 import std.types { Bool, String, NonEmptyStr, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression, UbuntuLatest }
 import extdeps.systemd.unit_file {
   ExitTypeMain,

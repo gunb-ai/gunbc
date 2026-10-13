@@ -8,7 +8,7 @@ import gunbc.extdeps_scope_frontier {
   scope_cover_holds, manifest_freeze_holds,
 }
 import std.types { String, Bool, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

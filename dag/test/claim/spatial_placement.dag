@@ -48,7 +48,7 @@ import gunbc.fleet.fleet_physical_inventory {
   fleet_nominal_rackmount_arithmetic_holds,
   srv1_measured_wireless_note,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

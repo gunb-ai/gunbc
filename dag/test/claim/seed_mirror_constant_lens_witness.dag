@@ -14,7 +14,7 @@ import gunbc.host.memory_stall_refusal {
   memory_stall_verdict_window_minimum_wall,
   memory_stall_progress_cpu_share_floor,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

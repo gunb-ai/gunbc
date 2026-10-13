@@ -7,7 +7,7 @@ import extdeps.languages.yaml.types { YamlValue, YamlString }
 import gunbc.runner.runner_microvm_shakedown_workflow {
   microvm_shakedown_job, microvm_shakedown_known_task_step, microvm_shakedown_attempt_expression,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

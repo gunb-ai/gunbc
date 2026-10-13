@@ -41,7 +41,7 @@ import gunbc.tool_readiness {
   tool_readiness,
   tool_readiness_refusal_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

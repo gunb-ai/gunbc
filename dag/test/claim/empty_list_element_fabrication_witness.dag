@@ -1,7 +1,7 @@
 module test.claim.empty_list_element_fabrication_witness
 
 import std.types { String, Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.compile_diagnostic_census { census_blocking_rows, CensusObserved, CensusNotRunnable }
 

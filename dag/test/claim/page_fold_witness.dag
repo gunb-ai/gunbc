@@ -25,7 +25,7 @@ import extdeps.github.pagination {
   github_continuation_from_link_header, github_next_offset_cursor,
   github_default_page_size, github_max_page_size, github_first_page_cursor
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

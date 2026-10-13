@@ -22,7 +22,7 @@ import gunbc.dissolution_census {
   frontier_rows_bound_count,
 }
 import std.roster_frontier { frontier_rows_well_formed }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

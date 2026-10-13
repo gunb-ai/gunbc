@@ -34,7 +34,7 @@ import gunbc.econ.scm_serving_model {
   derive_scm_usage,
 }
 import std.measure { byte_size }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

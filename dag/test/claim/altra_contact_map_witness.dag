@@ -23,7 +23,7 @@ import extdeps.cpu.ampere_altra_package_contact_map {
   altra_package_contact_map,
 }
 import extdeps.cpu.ampere_altra_package_contacts { altra_package_contacts }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,6 +1,6 @@
 module test.claim.go_module_versioning_witness
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import extdeps.languages.go.emit { go_manifest_file }
 import extdeps.languages.go.go_mod {
   GoMvsProperty,
@@ -15,7 +15,7 @@ import extdeps.languages.go.go_mod {
   go_semver_label,
   go_semver_to_version_identity,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

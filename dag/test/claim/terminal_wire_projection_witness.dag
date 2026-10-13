@@ -1,6 +1,6 @@
 module test.claim.terminal_wire_projection_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool }
 import std.symbols { Ascii }
 import std.render { RenderCapability, Overwrite, Append, Clear }

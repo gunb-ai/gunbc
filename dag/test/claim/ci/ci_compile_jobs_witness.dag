@@ -13,7 +13,7 @@ import gunbc.ci.ci_compile_jobs {
 }
 import extdeps.rust.cargo_build { cargo_nextest_build_jobs_flag, cargo_build_jobs_flag }
 import gunbc.instruments.rust_gates_ci { rust_gate_build_jobs_args }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

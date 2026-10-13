@@ -2,7 +2,7 @@ module test.claim.host.managed_host_admission_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { content_hash_equal }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
 import gunbc.rung_drop {

@@ -44,14 +44,14 @@ import v2.test.fixture.changed_selection_outside_discovery {
   changed_selection_fixture_changed, changed_selection_fixture_declared, changed_selection_fixture_expected,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import std.types { String, Bool }
 import std.integer { Int }
 
 // EVERY FIXTURE IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says
 // so. Without the declaration the floor's fail-closed default reads the module as live-tree
 // reading and DECLINES it: discovered, counted, never run.
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 // ---------------------------------------------------------------------------------------------
 // FIXTURES

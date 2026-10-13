@@ -1,7 +1,7 @@
 module v2.test.claim.tokenize.lex_prefer_longer_modal_zero_width
 
 import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.compilers.lexing { PopLexMode }
 import v2.compiler.tokenize {
   LexCursor,

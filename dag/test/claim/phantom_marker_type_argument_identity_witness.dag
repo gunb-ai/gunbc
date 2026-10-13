@@ -1,6 +1,6 @@
 module test.claim.phantom_marker_type_argument_identity_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr, brand }
 

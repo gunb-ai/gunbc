@@ -1,7 +1,7 @@
 module test.claim.self_host_artifact_materialization_real_execution_witness
 
 import std.types { Bool, FilePath, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.filesystem.filesystem_io
 import extdeps.shell
 import extdeps.rust.cargo_build

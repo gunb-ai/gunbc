@@ -8,7 +8,7 @@ import v2.lens.coverage {
   coverage_defect_hollow_type
 }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data hollow_type_authority_node: Node = Node {

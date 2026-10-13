@@ -218,7 +218,7 @@ genuine cross-tree §3 forks.
 **Deliverable:** tier-2 triage proved `ConstructionProtocolNoAction` on the two
 highest-rank roster ghosts; consolidating either would destroy information.
 
-- **`live_tree_disposition`** — entry-grain witness stamp (`v2.std.live_tree`); 691 modules
+- **`live_tree_disposition`** — entry-grain witness stamp (`std.live_tree`); 691 modules
   each declare their own row with differing values (633 `SubstrateInputsOnly` / 67
   `ReadsLiveTree`). Not one concept forked 691 ways — per-entry construction protocol.
 - **`extdeps_external_authority_anchor`** — per-extdeps-module upstream cite row (same fixed
@@ -555,7 +555,7 @@ frontend's own resolver returns:
 planted module imports: test.claim.sigprobe.twin_p { twin_sig }     // 1 param
                         test.claim.sigprobe.twin_q { twin_q_anchor } // twin_q's twin_sig: 3 params
 
-func_env.parents = [twin_q, v2.std.live_tree, std.types, std.algebra,
+func_env.parents = [twin_q, std.live_tree, std.types, std.algebra,
                     std.error_primitives, twin_p]
 lookup_resolved_sig(planted.func_env, "twin_sig") -> 3 PARAMS      // == twin_q
 ```
