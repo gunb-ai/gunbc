@@ -23,7 +23,8 @@ import gunbc.live_deploy.slice_bounds {
 // only thing that would have caught it is the resolve this import makes possible.
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound }
+import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc,
   live_deploy_protocol,
@@ -243,7 +244,7 @@ test fn the_belt_service_unit_matches_the_deployed_bytes() -> Bool {
 test fn the_belt_service_unit_carries_the_per_tick_watchdog_bound() -> Bool {
   service_has(
     file: live_deploy_belt_service_unit_file(spec: live_spec()),
-    target: TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+    target: TimeoutStartSec { duration: systemd_time_span_of_seconds(d: instance_obligation_run_bound(kind: LaunchObligation)) },
   )
 }
 

@@ -3,7 +3,6 @@ module gunbc.fleet_observation.collector_ownership
 import std.types { Bool, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
 import std.durable_compare_and_set { cas_generation_count }
-import std.resource_release_law { ReleaseLaw, FencedResource, QuiescenceRequired }
 import std.temporal_effect {
   HeldLease,
   LeaseEpoch,
@@ -58,13 +57,6 @@ import std.temporal_effect {
 type EndpointFencing
   = RemoteFencingEnforced { authority: DeclarationRef }
   | RemoteFencingAbsent { limitation: NonEmptyStr }
-
-fn endpoint_fencing_release_law(fencing: EndpointFencing) -> ReleaseLaw {
-  match fencing {
-    RemoteFencingEnforced { authority: _ } => FencedResource
-    RemoteFencingAbsent { limitation: _ } => QuiescenceRequired
-  }
-}
 
 // THE COLLECTOR'S OWN IDENTITY, separate from the machine's and from the source's. These identities
 // stay SEPARATE and are related only through evidence (the interface contract with royal-gull-60):

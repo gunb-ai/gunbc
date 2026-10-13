@@ -242,7 +242,7 @@ import gunbc.dispatch_selection { default_provider_selection_request, SizingProf
 import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import extdeps.systemd.systemd_run { systemd_run_user_transient_command, SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, Second }
 import gunbc.deploy_transition {
   ActuationAdmission,
   ActuationAdmitted,
@@ -604,7 +604,9 @@ import gunbc.durable_handoff_host {
 }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.tools.stat { stat_mtime_epoch_command }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
+import gunbc.live_deploy.belt_cadence {
+  belt_tick_run_bound, instance_obligation_run_bound, belt_attempt_obligation_unit_run_bound,
+}
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
@@ -14314,8 +14316,8 @@ fn belt_attempt_obligation_receipt_write(instance: HostDashboardInstance, run: B
 // (gunbc.host.host_layout belt_spawn_workdir_env_var), so the unit resolves the same instance.
 //
 // RuntimeMaxSec IS THE OBLIGATION'S DEADLINE: past it the manager stops the unit, it ends failed, and
-// the line stops for that attempt only, loudly. It is the per-tick watchdog's bound
-// (gunbc.live_deploy.emit belt_tick_run_bound) applied to one attempt instead of all of them.
+// the line stops for that attempt only, loudly. Instance units take instance_obligation_run_bound;
+// the attempt unit takes the max of attempt_obligation_run_bound over the attempt kinds.
 // CollectMode=inactive-or-failed lets the next trigger reuse the name after a failure; the failure
 // itself is kept in the attempt's obligation receipt and the user journal.
 data belt_obligation_entry: String = "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag"
@@ -14326,13 +14328,14 @@ fn belt_obligation_unit_command(
   function: String,
   args: List<String>,
   stop_hook: NonEmptyStr?,
+  run_bound: Second,
 ) -> SystemdRunCommandReading {
   let repo = instance.repo_root as String
   systemd_run_user_transient_command(
     unit: unit,
     properties: concat([
       SystemdRunProperty { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
-      SystemdRunProperty { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+      SystemdRunProperty { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: run_bound) },
       SystemdRunProperty { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
       SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     ], match stop_hook {
@@ -14373,19 +14376,19 @@ fn belt_obligation_hold_decision(observation: AttemptUnitObservation) -> BeltObl
   }
 }
 
-fn belt_obligation_enqueue(instance: HostDashboardInstance, unit: NonEmptyStr, function: String, args: List<String>, stop_hook: NonEmptyStr?) -> BeltObligationEnqueue {
+fn belt_obligation_enqueue(instance: HostDashboardInstance, unit: NonEmptyStr, function: String, args: List<String>, stop_hook: NonEmptyStr?, run_bound: Second) -> BeltObligationEnqueue {
   match belt_obligation_hold_decision(observation: attempt_unit_observation(unit: unit)) {
     BeltObligationIsHeld => BeltObligationHeld { unit: unit }
     BeltObligationHoldUnread { reason } => BeltObligationEnqueueRefused { unit: unit, reason: join(["the user manager could not be asked whether the unit is loaded: ", reason], "") }
-    BeltObligationMayStart => belt_obligation_start(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook)
+    BeltObligationMayStart => belt_obligation_start(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook, run_bound: run_bound)
   }
 }
 
-fn belt_obligation_start(instance: HostDashboardInstance, unit: NonEmptyStr, function: String, args: List<String>, stop_hook: NonEmptyStr?) -> BeltObligationEnqueue {
+fn belt_obligation_start(instance: HostDashboardInstance, unit: NonEmptyStr, function: String, args: List<String>, stop_hook: NonEmptyStr?, run_bound: Second) -> BeltObligationEnqueue {
   match instance.toolchain.systemd_run {
     Absent => BeltObligationEnqueueRefused { unit: unit, reason: join(["the toolchain for host ", instance.host_identity as String, " declares no systemd-run, and an obligation runs in its own transient unit"], "") }
     Present { value: systemd_run } =>
-      match belt_obligation_unit_command(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook) {
+      match belt_obligation_unit_command(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook, run_bound: run_bound) {
         SystemdRunCommandRefused { cause: why } => BeltObligationEnqueueRefused { unit: unit, reason: systemd_run_option_words_refused_cause_detail(cause: why) }
         SystemdRunCommandReady { command: command } =>
           match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: belt_observe_workdir as String) {
@@ -14418,6 +14421,7 @@ fn belt_attempt_obligations_enqueue(instance: HostDashboardInstance, node_id: St
         function: belt_attempt_obligations_function,
         args: [join(["node_id=", node_id], ""), join(["attempt_key=", attempt_key], "")],
         stop_hook: Present { value: exec_line },
+        run_bound: belt_attempt_obligation_unit_run_bound(),
       )
   }
 }
@@ -14429,6 +14433,7 @@ fn belt_instance_obligation_enqueue(instance: HostDashboardInstance, kind: BeltI
     function: belt_instance_obligation_function,
     args: [join(["kind=", belt_instance_obligation_kind_key(kind: kind)], "")],
     stop_hook: Absent,
+    run_bound: instance_obligation_run_bound(kind: kind),
   )
 }
 
