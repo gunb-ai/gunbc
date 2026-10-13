@@ -1,7 +1,7 @@
 module test.claim.machine_intake.ampere_nvparam_console_observation_witness
 
 import std.types { Bool, Int, List, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present }
 import extdeps.ampere.nvparam { NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_in, nvparam_key_index, nvparam_keys }
 import gunbc.machine_intake.ampere_nvparam_console_observation {

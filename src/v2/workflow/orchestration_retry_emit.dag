@@ -58,7 +58,7 @@ import v2.std.diagnostic {
 }
 import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_core }
 import gunbc.ci.ci_failure_class { infra_retry_grep_alternation }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

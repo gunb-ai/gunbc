@@ -25,7 +25,7 @@ import v2.std.compilers.target_model {
 import std.algebra { list_append, list_map, empty_map, map_insert }
 import std.types { Map }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present }
 

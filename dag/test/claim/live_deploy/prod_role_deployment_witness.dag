@@ -1,6 +1,6 @@
 module test.claim.live_deploy.prod_role_deployment_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, Int }
 import gunbc.deployment_risk {
   NoProdRole,

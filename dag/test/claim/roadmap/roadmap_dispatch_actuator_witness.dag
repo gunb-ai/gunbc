@@ -213,7 +213,7 @@ import gunbc.roadmap.roadmap_alignment {
   alignment_resolve, alignment_resolve_chain, alignment_base_cadence_state, alignment_refusal_reason,
 }
 import std.decl_ref { decl_ref }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

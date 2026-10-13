@@ -17,7 +17,7 @@ import extdeps.realization.artifact_store_fs {
   ArtifactFsListOk, ArtifactFsListRefused, ArtifactFsListFailed,
   apply_store_evictions, eviction_deleted_count, eviction_all_applied,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

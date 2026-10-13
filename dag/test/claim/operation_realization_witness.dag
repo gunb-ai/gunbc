@@ -19,7 +19,7 @@ import v2.std.witness_evaluation {
   WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason, witness_evaluation_frame_active,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.shell { ShellProcessExited }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import std.measure { Second, second, second_count }

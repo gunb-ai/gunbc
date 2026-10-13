@@ -2,7 +2,7 @@ module test.claim.roadmap.roadmap_gate
 
 import test.claim.roadmap.roadmap_node_fixture { fx_derivable, fx_sign, fx_signed }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

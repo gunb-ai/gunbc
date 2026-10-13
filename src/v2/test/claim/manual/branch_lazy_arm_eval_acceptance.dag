@@ -92,7 +92,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import std.algebra { FreeMonoid, list_at_optional, map_insert }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -8,7 +8,7 @@ import v2.lens.complexity_accumulator_copy.roster_gate {
   FindingNotEstablished
 }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

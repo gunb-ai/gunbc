@@ -82,7 +82,7 @@ import v2.std.verification {
 }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.witness { Holds, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

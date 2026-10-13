@@ -13,7 +13,7 @@ import gunbc.float_add_associativity_observation {
   float_add_associativity_refuted,
   float_add_associativity_subject,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

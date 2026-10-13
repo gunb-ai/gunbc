@@ -27,7 +27,7 @@ import v2.cli.compile_cli {
 import v2.std.text { char_eq }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Diagnostics, ExternalContractUnknown, NonEmptyDiagnostics, None, Rejected, Some, Textual, Unavailable, WholeFile, diagnostics_has_reason, invariant_port_locus }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with, list_at_optional }

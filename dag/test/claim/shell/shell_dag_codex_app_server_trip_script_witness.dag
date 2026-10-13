@@ -13,7 +13,7 @@ import gunbc.codex_app_server_press {
   codex_press_account_trip_request_lines,
   codex_app_server_initialize_request_line,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

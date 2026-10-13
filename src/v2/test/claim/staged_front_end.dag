@@ -15,7 +15,7 @@ import v2.compiler.staged_front_end {
   run_front_end_to
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 

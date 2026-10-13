@@ -15,7 +15,7 @@ import product.printed_chassis.export_profile {
   ExportProfileRefusedRequirementPopulation, ExportProfileRefusedSubjectRoster,
   ExportProfileRefusedProfileDisagreement, exercised_export_profile_admission,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE PROFILE HAD NO CONSUMER, and a module that typechecks is not one. Every witness below names a

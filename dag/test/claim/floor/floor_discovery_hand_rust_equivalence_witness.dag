@@ -37,7 +37,7 @@ import std.optional {
 }
 import std.types { Bool, Int, String, List }
 import std.disposition { Scaffold, SingleAuthority }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

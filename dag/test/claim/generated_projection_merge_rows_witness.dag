@@ -18,7 +18,7 @@ import gunbc.gitattributes_emit {
   generated_projection_merge_attribute,
   generated_projection_merge_attribute_unset
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // SUBSTRATE INPUTS ONLY, AND THAT IS THE POINT RATHER THAN A CONVENIENCE. The sibling witness
 // test.claim.gitattributes_emit_witness reads the committed .gitattributes, so it is

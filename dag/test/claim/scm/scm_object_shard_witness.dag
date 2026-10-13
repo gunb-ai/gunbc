@@ -8,7 +8,7 @@ module test.claim.scm.scm_object_shard_witness
 // decidable is decided here.
 
 import std.types { Bool, String, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.scm.object_store { ScmObject, store_assemble_decoded, StoreAssembled, StoreAssemblyCollision }
 import gunbc.scm.repository_envelope { decode_repository_v7_finish, RepositoryDecoded, RepositoryDecodeRefused }

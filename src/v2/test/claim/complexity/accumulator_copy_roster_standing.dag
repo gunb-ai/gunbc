@@ -22,7 +22,7 @@ import v2.lens.common.source_analysis_standing {
   SourceTokenizationRejected,
   SourceUnreadable
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

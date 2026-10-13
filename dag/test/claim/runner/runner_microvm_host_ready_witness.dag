@@ -28,7 +28,7 @@ import gunbc.runner.runner_microvm_footprint_probe {
   GnuTimeMaxRss, SystemdMemoryPeak, CgroupMemoryPeak,
   InstrumentStanding, InstrumentPresent, InstrumentAbsent, InstrumentUnreadable,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

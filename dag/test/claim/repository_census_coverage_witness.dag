@@ -86,7 +86,7 @@ import gunbc.repository_census_coverage {
   census_ceiling_has_limit,
 }
 import gunbc.guarantee_measurement { MeasurementRevision, GitRevision }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

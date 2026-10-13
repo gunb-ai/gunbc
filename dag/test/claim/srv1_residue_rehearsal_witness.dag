@@ -1,6 +1,6 @@
 module test.claim.srv1_residue_rehearsal_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.srv1_residue_rehearsal {
   srv1_rehearsal_every_residue_path_is_explicitly_deleted,
   srv1_rehearsal_population_is_complete,

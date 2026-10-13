@@ -5,7 +5,7 @@ import test.claim.fabric.provider_use_fixture {
   fixture_route_sibling_region, fixture_demand_for, fixture_work_for,
 }
 import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List }
 import std.measure {
@@ -18,6 +18,7 @@ import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
 import product.fabric.work {
   Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
   CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
+ WarmResidencyRequired,
 }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
@@ -32,14 +33,14 @@ import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
   OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
   PermitNamesAnotherWork, PermitNamesAnotherDemand,
-  AvailabilityObservation, AvailableForInterval, AvailableIndefinitely, AvailabilityUnobserved,
+  AvailabilityObservation, AvailableForInterval, AvailableIndefinitely, AvailableRevocable, AvailabilityUnobserved,
   CommitmentState, PayAsYouGo, PaidThrough,
   StartCostObservation, StartCostMeasured,
   TransitionCostObservation, NoTransitionRequired,
   OperatingCostObservation, OperatingCostMeasured, OperatingCostBorneBySupplier,
   OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
   OfferCandidacy, OfferPriced, OfferNotPriceable, OfferUnavailableForGrant,
-  OfferCannotHoldAnUnboundedGrant,
+  OfferCannotHoldAnUnboundedGrant, OfferRevocationNotAdmitted,
   SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   AffinityCollision, DuplicateOfferIdentity, AffinityProjectionAmbiguous, DigestCollisionOnDistinctKeys,
   SelectionCost, selection_total, selection_liability,
@@ -88,6 +89,7 @@ fn t_requirements() -> ExecutionRequirements {
     capabilities: t_caps(),
     trust_domain: t_trust(),
     isolation: t_open_isolation(),
+    revocation: WarmResidencyRequired,
   }
 }
 
@@ -301,6 +303,7 @@ fn unpriced_axes(cs: List<OfferCandidacy<NonEmptyStr>>) -> List<SelectionInputAx
       OfferWrongCurrency { offer: _, mismatch: _ } => acc
       OfferUnaffordable { offer: _, affordability: _ } => acc
       OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => acc
+      OfferRevocationNotAdmitted { offer: _ } => acc
     })
 }
 
@@ -315,6 +318,7 @@ fn unavailable_count(cs: List<OfferCandidacy<NonEmptyStr>>) -> Nat {
       OfferWrongCurrency { offer: _, mismatch: _ } => n
       OfferUnaffordable { offer: _, affordability: _ } => n
       OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => n
+      OfferRevocationNotAdmitted { offer: _ } => n
     })
 }
 
@@ -897,6 +901,7 @@ fn unbounded_refusals(cs: List<OfferCandidacy<NonEmptyStr>>) -> Nat {
       OfferWrongCurrency { offer: _, mismatch: _ } => n
       OfferUnaffordable { offer: _, affordability: _ } => n
       OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => n
+      OfferRevocationNotAdmitted { offer: _ } => n
     })
 }
 

@@ -50,7 +50,7 @@ import v2.std.node {
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.resolution_policy { ImportScoped }
 import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.namespace_graft { module_header_containment_graft }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

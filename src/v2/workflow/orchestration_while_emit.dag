@@ -18,7 +18,7 @@ import v2.std.orchestration {
 import std.path_intent { And, DirnameAscent, Not, PathEntryKind, PathIntent, PathJoin, PathLiteral, PathNonempty, PathNotEq, PathRef }
 import std.optional { Absent }
 import v2.std.diagnostic { Accepted, None, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem.types { RegularFile, Directory, Missing }
 import std.types { FilePathParts, NonEmptyStr }
 

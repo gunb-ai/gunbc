@@ -10,7 +10,7 @@ module test.claim.scm.scm_repository_envelope_witness
 
 import std.types { Bool, Int, List, String, NonEmptyStr, list_length }
 import std.minted_identity { MintedId, MintedIdAllocator }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonObject, JsonArray, JsonNull,

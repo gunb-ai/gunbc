@@ -22,7 +22,7 @@ import product.cable_order_admission {
   cable_link_requirement, admit_cable_order, reconcile_cable_receipt,
   receipt_requires_supplier_remedy,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE TWO PROCUREMENT GATES, and the central case is the real order: it is
 // ADMITTED at purchase and CAUGHT at receipt. Anyone reasoning about this incident wants to believe

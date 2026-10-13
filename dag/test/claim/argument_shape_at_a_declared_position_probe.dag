@@ -2,7 +2,7 @@ module test.claim.argument_shape_at_a_declared_position_probe
 
 import gunbc.compile_census_probe { total_blocking_count_for, blocking_subject_count_for }
 import std.types { String, Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // total_blocking_count_for answers -1 on CensusNotRunnable, so could-not-measure REDS every row
 // below and greens none (DESIGN section 5: bottom-as-answer must never be readable as

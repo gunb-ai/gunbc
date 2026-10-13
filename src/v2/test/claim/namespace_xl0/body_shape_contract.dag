@@ -31,7 +31,7 @@ import v2.std.compilers.body_lowering {
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import std.optional { Absent, Optional, Present }

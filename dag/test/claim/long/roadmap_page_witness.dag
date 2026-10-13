@@ -11,7 +11,7 @@ import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx
 
 import gunbc.roadmap.roadmap_spawner { doc_all_edges }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation, HarnessThroughput, ThroughputUnobserved }

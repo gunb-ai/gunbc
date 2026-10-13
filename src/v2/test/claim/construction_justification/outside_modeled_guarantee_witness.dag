@@ -18,7 +18,7 @@ import v2.lens.enforcement.complexity_contract_subject {
   complexity_optimality_boundary
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

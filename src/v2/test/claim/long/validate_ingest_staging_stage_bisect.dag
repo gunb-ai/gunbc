@@ -41,7 +41,7 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot, ParseTree }
 import v2.std.node { Node, well_formed }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

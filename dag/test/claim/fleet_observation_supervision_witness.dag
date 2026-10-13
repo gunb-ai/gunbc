@@ -44,7 +44,7 @@ import gunbc.fleet_observation.collector_supervision {
   WindowCoverageUndecidable,
   supervision_coverage,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

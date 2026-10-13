@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String, Map }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   filesystem_read_outcome,

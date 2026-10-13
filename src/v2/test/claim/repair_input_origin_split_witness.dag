@@ -1,7 +1,7 @@
 module v2.test.claim.repair_input_origin_split_witness
 
 import std.types { String, Bool, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.repair_input_origin {
   RepairInputOriginCandidate,
   SourceCarrierCandidate,

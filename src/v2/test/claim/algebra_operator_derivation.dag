@@ -7,7 +7,7 @@ import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.types { List }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool, bool_node }
 import v2.std.node { Node, Symbol }
 

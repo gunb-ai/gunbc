@@ -11,7 +11,7 @@ import v2.extdeps.languages.dag { dag_language_model, namespace_graft_module_bod
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.declaration_marker { TestMarkedDeclaration, TestMarkerChannel, test_marker_channel_count, test_marker_channel_marks }
 import v2.std.diagnostic { Accepted, Outcome }
-import v2.std.live_tree { SubstrateInputsOnly }
+import std.live_tree { SubstrateInputsOnly }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode, content_hash, symbol_lexeme, fold_list_node }
 import v2.std.resolution_policy { ImportScoped }

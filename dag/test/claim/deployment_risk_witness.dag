@@ -1,6 +1,6 @@
 module test.claim.deployment_risk_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool }
 import std.optional { Present, Absent }
 import extdeps.ntfy.ntfy { NtfyTopic }

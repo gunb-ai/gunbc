@@ -1,6 +1,6 @@
 module test.claim.ci.ci_failure_class_witness
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import std.decl_ref { declaration_ref_eq, decl_ref }
 import gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming {
   command_not_found_exit_cannot_distinguish_eviction_from_misnaming,
@@ -40,7 +40,7 @@ import gunbc.ci.ci_failure_class {
 }
 import gunbc.host.memory_stall_refusal { memory_stall_refusal_page_thrash_class_name }
 import std.process { ExitFailure, ProcessExit }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
