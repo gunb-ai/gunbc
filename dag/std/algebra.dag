@@ -1338,7 +1338,9 @@ fn int_compare_canonical(a: Int, b: Int) -> Ordering {
 }
 
 // The canonical content order on Int keys, the order the host sort_by applies to them.
-data int_total_order: TotalOrder<Int> = { compare: int_compare_canonical }
+fn int_total_order() -> TotalOrder<Int> {
+  TotalOrder { compare: int_compare_canonical }
+}
 
 // std.primitives sort_by_contract inhabited by a MODELED merge sort (named apart from the `sort_by` method
 // spelling, which is a primitive with the host realization): no host seam, so the realization

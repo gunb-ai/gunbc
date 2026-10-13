@@ -35,12 +35,12 @@ fn unstable_int_compare(a: Int, b: Int) -> Ordering {
 data unstable_int_order: TotalOrder<Int> = { compare: unstable_int_compare }
 
 test fn modeled_sort_agrees_with_the_host_sort_on_duplicate_keys() -> Bool {
-  row_tags(rows: list_sort_by_key(xs: fixture_rows, key: fn(r) { r.key }, order: int_total_order))
+  row_tags(rows: list_sort_by_key(xs: fixture_rows, key: fn(r) { r.key }, order: int_total_order()))
     == row_tags(rows: fixture_rows |> sort_by(r => r.key))
 }
 
 test fn modeled_sort_keeps_input_order_among_equal_keys() -> Bool {
-  row_tags(rows: list_sort_by_key(xs: fixture_rows, key: fn(r) { r.key }, order: int_total_order))
+  row_tags(rows: list_sort_by_key(xs: fixture_rows, key: fn(r) { r.key }, order: int_total_order()))
     == ["g", "b", "e", "d", "h", "a", "c", "f"]
 }
 

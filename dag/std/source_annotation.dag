@@ -193,7 +193,7 @@ fn annotation_region_index(regions: List<AnnotationRegion>) -> AnnotationRegionI
   AnnotationRegionIndex {
     children: fold(map_support_keys(m: grouped), init: children_seed, f: (acc, key) =>
       match map_lookup(m: grouped, key: key) {
-        Present { value: siblings } => map_insert(m: acc, key: key, value: list_sort_by_key(xs: siblings, key: region_extent_start, order: int_total_order))
+        Present { value: siblings } => map_insert(m: acc, key: key, value: list_sort_by_key(xs: siblings, key: region_extent_start, order: int_total_order()))
         Absent => acc
       }),
   }
