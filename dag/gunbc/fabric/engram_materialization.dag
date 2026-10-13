@@ -1163,7 +1163,7 @@ fn route_addressing_admits_verification(s: RouteIntegrityStanding) -> Bool {
 
 // ── WHETHER THIS ROUTE'S ARTIFACT WAS ACTUALLY VERIFIED, WHICH IS A DIFFERENT QUESTION ─────────
 //
-// `gunbc.fabric_m0_origin_readback` does derive a digest over a named staged file and carries that
+// `gunbc.fabric.fabric_m0_origin_readback` does derive a digest over a named staged file and carries that
 // binding in its own reading, with its provenance limits documented. Consuming it means naming the
 // exact subject that readback was about and carrying its limits forward -- not asserting verification
 // because a provider happens to be content-keyed. Until a route does that, this is unestablished.
@@ -2627,7 +2627,7 @@ data engram_origin_provider_id: String = "fabric-m0-origin"
 // over a named staged file and returns it bound to that subject in an `OriginReading`; the module name
 // is not a declaration and citing it resolved to nothing.
 data engram_m0_origin_authority: DeclarationRef = decl_ref(
-  module_path: "gunbc.fabric_m0_origin_readback",
+  module_path: "gunbc.fabric.fabric_m0_origin_readback",
   decl_name: "read_origin_staged_file")
 
 data engram_origin_provider: CacheProvider = provider_row(
@@ -3022,7 +3022,7 @@ data engram_image_placement_receipt: DeclarationRef = decl_ref(
   module_path: "gunbc.spark.v41_published_image_observation",
   decl_name: "v41_published_engram_placement")
 
-// NO ROUTE'S ARTIFACT HAS BEEN DIGEST-VERIFIED ON THIS FLEET. `gunbc.fabric_m0_origin_readback` is the
+// NO ROUTE'S ARTIFACT HAS BEEN DIGEST-VERIFIED ON THIS FLEET. `gunbc.fabric.fabric_m0_origin_readback` is the
 // authority that could supply it -- it derives a digest over a named staged file and carries that
 // binding with its provenance limits -- but consuming it means naming the exact subject that readback
 // was about, and no such reading exists for this component. A content-keyed provider makes verification

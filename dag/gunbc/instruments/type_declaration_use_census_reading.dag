@@ -34,7 +34,7 @@ type TypeCensusFixtureFile {
 // frontier), so `fx.intro` holds that one cast alone and its expected class is OperandTypeUndecided:
 // when native infer admits the crossing, the expectation goes red and is updated, which is the signal.
 // The brand arm and the hash, concat and genuine-conversion arms are exercised at the receipt's
-// interface by test.claim.type_declaration_use_census_witness_test, because their evidence needs
+// interface by test.claim.type_declaration_use_census_witness, because their evidence needs
 // std.types and std.content_hash, which a one-root fixture cannot resolve.
 fn type_census_fixture_files() -> List<TypeCensusFixtureFile> {
   [

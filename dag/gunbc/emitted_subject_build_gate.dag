@@ -9,11 +9,11 @@ import extdeps.bazel.label { Label, render_label }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.gunbc_cli_command { gunbc_test_command }
 import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
-import gunbc.runner_slot_desired {
+import gunbc.runner.runner_slot_desired {
   gunbc_runner_slot_desired,
   SlotJobCgroupOwnership, JobOwnsNoBoundedCgroup, JobOwnsBoundedCgroup,
 }
-import gunbc.memory_envelope { memory_envelope_slot_requirement_value }
+import gunbc.host.memory_envelope { memory_envelope_slot_requirement_value }
 
 // THE SUBJECT OF THE REQUIRED EMIT-AND-BUILD LANE, AND WHAT IT IS CAREFULLY NOT.
 //
@@ -32,7 +32,7 @@ import gunbc.memory_envelope { memory_envelope_slot_requirement_value }
 // Rust and regenerated the stage0 mirrors, and both built the seed binary. NOTHING ON THE MERGE
 // PATH EMITTED A V2 CLOSURE AND COMPILED THE RESULT, so a defect invisible under evaluation and
 // fatal under emission reached main green. Those lanes were withdrawn on 2026-10-09 and this is now
-// the only required lane (gunbc.compiler_gate_workflow header); the argument below is why it is the
+// the only required lane (gunbc.witness.compiler_gate_workflow header); the argument below is why it is the
 // one that was kept. That is not a hypothesis: `gunbc.recurring_failure_mode`
 // `bounded_natural_arithmetic_evaluated_as_unbounded_int` records it in as many words -- rows over
 // `UInt8` typecheck and their witnesses evaluate, "their emitted Rust is produced by nothing on the
@@ -102,7 +102,7 @@ fn emitted_subject_build_label_text(row: EmittedSubjectBuildRow) -> String {
 }
 
 // THE FAULT EXPERIMENT IS DECIDED BY A MODELED INPUT THE WORKFLOW PASSES, NOT BY THE RUNNER READING
-// THE EVENT ITSELF. The env var below is set per step by gunbc.compiler_gate_workflow from the
+// THE EVENT ITSELF. The env var below is set per step by gunbc.witness.compiler_gate_workflow from the
 // workflow event; native_lane_runner reads it and states the decision in the run log. Absent or any
 // other value RUNS the experiment (fail toward the control, never toward skipping it). The skip is
 // the declared drop gunbc.rung_drop native_fault_experiment_off_pull_requests; merge_group and
@@ -125,12 +125,12 @@ data native_product_reuse_fresh_value: String = "fresh"
 // THE MEMORY ENVELOPE OF A SUBJECT STEP (operator ruling 2026-10-09: "MemorySwapMax=0 and a fixed
 // hard memory maximum; a lower compiler abort/trip threshold; a peak and swap receipt; no larger-
 // runner retry"). The fleet slot is the fixed hard maximum and the ONE authority for its numbers
-// (gunbc.runner_slot_desired: MemoryMax, MemoryHigh one GiB under it, no swap). Two inputs carry
+// (gunbc.runner.runner_slot_desired: MemoryMax, MemoryHigh one GiB under it, no swap). Two inputs carry
 // the envelope to gunbc test, and which of them a subject step passes is decided by ONE fleet fact
-// (native_step_memory_inputs over gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership):
+// (native_step_memory_inputs over gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership):
 //
 // 1. native_step_memory_envelope_env_name REQUIRES an envelope; its one value is the projection of
-//    gunbc.memory_envelope EnvelopeSlotRequired: a cgroup with a NUMERIC memory.max must already
+//    gunbc.host.memory_envelope EnvelopeSlotRequired: a cgroup with a NUMERIC memory.max must already
 //    bind the step -- the fleet slot's -- and gunbc test refuses a run that none binds
 //    (memory_envelope_decision over the governor's binding_cap_cgroup_dir walk, which reads `max`
 //    as unset), reads that cgroup before the producer, prints a MEMORY RECEIPT at exit (the OOM
@@ -198,12 +198,12 @@ fn native_step_memory_inputs(ownership: SlotJobCgroupOwnership) -> List<NativeSt
 fn emit_build_memory_envelope_lines(ownership: SlotJobCgroupOwnership) -> List<String> {
   let trip_line = match ownership {
     JobOwnsNoBoundedCgroup { why: why } =>
-      join(["The per-step trip at ", native_step_memory_trip_text(), " bytes is not asked for: ", why, " (gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership; the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall)."], "")
+      join(["The per-step trip at ", native_step_memory_trip_text(), " bytes is not asked for: ", why, " (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership; the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall)."], "")
     JobOwnsBoundedCgroup { staged_by: staged_by } =>
       join(["This step also asked the kernel for its own bound at ", native_step_memory_trip_text(), " bytes (", staged_by, "), so an exit of 137 may be that trip rather than the slot's."], "")
   }
   [
-    join(["This step ran inside the fleet slot's memory envelope (gunbc.runner_slot_desired: MemoryMax ", slot_memory_max_text(), " bytes, no swap once converged), which gunbc test required (", native_step_memory_envelope_env_name, "=", native_step_memory_envelope_slot_value, ") and receipted at exit."], ""),
+    join(["This step ran inside the fleet slot's memory envelope (gunbc.runner.runner_slot_desired: MemoryMax ", slot_memory_max_text(), " bytes, no swap once converged), which gunbc test required (", native_step_memory_envelope_env_name, "=", native_step_memory_envelope_slot_value, ") and receipted at exit."], ""),
     trip_line,
     "An exit of 137 here is the kernel tripping the envelope's memory.max: the compiler outgrew it. There is no larger runner and no retry; the line stops until the growth is understood (DESIGN section 6b).",
     "A MEMORY RECEIPT line precedes every successful subject step; a run that charged swap or was OOM-killed is refused even when its instrument held.",
@@ -307,7 +307,7 @@ data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedGreen
 
 // THE LINES A LANE READS WHEN IT CLICKS THE RED X. Rendered from the standing row above AND from
 // whether the lane blocks -- a SUPPLIED Bool, because that fact's one home is the lane row in
-// `gunbc.compiler_gate_workflow` (`LaneBlocks` / `LaneAnnouncedNotBlocking`), which imports this
+// `gunbc.witness.compiler_gate_workflow` (`LaneBlocks` / `LaneAnnouncedNotBlocking`), which imports this
 // module and composes the live notice. A hard-coded "does NOT block your merge" would go false the
 // moment that row flips, on exactly the surface this rendering exists to keep honest.
 //
@@ -345,7 +345,7 @@ fn emit_build_standing_lines(standing: NativeEmitBuildStanding, lane_blocks: Boo
         "CONTRADICTION: this lane blocks, yet its standing still declares an expected red with signature",
         join(["  ", render_emitted_build_signature(sig: sig)], ""),
         "The lane was to become required only once main self-hosts, which retires that standing.",
-        "One of gunbc.compiler_gate_workflow's emit-build lane row or",
+        "One of gunbc.witness.compiler_gate_workflow's emit-build lane row or",
         "gunbc.emitted_subject_build_gate emit_build_standing is stale. Report it; do not assume this red is yours or not.",
       ]
     } else {

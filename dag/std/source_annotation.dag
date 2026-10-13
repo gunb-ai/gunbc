@@ -112,6 +112,49 @@ fn placement_from_line_prefix(indent_only: Bool) -> AnnotationPlacement {
   if indent_only { LeadingAfterLineIndent } else { TrailingAfterSemanticToken }
 }
 
+// WHAT THE PREVIOUS PHYSICAL LINE HELD, observed forward by a walk, for the two adjacency bits a
+// capture carries. A walk that streams its lexemes cannot look back at the source, so it threads
+// this state instead, advancing it with the raw text of every consumed lexeme -- token, trivia and
+// annotation alike -- exactly as it threads the line-prefix state above. A line is BLANK while only
+// indentation has been seen on it, ANNOTATION-ONLY when an annotation is its first content, and CODE
+// once anything else is; a trailing annotation after code leaves the line CODE. The file's first line
+// has no previous line, which reads as CODE: neither bit holds. A capture reads `previous` BEFORE its
+// own lexeme is folded in: blank-preceded is `previous == BlankLine`, annotation-preceded is
+// `previous == AnnotationOnlyLine`.
+type AnnotationLineShape
+  = BlankLine
+  | AnnotationOnlyLine
+  | CodeLine
+
+type AnnotationLineState {
+  previous: AnnotationLineShape
+  current: AnnotationLineShape
+}
+
+fn annotation_line_state_initial() -> AnnotationLineState {
+  AnnotationLineState { previous: CodeLine, current: BlankLine }
+}
+
+fn advance_annotation_line_state(state: AnnotationLineState, code_points: List<Int>, is_annotation: Bool) -> AnnotationLineState {
+  fold(
+    code_points,
+    init: state,
+    f: (acc, cp) =>
+      if code_point_is_line_feed(cp: cp) {
+        AnnotationLineState { previous: acc.current, current: BlankLine }
+      } else if code_point_is_indent(cp: cp) {
+        acc
+      } else {
+        match acc.current {
+          BlankLine => AnnotationLineState { previous: acc.previous, current: if is_annotation { AnnotationOnlyLine } else { CodeLine } }
+          AnnotationOnlyLine => acc
+          CodeLine => acc
+        }
+      }
+  )
+}
+
+
 // The capture after the realization has stripped its delimiter. It exists as a distinct type from UnboundAnnotationCapture precisely because the `lexeme` versus `text` distinction is load-bearing: normalization is language-specific and happens exactly once, at the boundary between the realization's capture and this shared fold, so the fold can never be handed raw syntax by accident.
 type NormalizedAnnotationCapture {
   text: String

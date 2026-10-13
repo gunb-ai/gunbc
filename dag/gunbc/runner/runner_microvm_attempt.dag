@@ -1,18 +1,18 @@
-module gunbc.runner_microvm_attempt
+module gunbc.runner.runner_microvm_attempt
 
-import gunbc.runner_microvm_attempt_identity {
+import gunbc.runner.runner_microvm_attempt_identity {
   AttemptSegmentRefusal, AttemptSegmentEmpty, AttemptSegmentIsRelativeMarker, AttemptSegmentContainsSeparator, AttemptSegmentResult, AttemptSegmentAccepted, AttemptSegmentRefused, AttemptSegment, attempt_segment, attempt_segment_refusal_text, MicroVmAttempt, MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt, runner_microvm_attempt_unit_name,
 }
 import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd { SystemdUnitProperty, SliceProperty, PartOf }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name }
-import gunbc.fabric_cell_converge {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_instance_name }
+import gunbc.fabric.fabric_cell_converge {
   fabric_cell_attempt_root_path, fabric_cell_slice_name,
 }
-import gunbc.fabric_required_build_cell {
+import gunbc.fabric.fabric_required_build_cell {
   RequiredBuildCellSnapshot, FabricCellShape, FabricCellShapeBuild,
   FabricCellShaped, FabricCellShapeIncomplete, fabric_cell_shape, members_owned,
 }
@@ -38,8 +38,8 @@ data runner_microvm_attempt_disposition: ConstructionMechanism = SingleAuthority
 //             every limit the cell carries and to every observation that reads them.
 //   LIFETIME  the cell is not releasable until teardown is PROVEN, not attempted. That verdict is
 //             gunbc.product.fabric.sanitation's CellReadiness, derived from host readbacks by
-//             gunbc.runner_microvm_lifecycle and held across incarnations by
-//             gunbc.runner_microvm_cell_readiness; this module owns no second release verdict.
+//             gunbc.runner.runner_microvm_lifecycle and held across incarnations by
+//             gunbc.runner.runner_microvm_cell_readiness; this module owns no second release verdict.
 //
 // A guest missing any one of these is refused rather than downgraded, because each failure is
 // silent in production: unbound storage looks like a working VM until two attempts collide,
@@ -107,7 +107,7 @@ fn runner_microvm_attempt_slice_property(attempt: MicroVmAttempt) -> SystemdRunP
 // on the SLOT unit pointing at the attempt, which is the opposite direction and not what is
 // proposed. The claim was wrong and is retracted here.
 //
-// THIS IS NOT REPAIRED BY ASSERTION. gunbc.runner_microvm_stop_propagation_probe settles it by
+// THIS IS NOT REPAIRED BY ASSERTION. gunbc.runner.runner_microvm_stop_propagation_probe settles it by
 // running both arms against a stand-in -- an explicit `systemctl stop` of the supervisor, and a
 // kill of the supervisor's main process standing in for the OOM and crash paths -- and reading the
 // stand-in's ActiveState after each. If the kill arm leaves the stand-in active, PartOf is
@@ -116,7 +116,7 @@ fn runner_microvm_attempt_slice_property(attempt: MicroVmAttempt) -> SystemdRunP
 //
 // THE ALTERNATIVE REPAIR IS REFUSED: moving the VMM into the controller's slice would make one
 // cgroup reach it, and would charge the guest's 28 GiB to the controller instead of to the cell's
-// reservation, discarding the accounting gunbc.runner_microvm_attempt exists to keep. Separate
+// reservation, discarding the accounting gunbc.runner.runner_microvm_attempt exists to keep. Separate
 // slices, bound lifetimes.
 fn runner_microvm_attempt_part_of_property(attempt: MicroVmAttempt) -> SystemdRunProperty {
   SystemdRunProperty {
@@ -126,7 +126,7 @@ fn runner_microvm_attempt_part_of_property(attempt: MicroVmAttempt) -> SystemdRu
 }
 
 // THE CELL MUST BE OWNED BEFORE A GUEST MAY USE IT, and this is a REFUSAL rather than a warning.
-// gunbc.fabric_required_build_cell already decides ownership over cell members; this consumes that
+// gunbc.fabric.fabric_required_build_cell already decides ownership over cell members; this consumes that
 // verdict instead of re-deriving one, because a second ownership opinion is a second authority for
 // the fact the cell layer exists to hold.
 type MicroVmCellBinding

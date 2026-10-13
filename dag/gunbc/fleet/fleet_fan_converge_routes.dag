@@ -1,4 +1,4 @@
-module gunbc.fleet_fan_converge_routes
+module gunbc.fleet.fleet_fan_converge_routes
 
 import std.decl_ref { decl_ref }
 import product.fan_policy_standing {
@@ -60,7 +60,7 @@ fn fan_converge_route_for_family(family: BmcFirmwareFamily) -> FanDutyConvergeRo
 // THE AUTHORITY AN OBSERVED FAN SERIES IS READ AGAINST, PER BMC FAMILY (managed-host cut 5). Which
 // family's policy governs a host's fans is selected from what its controller was OBSERVED to be, never
 // assumed, so this dispatch takes an observed family and has no arm for "unobserved": a host whose
-// family is unread refuses before it reaches here (gunbc.machine_intake_fan_observe). It is the same
+// family is unread refuses before it reaches here (gunbc.machine_intake.fan_observe). It is the same
 // peripheral realization as the route dispatch above, and for the same reason it is not in either
 // extdeps module or in product.fan_policy_standing. The two rows differ from the routes' on purpose:
 // an observation is read against the family's POLICY (what holds a failsafe and when), while a converge

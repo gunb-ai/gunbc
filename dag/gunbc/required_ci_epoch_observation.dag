@@ -11,7 +11,7 @@ import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlMapping, Yaml
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 
 // THE OBSERVED EPOCH IS A PROPERTY OF THE TREE THE RUN EXECUTED, NOT OF THE JUDGE. The Required CI
-// contract's epoch is emitted into the workflow artifact itself (gunbc.witness_floor_workflow), so
+// contract's epoch is emitted into the workflow artifact itself (gunbc.witness.witness_floor_workflow), so
 // the bytes GitHub executed for a push-triggered run ARE the bytes carrying the epoch: reading them
 // at the triggering event's exact head_sha observes what ran, while reading the ambient checkout,
 // or calling the contract authority for both sides, would only restate what the judge expects. That

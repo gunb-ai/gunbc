@@ -1,8 +1,8 @@
 module gunbc.roadmap.roadmap_publish_admission
 
 import std.types { String, NonEmptyStr }
-import gunbc.roadmap_verification_receipt { VerificationEvidence, VerificationEvidenceForSubject, VerificationEvidenceForAnotherSubject, VerificationEvidenceLegacyAttemptLevel, VerificationEvidenceUnreadable, VerificationEvidenceV1LegacyExactHead, VerificationReceipt }
-import gunbc.roadmap_validation_oracle { ValidationVerdict, ValidationNotRun, ValidationPassed, ValidationFailed, ValidationRefused }
+import gunbc.roadmap.roadmap_verification_receipt { VerificationEvidence, VerificationEvidenceForSubject, VerificationEvidenceForAnotherSubject, VerificationEvidenceLegacyAttemptLevel, VerificationEvidenceUnreadable, VerificationEvidenceV1LegacyExactHead, VerificationReceipt }
+import gunbc.roadmap.roadmap_validation_oracle { ValidationVerdict, ValidationNotRun, ValidationPassed, ValidationFailed, ValidationRefused }
 
 type PublishAdmission
   = PublishAdmitted

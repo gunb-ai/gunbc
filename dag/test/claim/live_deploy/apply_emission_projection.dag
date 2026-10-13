@@ -1,6 +1,6 @@
 module test.claim.live_deploy.apply_emission_projection
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
 
-import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_principal }
 
 import std.types { String, List }
 import std.measure { Second }

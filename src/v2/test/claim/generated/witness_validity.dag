@@ -1,4 +1,4 @@
-module v2.test.generated.witness_validity
+module v2.test.claim.generated.witness_validity
 
 import v2.lens.testgen { testgen_emit_witness_validity_claim }
 

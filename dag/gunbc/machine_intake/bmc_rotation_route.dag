@@ -1,4 +1,4 @@
-module gunbc.machine_intake_bmc_rotation_route
+module gunbc.machine_intake.bmc_rotation_route
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.scoped_authorization { AttemptIdentity }
@@ -15,13 +15,13 @@ import extdeps.bmc.ipmi_channel {
   IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit, IpmiChannelNumber,
   IpmiPrivilegeCallback, IpmiPrivilegeUser, IpmiPrivilegeOperator, IpmiPrivilegeAdministrator, IpmiPrivilegeOem, IpmiPrivilegeNoAccess,
 }
-import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused, RedemptionRefusal }
 import gunbc.bmc_model { BmcWorld, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access, bmc_ipmi_get_user_access }
 
 data bmc_rotation_route_disposition: Disposition = Terminal {
-  reason: "The rotation route standing is the terminal form of the AccessDiscover route answer (docs/plans/managed-host-untangle.md, cut O1a): one sealed standing per controller and firmware build, bound to the evidence that grounds it, and the separate qualification effect that is the only crossing from a candidate to an executed-request grounding. It replaces the family-keyed rotation answer that gunbc.bmc_implementation_dispatch used to give; nothing here is staged pending a different construction." as NonEmptyStr,
+  reason: "The rotation route standing is the terminal form of the AccessDiscover route answer (docs/plans/managed-host-untangle.md, cut O1a): one sealed standing per controller and firmware build, bound to the evidence that grounds it, and the separate qualification effect that is the only crossing from a candidate to an executed-request grounding. It replaces the family-keyed rotation answer that gunbc.bmc.bmc_implementation_dispatch used to give; nothing here is staged pending a different construction." as NonEmptyStr,
 }
 
 // ── THE ROUTE STANDING: one controller, one firmware build, the evidence ────────────────────────
@@ -126,7 +126,7 @@ fn rotation_route_from_committed_execution(
   effect: RouteEffectStanding,
 ) -> BmcRotationRouteStanding
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route_evidence", decl_name: "mtcollins1_rotation_route_standing"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_rotation_route_evidence", decl_name: "mtcollins1_rotation_route_standing"),
   ]
 {
   BmcRotationRouteStanding {
@@ -146,17 +146,17 @@ fn rotation_route_from_citation(
   citation: ExternalAuthority,
 ) -> BmcRotationRouteStanding
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_cited_route_admits_apply_and_is_bound_to_its_build"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_rotation_approval_for_one_controller_does_not_admit_another"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "lockout_verdict"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_published_user"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user_previous_build"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "cited_mtjade1_managed_route"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "cited_mtjade1_published_route"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "a_cited_route_admits_apply_and_is_bound_to_its_build"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "a_rotation_approval_for_one_controller_does_not_admit_another"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "lockout_verdict"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_published_user"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user_previous_build"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "cited_mtjade1_managed_route"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "cited_mtjade1_published_route"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
   ]
 {
   BmcRotationRouteStanding {
@@ -773,19 +773,19 @@ fn managed_administrator_readback_fixture(
   access: List<IpmiUserChannelAccess>,
 ) -> ManagedAdministratorReadback
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_channel_access_write_that_could_lock_out_every_administrator_is_unplannable"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_readback_from_another_controller_or_build_does_not_unlock_a_close"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_duplicated_managed_readback_row_refuses"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "the_prewrite_admission_admits_only_with_the_same_run_receipt"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "an_accept_only_grounding_does_not_admit_the_closing_write"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "the_idempotent_qualification_requires_the_target_pair_to_already_hold_the_value"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "a_channel_access_write_that_could_lock_out_every_administrator_is_unplannable"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "a_readback_from_another_controller_or_build_does_not_unlock_a_close"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "a_duplicated_managed_readback_row_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "the_prewrite_admission_admits_only_with_the_same_run_receipt"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "an_accept_only_grounding_does_not_admit_the_closing_write"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "the_idempotent_qualification_requires_the_target_pair_to_already_hold_the_value"),
   ]
 {
   ManagedAdministratorReadback { endpoint: endpoint, firmware: firmware, attempt: attempt, managed_user: managed_user, access: access }
 }
 
 // THE PRODUCTION MINT: A PROJECTION OF THE ACCOUNT OBSERVATION THE PLAN ASSESSED. This module sits below
-// gunbc.machine_intake_bmc_secure and cannot name its observation type, so the projection is performed
+// gunbc.machine_intake.bmc_secure and cannot name its observation type, so the projection is performed
 // there, by project_managed_administrator_readback, and this mint admits that one function and nothing
 // else. That function runs inside the BmcSecure plan mint, over the very BmcAccountStateObservation the
 // plan assessed: the readback is therefore bound by construction to that observation's machine/intake
@@ -800,14 +800,14 @@ fn managed_administrator_readback_projected(
   access: List<IpmiUserChannelAccess>,
 ) -> ManagedAdministratorReadback
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "project_managed_administrator_readback"),
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "project_managed_administrator_readback"),
   ]
 {
   ManagedAdministratorReadback { endpoint: endpoint, firmware: firmware, attempt: attempt, managed_user: managed_user, access: access }
 }
 
 data managed_administrator_readback_live_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when the BmcAccountStateObservation that managed_administrator_readback_projected is projected from is itself minted ONLY from a live read in the same run (gunbc.machine_intake_bmc_secure bmc_secure_state_live_read_frontier), against the controller, that establishes ALL of: (1) successful authentication of the GOAL-BOUND managed account (the account the BmcSecure goal names, bound to the machine/intake subject), so the reading is that account's and not a cached or supplied row; (2) the endpoint and the firmware build observed in that run, and the run's attempt; (3) a Get User Access result for every (channel, user) pair it carries, unique per pair, with the response bytes committed as content-addressed evidence; (4) an observer-clock time ordered BEFORE the write the readback admits. Missing, unreadable, duplicated or conflicting, stale, other-controller, other-build or other-account readings refuse. Until then the only observations a readback is projected from are the dry realization's, so no live privilege-limit write can be planned. NOT satisfied by the witness fixture, by a reading from another run, by a cached access row, or by a reading timed after the write" as NonEmptyStr,
+  description: "dissolves when the BmcAccountStateObservation that managed_administrator_readback_projected is projected from is itself minted ONLY from a live read in the same run (gunbc.machine_intake.bmc_secure bmc_secure_state_live_read_frontier), against the controller, that establishes ALL of: (1) successful authentication of the GOAL-BOUND managed account (the account the BmcSecure goal names, bound to the machine/intake subject), so the reading is that account's and not a cached or supplied row; (2) the endpoint and the firmware build observed in that run, and the run's attempt; (3) a Get User Access result for every (channel, user) pair it carries, unique per pair, with the response bytes committed as content-addressed evidence; (4) an observer-clock time ordered BEFORE the write the readback admits. Missing, unreadable, duplicated or conflicting, stale, other-controller, other-build or other-account readings refuse. Until then the only observations a readback is projected from are the dry realization's, so no live privilege-limit write can be planned. NOT satisfied by the witness fixture, by a reading from another run, by a cached access row, or by a reading timed after the write" as NonEmptyStr,
 )
 
 type AdministratorRetentionRefusal
@@ -894,7 +894,7 @@ fn rotation_route_executed_fixture(
   effect: RouteEffectStanding,
 ) -> BmcRotationRouteStanding
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "an_accept_only_grounding_does_not_admit_the_closing_write"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "an_accept_only_grounding_does_not_admit_the_closing_write"),
   ]
 {
   BmcRotationRouteStanding {
@@ -962,13 +962,13 @@ fn admit_rotation_apply(
 
 // ── WHO CONSUMES THE ADMISSION, AND BY WHAT ROUTE (DESIGN §3c) ────────────────────────────────
 //
-// THIS MODULE SITS BELOW gunbc.machine_intake_bmc_secure AND IMPORTS NOTHING FROM IT. Cut O1b supplies
-// the consumer's CODE: gunbc.machine_intake_bmc_secure plan_bmc_account_action computes each write's
+// THIS MODULE SITS BELOW gunbc.machine_intake.bmc_secure AND IMPORTS NOTHING FROM IT. Cut O1b supplies
+// the consumer's CODE: gunbc.machine_intake.bmc_secure plan_bmc_account_action computes each write's
 // admission with admit_rotation_apply and refuses on every arm but RotationApplyAdmitted. It does not yet
 // supply the consumer's PRODUCTION ROUTE: that planner is reached only by its dry realization and
 // witness while mtcollins1's cut-over is held (operator ruling C, 2026-10-04), so this frontier stands.
 data rotation_route_consumption_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when gunbc.machine_intake_bmc_secure plan_bmc_account_action runs on a production path -- the held O1b transition, where a unit's BmcSecure standing is derived by the state-shaped fold and the rotation-event path is deleted -- admitting each account write with admit_rotation_apply over the route standing for the controller and build it read; NOT satisfied by the planner's code existing, by its dry realization or witness, or by an Apply that receives an admission it did not compute from the standing" as NonEmptyStr,
+  description: "dissolves when gunbc.machine_intake.bmc_secure plan_bmc_account_action runs on a production path -- the held O1b transition, where a unit's BmcSecure standing is derived by the state-shaped fold and the rotation-event path is deleted -- admitting each account write with admit_rotation_apply over the route standing for the controller and build it read; NOT satisfied by the planner's code existing, by its dry realization or witness, or by an Apply that receives an admission it did not compute from the standing" as NonEmptyStr,
 )
 
 // The modeled Redfish account-password operation and action shape, by reference, for a candidate

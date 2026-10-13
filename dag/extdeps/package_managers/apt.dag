@@ -1,4 +1,4 @@
-module extdeps.apt
+module extdeps.package_managers.apt
 
 import std.types { NonEmptyStr, FilePath, Bool, List, Unit }
 

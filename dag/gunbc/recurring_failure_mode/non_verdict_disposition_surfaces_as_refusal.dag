@@ -25,7 +25,7 @@ data non_verdict_disposition_surfaces_as_refusal: RecurringFailureMode = Recurri
 
     "It teaches every consumer that its refusals are weather.",
 
-    "SPECIMEN, 2026-09-02, gunbc.witness_floor_workflow required floor: the same commit, 9b00e24f592 on gunbc PR 9984, was run twice with no intervening edit -- ONE run id retried, Actions run 33604337589 attempts 1 and 2 -- and every counter below is addressed by ATTEMPT AND JOB rather than by the ordinals FIRST and RERUN, which name no instrument and do not distinguish this pair from run 33628404336, a different run on a later head.",
+    "SPECIMEN, 2026-09-02, gunbc.witness.witness_floor_workflow required floor: the same commit, 9b00e24f592 on gunbc PR 9984, was run twice with no intervening edit -- ONE run id retried, Actions run 33604337589 attempts 1 and 2 -- and every counter below is addressed by ATTEMPT AND JOB rather than by the ordinals FIRST and RERUN, which name no instrument and do not distinguish this pair from run 33628404336, a different run on a later head.",
 
     "ATTEMPT 1, required-witnesses-floor job 100172868685, conclusion failure: planned=3486 executed=3486 passed=3404 failed=0 interrupted_before_verdict=4 completed_over_cost_requirement=3, verdict FloorRefused.",
 

@@ -1,8 +1,8 @@
-module tools.emit_copy_qualification_transport
+module gunbc.instruments.emit_copy_qualification_transport
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
@@ -16,7 +16,7 @@ import extdeps.languages.json.emit {
 }
 import std.types { Bool, Int, List, String }
 import std.measure { byte_size_count }
-import tools.host_prelude { WitnessBin, witness_bin, witness_bin_ensure_built_typed, WitnessBinReady, WitnessBinRefused, witness_bin_release_path }
+import gunbc.instruments.host_prelude { WitnessBin, witness_bin, witness_bin_ensure_built_typed, WitnessBinReady, WitnessBinRefused, witness_bin_release_path }
 import gunbc.emit_copy_qualification {
   CarrierRealization, PersistentSequenceCarrier, EmitCopyQualificationCaseId, EmitCopyQualificationCaseRow,
   case_slug, carrier_realization_slug,

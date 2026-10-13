@@ -446,7 +446,7 @@ fn attempt_transition_advanced(t: AttemptTransition) -> Bool {
 //
 // WHICH CLOCK, AND WHY THIS ONE IS SAFE HERE. The comparison is made by a process that did not
 // write the deadline, so the clock is a shared authority between two principals. It is the host's
-// own epoch clock (gunbc.fabric_event_log_host now_epoch_seconds), and it is the RIGHT one for two
+// own epoch clock (gunbc.fabric.fabric_event_log_host now_epoch_seconds), and it is the RIGHT one for two
 // reasons rather than for convenience: the compute pool is host-local by construction -- PR 1
 // placed its ledger on the host precisely because a host's own memory is not a fleet fact -- so
 // both principals read one clock; and the pool's own lease terms are already denominated in these

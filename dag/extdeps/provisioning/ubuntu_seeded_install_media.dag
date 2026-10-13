@@ -127,7 +127,7 @@ type UbuntuSeededInstallMediaBuildInput {
 // build-varying state, and the ordering these commands rely on (both -volume_date commands after the
 // -map commands, so freshly mapped files are covered) is read off the tool's left-to-right execution
 // rather than measured. WHAT WOULD SETTLE IT: the srv2 wet control named in
-// gunbc.machine_intake_mtcollins1_census_image -- build twice from one input, compare the two measured
+// gunbc.machine_intake.mtcollins1_census_image -- build twice from one input, compare the two measured
 // digests, and change one seed byte and compare again.
 //
 // NOTHING SILENTLY DEPENDS ON THE BET. If a rebuild is not byte-identical it produces a DIFFERENT

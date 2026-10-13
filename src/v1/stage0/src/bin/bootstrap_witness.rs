@@ -882,11 +882,11 @@ fn bootstrap_l4_structural() {
         .stack_size(64 * 1024 * 1024)
         .spawn(|| {
             let ws = workspace_root();
-            let weather_src = std::fs::read_to_string(ws.join("dag/examples/weather/weather.dag"))
+            let weather_src = std::fs::read_to_string(ws.join("dag/examples/weather.dag"))
                 .expect("weather.dag should exist");
 
             let result = compile_dag_named(
-                "dag/examples/weather/weather.dag",
+                "dag/examples/weather.dag",
                 &weather_src,
                 v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
             );

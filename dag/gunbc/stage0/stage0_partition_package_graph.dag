@@ -1,12 +1,12 @@
-module gunbc.stage0_partition_package_graph
+module gunbc.stage0.stage0_partition_package_graph
 
 import std.types { String, List, Bool }
-import gunbc.stage0_executable_assembly_generated {
+import gunbc.stage0.stage0_executable_assembly_generated {
   generated_host_shell_package_name,
   generated_host_shell_partition_dependencies,
   generated_next_pass_bin_name
 }
-import gunbc.stage0_crate_partition_generated {
+import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
   GeneratedFacadeCrate,
   GeneratedFoundationCrate,
@@ -81,7 +81,7 @@ fn partition_package_dependency_names_over(row: GeneratedPartitionCrateRow, rows
 // carry its own edge for the one package that matters most, which is the parallel-authority
 // failure the header above rejects for every other edge.
 //
-// The identities come from gunbc.stage0_executable_assembly_generated, the projection of
+// The identities come from gunbc.stage0.stage0_executable_assembly_generated, the projection of
 // v2.compiler.self_host.stage0_executable_assembly; nothing about the shell is decided here.
 fn stage0_host_shell_package_name() -> String {
   generated_host_shell_package_name

@@ -1,6 +1,6 @@
 module gunbc.required_lane_resolution_census_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -9,7 +9,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // //gunbc/instruments:required-lane-resolution-census`) consumes. Same shape and owner as
 // gunbc.primitive_egress_census_seed_growth, whose builtins are this change's precedent.
 //
-// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The census asks, for every module the
+// PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing). The census asks, for every module the
 // source-root ingestion admits, whether a required lane hands its source to compile_to_resolved.
 // The three populations are products of the seed's own producers -- the module index, the floor's
 // prepared-subject assembly over its nominal seeds, and the entry loader closure -- and none has a

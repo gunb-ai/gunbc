@@ -1,4 +1,4 @@
-module gunbc.host_hygiene_liveness_observe
+module gunbc.host.host_hygiene_liveness_observe
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, Terminal }
@@ -7,8 +7,8 @@ import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUni
 import extdeps.systemd.journalctl
 import extdeps.github.actions_runner { actions_runner_listening_line_suffix }
 import gunbc.systemctl_list_units { systemctl_list_units_all_states }
-import gunbc.host_converge { gunbc_runner_all_slots_unit_glob }
-import gunbc.host_hygiene_liveness {
+import gunbc.host.host_converge { gunbc_runner_all_slots_unit_glob }
+import gunbc.host.host_hygiene_liveness {
   SlotListeningObservation,
   ListeningObserved,
   ListeningNeverSeen,
@@ -121,7 +121,7 @@ fn slot_listening_read_outcome_observation(o: SlotListeningReadOutcome) -> SlotL
   }
 }
 
-// Mirrors gunbc.host_hygiene_reaper_observe.residual_fleet_observed_slots: any single-unit
+// Mirrors gunbc.host.host_hygiene_reaper_observe.residual_fleet_observed_slots: any single-unit
 // read refusal refuses the WHOLE fleet observation rather than narrowing to the units that
 // happened to answer — the empty-observation-narrow failure mode DESIGN section 5 names.
 fn fleet_observed_listening_slots(outcomes: List<SlotListeningReadOutcome>) -> List<SlotListeningObservation>? {
