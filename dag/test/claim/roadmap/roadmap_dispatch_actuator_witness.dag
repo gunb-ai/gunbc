@@ -9,7 +9,7 @@ import std.optional { Present }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.exec.command { argv_words }
 import v2.std.collection { List }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import std.types { GitRef }
 import std.types { NonEmptyStr, GitRef, FilePath, path_segment_is_safe }
 import std.measure { byte_size_count }

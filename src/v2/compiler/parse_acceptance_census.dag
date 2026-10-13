@@ -5,7 +5,7 @@ import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,

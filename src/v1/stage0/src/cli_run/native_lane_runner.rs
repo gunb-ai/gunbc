@@ -3222,16 +3222,27 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             .lines()
             .all(|line| line.contains(POPULATION_UNMET_MARKER))
         && declared_live == Some(door_declared_unmet);
-    if door.status != Some(CLI_DOOR_REFUSAL_EXIT)
-        || door.stdout.starts_with(POPULATION_PARSES_HEAD)
-        || !door_is_only_the_unmet_declaration
-        || !population_refusal_framed(
-            &door.stderr,
-            &[
-                "0 module(s) did not parse",
-                &format!("{door_declared_unmet} declared refusal(s) never met"),
-            ],
-        )
+    // WITH NO DECLARED REFUSAL THE DECLARATION CANNOT REFUSE THE DOOR ROOT: there is no unmet class to
+    // report, so the root's one clean module parses and the verb holds with its zero tally. That is the
+    // only reading consistent with the live report (`declared_live == Some(0)`); the unmet-declaration
+    // arm below runs whenever a class is declared; its discriminating case with a SUPPLIED roster is the claim suite
+    // `v2.test.claim.cli.population_verbs` `a_walk_that_never_met_a_declared_refusal_does_not_hold`, since the built
+    // binary reads only the compiled roster.
+    let door_holds_with_nothing_declared = declared_live == Some(0)
+        && door.status == Some(0)
+        && population_parsed_count(&door.stdout) == Some(1)
+        && population_declared_met(&door.stdout) == Some(0);
+    if !door_holds_with_nothing_declared
+        && (door.status != Some(CLI_DOOR_REFUSAL_EXIT)
+            || door.stdout.starts_with(POPULATION_PARSES_HEAD)
+            || !door_is_only_the_unmet_declaration
+            || !population_refusal_framed(
+                &door.stderr,
+                &[
+                    "0 module(s) did not parse",
+                    &format!("{door_declared_unmet} declared refusal(s) never met"),
+                ],
+            ))
     {
         return Err(fail(
             "NativePopulationParseDoorRootDeclarationNotUnmet",

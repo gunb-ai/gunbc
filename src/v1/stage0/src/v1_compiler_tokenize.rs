@@ -833,7 +833,11 @@ pub fn scan_token(
                 });
             }
         }
-        let ch_text = v1_rt::from_code_point(ch.clone());
+        let ch_text = v1_rt::substring(
+            &source.text.clone(),
+            pos.pos.clone(),
+            v1_rt::int_add(pos.pos.clone(), 1),
+        );
         match v1_rt::lookup(&single_punct(), ch_text.clone()) {
             Some(sh) => emit(
                 pos.clone(),

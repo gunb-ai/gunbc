@@ -5,7 +5,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused }
 import extdeps.github.git_database { GitRefWire, GitRefObjectWire }
 import extdeps.github.actions {
-  WorkflowTrigger, Push, PullRequest, Schedule, WorkflowDispatch, WorkflowCall, WorkflowRunCompleted, MergeGroup,
+  WorkflowTrigger, Push, PullRequest, Schedule, WorkflowDispatch, WorkflowCall, WorkflowRunTriggered, MergeGroup,
 }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecoded, RunnerGroupIdentity }
 import gunbc.runner.runner_group_restriction_observation { RunnerGroupRestrictionRefused, RunnerGroupAbsent }
@@ -160,7 +160,7 @@ fn push_trigger_could_fire_on(trigger: WorkflowTrigger, branch: String) -> Bool 
     Schedule { cron: _ } => false
     WorkflowDispatch { inputs: _ } => false
     WorkflowCall { inputs: _ } => false
-    WorkflowRunCompleted { workflows: _, branches: _ } => false
+    WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => false
     MergeGroup => false
   }
 }

@@ -1,7 +1,7 @@
 module gunbc.spark.arm_memory_fit
 
 import std.types { Bool, Int, String, NonEmptyStr, List }
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, length }
 import std.nat { Nat, nat_range_inclusive }
 import std.optional { Present, Absent }
 import std.measure {
@@ -53,7 +53,6 @@ import gunbc.spark.serving_capacity_intent {
   intent_max_active_sequences, intent_max_single_sequence_tokens,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
-import v2.std.algebra { length }
 import extdeps.systems.types {
   SystemMemoryComponent, GpuMemoryAddressability,
   GpuAndCpuShareOnePool, GpuAddressesDirectly, GpuAddressesAcrossCoherentLink,

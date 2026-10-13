@@ -19,7 +19,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.algebra { fold_list, fold_list_node, algebra_empty_conj }
+import std.algebra { fold_list }
 import v2.std.machine { Byte }
 import v2.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
 import v2.std.node {
@@ -38,7 +38,9 @@ import v2.std.node {
   Loop,
   Match,
   Transform,
-  Value
+  Value,
+  fold_list_node,
+  algebra_empty_conj
 }
 
 type RuntimeIdentity {

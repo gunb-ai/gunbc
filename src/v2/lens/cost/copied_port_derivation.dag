@@ -1,7 +1,7 @@
 module v2.lens.cost.copied_port_derivation
 
 import std.types { List }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list }
 import v2.lens.cost {
   LinearCost,
   ProductCost,
@@ -37,7 +37,11 @@ import v2.std.node {
   arrow_body_target_lookup,
   ComputationNode
 }
-import v2.std.algebra { CopiedPortFact, fold_list }
+
+type CopiedPortFact {
+  combiner: Symbol
+  copied_port_index: Int
+}
 
 // Wave 1 Gate 1 C1: per-op copied-port facts are DERIVED by running the cost lens over each
 // combiner's cited Arrow body (^arrow_body_edge only — v2.std.node cost_edge_role), never

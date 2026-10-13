@@ -22,7 +22,7 @@ import gunbc.stage0.stage0_rust_source_lifecycle_scaffold {
 }
 import std.types { CommitSha, Int, NonEmptyStr, String }
 import std.content_hash { Fnv1a64Structural }
-import v2.std.algebra { length }
+import std.algebra { length }
 
 // THE CLOSING CONTRACT FOR THE RUST-SOURCE OBSERVATION: proof that a run observed the exact subject
 // it claims to have tested, rather than proof that an observation function is callable.

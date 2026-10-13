@@ -13,7 +13,7 @@ module test.claim.scm.scm_commit_closure_witness
 // merely non-empty. `a_grafted_root_names_exactly_the_child_it_lacks` is the test that decides it.
 
 import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
-import v2.std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list }
 import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, Occupancy, Positional, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId,

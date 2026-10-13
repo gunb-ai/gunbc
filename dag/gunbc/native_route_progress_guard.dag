@@ -1,8 +1,7 @@
 module gunbc.native_route_progress_guard
 
 import std.types { List }
-import v2.std.algebra { count_where, fold_list, is_empty, length, list_flat_map, list_map }
-import std.algebra { list_append }
+import std.algebra { list_append, count_where, fold_list, is_empty, length, list_flat_map, list_map }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
@@ -907,7 +906,7 @@ fn native_progress_observed_rows(readings: List<NativeProgressObservedReading>) 
 }
 
 // A CONCATENATION, NOT AN ACCUMULATOR. `list_append(left: acc, right: ...)` inside a fold pays a
-// full O(n) right-fold per step, which is the measured quadratic trap `v2.std.algebra`
+// full O(n) right-fold per step, which is the measured quadratic trap `std.algebra`
 // `list_snoc_item` was introduced for; `list_flat_map` removes the accumulator rather than making
 // its append cheaper, which is the repair one level up.
 fn native_progress_reading_findings(readings: List<NativeProgressObservedReading>) -> List<NativeProgressFinding> {
