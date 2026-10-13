@@ -763,12 +763,18 @@ fn apply_fabric_storage_unit_write_step(spec: DeploymentSpec, revision: ReleaseR
 // the marker is not valid shell, so the stage fails rather than serving an invented path.
 data fabric_storage_door_unknown_instance_poison: String = "__GUNBC_DEPLOY_REFUSED__ fabric storage step reached with a deployment that holds no prod role (gunbc.live_deploy.spec RoleSingletonHolding), so it has no door socket (gunbc.live_deploy.spec deployment_fabric_storage_door_socket). instance="
 
+data oidc_readback_refused_poison: String = "__GUNBC_OIDC_READBACK_REFUSED__ "
+
+fn oidc_readback_refused_command(cause: String) -> String {
+  concat(oidc_readback_refused_poison, cause)
+}
+
 fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?) -> Doc {
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: now_epoch) {
     LiveDeployServeUnitEmitted { file } =>
       doc_text(text: serialize_systemd_unit_file(file: file))
     LiveDeployServeUnitOidcReadbackRefused { cause } =>
-      doc_text(text: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String, "\n"], ""))
+      doc_text(text: concat(oidc_readback_refused_command(cause: cause as String), "\n"))
   }
 }
 
@@ -3812,7 +3818,7 @@ fn apply_oidc_fragments_over(
       host_script_member_refused(
         member: member,
         cause: "tracker-web OIDC realization missing",
-        command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", "tracker-web OIDC realization missing"], ""),
+        command: oidc_readback_refused_command(cause: "tracker-web OIDC realization missing"),
       )
     TrackerWebOidcServeReady { config: _ } =>
       match oidc_now {
@@ -3820,7 +3826,7 @@ fn apply_oidc_fragments_over(
           host_script_member_refused(
             member: member,
             cause: "observer clock unreadable",
-            command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", "observer clock unreadable"], ""),
+            command: oidc_readback_refused_command(cause: "observer clock unreadable"),
           )
         Present { value: now } =>
           match tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now) {
@@ -3858,13 +3864,13 @@ fn apply_oidc_fragments_over(
               host_script_member_refused(
                 member: member,
                 cause: "tracker-web OIDC realization missing",
-                command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", "tracker-web OIDC realization missing"], ""),
+                command: oidc_readback_refused_command(cause: "tracker-web OIDC realization missing"),
               )
             TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause } =>
               host_script_member_refused(
                 member: member,
                 cause: cause as String,
-                command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
+                command: oidc_readback_refused_command(cause: cause as String),
               )
           }
       }
@@ -3937,7 +3943,7 @@ fn serve_unit_write_fragments(
       host_script_member_refused(
         member: member,
         cause: cause as String,
-        command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
+        command: oidc_readback_refused_command(cause: cause as String),
       )
   }
   }
@@ -3978,7 +3984,7 @@ fn tailnet_door_fragments(spec: DeploymentSpec, oidc_now: Second?, revision: Rel
         host_script_member_refused(
           member: "tailnet-door" as NonEmptyStr,
           cause: cause as String,
-          command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
+          command: oidc_readback_refused_command(cause: cause as String),
         )
     }
   }
@@ -4261,7 +4267,7 @@ fn retract_or_apply_effect_fragments(
               host_script_member_refused(
                 member: "serve-unit" as NonEmptyStr,
                 cause: cause as String,
-                command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
+                command: oidc_readback_refused_command(cause: cause as String),
               )
             LiveDeployOidcEnvAdmitted { directives: _ } =>
               host_script_member_proceed(
