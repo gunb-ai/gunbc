@@ -105,6 +105,9 @@ pub mod extdeps_posix_clock_gettime;
 #[path = "../../stage0/src/extdeps_ietf_http_semantics.rs"]
 pub mod extdeps_ietf_http_semantics;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_process_termination.rs"]
+pub mod std_process_termination;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_primitive_projection.rs"]
 pub mod std_primitive_projection;
 #[rustfmt::skip]

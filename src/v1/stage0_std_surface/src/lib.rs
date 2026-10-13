@@ -25,11 +25,20 @@ pub use v1_stage0_std_core::*;
 #[path = "../../stage0/src/std_effects.rs"]
 pub mod std_effects;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_execution_mode.rs"]
+pub mod std_execution_mode;
+#[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_uri_path.rs"]
 pub mod extdeps_uri_path;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_interface_summary.rs"]
 pub mod std_interface_summary;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_realization_schedule.rs"]
+pub mod std_realization_schedule;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_trait_derive_shape.rs"]
 pub mod std_trait_derive_shape;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_witness_admission.rs"]
+pub mod std_witness_admission;
