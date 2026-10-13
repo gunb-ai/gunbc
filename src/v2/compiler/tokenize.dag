@@ -1364,7 +1364,10 @@ fn lex_walk_prepared(source: v2.std.text.String, file: Symbol, prepared: Prepare
 //
 // EXACTLY ONCE, ABOVE EVERYTHING. Both arms below read the converted value, so no lexical callback,
 // prefix operation, walk state or fold ever receives the host form. A second conversion further in
-// would be a second answer to a question already answered.
+// would be a second answer to a question already answered. When a door is given a scalar limit
+// (tokenize_prefix_prepared) the text is first cut to that window by a host substring, so the one
+// conversion crosses the window and not the file; the cut is not a second crossing, since it neither
+// reads a character's meaning nor produces structural text.
 //
 // THIS IS ONE CONVERSION AT ONE INGRESS AND NOTHING WIDER. It is not permission for
 // arbitrary host Strings to inhabit structural text: gunbc.rung_drop's
@@ -1433,11 +1436,14 @@ type LexWindow {
   truncated: Bool
 }
 
+// A text holds more than n scalars exactly when its first n + 1 do, so truncation is decided from a
+// window one scalar wider than the one shown; counting the whole text would be a host operation that
+// follows the file's length, and the window is what the cost is meant to follow.
 fn lex_window(text: String, limit: LexWalkLimit) -> LexWindow {
   match limit {
     LexWalkWhole => LexWindow { text: text, truncated: false }
     LexWalkUntil { scalars: n } =>
-      if string_length(s: text) > n {
+      if string_length(s: substring(s: text, start: 0, end: n + 1)) > n {
         LexWindow { text: substring(s: text, start: 0, end: if n < 0 { 0 } else { n }), truncated: true }
       } else {
         LexWindow { text: text, truncated: false }
