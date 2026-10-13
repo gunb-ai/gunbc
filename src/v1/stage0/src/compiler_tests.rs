@@ -4460,22 +4460,13 @@ mod compiler_tests {
 
     #[test]
     fn std_nat_emitted_operators_refuse_overflow_through_the_runtime_helpers() {
-        let clamp = |overhead_s: i64| {
-            std::rc::Rc::new(crate::std_realization_schedule::RunnableBatchClamp {
-                overhead: crate::std_measure::second(overhead_s),
-                per_unit: crate::std_measure::millisecond(5),
-                authority: crate::std_decl_ref::decl_ref("ct".to_string(), "clamp".to_string()),
-            })
-        };
         assert_eq!(
-            crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(2), 3),
-            2015,
-            "an in-range clamp is the integer it denotes"
+            crate::std_nat::nat_mul(2, 3),
+            6,
+            "an in-range product is the integer it denotes"
         );
-        let refusal = std::panic::catch_unwind(|| {
-            crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(i64::MAX / 10), 0)
-        })
-        .expect_err("a Nat product past i64 must refuse");
+        let refusal = std::panic::catch_unwind(|| crate::std_nat::nat_mul(i64::MAX / 10, 1000))
+            .expect_err("a Nat product past i64 must refuse");
         let text = refusal
             .downcast_ref::<String>()
             .cloned()
