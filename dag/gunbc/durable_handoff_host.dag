@@ -77,12 +77,12 @@ type HostSpoolHealth
   | HostSpoolHealthUnobserved { detail: String }
 
 fn host_spool_bound_for(bounds: List<HostSpoolHealthBound>, stage: HostSpoolStage) -> Second? {
-  fold(bounds, init: none as Second?, f: (acc, b) => match acc {
+  fold(bounds, init: Absent, f: (acc, b) => match acc {
     Present { value: v } => Present { value: v }
     Absent => if host_spool_stage_wire(stage: b.stage) == host_spool_stage_wire(stage: stage) {
       Present { value: b.bound }
     } else {
-      none
+      Absent
     }
   })
 }

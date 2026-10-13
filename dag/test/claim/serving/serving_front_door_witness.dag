@@ -14,7 +14,7 @@ import gunbc.harness.harness_seat {
   HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_pool_identity_at,
   harness_seat_reference_record, harness_seat_reference_wire,
 }
-import std.durable_compare_and_set { CasGeneration }
+import std.durable_compare_and_set { cas_generation_first }
 import std.durable_exclusive_hold { HolderObservedDead, HolderLivenessUnobservable }
 import std.resource_release_law { QuiescenceRequired }
 import product.capacity.lease { LeaseGrant, GrantIdentity, LeasePolicy, lease_grant, lease_fence_of }
@@ -98,7 +98,7 @@ data request_two: NonEmptyStr = "request-2" as NonEmptyStr
 // THE ACQUISITION IS THE FIRST EVENT OF ITS PARTITION, so the fence generation it admitted is 1.
 data witness_grant: LeaseGrant = lease_grant(
   reference: witness_reference,
-  fence: lease_fence_of(admitting_event: witness_admitting, generation: 1 as CasGeneration),
+  fence: lease_fence_of(admitting_event: witness_admitting, generation: cas_generation_first()),
   granted_at: witness_granted_at,
   policy: LeasePolicy { maximum_duration_seconds: witness_term, release_law: QuiescenceRequired },
 )

@@ -1,6 +1,7 @@
 module test.claim.temporal_effect_spine
 
-import std.durable_compare_and_set { CasGeneration, cas_generation_first }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { cas_generation, cas_generation_first }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -66,7 +67,7 @@ data foreign_lease: HeldLease = held_lease(
     lease_key: witness_lease_key,
     resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
     owner_fingerprint: content_hash_of_value(value: "foreign-owner" as NonEmptyStr),
-    generation: 1 as CasGeneration,
+    generation: cas_generation_first(),
   },
   observed: LeasePortForeign,
 )
@@ -76,7 +77,7 @@ data stale_lease: HeldLease = held_lease(
     lease_key: witness_lease_key,
     resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
     owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
-    generation: 2 as CasGeneration,
+    generation: match cas_generation(n: 2) { Present { value: g } => g  Absent => cas_generation_first() },
   },
   observed: LeaseRunningPastExpiry,
 )
@@ -86,7 +87,7 @@ data expected_lease: HeldLease = held_lease(
     lease_key: witness_lease_key,
     resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
     owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
-    generation: 3 as CasGeneration,
+    generation: match cas_generation(n: 3) { Present { value: g } => g  Absent => cas_generation_first() },
   },
   observed: LeaseRunningExpected,
 )

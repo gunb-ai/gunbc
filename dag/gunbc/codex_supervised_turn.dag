@@ -3,7 +3,8 @@ module gunbc.codex_supervised_turn
 import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
 import std.algebra { trim }
 import std.content_hash { ContentHash, content_hash_of_value }
-import std.durable_compare_and_set { CasGeneration }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { cas_generation, cas_generation_first }
 import std.temporal_effect {
   HeldLease,
   LeaseEpoch,
@@ -264,7 +265,10 @@ fn codex_supervised_turn_binding(
           attempt_key: turn.attempt_key,
         ),
         owner_fingerprint: codex_supervised_turn_owner_fingerprint(turn: turn),
-        generation: (prior_generation + 1) as CasGeneration,
+        generation: match cas_generation(n: prior_generation + 1) {
+          Present { value: g } => g
+          Absent => cas_generation_first()
+        },
       },
       observed: observed,
     ),

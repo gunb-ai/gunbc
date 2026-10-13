@@ -17,6 +17,7 @@ module std.durable_compare_and_set
 // rather than to a lock the caller happens to hold.
 
 import std.types { NonEmptyStr, Int, String }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.checked_arithmetic { int_inclusive_max }
 
@@ -286,8 +287,15 @@ fn cas_generation_exhausted<T>(head: CasGeneration) -> CasOutcome<T> {
   CasStoreRefused { cause: CasGenerationSpaceExhausted { head: head } }
 }
 
+fn cas_generation(n: Int) -> CasGeneration? {
+  if n >= 1 { Present { value: n } } else { Absent }
+}
+
 fn cas_generation_first() -> CasGeneration {
-  1
+  match cas_generation(n: 1) {
+    Present { value: g } => g
+    Absent => 1
+  }
 }
 
 // The generation a successful commit lands on, derived from the observation

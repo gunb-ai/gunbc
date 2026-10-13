@@ -5,7 +5,17 @@ import std.nat { Nat }
 import std.measure { ByteSize, byte_size, ObservationInstant, ClockDomain, ProcessMonotonic, SharedMonotonic, ClockBasis, WallClock }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasGeneration }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set {
+  CasGeneration, cas_generation, cas_generation_first,
+  CasSlotObservationRefused,
+  CasOutcome,
+  CasCommitted,
+  CasStoreRefused,
+  CasSlotVersion,
+  CasUnreadableContentMissing,
+  CasUnreadableReadRefused,
+}
 import std.temporal_effect {
   HeldLease,
   LeaseEpoch,
@@ -14,14 +24,6 @@ import std.temporal_effect {
   LeaseRunningPastExpiry,
   LeasePortForeign,
   LeaseInaccessible,
-}
-import std.durable_compare_and_set { CasSlotObservationRefused,
-  CasOutcome,
-  CasCommitted,
-  CasStoreRefused,
-  CasSlotVersion,
-  CasUnreadableContentMissing,
-  CasUnreadableReadRefused,
 }
 import gunbc.fleet_observation.collector_ownership {
   CollectorSessionId,
@@ -222,7 +224,7 @@ fn t_lease(generation: Int) -> HeldLease {
       lease_key: "synthetic-endpoint"
       resource_fingerprint: content_hash_of_value(value: "synthetic-endpoint")
       owner_fingerprint: content_hash_of_value(value: "synthetic-collector-a")
-      generation: generation as CasGeneration
+      generation: match cas_generation(n: generation) { Present { value: g } => g  Absent => cas_generation_first() }
     },
     observed: LeaseRunningExpected
   }
