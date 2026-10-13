@@ -3,13 +3,16 @@ module test.claim.primitive_runtime_body_witness
 import std.primitive_identity {
   PrimitiveRuntimeBodiesObserved,
   PrimitiveRuntimeBodiesComplete, PrimitiveRuntimeBodiesMissing, PrimitiveRuntimeBodiesUnreadable,
-  primitive_runtime_body_census_in, primitive_runtime_body_check_in,
-  primitive_surface_census_with_runtime,
+  primitive_runtime_body_check_in,
   primitive_identity_eq, primitive_map_keys, primitive_map_values,
 }
 import extdeps.languages.rust.emit { RuntimeFunction }
 import std.types { Bool, String }
-import gunbc.primitive_runtime_body_gate { runtime_body_required_check_in }
+import gunbc.primitive_runtime_body {
+  primitive_runtime_body_census_in,
+  runtime_body_required_check_in,
+}
+import gunbc.primitive_egress.d0_census { primitive_surface_census_with_runtime }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.required_ci_phase_roster {
   PrimitiveRuntimeBodyPhase, required_ci_phases, required_ci_phase_enrolled,
