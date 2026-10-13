@@ -24,7 +24,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { list_snoc_item, contains, fold_list, length }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.text { String }
 

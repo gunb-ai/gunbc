@@ -1,6 +1,6 @@
 module test.claim.auth.branch_run_grant_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell, IamCondition, gcp_policy_cells, gcp_cell_in }

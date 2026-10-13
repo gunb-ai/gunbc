@@ -50,7 +50,7 @@ import extdeps.tax.new_jersey_sales_and_use {
 import extdeps.tax.new_york_city_sales_and_use {
   nyc_combined_sales_tax,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

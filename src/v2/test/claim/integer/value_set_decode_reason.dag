@@ -10,7 +10,7 @@ import v2.std.integer_value_set {
   integer_value_set_from_node
 }
 import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

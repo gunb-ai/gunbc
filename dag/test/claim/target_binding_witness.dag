@@ -31,7 +31,7 @@ import gunbc.build_target {
 }
 import std.types { Bool }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 fn instrument_label() -> Label {
   Label {

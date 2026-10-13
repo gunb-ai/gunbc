@@ -35,7 +35,7 @@ import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
 import extdeps.memory.types { MemoryPopulationRow, HostMemoryPopulation, dram_module_is_realizable }
 import extdeps.memory.jedec { ddr4_generation_catalog }
 import extdeps.bmc.redfish { redfish_memory_summary_from_gib }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

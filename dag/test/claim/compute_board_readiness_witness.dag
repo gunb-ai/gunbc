@@ -59,7 +59,7 @@ import product.compute_board.composition {
   FabricatorStackupUnconfirmed,
   project_contact_map_standing,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

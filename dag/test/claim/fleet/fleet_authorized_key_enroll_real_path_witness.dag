@@ -2,7 +2,7 @@ module test.claim.fleet.fleet_authorized_key_enroll_real_path_witness
 
 import std.logic { Bool }
 import std.types { String, FilePath, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read }
 import extdeps.exec.command { LocalExec }

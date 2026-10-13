@@ -71,7 +71,7 @@ import gunbc.cloudflare.r2_token_mint {
   cloudflare_r2_token_human_burden
 }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

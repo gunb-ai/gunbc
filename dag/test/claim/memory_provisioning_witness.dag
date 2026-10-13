@@ -109,7 +109,7 @@ import gunbc.memory_provisioning {
   ubicloud_arm_benchmark,
   x64_standard_profile,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

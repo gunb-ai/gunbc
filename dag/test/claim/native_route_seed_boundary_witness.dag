@@ -10,7 +10,7 @@ import gunbc.native_route_seed_boundary_emit {
 }
 import gunbc.witness.v2_native_route { native_route_default_pattern }
 import std.types { Bool, NonEmptyStr, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

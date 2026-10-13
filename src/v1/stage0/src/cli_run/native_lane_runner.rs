@@ -4311,6 +4311,280 @@ pub fn run_type_declaration_use_census_runs(
     })
 }
 
+/// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
+/// this process folds in every child it ever reaped -- cargo and rustc included -- so it cannot
+/// answer for the native binary alone; `wait4` returns the usage of the one pid it reaps. The host
+/// decides nothing: `gunbc.instruments.native_process_memory_reading` reads these fields.
+pub struct NativeChildMeasured {
+    pub stdout: String,
+    /// `ru_maxrss` verbatim (Linux: kibibytes, `extdeps.linux.rusage`).
+    pub maxrss_kib: i64,
+    pub elapsed_ns: i64,
+    pub exit_code: i32,
+    /// 0 when the child exited; else the terminating signal.
+    pub signal: i32,
+}
+
+/// The runs `gunbc test //gunbc/instruments:native-process-memory-census` reads, over ONE prepared
+/// binary: the one-module control root first, then the source roots.
+pub struct NativeProcessMemoryRuns {
+    pub binary_identity: String,
+    pub envelope: String,
+    pub control: NativeChildMeasured,
+    pub workload: NativeChildMeasured,
+}
+
+/// The environment variable that turns the seed executable into the measured-spawn trampoline: its
+/// value is the receipt path, and the argv to spawn is read from `<receipt>.argv`, one argument per
+/// line. Read at the top of `gunbc test` (`target_invocation_host::test_verb_checked`), before any
+/// work: the generated `main` is not edited for it.
+pub const MEASURED_SPAWN_RECEIPT_ENV: &str = "GUNBC_MEASURED_SPAWN_RECEIPT";
+
+/// The one operand that enters the trampoline. It is reserved: no `gunbc.instrument_targets` row
+/// names it, and only `run_native_child_measured` emits it.
+pub const MEASURED_SPAWN_OPERAND: &str = "//gunbc/internal:measured-spawn";
+
+/// The only directory the measurement writes: the control root, the receipt and its argv file.
+/// The trampoline refuses a receipt anywhere else.
+pub const MEASURED_SPAWN_DIR: &str = "target/native-process-memory-census";
+
+/// What `gunbc test <operand>` does about the trampoline, decided before any other act.
+#[derive(Debug, PartialEq, Eq)]
+pub enum MeasuredSpawnRoute {
+    NotRequested,
+    Enter(std::path::PathBuf),
+    Refuse(String),
+}
+
+/// THE TRAMPOLINE IS ENTERED ONLY BY ITS RESERVED OPERAND WITH A RECEIPT UNDER THE DECLARED DIR.
+/// The environment variable alone never enters it: set beside an ordinary operand it is refused,
+/// typed, rather than ignored or obeyed, because obeying it would answer a label with the exit of
+/// whatever `<receipt>.argv` names (an escape hatch, DESIGN section 5), and ignoring it would leave a
+/// caller believing it measured something.
+pub fn measured_spawn_route(
+    operand: &str,
+    receipt: Option<std::ffi::OsString>,
+) -> MeasuredSpawnRoute {
+    let refuse = |cause: &str, detail: String| {
+        MeasuredSpawnRoute::Refuse(format!(
+            "MEASURED-SPAWN REFUSAL cause={cause} operand={operand} — {detail}"
+        ))
+    };
+    match (operand == MEASURED_SPAWN_OPERAND, receipt) {
+        (false, None) => MeasuredSpawnRoute::NotRequested,
+        (true, None) => refuse(
+            "ReceiptUnnamed",
+            format!("the reserved operand runs only with {MEASURED_SPAWN_RECEIPT_ENV} set"),
+        ),
+        (false, Some(_)) => refuse(
+            "ReceiptOnOrdinaryOperand",
+            format!(
+                "{MEASURED_SPAWN_RECEIPT_ENV} is set, and only {MEASURED_SPAWN_OPERAND} reads it"
+            ),
+        ),
+        (true, Some(receipt)) => {
+            let path = std::path::PathBuf::from(receipt);
+            let contained = path.starts_with(MEASURED_SPAWN_DIR)
+                && path
+                    .components()
+                    .all(|c| matches!(c, std::path::Component::Normal(_)));
+            if contained {
+                MeasuredSpawnRoute::Enter(path)
+            } else {
+                refuse(
+                    "ReceiptOutsideDeclaredDir",
+                    format!("{} is not under {MEASURED_SPAWN_DIR}", path.display()),
+                )
+            }
+        }
+    }
+}
+
+/// THE TRAMPOLINE. Linux seeds a process's `ru_maxrss` at exec from the high-water mark of the
+/// address space it replaces, so a child spawned straight from the seed (which has just emitted the
+/// closure in process) inherits the seed's peak. Re-entered as this function before doing any work,
+/// the seed's address space is small; the native child it spawns starts from that, and its `wait4`
+/// rusage is its own. Writes `maxrss_kib elapsed_ns exit_code signal` to the receipt path and
+/// returns the process exit code: 0 when the receipt was written, 2 when nothing was observed.
+pub fn measured_spawn_trampoline(receipt: std::path::PathBuf) -> i32 {
+    let mut argv_path = receipt.clone().into_os_string();
+    argv_path.push(".argv");
+    let argv_text = match std::fs::read_to_string(&argv_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("measured-spawn trampoline: reading {argv_path:?}: {e}");
+            return 2;
+        }
+    };
+    let mut argv = argv_text.lines();
+    let Some(binary) = argv.next() else {
+        eprintln!("measured-spawn trampoline: no binary to spawn");
+        return 2;
+    };
+    let started = std::time::Instant::now();
+    let child = Command::new(&binary)
+        .args(argv)
+        .env_remove(MEASURED_SPAWN_RECEIPT_ENV)
+        .spawn();
+    let child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("measured-spawn trampoline: spawning {binary:?}: {e}");
+            return 2;
+        }
+    };
+    let pid = child.id() as libc::pid_t;
+    let mut status: libc::c_int = 0;
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    let waited = unsafe { libc::wait4(pid, &mut status, 0, &mut usage) };
+    let elapsed = started.elapsed();
+    if waited != pid {
+        eprintln!(
+            "measured-spawn trampoline: wait4 failed: {}",
+            std::io::Error::last_os_error()
+        );
+        return 2;
+    }
+    let (exit_code, signal) = if libc::WIFSIGNALED(status) {
+        (-1, libc::WTERMSIG(status))
+    } else {
+        (libc::WEXITSTATUS(status), 0)
+    };
+    let line = format!(
+        "{} {} {exit_code} {signal}\n",
+        usage.ru_maxrss,
+        elapsed.as_nanos()
+    );
+    match std::fs::write(&receipt, line) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("measured-spawn trampoline: writing {receipt:?}: {e}");
+            2
+        }
+    }
+}
+
+fn run_native_child_measured(
+    binary: &std::path::Path,
+    args: &[String],
+    receipt: &std::path::Path,
+) -> Result<NativeChildMeasured, String> {
+    use std::io::Read;
+    let refusal = |cause: &str, detail: String| {
+        format!("NATIVE-PROCESS-MEMORY REFUSAL cause={cause} — {detail}")
+    };
+    let _ = std::fs::remove_file(receipt);
+    let argv: Vec<String> = std::iter::once(binary.to_string_lossy().into_owned())
+        .chain(args.iter().cloned())
+        .collect();
+    if argv.iter().any(|a| a.contains('\n')) {
+        return Err(refusal("ArgvNotLineSafe", format!("{argv:?}")));
+    }
+    let mut argv_path = receipt.as_os_str().to_owned();
+    argv_path.push(".argv");
+    std::fs::write(&argv_path, argv.join("\n"))
+        .map_err(|e| refusal("TrampolineArgvUnwritable", e.to_string()))?;
+    let trampoline =
+        std::env::current_exe().map_err(|e| refusal("TrampolineUnlocated", e.to_string()))?;
+    let mut child = Command::new(&trampoline)
+        .args(["test", MEASURED_SPAWN_OPERAND])
+        .env(MEASURED_SPAWN_RECEIPT_ENV, receipt)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            refusal(
+                "TrampolineSpawnFailed",
+                format!("{}: {e}", trampoline.display()),
+            )
+        })?;
+    let mut stdout = Vec::new();
+    if let Some(mut out) = child.stdout.take() {
+        out.read_to_end(&mut stdout)
+            .map_err(|e| refusal("NativeRunStdoutUnreadable", e.to_string()))?;
+    }
+    let status = child
+        .wait()
+        .map_err(|e| refusal("TrampolineWaitFailed", e.to_string()))?;
+    if !status.success() {
+        return Err(refusal(
+            "TrampolineObservedNothing",
+            format!("the trampoline exited {status}"),
+        ));
+    }
+    let text = std::fs::read_to_string(receipt)
+        .map_err(|e| refusal("TrampolineReceiptUnreadable", e.to_string()))?;
+    let fields: Vec<i64> = text
+        .split_whitespace()
+        .map(|f| f.parse::<i64>())
+        .collect::<Result<_, _>>()
+        .map_err(|e| refusal("TrampolineReceiptMalformed", format!("{text:?}: {e}")))?;
+    let [maxrss_kib, elapsed_ns, exit_code, signal] = fields[..] else {
+        return Err(refusal(
+            "TrampolineReceiptMalformed",
+            format!("{text:?} is not four fields"),
+        ));
+    };
+    let stdout = String::from_utf8(stdout)
+        .map_err(|cause| refusal("NativeRunStdoutNotUtf8", cause.to_string()))?;
+    Ok(NativeChildMeasured {
+        stdout,
+        maxrss_kib,
+        elapsed_ns,
+        exit_code: exit_code as i32,
+        signal: signal as i32,
+    })
+}
+
+/// ONE RUN'S PRIVATE DIRECTORY, created EXCLUSIVELY under `MEASURED_SPAWN_DIR`
+/// (`emitted_closure_compile_host` `create_private_probe_root`: the kernel's exclusive mkdir is the
+/// ownership claim). It holds this run's receipt, its argv file and its control root, and dropping it
+/// removes only this run's directory, so two overlapping invocations can neither read each other's
+/// receipt nor delete each other's control.
+pub fn measured_spawn_run_dir(
+) -> Result<super::emitted_closure_compile_host::PrivateProbeRoot, String> {
+    super::emitted_closure_compile_host::create_private_probe_root(std::path::Path::new(
+        MEASURED_SPAWN_DIR,
+    ))
+    .map_err(|e| format!("NATIVE-PROCESS-MEMORY REFUSAL cause=RunDirUncreatable — {e}"))
+}
+
+fn measured_spawn_receipt_in(run_dir: &std::path::Path) -> std::path::PathBuf {
+    run_dir.join("child.rusage")
+}
+
+/// `write_control` receives this run's private directory and returns the control root it wrote there.
+pub fn run_native_process_memory_runs(
+    source_roots: &[String],
+    verb: &str,
+    write_control: impl FnOnce(&std::path::Path) -> Result<std::path::PathBuf, String>,
+) -> Result<NativeProcessMemoryRuns, String> {
+    let envelope =
+        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution());
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let run_dir = measured_spawn_run_dir()?;
+    let control_root = write_control(run_dir.path())?;
+    let receipt = measured_spawn_receipt_in(run_dir.path());
+    let control = run_native_child_measured(
+        &preparation.binary_path,
+        &[
+            verb.to_string(),
+            control_root.to_string_lossy().into_owned(),
+        ],
+        &receipt,
+    )?;
+    let mut args = vec![verb.to_string()];
+    args.extend(source_roots.iter().cloned());
+    let workload = run_native_child_measured(&preparation.binary_path, &args, &receipt)?;
+    drop(run_dir);
+    Ok(NativeProcessMemoryRuns {
+        binary_identity: preparation.binary_identity.clone(),
+        envelope,
+        control,
+        workload,
+    })
+}
+
 /// What the adjudicating run decided, carried out of the body as a value.
 struct NativeRunAdmission {
     admitted: bool,
@@ -4491,6 +4765,130 @@ fn run_required_v2_native_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// THE ESCAPE-HATCH RED (review on #13857 at c0a1cd3f): the receipt variable beside an ordinary
+    /// label must refuse, never route to the trampoline, so it can neither report success nor spawn
+    /// what an argv file names.
+    #[test]
+    fn receipt_variable_beside_an_ordinary_operand_refuses() {
+        let route = measured_spawn_route(
+            "//not-a-real-target:all",
+            Some(format!("{MEASURED_SPAWN_DIR}/child.rusage").into()),
+        );
+        let MeasuredSpawnRoute::Refuse(message) = route else {
+            panic!("expected a refusal, got {route:?}");
+        };
+        assert!(
+            message.contains("cause=ReceiptOnOrdinaryOperand"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn reserved_operand_without_a_receipt_or_outside_the_dir_refuses() {
+        assert!(matches!(
+            measured_spawn_route(MEASURED_SPAWN_OPERAND, None),
+            MeasuredSpawnRoute::Refuse(m) if m.contains("cause=ReceiptUnnamed")
+        ));
+        for outside in [
+            "/tmp/x.rusage",
+            "x.rusage",
+            "target/native-process-memory-census/../../x",
+        ] {
+            assert!(
+                matches!(
+                    measured_spawn_route(MEASURED_SPAWN_OPERAND, Some(outside.into())),
+                    MeasuredSpawnRoute::Refuse(m) if m.contains("cause=ReceiptOutsideDeclaredDir")
+                ),
+                "{outside}"
+            );
+        }
+        assert_eq!(
+            measured_spawn_route("//gunbc/instruments:self-host", None),
+            MeasuredSpawnRoute::NotRequested
+        );
+    }
+
+    /// THE POSITIVE CONTROL: the legitimate route enters, and the trampoline really spawns, reaps and
+    /// writes a four-field receipt with a positive peak.
+    #[test]
+    fn reserved_operand_with_a_contained_receipt_spawns_and_reads_the_child() {
+        let receipt = format!("{MEASURED_SPAWN_DIR}/test-{}.rusage", std::process::id());
+        let MeasuredSpawnRoute::Enter(path) =
+            measured_spawn_route(MEASURED_SPAWN_OPERAND, Some(receipt.clone().into()))
+        else {
+            panic!("the legitimate route must enter");
+        };
+        std::fs::create_dir_all(MEASURED_SPAWN_DIR).unwrap();
+        std::fs::write(format!("{receipt}.argv"), "/bin/sh\n-c\nexit 3").unwrap();
+        assert_eq!(measured_spawn_trampoline(path), 0);
+        let text = std::fs::read_to_string(&receipt).unwrap();
+        let _ = std::fs::remove_file(&receipt);
+        let _ = std::fs::remove_file(format!("{receipt}.argv"));
+        let fields: Vec<i64> = text
+            .split_whitespace()
+            .map(|f| f.parse().unwrap())
+            .collect();
+        assert_eq!(fields.len(), 4, "{text:?}");
+        assert!(fields[0] > 0, "{text:?}");
+        assert_eq!((fields[2], fields[3]), (3, 0), "{text:?}");
+    }
+
+    /// OVERLAPPING INVOCATIONS ARE ISOLATED (side-chat review at 46307efc). Two runs, each in its own
+    /// exclusively created directory, spawn distinguishable children at once; the second finishes and
+    /// cleans up while the first is still running. Each reads its own child (exit 3 vs 5, the slow one
+    /// visibly longer), and the first run's directory survives the second's cleanup. Bounded: the slow
+    /// child sleeps one second.
+    #[test]
+    fn overlapping_runs_read_their_own_receipts_and_clean_only_their_own_dirs() {
+        let slow_dir = measured_spawn_run_dir().unwrap();
+        let fast_dir = measured_spawn_run_dir().unwrap();
+        assert_ne!(slow_dir.path(), fast_dir.path());
+        let arm = |dir: &std::path::Path, script: &str| {
+            let receipt = measured_spawn_receipt_in(dir);
+            std::fs::write(
+                format!("{}.argv", receipt.display()),
+                format!("/bin/sh\n-c\n{script}"),
+            )
+            .unwrap();
+            let MeasuredSpawnRoute::Enter(path) = measured_spawn_route(
+                MEASURED_SPAWN_OPERAND,
+                Some(receipt.clone().into_os_string()),
+            ) else {
+                panic!("a private run dir is under the declared dir");
+            };
+            path
+        };
+        let slow_receipt = arm(slow_dir.path(), "sleep 1; exit 3");
+        let fast_receipt = arm(fast_dir.path(), "exit 5");
+        let slow = std::thread::spawn({
+            let r = slow_receipt.clone();
+            move || measured_spawn_trampoline(r)
+        });
+        assert_eq!(measured_spawn_trampoline(fast_receipt.clone()), 0);
+        let fast_text = std::fs::read_to_string(&fast_receipt).unwrap();
+        let fast_path = fast_dir.path().to_path_buf();
+        drop(fast_dir);
+        assert!(!fast_path.exists());
+        assert!(
+            slow_dir.path().exists(),
+            "the other run's cleanup removed this run's dir"
+        );
+        assert_eq!(slow.join().unwrap(), 0);
+        let slow_text = std::fs::read_to_string(&slow_receipt).unwrap();
+        let fields =
+            |t: &str| -> Vec<i64> { t.split_whitespace().map(|f| f.parse().unwrap()).collect() };
+        let (slow_f, fast_f) = (fields(&slow_text), fields(&fast_text));
+        assert_eq!(
+            (slow_f[2], fast_f[2]),
+            (3, 5),
+            "{slow_text:?} {fast_text:?}"
+        );
+        assert!(
+            slow_f[1] >= 1_000_000_000 && fast_f[1] < slow_f[1],
+            "{slow_text:?} {fast_text:?}"
+        );
+    }
 
     /// THE IDENTITY IS THE WORKSPACE'S FILES, NOT ITS MODULE DIRECTORY. Relocating identical files
     /// keeps it; changing only the binary's entry, or only a crate root outside the module

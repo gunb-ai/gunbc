@@ -1,8 +1,8 @@
 module v2.test.claim.extdeps_shape_transport_policy.coverage_domain_equivalence_holds
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import v2.test.claim.extdeps_shape_transport_policy.coverage_domain_equivalence_module_refs { witness_policy_leak_cargo_build_lens_unit_module }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.test.claim.extdeps_shape_transport_policy.coverage_domain_equivalence {
   coverage_domain_equivalence_argument_holds,
 }

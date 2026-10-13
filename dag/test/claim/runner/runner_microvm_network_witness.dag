@@ -2,7 +2,7 @@ module test.claim.runner.runner_microvm_network_witness
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.network.mac { MacAddressScope, LocallyAdministered, mac_address_scope, render_mac_address }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }

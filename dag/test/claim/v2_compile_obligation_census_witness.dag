@@ -42,7 +42,7 @@ import gunbc.v2_compile_obligation_census {
   obligation_seed_escape_is_open,
   v2_compile_obligation_census
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.derived_obligation_row { WitnessSubject }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

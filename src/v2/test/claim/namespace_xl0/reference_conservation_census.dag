@@ -13,7 +13,7 @@ import v2.compiler.reference_conservation_census {
   sample_path_observation_of,
   sample_path_parts
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list, length }
 import v2.std.integer { Int }

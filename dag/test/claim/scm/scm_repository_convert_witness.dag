@@ -24,7 +24,7 @@ module test.claim.scm.scm_repository_convert_witness
 // certifies that the write the shell would perform carries the whole decoded repository.
 
 import std.types { Bool, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.json.emit {
   json_object, json_kv, json_string, json_int, json_null, json_array,
 }

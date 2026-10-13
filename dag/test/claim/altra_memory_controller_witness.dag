@@ -46,7 +46,7 @@ import extdeps.cpu.ampere_altra_memory_controller {
   altra_total_memory_data_width,
   altra_udimm_withdrawal,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

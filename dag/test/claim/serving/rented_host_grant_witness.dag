@@ -1,7 +1,7 @@
 module test.claim.serving.rented_host_grant_witness
 
 import std.types { String, Bool, NonEmptyStr, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.scoped_authorization {
   ScopedAuthorization, AuthorizationGranted, AuthorizationPending, OperatorGrant, Unclaimed, AttemptIdentity,
 }

@@ -1,7 +1,7 @@
 module test.claim.claude_code_dispatch_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.claim_evidence { RecordedFactId }
 import std.measure { basis_point_count }
 import std.optional { Present, Absent }

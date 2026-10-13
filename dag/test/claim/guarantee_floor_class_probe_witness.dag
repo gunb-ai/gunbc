@@ -47,7 +47,7 @@ import gunbc.compile_diagnostic_census {
 import gunbc.guarantee_measurement { GuaranteeProbeId, MeasurementRevision }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.algebra { fold_list }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

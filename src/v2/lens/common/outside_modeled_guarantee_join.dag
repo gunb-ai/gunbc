@@ -14,7 +14,7 @@ import v2.std.decl_ref_resolution {
   DeclarationRefFieldAbsent,
   DeclarationRefAmbiguous
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

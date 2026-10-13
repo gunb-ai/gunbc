@@ -11,7 +11,7 @@ import v2.workflow.floor_discovery_source_authority {
 import std.algebra { length, list_head, HeadFound, HeadAbsent }
 import v2.std.collection { fold_list }
 import std.types { Bool, String, List }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

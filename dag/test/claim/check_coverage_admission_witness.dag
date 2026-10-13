@@ -20,7 +20,7 @@ import gunbc.merge_admission {
 import extdeps.github.checks { Success, Failure }
 import std.types { CommitSha, Bool }
 import std.content_hash { ContentHash, content_hash_of_value }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

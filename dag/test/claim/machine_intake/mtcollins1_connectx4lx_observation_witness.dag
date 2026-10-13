@@ -15,7 +15,7 @@ import gunbc.machine_intake.mtcollins1_connectx4lx_observation {
   mtcollins1_crs812_cable_order_today, mtcollins1_crs812_cable_order_with,
   mtcollins1_connectx4lx_fleet_intent, NicIntentUndeclared, NicIntentDeclared,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
