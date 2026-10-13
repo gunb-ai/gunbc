@@ -43,6 +43,12 @@ data dr_rec_user_source: String = "module v2.test.dr.rec_user\n\nimport v2.test.
 
 data dr_missing_source: String = "module v2.test.dr.missing\n\nfn f(x: Nowhere) -> Int { 1 }\n"
 
+data dr_p_source: String = "module v2.test.dr.p\n\nimport v2.test.dr.v2lib { Lib }\n"
+
+data dr_p_child_source: String = "module v2.test.dr.p.child\n\ntype R { value: Unit }\ntype Unit = | U\n"
+
+data dr_nested_user_source: String = "module v2.test.dr.nested_user\n\nimport v2.test.dr.p.child { R }\nfn f(x: R) -> R { x }\n"
+
 fn dr_read(text: String, id: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -60,7 +66,10 @@ fn dr_context() -> Outcome<NativeTestContext> {
     dr_read(text: dr_ctor_user_source, id: ^dr_ctor_user, path: "src/v2/test/fixture/dr/ctor_user.dag", root: DagTree),
     dr_read(text: dr_rec_source, id: ^dr_rec, path: "src/v2/test/fixture/dr/rec.dag", root: DagTree),
     dr_read(text: dr_rec_user_source, id: ^dr_rec_user, path: "src/v2/test/fixture/dr/rec_user.dag", root: DagTree),
-    dr_read(text: dr_missing_source, id: ^dr_missing, path: "src/v2/test/fixture/dr/missing.dag", root: DagTree)
+    dr_read(text: dr_missing_source, id: ^dr_missing, path: "src/v2/test/fixture/dr/missing.dag", root: DagTree),
+    dr_read(text: dr_p_source, id: ^dr_p, path: "src/v2/test/fixture/dr/p.dag", root: DagTree),
+    dr_read(text: dr_p_child_source, id: ^dr_p_child, path: "src/v2/test/fixture/dr/p_child.dag", root: DagTree),
+    dr_read(text: dr_nested_user_source, id: ^dr_nested_user, path: "src/v2/test/fixture/dr/nested_user.dag", root: DagTree)
   ])
 }
 
@@ -69,6 +78,7 @@ type DrVerdicts {
   ctor_user: NativeModuleResolveVerdict
   rec_user: NativeModuleResolveVerdict
   missing: NativeModuleResolveVerdict
+  nested_user: NativeModuleResolveVerdict
 }
 
 fn dr_verdicts() -> Optional<DrVerdicts> {
@@ -81,7 +91,8 @@ fn dr_verdicts() -> Optional<DrVerdicts> {
           user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.user", path: ^dr_user).verdict,
           ctor_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.ctor_user", path: ^dr_ctor_user).verdict,
           rec_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.rec_user", path: ^dr_rec_user).verdict,
-          missing: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.missing", path: ^dr_missing).verdict
+          missing: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.missing", path: ^dr_missing).verdict,
+          nested_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.nested_user", path: ^dr_nested_user).verdict
         })
       }
   }
@@ -152,5 +163,24 @@ test fn a_genuinely_undeclared_name_is_unbound() -> Bool {
   match dr_verdicts() {
     Absent => false
     Present { value: vs } => dr_refuses_with(v: vs.missing, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+
+// A HEALTHY NESTED PROVIDER beside a refused parent (v2.test.dr.p dag→v2) still binds.
+// Prefix-join would have attributed v2.test.dr.p.child.R to p.
+test fn a_healthy_nested_provider_beside_a_refused_parent_binds() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } => dr_accepted(v: vs.nested_user)
+  }
+}
+
+// AN ACTUAL DECLARING-PROVIDER REFUSAL keeps its chain (control (a) restated against the nested roster).
+test fn an_actual_declaring_provider_refusal_chain_survives() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      dr_refuses_with(v: vs.user, reason: ^resolve_reason_declarer_refused)
+        && dr_chain_names_cause(v: vs.user, reason: ^resolve_cross_tree_import_denied)
   }
 }

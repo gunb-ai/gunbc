@@ -179,7 +179,8 @@ import v2.std.symbol_index {
   type_decl_member_child_walk,
   TypeDeclChildrenInherited,
   TypeDeclChildrenTypeOccurrence,
-  TypeDeclChildWalk
+  TypeDeclChildWalk,
+  symbol_index_is_module_root_at
 }
 import v2.std.node {
   BinderTypeEdge,
@@ -329,17 +330,32 @@ type ClosureProviderRefusal {
   refusal: NonEmptyDiagnostics
 }
 
-// THE ONE READ every closure-index miss consults: the refused provider whose module path is a prefix of
-// the missed declaration's path, if any. A miss with no refused provider over it stays the bare miss.
-// The list is the same ClosureProviderRefusal roster infer already reads; resolve names it at the
-// imported-name mention so the mention is not a second unbound.
-fn unavailable_provider_for_path(providers: List<ClosureProviderRefusal>, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  fold(providers, init: optional_absent(), f: fn(acc, p) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if qualified_name_is_proper_prefix(prefix: p.module, path: path) { optional_present(value: p) } else { acc }
-    }
-  })
+// THE ONE READ every closure-index miss consults: the refused provider whose module IS the
+// declaration's owning module, if any. A proper-prefix join would attribute v2.p.child.R to
+// refused parent v2.p (roster order could change which). Join exact-module against the
+// longest prefix of the path that is a marked module root. A miss with no refused owning
+// module stays the bare miss.
+fn declaration_owning_module(index: SymbolIndex, path: QualifiedName) -> Optional<QualifiedName> {
+  match path {
+    Empty => optional_absent()
+    Cons { head: _, tail: _ } =>
+      if symbol_index_is_module_root_at(index: index, qualified_path: path) {
+        optional_present(value: path)
+      } else {
+        declaration_owning_module(index: index, path: qualified_name_init(qn: path))
+      }
+  }
+}
+
+fn unavailable_provider_for_path(
+  index: SymbolIndex,
+  providers: List<ClosureProviderRefusal>,
+  path: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  match declaration_owning_module(index: index, path: path) {
+    Present { value: module } => unavailable_provider_for_module(providers: providers, module: module)
+    Absent => optional_absent()
+  }
 }
 
 fn unavailable_provider_for_module(providers: List<ClosureProviderRefusal>, module: QualifiedName) -> Optional<ClosureProviderRefusal> {
@@ -362,22 +378,7 @@ fn unavailable_providers_except_subject(providers: List<ClosureProviderRefusal>,
 }
 
 fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  unavailable_provider_for_path(providers: tree.unavailable_providers, path: path)
-}
-
-fn qualified_name_is_proper_prefix(prefix: QualifiedName, path: QualifiedName) -> Bool {
-  match prefix {
-    Empty =>
-      match path {
-        Empty => false
-        Cons { head: _, tail: _ } => true
-      }
-    Cons { head: ph, tail: pt } =>
-      match path {
-        Empty => false
-        Cons { head: h, tail: t } => ph == h && qualified_name_is_proper_prefix(prefix: pt, path: t)
-      }
-  }
+  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.unavailable_providers, path: path)
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -1947,7 +1948,7 @@ fn resolve_reference_path_miss(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match unavailable_provider_for_path(providers: ctx.namespace.unavailable_providers, path: path) {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.unavailable_providers, path: path) {
     Present { value: provider } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -2026,7 +2027,7 @@ fn resolve_atom_bound(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match unavailable_provider_for_path(providers: ctx.namespace.unavailable_providers, path: path) {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.unavailable_providers, path: path) {
     Present { value: provider } =>
       Rejected {
         diagnostics: rejected_with_pending(
