@@ -10,7 +10,7 @@ import v2.compiler.self_host.stage0_crate_layout {
   hand_maintained_stage0_dirs,
   hand_maintained_stage0_filenames
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.text { String }
 
 fn escape_dag_string_body(s: String) -> String {

@@ -28,10 +28,6 @@ data nfr_reason_structural_eq_backfill: String = "structural equality (param scr
 
 data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
 
-data nfr_reason_frontier_probe: String = "#6533 (Wave 2 frontier probe) landed this site unrostered — the nfr witnesses are corpus-read rows the affected-set selection did not run for that diff, so the red surfaced on the next whole-corpus cold sweep (masking class receipted on #6530); declared so the ratchet re-arms"
-
-data nfr_dissolve_frontier_probe: DissolutionCondition = unbound_dissolution(description: "the frontier probe's fold migration totals the match and the row deletes")
-
 data nfr_reason_orch_emit: String = "one-special-variant dispatch (ExprCmdSubst to cmdsubst_assign; every other Expr through the uniform spelling path) — enumerating all Expr variants would clone the general arm; landed with the shell-to-dag P2b/P4 slices (#6573), surfaced on the 2026-07-14 nightly cold sweep (masking receipt 9)"
 
 data nfr_dissolve_orch_emit: DissolutionCondition = unbound_dissolution(description: "emit becomes the backward grammar-row fold (DESIGN §4) and the special case dissolves with the orchestration-emit fold migration")
@@ -64,10 +60,6 @@ data nfr_reason_floor_discovery_transport: String = "typed transport-state proje
 data nfr_dissolve_floor_discovery_transport: DissolutionCondition = unbound_dissolution(description: "generated transport realization derives wrong-phase refusal from the observation-state partition and the shared arms become named total cases; the row deletes with the hand-Rust transport scaffold")
 
 data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait capability table (nested match on ReprGroundingDeriveElemShape × ReprGroundingDeriveTrait with off-trait wildcard arms returning false) landed with Gate-1 sub-wall #2 predicate scaffold (#7174); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
-
-data nfr_reason_native_agreement_octet: String = "RuntimeValue primitive-discriminant projection (RuntimePrimitive arm extracts byte[1]; off-variant wildcard Absent) landed with Lane B native-agreement loudness (#7111); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
-
-data nfr_dissolve_native_agreement_octet: DissolutionCondition = unbound_dissolution(description: "RuntimeValue model↔realization grounds each primitive variant and the wildcard arm migrates to a total match — or the receipt formatter derives from inhabitance and the row deletes")
 
 data nfr_reason_observation_hold_cause: String = "the CI-log renderer names the two memory-pressure holds (PsiPressure, CurrentHighWater — the crawl-window narrative) with a specific cause and gives the other five SchedulerHold variants a generic 'blocked on scheduler admission'; landed with the progress-and-observation stack (session/sleek-ibex-634, #7168) and surfaced by the whole-corpus nfr receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at merge time (the masking class); declared so the ratchet re-arms"
 
@@ -136,10 +128,6 @@ data nfr_dissolve_acceptance_verdict_append: DissolutionCondition = unbound_diss
 data nfr_reason_generated_workflow_provenance_projection: String = "subset projection over GeneratedArtifact: the three workflow artifact identities carry provenance and every non-workflow artifact shares one Absent arm. Enumerating the non-workflow variants would copy a live population beside the generated-artifact commit-policy registry. The production join in generated_artifact_emit refuses GeneratedWorkflowProvenanceHeaderNotApplicable whenever artifact_commit_policy says GithubActionsWorkflow, so omission on a future workflow admission is refused even though the inconsistent pair remains writable in the two authorities. This join does not adjudicate whether a present projected generator agrees with the actual producer; that disagreement class remains open until the projection is fused with generation. Declared when the required nfr_roster_receipt first exercised the new projection on #9954, so the ratchet re-arms with the site."
 
 data nfr_dissolve_generated_workflow_provenance_projection: DissolutionCondition = unbound_dissolution(description: "the generated-artifact registry admission for GithubActionsWorkflow carries provenance fused with its generating dispatch, so the artifact-visible citation is derivable only from the actual producer and neither an omitted nor a disagreeing provenance row is constructible; emission consumes that refined workflow-artifact declaration without projecting from the full GeneratedArtifact coproduct, and this wildcard match deletes with its row")
-
-data nfr_reason_concurrent_divergence_repair_policy: String = "repair-policy dispatch over GeneratedArtifact: DesignRungDropsArtifact answers HealRegeneratesAfterProvisionalMerge and every other artifact shares one AuthorRegeneratesBeforeMerge arm, including DesignFailureModesArtifact (NotCommitted as of gunbc#10822) — enumerating the registry variant by variant would clone that arm per row, which is the redundancy DESIGN §2 forbids rather than the totality DESIGN §4 asks for, and it would make every new artifact edit this match. UN-MIGRATED MODELING, not a named irreducible kernel: the remaining heal subject is a MODELLED property — an append-only committed projection whose rows several lanes extend concurrently — and the policy is derivable from that property rather than from artifact identity; the identity list stands only because the property is not declared yet. Landed with the heal-delegated ledger regeneration (gunbc#10302); heal population narrowed to the rung-drop ledger when the failure-mode projection left git (gunbc#10822); declared at landing so the ratchet arms with the code."
-
-data nfr_dissolve_concurrent_divergence_repair_policy: DissolutionCondition = unbound_dissolution(description: "GeneratedArtifact carries a declared concurrent-append property per artifact (the ledger-shaped projections that several lanes extend between merges), concurrent_divergence_repair folds over that property instead of over the variant list, the shared arm becomes a named case rather than a wildcard, and this row deletes.")
 
 // The census these rows answer covers the TYPED population: every match whose scrutinee's
 // inferred type is a closed coproduct, in every non-test module the checker types. A module
@@ -210,11 +198,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_local_tidy,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/vacuity.dag::vacuity_evidence_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/source_authority.dag::discovered_source_refs_digest_eq" },
     reason: nfr_reason_structural_eq_backfill,
     dissolution: nfr_dissolve_derived_equality,
@@ -223,21 +206,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/compiler/source_authority.dag::source_ref_content_hash_structural" },
     reason: nfr_reason_content_hash_structural_refusal,
     dissolution: nfr_dissolve_content_hash_structural_refusal,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches" },
-    reason: nfr_reason_frontier_probe,
-    dissolution: nfr_dissolve_frontier_probe,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_probe_located_stage_for_emit_outcome" },
-    reason: nfr_reason_frontier_probe,
-    dissolution: nfr_dissolve_frontier_probe,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_upstream_semantic_refusal_located_reason" },
-    reason: nfr_reason_frontier_probe,
-    dissolution: nfr_dissolve_frontier_probe,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/emit_orchestration.dag::orch_emit_let_step" },
@@ -290,11 +258,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_owning_fold,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/generated_artifact.dag::concurrent_divergence_repair" },
-    reason: nfr_reason_concurrent_divergence_repair_policy,
-    dissolution: nfr_dissolve_concurrent_divergence_repair_policy,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/generated_workflow_provenance.dag::generated_workflow_provenance" },
     reason: nfr_reason_generated_workflow_provenance_projection,
     dissolution: nfr_dissolve_generated_workflow_provenance_projection,
@@ -326,21 +289,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   },
   FrontierRow {
     subject: PathSubject { path: "dag/std/effects.dag::key_source_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/std/induction.dag::recursion_shape_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/std/induction.dag::shrink_factor_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/std/induction.dag::sub_value_structural_eq" },
     reason: nfr_reason_structural_eq_mint,
     dissolution: nfr_dissolve_derived_equality,
   },
@@ -378,11 +326,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/lens/unused_parameters.dag::use_relation_eq" },
     reason: nfr_reason_structural_eq_mint,
     dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/std/native_agreement.dag::runtime_value_discriminant_octet" },
-    reason: nfr_reason_native_agreement_octet,
-    dissolution: nfr_dissolve_native_agreement_octet,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/std/node_minimal.dag::node_superset_field_eq" },

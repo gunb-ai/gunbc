@@ -1,6 +1,6 @@
 module test.claim.witness_execution_class
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import std.optional { Optional, Present, Absent }
 import std.types { Bool, List }
 import gunbc.witness.witness_execution_class {

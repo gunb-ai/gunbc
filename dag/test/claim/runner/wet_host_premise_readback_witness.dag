@@ -1,8 +1,7 @@
 module test.claim.runner.wet_host_premise_readback_witness
 
 import std.types { Bool, List }
-import v2.std.algebra { fold_list }
-import std.algebra { list_append }
+import std.algebra { list_append, fold_list }
 import v2.workflow.wet_evidence {
   RunnerBrowserToolchainReadyForJobUser, WetHostPremiseReading, WetHostPremiseMet, WetHostPremiseUnmet,
 }

@@ -6,7 +6,7 @@ import gunbc.compile_diagnostic_census {
   CensusNotRunnable,
   census_total_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, Int, List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

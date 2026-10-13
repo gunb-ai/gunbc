@@ -10,10 +10,9 @@ import v2.lens.duplicate_computation {
   duplicate_computation_violation_count,
   duplicate_computation_clean_holds
 }
-import v2.std.algebra { length }
-import std.algebra { list_append }
+import std.algebra { list_append, length }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

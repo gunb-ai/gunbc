@@ -50,6 +50,7 @@ pub use crate::std_target_representation::{VariantParentIdentity, ExactBindingRe
 pub use crate::std_target_representation::{variant_value_realization_refusal_message};
 pub use crate::std_types::{SourceSpan};
 pub use crate::std_types::{is_container_type, is_kernel_type, container_template_algebra};
+pub use crate::std_unicode_scalar::{ascii_lowercase};
 pub use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::{closure_stub_v2_std_integer_source};
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::{closure_stub_v2_std_text_source};
@@ -59,7 +60,7 @@ pub use crate::v1_compiler_dag_collect_support::{connective_name};
 pub use crate::v1_compiler_emit::{BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, EmitterOutcome, ServiceFieldSet, BoundOperation, ShellResultField, ShellResultChannel, NativeEffectRealizationAdmission, NativeEffectDeclSite, FileVerb, FileResultField, FileResultChannel, ShellEmissionRefusal, NativeEffectContract, NativeEffectHandler};
 pub use crate::v1_compiler_emit::{rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node, emit_data_value_json, emit_declared_optional_row_json, is_null_coalesce, has_service_items, order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport, effective_operation_transport, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared, child_from_key, shell_emission_refusal_fact, shell_result_channel_key, shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy, bind_operation_transport, transport_binding_refusal_fact, native_effect_resolution, admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal};
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
-pub use crate::v1_compiler_emit_core_support::{escape_json_string, module_to_filename, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
+pub use crate::v1_compiler_emit_core_support::{escape_json_string, module_to_filename, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
 pub use crate::v1_compiler_infer::{InferScope};
 pub use crate::v1_compiler_infer::{is_lambda_expr, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling};
@@ -1041,7 +1042,20 @@ pub fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
     dag_expr
 }
 
-pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
+pub fn rust_host_string_contains_bridge_applies(module_path: String, name: String) -> bool {
+    match crate::std_primitive_projection::primitive_projection_row_for_declaration(
+        crate::std_decl_ref::decl_ref(module_path.clone(), name.clone()),
+    ) {
+        Some(row) => {
+            (crate::std_primitive_projection::primitive_identity_runtime_name(
+                row.primitive.clone(),
+            ) == "string_contains".to_string())
+        }
+        std::option::Option::None => false,
+    }
+}
+
+pub fn rust_host_string_op_fn_emit(name: String, module_path: String) -> Option<String> {
     if (name.clone() == "trim".to_string()) {
         Some(v1_rt::concat(
             v1_rt::concat(
@@ -1051,7 +1065,20 @@ pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
             "}\n".to_string(),
         ))
     } else {
-        std::option::Option::None
+        if rust_host_string_contains_bridge_applies(module_path.clone(), name.clone()) {
+            Some(v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("pub fn ".to_string(), name.clone()),
+                        "(s: String, pattern: String) -> bool {\n".to_string(),
+                    ),
+                    "    v1_rt::string_contains(&s, pattern)\n".to_string(),
+                ),
+                "}\n".to_string(),
+            ))
+        } else {
+            std::option::Option::None
+        }
     }
 }
 
@@ -19758,7 +19785,7 @@ pub fn emit_fn_def(
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let host_text_op = rust_host_string_op_fn_emit(name.clone());
+        let host_text_op = rust_host_string_op_fn_emit(name.clone(), scope.module_name.clone());
         if (host_text_op.clone() != std::option::Option::None) {
             return match host_text_op.clone() {
                 Some(op_fn) => op_fn.clone(),
@@ -27001,7 +27028,7 @@ pub fn rust_call_target_is_v2_algebra_length(target: Rc<CallTargetIdentity>) -> 
         std::option::Option::None => false,
         Some(id) => {
             ((id.decl_name.clone() == "length".to_string())
-                && (id.owner_module_path.clone() == "v2.std.algebra".to_string()))
+                && (id.owner_module_path.clone() == "std.algebra".to_string()))
         }
     }
 }
@@ -38081,25 +38108,7 @@ pub fn emit_rest_http_method(
             Some(InferredNode::Resolved { node: _, .. }) => {
                 let method_name =
                     crate::v1_std_core::expr_var_name_at(m.clone(), source_indices.clone());
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for ch in Rc::new(
-                        method_name
-                            .clone()
-                            .chars()
-                            .map(|c| c as i64)
-                            .collect::<Vec<_>>(),
-                    )
-                    .iter()
-                    .cloned()
-                    {
-                        __result.push(crate::v1_compiler_emit_core_support::to_lower_char(
-                            ch.clone(),
-                        ));
-                    }
-                    __result
-                })
-                .join(&"".to_string())
+                crate::std_unicode_scalar::ascii_lowercase(method_name.clone())
             }
             _ => "compile_error!(\"transport method type not resolved\")".to_string(),
         },

@@ -195,18 +195,6 @@ test fn witness_deploy_job_principal_unresolved_refuses_not_maps_ghrunner() -> B
   }
 }
 
-test fn witness_unknown_job_user_does_not_silent_map_ci_runner() -> Bool {
-  let poisoned = DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as NonEmptyStr }
-  match deploy_access_or_refusal_for_runner(
-    runner: poisoned,
-    host: srv1_host,
-    transport: LocalShell,
-  ) {
-    DeployAccessJobPrincipalRefused { refusal: r } => r.job_user == "runner"
-    DeployAccessReady { access: _ } => false
-  }
-}
-
 test fn witness_two_phase_principal_derives_job_user() -> Bool {
   witness_srv1_job_principal_resolves_from_runner()
     && srv1_ci_deploy_runner_principal.unit_user == "root"

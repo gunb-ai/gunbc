@@ -26,7 +26,7 @@ import v2.std.verdict {
 import v2.std.collection { Absent }
 import v2.std.node { Symbol }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

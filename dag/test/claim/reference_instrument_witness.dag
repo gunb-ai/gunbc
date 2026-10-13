@@ -1,6 +1,6 @@
 module test.claim.reference_instrument_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.design.reference_instrument {
   InstrumentBehaviourAxis, OpticalInstability, RestingOffsetCalibration,
   ImpulseGlitch, ImpulseThreshold, TiltDerivedReadout, BuoyantDrift,

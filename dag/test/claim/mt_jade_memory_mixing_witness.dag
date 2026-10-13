@@ -48,7 +48,7 @@ import gunbc.specification_citation_read_provenance {
   OperatorSuppliedDocumentText,
   mt_jade_mirror_citation_read_receipt,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

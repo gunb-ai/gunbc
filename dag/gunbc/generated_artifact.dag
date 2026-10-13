@@ -2,7 +2,14 @@
 module gunbc.generated_artifact
 
 import gunbc.os_install { HostAutoinstall }
-import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanProjectsDerivedMarkdown, PlanIsAuthorityOnly }
+import gunbc.plan {
+  Plan,
+  PlanIsAuthorityOnly,
+  PlanProjectsCommittedMarkdown,
+  PlanProjectsDerivedMarkdown,
+  plan_doc_directory,
+  plan_doc_name,
+}
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
 import gunbc.fleet.fleet_intent { ComputeHost }
@@ -40,6 +47,7 @@ type GeneratedArtifact
   | EvaluationBudgetConsequenceGeneratedRsArtifact
   | ReleaseLocusSeedConstantsGeneratedRsArtifact
   | FileTransportRealizationGeneratedRsArtifact
+  | NativeRouteSeedBoundaryGeneratedRsArtifact
   | Fci1BoundedExecutionContextArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | RunnerHostSudoersArtifact { host: HostIdentity }
@@ -78,59 +86,6 @@ type RepoConsumer
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
   | NotCommitted
-
-// WHO REPAIRS A CONCURRENTLY-DIVERGED PROJECTION IS NOT ITS COMMIT POLICY. Both kinds below stay
-// committed, stay in the generated-artifact drift population, and stay protected by the refusing
-// merge driver. This axis answers only who pays to derive the merged authorities after that driver
-// has done its job.
-//
-// The rung-drop ledger remains the exceptional committed projection whose authority is a
-// small authored append while the projection is unbounded. Requiring every lane to run the
-// whole-tree regenerator before it can finish an otherwise mechanical merge puts that shared
-// projection on every lane's critical path. heal-generated-artifacts already checks out the
-// pushed branch head, derives every committed artifact from that head's authorities, commits
-// the result. So for that artifact heal
-// IS the route, not one of two: this arm is what the selector returns and what the emitted recipe
-// instructs, and no value in this module means "either actuator". THAT EXCLUSIVITY IS THE MODELED
-// POLICY AND IS ASSERTED IN BOTH DIRECTIONS by
-// gunbc.test.claim.generated_artifact_assessment_witness_test
-// `only_design_ledgers_delegate_concurrent_regeneration_to_heal`.
-//
-// The failure-mode ledger is no longer in this pair: its committed projection was the merge
-// hotspot, so it is NotCommitted (generated on demand) and its membership list is derived from
-// the row directory rather than hand-appended. Independent failure-mode appends do not share
-// a committed merge region.
-//
-// THE PROVISIONAL BYTES ARE THE BASE-SIDE PROJECTION, NEVER THE DRIVER-LEFT WORKTREE BYTES. This
-// sentence previously said ours, which is the action gunbc.generated_artifact_merge_driver measured
-// as row-deleting across four heads and now instructs against in its own step 1: the driver leaves
-// the ours side in the worktree, so staging it commits this branch's rows over the base's and drops
-// every row the base added since the merge base. Taking the base side is not a resolution either --
-// it leaves the tree authority-ahead-of-artifact by exactly this branch's rows, which is the state
-// heal exists to close -- but it is preservation-safe, and that is the whole requirement on a
-// provisional head.
-//
-// THE ORDERING IS THE INVARIANT, and it is what both actuators owe -- "who runs the regenerator" is
-// an actuator choice, while deriving against a pre-merge branch is a defect either one can commit:
-// preserve the base-side projection, complete the authored-authority merge, publish that as H0,
-// heal derives the projection from H0's AUTHORITIES, publish H1, verify H1. DERIVE ONLY AFTER THE
-// INTEGRATED AUTHORITY STATE EXISTS AS THE SUBJECT.
-// The required generated-artifact phase remains unchanged: it may red on H0 and must agree on H1.
-//
-// Every other artifact retains AuthorRegeneratesBeforeMerge. In particular this is not inferred
-// from ProjectDocumentation: DESIGN.md and ROADMAP.md do not share the ledger's append/content
-// asymmetry, and widening by consumer would silently move future documents onto a repair route
-// nobody judged for them.
-type ConcurrentDivergenceRepair
-  = AuthorRegeneratesBeforeMerge
-  | HealRegeneratesAfterProvisionalMerge
-
-fn concurrent_divergence_repair(a: GeneratedArtifact) -> ConcurrentDivergenceRepair {
-  match a {
-    DesignRungDropsArtifact => HealRegeneratesAfterProvisionalMerge
-    _ => AuthorRegeneratesBeforeMerge
-  }
-}
 
 // THE PATH IS A PROJECTION OF ITS PARTS, NOT THE OTHER WAY ROUND. Every row below CONSTRUCTS its
 // path from a directory and an entry name -- some literal, some computed from a spec host or a plan
@@ -214,6 +169,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     EvaluationBudgetConsequenceGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "evaluation_budget_consequence_generated.rs" }
     ReleaseLocusSeedConstantsGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "release_locus_seed_constants_generated.rs" }
     FileTransportRealizationGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "gunbc_file_transport_generated.rs" }
+    NativeRouteSeedBoundaryGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "native_route_seed_boundary_generated.rs" }
     Fci1BoundedExecutionContextArtifact => ArtifactLocation { directory: "tools", name: "fabric_ci_fci1_bounded_execution_context.env" }
     AutoinstallUserDataArtifact { spec } =>
       ArtifactLocation { directory: concat("provisioning/", spec.host), name: "user-data" }
@@ -240,11 +196,8 @@ fn artifact_path(a: GeneratedArtifact) -> String {
   if l.directory == "." { l.name } else { concat(concat(l.directory, "/"), l.name) }
 }
 
-// THE PLAN DECIDES ITS OWN ARM, NOT THIS ROW. A plan whose markdown the repository removed on
-// purpose (gunbc.plan PlanIsAuthorityOnly) is still rostered, still generated, and still refused
-// if its generation refuses -- it is simply not expected on disk. Answering CommitRequired for
-// every plan is what let a deleted projection read as an absent one, and once a drift phase
-// adjudicates the population that reads as an obligation to recreate the deleted file.
+// PLAN MARKDOWN COMMIT DISPOSITION IS `Plan.projection` AND NOTHING ELSE (`gunbc.plan`
+// `PlanProjection`). This function reads that field; it does not override it.
 // THE COUPON PROGRAM IS GENERATED BUT NOT COMMITTED, because RepoConsumer answers a narrower
 // question than "what eventually consumes these bytes": it answers WHY THEY MUST PERSIST IN A GIT
 // CHECKOUT. A CAD kernel executing an emitted program establishes no such requirement -- the kernel
@@ -273,17 +226,16 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     HealPublisherWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     DriftWatchWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     BranchRunGrantBrokerWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
-    RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
+    RoadmapArtifact => NotCommitted
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignFailureModesArtifact => NotCommitted
-    DesignRungDropsArtifact => CommitRequired { consumer: ProjectDocumentation }
-    ContributorOnboardingArtifact => CommitRequired { consumer: ProjectDocumentation }
-    PlanArtifact { plan } =>
-      match plan.projection {
-        PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
-        PlanProjectsDerivedMarkdown { derive: _ } => CommitRequired { consumer: ProjectDocumentation }
-        PlanIsAuthorityOnly { ruling: _ } => NotCommitted
-      }
+    DesignRungDropsArtifact => NotCommitted
+    ContributorOnboardingArtifact => NotCommitted
+    PlanArtifact { plan } => match plan.projection {
+      PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
+      PlanProjectsDerivedMarkdown { derive: _ } => CommitRequired { consumer: ProjectDocumentation }
+      PlanIsAuthorityOnly { ruling: _ } => NotCommitted
+    }
     RunnerDeployArtifact => NotCommitted
     CouponCadQueryProgramArtifact => NotCommitted
     WholeCorpusCompileMeasuredRootDemandsArtifact => CommitRequired { consumer: CompilerRunInput }
@@ -302,6 +254,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     EvaluationBudgetConsequenceGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     ReleaseLocusSeedConstantsGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     FileTransportRealizationGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
+    NativeRouteSeedBoundaryGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Fci1BoundedExecutionContextArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     RunnerHostSudoersArtifact { host: _ } => CommitRequired { consumer: HostReconciler }
@@ -311,6 +264,75 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
 fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
   match artifact_commit_policy(a: a) {
     CommitRequired { consumer: _ } => true
+    NotCommitted => false
+  }
+}
+
+// THE DOCUMENTATION FAMILY IS THE VARIANT SET, NOT THE COMMIT POLICY. CommitRequired vs
+// NotCommitted answers whether a checkout must carry the bytes; this predicate answers whether
+// the artifact's only declared consumer is ProjectDocumentation. The two must stay independent
+// so a new PlanProjectsCommittedMarkdown row cannot hide from the "only Design stays committed"
+// join by also being absent from a hand-written family list.
+fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
+  match a {
+    RoadmapArtifact => true
+    DesignArtifact => true
+    DesignFailureModesArtifact => true
+    DesignRungDropsArtifact => true
+    ContributorOnboardingArtifact => true
+    PlanArtifact { plan: _ } => true
+    WitnessFloorYamlArtifact => false
+    FleetConvergeYamlArtifact => false
+    MicrovmShakedownYamlArtifact => false
+    InstrumentDispatchYamlArtifact => false
+    HealWorkflowYamlArtifact => false
+    HealPublisherWorkflowYamlArtifact => false
+    DriftWatchWorkflowYamlArtifact => false
+    BranchRunGrantBrokerWorkflowYamlArtifact => false
+    GitignoreArtifact => false
+    GitattributesArtifact => false
+    CargoConfigArtifact => false
+    GithooksPrePushArtifact => false
+    GithooksPreCommitArtifact => false
+    GeneratedArtifactMergeDriverArtifact => false
+    RunnerDeployArtifact => false
+    Stage0CrateLayoutGeneratedDagArtifact => false
+    Stage0CrateLayoutGeneratedRsArtifact => false
+    Stage0CratePartitionGeneratedDagArtifact => false
+    Stage0ExecutableAssemblyGeneratedDagArtifact => false
+    Stage0LinkedPartitionCratesArtifact => false
+    SeedRetentionFrontierGeneratedRsArtifact => false
+    V1InterpreterDispatchGeneratedRsArtifact => false
+    EvaluationBudgetConsequenceGeneratedRsArtifact => false
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => false
+    FileTransportRealizationGeneratedRsArtifact => false
+    NativeRouteSeedBoundaryGeneratedRsArtifact => false
+    Fci1BoundedExecutionContextArtifact => false
+    AutoinstallUserDataArtifact { spec: _ } => false
+    RunnerHostSudoersArtifact { host: _ } => false
+    CouponCadQueryProgramArtifact => false
+    WholeCorpusCompileMeasuredRootDemandsArtifact => false
+    ApprovalDeviceVectorsArtifact => false
+    ApproveIosProjectYmlArtifact => false
+    ApproveIosProtocolSwiftArtifact => false
+    ApproveIosWireSwiftArtifact => false
+    ApproveIosProtocolVectorTestsSwiftArtifact => false
+  }
+}
+
+fn artifact_is_commit_required_project_documentation(a: GeneratedArtifact) -> Bool {
+  match artifact_commit_policy(a: a) {
+    CommitRequired { consumer } => match consumer {
+      ProjectDocumentation => true
+      GitProtocol => false
+      CargoToolchain => false
+      GithubActionsWorkflow => false
+      HostReconciler => false
+      CompilerRunInput => false
+      CrossLanguageClientTest => false
+      XcodeProjectGenerator => false
+      SwiftCompiler => false
+    }
     NotCommitted => false
   }
 }
@@ -362,6 +384,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     EvaluationBudgetConsequenceGeneratedRsArtifact => match b { EvaluationBudgetConsequenceGeneratedRsArtifact => true  _ => false }
     ReleaseLocusSeedConstantsGeneratedRsArtifact => match b { ReleaseLocusSeedConstantsGeneratedRsArtifact => true  _ => false }
     FileTransportRealizationGeneratedRsArtifact => match b { FileTransportRealizationGeneratedRsArtifact => true  _ => false }
+    NativeRouteSeedBoundaryGeneratedRsArtifact => match b { NativeRouteSeedBoundaryGeneratedRsArtifact => true  _ => false }
     Fci1BoundedExecutionContextArtifact => match b { Fci1BoundedExecutionContextArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     RunnerHostSudoersArtifact { host } => match b { RunnerHostSudoersArtifact { host: host2 } => (host as String) == (host2 as String)  _ => false }
@@ -439,6 +462,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     EvaluationBudgetConsequenceGeneratedRsArtifact => decl_ref(module_path: "gunbc.evaluation_budget_consequence_emit", decl_name: "expected_evaluation_budget_consequence_generated_rs")
     ReleaseLocusSeedConstantsGeneratedRsArtifact => decl_ref(module_path: "gunbc.release_locus_seed_constants_emit", decl_name: "expected_release_locus_seed_constants_generated_rs")
     FileTransportRealizationGeneratedRsArtifact => decl_ref(module_path: "extdeps.filesystem.rust_realization", decl_name: "expected_gunbc_file_transport_generated_rs")
+    NativeRouteSeedBoundaryGeneratedRsArtifact => decl_ref(module_path: "gunbc.native_route_seed_boundary_emit", decl_name: "expected_native_route_seed_boundary_generated_rs")
     Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fabric.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
     AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")
     RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_content")

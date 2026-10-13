@@ -2,7 +2,7 @@ module v2.test.claim.body_let_annotation
 
 import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list, length, list_snoc_item, skip }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_artifact, tpb_assemble, tpb_refuses_with }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -33,7 +33,7 @@ import v2.std.diagnostic {
   diagnostics_list_has_reason,
   Suggested
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
@@ -41,7 +41,6 @@ import v2.compiler.reference_conservation_admission { conservation_subject_of_te
 import v2.compiler.normalized_tree { admit_normalized_tree }
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { fold_list, length, list_snoc_item, skip }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

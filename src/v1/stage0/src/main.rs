@@ -829,7 +829,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // `gunbc.instrument_targets`, and the realization is selected one level below. A second
         // instrument adds a row there and nothing here. A set PATTERN (`//pkg:all`, `//pkg/...`)
         // is admitted by the same host's `parse_target_pattern` mirror and executed by the route
-        // whose universe contains it -- the native test route (`//v2/test/...`) or the claim
+        // whose universe contains it -- the native test route (`//v2/...`) or the claim
         // route (`//test/claim/...`); outside both it is refused with status 2, never widened.
         //
         // The status is the producer's own termination, not an aggregate verdict: 0 the reading
@@ -1442,7 +1442,8 @@ fn report_pre_entry_phases(
             "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
             ms(usage.ru_utime),
             ms(usage.ru_stime),
-            usage.ru_maxrss
+            cli_run::peak_rss_vhwm_bytes()
+                .map_or("refused".to_string(), |b| (b / 1024).to_string())
         );
     }
 }

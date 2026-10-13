@@ -4,12 +4,16 @@ import std.primitive_identity {
   PrimitiveRuntimeBodyCensus, PrimitiveRuntimeBodyCheck,
   PrimitiveRuntimeBodiesObserved, PrimitiveRuntimeBodiesMissing,
   RuntimeBody, EmitHandler, BuiltinRegistry,
-  primitive_surface_census_with_runtime, surface_rows_carry_symbol_on,
-  primitive_runtime_body_census_in, primitive_runtime_body_check_in,
+  surface_rows_carry_symbol_on,
+  primitive_runtime_body_check_in,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.types { List }
+import gunbc.primitive_runtime_body {
+  primitive_runtime_body_census_in,
+}
 import gunbc.primitive_runtime_body_gate { runtime_body_required_check_census_in }
+import gunbc.primitive_egress.d0_census { primitive_surface_census_with_runtime }
 import extdeps.languages.rust.emit { RuntimeFunction, rt_function_registry }
 import v1.compiler.runtime_rust { rust_runtime_source }
 

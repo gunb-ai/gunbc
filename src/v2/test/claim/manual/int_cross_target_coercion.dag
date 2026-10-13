@@ -59,7 +59,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { StructuralPropertyWitness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

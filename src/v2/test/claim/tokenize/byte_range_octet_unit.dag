@@ -2,12 +2,12 @@ module v2.test.claim.tokenize.byte_range_octet_unit
 
 import v2.std.text { String }
 import std.optional { Absent, Present }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.compilers.lexing { ModeledLexRules, Token, TokenStream }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex_rules }
 import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

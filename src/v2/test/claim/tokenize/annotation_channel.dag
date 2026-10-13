@@ -1,10 +1,10 @@
 module v2.test.claim.tokenize.annotation_channel
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import v2.std.node { symbol_lexeme }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { fold_list, length }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { fold_list, length }
 import std.source_annotation { LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.compilers.lexing {
   AnnotationRule,
@@ -28,7 +28,7 @@ import v2.std.compilers.lexing {
   token_stream_all,
 }
 import v2.compiler.tokenize {
-  LexRuleAnnotation, LexRuleToken, LexRuleTrivia, LexRuleNoMatch,
+  LexRuleAnnotation, LexRuleBeyond, LexRuleToken, LexRuleTrivia, LexRuleNoMatch,
   lex_try_rule, lex_walk, lex_walk_artifact
 }
 
@@ -87,6 +87,7 @@ test fn annotation_rule_routes_to_the_annotation_arm() -> Bool {
     LexRuleAnnotation { class: c, lexeme: _, remaining: _ } => c == ^line_comment
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
     LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } => false
+    LexRuleBeyond => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleNoMatch => false
   }

@@ -1,10 +1,9 @@
 module v2.test.claim.dag_acceptance
 
 import std.types { List }
-import std.algebra { FreeSemigroup }
-import v2.std.algebra { HeadFound, length, list_head }
+import std.algebra { FreeSemigroup, length }
 import std.content_hash { content_hash_atom }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { millisecond }
 import v2.std.node { Symbol, symbol_type_node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }

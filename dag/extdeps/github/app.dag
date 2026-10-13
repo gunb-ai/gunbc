@@ -26,7 +26,7 @@ import extdeps.languages.json.emit {
 import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
 import v2.std.collection { map_lookup }
@@ -1463,6 +1463,7 @@ service github.AppPublicRegistry {
   config {
     endpoint: default_api_base
     auth: Bearer
+    auth_input: auth_token
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
@@ -1513,7 +1514,6 @@ service github.AppInstallations {
   operation ListInstallations {
     requires Network
     input {
-      auth_token: Secret
       per_page: Int = default_per_page
     }
     output {

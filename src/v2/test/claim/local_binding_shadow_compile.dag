@@ -1,7 +1,7 @@
 module v2.test.claim.local_binding_shadow_compile
 
 import std.types { String, Bool, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,

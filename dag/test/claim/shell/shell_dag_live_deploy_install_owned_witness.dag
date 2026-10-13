@@ -3,7 +3,7 @@ module test.claim.shell.shell_dag_live_deploy_install_owned_witness
 import std.types { Bool, String, List }
 import gunbc.live_deploy.emit { install_d_owned_command }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -25,7 +25,7 @@ import gunbc.managed_directory {
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused,
   entry_mode_add_read_symbolic,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

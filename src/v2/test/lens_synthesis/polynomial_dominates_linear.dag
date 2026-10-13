@@ -11,7 +11,7 @@ import v2.lens.cost {
 import v2.std.cardinality { NonZeroNat }
 import std.nat { Zero }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data synthesis_poly_x: Node = Node {

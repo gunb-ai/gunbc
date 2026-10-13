@@ -25,7 +25,7 @@ import v2.compiler.self_host {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.witness { Holds, Violates }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

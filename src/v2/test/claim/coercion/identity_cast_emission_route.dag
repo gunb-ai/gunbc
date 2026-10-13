@@ -14,7 +14,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.coercion { CoercionResult, Identity, NoTargetCandidate, coercion_cast_crossing }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, node_synthetic }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }

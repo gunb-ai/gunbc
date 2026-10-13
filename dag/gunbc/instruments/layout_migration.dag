@@ -4,7 +4,7 @@ import std.types { FilePath, Int, List, String }
 import std.optional { Absent, Optional, Present, optional_present }
 import extdeps.git
 import extdeps.shell
-import v2.std.algebra { skip }
+import std.algebra { skip }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io {
@@ -375,7 +375,7 @@ type TrackedRead
   | TrackedRefused { cause: String }
 
 fn nul() -> String {
-  from_code_point(0)
+  "\u{0}"
 }
 
 // One `git ls-files -z --stage` record: `<mode> <object> <stage>\t<path>`.

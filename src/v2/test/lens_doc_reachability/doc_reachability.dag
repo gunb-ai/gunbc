@@ -5,7 +5,7 @@ import v2.lens.doc_reachability {
   doc_graph_dangling_clean_holds,
   doc_graph_universe_nonempty_holds,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

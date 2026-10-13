@@ -18,7 +18,7 @@ import product.spatial_projection {
   project_world, scene_rooms, painter_order,
 }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

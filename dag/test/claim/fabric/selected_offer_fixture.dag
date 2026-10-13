@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.measure { MoneyRate, MoneyPerSecond, money_amount_micro, second }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
-import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity }
+import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity , WarmResidencyRequired }
 import product.fabric.provider_admission { ProviderUseAdmission }
 import product.fabric.supply {
   SupplierOffer, StableRosterOrder, PlacementAffinityKey, GrantDuration, ExactGrantDuration,
@@ -60,6 +60,7 @@ fn requirements_met_by(offer: SupplierOffer<NonEmptyStr>) -> ExecutionRequiremen
     capabilities: offer.capabilities,
     trust_domain: offer.trust_domain,
     isolation: offer.isolation,
+    revocation: WarmResidencyRequired,
   }
 }
 

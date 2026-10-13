@@ -67,39 +67,6 @@ pub struct InductiveField {
     pub element_type: String,
 }
 
-pub fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> bool {
-    match a.clone() {
-        RecursionShape::DirectRecursion => match b.clone() {
-            RecursionShape::DirectRecursion => true,
-            _ => false,
-        },
-        RecursionShape::ListRecursion => match b.clone() {
-            RecursionShape::ListRecursion => true,
-            _ => false,
-        },
-        RecursionShape::OptionalRecursion => match b.clone() {
-            RecursionShape::OptionalRecursion => true,
-            _ => false,
-        },
-        RecursionShape::SetRecursion => match b.clone() {
-            RecursionShape::SetRecursion => true,
-            _ => false,
-        },
-        RecursionShape::MapValueRecursion => match b.clone() {
-            RecursionShape::MapValueRecursion => true,
-            _ => false,
-        },
-    }
-}
-
-pub fn inductive_field_eq(a: Rc<InductiveField>, b: Rc<InductiveField>) -> bool {
-    (((((a.type_name.clone() == b.type_name.clone())
-        && (a.variant_name.clone() == b.variant_name.clone()))
-        && (a.field_name.clone() == b.field_name.clone()))
-        && recursion_shape_eq(a.shape.clone(), b.shape.clone()))
-        && (a.element_type.clone() == b.element_type.clone()))
-}
-
 pub fn inductive_field_to_dimension(
     field: Rc<InductiveField>,
     param: String,
@@ -151,87 +118,6 @@ pub fn sub_value_to_evidence(relation: Rc<SubValueRelation>) -> DescentEvidence 
     }
 }
 
-pub fn shrink_factor_eq(a: Rc<ShrinkFactor>, b: Rc<ShrinkFactor>) -> bool {
-    match (*a.clone()).clone() {
-        ShrinkFactor::UnitShrink => match (*b.clone()).clone() {
-            ShrinkFactor::UnitShrink => true,
-            _ => false,
-        },
-        ShrinkFactor::ConstantShrink { steps: sa, .. } => match (*b.clone()).clone() {
-            ShrinkFactor::ConstantShrink { steps: sb, .. } => {
-                (crate::std_termination::positive_descent_count(sa.clone())
-                    == crate::std_termination::positive_descent_count(sb.clone()))
-            }
-            _ => false,
-        },
-        ShrinkFactor::ProportionalShrink { divisor: da, .. } => match (*b.clone()).clone() {
-            ShrinkFactor::ProportionalShrink { divisor: db, .. } => {
-                (crate::std_termination::proportional_divisor_to_int(da.clone())
-                    == crate::std_termination::proportional_divisor_to_int(db.clone()))
-            }
-            _ => false,
-        },
-    }
-}
-
-pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> bool {
-    match (*a.clone()).clone() {
-        SubValueRelation::StrictSubValue {
-            field: fa,
-            factor: fac_a,
-            ..
-        } => match (*b.clone()).clone() {
-            SubValueRelation::StrictSubValue {
-                field: fb,
-                factor: fac_b,
-                ..
-            } => {
-                (inductive_field_eq(fa.clone(), fb.clone())
-                    && shrink_factor_eq(fac_a.clone(), fac_b.clone()))
-            }
-            _ => false,
-        },
-        SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b.clone()).clone() {
-            SubValueRelation::IteratedSubValue { field: fb, .. } => {
-                inductive_field_eq(fa.clone(), fb.clone())
-            }
-            _ => false,
-        },
-        SubValueRelation::ArithmeticDescent {
-            param: pa,
-            factor: fac_a,
-            ..
-        } => match (*b.clone()).clone() {
-            SubValueRelation::ArithmeticDescent {
-                param: pb,
-                factor: fac_b,
-                ..
-            } => ((pa.clone() == pb.clone()) && shrink_factor_eq(fac_a.clone(), fac_b.clone())),
-            _ => false,
-        },
-        SubValueRelation::PreservedValue => match (*b.clone()).clone() {
-            SubValueRelation::PreservedValue => true,
-            _ => false,
-        },
-        SubValueRelation::NonIncreasingValue => match (*b.clone()).clone() {
-            SubValueRelation::NonIncreasingValue => true,
-            _ => false,
-        },
-        SubValueRelation::StrictAxisErased => match (*b.clone()).clone() {
-            SubValueRelation::StrictAxisErased => true,
-            _ => false,
-        },
-        SubValueRelation::MixedTop => match (*b.clone()).clone() {
-            SubValueRelation::MixedTop => true,
-            _ => false,
-        },
-        SubValueRelation::SubValueUnknown => match (*b.clone()).clone() {
-            SubValueRelation::SubValueUnknown => true,
-            _ => false,
-        },
-    }
-}
-
 pub fn is_strict_style_structural(r: Rc<SubValueRelation>) -> bool {
     match (*r.clone()).clone() {
         SubValueRelation::StrictSubValue { .. } => true,
@@ -259,7 +145,7 @@ pub fn sub_value_level(r: Rc<SubValueRelation>) -> i64 {
 }
 
 pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
-    if sub_value_structural_eq(a.clone(), b.clone()) {
+    if (a.clone() == b.clone()) {
         a.clone()
     } else {
         {
@@ -295,7 +181,7 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
 }
 
 pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
-    if sub_value_structural_eq(a.clone(), b.clone()) {
+    if (a.clone() == b.clone()) {
         a.clone()
     } else {
         {

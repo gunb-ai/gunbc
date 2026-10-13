@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_multi_principal_probe
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.algebra { trim }
+import std.algebra { trim, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -35,7 +35,6 @@ import gunbc.fleet.fleet_ssh_credential_verify {
   fleet_ssh_credential_verification_refusal_reason,
 }
 import extdeps.ssh.session { ssh_session_exec_portable_words }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import product.host_identity { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding, spark_administrator_credential_roster_hosts }

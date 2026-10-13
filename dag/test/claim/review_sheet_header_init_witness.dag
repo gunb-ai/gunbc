@@ -33,7 +33,7 @@ module test.claim.review_sheet_header_init_witness
 // claim here, and that claim supplies FormulaGridOccupied and proves it cannot become the carrier.
 
 import std.types { Bool, String, NonEmptyStr, List, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.google.sheets {
   ValueRange,
   ValueRangeWrite,

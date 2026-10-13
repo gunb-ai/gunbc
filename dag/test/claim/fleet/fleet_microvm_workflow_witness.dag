@@ -4,7 +4,7 @@ import std.types { Bool, String, List }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_microvm_host_converge_step, fleet_converge_microvm_boot_probe_step }
 import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
 import extdeps.github.actions { Step, RunStep }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

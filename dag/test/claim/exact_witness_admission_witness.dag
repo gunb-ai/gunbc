@@ -55,10 +55,10 @@ import std.witness_admission {
   UnboundImportedVariantConstructor,
   ExpectWitnessHolds
 }
-import v2.std.algebra { length }
+import std.algebra { length }
 import v2.std.integer { Int }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.dissolution { unbound_dissolution }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

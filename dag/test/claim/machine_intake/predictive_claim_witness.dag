@@ -5,7 +5,7 @@ import std.claim_evidence { Claim, ClaimId, RecordedFact, RecordedFactId }
 import std.decl_ref { decl_ref }
 import std.process { ExitSuccess }
 import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.predictive_claim {
   AdversarialTestingObligation, Prediction, PredictionRestriction,
   PredictionObservationWindow, BoundedPredictionWindow, ApproximatePredictionWindow, PredictionWindowNotRecorded,

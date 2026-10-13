@@ -18,7 +18,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some, Suggested, Unavailable, diagnostics_has_reason, node_locus }
 import v2.std.integer { integer_int_type_node }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node { Arrow, Edge, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, node_subtree_nodes }

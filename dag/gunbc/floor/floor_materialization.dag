@@ -120,7 +120,7 @@ fn floor_index_build_materialization_without_provider(gates: List<Gate>, witness
 // extdeps.realization.resolved_graph.resolved_graph_cache until 2026-10-03, when it was deleted: its
 // JSON representation could not serve, so it wrote nothing and served no hit. A cross-run
 // resolved-graph provider needs an occurrence-neutral per-module encoding first (the
-// context-assembly cut of docs/plans/demand-engine-program.md) and is not owed by this module.
+// context-assembly cut of `gunbc.plans.demand_engine_program`) and is not owed by this module.
 
 // LIVE — std.materialization_ladder landed on main (#6375). The enrolled witness
 // dag/test/claim/floor_materialization_witness_test.dag IS the authority (green-by-execution on the

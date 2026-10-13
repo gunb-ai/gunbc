@@ -97,7 +97,7 @@ import gunbc.executor_privileged_operation {
   executor_privileged_operation_elevated_argv,
   executor_privileged_operation_sudoers_line,
 }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_rm_binary_path }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_rm_binary_path, GroundedPosixPrincipal, grounded_posix_principal_name }
 import gunbc.cli_invoke { NamedArgumentAdmission, admit_named_argument }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
@@ -225,7 +225,7 @@ import gunbc.host.host_axis_caps {
   host_axis_caps_author_before_revert_enforced,
 }
 import gunbc.ownership { Ownership }
-import v2.std.algebra { list_tail, TailFound, TailAbsent }
+import std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
@@ -279,13 +279,7 @@ import v2.extdeps.languages.bash_build {
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.node { Node }
-import gunbc.ci.ci_deploy_access {
-  DeployAccess,
-  ci_deploy_srv1_access_or_refusal,
-  DeployAccessReady,
-  DeployAccessJobPrincipalRefused,
-  deploy_access_job_principal_refused_emit_poison,
-}
+import gunbc.ci.ci_deploy_access { DeployAccess }
 import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_install_shell }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import v2.workflow.effect_plan_bash_materialize { BashBoundOperationInvocation }
@@ -2086,10 +2080,10 @@ fn deploy_memory_cap_apply_steps(
 // every restart, and the device routes unreachable with nothing but a crashed unit to say so. So
 // the release install is constructed INTO the unit write rather than left for a second pipeline to
 // remember.
-fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   if deployment_owns_the_host_approval_broker(spec: spec) {
     concat(
-      approval_broker_dark_install_release_steps(spec: spec, revision: revision),
+      approval_broker_dark_install_release_steps(principal: principal, spec: spec, revision: revision),
       approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port),
     )
   } else {
@@ -2144,8 +2138,9 @@ fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // job before the install step runs.
 //
 // THE COPY IS LOCAL, AND THAT IS A PROPERTY OF THE TRANSPORT RATHER THAN A HOPE. The job runs on a
-// self-hosted runner labelled with the dispatch's own host input, and gunbc.ci.ci_deploy_access
-// ci_deploy_srv1_access_or_refusal binds LocalShell -- so the script executes ON the target host,
+// self-hosted runner labelled with the dispatch's own host input, and the DeployAccess the gated
+// dispatch hands this emitter binds LocalShell (gunbc.ci.ci_deploy_access ci_deploy_srv1_access for the
+// CI entry, ci_deploy_srv1_operator_local_access for the operator-local one) -- so the script executes ON the target host,
 // and "$PWD" is that job's checkout. The same fact is what makes the rsync above work; the binary
 // copy is not reaching any further than the tree copy already does. Were the transport ever remote,
 // both would break together and loudly, rather than this one silently copying a file that is not
@@ -2885,12 +2880,12 @@ fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> Li
   )
 }
 
-fn approval_broker_helper_grant_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+fn approval_broker_helper_grant_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   match approval_broker_helper_grant_admission(revision: revision) {
     HelperGrantAdmitted => concat(
       approval_broker_helper_snapshot_steps(revision: revision),
       concat(
-        approval_broker_helper_grant_admitted_steps(revision: revision),
+        approval_broker_helper_grant_admitted_steps(principal: principal, revision: revision),
         [deploy_raw(command: approval_broker_helper_snapshot_retire_command(revision: revision))],
       ),
     )
@@ -2899,7 +2894,13 @@ fn approval_broker_helper_grant_steps(spec: DeploymentSpec, revision: ReleaseRev
   }
 }
 
-fn approval_broker_helper_grant_admitted_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+// THE READBACK BELONGS TO WHOEVER APPLIES, because the step after it compares it unprivileged as that
+// principal. It was owned by the CI runner principal, so under the operator-local apply the
+// comparison could not read it: `cmp` exited 2 with "Permission denied" and the apply refused after
+// mutating (srv1 prod, 2026-10-12, twice). The owner is the gate's DeployAccess principal, the same
+// one the v4 receipt's provenance names, threaded here from host_effect_apply_gated (gunbc.recurring_failure_mode
+// emitted_apply_names_the_ci_principal_instead_of_the_applying_one).
+fn approval_broker_helper_grant_admitted_steps(revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   let final_path = approval_broker_helper_sudoers_path as String
   let temp_path = approval_broker_helper_sudoers_temp_path as String
   [
@@ -2921,8 +2922,8 @@ fn approval_broker_helper_grant_admitted_steps(revision: ReleaseRevisionBinding)
     deploy_raw(command: deploy_stage_install_from_command(
       source: final_path,
       mode: "0400" as NonEmptyStr,
-      owner: fleet_posix_ci_runner_user.name,
-      group: fleet_posix_ci_runner_user.name,
+      owner: grounded_posix_principal_name(p: principal),
+      group: grounded_posix_principal_name(p: principal),
       stage_name: approval_broker_helper_sudoers_readback_stage_name,
     )),
     deploy_raw(command: deploy_stage_cmp_stages_command(
@@ -2977,7 +2978,7 @@ fn approval_broker_unit_write_steps_on(
   ]
 }
 
-fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan, spec: DeploymentSpec, oidc_now: Second?) -> List<PipelineStep> {
+fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan, spec: DeploymentSpec, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match member {
     TreePublication => if !plan_publishes_tree(plan: plan) { [] } else { concat([
@@ -3047,7 +3048,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
             mode: install_file_shared_mode,
             dest: deployment_systemd_unit_path(names: spec.names) as String,
           )),
-        ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)) },
+        ], apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision)) },
         concat(
           if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
           if !plan_restarts_process(plan: plan) { [] } else { concat([
@@ -3076,7 +3077,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
 // line above and the planned identity name one file.
 data release_executable_install_source: String = "target/release/gunbc"
 
-fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> List<PipelineStep> {
+fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   match art.kind {
     GunbcSourceTree => [
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
@@ -3137,7 +3138,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
-    ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)), concat([
+    ], apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision)), concat([
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
@@ -3445,12 +3446,12 @@ fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> Lis
   [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, ensured_subject_identity(subject: dep.subject) as String))]
 }
 
-fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> List<PipelineStep> {
+fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   match effect {
     EffectAdd { to: step } =>
       match step {
         Dependency { step: dep } => ensure_dependency_steps(dep: dep, privileged: true)
-        ArtifactStep { step: art } => emit_artifact_upsert(art: art, spec: spec, revision: revision, oidc_now: oidc_now)
+        ArtifactStep { step: art } => emit_artifact_upsert(principal: principal, art: art, spec: spec, revision: revision, oidc_now: oidc_now)
       }
     EffectReplace { from: _, to: step } => emit_deploy_replace_unreachable_refusal(step: step)
     EffectRemove { from: step } =>
@@ -3491,18 +3492,19 @@ fn apply_step_effects(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
   oidc_now: Second?,
+  principal: GroundedPosixPrincipal,
 ) -> List<PipelineStep> {
   match identity_member_of_step(step: step) {
     Present { value: member } => match member {
       DirectoryRoot { path: _ } => []
-      TreePublication => emit_release_member_effects(member: member, plan: plan, spec: spec, oidc_now: oidc_now)
-      Executable => emit_release_member_effects(member: member, plan: plan, spec: spec, oidc_now: oidc_now)
-      UnitFile => emit_release_member_effects(member: member, plan: plan, spec: spec, oidc_now: oidc_now)
-      UnitManager => emit_release_member_effects(member: member, plan: plan, spec: spec, oidc_now: oidc_now)
-      ServiceProcess => emit_release_member_effects(member: member, plan: plan, spec: spec, oidc_now: oidc_now)
-      OidcConfigFile => emit_release_member_effects(member: member, plan: plan, spec: spec, oidc_now: oidc_now)
+      TreePublication => emit_release_member_effects(principal: principal, member: member, plan: plan, spec: spec, oidc_now: oidc_now)
+      Executable => emit_release_member_effects(principal: principal, member: member, plan: plan, spec: spec, oidc_now: oidc_now)
+      UnitFile => emit_release_member_effects(principal: principal, member: member, plan: plan, spec: spec, oidc_now: oidc_now)
+      UnitManager => emit_release_member_effects(principal: principal, member: member, plan: plan, spec: spec, oidc_now: oidc_now)
+      ServiceProcess => emit_release_member_effects(principal: principal, member: member, plan: plan, spec: spec, oidc_now: oidc_now)
+      OidcConfigFile => emit_release_member_effects(principal: principal, member: member, plan: plan, spec: spec, oidc_now: oidc_now)
     }
-    Absent => step_membership_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)
+    Absent => step_membership_effects(principal: principal, step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)
   }
 }
 
@@ -3514,10 +3516,11 @@ fn step_membership_effects(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
   oidc_now: Second?,
+  principal: GroundedPosixPrincipal,
 ) -> List<PipelineStep> {
   flat_map(
     filter(effects, e => deployment_step_key_eq(a: deployment_step_key(step: member_effect_step(e: e)), b: deployment_step_key(step: step))),
-    e => emit_deploy_member_effect(effect: e, spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now),
+    e => emit_deploy_member_effect(principal: principal, effect: e, spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now),
   )
 }
 
@@ -3574,7 +3577,7 @@ fn apply_intent_from_effects(
         concat(
           deploy_memory_cap_apply_steps(spec: spec, authorization: cap_authorization),
           concat(
-            flat_map(spec.steps, step => apply_step_effects(step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
+            flat_map(spec.steps, step => apply_step_effects(principal: access.principal, step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
             deploy_apply_receipt_steps(spec: spec)
           )
         )
@@ -3660,7 +3663,7 @@ fn retract_intent_from_effects(
         concat(
           flat_map(
             effects,
-            e => emit_deploy_member_effect(effect: e, spec: spec, revision: RevisionNotInstalled, oidc_now: Absent),
+            e => emit_deploy_member_effect(principal: access.principal, effect: e, spec: spec, revision: RevisionNotInstalled, oidc_now: Absent),
           ),
           [
             deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "retract")),
@@ -3684,12 +3687,12 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
 // THE RELEASE HALF OF THE DARK INSTALL, NAMED: the release tree, then the helper snapshot and its
 // grant. The intent below consumes it, and a claim inspects the composition at this one interface
 // rather than rendering the whole orchestrated script (DESIGN section 3).
-fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   concat(
     [deploy_raw(command: ensure_managed_directory_command(admission: managed_directory_admit(d: approval_device_store_directory())))],
     concat(
       approval_broker_tree_copy_steps(spec: spec, revision: revision),
-      approval_broker_helper_grant_steps(spec: spec, revision: revision),
+      approval_broker_helper_grant_steps(principal: principal, spec: spec, revision: revision),
     ),
   )
 }
@@ -3721,12 +3724,13 @@ fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: Re
 fn approval_broker_dark_install_intent(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
+  access: DeployAccess,
 ) -> Pipeline {
   Pipeline {
     steps: concat(
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
+        apply_approval_broker_unit_write_steps(principal: access.principal, spec: spec, revision: revision),
       ),
       concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
     ),
@@ -3744,12 +3748,12 @@ data approval_broker_dark_install_not_owner_poison: String = "__GUNBC_DEPLOY_REF
 
 data approval_broker_dark_install_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker DARK INSTALL intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so stage 1 of the cutover fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen)\n"
 
-fn approval_broker_dark_install_script(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> String {
+fn approval_broker_dark_install_script(spec: DeploymentSpec, revision: ReleaseRevisionBinding, access: DeployAccess) -> String {
   if !deployment_owns_the_host_approval_broker(spec: spec) {
     join([approval_broker_dark_install_not_owner_poison, spec.instance_id as String, "\n"], "")
   } else {
     emit_pipeline_or_poison(
-      p: approval_broker_dark_install_intent(spec: spec, revision: revision),
+      p: approval_broker_dark_install_intent(access: access, spec: spec, revision: revision),
       refused: approval_broker_dark_install_emit_refused_poison,
     )
   }
@@ -3760,55 +3764,46 @@ fn live_deploy_apply_script_for(
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
+  access: DeployAccess,
 ) -> String {
-  match ci_deploy_srv1_access_or_refusal() {
-    DeployAccessJobPrincipalRefused { refusal: r } =>
-      deploy_access_job_principal_refused_emit_poison(refusal: r)
-    DeployAccessReady { access: access } =>
-      match membership_effects(plan: deployment_apply_plan(spec: spec)) {
-        EffectsReady { effects: es } =>
-          emit_pipeline_or_poison(
-            p: apply_intent_from_effects(
-              spec: spec,
-              effects: es,
-              access: access,
-              plan: plan,
-              cap_authorization: cap_authorization,
-              oidc_now: oidc_now,
-            ),
-            refused: live_deploy_apply_emit_refused_poison
-          )
-        ApplyRefused { refusals: rs } =>
-          live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
-      }
+  match membership_effects(plan: deployment_apply_plan(spec: spec)) {
+    EffectsReady { effects: es } =>
+      emit_pipeline_or_poison(
+        p: apply_intent_from_effects(
+          spec: spec,
+          effects: es,
+          access: access,
+          plan: plan,
+          cap_authorization: cap_authorization,
+          oidc_now: oidc_now,
+        ),
+        refused: live_deploy_apply_emit_refused_poison
+      )
+    ApplyRefused { refusals: rs } =>
+      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
   }
 }
 
-fn live_deploy_retract_script_for(spec: DeploymentSpec) -> String {
+fn live_deploy_retract_script_for(spec: DeploymentSpec, access: DeployAccess) -> String {
   match spec.target.tailscale_client {
     ScopedRemovalUnsupported { observed: v } =>
       retract_unsupported_client_poison(observed: semver_version_label(v: v))
     ScopedRemovalUnobserved { reason: r } =>
       retract_unobserved_client_poison(reason: r)
     ScopedRemovalSupported { observed: _ } =>
-      live_deploy_retract_script_with_scoped_removal(spec: spec)
+      live_deploy_retract_script_with_scoped_removal(spec: spec, access: access)
   }
 }
 
-fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec) -> String {
-  match ci_deploy_srv1_access_or_refusal() {
-    DeployAccessJobPrincipalRefused { refusal: r } =>
-      deploy_access_job_principal_refused_emit_poison(refusal: r)
-    DeployAccessReady { access: access } =>
-      match membership_effects(plan: deployment_retract_plan(spec: spec)) {
-        EffectsReady { effects: es } =>
-          emit_pipeline_or_poison(
-            p: retract_intent_from_effects(spec: spec, effects: es, access: access),
-            refused: live_deploy_retract_emit_refused_poison
-          )
-        ApplyRefused { refusals: rs } =>
-          live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
-      }
+fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec, access: DeployAccess) -> String {
+  match membership_effects(plan: deployment_retract_plan(spec: spec)) {
+    EffectsReady { effects: es } =>
+      emit_pipeline_or_poison(
+        p: retract_intent_from_effects(spec: spec, effects: es, access: access),
+        refused: live_deploy_retract_emit_refused_poison
+      )
+    ApplyRefused { refusals: rs } =>
+      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
   }
 }
 
@@ -3816,8 +3811,10 @@ fn live_deploy_apply_script_for_wet(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
+  access: DeployAccess,
 ) -> String {
   live_deploy_apply_script_for(
+    access: access,
     spec: spec,
     plan: plan,
     cap_authorization: cap_authorization,

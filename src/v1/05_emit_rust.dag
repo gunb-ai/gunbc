@@ -1,5 +1,6 @@
 module v1.compiler.emit_rust
 
+import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
@@ -289,7 +290,7 @@ import v1.compiler.languages {
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
   escape_json_string, module_to_filename, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent,
-  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
+  to_snake, to_screaming_snake, is_upper,
   sanitize_service_name, capitalize_first, service_var_name, to_pascal,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
   test_function_name,
@@ -738,19 +739,35 @@ fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
 // `s.is_empty()`) while the declaration's own carrier is the structural FreeMonoid<Char>
 // (Rc<Vec<i64>> on this target). That is operation realization keyed on the declaration's
 // SPELLING, and it is a second Rust implementation of list semantics beside the declared bodies in
-// v2.std.algebra -- the emitted module then calls host string methods on the structural carrier
+// std.algebra -- the emitted module then calls host string methods on the structural carrier
 // (the E0599 .chars()/.split() class on the self-host closure). A fn definition's realization
 // follows its operands' representation: a structural-carrier declaration emits its own declared
 // body through ordinary emission, which already routes list_head/list_tail/is_empty/fold_list to
-// crate::v2_std_algebra. The one arm kept is `trim`, a host-String-on-host-String bridge
-// (std.algebra trim, kernel text both sides) with no structural operand in play; it is retained
-// as-is rather than widened, and dissolves when fn-body realization is keyed on declaration
-// identity rather than name (the same trigger checkpoint_table_bypasses_identity_note records).
-fn rust_host_string_op_fn_emit(name: String) -> String? {
+// crate::v2_std_algebra. `trim` remains the name-keyed residue of that class (not redesigned
+// here). `string_contains` is NOT selected by spelling: emit_fn_def asks this with the
+// declaration's module path, and the bridge fires only when std.primitive_projection has a row
+// for that exact DeclarationRef whose primitive is string_contains. A same-named fn in any
+// other module keeps its authored body. Dissolves when fn-body realization is keyed on
+// declaration identity rather than name for the remaining name-keyed arm (`trim`) — the same
+// trigger checkpoint_table_bypasses_identity_note records.
+fn rust_host_string_contains_bridge_applies(module_path: String, name: String) -> Bool {
+  match primitive_projection_row_for_declaration(declaration: decl_ref(module_path: module_path, decl_name: name)) {
+    Present { value: row } => primitive_identity_runtime_name(identity: row.primitive) == "string_contains"
+    Absent => false
+  }
+}
+
+fn rust_host_string_op_fn_emit(name: String, module_path: String) -> String? {
   if name == "trim" {
     Present { value: concat(
       "pub fn trim(s: String) -> String {\n",
       "    v1_rt::trim(s)\n",
+      "}\n"
+    ) }
+  } else if rust_host_string_contains_bridge_applies(module_path: module_path, name: name) {
+    Present { value: concat(
+      "pub fn ", name, "(s: String, pattern: String) -> bool {\n",
+      "    v1_rt::string_contains(&s, pattern)\n",
       "}\n"
     ) }
   } else {
@@ -9677,7 +9694,7 @@ fn rust_host_seam_is_unrealized(module_path: String, name: String, body: Node, s
 // nullary seam has no by-ref or result-wrapping choice to get wrong.
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  let host_text_op = rust_host_string_op_fn_emit(name: name)
+  let host_text_op = rust_host_string_op_fn_emit(name: name, module_path: scope.module_name)
   if host_text_op != none {
     return match host_text_op {
       Present { value: op_fn } => op_fn
@@ -11951,7 +11968,7 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
 // own declaration already returns the wrapped level, the caller wraps it a second time, and the
 // emitted program carries a type error no stage located. MEASURED specimen, on the 01_tokenize
 // closure: v2.std.compilers.lexing token_stream_remaining is `skip(xs: stream.all, n: stream.pos)`,
-// a PLAIN CALL to the declared v2.std.algebra skip, which emits as an ordinary declared call and
+// a PLAIN CALL to the declared std.algebra skip, which emits as an ordinary declared call and
 // returns Rc<Vec<Rc<Token>>>; `skip` is also a simple-method template name, so the plain-call site
 // wrapped it again and rustc reported `expected Vector<Rc<Token>>, found Rc<Vector<Rc<Token>>>`.
 // The method roster had no template on that path -- nothing was lowered by it -- so its wrap was
@@ -12873,7 +12890,7 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
 // has a subject.
 
 // ONE HOST-TEXT DISCRIMINATOR FOR BOTH SPELLINGS. AlgebraMethodSemantics remaps `.length` on a
-// host-string receiver to `string_length`; the function form `v2.std.algebra` `length` over
+// host-string receiver to `string_length`; the function form `std.algebra` `length` over
 // `FreeMonoid<Char>` is that operation spelled as a call. Kernel `String` inhabits the monoid, so
 // `length(xs: s)` is legal source. Emitting it as the generic FreeMonoid body (`Rc<Vec<T>>`) is
 // E0308 against the host `String` at `request_field`. `v2.std.text.String` is the other carrier:
@@ -12887,7 +12904,7 @@ fn rust_call_target_is_v2_algebra_length(target: CallTargetIdentity) -> Bool {
   match rust_call_target_declared_length(target: target) {
     Absent => false
     Present { value: id } =>
-      id.decl_name == "length" && id.owner_module_path == "v2.std.algebra"
+      id.decl_name == "length" && id.owner_module_path == "std.algebra"
   }
 }
 
@@ -14149,7 +14166,7 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
 //   - every arm after the first `Cons` arm was DISCARDED, because nothing read past `first`. An
 //     arm guard was dropped on the same reasoning: no branch body ever read `arm_guard`.
 //
-// MEASURED IN THE EMITTED BINARY rather than the interpreter (witty-cat-84, Pkg12): v2.std.algebra
+// MEASURED IN THE EMITTED BINARY rather than the interpreter (witty-cat-84, Pkg12): std.algebra
 // `list_init` -- `Empty => Empty | Cons { head: _, tail: Empty } => Empty | Cons { head: h, tail: t }
 // => Cons { head: h, tail: list_init(xs: t) }` -- emitted as `if __fm.is_empty() { vec![] } else {
 // vec![] }`, so `qualified_name_init(["v2", "acp_user", "acp_row"])` returned `[]` instead of
@@ -16729,7 +16746,7 @@ fn emit_rest_http_method(transport: Node, source_indices: Map<String, NewlineInd
     Present { value: m } => match m.inferred {
       Present { value: Resolved { node: _ } } =>
         let method_name = expr_var_name_at(texpr: m, source_indices: source_indices)
-        method_name |> chars |> map(ch => to_lower_char(ch: ch)) |> join(separator: "")
+        ascii_lowercase(s: method_name)
       _ =>
 
         concat("compile_error!(\"transport method type not resolved\")")

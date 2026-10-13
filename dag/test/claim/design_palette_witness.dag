@@ -31,7 +31,7 @@ import gunbc.design.catalog {
   okabe_ito, solarized,
   palette_catalog, catalog_admissible,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

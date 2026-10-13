@@ -29,10 +29,9 @@ import v2.workflow.bash_emit {
   bash_emit_program_matches_golden,
   bash_emit_program_sequence
 }
-import v2.std.algebra { list_map }
-import std.algebra { list_append }
+import std.algebra { list_append, list_map }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import v2.test.claim.bash_program_fold_support {
   bash_program_fixture_assign_root_node,

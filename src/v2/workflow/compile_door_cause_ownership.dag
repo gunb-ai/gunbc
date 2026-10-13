@@ -2,7 +2,7 @@ module v2.workflow.compile_door_cause_ownership
 
 import v2.std.node { Symbol }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
-import v2.std.algebra { list_find_first }
+import std.algebra { list_find_first }
 import std.types { String, List }
 import v2.std.integer { Int }
 
@@ -112,7 +112,22 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^body_lowering_reason_service_realization_unreachable,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips only when ALL of these exist: the realization binding (a sibling keyed by OperationRef carrying transport, config, exit, response, mock_response and the io `from` wire key); the Arrow effect-claims edge (readonly, idempotent); the separate Arrow execution-mode edge (hermetic); and the one binder representation carrying an optional default. Only then does no set-aside reason have a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
+    flip_trigger: "TRIGGER FIRED (gunbc#13833): ServiceSetAside and this reason's producer are deleted. A service whose members lower admits on both normalize grades. Residue fatals are owned under their own causes: empty argv is service_realization_argv_refused; a service-level transport is body_lowering_reason_service_member_unread; a resource capability that authored realization facts is body_lowering_reason_resource_capability_realization_unconsumed. This row stays so a leftover producer would still be counted; it flips off the table when a door-ledger census reads this cause at zero and the symbol has no producer"
+  },
+  CauseOwnership {
+    cause: ^service_realization_argv_refused,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a shell argv that is empty, not a list, whose executable is not a literal, or that binds an undeclared input refuses at the argv node (v2.compiler.service_realization shell_argv_refusal). Wall over authored input; flips only if that shape becomes unwritable"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_service_member_unread,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a service member the declaration-grade reader cannot lower (today: a transport written on the service rather than the operation) refuses located at the member (v2.compiler.body_lowering_fold body_lower_service_member_unread). Flips when that member has a carrier or the grammar cannot write it"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_resource_capability_realization_unconsumed,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a resource capability that authored realization facts (transport, config, exit, response, mock, from) refuses at the capability (v2.compiler.body_lowering_fold body_lower_resource_with_capability). A resource is not a service (DESIGN section 3); those facts have no resource carrier. Flips when a resource capability has its own realization sibling, or the grammar cannot write those members on a capability"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_unrecognised_lowered_shape,

@@ -1,0 +1,588 @@
+module v2.test.claim.module_header
+
+import std.algebra { Cons, Empty }
+import std.types { Bool, List }
+import v2.std.integer { Int }
+import v2.std.text { String }
+import std.algebra { for_all, is_empty, length }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.compiler.module_header {
+  ModuleHeaderAbsent,
+  ModuleHeaderDeclared,
+  ModuleHeaderRead,
+  ModuleHeaderReader,
+  ModuleHeaderRefused,
+  module_header_read,
+  module_header_read_from,
+  module_header_reader,
+  module_header_tail
+}
+import v2.compiler.module_acquisition { AcquisitionEnvReady, AcquisitionEnvUnprepared, acquisition_env, acquisition_header_reader }
+import v2.compiler.grammar_reach { Reach, ReachUnbounded, Reaches }
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_module_prepared, parse_production_prefix_prepared }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { qualified_name_from_module_node, qualified_name_from_parsed_module_root }
+import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.cli.repository_layout { repository_storage_layout }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES OF THE ONE MODULE-HEADER READING (v2.compiler.module_header module_header_read). The subject is
+// the reading itself, so each control hands it SUPPLIED TEXT and asserts what it takes from the text: the
+// name a header declares, the absence of any, or the refusal of text that is not a header. The real lexer
+// and the grammar's module_header production decide each case; none of the controls recognises a keyword
+// or a delimiter, so a control that passed because the reader spelled `module` itself would fail the
+// cases that spell it differently.
+//
+// The reader the controls hold is built from the shared prepared carriers (dag_prepared_lex,
+// dag_prepared_grammar), the carriers the lookup's reader is built from, and the INHABITANCE CONTROL at the
+// end builds the reader the acquirer and the layout verb really use (acquisition_env) and asserts it reads
+// as this one does. A grammar that did not prepare reads as void and refuses every header, so no control
+// can pass over a reader that read nothing.
+
+fn reader() -> ModuleHeaderReader {
+  module_header_reader(
+    lex: dag_prepared_lex(),
+    grammar: match dag_prepared_grammar() {
+      Accepted { value: prepared, diagnostics: _ } => prepared
+      Rejected { diagnostics: _ } => PreparedVoidGrammar
+    }
+  )
+}
+
+fn read_text(read: ModuleHeaderRead) -> String {
+  match read {
+    ModuleHeaderDeclared { module: name } => concat("declared:", name)
+    ModuleHeaderAbsent => "absent"
+    ModuleHeaderRefused { cause: _ } => "refused"
+  }
+}
+
+fn header_of(content: String) -> String {
+  read_text(read: module_header_read(reader: reader(), file: "test/header.dag", content: content))
+}
+
+// ---- accepted spellings ---------------------------------------------------------------------------------------
+
+test fn the_plain_header_declares_its_module() -> Bool {
+  header_of(content: "module a.b\n") == "declared:a.b"
+    && header_of(content: "module a.b.c.d\n") == "declared:a.b.c.d"
+    && header_of(content: "module a\n") == "declared:a"
+}
+
+test fn a_header_with_tabs_or_mixed_whitespace_declares_its_module() -> Bool {
+  header_of(content: "module\ta.b\n") == "declared:a.b"
+    && header_of(content: "module \t a.b\n") == "declared:a.b"
+    && header_of(content: "module  a.b  \t \n") == "declared:a.b"
+    && header_of(content: "  module a.b\n") == "declared:a.b"
+}
+
+test fn a_header_with_crlf_line_endings_declares_its_module() -> Bool {
+  header_of(content: "module a.b\r\n") == "declared:a.b"
+    && header_of(content: "\r\n// lead\r\nmodule a.b\r\nfn f() -> Bool { true }\r\n") == "declared:a.b"
+}
+
+test fn a_header_with_a_trailing_annotation_declares_its_module() -> Bool {
+  header_of(content: "module a.b // note\n") == "declared:a.b"
+    && header_of(content: "module a.b // module a.c\nfn f() -> Bool { true }\n") == "declared:a.b"
+    && header_of(content: "module a.b//tight\n") == "declared:a.b"
+}
+
+test fn blank_lines_and_annotations_around_the_header_do_not_move_it() -> Bool {
+  header_of(content: "\n\n// lead\n\nmodule a.b\n// after\n\nfn f() -> Bool { true }\n") == "declared:a.b"
+    && header_of(content: "// one\n// two\nmodule a.b") == "declared:a.b"
+}
+
+test fn a_header_without_a_final_newline_declares_its_module() -> Bool {
+  header_of(content: "module a.b") == "declared:a.b"
+}
+
+// ---- no header, and what is not one ----------------------------------------------------------------------------
+
+test fn a_file_with_no_token_declares_nothing() -> Bool {
+  header_of(content: "") == "absent"
+    && header_of(content: "\n\n  \t\n") == "absent"
+    && header_of(content: "// only prose\n\n// and more\n") == "absent"
+}
+
+test fn text_whose_first_token_is_not_a_header_is_refused_not_absent() -> Bool {
+  header_of(content: "no header here\n") == "refused"
+    && header_of(content: "fn f() -> Bool { true }\n") == "refused"
+    && header_of(content: "import std.types { Bool }\nmodule a.b\n") == "refused"
+}
+
+// ---- a later `module` is not the header -------------------------------------------------------------------------
+
+// The header is the first thing a file says. Each control below holds a `module a.b` that is NOT the
+// header, in a comment, a string and a declaration, and the reading is the file's actual first token's.
+test fn a_later_comment_string_or_line_that_spells_a_module_is_never_the_header() -> Bool {
+  header_of(content: "module a.real\n// module a.b\n") == "declared:a.real"
+    && header_of(content: "module a.real\ndata s: String = \"module a.b\"\n") == "declared:a.real"
+    && header_of(content: "module a.real\nmodule a.b\n") == "declared:a.real"
+    && header_of(content: "// module a.b\nfn f() -> Bool { true }\n") == "refused"
+    && header_of(content: "data s: String = \"module a.b\"\nmodule a.b\n") == "refused"
+}
+
+// ---- malformed names, and headers that continue past a line ---------------------------------------------------------
+
+// A name that does not begin as a path is refused: the production consumes nothing from it, so there is
+// no prefix to read. (What follows a header that DOES parse is the body's concern, below.)
+test fn a_name_that_does_not_begin_a_path_is_refused_and_never_read_as_another() -> Bool {
+  header_of(content: "module .a\n") == "refused"
+    && header_of(content: "module\n") == "refused"
+    && header_of(content: "module 1a\n") == "refused"
+    && header_of(content: "module \"a.b\"\n") == "refused"
+}
+
+// WHERE A HEADER ENDS IS THE GRAMMAR'S, so no rule about lines applies: the production reads across line
+// breaks and stops where its path stops, and whatever follows is the body. These are the spellings an
+// earlier line-bounded reading refused although the grammar accepts them.
+test fn a_header_sharing_or_splitting_its_line_declares_its_module() -> Bool {
+  header_of(content: "module a.b fn f() -> Bool { true }\n") == "declared:a.b"
+    && header_of(content: "module\na.b\n") == "declared:a.b"
+    && header_of(content: "module\na.b\nfn f() -> Bool { true }\n") == "declared:a.b"
+    && header_of(content: "module\n\n// between\n  a.b // tail\n\nfn f() -> Bool { true }\n") == "declared:a.b"
+}
+
+// A PATH THE GRAMMAR CANNOT EXTEND ENDS THE HEADER, and what stands after it is the body. `module a..b`
+// is the header `module a` followed by text no declaration begins with, so the header reads `a`; the
+// file as a whole is still refused, by the full parse (the second control pins that, so the shorter name
+// is never the file's verdict). Refusing here instead would be a rule about what may follow a header,
+// which the module production owns.
+test fn a_path_the_grammar_cannot_extend_ends_the_header_and_the_full_parse_refuses_the_file() -> Bool {
+  header_of(content: "module a..b\n") == "declared:a"
+    && header_of(content: "module a.\n") == "declared:a"
+    && header_of(content: "module a b\n") == "declared:a"
+    && header_of(content: "module a.b.\n") == "declared:a.b"
+    && full_parse_is_refused(content: "module a..b\n")
+    && full_parse_is_refused(content: "module a.\n")
+    && full_parse_is_refused(content: "module a b\n")
+    && full_parse_is_refused(content: "module a.b.\n")
+}
+
+// ---- a long leading block ------------------------------------------------------------------------------------------------
+
+fn trivia_lines(remaining: Int) -> String {
+  if remaining <= 0 {
+    ""
+  } else {
+    concat("// leading note\n\n", trivia_lines(remaining: remaining - 1))
+  }
+}
+
+// A leading block of annotations and blank lines reads exactly as the header alone.
+test fn a_long_leading_block_reads_as_the_header_alone() -> Bool {
+  header_of(content: concat(trivia_lines(remaining: 40), "module a.b\n")) == header_of(content: "module a.b\n")
+    && header_of(content: concat(trivia_lines(remaining: 40), "module a.b\n")) == "declared:a.b"
+    && header_of(content: trivia_lines(remaining: 40)) == "absent"
+    && header_of(content: concat(trivia_lines(remaining: 40), "no header here\n")) == "refused"
+}
+
+// ---- the law ---------------------------------------------------------------------------------------------------------
+
+// The module a reader of the TEXT sees (authored here, not derived by the reader under test), per case. An
+// empty name is a text that declares none. The reader accepts exactly the text whose authored module it
+// declares, and declares nothing for the rest.
+type HeaderCase {
+  content: String
+  authored: String
+}
+
+data header_cases: List<HeaderCase> = [
+  HeaderCase { content: "module a.b\n", authored: "a.b" },
+  HeaderCase { content: "module\ta.b\n", authored: "a.b" },
+  HeaderCase { content: "module a.b // a.c\n", authored: "a.b" },
+  HeaderCase { content: "// a.c\r\nmodule a.b\r\n", authored: "a.b" },
+  HeaderCase { content: "module a.c\n// module a.b\n", authored: "a.c" },
+  HeaderCase { content: "module a.b.c\n", authored: "a.b.c" },
+  HeaderCase { content: "// module a.b\n", authored: "" },
+  HeaderCase { content: "data s: String = \"module a.b\"\n", authored: "" },
+  HeaderCase { content: "module a..b\n", authored: "a" },
+  HeaderCase { content: "module a b\n", authored: "a" },
+  HeaderCase { content: "module a.b fn f() -> Bool { true }\n", authored: "a.b" },
+  HeaderCase { content: "module\na.b\n", authored: "a.b" }
+]
+
+fn reads_as_authored(case: HeaderCase) -> Bool {
+  match module_header_read(reader: reader(), file: "test/header.dag", content: case.content) {
+    ModuleHeaderDeclared { module: name } => name == case.authored
+    ModuleHeaderAbsent => case.authored == ""
+    ModuleHeaderRefused { cause: _ } => case.authored == ""
+  }
+}
+
+test fn the_reader_declares_exactly_the_module_a_reader_of_the_text_sees() -> Bool {
+  length(xs: header_cases) > 5 && for_all(xs: header_cases, predicate: fn(case) { reads_as_authored(case: case) })
+}
+
+// ---- the equivalence with the full parse ------------------------------------------------------------------------------
+
+// THE HEADER READ AND THE FULL PARSE ARE ONE READING OF THE SAME PRODUCTION. The oracle is the
+// grammar's whole-module parse and the name read off its tree (v2.extdeps.languages.dag
+// qualified_name_from_module_node), not anything this claim authors: whenever a text parses as a
+// module, the header read declares the module that parse names. A text the full parse refuses has
+// nothing to agree with, so it is out of the law; the controls after it say what the header read still
+// owes such a text.
+type FullParse
+  = FullParseNamed { module: String }
+  | FullParseUnnamed
+  | FullParseRefused
+
+fn full_parse_of(content: String) -> FullParse {
+  match tokenize_prepared(text: content, file: symbol_intern_lexeme(lexeme: "test/header.dag"), prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => FullParseRefused
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module_prepared(tokens: stream, prepared: reader().grammar) {
+        Rejected { diagnostics: _ } => FullParseRefused
+        Accepted { value: artifact, diagnostics: _ } =>
+          match qualified_name_from_module_node(root: artifact.tree) {
+            Rejected { diagnostics: _ } => FullParseUnnamed
+            Accepted { value: name, diagnostics: _ } => FullParseNamed { module: qualified_name_to_dotted_string(qn: name) }
+          }
+      }
+  }
+}
+
+fn full_parse_is_named(content: String, authored: String) -> Bool {
+  match full_parse_of(content: content) {
+    FullParseNamed { module: name } => name == authored
+    FullParseUnnamed => false
+    FullParseRefused => false
+  }
+}
+
+fn full_parse_is_refused(content: String) -> Bool {
+  match full_parse_of(content: content) {
+    FullParseRefused => true
+    FullParseUnnamed => false
+    FullParseNamed { module: _ } => false
+  }
+}
+
+fn agrees_with_the_full_parse(content: String) -> Bool {
+  match full_parse_of(content: content) {
+    FullParseRefused => true
+    FullParseUnnamed => false
+    FullParseNamed { module: name } => header_of(content: content) == concat("declared:", name)
+  }
+}
+
+// Texts the grammar accepts as modules, spelled the ways the lexer and the grammar allow: split across
+// lines, sharing its line with the first declaration, led by annotations and blanks, with tabs, CRLF
+// and a trailing annotation, with and without a body.
+data parsing_spellings: List<String> = [
+  "module a.b\n",
+  "module a.b",
+  "module\ta.b\n",
+  "module a.b // note\nfn f() -> Bool { true }\n",
+  "module a.b//tight\n",
+  "// lead\n\n\n// more\nmodule a.b\n\nfn f() -> Bool { true }\n",
+  "module\na.b\nfn f() -> Bool { true }\n",
+  "module a.b fn f() -> Bool { true }\n",
+  "module\n  a.b\n  // between\nfn f() -> Bool { true }\n",
+  "module a.b.c.d\n\ntest fn t() -> Bool { true }\n",
+  "\r\n// lead\r\nmodule a.b\r\nfn f() -> Bool { true }\r\n"
+]
+
+// Texts that carry a valid header and a body that does not parse.
+data valid_header_malformed_body: List<String> = [
+  "module a.b\nfn f( -> Bool { true }\n",
+  "module a.b\nthis is not a declaration\n",
+  "module a.b fn\n",
+  "module a.b\nmodule a.c\n",
+  "// lead\nmodule\na.b\n}}}\n"
+]
+
+// NON-VACUITY: the oracle must actually accept the spellings the law is asserted over, or the law
+// above would be satisfied by a full parse that refuses everything.
+test fn the_full_parse_accepts_every_spelling_the_law_is_asserted_over() -> Bool {
+  length(xs: parsing_spellings) > 8
+    && for_all(xs: parsing_spellings, predicate: fn(content) { full_parse_is_named(content: content, authored: "a.b") || full_parse_is_named(content: content, authored: "a.b.c.d") })
+}
+
+test fn the_header_read_declares_the_module_the_full_parse_names() -> Bool {
+  for_all(xs: parsing_spellings, predicate: fn(content) { agrees_with_the_full_parse(content: content) })
+}
+
+test fn a_valid_header_with_a_malformed_body_is_still_read() -> Bool {
+  for_all(xs: valid_header_malformed_body, predicate: fn(content) { full_parse_is_refused(content: content) })
+    && header_of(content: "module a.b\nfn f( -> Bool { true }\n") == "declared:a.b"
+    && header_of(content: "module a.b\nthis is not a declaration\n") == "declared:a.b"
+    && header_of(content: "module a.b fn\n") == "declared:a.b"
+    && header_of(content: "module a.b\nmodule a.c\n") == "declared:a.b"
+    && header_of(content: "// lead\nmodule\na.b\n}}}\n") == "declared:a.b"
+}
+
+// ---- inhabitance ---------------------------------------------------------------------------------------------------------
+
+// The reader the acquirer's lookup and the layout verb really hold is the one acquisition_env builds. It
+// reads the spellings above as this claim's reader does, and a reader that read nothing would fail the
+// declared case; deleting the production reader makes this fail, so the supplied values above stay
+// attached to the route the corpus takes.
+test fn the_reader_the_acquirer_holds_reads_headers_as_this_reader_does() -> Bool {
+  match acquisition_env(layout: repository_storage_layout(), bindings: []) {
+    AcquisitionEnvUnprepared { diagnostics: _ } => false
+    AcquisitionEnvReady { env: env } =>
+      read_text(read: module_header_read(reader: acquisition_header_reader(env: env), file: "test/header.dag", content: "// note\nmodule\ta.b // tail\nfn f() -> Bool { true }\n")) == "declared:a.b"
+        && read_text(read: module_header_read(reader: acquisition_header_reader(env: env), file: "test/header.dag", content: "data s: String = \"module a.b\"\nmodule a.b\n")) == "refused"
+        && read_text(read: module_header_read(reader: acquisition_header_reader(env: env), file: "test/header.dag", content: "// only\n")) == "absent"
+        && is_bounded(reach: acquisition_header_reader(env: env).tail)
+        && same_reach(left: acquisition_header_reader(env: env).tail, right: reader().tail)
+        && read_text(read: module_header_read(reader: acquisition_header_reader(env: env), file: "test/header.dag", content: concat(trivia_lines(remaining: 40), "module a.b\nfn f() -> Bool { true }\n"))) == "declared:a.b"
+  }
+}
+
+// ---- the grown window ----------------------------------------------------------------------------------------------------
+
+// THE READING LEXES THE START OF THE FILE AND GROWS THE WINDOW UNTIL THE GRAMMAR SAYS IT HAS SEEN ENOUGH
+// (v2.compiler.module_header). Every control above reads small texts the first window already holds; the
+// controls here hold the reading to the WHOLE-FILE reading from every first window, so the growth is
+// exercised wherever a window ends, and hold the tail that decides when a window suffices to the case
+// that needs it.
+//
+// The oracle is the whole-file reading: the whole lex of the text, then the same production over all of
+// its tokens (the reader this one replaced), written here against the prepared carriers so that it
+// shares nothing with the windowed path but the grammar's production and the name read off its tree.
+
+fn whole_header_of(content: String) -> String {
+  match tokenize_prepared(text: content, file: symbol_intern_lexeme(lexeme: "test/header.dag"), prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => "refused"
+    Accepted { value: stream, diagnostics: _ } =>
+      if is_empty(xs: stream.all) {
+        "absent"
+      } else {
+        match reader().grammar {
+          PreparedVoidGrammar => "refused"
+          PreparedModeled { modeled: modeled } =>
+            match parse_production_prefix_prepared(
+              tokens: stream.all,
+              validated: modeled.validated,
+              analysis: modeled.analysis,
+              production_name: ^dag_production_module_header
+            ) {
+              Rejected { diagnostics: _ } => "refused"
+              Accepted { value: prefix, diagnostics: _ } =>
+                match qualified_name_from_parsed_module_root(root: prefix.artifact.tree) {
+                  Rejected { diagnostics: _ } => "refused"
+                  Accepted { value: name, diagnostics: _ } => concat("declared:", qualified_name_to_dotted_string(qn: name))
+                }
+            }
+        }
+      }
+  }
+}
+
+fn whole_lex_cause(content: String) -> String {
+  match tokenize_prepared(text: content, file: symbol_intern_lexeme(lexeme: "test/header.dag"), prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: _, diagnostics: _ } => ""
+  }
+}
+
+fn refusal_cause_of(read: ModuleHeaderRead) -> String {
+  match read {
+    ModuleHeaderRefused { cause: cause } => cause
+    ModuleHeaderDeclared { module: _ } => ""
+    ModuleHeaderAbsent => ""
+  }
+}
+
+fn is_bounded(reach: Reach) -> Bool {
+  match reach {
+    ReachUnbounded => false
+    Reaches { tokens: _ } => true
+  }
+}
+
+fn same_reach(left: Reach, right: Reach) -> Bool {
+  match left {
+    ReachUnbounded => !is_bounded(reach: right)
+    Reaches { tokens: a } =>
+      match right {
+        ReachUnbounded => false
+        Reaches { tokens: b } => a == b
+      }
+  }
+}
+
+fn reader_with_tail(tail: Reach) -> ModuleHeaderReader {
+  ModuleHeaderReader { lex: reader().lex, grammar: reader().grammar, tail: tail }
+}
+
+fn header_from(reader: ModuleHeaderReader, content: String, window: Int) -> String {
+  read_text(read: module_header_read_from(reader: reader, file: "test/header.dag", content: content, window: window))
+}
+
+// Every window the sweeps try is below this and every swept text is shorter, so the last windows of a
+// sweep are past the end of the text.
+fn sweep_last() -> Int { 40 }
+
+fn reads_as_the_whole_file_from_every_window(reader: ModuleHeaderReader, content: String, window: Int) -> Bool {
+  if window > sweep_last() {
+    true
+  } else {
+    header_from(reader: reader, content: content, window: window) == whole_header_of(content: content)
+      && reads_as_the_whole_file_from_every_window(reader: reader, content: content, window: window + 1)
+  }
+}
+
+fn reads_unlike_the_whole_file_from_some_window(reader: ModuleHeaderReader, content: String, window: Int) -> Bool {
+  if window > sweep_last() {
+    false
+  } else {
+    !(header_from(reader: reader, content: content, window: window) == whole_header_of(content: content))
+      || reads_unlike_the_whole_file_from_some_window(reader: reader, content: content, window: window + 1)
+  }
+}
+
+fn all_read_as_the_whole_file(reader: ModuleHeaderReader, contents: List<String>) -> Bool {
+  match contents {
+    Empty => true
+    Cons { head: content, tail: rest } =>
+      reads_as_the_whole_file_from_every_window(reader: reader, content: content, window: 1) && all_read_as_the_whole_file(reader: reader, contents: rest)
+  }
+}
+
+// Headers the window can end inside, spelled the ways that matter to what a parse examines past its end:
+// a path a dot could continue, a dot followed by a keyword the grammar refuses, a dot with space around
+// it, a header followed by a body, by annotations, by nothing; and texts with no header at all.
+data window_swept_texts: List<String> = [
+  "module a.b\n",
+  "module rt .match\n",
+  "module a.b.match\n",
+  "module a.b .c\n",
+  "module a . b\n",
+  "module a.b.c.d fn f() {}\n",
+  "// x\nmodule a\n.match\n",
+  "module a..b\n",
+  "module a.\n",
+  "module\n a.b\n",
+  "  \n\nmodule a.b.c\n",
+  "module a.b // c\n",
+  "module a.b.\n",
+  "module a.b\nfn f() -> Bool { true }\n",
+  "module a.b\nfn f() -> Int { 1 }\n",
+  "module a.b\ndata s: String = \"abc def\"\n",
+  "modulex a.b\n",
+  "no header\n",
+  "// only\n",
+  ""
+]
+
+test fn the_windowed_reading_equals_the_whole_file_reading_from_every_first_window() -> Bool {
+  all_read_as_the_whole_file(reader: reader(), contents: window_swept_texts)
+}
+
+// NON-VACUITY: the oracle declares, refuses and finds nothing across the texts swept, so the sweep
+// compares readings that differ and not one answer repeated.
+test fn the_whole_file_oracle_declares_refuses_and_finds_nothing_across_the_swept_texts() -> Bool {
+  whole_header_of(content: "module a.b\n") == "declared:a.b"
+    && whole_header_of(content: "module rt .match\n") == "refused"
+    && whole_header_of(content: "module a.b.match\n") == "refused"
+    && whole_header_of(content: "// only\n") == "absent"
+    && whole_header_of(content: "no header\n") == "refused"
+}
+
+// THE TAIL IS WHAT STOPS A WINDOW THAT ENDS INSIDE A LOOKAHEAD FROM BEING TAKEN FOR THE FILE. The window
+// that ends right after the dot of `module rt .match` holds the header `module rt` with one token left,
+// and the whole file refuses it by name (the dot is followed by a keyword); a reader whose tail is one
+// token, or none, settles on that window and declares a module the grammar refuses, while the tail the
+// grammar gives grows past it. The control sweeps every first window, so it does not depend on which
+// window ends where.
+test fn a_tail_too_small_for_the_lookahead_declares_a_module_the_whole_file_refuses() -> Bool {
+  reads_unlike_the_whole_file_from_some_window(reader: reader_with_tail(tail: Reaches { tokens: 1 }), content: "module rt .match\n", window: 1)
+    && reads_unlike_the_whole_file_from_some_window(reader: reader_with_tail(tail: Reaches { tokens: 0 }), content: "module rt .match\n", window: 1)
+    && !reads_unlike_the_whole_file_from_some_window(reader: reader(), content: "module rt .match\n", window: 1)
+}
+
+test fn the_tail_the_grammar_gives_the_header_production_is_bounded_and_covers_its_lookahead() -> Bool {
+  match reader().tail {
+    ReachUnbounded => false
+    Reaches { tokens: n } => n >= 2
+  }
+}
+
+// A grammar that gives no bounded tail is refused and not read through a guessed window: neither a void
+// grammar nor a reader whose tail is unbounded reads any header.
+test fn a_header_production_whose_tail_is_not_bounded_is_refused_not_read_through_a_window() -> Bool {
+  !is_bounded(reach: module_header_tail(grammar: PreparedVoidGrammar))
+    && header_from(reader: reader_with_tail(tail: ReachUnbounded), content: "module a.b\n", window: 256) == "refused"
+    && header_from(reader: module_header_reader(lex: dag_prepared_lex(), grammar: PreparedVoidGrammar), content: "module a.b\n", window: 256) == "refused"
+    && header_from(reader: reader(), content: "module a.b\n", window: 256) == "declared:a.b"
+}
+
+// A window that holds no scalar can never grow, so it is refused and never looped on.
+test fn a_first_window_that_holds_no_scalar_is_refused() -> Bool {
+  header_from(reader: reader(), content: "module a.b\n", window: 0) == "refused"
+    && header_from(reader: reader(), content: "module a.b\n", window: -4) == "refused"
+}
+
+// A LEXICAL ERROR INSIDE THE WINDOW IS THE WHOLE LEX'S ERROR, WITH ITS OWN CAUSE; ONE BEYOND IT IS THE
+// BODY'S. The header is a clean prefix of both texts. The first text carries its bad character inside
+// the first window, so the reading is refused with the cause of the whole lex. The second carries it
+// past a leading run of annotations and a body that the first window already settles on, so the header
+// is read and the file as a whole is still refused by its full parse (the layout check reads headers,
+// the population parse reads files, and each keeps its own verdict). The last text has the same body
+// with the bad character removed, so the declared header is not an effect of the bad character.
+fn clean_file_past_the_first_window() -> String {
+  concat("module a.b\nfn f() -> Bool { true }\n", trivia_lines(remaining: 20))
+}
+
+test fn a_lexical_error_inside_the_window_refuses_with_the_whole_lexs_cause() -> Bool {
+  let text = "module a.b\nfn f() -> Bool { true }\n`bad\n"
+  !(whole_lex_cause(content: text) == "")
+    && refusal_cause_of(read: module_header_read(reader: reader(), file: "test/header.dag", content: text)) == whole_lex_cause(content: text)
+}
+
+test fn a_lexical_error_beyond_the_window_is_the_bodys_and_the_full_parse_still_refuses_the_file() -> Bool {
+  let bad = concat(clean_file_past_the_first_window(), "`bad\n")
+  !(whole_lex_cause(content: bad) == "")
+    && full_parse_is_refused(content: bad)
+    && header_of(content: bad) == "declared:a.b"
+    && header_of(content: clean_file_past_the_first_window()) == "declared:a.b"
+    && whole_header_of(content: clean_file_past_the_first_window()) == "declared:a.b"
+}
+
+// A header after more leading annotations than the first window holds is found by growing it, and one
+// that a later window settles is read without lexing the rest.
+test fn a_header_past_the_first_window_is_found_by_growing_it() -> Bool {
+  let far = concat(trivia_lines(remaining: 25), "module a.b\nfn f() -> Bool { true }\n")
+  header_of(content: far) == "declared:a.b"
+    && header_of(content: concat(far, concat(trivia_lines(remaining: 40), "`bad\n"))) == "declared:a.b"
+    && whole_header_of(content: concat(far, concat(trivia_lines(remaining: 40), "`bad\n"))) == "refused"
+}
+
+// A STRING LITERAL THE WINDOW'S EDGE FALLS INSIDE IS UNDECIDED, NOT REFUSED. The cause of the 14 modules
+// that refused when a cut was taken at the scalar 4096 of a file and the cut text was lexed whole: every
+// one of them had the cut inside an open string literal, where the delimited rule found no close and the
+// opening quote matched no rule at all (tokenize_lex_e1_unrecognized_char). The text here puts a string
+// of 300 scalars immediately after the header, so the first window of 256 ends inside it. The windowed
+// reading sees the edge as the third state, grows the window until the literal closes and reads the
+// header the whole file declares; the same text cut at 256 scalars and lexed as if it were the file is
+// refused with that cause, which is what makes the control discriminate: a reader that cut the file
+// and lexed the cut would refuse a header the grammar accepts.
+fn ten_scalars(remaining: Int) -> String {
+  if remaining <= 0 {
+    ""
+  } else {
+    concat("xxxxxxxxxx", ten_scalars(remaining: remaining - 1))
+  }
+}
+
+fn header_then_a_string_across_the_first_window() -> String {
+  concat("module a.b \"", concat(ten_scalars(remaining: 30), "\"\n"))
+}
+
+test fn a_string_literal_the_first_windows_edge_falls_inside_does_not_refuse_the_header() -> Bool {
+  let text = header_then_a_string_across_the_first_window()
+  string_length(s: text) > 256
+    && header_of(content: text) == "declared:a.b"
+    && whole_header_of(content: text) == "declared:a.b"
+    && whole_lex_cause(content: text) == ""
+    && whole_lex_cause(content: substring(s: text, start: 0, end: 256)) == symbol_lexeme(sym: ^tokenize_lex_e1_unrecognized_char)
+    && header_from(reader: reader(), content: text, window: 256) == "declared:a.b"
+    && header_from(reader: reader(), content: text, window: 1) == "declared:a.b"
+}

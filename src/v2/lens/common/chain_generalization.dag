@@ -1,8 +1,7 @@
 module v2.lens.common.chain_generalization
 
 import v2.std.node { Node }
-import std.algebra { FreeMonoid }
-import v2.std.algebra { length }
+import std.algebra { FreeMonoid, length }
 import v2.std.anti_unification { anti_unify_chain, template_has_hole, fillings_all_leaves }
 import v2.std.integer { Int }
 

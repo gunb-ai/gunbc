@@ -1,7 +1,7 @@
 module gunbc.review_sheet_values_actuator
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import extdeps.transports.rest {
   RestResult,
   RestAnswered,

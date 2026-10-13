@@ -4,8 +4,7 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.measure { positive_millisecond, PositiveMeasureSuccessor }
-import std.algebra { FreeSemigroup, Empty }
-import v2.std.algebra { length }
+import std.algebra { FreeSemigroup, Empty, length }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
