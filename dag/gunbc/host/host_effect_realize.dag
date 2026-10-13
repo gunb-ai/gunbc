@@ -160,6 +160,7 @@ import gunbc.ci.ci_deploy_access {
   deploy_access_refusal_prefix,
   deploy_access_read_principal_effect,
   deploy_access_sudo_probe_effect,
+  deploy_access_sudoers_install_scope,
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import extdeps.tailscale.serve { TailscaleServeEndpoint }
@@ -4474,6 +4475,7 @@ fn realize_live_deploy_apply_on_host(
   plan: ReleaseEffectPlan,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let locus_refusal = live_deploy_apply_candidate_locus_refusal(transport: transport)
   if locus_refusal != "" {
@@ -4490,6 +4492,7 @@ fn realize_live_deploy_apply_on_host(
         body: live_deploy_apply_script_for_wet(
           spec: spec,
           plan: plan,
+          access: access,
           cap_authorization: match admission {
             RunnerHostDeployRefused { host: rh, cause: rc } =>
               CapConvergeWithheld {
@@ -4529,10 +4532,11 @@ fn realize_live_deploy_retract_on_host(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   realize_shell_on_host(
     script: retained_srvn(
-      body: live_deploy_retract_script_for(spec: spec),
+      body: live_deploy_retract_script_for(spec: spec, access: access),
       reason: "live_deploy retract (unit teardown)",
     ),
     transport: transport,
@@ -4549,12 +4553,14 @@ fn realize_approval_broker_dark_install_on_host(
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   realize_shell_on_host(
     script: retained_srvn(
       body: approval_broker_dark_install_script(
         spec: spec,
         revision: RevisionBoundAtEmission { revision: candidate.revision },
+        access: access,
       ),
       reason: "approval broker dark install (additive; does not restart the roadmap unit)",
     ),
@@ -4628,6 +4634,12 @@ fn realize_live_deploy_digest_readback_on_host(
   )
 }
 
+// THE UNGATED DISPATCHER HAS NO DeployAccess, so it cannot emit a live-deploy apply, retract or broker
+// dark install: every principal-sensitive fact in those scripts (the sudoers preamble and its roster
+// probe, the helper sudoers readback owner) derives from the one DeployAccess the gated dispatcher holds.
+// Production reaches all three only through host_effect_apply_gated.
+data ungated_live_deploy_emission_refusal: String = "host_effect_apply: a live-deploy apply, retract or approval-broker dark install is emitted from the applying DeployAccess, which only host_effect_apply_gated carries; the ungated dispatcher refuses rather than naming one"
+
 fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: IdempotencyEvidence, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let intent = HostEffectIntent {
     target: target,
@@ -4672,12 +4684,12 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_sudo_nopasswd_execute_probe_on_host(probe: p, transport: transport, intent: intent)
     SudoNopasswdGrantListProbeOnHost { node: _, probe: p } =>
       realize_sudo_nopasswd_grant_list_probe_on_host(probe: p, transport: transport, intent: intent)
-    LiveDeployApplyOnHost { node: _, spec: s, candidate: c, plan: p } =>
-      realize_live_deploy_apply_on_host(spec: s, candidate: c, plan: p, transport: transport, intent: intent)
-    LiveDeployRetractOnHost { node: _, spec: s } =>
-      realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
-    LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: s, candidate: c } =>
-      realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent)
+    LiveDeployApplyOnHost { node: _, spec: _, candidate: _, plan: _ } =>
+      NotConverged { reason: ungated_live_deploy_emission_refusal, applied: intent }
+    LiveDeployRetractOnHost { node: _, spec: _ } =>
+      NotConverged { reason: ungated_live_deploy_emission_refusal, applied: intent }
+    LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: _, candidate: _ } =>
+      NotConverged { reason: ungated_live_deploy_emission_refusal, applied: intent }
     LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c } =>
       realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
     LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
@@ -4823,6 +4835,58 @@ fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
   }
 }
 
+// WHAT A DEPLOY EFFECT MAY DEMAND BEFORE IT RUNS. Apply and retract both open with
+// gunbc.live_deploy.emit deploy_apply_preamble_steps, whose first step installs the deploy principal's
+// sudoers drop-in and then probes the whole roster against it, refusing on a miss before any other
+// mutation (gunbc.ci.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell). So before them
+// the gate demands only what that install spends; demanding the rest would require the grant the
+// gated step exists to install. Every other effect installs nothing and is gated on the full roster.
+// It narrows the VERDICT only: the scripts are emitted from the full DeployAccess, so the preamble's
+// roster probe still demands the whole roster (moved here from gunbc.live_deploy.apply, 2026-10-13, so
+// the gate holds one access and derives its own scope rather than receiving a second, narrowed copy).
+fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> DeployAccess {
+  match effect {
+    LiveDeployApply { warrant: _ } => deploy_access_sudoers_install_scope(access: access)
+    LiveDeployRetract { spec: _ } => deploy_access_sudoers_install_scope(access: access)
+    RedfishAction { action: _ } => access
+    ConvergePlan { policy: _ } => access
+    OsInstallActuatorToolchainEnsure {} => access
+    EnsureBuildCacheInstance { desired: _ } => access
+    ProvisionCodexRuntime {} => access
+    EnsureCompilePoolSlice {} => access
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => access
+    ReadEffectivePosixPrincipal { read: _ } => access
+    SudoNopasswdExecuteProbe { probe: _ } => access
+    SudoNopasswdGrantListProbe { probe: _ } => access
+    Srv3InstallMediaFetch => access
+    Srv3SeededInstallMediaRemaster => access
+    Srv3SeededInstallMediaToolchainEnsure => access
+    Srv3BmcwebSessionLogin => access
+    Srv3BmcwebTokenExtract => access
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => access
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
+    Srv3BootOnceReadBackSleep => access
+    Srv3ReceiptEmit { lines: _ } => access
+    HostIdentityShortHostnameRead => access
+    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => access
+    LiveDeployMicrovmControllerInstall { candidate: _ } => access
+    LiveDeployEnsureDependency { dep: _ } => access
+    LiveDeployDigestReadback { port: _ } => access
+    LiveDeployServeRoute { endpoint: _, enabled: _ } => access
+    DeployAccessPreflight {} => access
+    EnsureActionsRunnerRelease { runner_release: _ } => access
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => access
+    EnsureRunnerJitWrapper { host_label: _ } => access
+    EnsureRunnerSystemdTemplate { host_label: _ } => access
+    EnsureRunnerMemoryCaps { slot: _ } => access
+    ActivateRunnerSlot { slot: _ } => access
+    ReplaceRunnerIncarnation { from: _, cause: _ } => access
+    ObserveRunnerLocalState { slot: _ } => access
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => access
+    ProbeToolchainHomeInterference {} => access
+  }
+}
+
 fn host_effect_apply_gated(
   access: DeployAccess,
   target: NodeControlPlane,
@@ -4838,7 +4902,7 @@ fn host_effect_apply_gated(
     transport: transport,
     privilege_denial: none,
   }
-  let verdict = host_effect_privilege_verdict(access: access, fixture_actor: fixture_actor)
+  let verdict = host_effect_privilege_verdict(access: live_deploy_pre_mutation_access(effect: effect, access: access), fixture_actor: fixture_actor)
   match verdict {
     Permit =>
       match resolve_host_effect_cell(target: target, effect: effect) {
@@ -4878,11 +4942,11 @@ fn host_effect_apply_gated(
         SudoNopasswdGrantListProbeOnHost { node: _, probe: p } =>
           realize_sudo_nopasswd_grant_list_probe_on_host(probe: p, transport: transport, intent: intent)
         LiveDeployApplyOnHost { node: _, spec: s, candidate: c, plan: p } =>
-          realize_live_deploy_apply_on_host(spec: s, candidate: c, plan: p, transport: transport, intent: intent)
+          realize_live_deploy_apply_on_host(spec: s, candidate: c, plan: p, transport: transport, intent: intent, access: access)
         LiveDeployRetractOnHost { node: _, spec: s } =>
-          realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent)
+          realize_live_deploy_retract_on_host(spec: s, transport: transport, intent: intent, access: access)
         LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: s, candidate: c } =>
-          realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent)
+          realize_approval_broker_dark_install_on_host(spec: s, candidate: c, transport: transport, intent: intent, access: access)
         LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: c } =>
           realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
         LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
