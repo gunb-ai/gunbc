@@ -3167,7 +3167,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     eprintln!("v2-native-cli: population controls — check-layout and parse-population over the live roots");
     let live = [live_dag.as_path(), live_v2.as_path()];
     // PROFILE-ONLY (crisp-lynx-429, not for merge): time slices of dag/std to split fixed from per-module cost.
-    for n in [1usize, 20, 80, 167] {
+    for n in [167usize] {
         let slice = scratch.join(format!("profile-slice-{n}")).join("dag");
         let std_dir = slice.join("std");
         let _ = std::fs::remove_dir_all(slice.parent().unwrap());
@@ -3182,6 +3182,35 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         for f in files.iter().take(n) {
             std::fs::copy(f, std_dir.join(f.file_name().unwrap()))
                 .map_err(|e| format!("profile copy: {e}"))?;
+        }
+        if std::env::var_os("PROFILE_PERF").is_some() {
+            let data = scratch.join("perf.data");
+            let st = Command::new("perf")
+                .args(["record", "-F", "999", "--call-graph", "fp", "-o"])
+                .arg(&data)
+                .arg("--")
+                .arg(binary)
+                .args(population_argv("parse-population", &[slice.as_path()]))
+                .output()
+                .map_err(|e| format!("perf record: {e}"))?;
+            eprintln!("PROFILE perf record status={:?}", st.status.code());
+            for sort in [
+                vec!["--no-children", "--sort", "symbol"],
+                vec!["--children", "--sort", "symbol"],
+            ] {
+                let rep = Command::new("perf")
+                    .args(["report", "--stdio", "-i"])
+                    .arg(&data)
+                    .args(&sort)
+                    .args(["-g", "none", "--percent-limit", "0.7"])
+                    .output()
+                    .map_err(|e| format!("perf report: {e}"))?;
+                eprintln!(
+                    "PROFILE perf report {sort:?}:\n{}",
+                    String::from_utf8_lossy(&rep.stdout)
+                );
+            }
+            return Err("PROFILE done".to_string());
         }
         let t = std::time::Instant::now();
         let r = run_cli_door(
