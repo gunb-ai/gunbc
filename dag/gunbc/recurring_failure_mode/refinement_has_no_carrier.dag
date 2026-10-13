@@ -17,6 +17,7 @@ data refinement_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
   evidence: [
     DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_parses_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_lowers_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_type_is_the_type_variant_where_conj_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_parses_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_lowers_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_type_is_the_type_variant_where_conj_holds", field: WholeDeclaration },
