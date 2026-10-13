@@ -272,7 +272,7 @@ data conformance_domains: List<ConformanceDomain> = [
             decl_ref(module_path: "product.fabric.work", decl_name: "ExecutionRequirements"),
             decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOperation"),
             decl_ref(module_path: "product.fabric.contention", decl_name: "select_demand_for_offer"),
-            decl_ref(module_path: "gunbc.ci_runner_target", decl_name: "CiRunnerTarget"),
+            decl_ref(module_path: "gunbc.ci.ci_runner_target", decl_name: "CiRunnerTarget"),
           ],
         },
       },
