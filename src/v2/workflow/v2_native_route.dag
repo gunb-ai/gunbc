@@ -40,7 +40,7 @@ import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags 
 // located, evaluated, or returned its expected verdict. Every row of this lane's population is
 // keyed by the qualified `<module>.<declaration>` identity — the same grain the required floor
 // gates on — and the verdict carried is the driver's own NativeTestVerdict, imported from
-// v2.compiler.compile rather than re-declared here (DESIGN 3: one authority for the verdict
+// v2.compiler.native_test_vocabulary rather than re-declared here (DESIGN 3: one authority for the verdict
 // vocabulary; a second route-local verdict type would be a nickname).
 //
 // THE ROUTE IS EVAL, NOT TRANSLATION. The driver resolves the exact test declaration inside a
@@ -114,13 +114,13 @@ fn native_route_identity_label(module_qn: String, declaration: String) -> LabelP
 
 // THE DEFAULT PATTERN IS `//v2/...`: THE ROUTE BOUNDARY, AND THE LANE'S DEFAULT POPULATION. It is a
 // declared value about which operands the native route is asked first, never a statement of what a
-// test is -- the marker is that. The pattern selects within the universe (v2.compiler.compile
+// test is -- the marker is that. The pattern selects within the universe (v2.compiler.source_root_eval
 // `native_lane_identity_admitted`) and does not narrow it: `the_default_pattern_admits_every_universe_member`
 // is the law, were the default ever narrower than the boundary the lane would silently drop members
 // at its default. The segment boundary is the matcher's (`target_pattern_matches`): `//v2/...`
 // selects `v2.test.x` and `v2.testing.x` alike and selects `v22.x` never.
 //
-// CONSUMERS. `v2.compiler.compile` `native_lane_universe_selected` consumes the pattern at
+// CONSUMERS. `v2.compiler.source_root_eval` `native_lane_universe_selected` consumes the pattern at
 // execution; `native_lane_universe` (the required-v2-native lane's rendered main) consumes it at
 // this default. AN OPERATOR-SUPPLIED PATTERN REACHES THAT SAME PRODUCER: `gunbc test <operand>`
 // admits the operand against THIS row as its universe (`gunbc.target_invocation`
