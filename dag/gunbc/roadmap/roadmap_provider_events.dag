@@ -677,50 +677,50 @@ fn provider_execution_fold_event(
   state: ProviderExecutionState,
   event: ProviderEvent,
 ) -> ProviderExecutionState {
-  match state {
-    ProviderCompleted { activity: _ } => state
-    ProviderFailed { activity: _, detail: _ } => state
-    ProviderBudgetSpent { activity: _, detail: _ } => state
-    ProviderEventsRefused { activity: _, detail: _ } => state
-    _ =>
-      match event.kind {
-        ThreadStarted => ProviderStarting { activity: "thread started" }
-        TurnStarted => ProviderRunning { activity: "agent started" }
-        HarnessRoundUsage => state
-        HarnessWireLogUnwritable => state
-        HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
-        HarnessAlignmentCheckpointDue =>
-          ProviderBudgetSpent {
-            activity: "Alignment checkpoint due · adjudication decides resume",
-            detail: event.raw,
-          }
-        ItemStarted { activity } =>
-          ProviderRunning {
-            activity: join(
-              ["Agent working · ", provider_item_activity_label(activity: activity)],
-              "",
-            ),
-          }
-        ItemCompleted { activity } =>
-          ProviderRunning {
-            activity: match activity {
-              Reporting => "Agent finishing"
-              _ =>
-                join(
-                  ["Agent working · ", provider_item_activity_label(activity: activity)],
-                  "",
-                ),
-            },
-          }
-        TurnCompleted =>
-          ProviderCompleted { activity: "Agent complete" }
-        TurnFailed =>
-          ProviderFailed { activity: "agent turn failed", detail: event.raw }
-        HarnessBudgetExhausted =>
-          ProviderBudgetSpent { activity: "Agent stopped at its round budget", detail: event.raw }
-        ProviderStreamError =>
-          ProviderFailed { activity: "provider error", detail: event.raw }
+  // PARTITION FOLD: the locked-terminal tail of the old match is the
+  // provider_execution_is_event_locked partition, so the fold branches on the
+  // partition instead of naming the four locked variants (the fold body is
+  // written once; naming them per arm would clone it four times).
+  if provider_execution_is_event_locked(state: state) {
+    state
+  } else {
+    match event.kind {
+      ThreadStarted => ProviderStarting { activity: "thread started" }
+      TurnStarted => ProviderRunning { activity: "agent started" }
+      HarnessRoundUsage => state
+      HarnessWireLogUnwritable => state
+      HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
+      HarnessAlignmentCheckpointDue =>
+        ProviderBudgetSpent {
+          activity: "Alignment checkpoint due · adjudication decides resume",
+          detail: event.raw,
+        }
+      ItemStarted { activity } =>
+        ProviderRunning {
+          activity: join(
+            ["Agent working · ", provider_item_activity_label(activity: activity)],
+            "",
+          ),
+        }
+      ItemCompleted { activity } => {
+        // PARTITION FOLD: the is_reporting partition names Reporting as a case
+        // instead of defaulting the other eleven activities behind a wildcard.
+        let label = if provider_item_activity_is_reporting(activity: activity) {
+          "Agent finishing"
+        } else {
+          join(["Agent working · ", provider_item_activity_label(activity: activity)], "")
+        }
+        ProviderRunning { activity: label }
       }
+      TurnCompleted =>
+        ProviderCompleted { activity: "Agent complete" }
+      TurnFailed =>
+        ProviderFailed { activity: "agent turn failed", detail: event.raw }
+      HarnessBudgetExhausted =>
+        ProviderBudgetSpent { activity: "Agent stopped at its round budget", detail: event.raw }
+      ProviderStreamError =>
+        ProviderFailed { activity: "provider error", detail: event.raw }
+    }
   }
 }
 
@@ -799,11 +799,105 @@ fn provider_execution_activity(state: ProviderExecutionState) -> String {
 }
 
 fn provider_execution_detail(state: ProviderExecutionState) -> String {
+  // PARTITION FOLD: read the carried-detail partition instead of re-listing the
+  // four detail-carrying variants with a wildcard default.
+  match provider_execution_carried_detail(state: state) {
+    Present { value: detail } => detail
+    none => ""
+  }
+}
+
+// EVENT-LOCKED PARTITION: the states in which a terminal provider event has
+// landed and the row stops absorbing further events. std's Bool carrier
+// applied to this coproduct's inhabitance (A3/A6 house shape); the fold
+// matches the partition, not the variant list. Note this is the EVENT-fold
+// partition, not belt_provider_is_terminal (the belt partition keeps
+// EventsRefused open); the two partitions differ on exactly that arm.
+fn provider_execution_is_event_locked(state: ProviderExecutionState) -> Bool {
   match state {
-    ProviderFailed { activity: _, detail } => detail
-    ProviderBudgetSpent { activity: _, detail } => detail
-    ProviderEventsRefused { activity: _, detail } => detail
-    ProviderAwaitingSeat { detail } => detail
-    _ => ""
+    ProviderNotStarted => false
+    ProviderStarting { activity: _ } => false
+    ProviderAwaitingSeat { detail: _ } => false
+    ProviderRunning { activity: _ } => false
+    ProviderCompleted { activity: _ } => true
+    ProviderFailed { activity: _, detail: _ } => true
+    ProviderBudgetSpent { activity: _, detail: _ } => true
+    ProviderEventsRefused { activity: _, detail: _ } => true
+  }
+}
+
+// NOT-STARTED PARTITION: the one state that has not yet seen a provider event.
+// std's Bool carrier applied to this coproduct's inhabitance (A3/A6 house
+// shape); the reconcile fold branches on it so the process fold names the
+// not-started case instead of leaving the locked states as dead identity arms
+// behind a Bool guard.
+fn provider_execution_is_not_started(state: ProviderExecutionState) -> Bool {
+  match state {
+    ProviderNotStarted => true
+    ProviderStarting { activity: _ } => false
+    ProviderAwaitingSeat { detail: _ } => false
+    ProviderRunning { activity: _ } => false
+    ProviderCompleted { activity: _ } => false
+    ProviderFailed { activity: _, detail: _ } => false
+    ProviderBudgetSpent { activity: _, detail: _ } => false
+    ProviderEventsRefused { activity: _, detail: _ } => false
+  }
+}
+
+// CARRIED DETAIL: the states that inhabit a detail string — the three refusals
+// and the awaiting-seat wait — and the value is that detail. std's Optional
+// carrier applied to this coproduct's inhabitance (A3/A6 house shape); the
+// reader matches the partition (Present/none) instead of re-listing the four
+// detail-carrying variants with a wildcard default.
+fn provider_execution_carried_detail(state: ProviderExecutionState) -> String? {
+  match state {
+    ProviderNotStarted => none
+    ProviderStarting { activity: _ } => none
+    ProviderAwaitingSeat { detail } => Present { value: detail }
+    ProviderRunning { activity: _ } => none
+    ProviderCompleted { activity: _ } => none
+    ProviderFailed { activity: _, detail } => Present { value: detail }
+    ProviderBudgetSpent { activity: _, detail } => Present { value: detail }
+    ProviderEventsRefused { activity: _, detail } => Present { value: detail }
+  }
+}
+
+// COMPLETED ACTIVITY: the one state that inhabits a completed activity, and its
+// raw stored value. std's Optional carrier applied to this coproduct's
+// inhabitance (A3/A6 house shape). Reconcile-on-process must read the RAW
+// activity here — not provider_execution_activity, which reports "Agent
+// complete" for every completed state — because the conflict detail is the
+// completion the process evidence contradicts.
+fn provider_execution_completed_activity(state: ProviderExecutionState) -> String? {
+  match state {
+    ProviderNotStarted => none
+    ProviderStarting { activity: _ } => none
+    ProviderAwaitingSeat { detail: _ } => none
+    ProviderRunning { activity: _ } => none
+    ProviderCompleted { activity } => Present { value: activity }
+    ProviderFailed { activity: _, detail: _ } => none
+    ProviderBudgetSpent { activity: _, detail: _ } => none
+    ProviderEventsRefused { activity: _, detail: _ } => none
+  }
+}
+
+// REPORTING ACTIVITY: the one item activity that reports instead of working.
+// std's Bool carrier applied to this coproduct's inhabitance (A3/A6 house
+// shape); the fold that labels an item-completed event reads the partition
+// instead of matching Reporting by name with a wildcard over the other eleven.
+fn provider_item_activity_is_reporting(activity: ProviderItemActivity) -> Bool {
+  match activity {
+    Reporting => true
+    RunningCommand => false
+    EditingFiles => false
+    UsingConnectedTool => false
+    Searching => false
+    UpdatingPlan => false
+    ReasoningItem => false
+    HarnessReadingFile => false
+    HarnessWritingFile => false
+    HarnessEditingFile => false
+    HarnessRefusingUnrecognizedTool => false
+    UnclassifiedItem => false
   }
 }
