@@ -36,6 +36,7 @@ import gunbc.serving.caller_backlog {
 import std.decl_ref { DeclarationRef }
 import v2.std.decl_index { decl_facts_at }
 import std.optional { Present, Absent }
+import gunbc.compile_census_probe { blocking_subject_count_for }
 import gunbc.serving.caller_retry_contract {
   DurableRetryProperty, PersistBeforeOffer, RetriableRefusal, StableTurnIdentity, IdempotentRetryDuplicateSuppression,
   NoExpiryOnLongWait, DurableCancellation, NoDoubleExecution, serving_route_caller_retry_rows, modeled_caller_retry_rows, modeled_caller_backlog,
@@ -391,4 +392,45 @@ test fn w_duplicate_records_refuse_persist_and_do_not_revive() -> Bool {
     ) {
       CallerBacklogSnapshot { records: rs } => length(rs) == 2
     })
+}
+
+data derived_phase_bypass_source: String = "module test.probe.caller_backlog_derived_phase_bypass\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.serving.caller_backlog { CallerWorkRecord, DurablePersistStanding, persist_derived_phase }\nfn forge(root: NonEmptyStr, generation: CasGeneration, record: CallerWorkRecord) -> DurablePersistStanding {\n  persist_derived_phase(root: root, generation: generation, record: record)\n}\n"
+
+data waiting_store_bypass_source: String = "module test.probe.caller_backlog_waiting_store_bypass\nimport std.types { NonEmptyStr }\nimport gunbc.serving.caller_backlog { CallerWorkRecord, DurablePersistStanding, persist_waiting_on_store }\nfn forge(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding {\n  persist_waiting_on_store(root: root, record: record)\n}\n"
+
+data waiting_idempotent_bypass_source: String = "module test.probe.caller_backlog_waiting_idempotent_bypass\nimport std.types { NonEmptyStr }\nimport gunbc.serving.caller_backlog { CallerWorkRecord, DurablePersistStanding, persist_waiting_idempotent_on_store }\nfn forge(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding {\n  persist_waiting_idempotent_on_store(root: root, record: record)\n}\n"
+
+data admitted_waiting_persist_source: String = "module test.probe.caller_backlog_admitted_waiting_persist\nimport std.types { NonEmptyStr, Int }\nimport product.fabric.execution { ReservationRef }\nimport gunbc.serving.caller_backlog { LogicalWorkId, CallerBacklogSnapshot, DurablePersistStanding, persist_waiting_durable }\nfn go(root: NonEmptyStr, snap: CallerBacklogSnapshot, work: LogicalWorkId, reservation: ReservationRef, generation: Int) -> DurablePersistStanding {\n  persist_waiting_durable(root: root, snapshot: snap, work: work, reservation: reservation, generation: generation)\n}\n"
+
+test fn w_foreign_module_cannot_publish_a_derived_phase() -> Bool {
+  blocking_subject_count_for(
+    source: derived_phase_bypass_source,
+    wanted_class: "ConstructorCallAdmissionRefused",
+    wanted_subject: "persist_derived_phase",
+  ) == 1
+}
+
+test fn w_foreign_module_cannot_publish_an_initial_record() -> Bool {
+  blocking_subject_count_for(
+    source: waiting_store_bypass_source,
+    wanted_class: "ConstructorCallAdmissionRefused",
+    wanted_subject: "persist_waiting_on_store",
+  ) == 1
+    && blocking_subject_count_for(
+      source: waiting_idempotent_bypass_source,
+      wanted_class: "ConstructorCallAdmissionRefused",
+      wanted_subject: "persist_waiting_idempotent_on_store",
+    ) == 1
+}
+
+test fn w_typed_waiting_persist_is_the_admitted_publication_path() -> Bool {
+  blocking_subject_count_for(
+    source: admitted_waiting_persist_source,
+    wanted_class: "ConstructorCallAdmissionRefused",
+    wanted_subject: "persist_waiting_on_store",
+  ) == 0
+    && length(xs: decl_facts_at(
+      pool_roots: ["dag"],
+      qualified_name: "gunbc.serving.caller_backlog.persist_record_cas",
+    )) == 0
 }

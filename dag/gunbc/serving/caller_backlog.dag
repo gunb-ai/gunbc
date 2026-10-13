@@ -9,7 +9,7 @@ import product.fabric.execution { ReservationRef }
 import product.fabric.budget { MoneyAccount, fence_admits }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.durable_compare_and_set {
-  ExpectSlotAbsent, ExpectSlotGeneration, CasExpectation, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasObservedReadable, CasObservedUnreadable,
   CasGeneration, cas_unreadable_slot_detail,
 }
@@ -520,51 +520,46 @@ type DurablePersistStanding
   | DurablePersistUnknownWork
   | DurablePersistDuplicate
 
-fn persist_record_cas(
-  root: NonEmptyStr,
-  record: CallerWorkRecord,
-  expected: CasExpectation,
-  as_phase: Bool,
-) -> DurablePersistStanding {
+fn persist_waiting_on_store(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_idempotent_on_store"),
+  ]
+{
   let key = record.work as NonEmptyStr
   match encode_waiting(record: record) {
     WaitingWireUnencodable { reason: reason } => DurablePersistPayloadUnencodable { reason: reason }
     WaitingWireEncoded { payload: payload } =>
-  match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
-    DerivedPayloadKeyNotSlotAddressable { key: _ } => DurablePersistKeyNotSlotAddressable { work: record.work }
-    DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
-        CasCommitted { committed: _ } =>
-          if as_phase {
-            DurablePhasePersisted { record: record }
-          } else {
-            DurableWaitingPersisted { record: record }
-          }
-        CasPreconditionFailed { expected: _, observed: observed } =>
-          match observed {
-            CasReadableAbsent => DurablePersistStoreRefused {
-              detail: "store reported the slot absent after refusing the write" as NonEmptyStr
-            }
-            CasReadablePresent { version: held } =>
-              if held.value == payload {
-                DurablePersistIdempotent { record: record }
-              } else {
-                DurablePersistStoreRefused { detail: "slot already holds a different record" as NonEmptyStr }
+      match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: payload) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => DurablePersistKeyNotSlotAddressable { work: record.work }
+        DerivedPayloadAdmitted { verified: v } =>
+          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+            CasCommitted { committed: _ } => DurableWaitingPersisted { record: record }
+            CasPreconditionFailed { expected: _, observed: observed } =>
+              match observed {
+                CasReadableAbsent => DurablePersistStoreRefused {
+                  detail: "store reported the slot absent after refusing the write" as NonEmptyStr
+                }
+                CasReadablePresent { version: held } =>
+                  if held.value == payload {
+                    DurablePersistIdempotent { record: record }
+                  } else {
+                    DurablePersistStoreRefused { detail: "slot already holds a different record" as NonEmptyStr }
+                  }
               }
+            CasStoreRefused { cause: _ } => DurablePersistStoreRefused {
+              detail: "file compare-and-set refused the persist" as NonEmptyStr
+            }
           }
-        CasStoreRefused { cause: _ } => DurablePersistStoreRefused {
-          detail: "file compare-and-set refused the persist" as NonEmptyStr
-        }
       }
   }
-  }
 }
 
-fn persist_waiting_on_store(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding {
-  persist_record_cas(root: root, record: record, expected: ExpectSlotAbsent, as_phase: false)
-}
-
-fn persist_waiting_idempotent_on_store(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding {
+fn persist_waiting_idempotent_on_store(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable"),
+  ]
+{
   let key = record.work as NonEmptyStr
   match encode_waiting(record: record) {
     WaitingWireUnencodable { reason: reason } => DurablePersistPayloadUnencodable { reason: reason }
@@ -634,13 +629,44 @@ fn persist_derived_phase(
   root: NonEmptyStr,
   generation: CasGeneration,
   record: CallerWorkRecord,
-) -> DurablePersistStanding {
-  persist_record_cas(
-    root: root,
-    record: record,
-    expected: ExpectSlotGeneration { generation: generation },
-    as_phase: true,
-  )
+) -> DurablePersistStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "cancel_work_durable"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "commit_attempt_durable"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "note_recovery_durable"),
+  ]
+{
+  let key = record.work as NonEmptyStr
+  match encode_waiting(record: record) {
+    WaitingWireUnencodable { reason: reason } => DurablePersistPayloadUnencodable { reason: reason }
+    WaitingWireEncoded { payload: payload } =>
+      match admit_cas_attempt_for_derived_payload(
+        key: key,
+        expected: ExpectSlotGeneration { generation: generation },
+        proposed: payload,
+      ) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => DurablePersistKeyNotSlotAddressable { work: record.work }
+        DerivedPayloadAdmitted { verified: v } =>
+          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+            CasCommitted { committed: _ } => DurablePhasePersisted { record: record }
+            CasPreconditionFailed { expected: _, observed: observed } =>
+              match observed {
+                CasReadableAbsent => DurablePersistStoreRefused {
+                  detail: "store reported the slot absent after refusing the write" as NonEmptyStr
+                }
+                CasReadablePresent { version: held } =>
+                  if held.value == payload {
+                    DurablePersistIdempotent { record: record }
+                  } else {
+                    DurablePersistStoreRefused { detail: "slot already holds a different record" as NonEmptyStr }
+                  }
+              }
+            CasStoreRefused { cause: _ } => DurablePersistStoreRefused {
+              detail: "file compare-and-set refused the persist" as NonEmptyStr
+            }
+          }
+      }
+  }
 }
 
 fn persist_waiting_durable(
