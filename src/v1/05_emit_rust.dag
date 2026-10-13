@@ -6011,14 +6011,16 @@ type ModuleIndex {
 }
 
 fn build_module_index(modules: List<TypedModule>, leaf_owner_modules: Map<String, LeafOwner>) -> ModuleIndex {
-  let by_name = modules |> fold(init: empty_map(), f: (acc, tm) =>
+  let by_name_seed: Map<String, TypedModule> = empty_map()
+  let by_name = modules |> fold(init: by_name_seed, f: (acc, tm) =>
     let nm = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     match map_get(acc, nm) {
       Present { value: _ } => acc
       Absent => map_insert(acc, nm, tm)
     }
   )
-  let by_filename = modules |> fold(init: empty_map(), f: (acc, tm) =>
+  let by_filename_seed: Map<String, List<TypedModule>> = empty_map()
+  let by_filename = modules |> fold(init: by_filename_seed, f: (acc, tm) =>
     let fname = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
     match map_get(acc, fname) {
       Present { value: prior } => map_insert(acc, fname, list_push(prior, tm))
