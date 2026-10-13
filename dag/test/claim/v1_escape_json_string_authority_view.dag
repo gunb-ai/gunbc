@@ -1,8 +1,0 @@
-module test.claim.v1_escape_json_string_authority_view
-
-import extdeps.languages.json.emit { escape_json_string }
-
-// The JSON authority under a name that does not collide with the seed copy it is compared with.
-fn authority_escape_json_string(s: String) -> String {
-  escape_json_string(s: s)
-}

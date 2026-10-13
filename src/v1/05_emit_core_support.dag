@@ -53,7 +53,9 @@ type TestProjection {
 // a stated divergence. Importing the authority adds extdeps_languages_json_emit, json_grammar and
 // numeric_base16 to the stage0 crate partition: the regen refuses with Stage0EmittedEdgesNotCovered
 // (57 emitted edge endpoints), growing the seed it is meant to shrink. The copy dissolves with v1.
-// test.claim.v1_escape_json_string_differential holds it equal to the authority.
+// A claim in the v1 claim tree holds this copy to the RFC 8259 section 7 spelling of every control
+// code point; it is not named here, because a path or module name in this comment would make the
+// claim an emitted edge of this module and grow the stage0 partition.
 type JsonControlEscape { delimiter: String, replacement: String }
 
 fn json_control_escapes() -> List<JsonControlEscape> {

@@ -2,6 +2,7 @@ module test.claim.json_emit_witness
 
 import extdeps.external_authority { ExternalAuthority }
 import std.unicode.scalar { from_code_point }
+import std.error_primitives { Ok, Err }
 import extdeps.languages.json.emit { json_named_escape_rows, json_control_escape_rows, JsonEscapeRow, escape_json_string, json_array, json_bool, json_int, json_int_list, json_kv, json_null, json_number_from_lexeme_string, json_object, json_str_list, json_unicode_escape_hex4, quote_json_string, serialize_json }
 import extdeps.languages.json.grammar { json_int_lexeme, json_number_lexeme, json_number_lexeme_valid, json_production_rows }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -210,4 +211,31 @@ test fn witness_escape_rows_spell_the_code_point_they_name() -> Bool {
 
 test fn RED_witness_a_drifted_escape_row_is_detected() -> Bool {
   !json_escape_row_agrees(row: JsonEscapeRow { code_point: 27, spelled: "\u{1c}" })
+}
+
+// The authority held to RFC 8259 section 7 on every control code point: \b \t \n \f \r for 8, 9, 10,
+// 12, 13 and uppercase \u00XX (RFC 8259 admits either case) for the rest of 0..31. The seed's own copy of escape_json_string is held
+// to the SAME oracle by the v1 claim tree's escape differential (named in prose: a path here is an emitted edge), which cannot import this
+// authority without growing the stage0 partition.
+data jew_hex: String = "0123456789ABCDEF"
+
+fn jew_rfc_expected(cp: Int) -> String {
+  if cp == 8 { "\\b" } else { if cp == 9 { "\\t" } else { if cp == 10 { "\\n" } else { if cp == 12 { "\\f" } else { if cp == 13 { "\\r" } else {
+    concat("\\u00", concat(substring(s: jew_hex, start: cp / 16, end: cp / 16 + 1), substring(s: jew_hex, start: cp % 16, end: cp % 16 + 1)))
+  } } } } }
+}
+
+fn jew_agrees(cp: Int) -> Bool {
+  match from_code_point(cp: cp) {
+    Ok { value: t } => escape_json_string(s: concat("a", concat(t, "b"))) == concat("a", concat(jew_rfc_expected(cp: cp), "b"))
+    Err { value: _ } => false
+  }
+}
+
+fn jew_all_from(cp: Int) -> Bool {
+  if cp > 31 { true } else { jew_agrees(cp: cp) && jew_all_from(cp: cp + 1) }
+}
+
+test fn witness_json_escape_spells_rfc_8259_for_every_control_code_point() -> Bool {
+  jew_all_from(cp: 0)
 }
