@@ -8,7 +8,7 @@ module test.claim.scm.scm_object_store_batch_witness
 // faster one.
 
 import std.types { Bool, String, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.worktree_inventory { worktree_changes_parse, WorktreeChange, WorktreeBind, WorktreeDelete }
 import gunbc.scm.object_store {
   ObjectStore, ObjectId, object_id_eq, empty_store,

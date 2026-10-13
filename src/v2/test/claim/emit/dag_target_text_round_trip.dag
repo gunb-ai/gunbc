@@ -26,7 +26,7 @@ import std.algebra { list_append }
 import v2.std.algebra { list_map }
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present }
 

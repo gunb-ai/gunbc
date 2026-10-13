@@ -17,7 +17,7 @@ import v2.cli.population_verbs {
 }
 import v2.std.algebra { HeadAbsent, HeadFound, fold_list, length, list_head }
 import v2.std.collection { empty_map }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

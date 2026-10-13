@@ -1,6 +1,6 @@
 module test.claim.rtx_pro_6000_catalog_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { bandwidth_count }
 import extdeps.gpu.nvidia {
   nvidia_rtx_pro_6000_workstation_catalog,

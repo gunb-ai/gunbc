@@ -4,7 +4,7 @@ import std.types { Bool }
 import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
 import gunbc.workspace_allocation_supply { workspace_host_supply_refusal, workspace_local_host_is }
 import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for, runner_executor_hosts }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

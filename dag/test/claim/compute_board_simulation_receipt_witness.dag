@@ -54,7 +54,7 @@ import product.compute_board.device_binding {
   project_article_to_pin_constraints,
 }
 import product.compute_board.verilog_projection { power_interlock_verilog_bindings }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

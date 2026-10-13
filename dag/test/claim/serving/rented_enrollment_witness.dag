@@ -4,7 +4,7 @@ import std.types { String, Bool, NonEmptyStr, List, Int }
 import std.nat { Nat }
 import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.ssh.keys { SshPublicKey, Ed25519 }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, IndependentlyAnchored }

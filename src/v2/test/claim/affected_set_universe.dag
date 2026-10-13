@@ -19,7 +19,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_gates,
   gunbc_ci_falsifier_gates
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // THE DISPOSITION CHANGED WITH THE CUTOVER, and it is a fact about this module rather than a
 // formality. These claims used to reach reflection through a seam that took only a bare spelling,

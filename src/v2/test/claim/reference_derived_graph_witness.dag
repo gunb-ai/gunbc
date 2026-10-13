@@ -15,7 +15,7 @@ import v2.lens.module_graph {
   reference_edges_for_located_root_sites,
 }
 import v2.std.algebra { fold_list, fold_list_node, length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Atom,
   Conj,

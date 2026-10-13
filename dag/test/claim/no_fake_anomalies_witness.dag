@@ -8,7 +8,7 @@ import gunbc.output_policy { ExpectSuccess }
 import std.logic { Bool }
 import std.types { String }
 import gunbc.instruments.host_prelude { ClaimRun, claim_batch_claims_argv, witness_bin_release_path }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

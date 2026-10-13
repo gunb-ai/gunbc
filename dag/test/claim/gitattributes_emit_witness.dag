@@ -19,7 +19,7 @@ import gunbc.generated_projection_paths {
   deterministic_generated_projection_paths_from_rows
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

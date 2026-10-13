@@ -4,7 +4,7 @@ import std.types { NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanHasNoRetirement, PlanProjectsCommittedMarkdown, PlanIsAuthorityOnly, plan_has_retirement, plans_all_have_retirement, plan_title_is_present, plans_all_titled, plan_projects_committed_markdown }
 import gunbc.plan_registry { all_plans }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 

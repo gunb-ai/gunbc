@@ -1,6 +1,6 @@
 module v2.test.native_lane_smoke
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // THE required-v2-native LANE'S POSITIVE-POPULATION FLOOR MEMBER (authority:
 // gunbc.witness.v2_native_route, clause native_route_positive_population_present). A universe

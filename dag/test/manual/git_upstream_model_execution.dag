@@ -58,7 +58,7 @@ import test.claim.git_upstream_model_witness {
   git_fixture_repository,
 }
 import std.bytes { utf8_encode_bytes }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

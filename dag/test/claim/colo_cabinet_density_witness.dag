@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import v2.std.algebra { non_empty_to_list }
 import std.measure { Watt, watt, watt_count, volt_ampere }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.colo.types {
   CabinetDensityClaim, DensityPublished, PublishedDensityFigure, DensityUnread,
   CoolingMediumStanding, CoolingMediumPublished, CoolingMediumUnspecified,

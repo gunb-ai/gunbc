@@ -6,7 +6,7 @@ import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_surface_edge_label }
 import v2.std.algebra { fold_list, fold_list_node, is_empty }
 import std.types { List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Atom,
   Conj,

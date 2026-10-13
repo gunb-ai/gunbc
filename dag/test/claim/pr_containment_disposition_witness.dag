@@ -34,7 +34,7 @@ import extdeps.git.inspect {
 
 // Pure decision inputs only -- this witness reads no repository, which is the property that makes
 // the position-only divergence case authorable at all: no live corpus is guaranteed to contain one.
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 // THE DISCRIMINATING CONTROLS FOR THE CONTAINMENT RULE, run against the real decision on synthetic
 // inputs. Nothing here reads a repository: the decision is separated from its observations exactly

@@ -1,6 +1,6 @@
 module test.claim.approve_ios_project_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue, YamlString, YamlSequence, YamlMapping,

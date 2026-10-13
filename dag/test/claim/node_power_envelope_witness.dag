@@ -76,7 +76,7 @@ import product.node_power_envelope {
   populated_dimms_per_channel,
   psu_adequacy,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

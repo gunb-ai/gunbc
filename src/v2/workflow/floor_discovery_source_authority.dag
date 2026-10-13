@@ -6,7 +6,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { String, Int, List }
 import v2.std.algebra { length, fold_list }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import std.optional {
   Absent,
   Optional,

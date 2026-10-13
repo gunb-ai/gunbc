@@ -20,7 +20,7 @@ import v2.std.algebra { length }
 import v2.std.collection { list_at_optional }
 import std.algebra { Cons, Empty, FreeSemigroup }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { node_subtree_nodes, Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, node_with_occurrence_id, symbol_lexeme }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import v2.std.grammar { GrammarEmitTerminal, GrammarEmitClassTerminal, GrammarEmitLexemeTerminal, grammar_named_edge }

@@ -1,7 +1,7 @@
 module test.claim.std_commit_sha_text_witness
 
 import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, List, commit_sha_text_holds }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -30,7 +30,7 @@ import gunbc.fleet.fleet_intent {
   performance_receipts_total_time,
 }
 import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

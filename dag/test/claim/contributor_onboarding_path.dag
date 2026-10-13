@@ -54,7 +54,7 @@ import gunbc.instruments.docs_projection_gate {
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.optional { Absent }
 import std.types { String, List, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

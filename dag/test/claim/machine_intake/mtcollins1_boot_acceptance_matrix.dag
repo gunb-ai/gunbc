@@ -13,7 +13,7 @@ import v2.std.witness_evaluation {
   WitnessEvaluation, WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.bmc_model { BmcWorld, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, fs_refusing_reads_of, fs_with_file }
 import gunbc.process_environment_model { ModeledVariable }

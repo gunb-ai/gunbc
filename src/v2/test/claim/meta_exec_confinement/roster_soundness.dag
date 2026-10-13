@@ -8,7 +8,7 @@ import v2.lens.meta_exec_confinement {
 import v2.std.algebra { is_empty }
 import std.algebra { list_append }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -46,7 +46,7 @@ import gunbc.representation_boundary {
   declared_divergence_count,
   boundaries_without_an_authority
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -13,7 +13,7 @@ import v2.std.compilers.target_model {
   target_uri_scheme_discriminant
 }
 import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 import std.types { NonEmptyStr, List }
 import v2.std.text { String }

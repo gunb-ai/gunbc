@@ -205,21 +205,17 @@ data bin_wet_template_coverage: CoverageNotEstablished = CoverageNotEstablished 
   restoration_trigger: "witness_cadence_has_scheduled_route(FalsifierRehomedBinWet) returns true" as NonEmptyStr,
 }
 
-// The DROP row for the class, filed once rather than per site. Eighteen rows lost one shared
-// thing -- the executor -- so eighteen copies of the same five fields would be eighteen places
+// The DROP row for the class, filed once rather than per site. Seventeen rows lost one shared
+// thing -- the executor -- so seventeen copies of the same five fields would be eighteen places
 // to update when the route returns. That is also why the five sites added 2026-09-01 enrol here
 // instead of carrying drops of their own.
-// THE EIGHTEEN SITES (twelve at landing, five witness-test sites added 2026-09-01, one added
-// 2026-09-02). Two more than the sixteen the drop population names, because two of them are
+// THE SEVENTEEN SITES (twelve at landing, five witness-test sites added 2026-09-01, one added
+// 2026-09-02, one since retired with its row). Two more than the fifteen the drop population names, because two of them are
 // HistoricalReceipt rows and a historical receipt is not a population a re-add restores.
 //
-// TWO SITES ARE CARRIED HERE AND EDITED NOWHERE, deliberately: `v2.std.live_tree`
-// `live_tree_disposition_stamp_provenance` and its near-verbatim host mirror
-// `v1_compiler.cli_run` `parse_entry_live_tree_disposition` are repaired in gunbc#9403,
-// which was open when this census landed. Editing them here would have produced two
-// authors correcting one sentence into a conflict. They are censused rather than skipped
-// because a census that omitted its already-owned rows would report a completeness it
-// does not have.
+// ONE SITE WAS CARRIED HERE AND EDITED NOWHERE: `std.live_tree` `live_tree_disposition_stamp_provenance`
+// was commentary-as-data (DESIGN 4c) and was deleted when the module moved from v2.std.live_tree;
+// its sibling `v1_compiler.cli_run` `parse_entry_live_tree_disposition` remains censused.
 //
 // THE FIVE WITNESS-TEST SITES (added 2026-09-01, XL-0-RECEIPT follow-on) are the last five rows
 // below. The twelve before them are authority rows that RELIED on the cadence for a coverage claim;
@@ -313,19 +309,9 @@ fn deleted_cadence_references() -> List<DeletedCadenceReference> {
       },
     },
     DeletedCadenceReference {
-      site: decl_ref(module_path: "v2.std.live_tree", decl_name: "live_tree_disposition_stamp_provenance"),
-      standing: PremiseInvalidated {
-        affected_decision: decl_ref(module_path: "v2.std.live_tree", decl_name: "live_tree_disposition_note"),
-        current_coverage: CoverageNotEstablished {
-          lost_with: FalsifierSubstrateLongLane,
-          restoration_trigger: "a predict-only cold comparison exists that surfaces a lying SubstrateInputsOnly stamp as a counted divergence" as NonEmptyStr,
-        },
-      },
-    },
-    DeletedCadenceReference {
       site: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "parse_entry_live_tree_disposition"),
       standing: PremiseInvalidated {
-        affected_decision: decl_ref(module_path: "v2.std.live_tree", decl_name: "live_tree_disposition_note"),
+        affected_decision: decl_ref(module_path: "std.live_tree", decl_name: "LiveTreeDisposition"),
         current_coverage: CoverageNotEstablished {
           lost_with: FalsifierSubstrateLongLane,
           restoration_trigger: "a predict-only cold comparison exists that surfaces a lying SubstrateInputsOnly stamp as a counted divergence" as NonEmptyStr,

@@ -1,6 +1,6 @@
 module test.claim.budget_tree_witness
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import std.measure { Memory, One, byte_size }
 import extdeps.accounting.budget {
   Appropriation,
@@ -28,7 +28,7 @@ import product.budget_tree {
   node_conserves,
   node_conserves_local,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

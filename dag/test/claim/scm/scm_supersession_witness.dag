@@ -21,7 +21,7 @@ module test.claim.scm.scm_supersession_witness
 
 import std.types { Bool, String }
 import std.decl_ref { DeclarationRef }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, Edge, Authored, Conj, Atom, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId, ObjectStore, Stored, LocatorCollision,

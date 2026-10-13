@@ -6,7 +6,7 @@ import extdeps.git.object_store { GitSha1ObjectId }
 import extdeps.crypto.hash { sha256_digest }
 import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id }
 import extdeps.git.inspect { CommitSha }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.rust.compiler_phases { RustcPhase, Parse, Expand, Resolve, Typeck, Borrowck }
 import gunbc.self_host_compile_phase_frontier {
   TargetDefaultedToHost,

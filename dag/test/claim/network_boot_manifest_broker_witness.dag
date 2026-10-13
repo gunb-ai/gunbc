@@ -3,7 +3,7 @@ module test.claim.network_boot_manifest_broker_witness
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String, list_length }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, X86_64, X86, Aarch64, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
 import extdeps.provisioning.network_boot { UefiHttpBoot, LegacyBiosPxe }
 import extdeps.uri { uri_https }

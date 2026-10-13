@@ -1,6 +1,6 @@
 module test.claim.host.host_boot_attempt_admission_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.crypto.hash { sha256_digest }

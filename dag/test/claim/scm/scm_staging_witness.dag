@@ -26,7 +26,7 @@ module test.claim.scm.scm_staging_witness
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.minted_identity { MintedId, MintedIdAllocator }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.write_spine {
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
   StageManifestLocatorCollision, stage_source_at_path,

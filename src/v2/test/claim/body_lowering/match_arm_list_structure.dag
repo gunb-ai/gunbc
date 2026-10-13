@@ -7,7 +7,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, CoreEdgeLabel, MatchArmBodyEdge, MatchArmPatternEdge, edge_is_core }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }

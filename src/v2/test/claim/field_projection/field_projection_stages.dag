@@ -790,7 +790,7 @@ test fn fps_a_root_bound_type_projected_as_value_refuses_holds() -> Bool {
 // discriminator that could not tell them apart. A pair of rows is what holds that: either one alone is
 // satisfied by a resolver that always picks its own arm.
 // TWO MODULES, AND A MULTI-SEGMENT MODULE NAME, because the native subject is neither same-module nor
-// two-segment: it is `v2.std.live_tree.LiveTreeDisposition`, a FOUR-segment path into ANOTHER module. A
+// two-segment: it is `std.live_tree.LiveTreeDisposition`, a FOUR-segment path into ANOTHER module. A
 // first version of this row used `p.Box` inside module `p` and passed, which is why it is written out here
 // -- a same-module two-segment path exercises a different lookup than a cross-module one, so that row was
 // green about a property it never tested. The fixture now carries the subject's actual shape.

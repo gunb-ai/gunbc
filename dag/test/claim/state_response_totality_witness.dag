@@ -13,7 +13,7 @@ import gunbc.design.state_response {
   state_paint_rules, family_response_rules,
 }
 import gunbc.design.material { serialize_rules, respond_fast }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

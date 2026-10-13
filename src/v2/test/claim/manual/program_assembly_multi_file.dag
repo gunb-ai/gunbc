@@ -37,7 +37,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.namespace_graft { module_header_containment_graft }
 import v2.std.node {
   Atom,

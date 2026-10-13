@@ -10,7 +10,7 @@ import v2.std.effect_plan {
   Retry,
   While
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.operation_argv {
   ArgvExpressionUnsupported,
   BoundOperationInvocation,

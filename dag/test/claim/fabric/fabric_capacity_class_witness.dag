@@ -2,7 +2,7 @@ module test.claim.fabric.fabric_capacity_class_witness
 
 import std.logic { Bool }
 import std.types { List, NonEmptyStr, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { hardware_thread_count }
 import product.fabric.work { MaterializedProgram,
   CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,

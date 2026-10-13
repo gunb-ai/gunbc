@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, FilePath, List }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.auth.jwt { JwtUriString, JwtBareString, JwtAudienceSingle, NumericDateWholeSeconds }
 import extdeps.auth.oidc { OidcIdTokenClaims, OidcStandardClaims, OidcIdTokenVerdict, OidcIdTokenVerified }
 import product.fabric.provider_route { ProviderRoute, CompliancePostureRevision, PermittedJurisdictionsEnumerated }

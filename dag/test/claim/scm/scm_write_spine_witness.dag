@@ -16,7 +16,7 @@ module test.claim.scm.scm_write_spine_witness
 // recorded on this cut, through `gunbc.instruments.scm_write_spine_canary`.
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
 import gunbc.scm.object_store {
   CorpusManifestEntry, CorpusManifestObjectRef, ObjectId, object_id_eq, empty_store,

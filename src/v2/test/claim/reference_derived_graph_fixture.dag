@@ -26,7 +26,7 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node { Symbol, node_subtree_nodes }
 import std.optional { Optional }
 import std.optional { Absent, Present }

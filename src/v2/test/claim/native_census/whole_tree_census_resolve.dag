@@ -46,7 +46,7 @@ import v2.std.diagnostic {
   diagnostics_fatal
 }
 import v2.compiler.resolve { ObservationComplete, ObservationIncomplete }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }

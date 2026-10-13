@@ -32,7 +32,7 @@ import v2.std.diagnostic {
   diagnostics_fatal
 }
 import v2.std.language_model { LanguageModel }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Atom,
   Bind,

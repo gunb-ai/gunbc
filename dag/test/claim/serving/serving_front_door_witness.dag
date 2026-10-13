@@ -1,7 +1,7 @@
 module test.claim.serving.serving_front_door_witness
 
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List, EpochSecs, Secret }
 import std.nat { Nat }
 import extdeps.crypto.mac { MacKey, MacVerification, MacTagMismatch, HmacSha256, mac_verify }

@@ -31,7 +31,7 @@ import v2.test.claim.manual.connective_anchors {
   stub_empty_disj,
   stub_empty_transform
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

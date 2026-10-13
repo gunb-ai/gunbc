@@ -1,6 +1,6 @@
 module test.claim.stage0_rust_maintenance_census_report_live_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.stage0.stage0_rust_maintenance_census_report {
   RustMaintenanceCensusDerived,
   RustMaintenanceCensusObservationRefused,

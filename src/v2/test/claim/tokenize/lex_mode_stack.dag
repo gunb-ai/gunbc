@@ -27,7 +27,7 @@ import v2.std.compilers.lexing {
 }
 import v2.compiler.tokenize { tokenize }
 import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

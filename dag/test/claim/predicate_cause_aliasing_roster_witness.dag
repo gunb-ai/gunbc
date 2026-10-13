@@ -8,7 +8,7 @@ import gunbc.predicate_cause_aliasing_roster {
 }
 import std.logic { Bool }
 import v2.std.algebra { fold_list }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

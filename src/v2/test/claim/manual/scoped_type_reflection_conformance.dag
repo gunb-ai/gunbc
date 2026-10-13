@@ -4,7 +4,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { for_all, length }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Symbol }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node_reflection {
   coproduct_arm_keys_at,
   coproduct_arm_keys,

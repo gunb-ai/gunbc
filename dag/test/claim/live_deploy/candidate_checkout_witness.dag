@@ -1,7 +1,7 @@
 module test.claim.live_deploy.candidate_checkout_witness
 
 import std.types { Bool, String, List, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.deployed_tree_scope {
   path_is_deployed,
 }

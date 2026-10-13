@@ -7,7 +7,7 @@ import v2.workflow.floor_non_verdict_admission {
   non_verdict_added, non_verdict_repaid, non_verdict_admits,
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 data roster_fixture: List<String> = Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Empty {} } } }
 

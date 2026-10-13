@@ -24,7 +24,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }

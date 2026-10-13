@@ -326,7 +326,7 @@ data frontier_roster: List<FrontierMember> = [
   FrontierMember { label: ^optional, path: "src/v2/std/optional.dag" },
   FrontierMember { label: ^diagnostic, path: "src/v2/std/diagnostic.dag" },
   FrontierMember { label: ^occurrence, path: "dag/std/occurrence_identity.dag" },
-  FrontierMember { label: ^live_tree, path: "src/v2/std/live_tree.dag" },
+  FrontierMember { label: ^live_tree, path: "dag/std/live_tree.dag" },
   FrontierMember { label: ^error_primitives, path: "dag/std/error_primitives.dag" },
 ]
 

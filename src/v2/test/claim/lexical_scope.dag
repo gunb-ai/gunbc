@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { HeadAbsent, HeadFound, list_head, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { symbol_lexeme }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
