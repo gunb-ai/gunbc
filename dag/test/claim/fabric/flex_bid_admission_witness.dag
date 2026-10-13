@@ -76,8 +76,8 @@ fn t_reqs(revocation: RevocationStanding) -> ExecutionRequirements {
   }
 }
 
-fn usd_hour(micros: Nat) -> MoneyPerHour {
-  MoneyPerHour { amount: money_amount_micro(count: micros), currency: Usd }
+fn usd_hour(amount: MoneyAmountMicro) -> MoneyPerHour {
+  MoneyPerHour { amount: amount, currency: Usd }
 }
 
 fn t_offer(key: OfferKey, rate: MoneyPerHour) -> SupplierOffer<NonEmptyStr> {
@@ -100,7 +100,7 @@ fn t_offer(key: OfferKey, rate: MoneyPerHour) -> SupplierOffer<NonEmptyStr> {
 fn t_bound_avail_start(
   offer: SupplierOffer<NonEmptyStr>,
   availability: AvailabilityObservation,
-  start_micros: Nat,
+  start: MoneyAmountMicro,
 ) -> List<CandidateOffer<NonEmptyStr>> {
   match bind_candidate(
     offer: offer,
@@ -109,7 +109,7 @@ fn t_bound_avail_start(
       availability: availability,
       commitment: PayAsYouGo,
       start: StartCostMeasured {
-        amount: MoneyRate { amount: money_amount_micro(count: start_micros), currency: Usd },
+        amount: MoneyRate { amount: start, currency: Usd },
         receipt: "start-1",
       },
       transition: NoTransitionRequired,
@@ -134,7 +134,7 @@ fn t_bound_avail(
   offer: SupplierOffer<NonEmptyStr>,
   availability: AvailabilityObservation,
 ) -> List<CandidateOffer<NonEmptyStr>> {
-  t_bound_avail_start(offer: offer, availability: availability, start_micros: 0)
+  t_bound_avail_start(offer: offer, availability: availability, start: money_amount_micro(count: 0))
 }
 
 fn t_bound(offer: SupplierOffer<NonEmptyStr>, revocable: Bool) -> List<CandidateOffer<NonEmptyStr>> {
@@ -156,34 +156,34 @@ fn t_machine(id: NonEmptyStr) -> FlexMachineKey {
   }
 }
 
-fn t_policy(cap_micros: Nat) -> FlexPolicy {
+fn t_policy(cap: MoneyPerHour) -> FlexPolicy {
   FlexPolicy {
-    fleet_rate_cap: usd_hour(micros: cap_micros),
+    fleet_rate_cap: cap,
     floor_buffer: flex_floor_buffer,
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
   }
 }
 
-fn eur_hour(micros: Nat) -> MoneyPerHour {
-  MoneyPerHour { amount: money_amount_micro(count: micros), currency: Eur }
+fn eur_hour(amount: MoneyAmountMicro) -> MoneyPerHour {
+  MoneyPerHour { amount: amount, currency: Eur }
 }
 
-fn t_policy_eur(cap_micros: Nat) -> FlexPolicy {
+fn t_policy_eur(cap: MoneyPerHour) -> FlexPolicy {
   FlexPolicy {
-    fleet_rate_cap: eur_hour(micros: cap_micros),
+    fleet_rate_cap: cap,
     floor_buffer: flex_floor_buffer,
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
   }
 }
 
-fn t_account(ceiling: Nat) -> MoneyAccount {
+fn t_account(ceiling: MoneyAmountMicro) -> MoneyAccount {
   MoneyAccount {
     account: "flex-fleet",
     currency: Usd,
     ledger: EncumbranceLedger {
-      appropriation: Appropriation { ceiling: money_amount_micro(count: ceiling) },
+      appropriation: Appropriation { ceiling: ceiling },
       entries: [],
     },
     leases: [],
@@ -227,7 +227,7 @@ fn t_attempt(
       f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
     ),
     subject: FlexNewAcquisition,
-    on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "on-demand-ref"),
+    on_demand_reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "on-demand-ref"),
     requirements: t_reqs(revocation: revocation),
     reservation: reservation,
     generation: 1,
@@ -288,7 +288,7 @@ fn t_price_from_bound(
           flex_price_offer(
             offer: c.offer,
             inputs: c.dispatch,
-            policy: t_policy(cap_micros: 5000000),
+            policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
             attempt: t_attempt(
               machine: t_machine(id: "machine-a"),
               min_bid: one_dollar_wire(),
@@ -373,8 +373,8 @@ fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
 }
 
 // Dollar amounts as ExactDecimal: 1.00 = 100 cents at 2 fraction digits → 1_000_000 micros.
-fn one_dollar() -> MoneyPerHour { usd_hour(micros: 1000000) }
-fn one_ten() -> MoneyPerHour { usd_hour(micros: 1100000) }
+fn one_dollar() -> MoneyPerHour { usd_hour(amount: money_amount_micro(count: 1000000)) }
+fn one_ten() -> MoneyPerHour { usd_hour(amount: money_amount_micro(count: 1100000)) }
 fn one_dollar_wire() -> ExactDecimal { ExactDecimal { units: 1, fraction_digits: 0 } }
 fn one_twenty_wire() -> ExactDecimal { ExactDecimal { units: 12, fraction_digits: 1 } }
 
@@ -416,12 +416,12 @@ test fn vast_min_bid_rounds_up_a_seventh_fraction_digit() -> Bool {
 }
 
 test fn two_acquisitions_race_one_allowance_and_the_second_is_refused() -> Bool {
-  let policy = t_policy(cap_micros: 5000000)
+  let policy = t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000)))
   let first = flex_bid_admission(
     policy: policy,
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -457,12 +457,12 @@ test fn two_acquisitions_race_one_allowance_and_the_second_is_refused() -> Bool 
 // RED: a history-keyed retained limit would refuse rediscovery of machine-a at a higher min.
 // Rediscovery is a new acquisition: same ceiling as an equivalent fresh machine, never above policy.
 test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent() -> Bool {
-  let policy = t_policy(cap_micros: 5000000)
+  let policy = t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000)))
   let first = flex_bid_admission(
     policy: policy,
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -477,11 +477,11 @@ test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent()
     policy: policy,
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_twenty_wire(),
-      quote: usd_hour(micros: 1320000),
+      quote: usd_hour(amount: money_amount_micro(count: 1320000)),
       key: "offer-a-again",
       reservation: "res-a-again",
       revocation: RevocationAccepted,
@@ -492,11 +492,11 @@ test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent()
     policy: policy,
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-b"),
       min_bid: one_twenty_wire(),
-      quote: usd_hour(micros: 1320000),
+      quote: usd_hour(amount: money_amount_micro(count: 1320000)),
       key: "offer-b",
       reservation: "res-b",
       revocation: RevocationAccepted,
@@ -517,12 +517,12 @@ test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent()
 }
 
 test fn repeated_outbid_and_rediscovery_never_admits_above_the_policy_ceiling() -> Bool {
-  let policy = t_policy(cap_micros: 1500000)
+  let policy = t_policy(cap: usd_hour(amount: money_amount_micro(count: 1500000)))
   let under = flex_bid_admission(
     policy: policy,
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -537,11 +537,11 @@ test fn repeated_outbid_and_rediscovery_never_admits_above_the_policy_ceiling() 
     policy: policy,
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: ExactDecimal { units: 16, fraction_digits: 1 },
-      quote: usd_hour(micros: 1760000),
+      quote: usd_hour(amount: money_amount_micro(count: 1760000)),
       key: "offer-over",
       reservation: "res-over",
       revocation: RevocationAccepted,
@@ -554,15 +554,15 @@ test fn repeated_outbid_and_rediscovery_never_admits_above_the_policy_ceiling() 
 }
 
 test fn the_fleet_rate_cap_is_the_sum_of_standing_plus_the_proposed_bid() -> Bool {
-  let policy = t_policy(cap_micros: 1500000)
+  let policy = t_policy(cap: usd_hour(amount: money_amount_micro(count: 1500000)))
   let occupied = FlexFleetOccupancy {
-    standing: [AcquisitionActive { rate: usd_hour(micros: 1497000) }],
+    standing: [AcquisitionActive { rate: usd_hour(amount: money_amount_micro(count: 1497000)) }],
   }
   let proposed = flex_bid_admission(
     policy: policy,
     occupancy: occupied,
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-b"),
       min_bid: one_dollar_wire(),
@@ -577,14 +577,14 @@ test fn the_fleet_rate_cap_is_the_sum_of_standing_plus_the_proposed_bid() -> Boo
 }
 
 test fn an_existing_acquisition_bid_is_never_raised() -> Bool {
-  let policy = t_policy(cap_micros: 5000000)
-  let bound = t_bound(offer: t_offer(key: "offer-hold", rate: usd_hour(micros: 1320000)), revocable: true)
+  let policy = t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000)))
+  let bound = t_bound(offer: t_offer(key: "offer-hold", rate: usd_hour(amount: money_amount_micro(count: 1320000))), revocable: true)
   let machine = t_machine(id: "machine-a")
   let o = flex_bid_admission(
     policy: policy,
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: FlexBidAttempt {
       machine: machine,
       min_bid: one_twenty_wire(),
@@ -594,8 +594,8 @@ test fn an_existing_acquisition_bid_is_never_raised() -> Bool {
         init: [],
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
       ),
-      subject: FlexExistingAcquisition { current_bid: usd_hour(micros: 1100000) },
-      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "on-demand-hold"),
+      subject: FlexExistingAcquisition { current_bid: usd_hour(amount: money_amount_micro(count: 1100000)) },
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "on-demand-hold"),
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-hold",
       generation: 1,
@@ -609,10 +609,10 @@ test fn an_existing_acquisition_bid_is_never_raised() -> Bool {
 
 test fn rate_cap_and_cash_invariants_are_both_enforced() -> Bool {
   let cap_refuse = flex_bid_admission(
-    policy: t_policy(cap_micros: 500000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 500000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -624,10 +624,10 @@ test fn rate_cap_and_cash_invariants_are_both_enforced() -> Bool {
     ),
   )
   let cash_refuse = flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 1000),
+    account: t_account(ceiling: money_amount_micro(count: 1000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -643,10 +643,10 @@ test fn rate_cap_and_cash_invariants_are_both_enforced() -> Bool {
 
 test fn a_revocable_offer_is_refused_for_warm_residency() -> Bool {
   let o = flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -677,7 +677,7 @@ test fn a_currency_mismatch_is_refused_not_compared() -> Bool {
     leases: [],
   }
   refusal_label(o: flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: eur_account,
@@ -698,10 +698,10 @@ test fn a_candidate_tagged_for_another_machine_is_refused() -> Bool {
   let other = t_machine(id: "machine-b")
   let bound = t_bound(offer: t_offer(key: "offer-b", rate: one_ten()), revocable: true)
   refusal_label(o: flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: FlexBidAttempt {
       machine: named,
       min_bid: one_dollar_wire(),
@@ -712,7 +712,7 @@ test fn a_candidate_tagged_for_another_machine_is_refused() -> Bool {
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: other, candidate: c }]),
       ),
       subject: FlexNewAcquisition,
-      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "on-demand-mismatch"),
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "on-demand-mismatch"),
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-mismatch",
       generation: 1,
@@ -734,7 +734,7 @@ test fn a_usd_wire_min_bid_is_refused_against_a_eur_cap() -> Bool {
     leases: [],
   }
   refusal_label(o: flex_bid_admission(
-    policy: t_policy_eur(cap_micros: 5000000),
+    policy: t_policy_eur(cap: eur_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: eur_account,
@@ -752,10 +752,10 @@ test fn a_usd_wire_min_bid_is_refused_against_a_eur_cap() -> Bool {
 
 test fn a_buffered_min_under_the_on_demand_relative_ceiling_admits() -> Bool {
   let o = flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -771,10 +771,10 @@ test fn a_buffered_min_under_the_on_demand_relative_ceiling_admits() -> Bool {
 
 test fn a_buffered_min_over_the_on_demand_relative_ceiling_refuses() -> Bool {
   refusal_label(o: flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt_ref(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -783,17 +783,17 @@ test fn a_buffered_min_over_the_on_demand_relative_ceiling_refuses() -> Bool {
       reservation: "res-over-od",
       revocation: RevocationAccepted,
       revocable: true,
-      reference: t_on_demand_ref(rate: usd_hour(micros: 1000000), key: "od-cheap"),
+      reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 1000000)), key: "od-cheap"),
     ),
   )) == "on-demand-ceiling"
 }
 
 test fn a_missing_on_demand_reference_refuses() -> Bool {
   refusal_label(o: flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt_ref(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -808,14 +808,14 @@ test fn a_missing_on_demand_reference_refuses() -> Bool {
 }
 
 test fn a_stale_on_demand_reference_refuses() -> Bool {
-  match t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-stale") {
+  match t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "od-stale") {
     FlexOnDemandReferenceMissing => false
     FlexOnDemandReferenceFresh { candidate: c } =>
       refusal_label(o: flex_bid_admission(
-        policy: t_policy(cap_micros: 5000000),
+        policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
         occupancy: empty_occupancy(),
         window: t_window(remaining: 1),
-        account: t_account(ceiling: 10000000),
+        account: t_account(ceiling: money_amount_micro(count: 10000000)),
         attempt: t_attempt_ref(
           machine: t_machine(id: "machine-a"),
           min_bid: one_dollar_wire(),
@@ -833,8 +833,8 @@ test fn a_stale_on_demand_reference_refuses() -> Bool {
 
 test fn a_reservation_ceiling_currency_mismatch_is_refused() -> Bool {
   match policy_reservation_ceiling(
-    policy: t_policy(cap_micros: 5000000),
-    min_bid: eur_hour(micros: 1100000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
+    min_bid: eur_hour(amount: money_amount_micro(count: 1100000)),
   ) {
     FlexReservationCeilingCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
       mismatch_left == Eur && mismatch_right == Usd
@@ -845,7 +845,7 @@ test fn a_reservation_ceiling_currency_mismatch_is_refused() -> Bool {
 test fn an_unobserved_on_demand_availability_refuses() -> Bool {
   let reference = fold(
     t_bound_avail(
-      offer: t_offer(key: "od-unobserved", rate: usd_hour(micros: 2000000)),
+      offer: t_offer(key: "od-unobserved", rate: usd_hour(amount: money_amount_micro(count: 2000000))),
       availability: AvailabilityUnobserved { obligation: "vendor console did not answer" },
     ),
     init: FlexOnDemandReferenceMissing,
@@ -858,10 +858,10 @@ test fn an_unobserved_on_demand_availability_refuses() -> Bool {
       },
   )
   refusal_label(o: flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt_ref(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -877,10 +877,10 @@ test fn an_unobserved_on_demand_availability_refuses() -> Bool {
 
 test fn rediscovery_never_lifts_the_on_demand_relative_ceiling() -> Bool {
   let first = flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -892,14 +892,14 @@ test fn rediscovery_never_lifts_the_on_demand_relative_ceiling() -> Bool {
     ),
   )
   let lifted = flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: ExactDecimal { units: 19, fraction_digits: 1 },
-      quote: usd_hour(micros: 2090000),
+      quote: usd_hour(amount: money_amount_micro(count: 2090000)),
       key: "offer-rediscover-od",
       reservation: "res-rediscover-od",
       revocation: RevocationAccepted,
@@ -913,10 +913,10 @@ test fn rediscovery_never_lifts_the_on_demand_relative_ceiling() -> Bool {
 
 test fn a_quote_at_the_floor_cannot_admit_a_buffered_bid_over_the_ceiling() -> Bool {
   refusal_label(o: flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt_ref(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -925,17 +925,17 @@ test fn a_quote_at_the_floor_cannot_admit_a_buffered_bid_over_the_ceiling() -> B
       reservation: "res-quote-floor",
       revocation: RevocationAccepted,
       revocable: true,
-      reference: t_on_demand_ref(rate: usd_hour(micros: 1050000), key: "od-105"),
+      reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 1050000)), key: "od-105"),
     ),
   )) == "on-demand-ceiling"
 }
 
 test fn an_on_demand_target_is_refused() -> Bool {
   refusal_label(o: flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_dollar_wire(),
@@ -955,10 +955,10 @@ test fn an_unobserved_target_is_refused() -> Bool {
     availability: AvailabilityUnobserved { obligation: "vendor console did not answer" },
   )
   refusal_label(o: flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: FlexBidAttempt {
       machine: machine,
       min_bid: one_dollar_wire(),
@@ -969,7 +969,7 @@ test fn an_unobserved_target_is_refused() -> Bool {
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
       ),
       subject: FlexNewAcquisition,
-      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-unobs-target"),
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "od-unobs-target"),
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-unobs-target",
       generation: 1,
@@ -984,10 +984,10 @@ test fn an_existing_current_bid_over_the_cap_is_refused() -> Bool {
   let machine = t_machine(id: "machine-a")
   let bound = t_bound(offer: t_offer(key: "offer-over-cap", rate: one_dollar()), revocable: true)
   refusal_label(o: flex_bid_admission(
-    policy: t_policy(cap_micros: 1500000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 1500000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: FlexBidAttempt {
       machine: machine,
       min_bid: one_dollar_wire(),
@@ -997,8 +997,8 @@ test fn an_existing_current_bid_over_the_cap_is_refused() -> Bool {
         init: [],
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
       ),
-      subject: FlexExistingAcquisition { current_bid: usd_hour(micros: 2000000) },
-      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-exist-cap"),
+      subject: FlexExistingAcquisition { current_bid: usd_hour(amount: money_amount_micro(count: 2000000)) },
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "od-exist-cap"),
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-exist-cap",
       generation: 1,
@@ -1013,12 +1013,12 @@ test fn an_existing_acquisition_does_not_admit_when_aggregate_is_over_cap() -> B
   let machine = t_machine(id: "machine-a")
   let bound = t_bound(offer: t_offer(key: "offer-exist-agg", rate: one_dollar()), revocable: true)
   refusal_label(o: flex_bid_admission(
-    policy: t_policy(cap_micros: 1500000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 1500000))),
     occupancy: FlexFleetOccupancy {
-      standing: [AcquisitionActive { rate: usd_hour(micros: 2000000) }],
+      standing: [AcquisitionActive { rate: usd_hour(amount: money_amount_micro(count: 2000000)) }],
     },
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: FlexBidAttempt {
       machine: machine,
       min_bid: one_dollar_wire(),
@@ -1028,8 +1028,8 @@ test fn an_existing_acquisition_does_not_admit_when_aggregate_is_over_cap() -> B
         init: [],
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
       ),
-      subject: FlexExistingAcquisition { current_bid: usd_hour(micros: 1100000) },
-      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-exist-agg"),
+      subject: FlexExistingAcquisition { current_bid: usd_hour(amount: money_amount_micro(count: 1100000)) },
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "od-exist-agg"),
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-exist-agg",
       generation: 1,
@@ -1044,10 +1044,10 @@ test fn an_unchanged_existing_acquisition_does_not_consume_the_window() -> Bool 
   let machine = t_machine(id: "machine-a")
   let bound = t_bound(offer: t_offer(key: "offer-exist-ok", rate: one_dollar()), revocable: true)
   match flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: FlexBidAttempt {
       machine: machine,
       min_bid: one_dollar_wire(),
@@ -1057,8 +1057,8 @@ test fn an_unchanged_existing_acquisition_does_not_consume_the_window() -> Bool 
         init: [],
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
       ),
-      subject: FlexExistingAcquisition { current_bid: usd_hour(micros: 1100000) },
-      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-exist-ok"),
+      subject: FlexExistingAcquisition { current_bid: usd_hour(amount: money_amount_micro(count: 1100000)) },
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "od-exist-ok"),
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-exist-ok",
       generation: 1,
@@ -1078,10 +1078,10 @@ test fn a_zero_window_existing_acquisition_is_still_unchanged() -> Bool {
   let machine = t_machine(id: "machine-a")
   let bound = t_bound(offer: t_offer(key: "offer-exist-zero-win", rate: one_dollar()), revocable: true)
   match flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 0),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: FlexBidAttempt {
       machine: machine,
       min_bid: one_dollar_wire(),
@@ -1091,8 +1091,8 @@ test fn a_zero_window_existing_acquisition_is_still_unchanged() -> Bool {
         init: [],
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
       ),
-      subject: FlexExistingAcquisition { current_bid: usd_hour(micros: 1100000) },
-      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-exist-zero-win"),
+      subject: FlexExistingAcquisition { current_bid: usd_hour(amount: money_amount_micro(count: 1100000)) },
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "od-exist-zero-win"),
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-exist-zero-win",
       generation: 1,
@@ -1113,13 +1113,13 @@ test fn a_nonzero_setup_hold_covers_the_projected_liability() -> Bool {
   let bound = t_bound_avail_start(
     offer: t_offer(key: "offer-setup-hold", rate: one_dollar()),
     availability: AvailableRevocable { delay: second(count: 0), receipt: "avail-revocable" },
-    start_micros: 50000,
+    start: money_amount_micro(count: 50000),
   )
   match flex_bid_admission(
-    policy: t_policy(cap_micros: 5000000),
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
-    account: t_account(ceiling: 10000000),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: FlexBidAttempt {
       machine: machine,
       min_bid: one_dollar_wire(),
@@ -1130,7 +1130,7 @@ test fn a_nonzero_setup_hold_covers_the_projected_liability() -> Bool {
         f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
       ),
       subject: FlexNewAcquisition,
-      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-setup-hold"),
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "od-setup-hold"),
       requirements: t_reqs(revocation: RevocationAccepted),
       reservation: "res-setup-hold",
       generation: 1,
@@ -1240,7 +1240,7 @@ test fn flex_price_offer_keeps_wrong_currency_candidacy() -> Bool {
 
 test fn flex_price_offer_keeps_unaffordable_candidacy() -> Bool {
   t_horizon_arm(h: t_price_one(
-    offer: t_offer(key: "price-dear", rate: usd_hour(micros: 2000000)),
+    offer: t_offer(key: "price-dear", rate: usd_hour(amount: money_amount_micro(count: 2000000))),
     availability: AvailableIndefinitely { delay: second(count: 0), receipt: "avail-1" },
     revocation: RevocationAccepted,
     budget: Usd,
@@ -1265,10 +1265,10 @@ test fn admission_converts_the_vast_wire_min_bid() -> Bool {
     DecimalMoneyPerHourConverted { rate: converted } => {
       let buffered = flex_buffered_min(min_bid: converted, buffer: flex_floor_buffer)
       match flex_bid_admission(
-        policy: t_policy(cap_micros: 5000000),
+        policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
         occupancy: empty_occupancy(),
         window: t_window(remaining: 1),
-        account: t_account(ceiling: 10000000),
+        account: t_account(ceiling: money_amount_micro(count: 10000000)),
         attempt: t_attempt(
           machine: t_machine(id: "machine-a"),
           min_bid: offer.min_bid,
