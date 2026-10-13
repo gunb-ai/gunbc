@@ -14,7 +14,7 @@ import std.primitive_identity {
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.types { List, String }
-import std.algebra { trim, Cons, Empty }
+import std.algebra { trim }
 import std.optional { Absent, Present }
 import std.decl_ref { decl_ref }
 import gunbc.primitive_runtime_body_gate { runtime_body_required_check_census_in }
@@ -24,19 +24,8 @@ import gunbc.rust_item_identity { RustFunction, RustItemIdentity }
 import extdeps.languages.rust.emit { RuntimeFunction, rt_function_registry }
 import v1.compiler.runtime_rust { rust_runtime_source }
 
-fn drop_prefix<T>(xs: List<T>, n: Int) -> List<T> {
-  if n <= 0 {
-    xs
-  } else {
-    match xs {
-      Empty => Empty
-      Cons { head: _, tail: t } => drop_prefix(xs: t, n: n - 1)
-    }
-  }
-}
-
 fn primitive_runtime_item_has_body(item: RustItemIdentity, lines: List<String>) -> Bool {
-  match drop_prefix(xs: lines, n: item.start_line + item.loc - 2) |> first {
+  match lines |> skip(item.start_line + item.loc - 2) |> first {
     Present { value: line } => ends_with(s: trim(s: line), suffix: "}")
     Absent => false
   }
