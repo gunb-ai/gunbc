@@ -180,7 +180,11 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 
 **Owns.** Selection, allocation, placement and admission of compute resources. product.capacity and product.fabric are the shared authority, consumed by compute cells and by inference serving.
 
-**Boundary.** Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).
+**Boundaries.**
+
+- Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).
+- Whether a choice is attributable to its objective, constraints, candidates and evidence belongs to the decision / selection domain and std.decision; this row only checks that a resource choice reaches that authority with the work's declared objective rather than a local one.
+- Buyer headroom (what a demand will pay minus a supplier's ask) is not margin: product.fabric.contention withdrew that reading, so a matching change may not book it as earned.
 
 **Existing authorities**
 
@@ -188,6 +192,8 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
   - `product.fabric.selection::select_supply`
   - `product.fabric.work::ExecutionRequirements`
   - `gunbc.compute.work_request::WorkOperation`
+  - `product.fabric.contention::select_demand_for_offer`
+  - `gunbc.ci.ci_runner_target::CiRunnerTarget`
 - **Compute cells** — layout, reservation and admission
   - `gunbc.compute.work_provider_local::ComputeLayout`
   - `gunbc.fabric.fabric_control_plane::CellReservation`
@@ -201,7 +207,7 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 
 ### Decision / selection
 
-**Owns.** A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority.
+**Owns.** A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority. Every use case that matches demand with supply or chooses how a demanded result is realized onboards here, through one interface rather than its own scoring: it supplies the required outcome, the owners' objectives and time valuations, the constraints and commitments, and each candidate's consequences as readings on declared axes, then realizes and reads back the selected plan. Fabric allocation, CI runner placement, compute sold beside internal work, standing buy orders matched against a scanned marketplace, and eval realization are named consumers. A rough estimate is an admitted reading with its standing, and improving it does not create a new choosing mechanism.
 
 **Boundaries.**
 
