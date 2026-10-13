@@ -145,7 +145,7 @@ fn retry_admissibility(
     Absent => match hint {
       RetryHintUnresolved { cause: c } => RetryHintUnreadable { cause: c }
       RetryHintNone => retry_admissibility_given_delay(
-        law: law, history: history, hinted_delay: none, jitter: jitter)
+        law: law, history: history, hinted_delay: Absent, jitter: jitter)
       RetryHintDelay { delay: h } => retry_admissibility_given_delay(
         law: law, history: history, hinted_delay: Present { value: h }, jitter: jitter)
     }
