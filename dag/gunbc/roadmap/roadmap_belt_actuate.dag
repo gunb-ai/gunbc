@@ -2492,7 +2492,6 @@ fn belt_actuate_spawn_with_origin(
   }
   }
   }
-  }
 }
 
 // THE ADMITTED SPAWN'S HOST STEPS, carrying the session's placement grant when its container holds
