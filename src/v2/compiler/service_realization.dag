@@ -2,14 +2,18 @@ module v2.compiler.service_realization
 
 import std.fidelity { TransportClass, LocalDirect, ShellLocal, FileBoundary, RestNetwork, InterfaceStub, Unknown }
 import extdeps.ietf.http_semantics { HttpStatusClass, Informational, Successful, Redirection, ClientError, ServerError, http_status_class_digit }
-import extdeps.transports.shell_declared { ShellArgv, ShellExitCode, ShellExitNonzero, ShellExitPattern, shell_binding_field_key, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
-import extdeps.transports.rest_declared { RestResponseStatus, RestStatusClass, RestStatusCode, rest_binding_field_of_key }
-import extdeps.transports.file_declared { file_binding_field_of_key, file_output_channel_of_key }
+import extdeps.transports.shell_declared { ShellArgvContract, ShellExitCode, ShellExitNonzero, ShellExitPattern, ShellStringTemplateContract, shell_binding_field_contract, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
+import extdeps.transports.rest_declared { RestOtherContract, RestResponseStatus, RestStatusClass, RestStatusCode, RestStringTemplateContract, rest_binding_field_contract, rest_binding_field_of_key }
+import extdeps.transports.file_declared { FileOtherContract, FileStringTemplateContract, file_binding_field_contract, file_binding_field_of_key, file_output_channel_of_key }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
 import std.types { http_status_of }
-import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, BindingMalformed, ExecutablePositionNotLiteral, UndeclaredInputBound }
+import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
+import v2.std.template { Template, TemplateHolePart, TemplateLiteralPart, TemplatePart, template_holes }
 import v2.std.list_introduction { list_introduction_elements_optional }
-import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.node_query { binder_node_parts }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import v2.compiler.fold_lowering { collection_concat_shape_declaration_path }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, non_empty }
 import v2.std.service_realization_labels {
   realization_root_label,
   realization_config_label,
@@ -32,6 +36,8 @@ import v2.std.node {
   Arrow,
   Atom,
   Occupancy,
+  Bind,
+  Branch,
   ComputationNode,
   Conj,
   Connective,
@@ -40,11 +46,15 @@ import v2.std.node {
   Found,
   Instantiation,
   Authored,
+  Loop,
+  Match,
   StructuralLabel,
   Node,
   Positional,
   Symbol,
+  Transform,
   TypeNode,
+  Value,
   all_names_distinct,
   content_hash,
   named_edge_target_lookup,
@@ -114,14 +124,6 @@ fn declared_transport_of_keyword(label: Symbol) -> Optional<DeclaredTransport> {
   else if transport_class_keyword_is(class: RestNetwork, label: label) { optional_present(value: DeclaredRest) }
   else if transport_class_keyword_is(class: FileBoundary, label: label) { optional_present(value: DeclaredFile) }
   else { optional_absent() }
-}
-
-fn declared_transport_admits_field(kind: DeclaredTransport, key: String) -> Bool {
-  match kind {
-    DeclaredShell => match shell_binding_field_of_key(key: key) { Present { value: _ } => true  Absent => false }
-    DeclaredRest => match rest_binding_field_of_key(key: key) { Present { value: _ } => true  Absent => false }
-    DeclaredFile => match file_binding_field_of_key(key: key) { Present { value: _ } => true  Absent => false }
-  }
 }
 
 // A `from "key"` on rest names a member of the decoded body (RFC 8259 member names are open); on shell
@@ -304,12 +306,39 @@ fn operation_output_names(op: Node) -> List<Symbol> {
   }
 }
 
-// Its declared inputs: the binder names of its domain, the first Positional child.
+// Its declared inputs: the binder names of its domain, the first Positional child. An operation
+// lowered through body_lower_operation_params has the one binder ^operation_input whose target is
+// the input payload; the names a transport hole binds are that payload's fields (XL-2 3b-ii).
 fn operation_input_names(op: Node) -> List<Symbol> {
   let walk = fold(op.children, init: positional_walk_initial(), f: positional_walk_step)
   match walk.first {
-    Present { value: domain } => fold(domain.children, init: symbol_list_empty(), f: edge_name_step)
+    Present { value: domain } => operation_input_names_of_domain(domain: domain)
     Absent => symbol_list_empty()
+  }
+}
+
+fn operation_input_names_of_domain(domain: Node) -> List<Symbol> {
+  let binders = fold(domain.children, init: symbol_list_empty(), f: edge_name_step)
+  match binders {
+    Cons { head: n, tail: rest } =>
+      match rest {
+        Empty =>
+          if n == ^operation_input {
+            match named_edge_target_lookup(children: domain.children, name: ^operation_input) {
+              Found { target: binder } =>
+                match binder_node_parts(n: binder) {
+                  Present { value: parts } => fold(parts.type_node.children, init: symbol_list_empty(), f: edge_name_step)
+                  Absent => binders
+                }
+              Ambiguous => binders
+              Absent => binders
+            }
+          } else {
+            binders
+          }
+        Cons { head: _, tail: _ } => binders
+      }
+    Empty => binders
   }
 }
 
@@ -481,34 +510,83 @@ fn realization_binding_field_refusal(kind: DeclaredTransport, op: Node, field: E
   match named_label(e: field) {
     Present { value: n } =>
       if n == realization_transport_kind_label() { optional_absent() }
-      else if !declared_transport_admits_field(kind: kind, key: symbol_lexeme(sym: n)) { realization_refusal(reason: ^service_realization_binding_field_unknown, at: field.target) }
-      else if declared_field_is_shell_argv(kind: kind, n: n) { shell_argv_refusal(op: op, argv: field.target) }
-      else { optional_absent() }
+      else { realization_declared_field_refusal(kind: kind, op: op, key: symbol_lexeme(sym: n), value: field.target) }
     Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: field.target)
   }
 }
 
-fn declared_field_is_shell_argv(kind: DeclaredTransport, n: Symbol) -> Bool {
+// The field's value contract lives on the declared vocabulary. This wall reads that fold; it does
+// not restate which variants are templates.
+fn realization_declared_field_refusal(kind: DeclaredTransport, op: Node, key: String, value: Node) -> Optional<RealizationRefusal> {
   match kind {
-    DeclaredShell => symbol_lexeme(sym: n) == shell_binding_field_key(field: ShellArgv)
-    DeclaredRest => false
-    DeclaredFile => false
+    DeclaredShell =>
+      match shell_binding_field_of_key(key: key) {
+        Present { value: field } =>
+          match shell_binding_field_contract(field: field) {
+            ShellArgvContract => shell_argv_refusal(op: op, argv: value)
+            ShellStringTemplateContract => transport_string_field_refusal(op: op, value: value)
+          }
+        Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: value)
+      }
+    DeclaredRest =>
+      match rest_binding_field_of_key(key: key) {
+        Present { value: field } =>
+          match rest_binding_field_contract(field: field) {
+            RestStringTemplateContract => transport_string_field_refusal(op: op, value: value)
+            RestOtherContract => optional_absent()
+          }
+        Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: value)
+      }
+    DeclaredFile =>
+      match file_binding_field_of_key(key: key) {
+        Present { value: field } =>
+          match file_binding_field_contract(field: field) {
+            FileStringTemplateContract => transport_string_field_refusal(op: op, value: value)
+            FileOtherContract => optional_absent()
+          }
+        Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: value)
+      }
   }
 }
 
 // A SHELL ARGV IS READ IN THE SHARED ARGV VOCABULARY (v2.std.operation_argv). It is a list literal whose
 // executable position (argv[0]) is a string literal -- a declared input may never decide which program
-// runs -- and whose every other element is a string literal or a reference to one of the operation's
-// declared inputs. Each other shape refuses with that module's ArgvRefusalCause: not a list
-// (BindingMalformed), empty (ArgvEmpty), a non-literal executable (ExecutablePositionNotLiteral), a name
-// the operation does not declare (UndeclaredInputBound), or any other expression
-// (ArgvExpressionUnsupported). An interpolating string literal is read as its text here, as v2 lexes it
-// (gunbc.recurring_failure_mode string_interpolation_read_as_literal_text_by_v2).
+// runs -- and whose every other element is a Template<OperationInputName> (XL-2 3b-ii, gunbc#13405):
+// a string literal, a string-template concat of literals and name holes, or a bare declared-input
+// name. Each other shape refuses with that module's ArgvRefusalCause: not a list (BindingMalformed),
+// empty (ArgvEmpty), a non-literal executable (ExecutablePositionNotLiteral), a name the operation
+// does not declare (UndeclaredInputBound), or any other expression (ArgvExpressionUnsupported).
 fn shell_argv_refusal(op: Node, argv: Node) -> Optional<RealizationRefusal> {
   match shell_argv_cause(inputs: operation_input_names(op: op), argv: argv) {
     Present { value: cause } =>
       optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: argv, argv: optional_present(value: cause) })
     Absent => optional_absent()
+  }
+}
+
+fn transport_string_field_refusal(op: Node, value: Node) -> Optional<RealizationRefusal> {
+  match list_introduction_elements_optional(node: value) {
+    Present { value: elements } =>
+      fold(elements, init: optional_absent(), f: fn(acc, el) {
+        realization_first_refusal(acc: acc, next: fn() { transport_template_element_refusal(op: op, el: el) })
+      })
+    Absent => transport_template_element_refusal(op: op, el: value)
+  }
+}
+
+// A string-shaped transport field is Template<OperationInputName>, or a list of those. Each element
+// uses the hole check argv uses, without argv[0]'s executable-literal rule. An element that is
+// not a template refuses located (ArgvExpressionUnsupported) rather than admitting.
+fn transport_template_element_refusal(op: Node, el: Node) -> Optional<RealizationRefusal> {
+  match argv_template_of_node(el: el) {
+    Present { value: t } =>
+      match argv_template_holes_cause(inputs: operation_input_names(op: op), t: t) {
+        Present { value: cause } =>
+          optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: el, argv: optional_present(value: cause) })
+        Absent => optional_absent()
+      }
+    Absent =>
+      optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: el, argv: argv_expression_unsupported() })
   }
 }
 
@@ -542,32 +620,129 @@ fn argv_walk_step(inputs: List<Symbol>, acc: ArgvWalk, el: Node) -> ArgvWalk {
 }
 
 fn argv_element_cause(inputs: List<Symbol>, index: Int, el: Node) -> Optional<ArgvRefusalCause> {
-  match dag_string_literal_value_optional(node: el) {
-    Present { value: _ } => optional_absent()
+  match argv_template_of_node(el: el) {
+    Present { value: t } =>
+      if (index == 0) && non_empty(xs: template_holes(t: t)) {
+        optional_present(value: ExecutablePositionNotLiteral { detail: "argv[0] is not a string literal" })
+      } else {
+        argv_template_holes_cause(inputs: inputs, t: t)
+      }
     Absent =>
       if index == 0 {
         optional_present(value: ExecutablePositionNotLiteral { detail: "argv[0] is not a string literal" })
       } else {
-        argv_reference_cause(inputs: inputs, el: el)
+        argv_expression_unsupported()
       }
   }
 }
 
-// A bare name lowers to a childless Atom whose identity is its spelling.
-fn argv_reference_cause(inputs: List<Symbol>, el: Node) -> Optional<ArgvRefusalCause> {
+// ONE transport string as Template<OperationInputName>: a string literal, a #13405 concat of
+// literals and name holes, or a childless Atom naming a declared input.
+fn argv_template_of_node(el: Node) -> Optional<ArgvTemplate> {
+  match dag_string_literal_value_optional(node: el) {
+    Present { value: text } => optional_present(value: Template { parts: [TemplateLiteralPart { text: text }] })
+    Absent =>
+      match argv_concat_operands_optional(n: el) {
+        Present { value: pair } =>
+          match argv_template_of_node(el: pair.left) {
+            Absent => optional_absent()
+            Present { value: left } =>
+              match argv_template_of_node(el: pair.right) {
+                Absent => optional_absent()
+                Present { value: right } =>
+                  optional_present(value: Template { parts: list_append(left: left.parts, right: right.parts) })
+              }
+          }
+        Absent => argv_atom_template_optional(el: el)
+      }
+  }
+}
+
+type ArgvConcatPair {
+  left: Node
+  right: Node
+}
+
+fn argv_concat_operands_optional(n: Node) -> Optional<ArgvConcatPair> {
+  match n.kind {
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: b } =>
+      match b {
+        Transform => argv_transform_concat_operands_optional(n: n)
+        Value => optional_absent()
+        Branch => optional_absent()
+        Loop => optional_absent()
+        Bind => optional_absent()
+        Match => optional_absent()
+      }
+  }
+}
+
+fn argv_transform_concat_operands_optional(n: Node) -> Optional<ArgvConcatPair> {
+  let pos = fold(n.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Positional => list_snoc_item(xs: acc, item: e.target)
+      Authored { name: _ } => acc
+      StructuralLabel { label: _ } => acc
+    }
+  })
+  match pos {
+    Cons { head: op, tail: after_op } =>
+      match after_op {
+        Cons { head: left, tail: after_left } =>
+          match after_left {
+            Cons { head: right, tail: rest } =>
+              match rest {
+                Empty =>
+                  if argv_is_concat_operator(op: op) {
+                    optional_present(value: ArgvConcatPair { left: left, right: right })
+                  } else {
+                    optional_absent()
+                  }
+                Cons { head: _, tail: _ } => optional_absent()
+              }
+            Empty => optional_absent()
+          }
+        Empty => optional_absent()
+      }
+    Empty => optional_absent()
+  }
+}
+
+fn argv_is_concat_operator(op: Node) -> Bool {
+  match declaration_reference_path_optional(node: op) {
+    Present { value: qn } =>
+      qualified_name_to_dotted_string(qn: qn) == qualified_name_to_dotted_string(qn: collection_concat_shape_declaration_path())
+    Absent => false
+  }
+}
+
+fn argv_atom_template_optional(el: Node) -> Optional<ArgvTemplate> {
   match realization_node_shape(n: el) {
     ShapeAtom { identity: id } =>
       if count(el.children) != 0 {
-        optional_present(value: ArgvExpressionUnsupported { detail: "argv element is not a string literal or a declared input" })
-      } else if symbol_in(xs: inputs, s: id) {
         optional_absent()
       } else {
-        optional_present(value: UndeclaredInputBound { name: symbol_lexeme(sym: id) })
+        optional_present(value: Template { parts: [TemplateHolePart { hole: symbol_lexeme(sym: id) as OperationInputName }] })
       }
-    ShapeConj => argv_expression_unsupported()
-    ShapeArrow => argv_expression_unsupported()
-    ShapeOther => argv_expression_unsupported()
+    ShapeConj => optional_absent()
+    ShapeArrow => optional_absent()
+    ShapeOther => optional_absent()
   }
+}
+
+fn argv_template_holes_cause(inputs: List<Symbol>, t: ArgvTemplate) -> Optional<ArgvRefusalCause> {
+  fold(template_holes(t: t), init: optional_absent(), f: fn(acc, hole) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if symbol_in(xs: inputs, s: symbol_intern_lexeme(lexeme: hole as String)) {
+          optional_absent()
+        } else {
+          optional_present(value: UndeclaredInputBound { name: hole as String })
+        }
+    }
+  })
 }
 
 fn argv_expression_unsupported() -> Optional<ArgvRefusalCause> {
