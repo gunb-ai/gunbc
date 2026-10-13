@@ -16,11 +16,11 @@ import v2.workflow.v2_native_route {
   native_route_label_in_package,
   native_route_module_package_text,
   native_route_default_pattern,
+  native_route_module_probe_declaration,
   required_v2_native_job_name
 }
 import gunbc.native_route_universe {
   native_route_universe_member,
-  native_route_universe_prefix,
 }
 // THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside
 // native_route_admission, and the emitted crate carries a module only when this closure reaches it.
@@ -42,6 +42,7 @@ import extdeps.bazel.label {
   Label,
   LabelParsed,
   LabelRefused,
+  label_refusal_text,
   render_package,
 }
 import extdeps.bazel.target_pattern {
@@ -183,6 +184,7 @@ import v2.compiler.module_acquisition {
   SourceRootBinding,
   VerifiedAcquisition,
   acquire_verified,
+  acquisition_first_duplicate,
   acquisition_ingest,
   acquisition_module_path,
   enumerate_bound_modules,
@@ -1153,7 +1155,7 @@ fn native_lane_member_facts(member: AcquiredModule) -> NativeLaneSourceFacts {
 
 fn native_lane_source_facts(modules: List<AcquiredModule>) -> List<NativeLaneSourceFacts> {
   list_map(
-    xs: filter(xs: modules, predicate: fn(member) { native_route_universe_member(module_qn: member.name) }),
+    xs: filter(xs: modules, predicate: fn(member) { length(xs: member.test_markers) > 0 }),
     f: fn(member) { native_lane_member_facts(member: member) }
   )
 }
@@ -1237,11 +1239,17 @@ data native_driver_verb_demand_census: String = "demand-census"
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
-data native_driver_adjudicate_needs_pattern: String = "REFUSED: adjudicate takes a target pattern after the host facts file and before the source roots"
+data native_driver_adjudicate_needs_pattern: String = "REFUSED: adjudicate --pattern takes a target pattern as the next word"
+
+// THE PATTERN IS AN OPTION AND NOT AN OPERAND, SO THAT ABSENCE HAS A MEANING OF ITS OWN: the
+// compiler's route boundary, `v2.workflow.v2_native_route` `native_route_default_pattern`. The
+// caller that wants the lane's whole universe says nothing, and the one value it would have said is
+// read here, from the declaration that owns it, rather than spelled again by every caller.
+data native_driver_pattern_flag: String = "--pattern"
 
 // THE PATTERN OPERAND IS PARSED BY ITS AUTHORITY, AND A BAD ONE IS A COMMAND-LINE REFUSAL. The text
 // goes to `extdeps.bazel.target_pattern` `parse_target_pattern` unchanged; its typed cause is
@@ -1265,7 +1273,8 @@ type NativeDriverParseState
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
   | DriverDemandCensusRoots { roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
-  | DriverAdjudicateSeekPattern { facts_path: String }
+  | DriverAdjudicateOptions { facts_path: String }
+  | DriverAdjudicateSeekPatternValue { facts_path: String }
   | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
   | DriverParseRefused { reason: Symbol, detail: String }
 
@@ -1309,8 +1318,18 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
     DriverDemandCensusRoots { roots: roots } =>
       DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
-      DriverAdjudicateSeekPattern { facts_path: word }
-    DriverAdjudicateSeekPattern { facts_path: facts_path } =>
+      DriverAdjudicateOptions { facts_path: word }
+    DriverAdjudicateOptions { facts_path: facts_path } =>
+      if word == native_driver_pattern_flag {
+        DriverAdjudicateSeekPatternValue { facts_path: facts_path }
+      } else {
+        DriverAdjudicateRoots {
+          facts_path: facts_path,
+          pattern: native_route_default_pattern(),
+          roots: [word]
+        }
+      }
+    DriverAdjudicateSeekPatternValue { facts_path: facts_path } =>
       match parse_target_pattern(text: word) {
         TargetPatternRefused { cause: cause } =>
           DriverParseRefused {
@@ -1354,7 +1373,15 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
     DriverDemandCensusRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
-    DriverAdjudicateSeekPattern { facts_path: _ } =>
+    DriverAdjudicateOptions { facts_path: facts_path } =>
+      NativeDriverPlanned {
+        verb: NativeDriverAdjudicate {
+          facts_path: facts_path,
+          pattern: native_route_default_pattern(),
+          source_roots: []
+        }
+      }
+    DriverAdjudicateSeekPatternValue { facts_path: _ } =>
       NativeDriverPlanRefused {
         reason: ^native_driver_adjudicate_without_pattern,
         detail: native_driver_adjudicate_needs_pattern
@@ -1528,12 +1555,57 @@ fn native_lane_universe_module_for_source(
 // A caller naming a narrower pattern gets a narrower population through the same producer, never a
 // filter applied to the default universe after the fact. The facts are carried: the acquisition's
 // modules are mapped to facts once, and nothing re-derives them.
+fn native_lane_duplicate_marker_in(member: AcquiredModule) -> Optional<String> {
+  match acquisition_first_duplicate(pending: member.test_markers, seen: empty_map()) {
+    Present { value: name } => optional_present(value: concat(member.name, ".", name))
+    Absent => optional_absent()
+  }
+}
+
+fn native_lane_duplicate_marker(modules: List<AcquiredModule>) -> Optional<String> {
+  fold_list(
+    xs: modules,
+    empty: optional_absent(),
+    cons: fn(acc, member) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => native_lane_duplicate_marker_in(member: member)
+      }
+    }
+  )
+}
+
 fn native_lane_universe_selected(
   modules: List<AcquiredModule>,
   population: List<String>,
   pattern: TargetPattern
 ) -> Outcome<NativeLaneUniverse> {
-  native_lane_universe_of_facts(facts: native_lane_source_facts(modules: modules), population: population, pattern: pattern)
+  match native_lane_duplicate_marker(modules: modules) {
+    Present { value: identity } => native_lane_refused(reason: ^native_lane_duplicate_marker, detail: identity)
+    Absent =>
+      native_lane_universe_of_facts(facts: native_lane_source_facts(modules: modules), population: population, pattern: pattern)
+  }
+}
+
+fn native_lane_population_unformable_identity(population: List<String>) -> Optional<String> {
+  fold_list(
+    xs: population,
+    empty: optional_absent(),
+    cons: fn(found, name) {
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          match native_route_label_in_package(
+            package_text: native_route_module_package_text(module_qn: name),
+            declaration: native_route_module_probe_declaration
+          ) {
+            LabelRefused { cause: cause } =>
+              optional_present(value: concat(concat(name, ": "), label_refusal_text(r: cause)))
+            LabelParsed { label: _ } => optional_absent()
+          }
+      }
+    }
+  )
 }
 
 fn native_lane_universe_of_facts(
@@ -1794,24 +1866,11 @@ fn native_lane_module_reachable(
   }
 }
 
-// THE POPULATION A PATTERN SELECTS WITHIN is the `v2.test` namespace, named by the prefix the universe
-// admits members by (v2.workflow.v2_native_route native_route_universe_prefix, trailing dot
-// dropped), so the namespace listed and the namespace admitted are one fact.
-fn native_lane_universe_namespace() -> String {
-  substring(
-    s: native_route_universe_prefix,
-    start: 0,
-    end: string_length(s: native_route_universe_prefix) - 1
-  )
-}
-
-// THE DECLARATION A MODULE IS PROBED WITH when the pattern is asked whether it could admit the module
-// at all: a single target names the declaration it wants, a package or subtree pattern admits any.
 fn native_lane_pattern_probe_declaration(pattern: TargetPattern) -> String {
   match pattern {
     SingleTarget { label: label } => label.target.name as String
-    PackageTargets { package: _ } => "any_declaration"
-    SubtreeTargets { package: _ } => "any_declaration"
+    PackageTargets { package: _ } => native_route_module_probe_declaration
+    SubtreeTargets { package: _ } => native_route_module_probe_declaration
   }
 }
 
@@ -1828,7 +1887,7 @@ fn native_lane_pattern_admits_module(pattern: TargetPattern, module_qn: String) 
     package_text: native_route_module_package_text(module_qn: module_qn),
     declaration: native_lane_pattern_probe_declaration(pattern: pattern)
   ) {
-    LabelRefused { cause: _ } => true
+    LabelRefused { cause: _ } => false
     LabelParsed { label: label } => target_pattern_matches(pattern: pattern, target: label)
   }
 }
@@ -1839,7 +1898,12 @@ fn native_lane_pattern_admits_module(pattern: TargetPattern, module_qn: String) 
 fn native_lane_candidate_entries(pattern: TargetPattern, population: List<String>) -> List<String> {
   Cons {
     head: native_route_live_control_module,
-    tail: filter(xs: population, predicate: fn(name) { native_lane_pattern_admits_module(pattern: pattern, module_qn: name) })
+    tail: filter(
+      xs: population,
+      predicate: fn(name) {
+        name != native_route_live_control_module && native_lane_pattern_admits_module(pattern: pattern, module_qn: name)
+      }
+    )
   }
 }
 
@@ -1895,25 +1959,26 @@ fn native_lane_acquire_listed(
   population: List<String>,
   pattern: TargetPattern
 ) -> Outcome<NativeLaneAcquisition> {
-  native_lane_acquire_verified(
-    verified: acquire_verified(
-      layout: repository_storage_layout(),
-      bindings: bindings,
-      entries: native_lane_candidate_entries(pattern: pattern, population: population)
-    ),
-    population: population
-  )
+  match native_lane_population_unformable_identity(population: population) {
+    Present { value: identity } =>
+      native_lane_refused(reason: ^native_lane_identity_label_refused, detail: identity)
+    Absent =>
+      native_lane_acquire_verified(
+        verified: acquire_verified(
+          layout: repository_storage_layout(),
+          bindings: bindings,
+          entries: native_lane_candidate_entries(pattern: pattern, population: population)
+        ),
+        population: population
+      )
+  }
 }
 
 fn native_lane_acquire_bound(bindings: List<SourceRootBinding>, pattern: TargetPattern) -> Outcome<NativeLaneAcquisition> {
-  match enumerate_namespace_modules(
-    layout: repository_storage_layout(),
-    bindings: bindings,
-    namespace: native_lane_universe_namespace()
-  ) {
-    NamespaceModulesRefused { namespace: namespace, cause: cause } =>
-      native_lane_refused(reason: ^native_lane_population_unlisted, detail: concat(namespace, ": ", cause))
-    NamespaceModulesListed { namespace: _, modules: population } =>
+  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces()) {
+    BoundModulesRefused { subject: subject, cause: cause } =>
+      native_lane_refused(reason: ^native_lane_population_unlisted, detail: concat(subject, ": ", cause))
+    BoundModulesListed { modules: population } =>
       native_lane_acquire_listed(bindings: bindings, population: population, pattern: pattern)
   }
 }

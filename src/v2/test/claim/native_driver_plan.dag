@@ -6,6 +6,7 @@ import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitFailure, ExitSuccess }
 import extdeps.bazel.target_pattern { render_target_pattern }
+import v2.workflow.v2_native_route { native_route_default_pattern }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import v2.compiler.source_root_eval {
   NativeDriverAdjudicate,
@@ -150,12 +151,13 @@ test fn the_census_infer_verb_plans_with_its_roots_and_is_not_census_resolve_hol
   && !parsed_verb_is_census_resolve(argv: ["census-infer", "dag"])
 }
 
-// The first word after `adjudicate` is the facts path and the second the target pattern; NEITHER is a source root -- the distinction
+// The first word after `adjudicate` is the facts path and `--pattern <p>` is an option; NEITHER is a source root -- the distinction
 // the rendered main made by consuming one argument before collecting the rest.
 test fn adjudicate_takes_its_facts_path_before_the_roots_holds() -> Bool {
-  parsed_verb_is_adjudicate(argv: ["adjudicate", "host-facts.tsv", "//v2/test/...", "dag", "src/v2"])
-  && (planned_facts_path(argv: ["adjudicate", "host-facts.tsv", "//v2/test/...", "dag", "src/v2"]) == "host-facts.tsv")
-  && (planned_root_count(argv: ["adjudicate", "host-facts.tsv", "//v2/test/...", "dag", "src/v2"]) == 2)
+  parsed_verb_is_adjudicate(argv: ["adjudicate", "host-facts.tsv", "--pattern", "//v2/test/...", "dag", "src/v2"])
+  && (planned_facts_path(argv: ["adjudicate", "host-facts.tsv", "--pattern", "//v2/test/...", "dag", "src/v2"]) == "host-facts.tsv")
+  && (planned_root_count(argv: ["adjudicate", "host-facts.tsv", "--pattern", "//v2/test/...", "dag", "src/v2"]) == 2)
+  && (planned_root_count(argv: ["adjudicate", "host-facts.tsv", "dag", "src/v2"]) == 2)
 }
 
 test fn only_adjudicate_names_a_facts_path_holds() -> Bool {
@@ -199,8 +201,9 @@ test fn a_later_word_cannot_repair_an_unknown_verb_holds() -> Bool {
     == "REFUSED: unknown mode nonsense -- expected adjudicate, census, census-resolve, census-infer or demand-census"
 }
 
-// THE PATTERN OPERAND: carried to the plan as the authority parsed it, and refused at the command
-// line when it does not parse or is missing -- misuse (status 2), never a derived universe.
+// THE PATTERN OPTION: carried to the plan as the authority parsed it, and refused at the command
+// line when it does not parse or is dangling -- misuse (status 2), never a derived universe. ABSENT,
+// it is the compiler's own route boundary, read from the declaration that owns it.
 fn planned_pattern_render(argv: List<String>) -> String {
   match native_driver_parse(argv: argv) {
     NativeDriverPlanRefused { reason: _, detail: _ } => ""
@@ -216,20 +219,49 @@ fn planned_pattern_render(argv: List<String>) -> String {
 }
 
 test fn adjudicate_carries_its_parsed_target_pattern_holds() -> Bool {
-  (planned_pattern_render(argv: ["adjudicate", "f.tsv", "//v2/test/claim/parse:expression_bodied_fn_decl_parse", "src/v2"])
+  (planned_pattern_render(argv: ["adjudicate", "f.tsv", "--pattern", "//v2/test/claim/parse:expression_bodied_fn_decl_parse", "src/v2"])
     == "//v2/test/claim/parse:expression_bodied_fn_decl_parse")
-  && (planned_pattern_render(argv: ["adjudicate", "f.tsv", "//v2/test/parse/...", "src/v2"]) == "//v2/test/parse/...")
+  && (planned_pattern_render(argv: ["adjudicate", "f.tsv", "--pattern", "//v2/test/parse/...", "src/v2"]) == "//v2/test/parse/...")
 }
 
 test fn adjudicate_with_an_unparseable_pattern_refuses_as_misuse_holds() -> Bool {
-  plan_exit_is_misuse(argv: ["adjudicate", "f.tsv", "v2/test/parse", "src/v2"])
-  && string_contains(s: refusal_detail(argv: ["adjudicate", "f.tsv", "v2/test/parse", "src/v2"]), pattern: "not absolute")
-  && (planned_root_count(argv: ["adjudicate", "f.tsv", "v2/test/parse", "src/v2"]) == 0)
+  plan_exit_is_misuse(argv: ["adjudicate", "f.tsv", "--pattern", "v2/test/parse", "src/v2"])
+  && string_contains(s: refusal_detail(argv: ["adjudicate", "f.tsv", "--pattern", "v2/test/parse", "src/v2"]), pattern: "not absolute")
+  && (planned_root_count(argv: ["adjudicate", "f.tsv", "--pattern", "v2/test/parse", "src/v2"]) == 0)
 }
 
-test fn adjudicate_without_a_pattern_refuses_holds() -> Bool {
-  (refusal_detail(argv: ["adjudicate", "f.tsv"]) == native_driver_adjudicate_needs_pattern)
-  && plan_exit_is_misuse(argv: ["adjudicate", "f.tsv"])
+// A FLAG WITH NO VALUE REFUSES, and does not fall back to the default. The caller named a pattern and
+// lost it; answering for the whole boundary would report a population nobody asked for.
+test fn adjudicate_with_a_dangling_pattern_flag_refuses_holds() -> Bool {
+  (refusal_detail(argv: ["adjudicate", "f.tsv", "--pattern"]) == native_driver_adjudicate_needs_pattern)
+  && plan_exit_is_misuse(argv: ["adjudicate", "f.tsv", "--pattern"])
+  && (planned_root_count(argv: ["adjudicate", "f.tsv", "--pattern"]) == 0)
+}
+
+// THE DEFAULT IS THE AUTHORITY'S VALUE, NOT A SPELLING OF IT HERE. The expectation is rendered from
+// `native_route_default_pattern` itself, so moving that declaration moves both sides together and an
+// emitted driver that substituted its own boundary would disagree with it. With no roots the plan is
+// still made (the same rule the census verbs keep): absence of roots is the run fold's to answer.
+test fn adjudicate_without_a_pattern_defaults_to_the_route_boundary_holds() -> Bool {
+  (planned_pattern_render(argv: ["adjudicate", "f.tsv", "dag", "src/v2"])
+    == render_target_pattern(pattern: native_route_default_pattern()))
+  && (planned_pattern_render(argv: ["adjudicate", "f.tsv"]) == render_target_pattern(pattern: native_route_default_pattern()))
+  && (planned_root_count(argv: ["adjudicate", "f.tsv"]) == 0)
+  && plan_exit_is_success(argv: ["adjudicate", "f.tsv"])
+}
+
+// DISCRIMINATING PAIR: an explicit pattern is not overwritten by the default. A parse that always
+// planned the default would pass the control above and fail this one.
+test fn an_explicit_pattern_is_not_replaced_by_the_default_holds() -> Bool {
+  (planned_pattern_render(argv: ["adjudicate", "f.tsv", "--pattern", "//v2/test/parse/...", "src/v2"])
+    != render_target_pattern(pattern: native_route_default_pattern()))
+}
+
+// THE FLAG IS RECOGNISED ONLY WHERE AN OPTION CAN BE. Once the first root has been read every later
+// word is a root, so a root that happens to be spelled like the flag is not misread as one.
+test fn the_flag_after_the_first_root_is_a_root_holds() -> Bool {
+  (planned_root_count(argv: ["adjudicate", "f.tsv", "dag", "--pattern"]) == 2)
+  && (planned_pattern_render(argv: ["adjudicate", "f.tsv", "dag", "--pattern"]) == render_target_pattern(pattern: native_route_default_pattern()))
 }
 
 fn parsed_verb_is_demand_census(argv: List<String>) -> Bool {

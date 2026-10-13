@@ -6,9 +6,7 @@ pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceIndexEntry, Occ
 use crate::std_source_annotation::AnnotationScope::{
     ErasedSourceRegion, FileScope, OccurrenceScope,
 };
-pub use crate::std_source_annotation::{
-    annotation_scope_key, attach_annotations, source_annotation_graph_rows,
-};
+pub use crate::std_source_annotation::{attach_annotations, source_annotation_graph_rows};
 pub use crate::std_source_annotation::{
     AnnotationGap, AnnotationRegion, AnnotationScope, KeyedAnnotationRow,
     NormalizedAnnotationCapture, SourceAnnotationDebt, SourceAnnotationGraph,
@@ -232,8 +230,8 @@ pub fn annotation_regions(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RegionKeyIndex {
-    pub parent_of: Rc<HashMap<String, Rc<AnnotationScope>>>,
-    pub step_of: Rc<HashMap<String, String>>,
+    pub parent_of: Rc<HashMap<Rc<AnnotationScope>, Rc<AnnotationScope>>>,
+    pub step_of: Rc<HashMap<Rc<AnnotationScope>, String>>,
 }
 
 pub fn region_label(scope: Rc<AnnotationScope>, names: Rc<HashMap<i64, String>>) -> String {
@@ -282,12 +280,11 @@ pub fn region_key_index(
         });
         let stepped = ordered.iter().cloned().fold(
             Rc::new(RegionKeyStepAcc {
-                seen: v1_rt::rc_empty_map::<String, i64>(),
-                step_of: v1_rt::rc_empty_map::<String, String>(),
+                seen: v1_rt::rc_empty_map::<Rc<AnnotationScope>, i64>(),
+                step_of: v1_rt::rc_empty_map::<Rc<AnnotationScope>, String>(),
             }),
             |acc: Rc<RegionKeyStepAcc>, region: Rc<AnnotationRegion>| {
-                let parent_key =
-                    crate::std_source_annotation::annotation_scope_key(region.parent.clone());
+                let parent_key = region.parent.clone();
                 let ordinal = match v1_rt::map_get(&acc.seen.clone(), parent_key.clone()) {
                     Some(n) => n.clone(),
                     std::option::Option::None => 0,
@@ -300,7 +297,7 @@ pub fn region_key_index(
                     ),
                     step_of: v1_rt::rc_map_insert(
                         acc.step_of.clone(),
-                        crate::std_source_annotation::annotation_scope_key(region.scope.clone()),
+                        region.scope.clone(),
                         v1_rt::concat(
                             v1_rt::concat((ordinal.clone()).to_string(), ":".to_string()),
                             region_label(region.scope.clone(), names.clone()),
@@ -311,13 +308,10 @@ pub fn region_key_index(
         );
         Rc::new(RegionKeyIndex {
             parent_of: regions.iter().cloned().fold(
-                v1_rt::rc_empty_map::<String, Rc<AnnotationScope>>(),
-                |acc: Rc<HashMap<String, Rc<AnnotationScope>>>, region: Rc<AnnotationRegion>| {
-                    v1_rt::rc_map_insert(
-                        acc,
-                        crate::std_source_annotation::annotation_scope_key(region.scope.clone()),
-                        region.parent.clone(),
-                    )
+                v1_rt::rc_empty_map::<Rc<AnnotationScope>, Rc<AnnotationScope>>(),
+                |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<AnnotationScope>>>,
+                 region: Rc<AnnotationRegion>| {
+                    v1_rt::rc_map_insert(acc, region.scope.clone(), region.parent.clone())
                 },
             ),
             step_of: stepped.step_of.clone(),
@@ -327,8 +321,8 @@ pub fn region_key_index(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RegionKeyStepAcc {
-    pub seen: Rc<HashMap<String, i64>>,
-    pub step_of: Rc<HashMap<String, String>>,
+    pub seen: Rc<HashMap<Rc<AnnotationScope>, i64>>,
+    pub step_of: Rc<HashMap<Rc<AnnotationScope>, String>>,
 }
 
 pub fn region_structural_key(
@@ -344,7 +338,7 @@ pub fn region_structural_key(
                     "?".to_string()
                 } else {
                     {
-                        let key = crate::std_source_annotation::annotation_scope_key(scope.clone());
+                        let key = scope.clone();
                         let step = match v1_rt::map_get(&index.step_of.clone(), key.clone()) {
                             Some(s) => s.clone(),
                             std::option::Option::None => "?".to_string(),

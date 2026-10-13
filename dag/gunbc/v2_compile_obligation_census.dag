@@ -184,7 +184,7 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
 // reported RouteGapHeld on every row, on the true observation that the self-host behavioral receipt
 // family publishes nothing the acceptance path can spend. That is still true of THAT family and it
 // is no longer the whole native story: gunbc#10882 landed the required-v2-native lane, whose subject
-// is the emitted compiler binary executing a derived v2.test.* population through its own
+// is the emitted compiler binary executing a derived population of marked declarations through its own
 // SourceRootEvalDriver and reaching a terminal NativeTestVerdict per identity. A lens gate exercised
 // by one of those tests runs INSIDE THE EMITTED BINARY, which is native execution of the obligation
 // in the only sense the census ever meant.
@@ -239,8 +239,8 @@ data native_route_merge_path_drop: DeclarationRef = decl_ref(
   decl_name: "v2_native_route_off_the_merge_path"
 )
 
-// LANE MEMBERSHIP IS THE PREFIX INTERSECTED WITH FLOOR DISCOVERY, NOT THE PREFIX ALONE, and the
-// first cut of this fold got it wrong in the direction that flatters. native_route_universe_member
+// LANE MEMBERSHIP IS THE BOUNDARY INTERSECTED WITH FLOOR DISCOVERY, NOT THE BOUNDARY ALONE, and the
+// first cut of this fold got it wrong in the direction that flatters. native_route_module_in_boundary
 // is the lane's PREDICATE over a module name; the lane's own header states that the population it
 // applies to is "derived by the host harness from the floor's own discovery producer joined against
 // each entry's authored module header". So an entry a gunbc.ci.ci_layer_roots witness_exclusion_frontier
@@ -257,7 +257,7 @@ data native_route_merge_path_drop: DeclarationRef = decl_ref(
 // subject below is also excluded — and where a fact is not established the narrower claim is the
 // honest one.
 fn witness_subject_in_native_lane(w: WitnessSubject) -> Bool {
-  !witness_subject_is_excluded(w: w) && native_route_universe_member(module_qn: w.module_path)
+  !witness_subject_is_excluded(w: w) && native_route_module_in_boundary(module_qn: w.module_path)
 }
 
 fn any_witness_in_native_lane(ws: List<WitnessSubject>) -> Bool {

@@ -1,7 +1,7 @@
 module v2.test.claim.parse.parse_production_prefix_door
 
 import std.types { Bool, List }
-import v2.compiler.parse { ParseArtifact, PreparedModeled, PreparedVoidGrammar, parse_production_prefix_prepared, parse_production_prepared }
+import v2.compiler.parse { ParseArtifact, ParsePrefix, PreparedModeled, PreparedVoidGrammar, parse_production_prefix_prepared, parse_production_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
 import std.algebra { for_all, length, list_reverse }
@@ -45,6 +45,31 @@ fn reading_of(outcome: Outcome<ParseArtifact>) -> DoorReading {
   }
 }
 
+fn prefix_reading_of(outcome: Outcome<ParsePrefix>) -> DoorReading {
+  match outcome {
+    Rejected { diagnostics: _ } => DoorRefused
+    Accepted { value: prefix, diagnostics: _ } => DoorRead { tree: prefix.artifact.tree }
+  }
+}
+
+// The unread count the prefix door reports, or -1 where it refuses.
+fn prefix_unread_at(tokens: List<Token>, production: Symbol) -> Int {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => -1
+    Accepted { value: PreparedVoidGrammar, diagnostics: _ } => -1
+    Accepted { value: PreparedModeled { modeled: modeled }, diagnostics: _ } =>
+      match parse_production_prefix_prepared(
+        tokens: tokens,
+        validated: modeled.validated,
+        analysis: modeled.analysis,
+        production_name: production
+      ) {
+        Rejected { diagnostics: _ } => -1
+        Accepted { value: prefix, diagnostics: _ } => prefix.unread
+      }
+  }
+}
+
 fn whole_at(tokens: List<Token>, production: Symbol) -> DoorReading {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => DoorRefused
@@ -64,7 +89,7 @@ fn prefix_at(tokens: List<Token>, production: Symbol) -> DoorReading {
     Rejected { diagnostics: _ } => DoorRefused
     Accepted { value: PreparedVoidGrammar, diagnostics: _ } => DoorRefused
     Accepted { value: PreparedModeled { modeled: modeled }, diagnostics: _ } =>
-      reading_of(outcome: parse_production_prefix_prepared(
+      prefix_reading_of(outcome: parse_production_prefix_prepared(
         tokens: tokens,
         validated: modeled.validated,
         analysis: modeled.analysis,
@@ -145,6 +170,22 @@ test fn the_prefix_door_reads_the_tree_the_whole_door_reads_wherever_the_whole_d
 
 test fn the_prefix_door_accepts_a_stream_whose_tail_the_whole_door_refuses_and_reads_the_consumed_tokens() -> Bool {
   for_all(xs: prefix_cases, predicate: fn(case) { prefix_door_reads_the_consumed_tokens_of_the_extended_stream(case: case) })
+}
+
+// THE UNREAD COUNT IS THE TOKENS THE PRODUCTION LEFT. Its referent is the lexer, independent of the parse:
+// the extended text lexes to the consumed text's tokens followed by the tail's, so the door must report
+// exactly the difference of the two streams' lengths, and none where the production consumed the whole
+// stream. A door that reported the stream length, or the consumed count, fails the first; a door that
+// always reported none fails the second.
+fn prefix_door_reports_the_tokens_it_left(case: PrefixCase) -> Bool {
+  prefix_unread_at(tokens: tokens_of(text: case.whole), production: case.production) == 0
+    && prefix_unread_at(tokens: tokens_of(text: case.extended), production: case.production)
+      == length(xs: tokens_of(text: case.extended)) - length(xs: tokens_of(text: case.whole))
+    && length(xs: tokens_of(text: case.extended)) > length(xs: tokens_of(text: case.whole))
+}
+
+test fn the_prefix_door_reports_the_number_of_tokens_it_left_unread() -> Bool {
+  for_all(xs: prefix_cases, predicate: fn(case) { prefix_door_reports_the_tokens_it_left(case: case) })
 }
 
 // ---- every refusal that is not about the tail stays a refusal ----------------------------------------------------
