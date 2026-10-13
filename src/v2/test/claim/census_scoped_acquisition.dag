@@ -5,7 +5,6 @@ import std.algebra { Cons, Empty }
 import std.optional { Absent, Present }
 import v2.compiler.module_acquisition {
   AcquiredModule,
-  AcquisitionMemberRefused,
   AcquisitionRefusal,
   AcquisitionLookupRefused,
   AcquisitionUnknownModule,
@@ -13,6 +12,7 @@ import v2.compiler.module_acquisition {
   CensusBlock,
   CensusEdgeBlock,
   CensusMemberBlock,
+  CensusMemberFrontEndRefused,
   CensusAcquisitionBlocked,
   CensusAcquisitionClosed,
   CensusAcquisitionRefused,
@@ -73,7 +73,7 @@ fn blocked_member_name(block: CensusBlock) -> String {
   match block {
     CensusMemberBlock { module: m, refusal: r, content: _, host_directory: _, requesters: _ } =>
       match r {
-        AcquisitionMemberRefused { module: _, file: _, diagnostics: _ } => m
+        CensusMemberFrontEndRefused { file: _, diagnostics: _ } => m
         _ => ""
       }
     CensusEdgeBlock { refusal: _ } => ""
