@@ -2037,15 +2037,11 @@ type HostScriptTraceAcc {
 }
 
 fn host_script_step_marker(kind: String, member: NonEmptyStr, index: Int) -> PipelineStep {
-  deploy_raw(command: join([
-    "printf '%s\\n' '__GUNBC_HOST_SCRIPT_STEP__ ",
-    kind,
-    " ",
-    member as String,
-    " ",
-    to_string(index),
-    "'",
-  ], ""))
+  deploy_raw(command: shell_command_text_of_argv(argv: [
+    "printf",
+    "%s\\n",
+    join(["__GUNBC_HOST_SCRIPT_STEP__", kind, member as String, to_string(index)], " "),
+  ]))
 }
 
 fn host_script_trace_steps(kind: String, member: NonEmptyStr, steps: List<PipelineStep>) -> List<PipelineStep> {
