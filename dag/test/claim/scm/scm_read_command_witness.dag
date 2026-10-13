@@ -23,7 +23,7 @@ module test.claim.scm.scm_read_command_witness
 // honestly check, and the schema-refusal claim's BODY came up to what its name always said.
 
 import std.types { Bool, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.authoring { empty_proposal }
 import gunbc.scm.log { NoCommitsYet }
 import gunbc.scm.repository_envelope { RepositoryFormatUnrecognized }

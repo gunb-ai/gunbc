@@ -11,7 +11,7 @@ import product.printed_chassis.cadquery_realization {
   expected_coupon_cadquery_program
 }
 import std.types { Bool, Int, String, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // REGISTRATION IS ONLY REAL IF SOMETHING EXECUTES IT, which is the condition this file answers.

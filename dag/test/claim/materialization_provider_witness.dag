@@ -86,7 +86,7 @@ import gunbc.materialization_provider_targets {
   materialization_provider_targets_all_bound,
 }
 import v2.compiler.self_host.generation { PreMaterializationIdentity }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

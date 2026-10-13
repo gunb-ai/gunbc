@@ -5,7 +5,7 @@ import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.arrow_signature { ArrowParameterOrderMalformed, arrow_declared_parameter_order, declared_signature }
 import v2.std.compilers.target_model { ProducedDeclSignatureSubject, arrow_domain_binder_names, produced_decl_subject_from_name_and_arrow }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node_query { binder_edge, declared_field_from_edge }
 import v2.std.node {
   Arrow,

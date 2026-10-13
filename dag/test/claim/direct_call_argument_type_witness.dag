@@ -16,7 +16,7 @@ import gunbc.guarantee_probe_corpus {
   probe_row_expectation_holds,
 }
 import std.types { Bool, Int, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Absent, Present }
 
 // THIS MODULE EXISTS BECAUSE ITS ASSERTIONS HAVE TO EXECUTE, AND THE OBVIOUS HOME FOR THEM DID

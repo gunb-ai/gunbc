@@ -1,7 +1,7 @@
 module test.claim.claim_scope_fixture_instrument_witness
 
 import std.types { String, Bool, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   ClaimScopeFixtureOutcome,

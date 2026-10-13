@@ -1,7 +1,7 @@
 module v2.test.claim.parse.choice_plan
 
 import std.types { List }
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import std.algebra { Cons, Empty, fold_list, length }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection { empty_map, map_lookup }
@@ -42,7 +42,7 @@ import v2.compiler.parse {
   parse_table_for_production,
   prepare_grammar_expr
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, declaration_locus, invariant_port_locus, locus_eq }
 import v2.std.node { Hash, Symbol, content_hash }

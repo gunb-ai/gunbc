@@ -24,7 +24,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.node { Node, Symbol }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

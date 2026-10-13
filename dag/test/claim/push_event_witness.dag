@@ -10,7 +10,7 @@ import extdeps.github.push_event {
   PushEventPayloadReadRefused
 }
 import extdeps.git.hooks { zero_sha }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

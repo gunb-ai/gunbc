@@ -1,6 +1,6 @@
 module test.claim.observation_ci_render_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
 import gunbc.witness.witness_row_cost {

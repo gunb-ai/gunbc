@@ -22,7 +22,7 @@ import std.integer {
   ReturnSaturating,
   ReturnWrapping
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { content_hash }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

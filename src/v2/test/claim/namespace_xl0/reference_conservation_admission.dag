@@ -20,7 +20,7 @@ import v2.test.claim.namespace_xl0.reference_conservation {
   statement_let_binder_subject
 }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 

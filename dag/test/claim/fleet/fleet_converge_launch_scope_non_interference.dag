@@ -21,7 +21,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.fleet.fleet_converge_plan {
   FleetConvergeRequest, FullHostConverge, FleetConvergePlanArtifact, fleet_converge_plan_artifact_of_request, fleet_converge_plan_artifact_hash, fleet_converge_apply_terminal, fleet_converge_scope_wire, fleet_converge_desired_caps,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.runner.runner_slot_retirement { SlotRetirementEvidenceAbsent }
 
 // THE LAUNCH-SCOPE NON-INTERFERENCE WALL AFTER ITS RUNG CLIMB.

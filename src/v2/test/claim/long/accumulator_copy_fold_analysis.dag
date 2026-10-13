@@ -1,6 +1,6 @@
 module v2.test.claim.long.accumulator_copy_fold_analysis
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 
 import v2.std.node { Authored, StructuralLabel, Positional, Edge, Node, ComputationNode, TypeNode, Transform, Atom }
 

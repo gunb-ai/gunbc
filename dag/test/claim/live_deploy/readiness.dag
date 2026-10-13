@@ -62,7 +62,7 @@ import extdeps.tools.sleep {
 import gunbc.roadmap.roadmap_site_healthz_validate {
   roadmap_site_healthz_json_string_parses,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 

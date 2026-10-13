@@ -36,7 +36,7 @@ import std.optional {
   optional_present,
   optional_prefer_first_present
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallAfterGrounding

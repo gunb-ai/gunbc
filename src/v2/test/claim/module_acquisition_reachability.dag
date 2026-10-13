@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import v2.compiler.module_acquisition { AcquireImportedModule, AcquireQualifiedReference, AcquiredModule }
 import v2.test.claim.module_acquisition { a_member, a_request, key_of, verdict_over }
 import std.algebra { list_map }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

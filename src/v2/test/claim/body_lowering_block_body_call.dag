@@ -14,7 +14,7 @@ import v2.std.compilers.body_lowering {
   NotApplication,
   application_read
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 

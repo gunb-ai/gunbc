@@ -9,7 +9,7 @@ import v2.compiler.source_authority {
   source_root_overflow_never_empty_population_holds
 }
 import std.algebra { Empty }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

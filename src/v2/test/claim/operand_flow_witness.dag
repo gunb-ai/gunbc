@@ -5,7 +5,7 @@ import std.measure { byte_size, byte_size_count }
 import std.content_hash { ContentHash, Fnv1a64 }
 import std.algebra { length }
 import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, TypeNode, content_hash }
 import v2.workflow.operand_flow {
   OperandFlow,

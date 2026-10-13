@@ -4,7 +4,7 @@ import std.types { Bool, List, String }
 import std.measure { second }
 import gunbc.bmc_model { BmcWorld, BmcPowerOn, bmc_world, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_chassis_control, bmc_advance, bmc_power_is_on, bmc_sol_drop_fired }
 import extdeps.bmc.ipmi_chassis_control { IpmiChassisPowerCycle }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.shell { ShellProcessExited }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.gnu_coreutils { cat_command }

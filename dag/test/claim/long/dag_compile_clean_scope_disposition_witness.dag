@@ -1,7 +1,7 @@
 module test.claim.long.dag_compile_clean_scope_disposition_witness
 
 import gunbc.instruments.dag_compile_clean_scope { witness_touched_path_dispositions_hold }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

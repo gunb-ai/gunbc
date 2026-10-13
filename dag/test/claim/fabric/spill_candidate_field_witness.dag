@@ -1,7 +1,7 @@
 module test.claim.fabric.spill_candidate_field_witness
 
 import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, List, EpochSecs }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }

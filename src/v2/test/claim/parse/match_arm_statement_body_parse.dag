@@ -4,7 +4,7 @@ import v2.test.claim.parse.expression_bodied_fn_decl_parse { g_tokenize_parse }
 import v2.test.claim.execution.dag_grammar_backward_round_trip { rt_stamp_of }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Present }
 import v2.std.text { String }

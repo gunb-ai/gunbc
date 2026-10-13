@@ -2,7 +2,7 @@ module test.claim.namespace_step0_census_calibration_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, exit_failure }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.occurrence_identity {
   OccurrenceCategory,
   LexicalValueOccurrence,

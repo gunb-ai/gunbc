@@ -1,7 +1,7 @@
 module test.claim.served_surface_browser_artifact_integrity_witness
 
 import std.types { FilePath, NonEmptyStr, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.tools.sha256sum {
   Sha256Matches,
   sha256sum_verify_via_shell,

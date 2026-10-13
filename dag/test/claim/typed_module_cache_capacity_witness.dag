@@ -19,7 +19,7 @@ import gunbc.typed_module_cache_capacity {
   typed_module_cache_entries_floor,
   typed_module_cache_entries_ceiling,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

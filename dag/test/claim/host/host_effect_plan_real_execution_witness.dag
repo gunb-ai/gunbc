@@ -18,7 +18,7 @@ import v2.std.effect_plan { EffectPlan, Do }
 import v2.std.orchestration { FailFast }
 import std.realization_reconcile { reconciliation_converged }
 import gunbc.fleet.fleet_intent { srv1_host }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

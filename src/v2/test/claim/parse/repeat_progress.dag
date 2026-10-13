@@ -7,7 +7,7 @@ import v2.compiler.parse { ParseExprAccepted, ParseExprRejected, PreparedModeled
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.parse_refusal_reason { TokenStartsNotIncreasing }
 import std.algebra { Cons, length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

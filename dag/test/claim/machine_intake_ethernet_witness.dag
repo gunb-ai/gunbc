@@ -38,7 +38,7 @@ import gunbc.machine_intake.mtcollins1_platform_observation {
   mtcollins1_bmc_interfaces_are_distinct_ports,
 }
 import gunbc.machine_intake.subject { UnitKey }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

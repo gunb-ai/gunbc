@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id, git_object_id_eq }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.instruments.multi_module_compile_fixture {
   FixtureSource,
   MultiModuleCompileFixture,

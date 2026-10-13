@@ -20,7 +20,7 @@ import v2.std.node {
   label_occurrences,
   all_names_distinct,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.languages.dag {
   dag_surface_edge,
   dag_surface_edge_label,

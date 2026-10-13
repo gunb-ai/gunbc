@@ -39,7 +39,7 @@ import v2.workflow.realization_runner {
 import std.measure { byte_size, byte_size_count }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.types { NonEmptyStr, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

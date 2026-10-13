@@ -30,7 +30,7 @@ import v2.std.diagnostic {
   diagnostics_fatal
 }
 import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.parse_refusal_reason { NewlineBeforeDualRoleOperator, parse_refusal_reason_symbol }

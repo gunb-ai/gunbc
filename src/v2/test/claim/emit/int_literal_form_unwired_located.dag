@@ -24,7 +24,7 @@ import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text_in_spans }
 import v2.std.node { Node, Symbol }
 import v2.std.provenance { SpanIndex }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

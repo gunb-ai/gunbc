@@ -13,7 +13,7 @@ import v2.std.service_realization_labels {
   realization_transport_label
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.integer { Int }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List }
