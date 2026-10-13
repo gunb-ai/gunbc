@@ -20,9 +20,9 @@
 //! THE SEED PREPARES; THE EMITTED COMPILER DECIDES. This harness emits the compiler closure once,
 //! builds it with cargo, withdraws the old-route CLI, and spawns the emitted binary — twice: once
 //! in `census` mode over the malformed specimen's scratch root, and once in `adjudicate` mode over
-//! the real source roots. Everything semantic happens inside that binary: it derives the
-//! `v2.test.*` universe with the floor's own per-file discovery producer, executes every derived
-//! identity plus the authority's named live-verdict controls, mints the `NativeRouteReceipt`, and
+//! the real source roots. Everything semantic happens inside that binary: it derives the universe
+//! (the marked declarations of the `v2` modules) with the floor's own per-file discovery producer,
+//! executes every derived identity plus the authority's named live-verdict controls, mints the `NativeRouteReceipt`, and
 //! evaluates `native_route_admission` and `native_route_admission_summary` over it
 //! (`v2.compiler.compile` `native_lane_run`).
 //!
@@ -1720,7 +1720,7 @@ fn write_host_facts(
 ///
 /// WHY THIS IS A PREFIX OF `--v2-native-route` RATHER THAN A SECOND PATH. That route already
 /// performs exactly these boundaries in `prepare_emitted_compiler` and then spends roughly nine
-/// further minutes executing the v2.test.* universe through the emitted binary. The test fold is a
+/// further minutes executing the marked `v2` declarations through the emitted binary. The test fold is a
 /// different claim -- what the emitted compiler ANSWERS -- and bundling it here would price the
 /// self-host question at the cost of a question nobody asked. So this calls the same producer and
 /// returns on its verdict; the two modes cannot disagree about whether the seed can build v2,
@@ -1807,7 +1807,7 @@ pub struct SelfHostHeld {
 /// everything would pass the second alone, and one whose front-end refusal arm is dead would pass
 /// the first alone; only the pair discriminates. It is `census` rather than `adjudicate` because
 /// the question is whether the ENTRYPOINT executes and the front end answers, and adjudication
-/// would additionally derive and judge the whole `v2.test.*` universe — the hours-long subject of
+/// would additionally derive and judge the whole native universe — the hours-long subject of
 /// the required-v2-native route, and a different claim.
 fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<String, String> {
     let clean_root = workspace.join(WELL_FORMED_CONTROL_ROOT);
@@ -4398,8 +4398,8 @@ fn run_required_v2_native_inner(
     // derives the universe, executes it, mints the receipt and judges it.
     eprintln!("v2-native-route: adjudicating through the emitted compiler");
     // THE PATTERN IS THE CALLER'S, AND THAT IS WHAT MAKES A FOCUSED RUN POSSIBLE. The lane passes
-    // `gunbc.witness.v2_native_route` `native_route_default_pattern` (`//v2/test/...`, which
-    // narrows nothing within the floor's universe); `gunbc test <operand>` passes the operand's own
+    // `gunbc.witness.v2_native_route` `native_route_default_pattern` (`//v2/...`, which
+    // is the whole native universe); `gunbc test <operand>` passes the operand's own
     // pattern, already admitted by `extdeps.bazel.target_pattern` and rendered by its own renderer.
     // This runner does not parse it, default it, or widen it: a pattern that reached here was
     // decided by the authority, and substituting one here would let the run adjudicate a population

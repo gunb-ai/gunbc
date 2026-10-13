@@ -6,7 +6,7 @@
 // differential's classifier and rendering), `extdeps.bazel.label` (the label grammar mirrored
 // here) and `extdeps.bazel.target_pattern` (the pattern grammar mirrored here). The SET forms
 // (`//pkg:all`, `//pkg:*`, `//pkg/...`) execute only inside a route's universe: the native test
-// route (`//v2/test/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
+// route (`//v2/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
 // evaluated by the floor's own discovery authority and claim evaluation). A set form outside both
 // is refused with status 2 (`test_operand_set_form_refusal_rendered`, mirroring
 // `gunbc.target_invocation`) and is never widened into another route. None of the
@@ -1132,7 +1132,7 @@ fn exact_head_standing_outcome(
 ///
 /// It calls the SAME producer `--v2-native-route` calls, so the two cannot disagree about whether
 /// the seed can build v2 -- only one of them decides it. That route then spends roughly nine
-/// further minutes executing the v2.test.* universe through the emitted binary, which is a
+/// further minutes executing the marked `v2` declarations through the emitted binary, which is a
 /// different claim (what the emitted compiler ANSWERS), and bundling it here would price the
 /// self-host question at the cost of a question nobody asked.
 ///
@@ -2085,16 +2085,16 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
 }
 
 /// `gunbc.witness.v2_native_route` `native_route_default_pattern`, mirrored: the native test
-/// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
+/// route's whole universe, `//v2/...`. An operand CONTAINED in it belongs to that route.
 ///
 /// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
 /// The lane's runner needs the same fact as TEXT (it is an argv word) and this verb needs it as a
-/// PATTERN, which is two renderings of one value, not two values. A bare `"//v2/test/..."` literal
+/// PATTERN, which is two renderings of one value, not two values. A bare `"//v2/..."` literal
 /// beside this one would be the second independently editable spelling DESIGN section 3 forbids,
 /// and the drift would be load-bearing rather than cosmetic: narrow one and not the other and the
 /// verb routes an operand native that the lane's default excludes, or the reverse.
 pub fn native_route_default_pattern() -> TargetPattern {
-    TargetPattern::SubtreeTargets(vec!["v2".to_string(), "test".to_string()])
+    TargetPattern::SubtreeTargets(vec!["v2".to_string()])
 }
 
 /// The universe above as the argv word the emitted binary's `adjudicate` verb takes. Derived from

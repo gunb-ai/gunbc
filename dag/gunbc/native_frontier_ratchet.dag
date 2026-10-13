@@ -18,7 +18,7 @@ import gunbc.witness.v2_native_route {
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   NativeRouteAdmissionRefusalCause,
   JobNameMismatch, TestedTreeUnrecorded, PreparationSeedUnrecorded, EmittedClosureUnrecorded,
-  RouteIdentityUnrecorded, UniverseUnderived, UniverseDuplicatesPresent, UniversePrefixViolationsPresent,
+  RouteIdentityUnrecorded, UniverseUnderived, UniverseDuplicatesPresent, UniverseBoundaryViolationsPresent,
   PopulationDuplicatesPresent, PopulationForeignRowsPresent, PopulationOmissionsPresent,
   PositivePopulationEmpty, RequiredNativePassRegressed, DivergencesPresent, UnattributedExclusionsPresent,
   UnattributedFileRefusalsPresent, ContextRefusalsUnbacked, FrontierRetirementCausesUnowned,
@@ -57,7 +57,7 @@ import v2.workflow.compile_door_cause_ownership {
   known_frontier_causes, known_correctness_flips, cause_correctness_flip_lookup_over
 }
 
-// THE NATIVE V2 FRONTIER RATCHET: whether one complete native run over the v2.test.* universe
+// THE NATIVE V2 FRONTIER RATCHET: whether one complete native run over the whole native universe
 // kept, lost or advanced the debt `gunbc.native_frontier_roster` records.
 //
 // WHERE IT RUNS, AND WHY THERE. It is evaluated by the emitted-native compiler inside its own
@@ -347,7 +347,7 @@ fn native_frontier_clause_is_integrity(cause: NativeRouteAdmissionRefusalCause) 
     RouteIdentityUnrecorded => true
     UniverseUnderived => true
     UniverseDuplicatesPresent => true
-    UniversePrefixViolationsPresent => true
+    UniverseBoundaryViolationsPresent => true
     PopulationDuplicatesPresent => true
     PopulationForeignRowsPresent => true
     PopulationOmissionsPresent => true
@@ -626,7 +626,7 @@ fn native_frontier_verdict_over(
 ) -> NativeFrontierVerdict {
   let integrity = native_frontier_integrity_refusals(admission: admission)
   if native_frontier_pattern_is_whole(pattern: pattern) == false {
-    FrontierNotAMeasurement { reasons: ["the adjudicated pattern does not cover the whole v2.test.* universe"] }
+    FrontierNotAMeasurement { reasons: ["the adjudicated pattern does not cover the whole native universe"] }
   } else if is_empty(xs: integrity) == false {
     FrontierNotAMeasurement { reasons: integrity }
   } else {

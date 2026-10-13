@@ -1276,7 +1276,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             source_roots.clone()
         };
         eprintln!(
-            "v2-native-route: emitted-native compiler executes the derived v2.test.* universe (operator-invoked; not a required lane)"
+            "v2-native-route: emitted-native compiler executes the derived native-lane universe (operator-invoked; not a required lane)"
         );
         // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern -- read from
         // the ONE seed-side accessor rather than spelled as a literal here, so this caller and the

@@ -25,13 +25,6 @@ import v2.compiler.module_acquisition {
   AcquisitionRequestedNotRead,
   MemberParseRefused,
   MemberParses,
-  NamespaceModules,
-  NamespaceModulesListed,
-  NamespaceModulesRefused,
-  NamespaceWalk,
-  NamespaceWalkAbsent,
-  NamespaceWalkListed,
-  NamespaceWalkRefused,
   SourceRootBinding,
   acquisition_exactness,
   acquisition_ingest,
@@ -43,7 +36,6 @@ import v2.compiler.module_acquisition {
   bound_modules_prepended,
   namespace_directory_is_the_absent_path,
   namespace_module_name,
-  namespace_named_listing,
   namespace_relative_directory,
   namespace_top_level,
   top_level_namespaces
@@ -775,40 +767,6 @@ test fn a_walked_path_directly_in_the_namespace_directory_names_a_direct_member(
 // enumeration the callers see is one flat list of module names with none repeated and none dropped.
 test fn a_listing_is_added_ahead_of_the_names_already_listed() -> Bool {
   joined(bound_modules_prepended(listed: ["a.x", "a.y"], acc: ["b.z"])) == "a.x,a.y,b.z"
-}
-
-// ---- what a walk of one namespace directory means to a caller who named the namespace ------------------
-//
-// THE SUBJECT IS THE MAPPING FROM WHAT A DIRECTORY WALK OBSERVED TO WHAT A CALLER IS TOLD. A caller that
-// names one namespace asked for a population that must be there, so an absent directory refuses; the
-// population enumeration over every bound tree reads the same observation as an empty namespace instead,
-// and that reading is not stated here because it is a different caller of the same walk. The three
-// walk observations are supplied; the walk itself is carried by the native population verbs over a real
-// tree.
-
-fn named_listing_text(listing: NamespaceModules) -> String {
-  match listing {
-    NamespaceModulesListed { namespace: namespace, modules: modules } => concat("listed|", namespace, "|", joined(modules))
-    NamespaceModulesRefused { namespace: namespace, cause: cause } => concat("refused|", namespace, "|", cause)
-  }
-}
-
-test fn a_named_namespace_with_no_directory_is_refused_naming_the_directory() -> Bool {
-  named_listing_text(
-    listing: namespace_named_listing(walk: NamespaceWalkAbsent { namespace: "std", directory: "dag/std" })
-  ) == "refused|std|dag/std: the namespace has no directory under its tree"
-}
-
-test fn a_listed_namespace_hands_back_its_modules_in_the_order_the_walk_observed() -> Bool {
-  named_listing_text(
-    listing: namespace_named_listing(walk: NamespaceWalkListed { namespace: "std", modules: ["std.a", "std.b"] })
-  ) == "listed|std|std.a,std.b"
-}
-
-test fn a_namespace_whose_walk_failed_is_refused_with_the_walks_own_cause() -> Bool {
-  named_listing_text(
-    listing: namespace_named_listing(walk: NamespaceWalkRefused { namespace: "std", cause: "dag/std/x: permission_denied: denied" })
-  ) == "refused|std|dag/std/x: permission_denied: denied"
 }
 
 // ---- when a refused walk is the namespace directory itself being absent --------------------------------

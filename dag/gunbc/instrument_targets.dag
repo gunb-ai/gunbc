@@ -246,7 +246,7 @@ fn v2_native_cli_entry() -> String {
 }
 
 // THE NATIVE FRONTIER INSTRUMENT: the same adjudicating run as the native route, over the whole
-// v2.test.* universe, answered by gunbc.native_frontier_ratchet instead of by the lane's route
+// native universe, answered by gunbc.native_frontier_ratchet instead of by the lane's route
 // qualification. The two are different questions. Qualification asks whether this run was a sound
 // route. The frontier asks whether this run's debt equals the committed roster
 // (gunbc.native_frontier_roster), and it passes only on `held` or `advanced`. It is a separate label

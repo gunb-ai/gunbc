@@ -45,8 +45,8 @@ import gunbc.witness.v2_native_route {
 // monotone debt contract over a closed subject universe only when "the subject universe is
 // independently discovered and closed, membership is checked at identity grain rather than by
 // count, and every removal carries a typed disposition". All three hold here and none of them
-// is new vocabulary: the universe is DERIVED from the tree's `v2.test.*` declarations (it is not
-// a roster anyone edits), the identity is `NativeRouteTestIdentity` (module qualified name plus
+// is new vocabulary: the universe is DERIVED from the marked declarations of the tree's `v2`
+// modules (it is not a roster anyone edits), the identity is `NativeRouteTestIdentity` (module qualified name plus
 // declaration name, with its own equality), and this module supplies the third.
 //
 // WHAT "SUBSTITUTION CANNOT SATISFY THE BASELINE" MEANS HERE, because it is the clause that makes
@@ -93,7 +93,7 @@ import gunbc.witness.v2_native_route {
 //   distinction section 5 draws between a consumer and a typecheck.
 //
 //   The Tier 2 native-lane job of gunbc#12043's programme -- the run that
-//   invokes the native route over the derived `v2.test.*` universe, derives one
+//   invokes the native route over the derived universe, derives one
 //   `NativeProgressObservedReading` per universe member from the dispositions
 //   `gunbc.witness.v2_native_route` `native_route_disposition` already computes, and adjudicates
 //   `native_progress_verdict` beside `native_route_admission`.
@@ -613,8 +613,8 @@ type NativeProgressBaselineRow {
 //   SubjectDeleted            the declaration is gone. CHECKED: the identity must be absent from
 //                             the observed universe. A row claiming deletion for a subject the
 //                             run still discovered is refused.
-//   SubjectLeftTheUniverse    the declaration moved out from under the `v2.test.` prefix. Checked
-//                             the same way and kept SEPARATE from deletion because they are
+//   SubjectLeftTheUniverse    the declaration moved to a module the lane's pattern does not select.
+//                             Checked the same way and kept SEPARATE from deletion because they are
 //                             different facts with different follow-ups, and a reader of the
 //                             report should not have to guess which happened.
 //   SubjectRenamed            the subject survives under a new identity. CHECKED HARDEST, because
@@ -916,7 +916,7 @@ fn native_progress_reading_findings(readings: List<NativeProgressObservedReading
 
 // THE JOIN IS KEYED, NOT SCANNED (review 69968).
 //
-// The baseline is one row per member of the DERIVED `v2.test.*` universe, so a linear scan of the
+// The baseline is one row per member of the DERIVED universe, so a linear scan of the
 // observed population once per baseline row is O(n*m) over a population sized by the corpus. DESIGN
 // section 6 fixes a proven cost-shape defect unconditionally -- "'n is small here' is not a
 // time-stable fact (reuse changes n)" -- and this is landing before its first real run, so it is
