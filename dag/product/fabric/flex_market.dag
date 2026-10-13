@@ -1,0 +1,506 @@
+module product.fabric.flex_market
+
+import std.types { NonEmptyStr, Bool, Int, List, brand }
+import std.nat { Nat }
+import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
+import std.decl_ref { DeclarationRef }
+import std.measure {
+  MoneyAmountMicro, MoneyPerHour, Second,
+  money_amount_micro, money_amount_micro_count, money_per_hour_micros,
+  measure_add, measure_le, measure_scale_fraction_ceil, measure_sub,
+  MeasureDifference, MeasureSubtrahendExceedsMinuend,
+  second, second_count,
+}
+import extdeps.currency.currency { CurrencyCode }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.fabric.demand {
+  term_money, term_delay, term_interruption, term_accepted_work, debt_payoff_objective,
+}
+import product.fabric.supply { seconds_per_hour }
+import std.pareto { SelectionAxis, AxisReading, ParetoEntry, HigherIsBetter, LowerIsBetter }
+import std.interval { degenerate_interval }
+import std.decision {
+  TermValuation as DecisionTermValuation,
+  ValuedObjective, CostPerAcceptedUnit, SelectionPolicy,
+}
+
+// Market-level interruptible bid, ranking, cleanup pacing, and ownership. Ctrl reference
+// (read-only): gunb-ai/ctrl lib/vast_bidder.mjs, vast_rentals.mjs. No second decision algebra:
+// level choice and card ranking consume std.decision ValuedObjective / std.pareto.
+//
+// Objective relation: fabric DemandObjective is CostPerAcceptedUnit (debt_payoff). A productive
+// hour is this experiment's accepted-unit realization — serving seconds minus reconstruction —
+// until turn throughput is counted. Ranking's accepted unit is VRAM GB, a capacity proxy, not a
+// second objective.
+//
+// DECLARED FRONTIERS (DESIGN §3c) for bright-moth-475 (wet loop, key custody, harness placement):
+data flex_wet_consumes_market_policy: DissolutionCondition = unbound_dissolution(description: "Wet create/destroy loop executes flex_quoted_bid, flex_choose_bid_level, flex_rank_entry / flex_rank_policy via select_realization, flex_cleanup_dead, flex_release_admit, and flex_ours_only over gunbc-flex. TRIGGER: that loop remains if test.claim.fabric.flex_market_witness is deleted. SUFFICIENT FOR deleting this row.")
+
+data flex_owner_label_on_create: DissolutionCondition = unbound_dissolution(description: "Wet create PUT sets label from flex_owner_label_gunbc_flex. TRIGGER: create request carries that required owner. SUFFICIENT FOR deleting this row.")
+
+data flex_qwen_placement_consumes_rank: DissolutionCondition = unbound_dissolution(description: "Harness placement consumes ranked FlexOwnedCard identities, not a parallel rank. TRIGGER: gunbc.harness.harness_requirement_placement reads flex_rank_entry / flex_rank_policy. SUFFICIENT FOR deleting this row.")
+
+// Exact ratios 0.6 / 0.8 / 1.0 (vast_rentals.LEVELS).
+type FlexBidLevel
+  = FlexBidLevelThreeFifths
+  | FlexBidLevelFourFifths
+  | FlexBidLevelMarket
+
+fn flex_bid_level_fraction(level: FlexBidLevel) -> NonzeroNatFraction {
+  match level {
+    FlexBidLevelThreeFifths => NonzeroNatFraction { num: 3, denom_predecessor: 4 }
+    FlexBidLevelFourFifths => NonzeroNatFraction { num: 4, denom_predecessor: 4 }
+    FlexBidLevelMarket => NonzeroNatFraction { num: 1, denom_predecessor: 0 }
+  }
+}
+
+fn flex_bid_levels() -> List<FlexBidLevel> {
+  [FlexBidLevelThreeFifths, FlexBidLevelFourFifths, FlexBidLevelMarket]
+}
+
+fn flex_bid_level_eq(left: FlexBidLevel, right: FlexBidLevel) -> Bool {
+  match left {
+    FlexBidLevelThreeFifths => match right { FlexBidLevelThreeFifths => true FlexBidLevelFourFifths => false FlexBidLevelMarket => false }
+    FlexBidLevelFourFifths => match right { FlexBidLevelThreeFifths => false FlexBidLevelFourFifths => true FlexBidLevelMarket => false }
+    FlexBidLevelMarket => match right { FlexBidLevelThreeFifths => false FlexBidLevelFourFifths => false FlexBidLevelMarket => true }
+  }
+}
+
+data flex_reconstruction: Second = second(count: 300)
+data flex_stale_loading: Second = second(count: 600)
+data flex_level_min_samples: Nat = 3
+data flex_explore_every: Nat = 5
+data flex_switch_premium: NonzeroNatFraction = NonzeroNatFraction { num: 5, denom_predecessor: 3 }
+
+type FlexVramClass
+  = FlexVramClass96
+  | FlexVramClass48
+  | FlexVramClassOther { gb: Nat }
+
+fn flex_vram_class(gpu_ram_gb: Nat) -> FlexVramClass {
+  if gpu_ram_gb >= 80 {
+    FlexVramClass96
+  } else {
+    if gpu_ram_gb >= 40 { FlexVramClass48 } else { FlexVramClassOther { gb: gpu_ram_gb } }
+  }
+}
+
+fn flex_vram_class_eq(left: FlexVramClass, right: FlexVramClass) -> Bool {
+  match left {
+    FlexVramClass96 => match right { FlexVramClass96 => true FlexVramClass48 => false FlexVramClassOther { gb: _ } => false }
+    FlexVramClass48 => match right { FlexVramClass96 => false FlexVramClass48 => true FlexVramClassOther { gb: _ } => false }
+    FlexVramClassOther { gb: a } => match right {
+      FlexVramClass96 => false
+      FlexVramClass48 => false
+      FlexVramClassOther { gb: b } => a == b
+    }
+  }
+}
+
+type FlexOwnerLabel = NonEmptyStr where brand("FlexOwnerLabel")
+
+data flex_owner_label_gunbc_flex: FlexOwnerLabel = "gunbc-flex"
+
+type FlexWireOwner
+  = FlexWireOwnerPresent { label: FlexOwnerLabel }
+  | FlexWireOwnerAbsent
+
+type FlexOwnership
+  = FlexOurs { owner: FlexOwnerLabel }
+  | FlexForeign { label: FlexOwnerLabel }
+  | FlexUnlabelled
+
+fn flex_ownership(wire: FlexWireOwner, ours: FlexOwnerLabel) -> FlexOwnership {
+  match wire {
+    FlexWireOwnerAbsent => FlexUnlabelled
+    FlexWireOwnerPresent { label: l } =>
+      if l == ours { FlexOurs { owner: l } } else { FlexForeign { label: l } }
+  }
+}
+
+fn flex_ours_only(owner: FlexOwnership) -> Bool {
+  match owner {
+    FlexOurs { owner: _ } => true
+    FlexForeign { label: _ } => false
+    FlexUnlabelled => false
+  }
+}
+
+type FlexOwnedCard {
+  owner: FlexOwnerLabel
+  id: NonEmptyStr
+  gpu_ram_gb: Nat
+  rate: MoneyPerHour
+  held: Bool
+  running: Bool
+  loading: Bool
+  outbid: Bool
+  loading_age: Second
+}
+
+type FlexMarketQuote
+  = FlexMarketQuoted { median: MoneyPerHour, level: FlexBidLevel }
+  | FlexMarketUnobserved
+
+type FlexQuotedBid
+  = FlexBidPriced { rate: MoneyPerHour }
+  | FlexBidMarketUnobserved
+  | FlexBidQuoteCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
+
+type FlexMedianScan {
+  index: Nat
+  picked: MoneyPerHour?
+}
+
+type FlexMarketMedian
+  = FlexMedianFound { rate: MoneyPerHour }
+  | FlexMedianEmpty
+  | FlexMedianCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
+
+fn flex_class_market_median(floors: List<MoneyPerHour>) -> FlexMarketMedian {
+  let n = floors |> length
+  if n == 0 {
+    FlexMedianEmpty
+  } else {
+    match fold(floors, init: none, f: (acc, row) =>
+      match acc {
+        Absent => Present { value: row.currency }
+        Present { value: c } =>
+          if c != row.currency { acc } else { Present { value: c } }
+      }) {
+      Absent => FlexMedianEmpty
+      Present { value: c0 } =>
+        if any(floors, r => r.currency != c0) {
+          match floors.first() {
+            Absent => FlexMedianEmpty
+            Present { value: first } =>
+              fold(
+                floors,
+                init: FlexMedianFound { rate: first },
+                f: (acc, row) =>
+                  match acc {
+                    FlexMedianCurrencyMismatch { left: l, right: r } =>
+                      FlexMedianCurrencyMismatch { left: l, right: r }
+                    FlexMedianEmpty => FlexMedianEmpty
+                    FlexMedianFound { rate: seen } =>
+                      if seen.currency != row.currency {
+                        FlexMedianCurrencyMismatch { left: seen.currency, right: row.currency }
+                      } else {
+                        FlexMedianFound { rate: seen }
+                      }
+                  },
+              )
+          }
+        } else {
+          let sorted = floors |> sort_by(f => money_per_hour_micros(q: f))
+          let target = n / 2
+          match fold(
+            sorted,
+            init: FlexMedianScan { index: 0, picked: none },
+            f: (acc, d) =>
+              if acc.index == target {
+                FlexMedianScan { index: acc.index + 1, picked: Present { value: d } }
+              } else {
+                FlexMedianScan { index: acc.index + 1, picked: acc.picked }
+              },
+          ).picked {
+            Absent => FlexMedianEmpty
+            Present { value: m } => FlexMedianFound { rate: m }
+          }
+        }
+    }
+  }
+}
+
+fn flex_max_rate(a: MoneyPerHour, b: MoneyPerHour) -> FlexQuotedBid {
+  if a.currency != b.currency {
+    FlexBidQuoteCurrencyMismatch { left: a.currency, right: b.currency }
+  } else {
+    FlexBidPriced {
+      rate: if measure_le(a: a.amount, b: b.amount) { b } else { a },
+    }
+  }
+}
+
+fn flex_quoted_bid(quote: FlexMarketQuote, floor: MoneyPerHour) -> FlexQuotedBid {
+  match quote {
+    FlexMarketUnobserved => FlexBidMarketUnobserved
+    FlexMarketQuoted { median: median, level: level } =>
+      if median.currency != floor.currency {
+        FlexBidQuoteCurrencyMismatch { left: median.currency, right: floor.currency }
+      } else {
+        let frac = nonzero_nat_fraction_field(r: flex_bid_level_fraction(level: level))
+        let scaled = MoneyPerHour {
+          amount: measure_scale_fraction_ceil(m: median.amount, num: frac.num, den: frac.denom),
+          currency: median.currency,
+        }
+        flex_max_rate(a: floor, b: scaled)
+      }
+  }
+}
+
+type FlexRentalSample {
+  class: FlexVramClass
+  level: FlexBidLevel
+  bid: MoneyPerHour
+  serving: Second
+  ended: Bool
+}
+
+type FlexLevelTally {
+  level: FlexBidLevel
+  samples: Nat
+  cost: MoneyAmountMicro
+  productive: Second
+}
+
+fn flex_productive_serving(serving: Second) -> Second {
+  match measure_sub(a: serving, b: flex_reconstruction) {
+    MeasureSubtrahendExceedsMinuend => second(count: 0)
+    MeasureDifference { value: v } => v
+  }
+}
+
+fn flex_rental_cost(bid: MoneyPerHour, serving: Second) -> MoneyAmountMicro {
+  measure_scale_fraction_ceil(
+    m: bid.amount,
+    num: second_count(s: serving),
+    den: seconds_per_hour(),
+  )
+}
+
+fn flex_empty_tally(level: FlexBidLevel) -> FlexLevelTally {
+  FlexLevelTally {
+    level: level,
+    samples: 0,
+    cost: money_amount_micro(count: 0),
+    productive: second(count: 0),
+  }
+}
+
+fn flex_add_sample(tally: FlexLevelTally, row: FlexRentalSample) -> FlexLevelTally {
+  if !row.ended {
+    tally
+  } else {
+    FlexLevelTally {
+      level: tally.level,
+      samples: tally.samples + 1,
+      cost: measure_add(a: tally.cost, b: flex_rental_cost(bid: row.bid, serving: row.serving)),
+      productive: second(count: second_count(s: tally.productive) + second_count(s: flex_productive_serving(serving: row.serving))),
+    }
+  }
+}
+
+fn flex_tally_level(rows: List<FlexRentalSample>, class: FlexVramClass, level: FlexBidLevel) -> FlexLevelTally {
+  fold(
+    rows,
+    init: flex_empty_tally(level: level),
+    f: (acc, row) =>
+      if flex_vram_class_eq(left: row.class, right: class) && flex_bid_level_eq(left: row.level, right: level) {
+        flex_add_sample(tally: acc, row: row)
+      } else {
+        acc
+      },
+  )
+}
+
+type FlexLevelChoice
+  = FlexLevelChosen { level: FlexBidLevel, samples: Nat }
+  | FlexLevelExplore { level: FlexBidLevel, best: FlexBidLevel }
+
+fn flex_young_levels(tallies: List<FlexLevelTally>) -> List<FlexBidLevel> {
+  map(
+    filter(tallies, t => t.samples < flex_level_min_samples),
+    t => t.level,
+  )
+}
+
+fn flex_scored_levels(tallies: List<FlexLevelTally>) -> List<FlexLevelTally> {
+  filter(tallies, t => t.samples >= flex_level_min_samples && second_count(s: t.productive) > 0)
+}
+
+fn flex_best_scored(tallies: List<FlexLevelTally>) -> FlexLevelTally? {
+  fold(
+    flex_scored_levels(tallies: tallies),
+    init: none,
+    f: (acc, t) =>
+      match acc {
+        Absent => Present { value: t }
+        Present { value: best } => {
+          let t_cost_per = measure_scale_fraction_ceil(m: t.cost, num: seconds_per_hour(), den: second_count(s: t.productive))
+          let b_cost_per = measure_scale_fraction_ceil(m: best.cost, num: seconds_per_hour(), den: second_count(s: best.productive))
+          if money_amount_micro_count(m: t_cost_per) < money_amount_micro_count(m: b_cost_per) {
+            Present { value: t }
+          } else {
+            Present { value: best }
+          }
+        }
+      },
+  )
+}
+
+fn flex_least_sampled_other(tallies: List<FlexLevelTally>, best: FlexBidLevel) -> FlexBidLevel {
+  match fold(
+    filter(tallies, t => !flex_bid_level_eq(left: t.level, right: best)),
+    init: none,
+    f: (acc, t) =>
+      match acc {
+        Absent => Present { value: t }
+        Present { value: cur } =>
+          if t.samples < cur.samples { Present { value: t } } else { Present { value: cur } }
+      },
+  ) {
+    Absent => FlexBidLevelMarket
+    Present { value: t } => t.level
+  }
+}
+
+fn flex_choose_bid_level(
+  rows: List<FlexRentalSample>,
+  class: FlexVramClass,
+  rentals_so_far: Nat,
+) -> FlexLevelChoice {
+  let tallies = map(flex_bid_levels(), l => flex_tally_level(rows: rows, class: class, level: l))
+  match flex_young_levels(tallies: tallies).first() {
+    Present { value: young } => FlexLevelChosen { level: young, samples: fold(tallies, init: 0, f: (n, t) => if flex_bid_level_eq(left: t.level, right: young) { t.samples } else { n }) }
+    Absent =>
+      match flex_best_scored(tallies: tallies) {
+        Absent => FlexLevelChosen { level: FlexBidLevelMarket, samples: 0 }
+        Present { value: best } =>
+          if rentals_so_far > 0 && (rentals_so_far % flex_explore_every) == 0 {
+            FlexLevelExplore {
+              level: flex_least_sampled_other(tallies: tallies, best: best.level),
+              best: best.level,
+            }
+          } else {
+            FlexLevelChosen { level: best.level, samples: best.samples }
+          }
+      }
+  }
+}
+
+fn flex_level_valued_policy(currency: CurrencyCode) -> SelectionPolicy {
+  ValuedObjective {
+    identity: debt_payoff_objective.profile,
+    valuations: [
+      DecisionTermValuation { term: term_money.identity, scale_micro: money_amount_micro(count: 1), goal: LowerIsBetter },
+      DecisionTermValuation { term: term_delay.identity, scale_micro: money_amount_micro(count: 0), goal: LowerIsBetter },
+      DecisionTermValuation { term: term_interruption.identity, scale_micro: money_amount_micro(count: 0), goal: LowerIsBetter },
+      DecisionTermValuation { term: term_accepted_work.identity, scale_micro: money_amount_micro(count: 1), goal: HigherIsBetter },
+    ],
+    measure: CostPerAcceptedUnit { unit: term_accepted_work.identity },
+    currency: currency,
+  }
+}
+
+fn flex_level_entry(id: DeclarationRef, label: NonEmptyStr, tally: FlexLevelTally) -> ParetoEntry {
+  ParetoEntry {
+    identity: id,
+    display_label: label,
+    readings: [
+      AxisReading { axis: term_money.identity, interval_micro: degenerate_interval(point: money_amount_micro_count(m: tally.cost) as Int) },
+      AxisReading { axis: term_delay.identity, interval_micro: degenerate_interval(point: 0) },
+      AxisReading { axis: term_interruption.identity, interval_micro: degenerate_interval(point: 0) },
+      AxisReading { axis: term_accepted_work.identity, interval_micro: degenerate_interval(point: second_count(s: tally.productive) as Int) },
+    ],
+    missing_inputs: [],
+  }
+}
+
+fn flex_held_effective_rate(rate: MoneyPerHour, held: Bool) -> MoneyPerHour {
+  if !held {
+    rate
+  } else {
+    let frac = nonzero_nat_fraction_field(r: flex_switch_premium)
+    MoneyPerHour {
+      amount: measure_scale_fraction_ceil(m: rate.amount, num: frac.denom, den: frac.num),
+      currency: rate.currency,
+    }
+  }
+}
+
+fn flex_dollars_per_vram_micro(rate: MoneyPerHour, gpu_ram_gb: Nat) -> Nat {
+  if gpu_ram_gb == 0 {
+    money_per_hour_micros(q: rate)
+  } else {
+    money_per_hour_micros(q: rate) / gpu_ram_gb
+  }
+}
+
+fn flex_rank_entry(id: DeclarationRef, label: NonEmptyStr, card: FlexOwnedCard) -> ParetoEntry {
+  let effective = flex_held_effective_rate(rate: card.rate, held: card.held && (card.running || card.loading))
+  ParetoEntry {
+    identity: id,
+    display_label: label,
+    readings: [
+      AxisReading { axis: term_money.identity, interval_micro: degenerate_interval(point: money_per_hour_micros(q: effective) as Int) },
+      AxisReading { axis: term_delay.identity, interval_micro: degenerate_interval(point: 0) },
+      AxisReading { axis: term_interruption.identity, interval_micro: degenerate_interval(point: 0) },
+      AxisReading { axis: term_accepted_work.identity, interval_micro: degenerate_interval(point: card.gpu_ram_gb as Int) },
+    ],
+    missing_inputs: [],
+  }
+}
+
+fn flex_rank_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: term_money.identity, goal: LowerIsBetter },
+    SelectionAxis { identity: term_delay.identity, goal: LowerIsBetter },
+    SelectionAxis { identity: term_interruption.identity, goal: LowerIsBetter },
+    SelectionAxis { identity: term_accepted_work.identity, goal: HigherIsBetter },
+  ]
+}
+
+fn flex_rank_policy(currency: CurrencyCode) -> SelectionPolicy {
+  flex_level_valued_policy(currency: currency)
+}
+
+fn flex_card_dead(card: FlexOwnedCard) -> Bool {
+  card.outbid || (card.loading && second_count(s: card.loading_age) >= second_count(s: flex_stale_loading))
+}
+
+type FlexCleanupWhy
+  = FlexCleanupOutbid
+  | FlexCleanupStaleLoading
+  | FlexCleanupNotRunningDropped
+  | FlexCleanupReleasedForValue
+
+type FlexCleanupAction
+  = FlexDestroy { id: NonEmptyStr, why: FlexCleanupWhy }
+  | FlexKeep { id: NonEmptyStr }
+
+type FlexReleaseAdmit
+  = FlexReleaseNow { because_over_cap: Bool, because_no_room: Bool, replacement_serving: Bool }
+  | FlexReleaseHoldLast
+  | FlexReleaseHoldUntilReplacement
+
+fn flex_release_admit(
+  running_count: Nat,
+  over_cap: Bool,
+  no_room: Bool,
+  replacement_serving: Bool,
+) -> FlexReleaseAdmit {
+  if running_count <= 1 {
+    FlexReleaseHoldLast
+  } else {
+    if over_cap || no_room || replacement_serving {
+      FlexReleaseNow { because_over_cap: over_cap, because_no_room: no_room, replacement_serving: replacement_serving }
+    } else {
+      FlexReleaseHoldUntilReplacement
+    }
+  }
+}
+
+fn flex_cleanup_dead(cards: List<FlexOwnedCard>) -> List<FlexCleanupAction> {
+  map(
+    filter(cards, c => flex_ours_only(owner: FlexOurs { owner: c.owner }) && flex_card_dead(card: c)),
+    c => FlexDestroy {
+      id: c.id,
+      why: if c.outbid { FlexCleanupOutbid } else { FlexCleanupStaleLoading },
+    },
+  )
+}
+
+fn flex_foreign_untouched(owner: FlexOwnership) -> Bool {
+  !flex_ours_only(owner: owner)
+}

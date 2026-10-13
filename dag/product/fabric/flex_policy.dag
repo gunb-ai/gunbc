@@ -24,6 +24,11 @@ import product.fabric.budget {
   MoneyAccount, MoneyReservationRequest, AccountAdvanced, MoneyRefused,
   MoneyRefusal, reserve_money,
 }
+import product.fabric.flex_market {
+  FlexMarketQuote,
+  FlexQuotedBid, FlexBidPriced, FlexBidMarketUnobserved, FlexBidQuoteCurrencyMismatch,
+  flex_quoted_bid,
+}
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   AvailabilityObservation, AvailableRevocable, AvailableForInterval, AvailableIndefinitely,
@@ -33,12 +38,13 @@ import product.fabric.selection {
   OfferLiabilityOverBuyOrder, OfferRevocationNotAdmitted, selection_liability,
 }
 
-// Fleet interruptible-bid policy. In this change the executing consumer of flex_bid_admission is
-// the witness. DECLARED FRONTIER (DESIGN §3c): the production consumer is the fold that maps a
-// Vast SearchOffers row through vast_ai_min_bid_money_per_hour into FlexBidAttempt (quote_currency
-// = vast_ai_quote_currency) and calls flex_bid_admission. TRIGGER: that adapter exists as a
-// production module (not a test) and deleting the witness still leaves an execution of the real
-// path. Until then this slice is M0 model-only: no effects, no search, no bid PUT.
+// Fleet interruptible-bid policy. The bid is product.fabric.flex_market flex_quoted_bid
+// (class median × level, never below the machine floor). On-demand_fraction remains a hard
+// horizon ceiling, not a second bid formula. floor_buffer is residual and is not consulted.
+// DECLARED FRONTIER (DESIGN §3c): the production consumer is the fold that maps a Vast
+// SearchOffers row through vast_ai_min_bid_money_per_hour and a market quote into FlexBidAttempt
+// and calls flex_bid_admission. TRIGGER: that adapter exists as a production module (not a test)
+// and deleting the witness still leaves an execution of the real path.
 
 data flex_floor_buffer: NonzeroNatFraction = NonzeroNatFraction { num: 1, denom_predecessor: 9 }
 
@@ -76,9 +82,10 @@ type FlexBidSubject
 
 type FlexPolicy {
   fleet_rate_cap: MoneyPerHour
+  // Residual of M0 floor×11/10. Admission bids from FlexBidAttempt.market, never this.
   floor_buffer: NonzeroNatFraction
   // Fraction of comparable on-demand horizon cost (setup and transfer included).
-  // Not a mix of on-demand vs interruptible headcount.
+  // Hard ceiling, not a bid formula.
   on_demand_fraction: NonzeroNatFraction
   acquisition_horizon: Second
 }
@@ -119,6 +126,8 @@ type FlexBidAttempt<P> {
   delay_valuation: MoneyPerSecond
   tie: EqualCostOfferTieBreak
   affinity: PlacementAffinityKey
+  // Market level quote is the bid. floor_buffer is not a second pricing path.
+  market: FlexMarketQuote
 }
 
 type FlexBidRefusal
@@ -137,6 +146,8 @@ type FlexBidRefusal
   | FlexSupplyNotSelected { selection: SupplySelection<NonEmptyStr> }
   | FlexCandidateMachineMismatch { named: FlexMachineKey, observed: FlexMachineKey }
   | FlexMoneyRefused { refusal: MoneyRefusal }
+  | FlexMarketPriceUnobserved
+  | FlexMarketQuoteCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
 
 type FlexCandidateJoin<P>
   = FlexCandidatesJoined { candidates: List<CandidateOffer<P>> }
@@ -441,34 +452,36 @@ fn flex_bid_after_min(
           cause: FlexRateCapBelowMin { cap: policy.fleet_rate_cap, min_bid: min_rate },
         }
       } else {
-        match policy_reservation_ceiling(policy: policy, min_bid: min_rate) {
-          FlexReservationCeilingCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
-            refuse_currency(left: mismatch_left, right: mismatch_right)
-          FlexReservationCeilingChosen { rate: ceiling } =>
-            match attempt.subject {
-              FlexExistingAcquisition { current_bid: current } =>
-                match money_per_hour_compare(left: min_rate, right: current) {
-                  MoneyPerHourCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
-                    refuse_currency(left: mismatch_left, right: mismatch_right)
-                  MoneyPerHourCompared { left_le_right: min_under_current } =>
-                    if !min_under_current {
-                      FlexBidRefused {
-                        cause: FlexExistingBidWouldRise { current: current, min_bid: min_rate },
-                      }
-                    } else {
-                      flex_existing_unchanged(
-                        policy: policy,
-                        occupancy: occupancy,
-                        window: window,
-                        account: account,
-                        current: current,
-                      )
-                    }
-                }
-              FlexNewAcquisition =>
-                if window.remaining == 0 {
-                  FlexBidRefused { cause: FlexNoAcquisitionRemaining }
+        match attempt.subject {
+          FlexExistingAcquisition { current_bid: current } =>
+            match money_per_hour_compare(left: min_rate, right: current) {
+              MoneyPerHourCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
+                refuse_currency(left: mismatch_left, right: mismatch_right)
+              MoneyPerHourCompared { left_le_right: min_under_current } =>
+                if !min_under_current {
+                  FlexBidRefused {
+                    cause: FlexExistingBidWouldRise { current: current, min_bid: min_rate },
+                  }
                 } else {
+                  flex_existing_unchanged(
+                    policy: policy,
+                    occupancy: occupancy,
+                    window: window,
+                    account: account,
+                    current: current,
+                  )
+                }
+            }
+          FlexNewAcquisition =>
+            if window.remaining == 0 {
+              FlexBidRefused { cause: FlexNoAcquisitionRemaining }
+            } else {
+              match flex_quoted_bid(quote: attempt.market, floor: min_rate) {
+                FlexBidMarketUnobserved =>
+                  FlexBidRefused { cause: FlexMarketPriceUnobserved }
+                FlexBidQuoteCurrencyMismatch { left: ql, right: qr } =>
+                  FlexBidRefused { cause: FlexMarketQuoteCurrencyMismatch { left: ql, right: qr } }
+                FlexBidPriced { rate: priced } =>
                   flex_admit_new(
                     policy: policy,
                     occupancy: occupancy,
@@ -476,10 +489,10 @@ fn flex_bid_after_min(
                     account: account,
                     attempt: attempt,
                     min_rate: min_rate,
-                    bid: ceiling,
+                    bid: priced,
                     joined: joined,
                   )
-                }
+              }
             }
         }
       }

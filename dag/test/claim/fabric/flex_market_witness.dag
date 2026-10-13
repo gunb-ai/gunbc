@@ -1,0 +1,377 @@
+module test.claim.fabric.flex_market_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.measure {
+  money_amount_micro, money_amount_micro_count, money_per_hour_micros, second, MoneyPerHour,
+}
+import extdeps.currency.currency { Usd }
+import std.pareto { LowerIsBetter }
+import std.decision {
+  SelectedWithin,
+  select_realization,
+  DecisionVariable,
+  ContextParameter,
+  DecisionConstraint,
+  ObjectiveTerm,
+  ObjectiveMeasure,
+  ChoiceDomain,
+  DecisionSubject,
+  DecisionRegion,
+  VariesAlong,
+  MonotoneDecreasing,
+  ConstraintSatisfied,
+  ParameterBound,
+  DecisionAssessment,
+  PhysicalModelEstablished,
+  CausalModelEstablished,
+  FleetObservedCoupling,
+}
+import product.fabric.demand {
+  term_money, term_delay, term_interruption, term_accepted_work,
+  debt_payoff_objective, fabric_demand_required_term_ids,
+}
+import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import product.fabric.flex_market {
+  FlexBidLevelThreeFifths, FlexBidLevelFourFifths, FlexBidLevelMarket,
+  FlexMarketQuoted, FlexMarketUnobserved,
+  FlexBidPriced, FlexBidMarketUnobserved, FlexBidQuoteCurrencyMismatch,
+  FlexMedianFound, FlexMedianEmpty, FlexMedianCurrencyMismatch,
+  FlexVramClass96, FlexVramClass48, FlexVramClassOther,
+  FlexLevelChosen, FlexLevelExplore,
+  FlexWireOwnerPresent, FlexWireOwnerAbsent,
+  FlexOwnerLabel, FlexOurs, FlexForeign, FlexUnlabelled,
+  FlexOwnedCard, FlexDestroy, FlexKeep, FlexCleanupOutbid, FlexCleanupStaleLoading,
+  FlexReleaseNow, FlexReleaseHoldLast, FlexReleaseHoldUntilReplacement,
+  flex_quoted_bid, flex_class_market_median, flex_choose_bid_level,
+  flex_vram_class, flex_ownership, flex_ours_only,
+  flex_owner_label_gunbc_flex, flex_card_dead, flex_cleanup_dead, flex_release_admit,
+  flex_held_effective_rate, flex_dollars_per_vram_micro, flex_rank_entry,
+  flex_rank_axes, flex_rank_policy,
+  FlexRentalSample,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn usd_hour(n: Nat) -> MoneyPerHour {
+  MoneyPerHour { amount: money_amount_micro(count: n), currency: Usd }
+}
+
+test fn an_empty_class_has_no_market_median() -> Bool {
+  match flex_class_market_median(floors: []) {
+    FlexMedianEmpty => true
+    FlexMedianFound { rate: _ } => false
+    FlexMedianCurrencyMismatch { left: _, right: _ } => false
+  }
+}
+
+test fn even_population_median_is_the_upper_middle_sample() -> Bool {
+  match flex_class_market_median(floors: [
+    usd_hour(n: 400000),
+    usd_hour(n: 100000),
+    usd_hour(n: 300000),
+    usd_hour(n: 200000),
+  ]) {
+    FlexMedianEmpty => false
+    FlexMedianCurrencyMismatch { left: _, right: _ } => false
+    FlexMedianFound { rate: m } => money_per_hour_micros(q: m) == 300000
+  }
+}
+
+test fn a_bid_is_the_level_of_the_median_never_below_the_floor() -> Bool {
+  let quote = FlexMarketQuoted { median: usd_hour(n: 1000000), level: FlexBidLevelThreeFifths }
+  match flex_quoted_bid(quote: quote, floor: usd_hour(n: 500000)) {
+    FlexBidMarketUnobserved => false
+    FlexBidQuoteCurrencyMismatch { left: _, right: _ } => false
+    FlexBidPriced { rate: r } => money_per_hour_micros(q: r) == 600000
+  }
+}
+
+test fn a_machine_floor_above_the_level_price_is_the_bid() -> Bool {
+  let quote = FlexMarketQuoted { median: usd_hour(n: 1000000), level: FlexBidLevelThreeFifths }
+  match flex_quoted_bid(quote: quote, floor: usd_hour(n: 800000)) {
+    FlexBidMarketUnobserved => false
+    FlexBidQuoteCurrencyMismatch { left: _, right: _ } => false
+    FlexBidPriced { rate: r } => money_per_hour_micros(q: r) == 800000
+  }
+}
+
+test fn missing_market_quote_does_not_fall_back_to_a_floor_buffer() -> Bool {
+  match flex_quoted_bid(quote: FlexMarketUnobserved, floor: usd_hour(n: 1000000)) {
+    FlexBidMarketUnobserved => true
+    FlexBidPriced { rate: _ } => false
+    FlexBidQuoteCurrencyMismatch { left: _, right: _ } => false
+  }
+}
+
+test fn four_fifths_and_market_levels_are_exact_ratios() -> Bool {
+  let mid = FlexMarketQuoted { median: usd_hour(n: 1000000), level: FlexBidLevelFourFifths }
+  let mkt = FlexMarketQuoted { median: usd_hour(n: 1000000), level: FlexBidLevelMarket }
+  match flex_quoted_bid(quote: mid, floor: usd_hour(n: 1)) {
+    FlexBidPriced { rate: a } =>
+      match flex_quoted_bid(quote: mkt, floor: usd_hour(n: 1)) {
+        FlexBidPriced { rate: b } =>
+          (money_per_hour_micros(q: a) == 800000) && (money_per_hour_micros(q: b) == 1000000)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn ended_row(level: FlexBidLevel, serving_s: Nat, bid: Nat) -> FlexRentalSample {
+  FlexRentalSample {
+    class: FlexVramClass48,
+    level: level,
+    bid: usd_hour(n: bid),
+    serving: second(count: serving_s),
+    ended: true,
+  }
+}
+
+test fn a_class_with_no_samples_tries_three_fifths_first() -> Bool {
+  match flex_choose_bid_level(rows: [], class: FlexVramClass48, rentals_so_far: 0) {
+    FlexLevelExplore { level: _, best: _ } => false
+    FlexLevelChosen { level: l, samples: n } =>
+      match l { FlexBidLevelThreeFifths => n == 0 FlexBidLevelFourFifths => false FlexBidLevelMarket => false }
+  }
+}
+
+test fn after_min_samples_the_cheaper_productive_hour_wins() -> Bool {
+  let cheap = [
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+  ]
+  match flex_choose_bid_level(rows: cheap, class: FlexVramClass48, rentals_so_far: 1) {
+    FlexLevelExplore { level: _, best: _ } => false
+    FlexLevelChosen { level: l, samples: n } =>
+      match l { FlexBidLevelThreeFifths => n == 3 FlexBidLevelFourFifths => false FlexBidLevelMarket => false }
+  }
+}
+
+test fn every_fifth_rental_explores_another_level() -> Bool {
+  let cheap = [
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 3600, bid: 600000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 3600, bid: 800000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
+  ]
+  match flex_choose_bid_level(rows: cheap, class: FlexVramClass48, rentals_so_far: 5) {
+    FlexLevelChosen { level: _, samples: _ } => false
+    FlexLevelExplore { level: l, best: b } =>
+      match b { FlexBidLevelThreeFifths => match l { FlexBidLevelThreeFifths => false FlexBidLevelFourFifths => true FlexBidLevelMarket => true } FlexBidLevelFourFifths => false FlexBidLevelMarket => false }
+  }
+}
+
+test fn ninety_six_gb_is_the_eighty_and_up_class() -> Bool {
+  match flex_vram_class(gpu_ram_gb: 80) {
+    FlexVramClass96 => match flex_vram_class(gpu_ram_gb: 48) {
+      FlexVramClass48 => true
+      FlexVramClass96 => false
+      FlexVramClassOther { gb: _ } => false
+    }
+    FlexVramClass48 => false
+    FlexVramClassOther { gb: _ } => false
+  }
+}
+
+test fn unlabelled_and_foreign_cards_are_not_ours() -> Bool {
+  let ours = flex_ownership(wire: FlexWireOwnerPresent { label: flex_owner_label_gunbc_flex }, ours: flex_owner_label_gunbc_flex)
+  let foreign = flex_ownership(wire: FlexWireOwnerPresent { label: "ctrl-bidder" as FlexOwnerLabel }, ours: flex_owner_label_gunbc_flex)
+  let none = flex_ownership(wire: FlexWireOwnerAbsent, ours: flex_owner_label_gunbc_flex)
+  flex_ours_only(owner: ours)
+    && !flex_ours_only(owner: foreign)
+    && !flex_ours_only(owner: none)
+    && match none { FlexUnlabelled => true FlexOurs { owner: _ } => false FlexForeign { label: _ } => false }
+}
+
+fn owned(
+  id: NonEmptyStr,
+  gb: Nat,
+  rate: Nat,
+  held: Bool,
+  running: Bool,
+  loading: Bool,
+  outbid: Bool,
+  age: Nat,
+) -> FlexOwnedCard {
+  FlexOwnedCard {
+    owner: flex_owner_label_gunbc_flex,
+    id: id,
+    gpu_ram_gb: gb,
+    rate: usd_hour(n: rate),
+    held: held,
+    running: running,
+    loading: loading,
+    outbid: outbid,
+    loading_age: second(count: age),
+  }
+}
+
+test fn outbid_and_ten_minute_loading_are_dead() -> Bool {
+  flex_card_dead(card: owned(id: "a", gb: 48, rate: 600000, held: true, running: false, loading: false, outbid: true, age: 0))
+    && flex_card_dead(card: owned(id: "b", gb: 48, rate: 600000, held: true, running: false, loading: true, outbid: false, age: 600))
+    && !flex_card_dead(card: owned(id: "c", gb: 48, rate: 600000, held: true, running: false, loading: true, outbid: false, age: 599))
+    && !flex_card_dead(card: owned(id: "d", gb: 48, rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0))
+}
+
+test fn cleanup_destroys_only_dead_owned_cards() -> Bool {
+  let actions = flex_cleanup_dead(cards: [
+    owned(id: "live", gb: 48, rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0),
+    owned(id: "dead", gb: 48, rate: 600000, held: true, running: false, loading: false, outbid: true, age: 0),
+  ])
+  (actions |> length) == 1
+    && match actions.first() {
+      Absent => false
+      Present { value: a } =>
+        match a {
+          FlexKeep { id: _ } => false
+          FlexDestroy { id: i, why: w } =>
+            (i == "dead") && match w {
+              FlexCleanupOutbid => true
+              FlexCleanupStaleLoading => false
+              FlexCleanupNotRunningDropped => false
+              FlexCleanupReleasedForValue => false
+            }
+        }
+    }
+}
+
+test fn release_never_drops_the_last_running_card() -> Bool {
+  match flex_release_admit(running_count: 1, over_cap: true, no_room: true, replacement_serving: true) {
+    FlexReleaseHoldLast => true
+    FlexReleaseNow { because_over_cap: _, because_no_room: _, replacement_serving: _ } => false
+    FlexReleaseHoldUntilReplacement => false
+  }
+}
+
+test fn a_value_release_waits_for_a_serving_replacement_unless_the_cap_requires_it() -> Bool {
+  match flex_release_admit(running_count: 2, over_cap: false, no_room: false, replacement_serving: false) {
+    FlexReleaseHoldUntilReplacement =>
+      match flex_release_admit(running_count: 2, over_cap: true, no_room: false, replacement_serving: false) {
+        FlexReleaseNow { because_over_cap: o, because_no_room: n, replacement_serving: r } => o && !n && !r
+        FlexReleaseHoldLast => false
+        FlexReleaseHoldUntilReplacement => false
+      }
+    FlexReleaseHoldLast => false
+    FlexReleaseNow { because_over_cap: _, because_no_room: _, replacement_serving: _ } => false
+  }
+}
+
+test fn a_held_card_is_ranked_at_the_switch_premium() -> Bool {
+  let raw = usd_hour(n: 1250000)
+  let effective = flex_held_effective_rate(rate: raw, held: true)
+  (flex_dollars_per_vram_micro(rate: effective, gpu_ram_gb: 48) < flex_dollars_per_vram_micro(rate: raw, gpu_ram_gb: 48))
+    && (money_per_hour_micros(q: effective) == 1000000)
+}
+
+data id_cheap: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_cheap")
+data id_held: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_held")
+data id_subject: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_subject")
+data id_field: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_field")
+data id_constraints: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_constraints")
+data id_evidence: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_evidence")
+data id_var: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "var_sel")
+data id_constraint_cell: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "constraint_sel")
+data id_param_cell: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "param_sel")
+data id_region: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "region_sel")
+data id_domain: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "domain_sel")
+data id_coupling: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_coupling")
+
+data fixture_physical_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "fixture.invalid/flex-market/physical" },
+}
+
+data var_sel: DecisionVariable = DecisionVariable { identity: id_var }
+data constraint_sel: DecisionConstraint = DecisionConstraint { identity: id_constraint_cell }
+data param_sel: ContextParameter = ContextParameter { identity: id_param_cell }
+data region_sel: DecisionRegion = DecisionRegion { identity: id_region }
+data domain_sel: ChoiceDomain = ChoiceDomain { identity: id_domain, variables: [var_sel] }
+
+fn cited_term(id: DeclarationRef) -> ObjectiveTerm {
+  ObjectiveTerm {
+    identity: id,
+    ground: CitedToAuthority { authority: fixture_physical_authority },
+  }
+}
+
+fn closed_assessment() -> DecisionAssessment {
+  let term_ids = fabric_demand_required_term_ids()
+  DecisionAssessment {
+    subject: DecisionSubject {
+      identity: id_subject,
+      question: "which interruptible card to keep or rent" as NonEmptyStr,
+      parameters: [param_sel],
+      constraints: [constraint_sel],
+      objective: ObjectiveMeasure {
+        identity: debt_payoff_objective.profile,
+        goal: LowerIsBetter,
+        terms: map(term_ids, id => cited_term(id: id)),
+      },
+      choice_domain: domain_sel,
+    },
+    sensitivities: map(term_ids, id =>
+      VariesAlong {
+        term: id,
+        variable: id_var,
+        region: region_sel,
+        relation: MonotoneDecreasing,
+        coupling: CitedToAuthority { authority: fixture_physical_authority },
+      }
+    ),
+    constraints: [
+      ConstraintSatisfied { constraint: id_constraint_cell, evidence: "fixture constraint" as NonEmptyStr },
+    ],
+    parameters: [
+      ParameterBound { parameter: id_param_cell, evidence: "fixture parameter" as NonEmptyStr },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: term_ids },
+    causal_model: CausalModelEstablished {
+      couplings: map(term_ids, id =>
+        FleetObservedCoupling {
+          receipt: id_coupling,
+          term: id,
+          variable: id_var,
+          subject: id_subject,
+        }
+      ),
+    },
+  }
+}
+
+test fn ranking_selects_the_held_card_when_the_premium_covers_a_small_price_gap() -> Bool {
+  let offer = owned(id: "offer", gb: 48, rate: 1100000, held: false, running: false, loading: false, outbid: false, age: 0)
+  let held = owned(id: "held", gb: 48, rate: 1250000, held: true, running: true, loading: false, outbid: false, age: 0)
+  match select_realization(
+    assessment: closed_assessment(),
+    candidate_field_identity: id_field,
+    field: [
+      flex_rank_entry(id: id_cheap, label: "offer" as NonEmptyStr, card: offer),
+      flex_rank_entry(id: id_held, label: "held" as NonEmptyStr, card: held),
+    ],
+    axes: flex_rank_axes(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: flex_rank_policy(currency: Usd),
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_held)
+    _ => false
+  }
+}
