@@ -1,6 +1,8 @@
 module extdeps.posix.shell_command_language
 
-import std.types { String, NonEmptyStr, Bool, Int }
+import std.types { String, NonEmptyStr, Bool, Char }
+import std.algebra { Cons, Empty, FreeMonoid, contains, for_all }
+import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -154,21 +156,24 @@ data posix_name_continue_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
 
 // XBD 3.235 states the rule as two facts about a word: the first character is drawn from one
 // alphabet and every later character from another, and a word is non-empty. `name` is KERNEL text
-// (host String), so it is walked by host position (char_at yields a one-character String, whose
-// substring containment in an alphabet IS membership); it is not a FreeMonoid<Char> and takes no
-// Cons/Empty pattern, which would be a text crossing with no unfold (DESIGN section 4).
-fn posix_name_ok(name: String) -> Bool {
-  string_length(s: name) > 0
-    && string_contains(s: posix_name_start_alphabet, pattern: char_at(s: name, pos: 0))
-    && posix_name_rest_ok(name: name, i: 1)
+// (host String); the one declared Unicode-scalar unfold (std.coercion unicode_scalar_unfold, DESIGN
+// section 4) is taken ONCE at this reader, and the cons cell then IS that split -- the empty word is
+// refused by the shape, the head is tested against the first alphabet and the tail is scanned once
+// against the second. A single forward traversal: no index, so no per-position rescan from the start.
+// The alphabets are unfolded once, as data, rather than per character tested.
+data posix_name_start_chars: FreeMonoid<Char> = unicode_scalar_unfold(s: posix_name_start_alphabet)
+data posix_name_continue_chars: FreeMonoid<Char> = unicode_scalar_unfold(s: posix_name_continue_alphabet)
+
+fn posix_char_in(alphabet: FreeMonoid<Char>, c: Char) -> Bool {
+  contains(xs: alphabet, item: c, eq: fn(a, b) { a == b })
 }
 
-fn posix_name_rest_ok(name: String, i: Int) -> Bool {
-  if i >= string_length(s: name) {
-    true
-  } else {
-    string_contains(s: posix_name_continue_alphabet, pattern: char_at(s: name, pos: i))
-      && posix_name_rest_ok(name: name, i: i + 1)
+fn posix_name_ok(name: String) -> Bool {
+  match unicode_scalar_unfold(s: name) {
+    Empty => false
+    Cons { head: first, tail: rest } =>
+      posix_char_in(alphabet: posix_name_start_chars, c: first)
+        && for_all(xs: rest, predicate: fn(c) { posix_char_in(alphabet: posix_name_continue_chars, c: c) })
   }
 }
 
