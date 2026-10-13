@@ -3186,7 +3186,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         if std::env::var_os("PROFILE_PERF").is_some() {
             let data = scratch.join("perf.data");
             let st = Command::new("perf")
-                .args(["record", "-F", "999", "--call-graph", "fp", "-o"])
+                .args(["record", "-F", "149", "--call-graph", "dwarf,24576", "-o"])
                 .arg(&data)
                 .arg("--")
                 .arg(binary)
@@ -3195,14 +3195,14 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
                 .map_err(|e| format!("perf record: {e}"))?;
             eprintln!("PROFILE perf record status={:?}", st.status.code());
             for sort in [
-                vec!["--no-children", "--sort", "symbol"],
-                vec!["--children", "--sort", "symbol"],
+                vec!["--no-children", "--sort", "symbol", "--no-inline"],
+                vec!["--children", "--sort", "symbol", "--no-inline"],
             ] {
                 let rep = Command::new("perf")
                     .args(["report", "--stdio", "-i"])
                     .arg(&data)
                     .args(&sort)
-                    .args(["-g", "none", "--percent-limit", "0.7"])
+                    .args(["-g", "none", "--percent-limit", "0.4"])
                     .output()
                     .map_err(|e| format!("perf report: {e}"))?;
                 eprintln!(
