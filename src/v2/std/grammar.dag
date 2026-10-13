@@ -43,11 +43,16 @@ import v2.std.node_query {
 import v2.std.compilers.lexing { LexRules }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.node {
+  Arrow,
   Atom,
+  ComputationNode,
   Conj,
+  Disj,
   Edge,
+  Instantiation,
   Authored,
   Node,
+  Occupancy,
   Positional,
   Symbol,
   TypeNode,
