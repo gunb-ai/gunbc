@@ -416,6 +416,14 @@ fn native_materialization_store_closure_entry() -> String {
 // that a rule's emission is a compilable program with the right answers -- the half a textual
 // witness over the emitted header cannot establish. Run by name, not a merge gate.
 // `gunbc test //gunbc/instruments:native-emission-controls`.
+fn native_xl2_rehearsal_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-xl2-rehearsal" } }
+}
+
+fn native_xl2_rehearsal_entry() -> String {
+  "src/v2/workflow/namespace_xl2_rehearsal_native.dag"
+}
+
 fn native_emission_controls_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-emission-controls" } }
 }
@@ -694,6 +702,10 @@ fn native_app_attest_binding() -> TargetBinding {
   TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
+fn native_xl2_rehearsal_binding() -> TargetBinding {
+  TargetBinding { target: native_xl2_rehearsal_label() producer: NativeClaimProgramProducer { entry: native_xl2_rehearsal_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
 fn native_emission_controls_binding() -> TargetBinding {
   TargetBinding { target: native_emission_controls_label() producer: NativeClaimProgramProducer { entry: native_emission_controls_entry() deadline: native_claim_policy_child_deadline() } }
 }
@@ -881,7 +893,7 @@ fn instrument_targets() -> List<Label> {
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), value_position_block_nests_label(), native_serve_label()
+    native_emission_controls_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label()
   ]
 }
 
@@ -900,7 +912,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), value_position_block_nests_binding(), native_serve_binding()
+    native_emission_controls_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding()
   ]
 }
 
