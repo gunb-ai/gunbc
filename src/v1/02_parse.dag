@@ -6421,17 +6421,32 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
         Present { value: lv } => {
           PatternResult { pattern: LitPattern { value: lv }, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
         }
-        // A non-literal keyword in binder position is a reserved word, not a name: the pattern
-        // binder cannot be a keyword. Refuse it here, at the keyword token (its pattern-use
-        // span), instead of returning a Wildcard that leaves the token unconsumed so the
-        // surrounding variant-binding reader re-reads it as a field name and misattributes the
-        // later field-not-found to the type declaration. parse_variant_bindings_brace_acc
-        // propagates this err without treating the token as a field (has_err(r2.err)).
-        Absent => PatternResult {
-          pattern: Wildcard,
-          tokens: tokens,
-          ctx: ctx,
-          err: Present { value: parse_error(msg: concat("pattern binder '", kw_text, "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"), span: span) }
+        // Literals (true/false/none/null) already returned. Remaining keywords:
+        // name-admissible ones (`module`, `alias`, ...) bind like identifiers — the corpus
+        // writes ModuleExposure { module: module }. `match` and non_name_keywords that are
+        // not literals (acquire/release) refuse here at the keyword token, instead of a
+        // Wildcard that leaves the token unconsumed so the variant-binding reader re-reads
+        // it as a field and misattributes FieldNotFound to the type declaration.
+        Absent => {
+          if (kw_text != "match") && tok_is_keyword_name(tok: tok, env: ctx.env) {
+            let rest = token_stream_advance(stream: tokens, n: 1)
+            let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: tokens, to: rest })
+            PatternResult {
+              pattern: Bind {
+                declaration: make_pattern_binder_declaration_node(occurrence_identity: minted.identity, name: kw_text, span: span)
+              },
+              tokens: rest,
+              ctx: minted.ctx,
+              err: none
+            }
+          } else {
+            PatternResult {
+              pattern: Wildcard,
+              tokens: tokens,
+              ctx: ctx,
+              err: Present { value: parse_error(msg: concat("pattern binder '", kw_text, "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"), span: span) }
+            }
+          }
         }
       }
     }
@@ -6496,6 +6511,9 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
       let fb = make_field_binding_node(occurrence_identity: minted.identity, field_name: field_name, binding: r2.pattern, span: bind_span, name_span: field_name_span)
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: minted.ctx, acc: list_push(acc, fb))
     EatUnchanged { tokens: __eu } =>
+      if field_name == "match" {
+        return BindingsResult { field_bindings: [], tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "pattern binder 'match' is a reserved keyword, not a binder name; rename it to a non-keyword identifier", span: field_name_span) } }
+      }
       let e2 = eat(tokens: tokens, expected: ExpectComma)
       let tokens = skip_newlines(tokens: match e2 { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
       let declaration_mint = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: field_name_span })
