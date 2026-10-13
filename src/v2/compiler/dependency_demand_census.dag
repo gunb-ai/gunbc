@@ -1,7 +1,21 @@
 module v2.compiler.dependency_demand_census
 
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length }
-import v2.compiler.body_lowering_fold { body_lower_find_production_shell_optional, body_lower_param_binding_optional, body_lower_type_expr_lowered_optional }
+import v2.compiler.body_lowering_fold {
+  body_lower_call_arg_capture_is_named,
+  body_lower_find_production_shell_optional,
+  body_lower_param_binding_optional,
+  body_lower_postfix_chain_read,
+  body_lower_type_expr_lowered_optional,
+  PostfixCast,
+  PostfixChainBare,
+  PostfixChainFound,
+  PostfixChainNotThisShape,
+  PostfixChainSuffixCarried,
+  PostfixIndex,
+  PostfixProjection,
+  PostfixRecord
+}
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure,
   DemandDerived,
@@ -43,6 +57,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.grammar { grammar_empty_node, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
+import std.types { Bool }
 import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_lowered_from, node_rebuild, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
@@ -57,12 +72,13 @@ import v2.std.text { String }
 //
 // THE STRIP IS CENSUS-ONLY AND IT IS NOT A CARRIER. Production lowering refuses every fn with a
 // `uses` clause (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional). The census
-// route alone turns each uses alias into a reference to the resource's declaration identity -- the
-// body's use of the alias is fact kind 1, a capability call under a declared resource -- then
-// replaces the clause shell with grammar_empty_node so normalize does not refuse at the unmodeled
-// clause. The rewritten tree is consumed inside the census route only (v2.compiler.compile
-// native_demand_census_report). The authored rows are never lowered onto the fn: they are read,
-// judged and reported (operator D13: no carrier for the authored row).
+// route alone rewrites a UNIQUE uses alias to the resource declaration at occurrences established
+// to bind to that alias -- not qualified-member suffixes, binders, declaration names or labels --
+// then replaces the clause shell with grammar_empty_node so normalize does not refuse at the
+// unmodeled clause. Duplicate aliases, or a binding that cannot be established, leave the fn
+// unobserved. The rewritten tree is consumed inside the census route only
+// (v2.compiler.compile native_demand_census_report). The authored rows are never lowered onto the
+// fn: they are read, judged and reported (operator D13: no carrier for the authored row).
 //
 // THE VERDICT IS SCOPED TO THE AUDITED VOCABULARY (lane ruling). Derived demand is grounded only
 // for resources some operation was audited to declare, which today is Network. A row naming any
@@ -86,10 +102,16 @@ import v2.std.text { String }
 
 // One authored `uses` clause, read from the parse of the fn that carries it. `name` is Absent only
 // when the fn's own name could not be read off the same parse; that fn still gets a census row.
+type UsesAliasBind
+  = UsesAliasBindUnique
+  | UsesAliasBindConflict
+  | UsesAliasBindUnestablished
+
 type AuthoredUsesFunction {
   owner: QualifiedName
   name: Optional<Symbol>
   types: List<Optional<Node>>
+  alias_bind: UsesAliasBind
 }
 
 type DemandCensusStripped {
@@ -98,34 +120,73 @@ type DemandCensusStripped {
 }
 
 fn demand_census_strip(tree: Node, owner: QualifiedName) -> DemandCensusStripped {
-  let authored = demand_census_authored_in(acc: Empty, node: tree, owner: owner)
-  if is_empty(xs: authored) {
-    DemandCensusStripped { tree: tree, authored: authored }
+  let rewritten = demand_census_rewrite(node: tree, owner: owner)
+  if is_empty(xs: rewritten.authored) {
+    DemandCensusStripped { tree: tree, authored: rewritten.authored }
   } else {
-    DemandCensusStripped { tree: demand_census_elide_uses(node: demand_census_bind_aliases(node: tree)), authored: authored }
+    DemandCensusStripped { tree: demand_census_elide_uses(node: rewritten.tree), authored: rewritten.authored }
+  }
+}
+
+type DemandCensusRewrite {
+  tree: Node
+  authored: List<AuthoredUsesFunction>
+}
+
+fn demand_census_rewrite(node: Node, owner: QualifiedName) -> DemandCensusRewrite {
+  if dag_node_is_fn_decl(node: node) {
+    match parse_production_captured_child_optional(node: node) {
+      Absent => DemandCensusRewrite { tree: node, authored: Empty }
+      Present { value: captured } =>
+        match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
+          Absent => DemandCensusRewrite { tree: node, authored: Empty }
+          Present { value: clause } => demand_census_rewrite_uses_fn(node: node, owner: owner, clause: clause)
+        }
+    }
+  } else {
+    fold(node.children, init: DemandCensusRewrite { tree: node_rebuild(n: node, children: Empty), authored: Empty }, f: fn(acc, e) {
+      let child = demand_census_rewrite(node: e.target, owner: owner)
+      DemandCensusRewrite {
+        tree: node_rebuild(n: acc.tree, children: list_snoc_item(xs: acc.tree.children, item: Edge { label: e.label, target: child.tree })),
+        authored: fold_list(xs: child.authored, empty: acc.authored, cons: fn(a, f) { list_snoc_item(xs: a, item: f) })
+      }
+    })
+  }
+}
+
+fn demand_census_rewrite_uses_fn(node: Node, owner: QualifiedName, clause: Node) -> DemandCensusRewrite {
+  let entries = demand_census_entries(clause: clause)
+  let authored = AuthoredUsesFunction {
+    owner: owner,
+    name: match parse_production_captured_child_optional(node: node) {
+      Absent => optional_absent()
+      Present { value: captured } => dag_surface_kw_then_ident_from_captured(captured: captured)
+    },
+    types: demand_census_entry_types(clause: clause),
+    alias_bind: demand_census_alias_uniqueness(entries: entries)
+  }
+  match authored.alias_bind {
+    UsesAliasBindConflict => DemandCensusRewrite { tree: node, authored: Cons { head: authored, tail: Empty } }
+    UsesAliasBindUnestablished => DemandCensusRewrite { tree: node, authored: Cons { head: authored, tail: Empty } }
+    UsesAliasBindUnique =>
+      let subst = demand_census_subst(node: node, entries: entries, value_pos: false, shadowed: Empty)
+      if subst.established {
+        DemandCensusRewrite { tree: subst.node, authored: Cons { head: authored, tail: Empty } }
+      } else {
+        DemandCensusRewrite {
+          tree: node,
+          authored: Cons {
+            head: AuthoredUsesFunction { owner: authored.owner, name: authored.name, types: authored.types, alias_bind: UsesAliasBindUnestablished },
+            tail: Empty
+          }
+        }
+      }
   }
 }
 
 type AuthoredUsesEntry {
   alias: Optional<Symbol>
   type_expr: Optional<Node>
-}
-
-fn demand_census_bind_aliases(node: Node) -> Node {
-  let rebuilt = demand_census_rebuild(node: node, child: fn(c) { demand_census_bind_aliases(node: c) })
-  if dag_node_is_fn_decl(node: rebuilt) {
-    match parse_production_captured_child_optional(node: rebuilt) {
-      Absent => rebuilt
-      Present { value: captured } =>
-        match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
-          Absent => rebuilt
-          Present { value: clause } =>
-            demand_census_subst_aliases(node: rebuilt, entries: demand_census_entries(clause: clause))
-        }
-    }
-  } else {
-    rebuilt
-  }
 }
 
 fn demand_census_entries(clause: Node) -> List<AuthoredUsesEntry> {
@@ -148,26 +209,180 @@ fn demand_census_entry_alias(entry: Node) -> Optional<Symbol> {
   }
 }
 
-fn demand_census_subst_aliases(node: Node, entries: List<AuthoredUsesEntry>) -> Node {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
-      if id == ^dag_surface_uses_clause {
-        node
-      } else {
-        demand_census_subst_alias_atom(node: node, entries: entries)
-      }
-    Absent => demand_census_subst_alias_atom(node: node, entries: entries)
+type DemandCensusSubst {
+  node: Node
+  established: Bool
+}
+
+fn demand_census_alias_uniqueness(entries: List<AuthoredUsesEntry>) -> UsesAliasBind {
+  let acc = fold_list(xs: entries, empty: Empty, cons: fn(names, e) {
+    match e.alias {
+      Absent => names
+      Present { value: a } => list_snoc_item(xs: names, item: a)
+    }
+  })
+  if demand_census_alias_any_absent(entries: entries) {
+    UsesAliasBindUnestablished
+  } else if demand_census_alias_has_duplicate(names: acc) {
+    UsesAliasBindConflict
+  } else {
+    UsesAliasBindUnique
   }
 }
 
-fn demand_census_subst_alias_atom(node: Node, entries: List<AuthoredUsesEntry>) -> Node {
+fn demand_census_alias_any_absent(entries: List<AuthoredUsesEntry>) -> Bool {
+  fold_list(xs: entries, empty: false, cons: fn(acc, e) {
+    match e.alias {
+      Absent => true
+      Present { value: _ } => acc
+    }
+  })
+}
+
+fn demand_census_alias_has_duplicate(names: List<Symbol>) -> Bool {
+  fold_list(xs: names, empty: false, cons: fn(acc, n) {
+    acc || (demand_census_symbol_count(names: names, n: n) > 1)
+  })
+}
+
+fn demand_census_symbol_count(names: List<Symbol>, n: Symbol) -> Int {
+  fold_list(xs: names, empty: 0, cons: fn(c, x) { if x == n { c + 1 } else { c } })
+}
+
+fn demand_census_symbol_listed(names: List<Symbol>, n: Symbol) -> Bool {
+  fold_list(xs: names, empty: false, cons: fn(acc, x) { acc || (x == n) })
+}
+
+fn demand_census_among(node: Node, xs: List<Node>) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (node.occurrence_id == x.occurrence_id) })
+}
+
+fn demand_census_postfix_members(node: Node) -> List<Node> {
+  match body_lower_postfix_chain_read(node: node) {
+    PostfixChainBare { segments: xs } => xs
+    PostfixChainFound { steps: steps } =>
+      fold_list(xs: steps, empty: Empty, cons: fn(acc, st) {
+        match st {
+          PostfixProjection { segment: s, call_elem: _ } => list_snoc_item(xs: acc, item: s)
+          PostfixRecord { segment: s, items: _ } => list_snoc_item(xs: acc, item: s)
+          PostfixCast { target: _ } => acc
+          PostfixIndex { items_capture: _, at: _ } => acc
+        }
+      })
+    PostfixChainNotThisShape => Empty
+    PostfixChainSuffixCarried { at: _ } => Empty
+  }
+}
+
+fn demand_census_subst(node: Node, entries: List<AuthoredUsesEntry>, value_pos: Bool, shadowed: List<Symbol>) -> DemandCensusSubst {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_uses_clause {
+        DemandCensusSubst { node: node, established: true }
+      } else if id == ^dag_surface_fn_body {
+        demand_census_subst_children(node: node, entries: entries, value_pos: true, shadowed: shadowed)
+      } else if id == ^dag_surface_postfix_expr {
+        demand_census_subst_postfix(node: node, entries: entries, shadowed: shadowed)
+      } else if id == ^dag_surface_arg {
+        demand_census_subst_arg(node: node, entries: entries, shadowed: shadowed)
+      } else if id == ^dag_surface_field_init {
+        demand_census_subst_labelled(node: node, entries: entries, shadowed: shadowed)
+      } else if id == ^dag_surface_let_expr {
+        demand_census_subst_labelled(node: node, entries: entries, shadowed: shadowed)
+      } else if id == ^dag_surface_primary_expr {
+        demand_census_subst_children(node: node, entries: entries, value_pos: true, shadowed: shadowed)
+      } else {
+        demand_census_subst_atom_or_children(node: node, entries: entries, value_pos: value_pos, shadowed: shadowed)
+      }
+    Absent => demand_census_subst_atom_or_children(node: node, entries: entries, value_pos: value_pos, shadowed: shadowed)
+  }
+}
+
+fn demand_census_subst_postfix(node: Node, entries: List<AuthoredUsesEntry>, shadowed: List<Symbol>) -> DemandCensusSubst {
+  match body_lower_postfix_chain_read(node: node) {
+    PostfixChainNotThisShape => DemandCensusSubst { node: node, established: false }
+    PostfixChainSuffixCarried { at: _ } => DemandCensusSubst { node: node, established: false }
+    PostfixChainBare { segments: _ } => demand_census_subst_postfix_members(node: node, entries: entries, shadowed: shadowed)
+    PostfixChainFound { steps: _ } => demand_census_subst_postfix_members(node: node, entries: entries, shadowed: shadowed)
+  }
+}
+
+fn demand_census_subst_postfix_members(node: Node, entries: List<AuthoredUsesEntry>, shadowed: List<Symbol>) -> DemandCensusSubst {
+  let members = demand_census_postfix_members(node: node)
+  fold(node.children, init: DemandCensusSubst { node: node_rebuild(n: node, children: Empty), established: true }, f: fn(acc, e) {
+    let child = if demand_census_among(node: e.target, xs: members) {
+      DemandCensusSubst { node: e.target, established: true }
+    } else {
+      demand_census_subst(node: e.target, entries: entries, value_pos: true, shadowed: shadowed)
+    }
+    DemandCensusSubst {
+      node: node_rebuild(n: acc.node, children: list_snoc_item(xs: acc.node.children, item: Edge { label: e.label, target: child.node })),
+      established: acc.established && child.established
+    }
+  })
+}
+
+fn demand_census_subst_arg(node: Node, entries: List<AuthoredUsesEntry>, shadowed: List<Symbol>) -> DemandCensusSubst {
+  if body_lower_call_arg_capture_is_named(arg_capture: node) {
+    demand_census_subst_labelled(node: node, entries: entries, shadowed: shadowed)
+  } else {
+    demand_census_subst_children(node: node, entries: entries, value_pos: true, shadowed: shadowed)
+  }
+}
+
+fn demand_census_subst_labelled(node: Node, entries: List<AuthoredUsesEntry>, shadowed: List<Symbol>) -> DemandCensusSubst {
+  match parse_production_captured_child_optional(node: node) {
+    Absent => demand_census_subst_children(node: node, entries: entries, value_pos: true, shadowed: shadowed)
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => demand_census_subst_children(node: node, entries: entries, value_pos: true, shadowed: shadowed)
+        Present { value: pair } =>
+          demand_census_subst_skip_then_value(node: node, skip: pair.left, entries: entries, shadowed: shadowed)
+      }
+  }
+}
+
+fn demand_census_subst_skip_then_value(node: Node, skip: Node, entries: List<AuthoredUsesEntry>, shadowed: List<Symbol>) -> DemandCensusSubst {
+  fold(node.children, init: DemandCensusSubst { node: node_rebuild(n: node, children: Empty), established: true }, f: fn(acc, e) {
+    let child = if demand_census_among(node: e.target, xs: Cons { head: skip, tail: Empty }) {
+      DemandCensusSubst { node: e.target, established: true }
+    } else {
+      demand_census_subst(node: e.target, entries: entries, value_pos: true, shadowed: shadowed)
+    }
+    DemandCensusSubst {
+      node: node_rebuild(n: acc.node, children: list_snoc_item(xs: acc.node.children, item: Edge { label: e.label, target: child.node })),
+      established: acc.established && child.established
+    }
+  })
+}
+
+fn demand_census_subst_children(node: Node, entries: List<AuthoredUsesEntry>, value_pos: Bool, shadowed: List<Symbol>) -> DemandCensusSubst {
+  fold(node.children, init: DemandCensusSubst { node: node_rebuild(n: node, children: Empty), established: true }, f: fn(acc, e) {
+    let child = demand_census_subst(node: e.target, entries: entries, value_pos: value_pos, shadowed: shadowed)
+    DemandCensusSubst {
+      node: node_rebuild(n: acc.node, children: list_snoc_item(xs: acc.node.children, item: Edge { label: e.label, target: child.node })),
+      established: acc.established && child.established
+    }
+  })
+}
+
+fn demand_census_subst_atom_or_children(node: Node, entries: List<AuthoredUsesEntry>, value_pos: Bool, shadowed: List<Symbol>) -> DemandCensusSubst {
   match node_atom_identity_optional(node: node) {
     Present { value: id } =>
-      match demand_census_alias_image(entries: entries, uses_alias: id, source: node) {
-        Present { value: image } => image
-        Absent => demand_census_rebuild(node: node, child: fn(c) { demand_census_subst_aliases(node: c, entries: entries) })
+      if demand_census_symbol_listed(names: shadowed, n: id) {
+        DemandCensusSubst { node: node, established: true }
+      } else {
+        match demand_census_alias_image(entries: entries, uses_alias: id, source: node) {
+          Absent => demand_census_subst_children(node: node, entries: entries, value_pos: value_pos, shadowed: shadowed)
+          Present { value: image } =>
+            if value_pos {
+              DemandCensusSubst { node: image, established: true }
+            } else {
+              DemandCensusSubst { node: node, established: true }
+            }
+        }
       }
-    Absent => demand_census_rebuild(node: node, child: fn(c) { demand_census_subst_aliases(node: c, entries: entries) })
+    Absent => demand_census_subst_children(node: node, entries: entries, value_pos: value_pos, shadowed: shadowed)
   }
 }
 
@@ -195,34 +410,6 @@ fn demand_census_alias_image(entries: List<AuthoredUsesEntry>, uses_alias: Symbo
         }
     }
   })
-}
-
-fn demand_census_rebuild(node: Node, child: fn(Node) -> Node) -> Node {
-  node_rebuild(n: node, children: fold(node.children, init: Empty, f: fn(acc, e) {
-    list_snoc_item(xs: acc, item: Edge { label: e.label, target: child(e.target) })
-  }))
-}
-
-// A fn declaration is not descended into: the clause belongs to the declaration's own signature,
-// and a fn body holds no fn declaration.
-fn demand_census_authored_in(acc: List<AuthoredUsesFunction>, node: Node, owner: QualifiedName) -> List<AuthoredUsesFunction> {
-  if dag_node_is_fn_decl(node: node) {
-    match parse_production_captured_child_optional(node: node) {
-      Absent => acc
-      Present { value: captured } =>
-        match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
-          Absent => acc
-          Present { value: clause } =>
-            list_snoc_item(xs: acc, item: AuthoredUsesFunction {
-              owner: owner,
-              name: dag_surface_kw_then_ident_from_captured(captured: captured),
-              types: demand_census_entry_types(clause: clause)
-            })
-        }
-    }
-  } else {
-    fold(node.children, init: acc, f: fn(a, e) { demand_census_authored_in(acc: a, node: e.target, owner: owner) })
-  }
 }
 
 // One element per authored entry, in authored order: the entry's type_expr shell, or Absent when the
@@ -644,6 +831,8 @@ type DemandCensusUnobserved
   | UnobservedFunctionUnnamed
   | UnobservedFunctionNotDeclared
   | UnobservedAuthoredTypeUnresolved
+  | UnobservedAliasConflict
+  | UnobservedAliasUnestablished
 
 // A READ REFUSED BEFORE THE STRIP. Exit 2 names the file and the stage (tokenize vs parse) so an
 // incomplete population is a located refusal, not an unlocated count (DESIGN section 5).
@@ -871,6 +1060,8 @@ fn demand_census_unobserved_word(u: DemandCensusUnobserved) -> String {
     UnobservedFunctionUnnamed => "function_unnamed"
     UnobservedFunctionNotDeclared => "function_not_declared"
     UnobservedAuthoredTypeUnresolved => "authored_type_unresolved"
+    UnobservedAliasConflict => "alias_conflict"
+    UnobservedAliasUnestablished => "alias_unestablished"
   }
 }
 
@@ -1003,6 +1194,8 @@ fn demand_census_row_line(r: DemandCensusRow) -> String {
         UnobservedFunctionUnnamed => reason_part
         UnobservedFunctionNotDeclared => reason_part
         UnobservedAuthoredTypeUnresolved => reason_part
+        UnobservedAliasConflict => reason_part
+        UnobservedAliasUnestablished => reason_part
       }
   }
 }
@@ -1218,19 +1411,24 @@ fn demand_census_report(
 
 fn demand_census_resolved_row(vocabulary: ResourceSet, reading: DemandCensusAuthoredReading, demand: Map<QualifiedName, DependencyDemand>) -> DemandCensusRow {
   let path = demand_census_function_path(authored: reading.authored)
-  match reading.authored.name {
-    Absent => demand_census_row_unobserved(function: path, reason: UnobservedFunctionUnnamed)
-    Present { value: _ } =>
-      match map_lookup(m: demand, key: path) {
-        Absent => demand_census_row_unobserved(function: path, reason: UnobservedFunctionNotDeclared)
-        Present { value: d } =>
-          let verdict = demand_census_verdict(vocabulary: vocabulary, readings: reading.readings, demand: d)
-          DemandCensusRow {
-            function: path,
-            authored: reading.readings,
-            standings: demand_census_row_standings(vocabulary: vocabulary, verdict: verdict, readings: reading.readings),
-            verdict: verdict,
-            demand: optional_present(value: d)
+  match reading.authored.alias_bind {
+    UsesAliasBindConflict => demand_census_row_unobserved(function: path, reason: UnobservedAliasConflict)
+    UsesAliasBindUnestablished => demand_census_row_unobserved(function: path, reason: UnobservedAliasUnestablished)
+    UsesAliasBindUnique =>
+      match reading.authored.name {
+        Absent => demand_census_row_unobserved(function: path, reason: UnobservedFunctionUnnamed)
+        Present { value: _ } =>
+          match map_lookup(m: demand, key: path) {
+            Absent => demand_census_row_unobserved(function: path, reason: UnobservedFunctionNotDeclared)
+            Present { value: d } =>
+              let verdict = demand_census_verdict(vocabulary: vocabulary, readings: reading.readings, demand: d)
+              DemandCensusRow {
+                function: path,
+                authored: reading.readings,
+                standings: demand_census_row_standings(vocabulary: vocabulary, verdict: verdict, readings: reading.readings),
+                verdict: verdict,
+                demand: optional_present(value: d)
+              }
           }
       }
   }

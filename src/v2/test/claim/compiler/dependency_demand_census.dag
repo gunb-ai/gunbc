@@ -13,6 +13,7 @@ import v2.compiler.dependency_demand_census {
   DemandCensusReport,
   DemandCensusRow,
   DemandCensusVerdict,
+  UnobservedAliasConflict,
   UnreadableAtParse,
   UnreadableAtTokenize,
   demand_census_conserved,
@@ -57,9 +58,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //                 its row is out of vocabulary and counts toward the Filesystem audit
 //   alias_used    its body names the uses alias; the census binds that alias to
 //                 the resource declaration, so derived demand names Network     -> equal
+//   member_collision  calls t.http.H.net (requires none) beside H.Network (requires
+//                 Network); spelling substitution would mint a false Equal     -> mismatch
+//   duplicate_alias  two uses entries share the alias; first-match is refused   -> unobserved
 data ddc_resources_source: String = "module std.resources\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n\nresource Filesystem {\n  kind: Capability\n  mode: ReadWrite\n  capability read {}\n}\n"
 
-data ddc_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires Network\n  }\n  operation Exec {\n    requires opaque\n  }\n  operation Ping {\n    requires none\n  }\n}\n"
+data ddc_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires Network\n  }\n  operation Exec {\n    requires opaque\n  }\n  operation Ping {\n    requires none\n  }\n  operation net {\n    requires none\n  }\n  operation Network {\n    requires Network\n  }\n}\n"
 
 data ddc_app_source: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n\nfn transitive(p: Bool) -> Bool uses net: Network {\n  restates(p: p)\n}\n\nfn over_claims(p: Bool) -> Bool uses net: Network {\n  p\n}\n\nfn opaque_reach(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Exec()\n  p\n}\n\nfn via_bare_service(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Ping()\n  p\n}\n\nfn fs_only(p: Bool) -> Bool uses fs: std.resources.Filesystem {\n  let r = std.resources.Filesystem.read()\n  p\n}\n\nfn mixed(p: Bool) -> Bool uses net: Network, fs: std.resources.Filesystem {\n  let r = t.http.H.Get()\n  let s = std.resources.Filesystem.read()\n  p\n}\n"
 
@@ -71,7 +75,7 @@ data ddc_valued_source: String = "module t.valued\n\nimport std.resources { Netw
 // tokenize, so its uses fn is read by nobody and the census population is incomplete.
 data ddc_broken_source: String = "module t.broken\n\nimport std.resources { Network }\n\nfn lost(p: Bool) -> Bool uses net: Network {\n  \"never terminates\n}\n"
 
-data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n"
+data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n\nfn member_collision(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.net()\n  p\n}\n\nfn duplicate_alias(p: Bool) -> Bool uses net: Network, net: Network {\n  p\n}\n"
 
 fn ddc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -126,7 +130,7 @@ test fn every_uses_fn_gets_exactly_one_census_row_holds() -> Bool {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
-      (r.uses_functions == 10) && (length(xs: r.rows) == 10) && demand_census_conserved(r: r)
+      (r.uses_functions == 12) && (length(xs: r.rows) == 12) && demand_census_conserved(r: r)
   }
 }
 
@@ -182,6 +186,33 @@ test fn reaching_an_opaque_operation_is_undecided_by_that_cause_RED() -> Bool {
 
 test fn a_body_naming_its_uses_alias_is_a_reference_to_the_resource_holds() -> Bool {
   ddc_is_equal(function: "t.aliasing.alias_used")
+}
+
+test fn a_qualified_member_sharing_the_alias_spelling_is_not_substituted_RED() -> Bool {
+  match ddc_verdict(function: "t.aliasing.member_collision") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusMismatch { authored: a, derived: d } => (length(xs: a) == 1) && (length(xs: d) == 0)
+        CensusEqual => false
+        CensusUndecided { cause: _ } => false
+        CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+
+test fn duplicate_uses_aliases_leave_the_fn_unobserved_RED() -> Bool {
+  match ddc_verdict(function: "t.aliasing.duplicate_alias") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUnobserved { reason: UnobservedAliasConflict } => true
+        CensusUnobserved { reason: _ } => false
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUndecided { cause: _ } => false
+      }
+  }
 }
 
 // Only the in-vocabulary rows of Equal fns are deletable: the Network rows of restates, transitive,
