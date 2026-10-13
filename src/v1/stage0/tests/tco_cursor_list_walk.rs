@@ -38,8 +38,8 @@ fn walk_escape(xs: FreeMonoid<Int>, acc: Int) -> FreeMonoid<Int> {
 
 fn walk_xs_after(xs: FreeMonoid<Int>, acc: Int) -> Int {
   match xs {
-    Empty => acc + (xs |> count)
-    Cons { head: h, tail: t } => walk_xs_after(t, acc + h)
+    Empty => acc
+    Cons { head: h, tail: t } => walk_xs_after(t, acc + h + (xs |> count))
   }
 }
 
@@ -219,7 +219,7 @@ fn main() {
         let want: i64 = xs.iter().sum();
         assert_eq!(walk_pos(Rc::new(xs.clone()), 0), want, "walk_pos n={n}");
         assert_eq!(walk_depth2(Rc::new(xs.clone()), 0), want, "walk_depth2 n={n}");
-        assert_eq!(walk_xs_after(Rc::new(xs.clone()), 0), want + n, "walk_xs_after n={n}");
+        assert_eq!(walk_xs_after(Rc::new(xs.clone()), 0), want + n * (n + 1) / 2, "walk_xs_after n={n}");
         let ys: im::Vector<i64> = im::Vector::new();
         let other = walk_other_pos(Rc::new(xs.clone()), Rc::new(ys), 0);
         assert!(other >= 0);
