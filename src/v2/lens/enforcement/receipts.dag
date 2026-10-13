@@ -209,7 +209,7 @@ fn red_control_status_for(probe: Node) -> RedControlStatus {
 }
 
 fn red_control_status_for_contract(contract: LensContract) -> RedControlStatus {
-  if contract.entry.lens_id == Cost {
+  if (contract.entry.lens_id == Cost) {
     red_control_status_for(probe: cost_red_control_probe)
   } else {
     RedControlAbsent
