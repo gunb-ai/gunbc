@@ -43,7 +43,7 @@ data xargs_program: NonEmptyStr = "xargs"
 // -lname IS A GNU EXTENSION and it matches the TARGET of a symbolic link, not the link's own name --
 // which is the whole reason this operation exists rather than a plain -name walk. Its pattern is a
 // GLOB, so a bracketed literal such as socket:[12345] is read as a character class and matches
-// NOTHING: gunbc.build_cache_endpoint_observe records the measurement where exactly that produced a
+// NOTHING: gunbc.build_cache.build_cache_endpoint_observe records the measurement where exactly that produced a
 // zero that was then read as "the walk cannot be done". A caller passing a target pattern must
 // escape or wildcard its brackets, and this note is here so the next author meets that fact before
 // the empty result rather than after.

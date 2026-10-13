@@ -1,4 +1,4 @@
-module gunbc.fabric_control_plane
+module gunbc.fabric.fabric_control_plane
 
 import gunbc.workspace_slot_mutation {
   workspace_slot_mutation_acquire, workspace_slot_mutation_release,
@@ -34,7 +34,7 @@ import product.fabric.selection {
   OfferPriced, OfferNotFungible, OfferUnavailableForGrant, OfferCannotHoldAnUnboundedGrant, OfferNotPriceable,
   OfferWrongCurrency, OfferUnaffordable, OfferLiabilityOverBuyOrder,
 }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
   FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
@@ -43,8 +43,8 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleaseKeyNotSlotAddressable,
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
 }
-import gunbc.fabric_floor_dispatch { floor_supply_selection }
-import gunbc.floor_demand { floor_execution_requirements }
+import gunbc.fabric.fabric_floor_dispatch { floor_supply_selection }
+import gunbc.floor.floor_demand { floor_execution_requirements }
 import product.fabric.budget {
   MoneyAccount, MoneyReservationRequest, MoneySettlementRequest, MoneyRefusal, MoneyOutcome,
   CurrencyMismatch, LedgerRefused, StaleLeaseGeneration,
@@ -57,7 +57,7 @@ import product.fabric.execution {
   ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale,
   admit_receipt_for_grant,
 }
-import gunbc.fabric_executor_class {
+import gunbc.fabric.fabric_executor_class {
   ExecutorSanction, CapacityClassAdmission, CapacityClassAdmitted,
   CapacityClassRefused, ExecutorNotClassified,
   admit_executor_capacity, capacity_admission_wire,
@@ -67,7 +67,7 @@ import gunbc.fabric_executor_class {
 //
 // This is the first production consumer of three authorities that have each
 // been complete and unconsumed. product.fabric.selection's select_supply ranked
-// nothing for anyone; gunbc.fabric_floor_dispatch turned the floor's own Work
+// nothing for anyone; gunbc.fabric.fabric_floor_dispatch turned the floor's own Work
 // into a Demand and had only witness rows behind it; and the file-backed
 // compare-and-set had no caller at all. The value of this cut is not new
 // vocabulary -- it invents none -- it is that those three stop being furniture.
@@ -257,7 +257,7 @@ fn reserve_selected_cell_under_exclusion(
   offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
   account: MoneyAccount,
 ) -> CellReservation
-  admit_callers: [decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "reserve_selected_cell")]
+  admit_callers: [decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "reserve_selected_cell")]
 {
   match file_hold_acquire(
     root: root,
@@ -696,8 +696,8 @@ fn end_cell_hold(
   reason: NonEmptyStr,
 ) -> CellHoldEnd
   admit_callers: [
-    decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "release_reserved_cell_money_generation"),
-    decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "settle_reserved_cell_at"),
+    decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "release_reserved_cell_money_generation"),
+    decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "settle_reserved_cell_at"),
   ]
   = match file_hold_release_assess(
     root: root,
@@ -775,7 +775,7 @@ fn end_cell_hold(
 // test.probe.file_hold_plan_forged_probe.
 fn commit_hold_end(plan: FileHoldReleasePlan, money: MoneyOutcome) -> CellHoldEnd
   admit_callers: [
-    decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "end_cell_hold"),
+    decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "end_cell_hold"),
   ]
   = match money {
     MoneyRefused { refusal: f } => HoldEndBudgetRefused { slot_key: plan.slot_key, refusal: f }
@@ -788,7 +788,7 @@ fn commit_hold_end(plan: FileHoldReleasePlan, money: MoneyOutcome) -> CellHoldEn
 // fault would not tell it that.
 fn free_cell_slot(plan: FileHoldReleasePlan, account: MoneyAccount) -> CellHoldEnd
   admit_callers: [
-    decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "commit_hold_end"),
+    decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "commit_hold_end"),
   ]
   = match file_hold_release_commit(plan: plan) {
     FileHoldReleased { slot_key: k, generation: g } =>
@@ -1036,7 +1036,7 @@ fn broker_select_resource_budget(
 //
 // THE LEAF RENDERINGS OF WHAT THE BROKER RETURNS LIVE WITH THE BROKER. They were first written inside
 // the FCI-1 live probe, when that instrument was the only caller of the route; the shakedown broker
-// (gunbc.runner_microvm_slot_reserve) is the first production caller and must render the same
+// (gunbc.runner.runner_microvm_slot_reserve) is the first production caller and must render the same
 // outcomes, and a production module importing an instrument is the layer inversion DESIGN 3 refuses.
 // So they moved here, and the probe reads them from here.
 fn permit_standing_wire(standing: PermitStanding<NonEmptyStr>) -> String {

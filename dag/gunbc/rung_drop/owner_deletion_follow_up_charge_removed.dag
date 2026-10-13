@@ -9,7 +9,7 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 // has a deletion_follow_up field, so no row can be in this drop's population: the used rows whose
 // owner authored no deletion_follow_up. RECEIPT: v1_compiler.namespace_wave_admission
 // tree_carried_admission_refusal refuses any row file in the tree, and the type in
-// gunbc.namespace.transition_admission carries only label, subject and disposition. The drop is
+// gunbc.namespace_cut.transition_admission carries only label, subject and disposition. The drop is
 // INERT, NOT RETIRED: DESIGN section 4b(3) retires a drop by its trigger and by nothing else, and
 // this row's trigger -- resolving an authored follow-up number to the pull request it names -- has
 // not fired. The declaration below is kept verbatim as the record of what was true on 2026-09-16.

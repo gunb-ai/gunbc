@@ -1,4 +1,4 @@
-module gunbc.witness_execution_class
+module gunbc.witness.witness_execution_class
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }

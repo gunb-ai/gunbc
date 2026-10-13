@@ -1,11 +1,11 @@
-module tools.reference_occurrence_binding_census
+module gunbc.instruments.reference_occurrence_binding_census
 
 import std.types { Int, List, NonEmptyStr, String }
 import std.occurrence_identity { OccurrenceCategory }
 import gunbc.compile_clean_diagnostic_policy {
   UnlistedImportBindingSource
 }
-import tools.multi_module_compile_fixture { FixtureSource }
+import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
 
 // One observation for every reference occurrence carried by the resolved graph.  The occurrence
 // id is graph-scoped; source file, authored spelling, category and span are carried so a caller can

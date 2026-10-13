@@ -1,8 +1,8 @@
-module gunbc.machine_intake_disposition
+module gunbc.machine_intake.disposition
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import std.content_hash { ContentHash, content_hash_equal }
-import gunbc.machine_intake_subject {
+import gunbc.machine_intake.subject {
   QualificationSubject,
   SubjectCurrency,
   SubjectCurrent,
@@ -11,7 +11,7 @@ import gunbc.machine_intake_subject {
   compare_qualification_subject,
 }
 import gunbc.deployment_risk { DeploymentRiskClass, ProdRisk, TestRisk }
-import gunbc.machine_intake_phase {
+import gunbc.machine_intake.phase {
   ArrivalHardwareQualification,
   IntakePhase,
   MachineQualificationPolicy,
@@ -25,7 +25,7 @@ import gunbc.machine_intake_phase {
   machine_qualification_policy,
   machine_qualification_policy_digest,
 }
-import gunbc.machine_intake_receipt {
+import gunbc.machine_intake.receipt {
   EvidenceRef,
   IntakeReceiptEnvelope,
   ReceiptRefused,

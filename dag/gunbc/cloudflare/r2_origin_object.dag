@@ -41,7 +41,7 @@ import gunbc.cloudflare.r2_origin {
   bucket_purpose_admission,
   origin_admission_put_precondition,
 }
-import gunbc.fabric_m0_origin_readback {
+import gunbc.fabric.fabric_m0_origin_readback {
   OriginFetchOutcome,
   OriginObjectStaged,
   OriginObjectAbsent,
@@ -70,10 +70,10 @@ import gunbc.fabric_m0_origin_readback {
 //
 // THE GET STAGES ITS OWN OUTPUT. The caller names a KEY. The transfer mints a private directory,
 // points the transport at a file inside it, and -- only
-// on a 200 -- hands that path to gunbc.fabric_m0_origin_readback read_origin_staged_file, the sole
+// on a 200 -- hands that path to gunbc.fabric.fabric_m0_origin_readback read_origin_staged_file, the sole
 // mint of a confirming reading. There is no parameter through which a caller could substitute a
 // path of its own, so the digest a confirming readback carries is the digest of what the origin
-// returned. That is the capability gunbc.fabric_m0_origin_readback's trigger named; what it does
+// returned. That is the capability gunbc.fabric.fabric_m0_origin_readback's trigger named; what it does
 // and does not close for the enclosing class is stated there, once.
 //
 // THE STAGED FILE IS DIGESTED AND THEN RELEASED, INSIDE THE FETCH. Its directory is minted per
@@ -90,7 +90,7 @@ import gunbc.fabric_m0_origin_readback {
 // earlier write, and a manifest slot is written once per attempt, so no admitted object is ever
 // legitimately OVERWRITTEN. If-None-Match: * makes that a store-side refusal (412) instead of a
 // convention. A 412 is reported as its own arm -- the object is already there, which for both
-// admitted populations is the lost-acknowledgement retry gunbc.fabric_m0_commit describes, not a
+// admitted populations is the lost-acknowledgement retry gunbc.fabric.fabric_m0_commit describes, not a
 // failure -- and is never folded into the stored arm, because "I wrote it" and "someone wrote it"
 // are different facts about durability.
 //
@@ -266,7 +266,7 @@ fn classify_origin_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, std
 }
 
 // THE READ'S WHOLE ANSWER: what the origin said about this key, and whether the directory its
-// bytes were staged in is gone. outcome is gunbc.fabric_m0_origin_readback's, unchanged, so the
+// bytes were staged in is gone. outcome is gunbc.fabric.fabric_m0_origin_readback's, unchanged, so the
 // pure folds over it do not move; staging is the custody they do not judge and the caller must
 // not lose -- the same split as OriginPut's verdict and credential.
 type OriginFetch {

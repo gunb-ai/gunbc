@@ -1,4 +1,4 @@
-module gunbc.origin_main_revision_observe
+module gunbc.fleet.origin_main_revision_observe
 
 import std.types { String, Bool, FilePath, GitRef }
 import std.algebra { trim }
@@ -12,7 +12,7 @@ import extdeps.git.object_store {
 }
 import gunbc.live_deploy.revision { SameRevision }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.fleet_main_revision {
+import gunbc.fleet.fleet_main_revision {
   FleetRevisionRelationObservation,
   fleet_revision_relation_from_merge_base,
   fleet_landed_main_ref_name,
@@ -63,7 +63,7 @@ data origin_main_revision_observe_repository_path: String = "."
 // THE EFFECTFUL HALF OF THE ANCESTRY OBSERVATION, AND THE SOLE PRODUCTION CONSTRUCTOR OF A
 // MERGE-BASE-DERIVED RELATION.
 //
-// The decidable half is a pure fold in gunbc.fleet_main_revision, and only this function may feed
+// The decidable half is a pure fold in gunbc.fleet.fleet_main_revision, and only this function may feed
 // it observed facts. Product code must not author an exit_code, a base hex and a stderr and call
 // that fold as though those had been observed -- the fold stays public because the POLICY has to
 // be witnessable hermetically (git.Inspect.MergeBase carries no mock_response, so any witness

@@ -1,7 +1,7 @@
 module gunbc.lifecycle_bounded_referent
 
 import std.types { String, Bool }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 // A REFERENT WHOSE EXISTENCE IS BOUNDED BY A LIFECYCLE THAT CAN END WHILE THE SENTENCE CITING IT
 // STAYS BYTE-IDENTICAL. `gunbc.recurring_failure_mode.stale_claim_survives_its_own_correct_edit`
@@ -21,7 +21,7 @@ import gunbc.roadmap_model { RoadmapNodeId }
 // clause. A paragraph asserting that separation is exactly what this class survives -- the
 // paragraph does not change when a node closes.
 //
-// WHY THE ID IS REUSED AND NOT RE-MINTED. `gunbc.roadmap_model` `RoadmapNodeId` is this
+// WHY THE ID IS REUSED AND NOT RE-MINTED. `gunbc.roadmap.roadmap_model` `RoadmapNodeId` is this
 // repository's single authority for a dashboard work item's minted, durable identity, and its own
 // law states that the identity must outlive the graph it is read from. A second brand for the same
 // concept spelled `node://...` would be the nickname DESIGN section 3 forbids, and would fork the

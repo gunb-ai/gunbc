@@ -1,4 +1,4 @@
-module gunbc.bmc_netboot_serve
+module gunbc.bmc.bmc_netboot_serve
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -476,7 +476,7 @@ fn srv4_bmc_netboot_provision() -> ProcessExit {
 data bmc_netboot_provision_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.bmc_netboot_serve",
+    module_path: "gunbc.bmc.bmc_netboot_serve",
     decl_name: "bmc_netboot_provision_dissolution_trigger",
     field: WholeDeclaration,
   }

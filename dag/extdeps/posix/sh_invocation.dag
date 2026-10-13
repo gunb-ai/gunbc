@@ -56,15 +56,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // ones that have not yet been carried through it.
 //
 // POPULATION AT THE SEAL, counted rather than estimated: eleven call sites. Ten are production host
-// probes in the fleet observation and enrollment path (gunbc.fleet_probe_identity_observe x6,
-// gunbc.fleet_host_key_enrollment x4) whose bodies use $(...), && and || -- genuine shell
+// probes in the fleet observation and enrollment path (gunbc.fleet.fleet_probe_identity_observe x6,
+// gunbc.fleet.fleet_host_key_enrollment x4) whose bodies use $(...), && and || -- genuine shell
 // composition, not an argv wearing a costume. The eleventh is a manual receipt test that needs a
 // program which exits nonzero while printing nothing, and reaches for `sh -c "exit 3"` because no
 // utility has that as its contract.
 //
 // DISSOLVED (DP-M2 PR3, session witty-wren-554, 2026-10-04): the ten production sites are cut
 // over. The getent|cut home pipeline became a typed getent invocation plus a pure field
-// extraction (extdeps.posix.getent, gunbc.fleet_probe_identity_observe passwd_home_observation);
+// extraction (extdeps.posix.getent, gunbc.fleet.fleet_probe_identity_observe passwd_home_observation);
 // the env echoes became shell.Env.Get reads; the `command -v` presence checks became
 // shell.PosixCommandV.Check; the gcloud auth list became the typed
 // extdeps.tools.gcloud.gcloud_auth_list_accounts_command; the `test -f` check became

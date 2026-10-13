@@ -1,6 +1,6 @@
 module gunbc.exit_failure_outcome_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -13,7 +13,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // WHAT THE CHANGE IS. ClaimOutcome had no arm for a child process that exited nonzero, so a
 // gate-class claim's refusal was flattened to `Fail` and its verdict line -- the one thing a
 // reader of the artifact needs -- existed nowhere in the claim path. It lived beside the claim
-// instead, in `tools.emit_host_gate`'s narration shell-out: the module shelled printf per smoke
+// instead, in `gunbc.instruments.emit_host_gate`'s narration shell-out: the module shelled printf per smoke
 // verdict, which is the defect this change dissolves. The new `ExitFailure { code, reason }` arm
 // carries the observed exit status and the failing site's reason as data, and every consumer
 // surface projects it: terminal tag `exit-failure`, detail = reason, disposition unchanged from

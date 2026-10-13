@@ -18,7 +18,7 @@ data native_test_route_package_pattern_over_namespace_prefix_returns_universe_ze
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.witness_v2_native_route", decl_name: "native_route_universe_derived", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness.v2_native_route", decl_name: "native_route_universe_derived", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.compile", decl_name: "native_lane_source_facts", field: WholeDeclaration },
   ],
 }

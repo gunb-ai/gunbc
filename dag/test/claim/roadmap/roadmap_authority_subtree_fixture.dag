@@ -4,16 +4,16 @@ import gunbc.site.document { site_styles }
 import std.types { String, Bool, List }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.markup { Fragment }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, section_group }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_authority {
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapEdge, section_group }
+import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap.roadmap_authority {
   declared_roadmap_nodes, declared_roadmap_edges,
   RoadmapAuthorityProjection, RoadmapAuthorityProjected,
 }
-import gunbc.roadmap_nesting { roadmap_memberships }
+import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
-import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
-import gunbc.roadmap_page {
+import gunbc.roadmap.roadmap_launch_admission { launch_host_unobserved_static_render }
+import gunbc.roadmap.roadmap_page {
   roadmap_page_for_projection_launch_with_stylesheet,
   roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet,
 }

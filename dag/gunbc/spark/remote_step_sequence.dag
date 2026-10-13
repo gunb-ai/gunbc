@@ -1,14 +1,14 @@
 module gunbc.spark.remote_step_sequence
 
 import std.types { String, List, Bool }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   HostEffectTransport,
   LocalShell,
   SshShell,
   FleetSsh,
   EmitArtifactThenThinRun,
 }
-import gunbc.host_effect_realize { run_typed_argv_transport }
+import gunbc.host.host_effect_realize { run_typed_argv_transport }
 import gunbc.remote_operation {
   RemoteOperation,
   RemoteArgv,

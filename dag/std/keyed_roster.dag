@@ -22,7 +22,7 @@ import std.keyed_row { KeyedRow, keyed_row_find }
 // collapse the coproduct. Dup detection for list literals: keyed_roster_locate_duplicate returns
 // KeyedRosterDuplicateEvidence?; path_occurrence_count is a low-level count helper for totality
 // carriers only (not a verdict surface). Live carriers wired end-to-end: gunbc.non_fold_residue
-// frontier roster and tools.dag_compile_clean_shard_roster (path-keyed module-decl facts) both
+// frontier roster and gunbc.instruments.dag_compile_clean_shard_roster (path-keyed module-decl facts) both
 // construct through keyed_roster_build; consumers accept only KeyedRosterBuilt. Rung today:
 // mechanically preventive — typed located refusals + enrolled witnesses on commit_gate_roster.
 // Ceiling: structural impossibility — branded KeyedRoster carrier whose success arm is reachable

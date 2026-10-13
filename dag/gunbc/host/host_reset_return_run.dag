@@ -1,6 +1,6 @@
-module gunbc.host_reset_return_run
+module gunbc.host.host_reset_return_run
 
-import gunbc.managed_host_unit_hold {
+import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
   host_reset_owner, admit_unit_hold_subject, UnitHoldSubjectAdmitted, UnitHoldNotRequired,
 }
@@ -25,7 +25,7 @@ import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
 import product.host_identity { HostIdentity }
-import gunbc.host_reset_return {
+import gunbc.host.host_reset_return {
   AttemptReceiptMinted,
   AttemptReceiptPairingRefused,
   HostDrivenBackToKnownState,
@@ -79,7 +79,7 @@ import gunbc.host_reset_return {
   select_reset_observer,
   subject_for_observer,
 }
-import gunbc.host_reset_subject_roster {
+import gunbc.host.host_reset_subject_roster {
   AdmittedResetSubject,
   reset_lookup_subject,
   reset_observer_peer_roster,
@@ -87,7 +87,7 @@ import gunbc.host_reset_subject_roster {
   reset_subject_for,
   reset_subject_roster,
 }
-import gunbc.machine_intake_oob_boot_handoff {
+import gunbc.machine_intake.oob_boot_handoff {
   oob_boot_handoff,
   BootControlIssued,
   BootHandoffNotAdmitted,
@@ -106,13 +106,13 @@ import gunbc.machine_intake_oob_boot_handoff {
 }
 import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
 
-// THE OBSERVER'S SIDE OF ONE RESET ATTEMPT, EXECUTED. Every fold in gunbc.host_reset_return is pure
+// THE OBSERVER'S SIDE OF ONE RESET ATTEMPT, EXECUTED. Every fold in gunbc.host.host_reset_return is pure
 // and is exercised by its witness against fixtures, which is what a fold is owed. This module is
 // what a fold is not owed and a RECEIPT is: the instruments that produce the observation, run from a
 // machine that is not the subject.
 //
 // WHAT IS DELIBERATELY NOT HERE. This module does not issue the reset. Issuing it is
-// gunbc.machine_intake_oob_boot_handoff's operation and it is already modeled, already admitted from
+// gunbc.machine_intake.oob_boot_handoff's operation and it is already modeled, already admitted from
 // a capability row, and already refuses before any write; a second issuer here would be the §3 fork
 // that module's own note warns about. This is the OBSERVER, and keeping the two apart is not tidiness
 // -- the observer must be able to run on a machine that holds no controller credential at all.
@@ -317,7 +317,7 @@ fn subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
 }
 
 // THE ACKNOWLEDGEMENT IS THE HANDOFF'S OUTCOME, TRANSLATED AND NOT FLATTENED. Each refusal arm of
-// gunbc.machine_intake_oob_boot_handoff leaves the controller in a materially different state, so
+// gunbc.machine_intake.oob_boot_handoff leaves the controller in a materially different state, so
 // each becomes its own diagnostic rather than one "reset failed" -- the same reason that module
 // keeps them apart in the first place.
 fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs) -> ResetCommandAcknowledgement {
@@ -484,7 +484,7 @@ fn host_reset_return_attempt(
 }
 
 // A HOLD-GATED SUBJECT IS NOT WRITTEN WITHOUT A PROOF FOR ITS SLOT, and the proof exists only if the
-// entry's live acquire committed (gunbc.managed_host_unit_hold UnitHoldProof).
+// entry's live acquire committed (gunbc.host.managed_host_unit_hold UnitHoldProof).
 fn host_reset_return_issue_and_watch(
   proof: UnitHoldProof?,
   candidate: AdmittedResetSubject,
@@ -496,7 +496,7 @@ fn host_reset_return_issue_and_watch(
   issued_at: EpochMs,
 ) -> ResetAttemptMint
   admit_callers: [
-    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_attempt"),
+    decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_attempt"),
   ]
 {
   match reset_unit_hold_gate(candidate: candidate, proof: proof) {
@@ -554,7 +554,7 @@ fn host_reset_return_issue_and_watch(
 //
 // AND extdeps.shell IS IMPORTED FOR A MEASURED REASON. Service operations register from the IMPORT
 // CLOSURE, so an unimported service compiles clean and refuses at RUN TIME naming the operation
-// rather than the missing import; gunbc.managed_host_boot_handoff records the run lost to exactly
+// rather than the missing import; gunbc.host.managed_host_boot_handoff records the run lost to exactly
 // that diagnostic.
 data host_reset_bmc_credential_path_env: NonEmptyStr = "GUNBC_HOST_RESET_BMC_CREDENTIAL_FILE" as NonEmptyStr
 

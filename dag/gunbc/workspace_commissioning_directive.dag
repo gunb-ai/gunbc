@@ -4,8 +4,8 @@ import std.types { String, NonEmptyStr }
 import std.measure { hardware_thread_count, byte_size }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, json_field_int, json_field_bool, FieldRead, FieldMalformed, JsonDocumentUnreadable }
 import extdeps.languages.json.emit { JsonValue, serialize_json }
-import gunbc.build_cache_instance { runner_slot_instance_name }
-import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningPrepared }
 import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
 import gunbc.running_release_identity { release_revision_text_valid }

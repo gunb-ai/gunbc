@@ -1,4 +1,4 @@
-module v2.test.boundary.english_ingest_fail_closed
+module v2.test.claim.boundary.english_ingest_fail_closed
 
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],

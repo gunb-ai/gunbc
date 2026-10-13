@@ -5,7 +5,7 @@ use self::EmittedFilePlacement::*;
 use self::EmittedWorkspaceRealization::*;
 use self::EmittedWorkspaceRealizationRefusal::*;
 use self::EmittedWorkspaceRedRealization::*;
-pub use crate::extdeps_cargo::CargoDependency;
+pub use crate::extdeps_rust_cargo::CargoDependency;
 use crate::gunbc_emitted_crate_workspace::EmittedWorkspaceBuildOutcome::{
     EmittedWorkspaceBuildPlanned, EmittedWorkspaceBuildRefused,
 };
@@ -23,7 +23,7 @@ pub use crate::gunbc_emitted_crate_workspace::{
 };
 pub use crate::gunbc_rust_emitted_crate::EmittedRustCrate;
 pub use crate::gunbc_rust_emitted_edge::EmittedEdge;
-pub use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
+pub use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List};
 pub use crate::v1_compiler_emit_rust::{

@@ -213,7 +213,7 @@ service stat.File {
 // Every builder above prints exactly one field on stdout, so every caller faces the same three-way
 // question: the field, no output at all, or a refusal. Two callers in one change each minted their
 // own coproduct for it with the same arm names and the same fold -- `JitDeviceStatReading` in
-// gunbc.runner_attempt_launch and `StoreStatReading` in gunbc.runner_microvm_cell_readiness_store --
+// gunbc.runner.runner_attempt_launch and `StoreStatReading` in gunbc.runner.runner_microvm_cell_readiness_store --
 // which is DESIGN 2's failed decomposition: net concepts grew by re-invention rather than by
 // consuming the authority that already owned the boundary (review 69037). The fact's layer is this
 // module, which owns the commands whose output it describes.

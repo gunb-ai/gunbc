@@ -1,4 +1,4 @@
-module gunbc.srv3_os_install_diagnostic
+module gunbc.srv3.srv3_os_install_diagnostic
 
 import std.types { NonEmptyStr, Bool, Int, String, Milliseconds, List }
 import std.measure { ByteSize, byte_size, Millisecond }
@@ -41,7 +41,7 @@ import extdeps.dhcp.v4 {
   Expired,
 }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.network_identity_subsumption {
   network_identity_subsumes_fleet_slot,
   lease_table_has_os_up_subsumption,
@@ -51,7 +51,7 @@ import gunbc.network_identity_subsumption {
 }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuilt }
 import product.host_identity { HostIdentity }
-import gunbc.srv3_actuate_shell_paths {
+import gunbc.srv3.srv3_actuate_shell_paths {
   srv3_bmcweb_token_path,
 }
 

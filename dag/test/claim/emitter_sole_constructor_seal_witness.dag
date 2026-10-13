@@ -1,0 +1,219 @@
+module test.claim.emitter_sole_constructor_seal_witness
+
+// Permanent regression control for the sole_constructor emission seal. THE DEFECT, now repaired:
+// `sole_constructor` is parsed onto a type declaration and consumed by inference to refuse a
+// cross-module record literal, but the RUST EMITTER read the fact zero times, so the model's seal
+// did not survive lowering. DESIGN section 4b carries the executed receipt for the specimen --
+// `extdeps.uri.percent_encoding` `UriValidatedScalar` emitted byte-identical to the plain record beside it, public
+// field and derived Deserialize, and both a direct struct literal and serde_json admitted values
+// its mint refuses, two of which reached output as invalid percent-encoding. That was the single
+// BELOW-FLOOR item in that paragraph; this file is the control that keeps it closed.
+//
+// WHAT THE SEAL IS AND IS NOT. It confines CONSTRUCTION, not ACCESS: the model lets any module
+// read a sole_constructor value, so the emitted shape is a private field PLUS a public accessor; a
+// shape that also confined reading would refuse programs the model accepts. Serialize is retained
+// for the same reason -- writing a value out is a read. Deserialize is not, because a derived
+// Deserialize is a second, unsealed mint beside the declared one.
+//
+// THE NEGATIVE CONTROLS ARE THE LOAD-BEARING HALF. A plain record in the same fixture must keep
+// its public field and its Deserialize, or this witness would pass equally over an emitter that
+// sealed everything -- a different realization, not a faithful one. The two rustc receipts behind
+// the repair (E0451 on a cross-module literal, E0277 on serde_json::from_str) are compile-time
+// facts about the emitted crate that this byte-level instrument cannot execute; they are recorded
+// in the PR that landed this file. What this witness holds is the emitted SHAPE those receipts
+// depend on -- the part an emitter regression would silently move.
+//
+// dissolve-on: never -- permanent regression alarm for the emitter arm.
+
+fn seal_fixture_source() -> String {
+  "module solector_seal\n\ntype Sealed sole_constructor { admitted: Int }\n\ntype Plain { open: Int }\n\nfn mint(v: Int) -> Sealed {\n  Sealed { admitted: v }\n}\n\nfn read_it(s: Sealed) -> Int {\n  s.admitted\n}\n"
+}
+
+fn w_sealed_record_field_is_private() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["    admitted: i64,"],
+    ["    pub admitted: i64,"]
+  )
+}
+
+fn w_sealed_record_drops_deserialize() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]\npub struct Sealed {"],
+    []
+  )
+}
+
+fn w_sealed_record_emits_public_accessor() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["impl Sealed {", "pub fn admitted(&self) -> i64 {"],
+    []
+  )
+}
+
+fn w_sealed_field_read_routes_through_accessor() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["s.admitted()"],
+    []
+  )
+}
+
+fn w_declaring_module_mint_still_constructs_directly() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["Sealed {"],
+    []
+  )
+}
+
+fn w_plain_record_keeps_public_field() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["    pub open: i64,"],
+    []
+  )
+}
+
+fn w_plain_record_keeps_deserialize() -> Bool {
+  compile_dag_rust_emit_check(
+    seal_fixture_source(),
+    "src/solector_seal.rs",
+    ["#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct Plain {"],
+    []
+  )
+}
+
+// THE SEAL REACHES THROUGH NESTED COPRODUCTS. A seal held two coproducts deep (Outer's variant
+// carries Inner, whose variant carries Sealed) must drop Deserialize from both containers: deriving
+// it on Outer mints a Sealed through serde_json with no mint call, the one-level forge one level
+// further out. The walk once read a looked-up coproduct's variants as fields and stopped at the
+// coproduct's own name, so Outer kept the derive (v2.std.node EdgeLabel -> StructuralEdgeLabel ->
+// CoreEdgeLabel -> BodyTermLoweredSeal refused E0277 in the emitted crate). The plain pair beside it
+// is the control: the same shape over an Int must keep Deserialize, or the pattern below matches
+// nothing and the red is vacuous.
+fn nested_seal_fixture_source() -> String {
+  "module solector_nested_seal\n\ntype Sealed sole_constructor { admitted: Int }\n\ntype Inner\n  = Wrap { s: Sealed }\n  | Bare\n\ntype Outer\n  = Hold { i: Inner }\n  | Vacant\n\ntype PlainInner\n  = PlainWrap { n: Int }\n  | PlainBare\n\ntype PlainOuter\n  = PlainHold { i: PlainInner }\n  | PlainVacant\n\nfn mint(v: Int) -> Sealed {\n  Sealed { admitted: v }\n}\n"
+}
+
+fn w_nested_coproduct_over_a_seal_drops_deserialize() -> Bool {
+  compile_dag_rust_emit_check(
+    nested_seal_fixture_source(),
+    "src/solector_nested_seal.rs",
+    ["pub enum Outer {", "pub enum Inner {"],
+    ["serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum Outer {", "serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum Inner {"]
+  )
+}
+
+fn w_nested_plain_coproduct_keeps_deserialize() -> Bool {
+  compile_dag_rust_emit_check(
+    nested_seal_fixture_source(),
+    "src/solector_nested_seal.rs",
+    ["serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum PlainOuter {", "serde::Deserialize)]\n#[serde(tag = \"_variant\")]\npub enum PlainInner {"],
+    []
+  )
+}
+
+// AN ALIAS IS SEEN THROUGH. A record whose field is typed by an alias of a sealed carrier
+// (`type Hold = Sealed`) must drop Deserialize like one typed by the carrier itself; the walk once
+// read an alias as a coproduct and visited no member, so v2.compiler.source_authority DagSourceAst
+// { tree: ParseTree } kept the derive over v2.std.node Node (#12942). The plain alias beside it keeps
+// the derive, so the negative pattern is known to match.
+fn alias_seal_fixture_source() -> String {
+  "module solector_alias_seal\n\ntype Sealed sole_constructor { admitted: Int }\n\ntype Hold = Sealed\n\ntype Carrier { h: Hold }\n\ntype PlainHold = Int\n\ntype PlainCarrier { h: PlainHold }\n\nfn mint(v: Int) -> Sealed {\n  Sealed { admitted: v }\n}\n"
+}
+
+fn w_alias_of_a_seal_drops_deserialize() -> Bool {
+  compile_dag_rust_emit_check(
+    alias_seal_fixture_source(),
+    "src/solector_alias_seal.rs",
+    ["pub struct Carrier {", "pub struct PlainCarrier {", "serde::Deserialize)]\npub struct PlainCarrier {"],
+    ["serde::Deserialize)]\npub struct Carrier {"]
+  )
+}
+
+// A DATA ROW OF A SEALED-REACHING TYPE IS NOT PARSED FROM JSON. Parsing it through serde is the mint
+// the seal forbids, and the type has no Deserialize to parse into (an empty `data ... = []` refused
+// E0277 at six sites of the emitted v2.compiler.compile crate, #12942). The sealed fixture's row must
+// not reach serde_json; the plain fixture's row of the same shape still does, which is the control.
+fn sealed_data_row_fixture_source() -> String {
+  "module solector_sealed_row\n\ntype Sealed sole_constructor { admitted: Int }\n\ntype Carrier { s: Sealed }\n\ndata carriers: List<Carrier> = []\n\nfn mint(v: Int) -> Sealed {\n  Sealed { admitted: v }\n}\n"
+}
+
+fn plain_data_row_fixture_source() -> String {
+  "module solector_plain_row\n\ntype PlainCarrier { n: Int }\n\ndata carriers: List<PlainCarrier> = []\n"
+}
+
+fn w_sealed_data_row_is_not_parsed_from_json() -> Bool {
+  compile_dag_rust_emit_check(
+    sealed_data_row_fixture_source(),
+    "src/solector_sealed_row.rs",
+    ["pub fn carriers()"],
+    ["serde_json::from_str("]
+  )
+}
+
+fn w_plain_data_row_is_parsed_from_json() -> Bool {
+  compile_dag_rust_emit_check(
+    plain_data_row_fixture_source(),
+    "src/solector_plain_row.rs",
+    ["pub fn carriers()", "serde_json::from_str("],
+    []
+  )
+}
+
+test fn sealed_record_field_is_private() -> Bool {
+  w_sealed_record_field_is_private()
+}
+
+test fn sealed_record_drops_deserialize() -> Bool {
+  w_sealed_record_drops_deserialize()
+}
+
+test fn sealed_record_emits_public_accessor() -> Bool {
+  w_sealed_record_emits_public_accessor()
+}
+
+test fn sealed_field_read_routes_through_accessor() -> Bool {
+  w_sealed_field_read_routes_through_accessor()
+}
+
+test fn declaring_module_mint_still_constructs_directly() -> Bool {
+  w_declaring_module_mint_still_constructs_directly()
+}
+
+test fn plain_record_keeps_public_field() -> Bool {
+  w_plain_record_keeps_public_field()
+}
+
+test fn plain_record_keeps_deserialize() -> Bool {
+  w_plain_record_keeps_deserialize()
+}
+
+test fn nested_coproduct_over_a_seal_drops_deserialize() -> Bool {
+  w_nested_coproduct_over_a_seal_drops_deserialize()
+}
+
+test fn nested_plain_coproduct_keeps_deserialize() -> Bool {
+  w_nested_plain_coproduct_keeps_deserialize()
+}
+
+test fn alias_of_a_seal_drops_deserialize() -> Bool {
+  w_alias_of_a_seal_drops_deserialize()
+}
+
+test fn sealed_data_row_is_not_parsed_from_json() -> Bool {
+  w_sealed_data_row_is_not_parsed_from_json()
+}
+
+test fn plain_data_row_is_parsed_from_json() -> Bool {
+  w_plain_data_row_is_parsed_from_json()
+}
