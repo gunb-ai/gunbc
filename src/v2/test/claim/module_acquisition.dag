@@ -62,7 +62,7 @@ import v2.compiler.source_authority {
   reference_next_read,
   reference_prefixes
 }
-import v2.std.algebra { HeadAbsent, HeadFound, length, list_head, list_map }
+import std.algebra { HeadAbsent, HeadFound, length, list_head, list_map }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }

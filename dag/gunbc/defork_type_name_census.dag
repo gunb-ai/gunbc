@@ -276,7 +276,7 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
   },
   ResolvedSharedTypeName {
     names: ["ApproximateField"],
-    resolution: ResolvedByDeletingV2 { reason: "`v2.std.algebra` ops record had zero consumers; ops come from inhabitance (DESIGN §4)" },
+    resolution: ResolvedByDeletingV2 { reason: "`std.algebra` ops record had zero consumers; ops come from inhabitance (DESIGN §4)" },
     change: 12252
   },
   ResolvedSharedTypeName {

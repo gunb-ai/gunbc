@@ -27,8 +27,7 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, Occurrenc
 import v2.std.node { Authored, ComputationNode, Conj, Edge, Positional, Transform }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, optional_present }
-import v2.std.algebra { list_append, list_map }
-import std.algebra { Cons }
+import std.algebra { Cons, list_append, list_map }
 
 // A HAND-BUILT TREE SUPPLIED AT INFER'S INTERFACE (DESIGN section 3: a witness supplies its input
 // rather than executing the layers beneath it). infer takes resolve's output, which carries the index

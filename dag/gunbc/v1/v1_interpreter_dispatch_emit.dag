@@ -12,7 +12,7 @@ import gunbc.v1.v1_interpreter_primitive_surface {
   InterpreterPrimitiveDispatchArm,
   v1_interpreter_authored_roster_arms,
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }

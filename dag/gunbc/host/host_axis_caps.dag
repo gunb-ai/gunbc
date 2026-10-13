@@ -1,7 +1,7 @@
 module gunbc.host.host_axis_caps
 
 import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
-import std.algebra { trim }
+import std.algebra { trim, list_head, HeadFound, HeadAbsent }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -46,7 +46,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
 }
 import v2.std.node { Node }
-import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import gunbc.live_deploy.operations { deploy_stage_path_word }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.shell_command_text {

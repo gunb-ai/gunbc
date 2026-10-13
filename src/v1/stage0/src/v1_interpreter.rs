@@ -26271,7 +26271,7 @@ fn free_monoid_ctx_syms(ctx: &InterpContext) -> Option<(Symbol, Symbol, Symbol, 
 }
 
 /// The elements of a list value in either representation -- a kernel `List` or the structural
-/// `FreeMonoid` (`Cons`/`Empty`) that `v2.std.algebra` folds return -- read in `ctx`.
+/// `FreeMonoid` (`Cons`/`Empty`) that `std.algebra` folds return -- read in `ctx`.
 pub fn list_value_items(ctx: &InterpContext, val: &Value) -> Option<Vec<Value>> {
     with_active_ctx(ctx, || free_monoid_to_vec(val))
 }

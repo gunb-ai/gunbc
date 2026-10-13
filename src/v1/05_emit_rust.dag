@@ -738,7 +738,7 @@ fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
 // `s.is_empty()`) while the declaration's own carrier is the structural FreeMonoid<Char>
 // (Rc<Vec<i64>> on this target). That is operation realization keyed on the declaration's
 // SPELLING, and it is a second Rust implementation of list semantics beside the declared bodies in
-// v2.std.algebra -- the emitted module then calls host string methods on the structural carrier
+// std.algebra -- the emitted module then calls host string methods on the structural carrier
 // (the E0599 .chars()/.split() class on the self-host closure). A fn definition's realization
 // follows its operands' representation: a structural-carrier declaration emits its own declared
 // body through ordinary emission, which already routes list_head/list_tail/is_empty/fold_list to
@@ -11951,7 +11951,7 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
 // own declaration already returns the wrapped level, the caller wraps it a second time, and the
 // emitted program carries a type error no stage located. MEASURED specimen, on the 01_tokenize
 // closure: v2.std.compilers.lexing token_stream_remaining is `skip(xs: stream.all, n: stream.pos)`,
-// a PLAIN CALL to the declared v2.std.algebra skip, which emits as an ordinary declared call and
+// a PLAIN CALL to the declared std.algebra skip, which emits as an ordinary declared call and
 // returns Rc<Vec<Rc<Token>>>; `skip` is also a simple-method template name, so the plain-call site
 // wrapped it again and rustc reported `expected Vector<Rc<Token>>, found Rc<Vector<Rc<Token>>>`.
 // The method roster had no template on that path -- nothing was lowered by it -- so its wrap was
@@ -12873,7 +12873,7 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
 // has a subject.
 
 // ONE HOST-TEXT DISCRIMINATOR FOR BOTH SPELLINGS. AlgebraMethodSemantics remaps `.length` on a
-// host-string receiver to `string_length`; the function form `v2.std.algebra` `length` over
+// host-string receiver to `string_length`; the function form `std.algebra` `length` over
 // `FreeMonoid<Char>` is that operation spelled as a call. Kernel `String` inhabits the monoid, so
 // `length(xs: s)` is legal source. Emitting it as the generic FreeMonoid body (`Rc<Vec<T>>`) is
 // E0308 against the host `String` at `request_field`. `v2.std.text.String` is the other carrier:
@@ -12887,7 +12887,7 @@ fn rust_call_target_is_v2_algebra_length(target: CallTargetIdentity) -> Bool {
   match rust_call_target_declared_length(target: target) {
     Absent => false
     Present { value: id } =>
-      id.decl_name == "length" && id.owner_module_path == "v2.std.algebra"
+      id.decl_name == "length" && id.owner_module_path == "std.algebra"
   }
 }
 
@@ -14149,7 +14149,7 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
 //   - every arm after the first `Cons` arm was DISCARDED, because nothing read past `first`. An
 //     arm guard was dropped on the same reasoning: no branch body ever read `arm_guard`.
 //
-// MEASURED IN THE EMITTED BINARY rather than the interpreter (witty-cat-84, Pkg12): v2.std.algebra
+// MEASURED IN THE EMITTED BINARY rather than the interpreter (witty-cat-84, Pkg12): std.algebra
 // `list_init` -- `Empty => Empty | Cons { head: _, tail: Empty } => Empty | Cons { head: h, tail: t }
 // => Cons { head: h, tail: list_init(xs: t) }` -- emitted as `if __fm.is_empty() { vec![] } else {
 // vec![] }`, so `qualified_name_init(["v2", "acp_user", "acp_row"])` returned `[]` instead of

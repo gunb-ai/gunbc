@@ -2,7 +2,7 @@ module gunbc.machine_intake.host_resource_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.algebra { trim }
+import std.algebra { trim, non_empty_to_list }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure {
   HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
@@ -10,7 +10,6 @@ import std.measure {
 }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused, ObservationAttempt, ObservationEstablished, ObservationRefused, assess_by_deviations_and_unknowns }
 import std.optional { Absent, Present }
-import v2.std.algebra { non_empty_to_list }
 import v2.std.cardinality { Never }
 import extdeps.toolchain.types { Architecture }
 import extdeps.linux.proc_meminfo { MemoryMetric, meminfo_line_metric }

@@ -27001,7 +27001,7 @@ pub fn rust_call_target_is_v2_algebra_length(target: Rc<CallTargetIdentity>) -> 
         std::option::Option::None => false,
         Some(id) => {
             ((id.decl_name.clone() == "length".to_string())
-                && (id.owner_module_path.clone() == "v2.std.algebra".to_string()))
+                && (id.owner_module_path.clone() == "std.algebra".to_string()))
         }
     }
 }

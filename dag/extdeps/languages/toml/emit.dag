@@ -2,7 +2,7 @@ module extdeps.languages.toml.emit
 
 import std.types { Bool, String, List, Int }
 import v2.std.collection { list_at_optional }
-import v2.std.algebra { list_head, skip, HeadFound, HeadAbsent }
+import std.algebra { list_head, skip, HeadFound, HeadAbsent }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.toml.types {

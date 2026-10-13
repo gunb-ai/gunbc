@@ -4,7 +4,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
-import v2.std.algebra { length }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, decl_ref }
 
 // C0(b1) of the v2 complexity capability parity program: a REVIEWED capability roster over

@@ -316,7 +316,7 @@ test fn w_authored_premises_that_do_not_join_cannot_reach_a_terminal_class() -> 
   let spoofed_authority = census_with(facts: pure_facts(name: "zeta"), edges: [], rows: [row(name: "zeta")], projections: [], decls: [], resolve: resolver_refusing_all)
   let list_without_template = census_of(facts: registry_only, edges: [], rows: [row(name: "zeta")])
   let fn_authority_row = evidence_row(name: "zeta", category: TextOps, external_subject: NoExternalSubject,
-    computation: computes(authority: declared_authority(module_path: "v2.std.algebra", decl_name: "length"), inputs: "x", result: "y", body: DagBodyRequired),
+    computation: computes(authority: declared_authority(module_path: "std.algebra", decl_name: "length"), inputs: "x", result: "y", body: DagBodyRequired),
     refusals: RefusalsTyped, realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "f", next: "n")
   let unowned_refusals = census_of(facts: registry_only, edges: [], rows: [fn_authority_row])
   let joined = census_of(facts: pure_facts(name: "zeta"), edges: [], rows: [row(name: "zeta")])

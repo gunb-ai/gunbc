@@ -151,7 +151,6 @@ fn tcp_established_at(path: String) -> Int {
 }
 
 fn tcp_corpus_sample_established_count() -> Int {
-    tcp_established_at(path: "src/v2/std/algebra.dag") +
     tcp_established_at(path: "src/v2/std/anti_unification.dag") +
     tcp_established_at(path: "src/v2/std/artifact.dag") +
     tcp_established_at(path: "src/v2/std/bounded_lattice_completeness.dag") +

@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.cardinality { Never }
-import v2.std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list }
 import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,

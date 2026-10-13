@@ -98,7 +98,7 @@ import extdeps.transports.rest {
 }
 import v2.std.collection { Absent, Present }
 import extdeps.github.github { Repository }
-import v2.std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list }
 import v2.std.cardinality { Never }
 import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,

@@ -7,7 +7,7 @@ import gunbc.fleet.org_actions_standing {
   desired_org_actions_goal, assess_org_actions,
 }
 import v2.std.cardinality { Never }
-import v2.std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged }
 
 data grp_private_closed: ObservedGroupAccess = ObservedGroupAccess {

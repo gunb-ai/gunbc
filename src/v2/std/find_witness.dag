@@ -1,7 +1,7 @@
 module v2.std.find_witness
 
 import std.types { List }
-import v2.std.algebra { contains }
+import std.algebra { contains }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

@@ -1,7 +1,7 @@
 module v2.cli.population_verbs
 
 import std.types { Bool, Int, List, Map }
-import std.algebra { Cons }
+import std.algebra { Cons, HeadAbsent, HeadFound, fold_list, is_empty, length, list_head, list_map, list_reverse, skip }
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
@@ -46,7 +46,6 @@ import v2.compiler.source_authority {
   module_file_key,
   module_header_declared_name
 }
-import v2.std.algebra { HeadAbsent, HeadFound, fold_list, is_empty, length, list_head, list_map, list_reverse, skip }
 import v2.std.collection { empty_map, map_contains_key, map_insert, map_lookup }
 import v2.std.text { String }
 

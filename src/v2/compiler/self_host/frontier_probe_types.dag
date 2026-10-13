@@ -16,7 +16,7 @@ import v2.compiler.source_authority {
   SourceRootManifestElided,
   SourceRootRowsMissing
 }
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, fold_list }
 import std.content_hash {
   ContentHash,
   ContentHashComparison,
@@ -31,7 +31,6 @@ import std.content_hash {
   content_hash_validate_lower_hex_length
 }
 import std.types { CommitSha, GitRef, List }
-import v2.std.algebra { fold_list }
 import v2.std.integer { Int }
 import v2.std.diagnostic { DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual }
 import v2.std.node { Symbol, symbol_lexeme }
