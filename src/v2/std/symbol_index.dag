@@ -162,7 +162,7 @@ fn empty_symbol_index() -> SymbolIndex {
 // a two-binder refusal back to one binder the first time this split was written. `entries` is where
 // a declaration is stored; `symbol_index_lookup` is what a reference is entitled to be told.
 fn symbol_index_entry_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
-  match v2.std.collection.map_get_checked(index.entries, qualified_path) {
+  match map_get_checked(index.entries, qualified_path) {
     Accepted { value: opt, diagnostics: _ } => opt
     Rejected { diagnostics: _ } => optional_absent()
   }
@@ -202,7 +202,7 @@ fn symbol_index_track_global_bare(
   match qualified_name_last_segment(qn: qualified_path) {
     Absent => index
     Present { value: leaf } =>
-      match v2.std.collection.map_get_checked(index.global_bare, leaf) {
+      match map_get_checked(index.global_bare, leaf) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: GlobalBareAmbiguous { paths: paths } } =>
             SymbolIndex {
@@ -432,7 +432,7 @@ fn symbol_index_declared_binders_at(index: SymbolIndex, qualified_path: Qualifie
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
-  match v2.std.collection.map_get_checked(index.global_bare, name) {
+  match map_get_checked(index.global_bare, name) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: GlobalBareUnique { node: n, path: p } } => GlobalBareHit { node: n, path: p }
       Present { value: GlobalBareAmbiguous { paths: paths } } => GlobalBareLookupAmbiguous { paths: paths }
@@ -567,7 +567,7 @@ fn symbol_index_bound_declarings(
   index: SymbolIndex,
   binding_path: QualifiedName
 ) -> FreeMonoid<QualifiedName> {
-  match v2.std.collection.map_get_checked(index.bound_declarings, binding_path) {
+  match map_get_checked(index.bound_declarings, binding_path) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: declarings } => declarings
       Absent => Empty

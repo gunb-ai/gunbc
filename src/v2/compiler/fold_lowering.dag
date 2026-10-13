@@ -1278,8 +1278,7 @@ fn fold_collection_member_type(domain_type: Node) -> Optional<Node> {
         match declaration_reference_path_optional(node: head) {
           Absent => optional_absent()
           Present { value: path } =>
-            if qualified_name_to_dotted_string(qn: path) == "v2.std.collection.List"
-              || qualified_name_to_dotted_string(qn: path) == "std.algebra.FreeMonoid" {
+            if qualified_name_to_dotted_string(qn: path) == "std.algebra.FreeMonoid" {
               list_at_optional(xs: args, index: 1)
             } else {
               optional_absent()

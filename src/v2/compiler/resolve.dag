@@ -652,7 +652,7 @@ fn admit_value_binders(names: List<Symbol>, outer: Scope) -> BinderAdmission {
       BinderDuplicateInFrame { binder: b } => BinderDuplicateInFrame { binder: b }
       BinderHidesVisibleValue { binder: b } => BinderHidesVisibleValue { binder: b }
       BindersAdmitted { locals: m } =>
-        match v2.std.collection.map_lookup(m: m, key: name) {
+        match map_lookup(m: m, key: name) {
           Present { value: _ } => BinderDuplicateInFrame { binder: name }
           Absent => admit_one_value_binder(locals: m, name: name, outer: outer)
         }
@@ -1115,7 +1115,7 @@ type ScopeBinding
 fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
   match s {
     ScopeFrame { locals: m, outer: o, kind: kind } =>
-      match v2.std.collection.map_get_checked(m, name) {
+      match map_get_checked(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
             Accepted { value: BoundInFrame { canonical: v, kind: kind }, diagnostics: d_here }
@@ -1135,7 +1135,7 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
     ScopeRoot { module: mod } =>
-      match v2.std.collection.map_get_checked(mod.bindings, name) {
+      match map_get_checked(mod.bindings, name) {
         Accepted { value: opt, diagnostics: d } => match opt {
           Present { value: v } => Accepted { value: BoundAtRoot { canonical: v }, diagnostics: d }
           Absent => Accepted { value: ScopeUnbound, diagnostics: d }

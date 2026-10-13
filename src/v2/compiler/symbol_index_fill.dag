@@ -1,5 +1,6 @@
 module v2.compiler.symbol_index_fill
 
+import v2.std.witness { map_get_checked }
 import v2.std.service_realization_labels { realization_root_label }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -359,7 +360,7 @@ fn symbol_index_fill_containment_node(
 }
 
 fn disj_variant_count_of(counts: Map<Symbol, Int>, sym: Symbol) -> Int {
-  match v2.std.collection.map_get_checked(counts, sym) {
+  match map_get_checked(counts, sym) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: n } => n
       Absent => 0

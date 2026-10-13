@@ -698,7 +698,7 @@ type ImportClosureBfsState {
 }
 
 fn map_lookup_where_rejected_unreachable<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
-  match v2.std.collection.map_get_checked(m: m, key: key) {
+  match map_get_checked(m: m, key: key) {
     Accepted { value: v, diagnostics: _ } => v
     Rejected { diagnostics: _ } => Absent
   }

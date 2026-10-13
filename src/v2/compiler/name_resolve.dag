@@ -297,7 +297,7 @@ fn admit_export_symbol(
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: b, origins: os } =>
 
-      match v2.std.collection.map_get_checked(os, sym) {
+      match map_get_checked(os, sym) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
             AdmissionRejected {
