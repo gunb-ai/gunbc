@@ -1,6 +1,7 @@
 module product.fabric.flex_vast_shadow
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.nat { Nat }
 import std.decl_ref { decl_ref }
 import std.integer { int_to_decimal_string }
 import std.measure {
@@ -323,6 +324,67 @@ type FlexRentalReadback
   | FlexRentalHeld { instance: VastAiInstance }
   | FlexRentalGone
   | FlexRentalUnknown
+
+type FlexReleaseStanding
+  = FlexReleaseRequested { instance_id: Int }
+  | FlexReleaseLost { instance_id: Int }
+
+type FlexReleaseReadback
+  = FlexReleasePending { instance_id: Int }
+  | FlexReleaseConfirmedGone
+  | FlexReleaseUnknown
+
+fn flex_release_readback(
+  standing: FlexReleaseStanding,
+  instances: FlexInstanceListStanding,
+) -> FlexReleaseReadback {
+  match instances {
+    FlexInstanceListUnreadable => FlexReleaseUnknown
+    FlexInstanceListRead { instances: rows } => {
+      let id = match standing {
+        FlexReleaseRequested { instance_id: i } => i
+        FlexReleaseLost { instance_id: i } => i
+      }
+      match fold(
+        rows,
+        init: none,
+        f: (acc, row) =>
+          match acc {
+            Present { value: found } => Present { value: found }
+            Absent => if row.id == id { Present { value: row } } else { none }
+          },
+      ) {
+        Present { value: _ } => FlexReleasePending { instance_id: id }
+        Absent => FlexReleaseConfirmedGone
+      }
+    }
+  }
+}
+
+fn flex_demand_exceeds_share(live_sessions: Nat, share: Nat) -> Bool {
+  live_sessions > share
+}
+
+type FlexPassRecord {
+  instances: FlexInstanceListStanding
+  receipts: List<FlexShadowBidReceipt>
+  over_cap: Bool
+  write: FlexWriteDecision
+}
+
+fn flex_record_pass(
+  policy: FlexPolicy,
+  instances: FlexInstanceListStanding,
+  receipts: List<FlexShadowBidReceipt>,
+  over_cap: Bool,
+) -> FlexPassRecord {
+  FlexPassRecord {
+    instances: instances,
+    receipts: receipts,
+    over_cap: over_cap,
+    write: flex_write_decision(policy: policy, instances: instances, over_cap: over_cap),
+  }
+}
 
 fn flex_rental_readback(
   standing: FlexCreateStanding,

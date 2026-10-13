@@ -54,6 +54,8 @@ import product.fabric.flex_vast_shadow {
   flex_rental_readback, FlexRentalHeld, FlexRentalPending, FlexRentalUnknown, FlexRentalGone,
   flex_search_offers_inhabitance_frontier, flex_m3_rent_cooldown_starts_at_ask,
   flex_m3_pass_stops_at_first_failure, flex_qwen_probe_harness_placement_frontier,
+  flex_release_readback, FlexReleaseRequested, FlexReleaseLost, FlexReleasePending,
+  FlexReleaseConfirmedGone, FlexReleaseUnknown, flex_demand_exceeds_share, flex_record_pass,
 }
 import std.rational { NonzeroNatFraction }
 import std.dissolution { UnboundDissolution, BoundDissolution }
@@ -65,6 +67,7 @@ import test.claim.fabric.provider_use_fixture {
   fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
 }
 import gunbc.secret_provision { fleet_secret_ref }
+import gunbc.harness.harness_operator_route { harness_operator_route }
 import gunbc.auth.gcp_secret_access { secret_accessor_grant }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -440,6 +443,62 @@ test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
       FlexRentalHeld { instance: _ } => false
       FlexRentalGone => false
     })
+    && release_counts_only_when_confirmed_gone()
+    && excess_demand_uses_operator_share()
+    && dry_pass_records_unreadable_list()
+}
+
+fn release_counts_only_when_confirmed_gone() -> Bool {
+  let held = [inst(id: 99, machine_id: 42)]
+  (match flex_release_readback(
+    standing: FlexReleaseRequested { instance_id: 99 },
+    instances: FlexInstanceListRead { instances: held },
+  ) {
+    FlexReleasePending { instance_id: i } => i == 99
+    FlexReleaseConfirmedGone => false
+    FlexReleaseUnknown => false
+  })
+    && (match flex_release_readback(
+      standing: FlexReleaseLost { instance_id: 99 },
+      instances: FlexInstanceListRead { instances: [] },
+    ) {
+      FlexReleaseConfirmedGone => true
+      FlexReleasePending { instance_id: _ } => false
+      FlexReleaseUnknown => false
+    })
+    && (match flex_release_readback(
+      standing: FlexReleaseLost { instance_id: 99 },
+      instances: FlexInstanceListUnreadable,
+    ) {
+      FlexReleaseUnknown => true
+      FlexReleasePending { instance_id: _ } => false
+      FlexReleaseConfirmedGone => false
+    })
+}
+
+fn excess_demand_uses_operator_share() -> Bool {
+  let share = harness_operator_route.concurrency_ceiling
+  flex_demand_exceeds_share(live_sessions: share + 1, share: share)
+    && !flex_demand_exceeds_share(live_sessions: share, share: share)
+}
+
+fn dry_pass_records_unreadable_list() -> Bool {
+  let pass = flex_record_pass(
+    policy: flex_trial_policy,
+    instances: FlexInstanceListUnreadable,
+    receipts: [],
+    over_cap: false,
+  )
+  match pass.instances {
+    FlexInstanceListUnreadable =>
+      match pass.write {
+        FlexWriteHeldDry => true
+        FlexWriteBlockedUnreadable => false
+        FlexWriteBlockedOverCap => false
+        FlexWriteWetUnwired => false
+      }
+    FlexInstanceListRead { instances: _ } => false
+  }
 }
 
 test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
