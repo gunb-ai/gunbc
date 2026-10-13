@@ -113,6 +113,7 @@ pub use native_lane_runner::{
     TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
     MEASURED_SPAWN_RECEIPT_ENV,
 };
+pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_seam, make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,

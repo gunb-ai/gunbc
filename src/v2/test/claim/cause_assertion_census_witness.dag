@@ -1,8 +1,8 @@
-module test.claim.cause_assertion_census_witness
+module v2.test.claim.cause_assertion_census_witness
 
 import std.types { Bool, Int, List, String, SourceSpan }
 import std.import_statement { ParsedImportStatement }
-import gunbc.instruments.cause_assertion_census {
+import v2.workflow.cause_assertion_census {
   CauseModuleSyntax, CauseDeclarationJoined, CauseDeclarationMissing, CauseDeclarationAmbiguous,
   CauseCaretOccurrence, cause_witness_module,
   CauseSourceObserved, CauseSourceExcluded, CauseSourceLexicalRefused, cause_source_observation_from_content,
