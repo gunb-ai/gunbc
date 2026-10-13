@@ -20,6 +20,7 @@ import v2.std.node {
   FirstPositionalFound,
   Match,
   MatchArmPatternEdge,
+  MatchArmScopeExitEdge,
   Node,
   Positional,
   StructuralLabel,
@@ -288,13 +289,17 @@ fn match_arm_candidate_names(arm: Node) -> List<Symbol> {
 // can say only that the atom MAY bind. A walk that read it as bound would hide a module reference whose
 // head is a constructor, and a walk that read it as unbound would probe a module for a name resolution
 // binds as a value; this table lets the walk say neither. The names are a SUPERSET of what resolution binds
-// and they are visible in the whole arm, including the tail of an arm-scope-exit `let` that resolution
-// ends them before (v2.std.node MatchArmScopeExitEdge): both only remove a probe, and a spelling that did
-// need its module then refuses at resolution, naming the spelling, because nothing was acquired for it.
+// and they are visible in the whole arm EXCEPT where resolution ends the arm's binders: a `let` lowered
+// from `let x = match s { .. }` with a returning arm carries MatchArmScopeExitEdge, and its binder and body
+// (the rest of the function) stand in the scope enclosing the match, so the arm's names end there
+// (ChildSeesParentValuesBeyondCurrentArm). Undecided names are not a harmless over-approximation at that
+// boundary: a spelling the walk hides there is a module reference nothing acquires, and resolution then
+// refuses a valid program. The names of the arms that ENCLOSE the match stay, because the rest of the
+// function is still inside them.
 type ValueFrame
   = NoValueFrame
   | ArrowValueFrame { params: List<Symbol> }
-  | BindValueFrame { binder: Symbol }
+  | BindValueFrame { binder: Symbol, exits_arm: Bool }
   | MatchValueFrame
 
 fn node_value_frame(n: Node) -> ValueFrame {
@@ -302,7 +307,7 @@ fn node_value_frame(n: Node) -> ValueFrame {
     TypeNode { connective: Arrow } => ArrowValueFrame { params: arrow_domain_binder_names(n: n) }
     ComputationNode { behavior: Bind } =>
       match bind_binder(n: n) {
-        Present { value: b } => BindValueFrame { binder: b.name }
+        Present { value: b } => BindValueFrame { binder: b.name, exits_arm: bind_carries_arm_scope_exit(n: n) }
         Absent => NoValueFrame
       }
     ComputationNode { behavior: Match } => MatchValueFrame
@@ -316,13 +321,15 @@ type ChildValueScope
   | ChildSeesNoValues
   | ChildSeesParentValuesAnd { names: List<Symbol> }
   | ChildSeesParentValuesAndUndecided { names: List<Symbol> }
+  | ChildSeesParentValuesBeyondCurrentArm { names: List<Symbol> }
 
 // A TYPE-ROLE EDGE is resolved in the type scope, which holds type parameters and no value binder
 // (v2.compiler.resolve resolve_type_role_target), so a child on one sees no value at all. The Arrow's
 // ordinal counts ALL of its children and the Bind's counts its POSITIONAL children only, exactly as the
 // slot tables above are keyed. A Match's counts all of its children too, as resolution's walk does
 // (v2.compiler.resolve resolve_match_node_walk): child 0 is the scrutinee, which sees the enclosing scope,
-// and every later child is an arm, which sees the candidates of its own pattern.
+// and every later child is an arm, which sees the candidates of its own pattern. A `let` that ends its arm's
+// binders (bind_carries_arm_scope_exit) sees them in its value only: its binder and body leave the current arm.
 fn child_value_scope(frame: ValueFrame, edge: Edge, ordinal: Int, positional_ordinal: Int) -> ChildValueScope {
   if edge_is_cast_target(e: edge) || edge_is_type_annotation(e: edge) {
     ChildSeesNoValues
@@ -341,18 +348,52 @@ fn child_value_scope(frame: ValueFrame, edge: Edge, ordinal: Int, positional_ord
         } else {
           ChildSeesParentValues
         }
-      BindValueFrame { binder: name } =>
+      BindValueFrame { binder: name, exits_arm: exits_arm } =>
         match edge.label {
-          Positional =>
-            if bind_slot_sees_binder(slot: bind_positional_slot(ordinal: positional_ordinal)) {
-              ChildSeesParentValuesAnd { names: list_snoc_item(xs: [], item: name) }
-            } else {
-              ChildSeesParentValues
-            }
+          Positional => bind_slot_child_scope(slot: bind_positional_slot(ordinal: positional_ordinal), binder: name, exits_arm: exits_arm)
           Authored { name: _ } => ChildSeesParentValues
           StructuralLabel { label: _ } => ChildSeesParentValues
         }
     }
+  }
+}
+
+// A `let` THAT ENDS ITS MATCH ARM'S BINDERS (v2.std.node MatchArmScopeExitEdge): its value stands in the arm's
+// scope and its binder and body stand in the scope enclosing the match, exactly as resolution walks them
+// (v2.compiler.resolve resolve_arm_scope_exit_bind). The marker is the one fact, read here once and by
+// resolution from this function.
+fn bind_carries_arm_scope_exit(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      fold(n.children, init: false, f: fn(acc, e) { acc || edge_is_core(e: e, marker: MatchArmScopeExitEdge) })
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn bind_slot_leaves_arm(slot: BindSlot) -> Bool {
+  match slot {
+    BindBinderSlot => true
+    BindValueSlot => false
+    BindBodySlot => true
+  }
+}
+
+fn bind_slot_binder_names(slot: BindSlot, binder: Symbol) -> List<Symbol> {
+  if bind_slot_sees_binder(slot: slot) {
+    list_snoc_item(xs: [], item: binder)
+  } else {
+    []
+  }
+}
+
+fn bind_slot_child_scope(slot: BindSlot, binder: Symbol, exits_arm: Bool) -> ChildValueScope {
+  if exits_arm && bind_slot_leaves_arm(slot: slot) {
+    ChildSeesParentValuesBeyondCurrentArm { names: bind_slot_binder_names(slot: slot, binder: binder) }
+  } else if bind_slot_sees_binder(slot: slot) {
+    ChildSeesParentValuesAnd { names: bind_slot_binder_names(slot: slot, binder: binder) }
+  } else {
+    ChildSeesParentValues
   }
 }
 
