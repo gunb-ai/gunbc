@@ -10,11 +10,14 @@ import extdeps.filesystem.filesystem_io {
   FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused
 }
 import std.optional { Absent, Present }
+import std.algebra { Cons }
 
 // Compiler policy over the existing file transport. A failed listing is never an empty
 // directory. Only the host's NotADirectory observation admits a candidate as a file; every
 // other failure stops the walk. In particular a disappearing entry or a broken symlink cannot
 // silently shrink the compiler's source population. The transport refuses lossy name encodings.
+// The walked paths are prepended and sorted once at the end, so the walk costs the size of the
+// population and not its square.
 type SourceRootWalkTask { path: String, root: Bool, origin: String }
 type SourceRootWalkedPath { path: String, origin: String }
 type SourceRootPaths
@@ -40,7 +43,7 @@ fn source_root_candidate_is_file(root: Bool, error_kind: String) -> Bool {
   }
 }
 
-fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWalkedPath>) -> SourceRootPaths {
+fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWalkedPath>, suffix: String) -> SourceRootPaths {
   match pending |> first {
     Absent => SourceRootPathsRead { paths: paths |> sort_by(walked => walked.path) }
     Present { value: task } => {
@@ -54,14 +57,19 @@ fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWal
             root: false,
             origin: task.origin
           })
-          source_root_walk(pending: concat(children, rest), paths: paths)
+          source_root_walk(pending: concat(children, rest), paths: paths, suffix: suffix)
         }
         FilesystemDirectoryListingRefused { directory: _, error: cause } =>
           if source_root_candidate_is_file(root: task.root, error_kind: listed.error_kind) {
-            let next = if task.path.ends_with(suffix: ".dag") {
-              concat(paths, [SourceRootWalkedPath { path: task.path, origin: task.origin }])
-            } else { paths }
-            source_root_walk(pending: rest, paths: next)
+            if task.path.ends_with(suffix: suffix) {
+              source_root_walk(
+                pending: rest,
+                paths: Cons { head: SourceRootWalkedPath { path: task.path, origin: task.origin }, tail: paths },
+                suffix: suffix
+              )
+            } else {
+              source_root_walk(pending: rest, paths: paths, suffix: suffix)
+            }
           } else {
             SourceRootPathsRefused { path: task.path, kind: listed.error_kind, cause: cause }
           }
@@ -69,6 +77,24 @@ fn source_root_walk(pending: List<SourceRootWalkTask>, paths: List<SourceRootWal
           SourceRootPathsRefused { path: path, kind: "invalid_subject", cause: cause }
       }
     }
+  }
+}
+
+// One directory's listing and no descent: whether the host lists this path as a directory, with the
+// host's classification of why it does not.
+type SourceRootDirectory
+  = SourceRootDirectoryListed { path: String }
+  | SourceRootDirectoryRefused { path: String, kind: String, cause: String }
+
+fn source_root_directory(path: String) -> SourceRootDirectory {
+  let listed = Filesystem.List(path: path)
+  match filesystem_listing_observation(directory: path, success: listed.success,
+    entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(listing) => SourceRootDirectoryListed { path: path }
+    FilesystemDirectoryListingRefused { directory: _, error: cause } =>
+      SourceRootDirectoryRefused { path: path, kind: listed.error_kind, cause: cause }
+    FilesystemDirectorySubjectRefused { directory: subject, cause: cause } =>
+      SourceRootDirectoryRefused { path: subject, kind: "invalid_subject", cause: cause }
   }
 }
 
@@ -98,7 +124,8 @@ fn source_root_read_paths(pending: List<SourceRootWalkedPath>, files: List<Sourc
 fn source_root_read(roots: List<String>) -> SourceRootFiles {
   match source_root_walk(
     pending: roots |> map(path => SourceRootWalkTask { path: path, root: true, origin: path }),
-    paths: []
+    paths: [],
+    suffix: ".dag"
   ) {
     SourceRootPathsRefused { path: path, kind: kind, cause: cause } =>
       SourceRootFilesRefused { path: path, kind: kind, cause: cause }

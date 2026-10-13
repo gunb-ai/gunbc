@@ -3,7 +3,7 @@ module gunbc.site.element.priority_mark
 import std.types { List, String }
 import std.markup { Fragment, Attribute, attr }
 import gunbc.site.markup { el_attrs, txt }
-import gunbc.roadmap_priority { RoadmapPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3, roadmap_priority_label }
+import gunbc.roadmap.roadmap_priority { RoadmapPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3, roadmap_priority_label }
 import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl }
 import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0 }
 import gunbc.site.element.tokens { radius_element, height_chip, priority_mark_width, priority_mark_border, priority_mark_padding }
@@ -15,7 +15,7 @@ import extdeps.languages.css.properties {
 }
 
 // PriorityMark: the one drawing of a priority, wherever one is shown. It takes the typed priority
-// (gunbc.roadmap_priority) and prints that module's label, with the caller's explanation of how the
+// (gunbc.roadmap.roadmap_priority) and prints that module's label, with the caller's explanation of how the
 // priority was derived as its title when the caller has one.
 //
 // Every mark is the same box: the measured width and chip height, the measured border on every

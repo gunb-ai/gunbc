@@ -5,7 +5,7 @@ required-CI measurement adjudication and required-lanes aggregate refuse it.
 The host/authority phase-roster joins and expected-versus-ran check include it.
 No workflow job or CLI flag was added.
 
-`gunbc.witness_floor_workflow.witness_floor_triggers` runs that lane on pull
+`gunbc.witness.witness_floor_workflow.witness_floor_triggers` runs that lane on pull
 requests targeting main (opened, synchronize, reopened), `merge_group`, and
 `workflow_dispatch`. The runtime phase uses the parse sweep's universe, including
 the producer root for declaration integrity, in an isolated child of the required

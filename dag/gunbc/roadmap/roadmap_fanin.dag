@@ -32,7 +32,7 @@ import extdeps.languages.json.emit { JsonValue, json_string, json_int, json_obje
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
 }
-import gunbc.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
+import gunbc.roadmap.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
 
 // THE FANIN SEAM (docs/plans/harness-work-lifecycle.md, delivery structure): verified candidates of
 // one project's nodes merge into the project's ONE integration head, and a standalone task is the

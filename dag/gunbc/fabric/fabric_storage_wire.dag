@@ -1,4 +1,4 @@
-module gunbc.fabric_storage_wire
+module gunbc.fabric.fabric_storage_wire
 
 import std.types { String, NonEmptyStr, Int, List }
 import std.durable_compare_and_set {

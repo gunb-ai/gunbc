@@ -11,18 +11,18 @@ import product.fabric.selection { DispatchInputs }
 import product.fabric.candidate_field { FieldRequest }
 import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery }
 import gunbc.workspace_commissioning_store { WorkspaceCommittedCommissioning }
-import gunbc.workspace_guest_image { VerifiedWorkspaceImage }
-import gunbc.runner_microvm { gunbc_runner_microvm_declared_realization_allowance }
+import gunbc.runner.workspace_guest_image { VerifiedWorkspaceImage }
+import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_allowance }
 import gunbc.workspace_tool_observer { WorkspaceToolsObserved, workspace_tools_refusal }
 import gunbc.workspace_allocation { WorkspaceRequest, workspace_execution_requirements, workspace_profile_vcpus, workspace_profile_memory }
 import gunbc.workspace_allocation_supply { WorkspaceHostSupplyObservation, workspace_slot_observation_refusal }
 import gunbc.workspace_ssh_access { WorkspaceAccessEvidence, workspace_access_refusal, workspace_access_receipt }
 import gunbc.workspace_allocation_policy { workspace_enrolled_ssh_access }
-import gunbc.fabric_control_plane { fabric_cell_allocation_key }
+import gunbc.fabric.fabric_control_plane { fabric_cell_allocation_key }
 import product.placement_supply { HostIdentity }
 import std.algebra { trim }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation { identity_is_workspace_execution_member }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_allocation { identity_is_workspace_execution_member }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_nat, json_field_value }

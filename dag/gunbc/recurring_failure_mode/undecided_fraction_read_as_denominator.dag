@@ -9,7 +9,7 @@ data undecided_fraction_read_as_denominator: RecurringFailureMode = RecurringFai
   receipts: [
     "**a census with an unresolvable fraction of its population reports a denominator it does not have** (an occurrence census that emits a third disposition for `could not determine` is honest at the row grain and misleading at the total grain: rows scored `identity unavailable` are neither agreements nor divergences, so any ratio taken over the reported total silently treats them as decided.",
 
-    "**SPECIMEN, unowned and unexplained at filing (2026-09-01).** The `v1.tests.claim.carrier_realization_census` run over the `src/v2/compiler/01_tokenize.dag` closure produced 121 `IdentityUnavailable` rows -- roughly a tenth of its population.",
+    "**SPECIMEN, unowned and unexplained at filing (2026-09-01).** The `v1.tests.claim.carrier_realization_census` run over the `src/v2/compiler/tokenize.dag` closure produced 121 `IdentityUnavailable` rows -- roughly a tenth of its population.",
 
     "The earlier run recorded in docs/plans/carrier-realization-arbiter-repair-design.md, over the same subject module at the FRONT-END phase on 2026-08-21, reported `1142 rows: 1134 Agrees, 8 DivergesWithExactIdentity, 0 IdentityUnavailable`.",
 

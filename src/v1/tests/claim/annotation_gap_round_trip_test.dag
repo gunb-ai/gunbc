@@ -1,6 +1,6 @@
 module v1.tests.claim.annotation_gap_round_trip_test
 
-import extdeps.languages.dag.syntax { dag_parse_environment }
+import extdeps.languages.dag.syntax { dag_parse_environment, render_annotation_block }
 import std.types { String, List, Int, Bool, SourceSpan }
 import std.source_annotation {
   KeyedAnnotationRow,
@@ -18,8 +18,7 @@ import v1.compiler.annotation_bind {
   KeyedAnnotationRegion,
   bind_annotations,
   keyed_annotation_regions,
-  keyed_annotation_rows,
-  render_annotation_block
+  keyed_annotation_rows
 }
 import v1.std.core { build_newline_index, empty_intern_table }
 

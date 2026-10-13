@@ -1,4 +1,4 @@
-module tools.emitted_crate_harness_manifest
+module gunbc.instruments.emitted_crate_harness_manifest
 
 import std.logic { Bool }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEstablishedAbsence, FilesystemFileObservation }

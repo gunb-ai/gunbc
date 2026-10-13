@@ -1,8 +1,8 @@
 module gunbc.generated_projection_paths
 
 import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
-import gunbc.stage0_cargo_manifest { stage0_cargo_toml_repo_path }
-import gunbc.stage0_rust_source_lifecycle_scaffold {
+import gunbc.stage0.stage0_cargo_manifest { stage0_cargo_toml_repo_path }
+import gunbc.stage0.stage0_rust_source_lifecycle_scaffold {
   derived_hand_maintained_disposition_repo_paths,
   stage0_src_repo_prefix
 }
@@ -69,7 +69,7 @@ fn deterministic_generated_projection_paths() -> GeneratedProjectionPathsOutcome
 //
 // A PATH LIST CANNOT BE THE REPAIR, IN EITHER OF ITS TWO SPELLINGS. A hand roster is what stood
 // in for the dead derivation before and is what #8674 deleted; and the live derivation that
-// replaced it (gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths)
+// replaced it (gunbc.stage0.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths)
 // takes two OBSERVATIONS as its inputs — git ls-files and a git show of the emitted-population
 // manifest. Reaching it from here would make a committed byte projection a function of somebody's
 // working tree: two clones at one commit could disagree about what .gitattributes must contain,

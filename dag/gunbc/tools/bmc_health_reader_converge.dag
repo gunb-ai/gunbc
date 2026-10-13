@@ -3,15 +3,15 @@ module gunbc.tools.bmc_health_reader_converge
 import extdeps.bmc.http
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.bmc_onboarding {
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.bmc.bmc_onboarding {
   BmcOnboardingPlan,
   srv1_onboarding_plan,
   srv2_onboarding_plan,
   srv3_onboarding_plan,
   srv4_onboarding_plan,
 }
-import gunbc.bmc_health_reader {
+import gunbc.bmc.bmc_health_reader {
   CreateReaderAccount,
   ReaderAccountAbsent,
   ReaderAccountConverged,
@@ -28,7 +28,7 @@ import gunbc.bmc_health_reader {
   reader_account_from_json,
   reader_listed_in_accounts,
 }
-import gunbc.bmc_custody_read {
+import gunbc.bmc.bmc_custody_read {
   CustodyCredentialAbsent,
   CustodyCredentialHeld,
   CustodyCredentialUnreadable,
@@ -63,7 +63,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 // CONVERGE ONE BMC'S READ-ONLY HEALTH ACCOUNT, using the administrator credential from custody once.
 //
 // observe (administrator reads the accounts collection, then the reader account if listed)
-//   -> plan (gunbc.bmc_health_reader plan_reader_account)
+//   -> plan (gunbc.bmc.bmc_health_reader plan_reader_account)
 //   -> converged: prove the custody reader credential authenticates, change nothing
 //   -> create: mint, store and read back bmc-<host>-health-reader, POST the account, then verify
 //      INDEPENDENTLY that the reader logs in and that the administrator reads its role as ReadOnly.

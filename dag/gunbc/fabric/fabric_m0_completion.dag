@@ -1,9 +1,9 @@
-module gunbc.fabric_m0_completion
+module gunbc.fabric.fabric_m0_completion
 
 import std.types { List, NonEmptyStr, Bool }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 import std.scoped_authorization { AttemptIdentity }
-import gunbc.fabric_m0_origin_readback {
+import gunbc.fabric.fabric_m0_origin_readback {
   OriginReading,
   OriginReadingOutcome,
   OriginReadingTaken,
@@ -79,7 +79,7 @@ fn obligation_subject_name(o: OutputObligation) -> NonEmptyStr {
 // THE CONFIRMING ARM CARRIES A READING, NOT A DIGEST, and that is the whole difference between
 // this shape and the one it replaces. A digest field admitted any 64-hex value an author cared to
 // write beside any provenance they cared to claim; OriginReading is sole_constructor in
-// gunbc.fabric_m0_origin_readback, so the only way to reach this arm is to have actually digested a
+// gunbc.fabric.fabric_m0_origin_readback, so the only way to reach this arm is to have actually digested a
 // file, and the file is named in the same value. See that module for what the seal does and does
 // not close, and for the next-rung trigger; it is cited here rather than restated.
 type OriginReadback
@@ -197,14 +197,14 @@ fn readback_digest_verdict(subject: NonEmptyStr, recorded: Sha256Digest, readbac
 // gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters, whose declared
 // repair is to derive the digest from the value at the point the value is obtained. That repair is
 // applied: ReadbackConfirmed carries an OriginReading, sole_constructor in
-// gunbc.fabric_m0_origin_readback, whose only mint computes the digest over the file named in the
+// gunbc.fabric.fabric_m0_origin_readback, whose only mint computes the digest over the file named in the
 // same value. On the source-to-dag acceptance path there is no constructor that pairs a digest with
 // a file it was not taken from, so that sub-class is structurally impossible rather than validated
 // -- measured, not asserted, by test.claim.fabric_m0_origin_readback_seal.
 //
 // WHAT REMAINS, and it is what keeps the enclosing class at MITIGATABLE: the staged path is still
 // chosen by whoever calls the mint, so "the digested file was the origin readback's own output and
-// not a cache copy" is not yet constructed. gunbc.fabric_m0_origin_readback owns that boundary and
+// not a cache copy" is not yet constructed. gunbc.fabric.fabric_m0_origin_readback owns that boundary and
 // names the capability that closes it; it is cited here, not restated, because a second statement
 // of one trigger is a second authority for it.
 // The manifest is a subject too, but it is not an obligation, so the subject is a coproduct rather

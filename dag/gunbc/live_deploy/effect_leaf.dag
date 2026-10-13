@@ -29,8 +29,8 @@ data live_deploy_effect_materialization_refused_poison: String = "__GUNBC_EFFECT
 // argv-builder -> quoted text -> String, where the argv builder was a SECOND spelling of the same
 // `transport shell { argv: [...] }` row -- a fork the live_deploy witnesses could only test for
 // equality, never remove. Deriving argv from the row deletes the fork where this was its last
-// consumer: extdeps.dpkg dpkg_status_argv and extdeps.apt apt_install_argv are deleted with it. The
-// systemctl argv builders are NOT deleted and this does not claim they are -- gunbc.host_effect_realize
+// consumer: extdeps.package_managers.dpkg dpkg_status_argv and extdeps.package_managers.apt apt_install_argv are deleted with it. The
+// systemctl argv builders are NOT deleted and this does not claim they are -- gunbc.host.host_effect_realize
 // still consumes them through gunbc.live_deploy.operations, so they are a surviving fork with a
 // different owner, and saying otherwise here would be the census error this repository keeps
 // re-learning: a symbol is dead when its consumers are counted, not when one of them stops calling.
@@ -66,7 +66,7 @@ data live_deploy_package_input: String = "package"
 
 // EVERY MUTATION ON THIS HOST CROSSES A PRIVILEGE BOUNDARY, so these constructors elevate rather
 // than taking a `privileged` flag: the deploy principal is the unprivileged CI-runner account
-// (gunbc.fleet_posix_accounts FleetAccountCiRunner), and a systemctl mutation it could issue
+// (gunbc.fleet.fleet_posix_accounts FleetAccountCiRunner), and a systemctl mutation it could issue
 // unelevated does not exist.
 // The package READ (dpkg -s) is the one leaf that does not, which is why it alone binds unelevated.
 fn systemctl_unit_effect(operation: String, unit: NonEmptyStr) -> BashBoundOperationInvocation {

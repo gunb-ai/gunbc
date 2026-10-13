@@ -13,7 +13,7 @@ data rust_ingest_lexer_missing_a_bare_operator_spelling: RecurringFailureMode = 
 
     "HARM: a grammar claim asserting ingestion of tight layout was false and silent. No production consumer ingests Rust today, so the harm is to the claim's truth, not to a compile.",
 
-    "REPAIR: the bare `+` rule in rust_extended_lex_rules. RED-FIRST CONTROL: test.claim.parse_test_rust_grammar claim_rust_layout_tight_parses_holds, false before the repair and true after.",
+    "REPAIR: the bare `+` rule in rust_extended_lex_rules. RED-FIRST CONTROL: v2.test.claim.parse.parse_test_rust_grammar claim_rust_layout_tight_parses_holds, false before the repair and true after.",
 
     "RUNG FOUND AT: below the floor (a false claim, unexecuted). CEILING: 2 -- the claim is the wall; a structural guarantee would need the ingest set derived from the grammar's token classes rather than authored row by row, which is the separation named in rust_lex_resolves_two_tokenizations_by_rule_order. NEXT TRIGGER: that separation. OWNER: grammar program (stern-bear-500).",
   ],

@@ -1,4 +1,4 @@
-module v2.test.manual.solve_constraints_add
+module v2.test.claim.manual.solve_constraints_add
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.constraints {
@@ -14,7 +14,7 @@ import v2.std.diagnostic {
   Rejected
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
-import v2.test.manual.infer_ground_add {
+import v2.test.claim.manual.infer_ground_add {
   fixture_add_resolved_node,
   fixture_add_resolved_tree
 }

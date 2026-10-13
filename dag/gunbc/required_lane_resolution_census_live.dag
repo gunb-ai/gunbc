@@ -6,12 +6,12 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.github.actions { Workflow, Job }
-import gunbc.compiler_gate_workflow {
+import gunbc.witness.compiler_gate_workflow {
   compiler_gate_workflow, compiler_gate_merge_path_job_ids,
   compiler_gate_required_job_id,
 }
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.required_lane_resolution_census {
   ModuleIdentityPopulation, ModuleIdentityPopulationObserved, ModuleIdentityPopulationRefused,
   LaneResolutionSubject, FloorNominalPreparedSubject, RunEntryClosure, ResolvesNoDagModule,
@@ -43,7 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // and resolve the import closure of these two entries before emitting it. The entries are the
 // instruments' own facts in gunbc.instrument_targets (self_host_entry, v2_native_cli_entry); the
 // seed's two Rust constants cannot read a .dag row yet, so
-// test.claim.compiler_gate_emit_build_lane_witness_test holds them equal to those rows and reds on drift.
+// test.claim.compiler_gate_emit_build_lane_witness holds them equal to those rows and reds on drift.
 fn lane_resolution_roster() -> List<LaneResolutionRow> {
   [
     LaneResolutionRow {
@@ -78,7 +78,7 @@ fn count_of(xs: List<String>, x: String) -> Int {
 // COVERAGE IS OVER THE REQUIRED JOBS, WHICH IS WHAT THIS ROSTER'S ROWS ARE (gunbc.required_lane_resolution_census
 // LaneResolutionRow: one required job and the subjects its steps resolve). The required jobs are the
 // workflow's merge path -- since 2026-10-09 the one required job -- read from
-// gunbc.compiler_gate_workflow compiler_gate_merge_path_job_ids rather than restated. A lane announced
+// gunbc.witness.compiler_gate_workflow compiler_gate_merge_path_job_ids rather than restated. A lane announced
 // as not blocking is read by no required context, so a module only it resolves is resolved by no
 // required lane, and a row for it would be the inflation this census exists to refuse. Checking
 // coverage against every emitted job instead refused this census outright from the day `emit-build`

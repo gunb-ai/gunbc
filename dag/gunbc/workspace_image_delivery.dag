@@ -7,12 +7,12 @@ import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import gunbc.command_runner { run_shell_commands, LocalExec }
-import gunbc.microvm_guest_artifacts {
+import gunbc.runner.microvm_guest_artifacts {
   runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact, runner_guest_base_dir,
   runner_guest_base_artifact_path, guest_artifact_verdict, ArtifactMatchesPin,
   ArtifactUnpinnedFirstContact, ArtifactBuildReceipt, ArtifactContradictsPin, ArtifactNotMeasured,
 }
-import gunbc.workspace_guest_image { workspace_image_build, workspace_image_path }
+import gunbc.runner.workspace_guest_image { workspace_image_build, workspace_image_path }
 
 // Transport is not admission. The administrator installs these exact files, then checks the
 // installed kernel and rootfs against the reviewed pins before commissioning can expose supply.

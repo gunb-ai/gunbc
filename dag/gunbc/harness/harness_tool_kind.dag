@@ -3,7 +3,7 @@ module gunbc.harness.harness_tool_kind
 import std.types { List, String }
 
 // A LEAF, AND DELIBERATELY ONE. The harness turn WRITES the item kind of each tool use into the
-// attempt's event stream and gunbc.roadmap_provider_events READS it back. The reader sits beneath
+// attempt's event stream and gunbc.roadmap.roadmap_provider_events READS it back. The reader sits beneath
 // the harness in the import graph (harness_turn reaches it through roadmap_submission), so the
 // declaration both ends share cannot live in gunbc.harness.harness_tool, whose closure carries the
 // wire decoder and the fleet endpoints. It lives here, importing nothing but String, and

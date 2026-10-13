@@ -1,4 +1,4 @@
-module synthetic.parse_mechanism.flat_3kb
+module v2.test.fixture.parse_mechanism.flat_3kb
 
 
 fn flat_0(x: std.nat.Nat) -> std.nat.Nat { x }
