@@ -103,18 +103,21 @@ mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use emitted_crate_workspace_host::{write_emitted_workspace, EmittedWorkspace};
 pub use native_lane_runner::{
-    emitted_build_not_clean_cause, run_native_claim_program, run_native_serve_program,
+    emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
+    run_native_claim_program, run_native_process_memory_runs, run_native_serve_program,
     run_required_v2_native, run_self_host, run_type_declaration_use_census_runs,
     run_v2_demand_census, run_v2_native_census, run_v2_native_cli, run_v2_native_frontier,
-    CensusInferRun, NativeCensusRun, NativeClaimProgramAttempt, NativeClaimProgramRun,
-    NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome, NativeServeProgramRun,
-    SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
+    CensusInferRun, MeasuredSpawnRoute, NativeCensusRun, NativeChildMeasured,
+    NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
+    NativeProcessMemoryRuns, NativeRouteOutcome, NativeServeProgramRun, SelfHostHeld,
+    TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
+    MEASURED_SPAWN_RECEIPT_ENV,
 };
+pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
-    floor_discovery_path_excluded, floor_seam, make_eval_context,
-    make_eval_context_with_runtime_options, run_claim_measured, run_required_floor,
-    unimported_bare_provider_entry_refusals,
+    floor_seam, make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,
+    run_required_floor,
 };
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
@@ -147,13 +150,10 @@ pub fn source_root_ingest_module_identities_for_ci(
 }
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_seeded_compile_closure, resolve_stage_totals, source_root_ingest_content_hash_fnv1a64,
-    whole_tree_resolved_ctx,
+    resolve_seeded_compile_closure, resolve_stage_totals, whole_tree_resolved_ctx,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
-mod owned_data;
-pub(crate) use owned_data::*;
 mod p1_cohort;
 pub(crate) use p1_cohort::*;
 mod fallback_arm_census;
@@ -173,7 +173,6 @@ pub use emit_host::{
     compile_dag_callsite_resolved_call_edges, compile_dag_importer_resolved_call_edges,
     compile_dag_multi_module_fixture, compile_dag_operation_requires,
     compile_dag_primitive_call_edges, compile_dag_reference_occurrence_binding_census,
-    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
 };
 pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
@@ -195,13 +194,13 @@ pub(crate) use non_fold_residue::*;
 mod compile_clean;
 pub use compile_clean::compile_clean_diagnostic_is_hard;
 pub(crate) use compile_clean::*;
+mod test_marker;
 mod test_migration;
 pub(crate) use test_migration::*;
 // THE BASELINE RECONSTRUCTION RIDES THE SAME SWEEP the index above is built by, which is why it
 // is registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
-pub(crate) mod floor_discovery_snapshot;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
@@ -237,12 +236,6 @@ mod evaluation_budget_consequence_falsifier_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
-pub use floor_discovery_snapshot::{
-    append_discovery_trace_row, build_floor_discovery_request,
-    discover_floor_witness_roster_with_snapshot, floor_tested_commit_and_tree, floor_tool_identity,
-    request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
-    FloorDiscoveryConsumerRole,
-};
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::closure_identity::{subject_digest_for_closure, transform_content_digest};
@@ -311,10 +304,6 @@ mod generated_cli_dispatch_allocator_integration_tests {
         );
     }
 }
-
-pub const UNIFIED_CLAIM_VERIFICATION_MODULE: &str = "v2.std.verification";
-pub const BOOL_WITNESS_CLAIM_TYPE: &str = "BoolWitnessClaim";
-pub const NODE_CORPUS_TYPE: &str = "NodeCorpus";
 
 // cargo's build-output dir (a `target` dir beside a Cargo.toml) is realization output, not
 // source: a corpus copy under it (e.g. target/func_env_semantic_baseline_corpus/dag/**) must
@@ -499,7 +488,7 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold;
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
-// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness.dag).
 // 🟡 dissolve-on: workspace_root_from — runtime workspace-root discovery in HAND-Rust
 // (landed on main as #6484 .git-ancestor walk); DISSOLVES WHEN cli_run.rs Chunk F lands
 // (cli-run-reconcile-defork.md → GENERATED workflow host-effect apply) OR ROADMAP
@@ -588,7 +577,7 @@ fn spawn_workspace_root_locus(named: &Path) -> Result<PathBuf, String> {
     Ok(named.to_path_buf())
 }
 
-/// Temporary TOML realization for `gunbc.stage0_cargo_manifest.CargoManifestBinParse`.
+/// Temporary TOML realization for `gunbc.stage0.stage0_cargo_manifest.CargoManifestBinParse`.
 /// Git effects, repository policy, path normalization, and lifecycle classification stay in
 /// `.dag`; this bridge returns only the authored `[[bin]].path` facts or a typed parse refusal.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -656,7 +645,7 @@ pub fn parse_stage0_cargo_manifest_bin_paths(content: &str) -> Stage0CargoManife
     }
 }
 
-/// Temporary seed bridge for `gunbc.roadmap_acceptance_history_projection`.
+/// Temporary seed bridge for `gunbc.roadmap.roadmap_acceptance_history_projection`.
 /// Evaluates `roadmap_acceptance_event_history` from revision-addressed authority
 /// source text using a first-root overlay; used only when the JSONL carrier is
 /// absent at merge-base (one-time migration bootstrap).
@@ -1648,7 +1637,7 @@ pub(crate) fn bind_checkout_root(root: PathBuf) {
 /// over a projection with comments and string bodies removed.
 ///
 /// SCOPE, declared rather than implied: the guarded population is the tests the required unit lane
-/// actually runs (`cargo test --release -p v1-compiler --lib`, `gunbc.repo_self_build`
+/// actually runs (`cargo test --release -p v1-compiler --lib`, `gunbc.repo.repo_self_build`
 /// `repo_self_test_command`), and the EVIDENCE population is the whole of that lane's library
 /// source — every `.rs` file under the crate root, not this file alone. Scanning one file while
 /// claiming the lane was a selection view read as a population, and is the finding of review
@@ -2381,7 +2370,7 @@ mod process_cwd_mutation_reachability_gate {
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_runtime_workspace_root_plumbing`):
-// ROADMAP lane `5-dissolve-patches` (gunbc.roadmap_authority / ROADMAP.md) — `cli_run.rs`
+// ROADMAP lane `5-dissolve-patches` (gunbc.roadmap.roadmap_authority / ROADMAP.md) — `cli_run.rs`
 // HAND_MAINTAINED drain (~12.1k LOC absorption point; #6046 hard-gates net-new seed logic).
 // Unblock: #6106 orchestration emission → agnostic registry dispatch realizes claim-bin
 // pool-root anchoring from `.dag` (the same exit the floor shell scaffolds take).
@@ -2430,7 +2419,7 @@ static PROCESS_WORKSPACE_ROOT: OnceLock<(PathBuf, WorkspaceRootBasis)> = OnceLoc
 /// `resolve_process_workspace_root` answers "which tree am I in" by asking git for a checkout
 /// carrying Cargo.toml beside dag/. That is a proxy, correct inside a checkout and unable to say
 /// anything at all outside one -- which is not an exotic case: it is an executor handed an
-/// immutable source snapshot by content identity (`gunbc.fabric_source_snapshot`), the whole point
+/// immutable source snapshot by content identity (`gunbc.fabric.fabric_source_snapshot`), the whole point
 /// of which is that no repository travelled with the bytes. Discovery answered that invocation with
 /// a PANIC before a single module was read, so "source without a repository" was unrunnable rather
 /// than unsupported.
@@ -2676,7 +2665,7 @@ fn resolve_process_workspace_root() -> (PathBuf, WorkspaceRootBasis) {
 /// when `path` is not under the runtime root — never widens to cwd-relative or absolute keys.
 ///
 /// Authority: modeled by `gunbc.cli_run_repo_grant` (`cli_run_repo_path_admissible`);
-/// witness: `dag/test/claim/cli_run_repo_grant_witness_test.dag`.
+/// witness: `dag/test/claim/cli_run_repo_grant_witness.dag`.
 /// 🟡 dissolve-on: HAND-RUST gate retires when cli_run.rs Chunk F lands
 /// (docs/plans/cli-run-reconcile-defork.md) — refusal becomes the located
 /// `std.access.AccessDecision::Deny` from the single grant policy, not a parallel string check.
@@ -2743,7 +2732,7 @@ fn module_index_path_key(path: &Path) -> String {
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.cli_run_workspace_root_scaffold
 // (cli_run_source_root_anchor_scaffold row);
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
-// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
+// witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness.dag).
 // 🟡 dissolve-on: try_anchor_source_root — declared layer/pool roots come from HAND-Rust
 // while `dag/compiler` is modeled-before-implemented (§6 model-first), so absence is a
 // legitimate state skipped LOUDLY (counted line per root); DISSOLVES WHEN cli_run.rs Chunk F
@@ -3093,14 +3082,6 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn selected_closure_overlap_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER,
-            "cli_run_selected_closure_overlap_probe"
-        );
-    }
-
-    #[test]
     fn compile_clean_diagnostic_histogram_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER,
@@ -3236,7 +3217,7 @@ mod process_workspace_root_tests {
 }
 
 /// Pins HAND-RUST `repo_relative_path` against `gunbc.cli_run_repo_grant` on the same
-/// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag`.
+/// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness.dag`.
 #[cfg(test)]
 mod cli_run_arg_channel_tests {
     use super::{
@@ -3716,60 +3697,6 @@ mod workspace_root_discovery_tests {
     }
 }
 
-/// Empty ingest-manifest placeholder excluded from the module index when a later
-/// source root carries the host-emitted manifest (source-root ingest / closure gates).
-const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
-    "src/v2/test/claim/workflow/host_source_root_ingest_manifest.dag";
-
-/// Empty module-binding-manifest placeholder, superseded the same way (module-identity
-/// supply carrier). Separate carrier from the ingest manifest: module <-> path +
-/// provenance, no source text.
-const MODULE_BINDING_MANIFEST_STUB_REL: &str =
-    "src/v2/test/claim/workflow/host_module_binding_manifest.dag";
-
-/// Committed manifest stubs and the generated filenames that supersede them.
-///
-/// One table rather than a predicate pair per manifest: the stub/overlay rule is a single
-/// fact, and forking it per carrier would mean the next manifest silently misses whichever
-/// half its author forgot to extend (DESIGN.md §2/§3).
-const MANIFEST_STUB_OVERLAYS: &[(&str, &[&str])] = &[
-    (
-        SOURCE_ROOT_INGEST_MANIFEST_STUB_REL,
-        &[
-            "v2-source-root-ingest-manifest.dag",
-            "host_source_root_ingest_manifest.dag",
-        ],
-    ),
-    (
-        MODULE_BINDING_MANIFEST_STUB_REL,
-        &["host_module_binding_manifest.dag"],
-    ),
-];
-
-/// True when `rel_forward` is a committed manifest stub AND a strictly later source root
-/// carries its generated counterpart, so the stub must be excluded from the module index
-/// and the generated file becomes the sole declarer of that module. Without this the two
-/// files collide and trip `module_path_collision_panic_message`.
-fn manifest_stub_superseded_by_overlay(
-    rel_forward: &str,
-    source_roots: &[String],
-    after_root_idx: usize,
-) -> bool {
-    let normalized = rel_forward.replace('\\', "/");
-    let Some((_, overlay_names)) = MANIFEST_STUB_OVERLAYS
-        .iter()
-        .find(|(stub_rel, _)| normalized == *stub_rel)
-    else {
-        return false;
-    };
-    source_roots.iter().skip(after_root_idx + 1).any(|root| {
-        let root_path = Path::new(root);
-        overlay_names
-            .iter()
-            .any(|name| root_path.join(name).is_file())
-    })
-}
-
 fn module_path_collision_panic_message(
     declaring_module: &str,
     existing_path: &str,
@@ -3778,13 +3705,6 @@ fn module_path_collision_panic_message(
     format!(
         "module-path collision: module '{declaring_module}' is declared by both '{existing_path}' and '{candidate_path}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side"
     )
-}
-
-#[derive(Clone)]
-pub(crate) struct ModuleBindingManifestRow {
-    module_path: String,
-    rel_path: String,
-    root_variant: String,
 }
 
 fn insert_module_path(index: &mut HashMap<String, String>, module_path: &str, rel: String) {
@@ -3863,53 +3783,6 @@ fn refuse_unparseable_module_sources(refusals: &[ModuleBindingRefusal]) {
         eprintln!("  {}", refusal.rendered());
     }
     std::process::exit(1);
-}
-
-fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
-    let root_variants: Vec<String> = source_roots
-        .iter()
-        .map(|root| {
-            let rel_root = witness_layer_root_spelling(root);
-            source_root_ref_variant_for_root(&rel_root)
-                .unwrap_or_else(|e| panic!("collect_module_binding_manifest_rows: {e}"))
-        })
-        .collect();
-    let mut rows_by_module: std::collections::HashMap<String, ModuleBindingManifestRow> =
-        std::collections::HashMap::new();
-    for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
-        let rel = module_index_path_key(path);
-        if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
-            return;
-        }
-        if let Some(existing) = rows_by_module.get(&binding.module_path) {
-            if existing.rel_path != rel && !same_canonical_file(&existing.rel_path, &rel) {
-                if root_idx > 0 {
-                    return;
-                }
-                panic!(
-                    "{}",
-                    module_path_collision_panic_message(
-                        &binding.module_path,
-                        &existing.rel_path,
-                        &rel
-                    )
-                );
-            }
-            return;
-        }
-        rows_by_module.insert(
-            binding.module_path.clone(),
-            ModuleBindingManifestRow {
-                module_path: binding.module_path,
-                rel_path: rel,
-                root_variant: root_variants[root_idx].clone(),
-            },
-        );
-    });
-    let mut rows: Vec<ModuleBindingManifestRow> =
-        rows_by_module.into_iter().map(|(_, row)| row).collect();
-    rows.sort_by(|a, b| a.module_path.cmp(&b.module_path));
-    rows
 }
 
 /// Scratch index for one fixture-closure extension. Same `source_files` as the process-shared
@@ -4089,14 +3962,14 @@ pub struct MultiModuleFixtureSource {
 
 /// Per-function **resolved-registry** projection for the Rust emit target: source identity plus
 /// the ordered parameter name list taken from `ItemInfo` with `emit_ident` /
-/// `service_var_name` transforms. See `tools.multi_module_compile_fixture`
+/// `service_var_name` transforms. See `gunbc.instruments.multi_module_compile_fixture`
 /// `ResolvedRustFnSignature`. Not a read of emitted file bytes — the type name admits the Rust
 /// target, not emit-path observation.
 ///
 /// **Names only (permanent ceiling, no next-rung trigger):** no parameter or return types.
 ///
 /// **Registry mirror, not emit join (below ceiling — order and membership):** DESIGN §3b middle
-/// value — deliberate divergence with stated reason (see `tools.multi_module_compile_fixture`
+/// value — deliberate divergence with stated reason (see `gunbc.instruments.multi_module_compile_fixture`
 /// `ResolvedRustFnSignature`). Nothing refuses if `emit_func_params` / `emit_func_def` and this
 /// projection disagree (resource arm already reads `ItemInfo.resource_names` while emit folds
 /// `uses` via `resource_use_name_at`). **Next-rung trigger:** derive from the same source
@@ -4158,7 +4031,7 @@ pub enum MultiModuleCompileFixtureOutcome {
 /// only consumers being its own witness rows, naming the consumer that would arrive (the
 /// `AmbiguousBareNameRead` refusal in `claim_scope_for`) and the trigger that would let it
 /// (the qualification batches merged and the variant-arm tier landed). Both have happened: the
-/// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`
+/// refusal is in this diff, below, and `dag/test/claim/bare_name_ambiguity_wall_witness.dag`
 /// is the consumer that reaches this type through `claim_scope_fixture`. A frontier that outlives
 /// its own trigger is the stale row DESIGN §4b(3) warns about, so it ends here rather than
 /// describing a state that no longer holds.
@@ -4735,7 +4608,7 @@ pub(crate) struct WitnessExclusionRowRaw {
     pub classification: String,
 }
 
-/// Witness discovery scan dirs, read live from `gunbc.ci_layer_roots.witness_discovery_scan_dirs`.
+/// Witness discovery scan dirs, read live from `gunbc.ci.ci_layer_roots.witness_discovery_scan_dirs`.
 pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
     static SCAN_DIRS: OnceLock<Vec<String>> = OnceLock::new();
     SCAN_DIRS
@@ -4744,7 +4617,7 @@ pub(crate) fn witness_discovery_scan_dirs() -> Vec<String> {
 }
 
 pub fn census_corpus_roots_follow_layer_authority() -> bool {
-    let synthetic = "module gunbc.ci_layer_roots\n\n\
+    let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
          data witness_layer_roots: List<String> = [\"alpha_layer_root\", \"beta_layer_root\", \"gamma_layer_root\"]\n";
     let follows = witness_layer_roots_from_source(synthetic)
         == ["alpha_layer_root", "beta_layer_root", "gamma_layer_root"];
@@ -4976,10 +4849,6 @@ pub(crate) fn repo_rel(path: &Path) -> String {
     module_index_path_key(path)
 }
 
-pub(crate) fn is_test_dag(path: &str) -> bool {
-    path.ends_with("_test.dag")
-}
-
 pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
     let mut paths = Vec::new();
     for root in witness_layer_roots() {
@@ -5043,7 +4912,7 @@ type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 /// returns a located `Err` instead of unwinding.
 fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
-    for (root_idx, root) in source_roots.iter().enumerate() {
+    for root in source_roots.iter() {
         let anchored_root = anchor_source_root(root);
         let root_path = std::path::Path::new(&anchored_root);
         if !root_path.exists() {
@@ -5068,10 +4937,6 @@ fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, 
                 .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = module_index_path_key(path);
-                let rel_forward = rel_path.clone();
-                if manifest_stub_superseded_by_overlay(&rel_forward, source_roots, root_idx) {
-                    continue;
-                }
                 if let Some(existing) = index.get(&module_path) {
                     if existing.path != rel_path && !same_canonical_file(&existing.path, &rel_path)
                     {
@@ -5678,18 +5543,12 @@ pub(crate) enum CompileCleanScopePlan {
 //   IDENT=CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER
 //   TYPE_ANN=: &str =
 //   rg -F "${IDENT}${TYPE_ANN}" src/v1/stage0/src/cli_run.rs   # == 1 until deletion
-// Witness: dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness_test.dag;
-// dissolve-on: tools.dag_compile_clean_shard_roster compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger.
+// Witness: dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness.dag;
+// dissolve-on: gunbc.instruments.dag_compile_clean_shard_roster compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger.
 pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_shard_entry_paths_fast";
 
-pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
-pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
-/// Rows 1-2's shape+call, relocated out of CLASS_B_TRANSPORT_REL so a witness reaching only
-/// rows 1-2 does not inherit the transport module's extdeps.git / extdeps.git.inspect /
-/// gunbc.ci_layer_roots closure (DESIGN.md §3 relocation-not-refork; the same signature
-/// extdeps_scope_placement_gate_loudness_witness's repair fixed). The transport module imports
-/// this one back for rows 1-2's own use, so it is part of the gate's input closure too.
+pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_fixtures.dag";
 pub const CLASS_B_PROBE_REL: &str = "src/v2/workflow/class_b_import_closure_probe.dag";
 pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
 pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
@@ -5698,7 +5557,6 @@ const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_poo
 
 pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
     CLASS_B_ENTRY_REL,
-    CLASS_B_TRANSPORT_REL,
     CLASS_B_PROBE_REL,
     CLASS_B_BINDING_REL,
     CLASS_B_OVERLAY_REL,
@@ -5796,7 +5654,7 @@ enum FloorCompileCleanReceipt {
     Compiled { ok: bool, failure_detail: String },
 }
 
-/// Host mirror of `gunbc.ci_gate` `GateReceipt` — what a CI gate answers to the substrate.
+/// Host mirror of `gunbc.ci.ci_gate` `GateReceipt` — what a CI gate answers to the substrate.
 ///
 /// The arms are OWNERS, not severities: `Clean`/`Failed` are the gate having reached its subject
 /// and decided (`GateObserved`); `NotApplicable` is the gate's own scope selecting nothing to
@@ -6193,7 +6051,7 @@ impl UnlistedImportBindingSource {
 /// One attributed row of the UnlistedImportUse census. `position` is the diagnostic's own span
 /// start within `file` — the occurrence grain the burndown worklist groups and counts at. It is
 /// NOT the occurrence identity the Step 0 binding-provenance census
-/// (gunbc.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
+/// (gunbc.namespace_cut.namespace_step0_binding_provenance_contract) requires before this worklist may actuate
 /// edits: (file, position) locates the charge, but does not name the selected declaration, the
 /// producing rule, or the pre/post-edit targets.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6698,7 +6556,7 @@ mod typed_module_content_key_tests {
     //!
     //! The compiler-identity term cannot vary within one test process; it is witnessed at the
     //! algebra level by the PR1 .dag witnesses
-    //! (`src/v2/test/claim/interface_summary/typed_module_key_test.dag`). Warm==cold
+    //! (`src/v2/test/claim/interface_summary/typed_module_key.dag`). Warm==cold
     //! byte-equivalence stays owned by `resolve_typed_cache_equivalence_test`.
     //!
     //! Mutations rewrite the SAME file path so the `module_source_identity` collision wall
@@ -6943,9 +6801,9 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
     "v2.compiler.self_host",
     "v2.std.decl_index",
     "v2.lens.module_graph",
-    "tools.dag_compile_clean_shard_roster",
-    "tools.dag_compile_clean_scope",
-    "gunbc.namespace_cut_subject_observation",
+    "gunbc.instruments.dag_compile_clean_shard_roster",
+    "gunbc.instruments.dag_compile_clean_scope",
+    "gunbc.namespace_cut.namespace_cut_subject_observation",
 ];
 
 fn runtime_data_dependency_touched_via_carrier_closure(
@@ -7063,7 +6921,7 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if !skip_enabled {
         return Ok(false);
     }
-    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
+    // Fail-closed on the substrate-declared disposition (std.live_tree): a
     // `ReadsLiveTree` entry reads state outside its resolved closure, so the diff
     // cannot bound its inputs — it never predict-skips. Replaces the deleted
     // entry-text classifier (`entry_text_indicates_live_host_scan`); the disposition
@@ -7213,7 +7071,7 @@ fn resolve_transitively(
 }
 
 /// The `.dag` entry paths a required v2-emission phase compiles, read live from
-/// `gunbc.ci_layer_roots` `required_v2_emission_entries`. A `List<String>` rather than a
+/// `gunbc.ci.ci_layer_roots` `required_v2_emission_entries`. A `List<String>` rather than a
 /// scalar because the axis is "which entries", not "the entry" -- adding a second entry
 /// is a row, never a second host reader.
 pub fn required_v2_emission_entries() -> Vec<String> {
@@ -8159,7 +8017,7 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
         // HAND-RUST RECEIPT: this adds NO new path predicate. It consumes the existing gate, whose
         // authority is `gunbc.cli_run_repo_grant` `cli_run_repo_path_admissible` and whose
         // Rust/authority equivalence is pinned by
-        // `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag` together with
+        // `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness.dag` together with
         // this file's `cli_run_repo_grant_equivalence_tests`. Its dissolve-on is that module's:
         // cli_run.rs Chunk F (docs/plans/cli-run-reconcile-defork.md), when the refusal becomes the
         // located `std.access.AccessDecision::Deny` from the single grant policy. Routing a second
@@ -8431,7 +8289,7 @@ pub fn run_required_v2_emission(source_roots: &[String]) -> Result<Vec<CompileRu
         // phase failing to reach any subject, and reporting it as clean is the
         // empty-observation narrow (DESIGN, recurring failure modes).
         return Err(
-            "gunbc.ci_layer_roots required_v2_emission_entries is empty — the phase has no subject"
+            "gunbc.ci.ci_layer_roots required_v2_emission_entries is empty — the phase has no subject"
                 .to_string(),
         );
     }
@@ -8574,8 +8432,8 @@ const BUILTIN_REQUIRED_SERVICE_KEYS: &[(&str, &str)] = &[("filesystem_read", "Fi
 /// WHY NOT A SCANNER: a byte scanner has no grammar, so it cannot tell a reference from a
 /// keyword-like production head, a label, a field, a record key or a binder. It read every
 /// service operation's `response { .. }` block as a bare reference to `response`, and once a
-/// top-level `fn response` entered the pool (#12421) every such file refused with
-/// `UnimportedBareProvider` or AMBIGUOUS; renaming the fn (#12381, #12542) only moved the
+/// top-level `fn response` entered the pool (#12421) every such file refused as an
+/// unimported provider or AMBIGUOUS; renaming the fn (#12381, #12542) only moved the
 /// collision. Each binder form it learned (`let`, arrow lambdas, pattern leaves, assignment
 /// targets) was a second, weaker copy of a production the parser already owns.
 struct BareCandidates {
@@ -8788,115 +8646,6 @@ fn bare_reference_pull_paths_for_source(
         },
     )?;
     Ok(pulled)
-}
-
-/// One bare reference in a file that has switched its bare channel off (gate one: it declares
-/// an import line) and whose declarer lies OUTSIDE that file's own import closure. The loader
-/// never pulls such a declarer for this file, so the name resolves through the census only and
-/// the entry route realizes it by accident of what else the closure imports, or not at all
-/// (`gunbc.recurring_failure_mode` `bare_reference_channel_declines_a_pull_in_silence`).
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct UnimportedBareProvider {
-    pub(crate) file: String,
-    pub(crate) name: String,
-    pub(crate) provider_module: String,
-    pub(crate) provider: String,
-}
-
-/// One file's judgment: the pairs it owes, and the pairs the compiler's non-declaration predicate
-/// suppressed, counted by WHY. `suppressed_kernel_method_only` is the declared COVERAGE FRONTIER: a
-/// kernel-method name is admitted by name because the receiver's type is unknown before typecheck,
-/// so a call on a receiver without that profile is a genuine unresolved call that this gate no
-/// longer reports. Typecheck still refuses it, but only in typed files. The count is printed on every
-/// gate run so its growth is visible. It dissolves when the gate judges post-typecheck call semantics
-/// for typed files, or when method resolution can be receiver-typed before typecheck (calm-boar-904
-/// ruling, gunbc#12951).
-#[derive(Default)]
-pub(crate) struct UnimportedBareProviderJudgment {
-    pub(crate) rows: Vec<UnimportedBareProvider>,
-    pub(crate) suppressed_builtin: usize,
-    pub(crate) suppressed_kernel_method_only: usize,
-}
-
-/// The pairs `UnimportedBareProvider` names for ONE file, derived by the loader's own provider
-/// selection (`visit_bare_reference_providers`) rather than a second scanner, so the check and
-/// the pull can never disagree about which names are bare-pullable. A zero-import file is on the
-/// bare channel and owes nothing here.
-pub(crate) fn unimported_bare_providers(
-    sf: &Rc<v1_compiler_compile::SourceFile>,
-    index: &MultiEntryIndex,
-) -> Result<Vec<UnimportedBareProvider>, String> {
-    Ok(unimported_bare_provider_judgment(sf, index)?.rows)
-}
-
-pub(crate) fn unimported_bare_provider_judgment(
-    sf: &Rc<v1_compiler_compile::SourceFile>,
-    index: &MultiEntryIndex,
-) -> Result<UnimportedBareProviderJudgment, String> {
-    if !source_declares_import_lines(&sf.content) {
-        return Ok(UnimportedBareProviderJudgment::default());
-    }
-    let file = workspace_relative_repo_path(&sf.path);
-    let closure: HashSet<String> =
-        import_closure_live_paths_with_facts(&sf.path, &index.module_graph_facts)
-            .iter()
-            .map(|p| workspace_relative_repo_path(p))
-            .collect();
-    let mut out = BTreeSet::new();
-    let (mut suppressed_builtin, mut suppressed_kernel_method_only) = (0usize, 0usize);
-    visit_bare_reference_providers(
-        sf,
-        index,
-        |root| closure_name_census(index, root),
-        |name, module, provider, role| {
-            // A name the compiler can bind WITHOUT a declaration (a kernel method, an empty-collection
-            // constructor, a builtin) is not a read of a same-spelled declaration outside this file's
-            // closure: call inference never binds an out-of-scope declarer, and this file's import
-            // lines switch the global-bare fallback off. The predicate is the compiler's own
-            // (`v1.compiler.infer_method` `bare_call_non_declaration_binding`), not a list here, and the
-            // frontier counters are split by its own arms, so they cannot drift from it.
-            // Before it, positional `map_get(m, k)` calls were reported as unimported reads of
-            // v2.std.collection's `map_get`, a different contract, and the refusal told the author
-            // to add the import that would rebind the call to it (gunbc#12951).
-            if provider != file && !closure.contains(provider) {
-                use crate::v1_compiler_infer_method::NonDeclarationBinding as B;
-                // The classification describes CALL inference only, so it is consulted only when
-                // every occurrence of the name in this file is a callee. A value, pattern, type or
-                // dotted use reads the declaration whatever the calls bind, so a name with any
-                // non-call use is judged as a declaration read (calm-boar-904, gunbc#13116).
-                let binding = match role {
-                    BareUseRole::CallOnly => {
-                        crate::v1_compiler_infer_method::bare_call_non_declaration_binding(
-                            name.to_string(),
-                        )
-                    }
-                    BareUseRole::HasNonCallUse => B::DeclarationOnly,
-                };
-                match binding {
-                    B::EmptyCollectionConstructor | B::BuiltinFunction => {
-                        suppressed_builtin += 1;
-                    }
-                    B::KernelMethodOnly => {
-                        suppressed_kernel_method_only += 1;
-                    }
-                    B::DeclarationOnly => {
-                        out.insert(UnimportedBareProvider {
-                            file: file.clone(),
-                            name: name.to_string(),
-                            provider_module: module.to_string(),
-                            provider: provider.to_string(),
-                        });
-                    }
-                }
-            }
-            Ok(())
-        },
-    )?;
-    Ok(UnimportedBareProviderJudgment {
-        rows: out.into_iter().collect(),
-        suppressed_builtin,
-        suppressed_kernel_method_only,
-    })
 }
 
 /// What the required whole-pool phase's PRODUCER established, recorded by the producer itself.
@@ -9715,195 +9464,6 @@ mod closure_edge_demand_tests {
         Ok(providers)
     }
 
-    /// A BUILTIN CALL IS NOT AN UNIMPORTED READ OF A SAME-SPELLED DECLARATION (gunbc#12951). The
-    /// consumer declares an import, so its bare channel is off. It calls the builtin `map_get(m, k)`
-    /// positionally and `empty_map()`, while a module outside its closure declares functions with
-    /// those spellings. Discriminating RED: before the predicate, both were reported, and the
-    /// refusal advised importing the declarations, which would rebind the calls to a different
-    /// contract. Positive control: a NON-builtin function declared only there and called bare is
-    /// still reported, so the exemption is the compiler's precedence and not a widened list.
-    /// THE CLASSIFICATION DESCRIBES CALLS ONLY (calm-boar-904 objection on gunbc#13116). A
-    /// same-spelled builtin used in a NON-call position (a value, a pattern, a type) is a read of
-    /// the declaration, so its provider is still owed. Two shapes: a file that uses the name ONLY
-    /// as a value, and a file that BOTH calls it and uses it as a value. Discriminating RED:
-    /// before occurrence roles reached the gate, both were suppressed by spelling.
-    #[test]
-    fn a_non_call_use_of_a_builtin_spelling_still_reports_the_provider() {
-        let helper = "module far.helper\n\
-                      fn map_get(store: Int, at: Int) -> Int { store }\n";
-        let near = "module near.types\ntype Unused = { id: Int }\n";
-        let value_only = "module near.consumer\nimport near.types { Unused }\n\
-                          fn pick() -> Int { let f = map_get\n f(store: 1, at: 2) }\n";
-        let fx = Fixture::new(&[
-            ("consumer.dag", value_only),
-            ("helper.dag", helper),
-            ("near.dag", near),
-        ]);
-        let index = fx.index();
-        let found =
-            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
-        assert!(
-            found
-                .iter()
-                .any(|v| v.name == "map_get" && v.provider_module == "far.helper"),
-            "a value-only use of a builtin spelling must still owe its provider: {found:?}"
-        );
-        let mixed = "module near.consumer\nimport near.types { Unused }\n\
-                     fn lookup_it(m: Map<String, Int>) -> Int? { map_get(m, \"k\") }\n\
-                     fn pick() -> Int { let f = map_get\n f(store: 1, at: 2) }\n";
-        let fx = Fixture::new(&[
-            ("consumer.dag", mixed),
-            ("helper.dag", helper),
-            ("near.dag", near),
-        ]);
-        let index = fx.index();
-        let found =
-            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
-        assert!(
-            found.iter().any(|v| v.name == "map_get" && v.provider_module == "far.helper"),
-            "a file that both calls a builtin spelling and uses it as a value still owes the value use's provider: {found:?}"
-        );
-    }
-
-    #[test]
-    fn a_builtin_call_is_not_an_unimported_read_of_a_same_spelled_declaration() {
-        let helper = "module far.helper\n\
-                      fn map_get(store: Int, at: Int) -> Int { store }\n\
-                      fn empty_map(seed: Int) -> Int { seed }\n\
-                      fn far_only(value: Int) -> Int { value }\n";
-        let near = "module near.types\ntype Unused = { id: Int }\n";
-        let consumer = |extra: &str| {
-            format!(
-                "module near.consumer\nimport near.types {{ Unused }}\n\
-                 fn lookup_it(m: Map<String, Int>) -> Int? {{ map_get(m, \"k\") }}\n\
-                 fn fresh() -> Map<String, Int> {{ empty_map() }}\n{extra}"
-            )
-        };
-        let clean = Fixture::new(&[
-            ("consumer.dag", consumer("").as_str()),
-            ("helper.dag", helper),
-            ("near.dag", near),
-        ]);
-        let index = clean.index();
-        let found =
-            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
-        assert!(
-            found.iter().all(|v| v.name != "map_get" && v.name != "empty_map"),
-            "a builtin call was reported as an unimported read of a same-spelled declaration: {found:?}"
-        );
-        let control = Fixture::new(&[
-            (
-                "consumer.dag",
-                consumer("fn reach() -> Int { far_only(value: 1) }\n").as_str(),
-            ),
-            ("helper.dag", helper),
-            ("near.dag", near),
-        ]);
-        let index = control.index();
-        let found =
-            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
-        assert!(
-            found
-                .iter()
-                .any(|v| v.name == "far_only" && v.provider_module == "far.helper"),
-            "a genuine unimported bare call to a non-builtin must still be reported: {found:?}"
-        );
-    }
-
-    /// A service's `response { .. }` clause is grammar structure (`parse_op_body_entries`
-    /// dispatches on the head's text), not a reference to a pool-wide `fn response`.
-    /// Discriminating RED: before the clause-head rule, the importing service below carried
-    /// `UnimportedBareProvider { name: "response", provider: helper.dag }`. Positive control:
-    /// a genuine bare call to an unimported `fn response` in the SAME file still refuses, so
-    /// the rule is positional, not a denylist of the spelling.
-    #[test]
-    fn service_response_clause_is_not_a_bare_reference() {
-        let service = |call: &str| {
-            format!(
-                "module svc.consumer\nimport svc.types {{ Payload }}\n\n\
-                 service svc.Api {{\n  operation Get {{\n    input {{ id: Int }}\n    \
-                 output {{ id: Int from \"id\" }}\n    readonly\n    \
-                 transport rest {{ method: GET, path: \"/x\" }}\n    \
-                 response {{\n      200 => Payload\n    }}\n  }}\n}}\n{call}"
-            )
-        };
-        let helper = "module test.claim.helper\nfn response(result: String) -> String { result }\n";
-        let types = "module svc.types\ntype Payload = { id: Int }\n";
-        let clean = Fixture::new(&[
-            ("consumer.dag", service("").as_str()),
-            ("helper.dag", helper),
-            ("types.dag", types),
-        ]);
-        let index = clean.index();
-        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
-        assert!(
-            found.iter().all(|v| v.name != "response"),
-            "a service `response` clause head was read as a reference: {found:?}"
-        );
-        let control = Fixture::new(&[
-            (
-                "consumer.dag",
-                service("fn use_it() -> String { response(result: \"x\") }\n").as_str(),
-            ),
-            ("helper.dag", helper),
-            ("types.dag", types),
-        ]);
-        let index = control.index();
-        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
-        assert!(
-            found
-                .iter()
-                .any(|v| v.name == "response" && v.provider_module == "test.claim.helper"),
-            "a genuine unimported bare `response()` call must still be reported: {found:?}"
-        );
-    }
-
-    #[test]
-    fn qualified_service_prefix_does_not_pull_an_unrelated_bare_helper() {
-        let service = "module svc.api\nservice github.Api {\n operation Get {\n input { id: Int }\n output { id: Int from \"id\" }\n readonly\n transport rest { method: GET, path: \"/x\" }\n }\n}\n";
-        let helper = "module helper\nfn github(value: Int) -> Int { value }\n";
-        for (extra, should_pull_helper) in [
-            ("", false),
-            ("fn bare() -> Int { github(value: 1) }\n", true),
-            ("fn member() -> Int { github.other }\n", true),
-        ] {
-            let consumer = format!(
-                "module svc.consumer\nimport svc.api\nfn run() -> Int {{ github.Api.Get(id: 1) }}\n{extra}"
-            );
-            let fixture = Fixture::new(&[
-                ("api.dag", service),
-                ("helper.dag", helper),
-                ("consumer.dag", &consumer),
-            ]);
-            let index = fixture.index();
-            let found =
-                unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
-            assert_eq!(
-                found
-                    .iter()
-                    .any(|row| row.name == "github" && row.provider_module == "helper"),
-                should_pull_helper,
-                "extra={extra:?}: {found:?}"
-            );
-        }
-        // Resolving the service prefix must still demand the service's own import.
-        let fixture = Fixture::new(&[
-            ("api.dag", service),
-            ("helper.dag", helper),
-            ("other.dag", "module other\ndata value: Int = 1\n"),
-            ("consumer.dag", "module svc.consumer\nimport other { value }\nfn run() -> Int { github.Api.Get(id: 1) }\n"),
-        ]);
-        let index = fixture.index();
-        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
-        assert!(
-            found
-                .iter()
-                .any(|row| row.name == "github.Api" && row.provider_module == "svc.api"),
-            "{found:?}"
-        );
-        assert!(!found.iter().any(|row| row.name == "github"), "{found:?}");
-    }
-
     /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
     /// the mandatory global refusal (#12419 decision 5857893764). An entry whose closure never
     /// reaches the ambiguous consumer is admitted; the whole-pool demand -- the required floor's
@@ -9943,49 +9503,19 @@ mod closure_edge_demand_tests {
     }
 
     /// THE #12421 SPECIMEN, AT THE GATE. Two top-level `fn response` declarations make the name
-    /// ambiguous pool-wide, and a service operation's `response { .. }` block sits in both an
-    /// import-less file (whole-pool admission) and an import-bearing one (the unimported-provider
-    /// roster). Neither may refuse: the block is grammar, not a reference.
+    /// ambiguous pool-wide, and a service operation's `response { .. }` block sits in an
+    /// import-less file (whole-pool admission). It may not refuse: the block is grammar, not a
+    /// reference.
     #[test]
     fn a_service_response_block_never_reaches_a_top_level_fn_response() {
         let svc = super::bare_reference_scanner_tests::SERVICE_SPECIMEN;
-        let imported_svc = svc.replacen(
-            "module ext.svc\n",
-            "module ext.svc_imported\nimport ext.other { other_row }\n",
-            1,
-        );
         let fixture = Fixture::new(&[
             ("h1.dag", "module tools.h1\nfn response() -> Int { 1 }\n"),
             ("h2.dag", "module tools.h2\nfn response() -> Int { 2 }\n"),
-            ("other.dag", "module ext.other\ndata other_row: Int = 1\n"),
             ("svc.dag", svc),
-            ("svc_imported.dag", &imported_svc),
         ]);
         let index = fixture.index();
         admit_pool_bare_references(&index).expect("the response block is not a bare reference");
-        let unimported =
-            unimported_bare_providers(&index.source_files["ext.svc_imported"], &index).unwrap();
-        assert!(unimported.is_empty(), "{unimported:?}");
-    }
-
-    /// THE DISCRIMINATING RED: an import-bearing file that CALLS a name its import closure does
-    /// not provide still names that provider, so the reader did not buy the fix by going blind.
-    #[test]
-    fn a_genuine_unimported_bare_reference_is_still_named() {
-        let fixture = Fixture::new(&[
-            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
-            ("other.dag", "module ext.other\ndata other_row: Int = 1\n"),
-            (
-                "user.dag",
-                "module ext.user\nimport ext.other { other_row }\nfn f() -> Int { duplicated() }\n",
-            ),
-        ]);
-        let index = fixture.index();
-        let unimported =
-            unimported_bare_providers(&index.source_files["ext.user"], &index).unwrap();
-        assert_eq!(unimported.len(), 1, "{unimported:?}");
-        assert_eq!(unimported[0].name, "duplicated");
-        assert_eq!(unimported[0].provider_module, "frontier");
     }
 
     /// NO SCOPED SUCCESS CERTIFIES ANOTHER SUBJECT. On ONE index, in both orders: a clean entry is
@@ -11696,7 +11226,7 @@ pub enum ClaimOutcome {
     /// `ExitClass::Failure { .. } => ClaimOutcome::Fail` and destroyed the `reason`
     /// `classify_exit` had just extracted — the typed value was in hand and discarded at the
     /// seam, the same defect class the `RuntimeError` comment above documents. A gate refusal
-    /// then surfaced as bare `FAIL`, and `tools.emit_host_gate` carried a whole shell-out
+    /// then surfaced as bare `FAIL`, and `gunbc.instruments.emit_host_gate` carried a whole shell-out
     /// narration scaffold (`emit_host_verdict_narration_scaffold`) whose only job was to print
     /// the per-smoke verdict line the claim path had thrown away (receipt: the 2026-07-13 srv3
     /// reprovisioning reds — five runs of forensics to name the failing toolchain).
@@ -12921,12 +12451,12 @@ pub struct MultiEntryIndex {
     /// Content keys the cap has evicted from this index — the governor's memory of its own
     /// evictions, consulted on the next miss so a recompute of previously-evicted work is
     /// countable as a READMISSION rather than folded into ordinary misses. Carried in the
-    /// stall refusal's observation (`gunbc.memory_stall_refusal`) so an operator reading
+    /// stall refusal's observation (`gunbc.host.memory_stall_refusal`) so an operator reading
     /// the refusal can see whether the typed cache was implicated in the treadmill.
     typed_cache_evicted_keys: RefCell<std::collections::HashSet<String>>,
     /// Count of misses whose key was previously evicted from this index (see above).
     typed_cache_readmissions: Cell<u64>,
-    /// The open stall-observation window for this index (`gunbc.memory_stall_refusal`):
+    /// The open stall-observation window for this index (`gunbc.host.memory_stall_refusal`):
     /// the wall instant and counter values the current window started at. Rolls forward on
     /// every admissible verdict, so an hour of quiet history can never dilute a fresh
     /// treadmill.
@@ -14606,7 +14136,7 @@ pub struct IndexRetentionSnapshot {
 /// the interim declared fraction denominator until measured space lands).
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_bytes_per_entry_estimate`.
 /// Written as a canonical decimal literal (3 * 1024 * 1024) so the mirror lens can join it to
-/// its authority row; see `test.claim.seed_mirror_constant_lens_witness_test`.
+/// its authority row; see `test.claim.seed_mirror_constant_lens_witness`.
 const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3145728;
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_floor`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
@@ -14712,7 +14242,7 @@ pub(crate) struct MemoryStallWindowStart {
     cache_readmissions: u64,
 }
 
-/// The stall governor's per-module-boundary step (`gunbc.memory_stall_refusal`): fold the
+/// The stall governor's per-module-boundary step (`gunbc.host.memory_stall_refusal`): fold the
 /// counters since the window opened into one observation and act on its verdict — open
 /// window accumulates, an admissible verdict rolls the window forward, a refusal stops the
 /// line with the pressure clause located to the module that was in hand and the budget the
@@ -15189,7 +14719,7 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_exclusive_cost_partition_probe`):
-// ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap_authority /
+// ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap.roadmap_authority /
 // ROADMAP.md) — host-side stage attribution for the per-entry resolve, and the accounting
 // law over it. Same lane as the `ResolveStageNanos` rows it partitions; this scaffold
 // does not add a second measurement authority, it makes the existing rows' denominator
@@ -16712,7 +16242,7 @@ fn closure_name_census(
 /// gate parity by construction: it is exactly the module set the root's whole-tree
 /// gate compile holds in its closure census, so a bare name a module resolves
 /// under the gate resolves identically here (e.g. a dag witness's bare
-/// `LiveTreeDisposition`, declared only in `v2.std.live_tree` but import-reached
+/// `LiveTreeDisposition`, declared only in `std.live_tree` but import-reached
 /// from the dag tree). Built lazily, cached per root.
 fn tree_bare_census_for_root(
     index: &MultiEntryIndex,
@@ -16997,7 +16527,7 @@ fn reconcile_with_typed_cache(
                                 }
                                 // A miss on a key this index already evicted is a READMISSION —
                                 // the governor re-buying paid-for work — counted for the stall
-                                // refusal's observation (`gunbc.memory_stall_refusal`).
+                                // refusal's observation (`gunbc.host.memory_stall_refusal`).
                                 if index.typed_cache_evicted_keys.borrow().contains(&typed_key) {
                                     index
                                         .typed_cache_readmissions
@@ -17122,7 +16652,7 @@ fn reconcile_with_typed_cache(
                 resolve_stage_slot_add(|s| {
                     s.assembly_environment += environment_started.elapsed().as_nanos()
                 });
-                // The stall governor's boundary (`gunbc.memory_stall_refusal`): one windowed
+                // The stall governor's boundary (`gunbc.host.memory_stall_refusal`): one windowed
                 // observation per completed module, so a resolve spending its wall refaulting
                 // evicted pages refuses here with a located diagnostic instead of holding for
                 // hours (2026-08-30 default-VM treadmill, memory_stall_observed_receipt_note).
@@ -17717,7 +17247,7 @@ mod runtime_error_location_tests {
         );
     }
 
-    // Byte-equal to `test.claim.observation_ci_render_witness_test`
+    // Byte-equal to `test.claim.observation_ci_render_witness`
     // `w_runtime_error_detail_names_the_raising_declaration`: the mirror and its authority agree.
     #[test]
     fn detail_mirror_matches_the_dag_authority_literal() {
@@ -17810,7 +17340,7 @@ fn render_witness_claim_result_text(
 /// corpus saying nothing. Three lanes hit that in one night.
 ///
 /// WHAT THIS IS NOT. Widening the sweep is not widening the FLOOR's source roots, which
-/// `gunbc.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder` rules out and whose
+/// `gunbc.ci.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder` rules out and whose
 /// stated blocker is NAME RESOLUTION: `src/v1` and `src/v2` collide on twelve last segments,
 /// so a shared pool re-binds bare cross-module references. This walk resolves nothing — it
 /// tokenizes and parses each file in isolation, with a fresh empty table per file — so no
@@ -18956,7 +18486,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             // THE REASON SURVIVES THE SEAM. This arm used to read
             // `ExitClass::Failure { .. } => ClaimOutcome::Fail`, discarding the `reason`
             // `classify_exit` had just extracted — the typed value was in hand and destroyed
-            // here, which is why `tools.emit_host_gate` once shelled its per-smoke verdict
+            // here, which is why `gunbc.instruments.emit_host_gate` once shelled its per-smoke verdict
             // line out to printf for the executor's shell narration (the claim path could not
             // carry it). `ClaimOutcome::ExitFailure` is the reason's carrier now.
             ExitClass::Failure { code, reason } => ClaimOutcome::ExitFailure { code, reason },
@@ -19012,7 +18542,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
 
 /// Single-binary claim execution (v1-run-stability M2 companion, Deliverable 2): run a
 /// batch of claims IN-PROCESS rather than spawning a `claim_batch` child (the
-/// `tools.host_prelude.run_gunbc_claims` transport). Claims are grouped by entry so
+/// `gunbc.instruments.host_prelude.run_gunbc_claims` transport). Claims are grouped by entry so
 /// each closure resolves exactly once — the pooled property claim_batch's
 /// one-child-per-call already had — and every claim keeps `run_claim_measured`'s
 /// per-witness discipline (subject key, eval deadline, the operator 5 s fast-lane
@@ -19563,7 +19093,7 @@ pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
 /// wire's declared fidelity boundary excludes cost telemetry, which has its own receipts.
 /// `ExitFailure` is the one verdict-bearing arm WITH a payload: the `.dag`-authored refusal
 /// reason is the fact this arm exists to carry (its absence is exactly the bare-`FAIL` state the
-/// `tools.emit_host_gate` narration scaffold existed to paper over), so it contributes the reason
+/// `gunbc.instruments.emit_host_gate` narration scaffold existed to paper over), so it contributes the reason
 /// and nothing else — an absent reason renders empty, the same honest nothing `Fail` renders.
 pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
     match outcome {
@@ -19645,7 +19175,7 @@ mod exit_failure_outcome_tests {
     /// THE REASON SURVIVES EVERY PROJECTION, OR THE DISSOLVE IS FAKE. The whole point of the
     /// `ExitFailure` arm is that a gate-class claim's refusal reason reaches each surface as
     /// data instead of being flattened to bare `FAIL` — the defect that made
-    /// `tools.emit_host_gate` shell its per-smoke verdict line out to printf. Each assertion
+    /// `gunbc.instruments.emit_host_gate` shell its per-smoke verdict line out to printf. Each assertion
     /// below is one consumer's projection; losing the reason in any of them re-creates the
     /// archaeology the arm exists to end.
     #[test]
@@ -20114,7 +19644,7 @@ pub fn run_value(
 mod pre_push;
 
 /// Thin CLI transport handler for `claim_batch --pre-push`: stdin parse and gate
-/// orchestration live in `pre_push`; disposition receipt in `gunbc.githooks_pre_push_cli`.
+/// orchestration live in `pre_push`; disposition receipt in `gunbc.githooks.githooks_pre_push_cli`.
 pub fn handle_pre_push() -> std::process::ExitCode {
     pre_push::run()
 }
@@ -22805,1145 +22335,12 @@ mod closure_bare_disposition_tests {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ResolvedDeclRef {
-    pub module: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "arm", rename_all = "snake_case")]
-pub enum OwnedDataDeclInitializer {
-    BoolWitnessClaim {
-        witness_entry: String,
-        witness_function: String,
-    },
-    NodeCorpus,
-    Other {
-        resolved: ResolvedDeclRef,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct OwnedDataDeclRecord {
-    pub entry: String,
-    pub module: String,
-    pub decl_name: String,
-    pub initializer: OwnedDataDeclInitializer,
-}
-
-fn literal_string_from_expr(node: &Rc<Node>) -> Option<String> {
-    if let ExprData::ExprLiteral { value } = &*node.expr_data {
-        if let LiteralValue::LitStr { value: s } = value.as_ref() {
-            return Some(s.clone());
-        }
-    }
-    None
-}
-
-fn symbol_name_from_expr(
-    node: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Option<String> {
-    binding_name_from_expr(node, source_indices)
-}
-
-fn field_init_label(
-    field_init: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> String {
-    let si = Rc::new(source_indices.clone());
-    let authored = field_init_node_name_at(field_init.clone(), si);
-    if !authored.is_empty() {
-        return authored;
-    }
-    field_init.name.clone()
-}
-
-fn field_init_named<'a>(
-    record: &'a Rc<Node>,
-    field: &str,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Option<Rc<Node>> {
-    for child in record.children.iter() {
-        if field_init_label(child, source_indices) == field {
-            return Some(field_init_node_value(child.clone()));
-        }
-    }
-    None
-}
-
-fn binding_name_from_expr(
-    node: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> Option<String> {
-    if let ExprData::ExprVar { .. } = &*node.expr_data {
-        let name = expr_var_name_at(node.clone(), Rc::new(source_indices.clone()));
-        if !name.is_empty() {
-            return Some(name);
-        }
-    }
-    let name = authored_name_at(Rc::new(source_indices.clone()), node.clone());
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
-}
-
-fn extract_bool_witness_transport(
-    claim_body: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-) -> (String, String) {
-    let Some(witness_node) = field_init_named(claim_body, "witness", source_indices) else {
-        return (String::new(), String::new());
-    };
-    let entry = field_init_named(&witness_node, "entry", source_indices)
-        .and_then(|n| literal_string_from_expr(&n))
-        .unwrap_or_default();
-    let function = field_init_named(&witness_node, "function", source_indices)
-        .and_then(|n| symbol_name_from_expr(&n, source_indices))
-        .unwrap_or_default();
-    (entry, function)
-}
-
-fn module_from_qualified_identity(identity: &str) -> Option<String> {
-    let (module, name) = identity.rsplit_once('.')?;
-    if module.is_empty() || name.is_empty() {
-        None
-    } else {
-        Some(module.to_string())
-    }
-}
-
-fn defining_module_for_variant(
-    variant_to_enum: &im::HashMap<String, String>,
-    variant_name: &str,
-) -> Option<String> {
-    // variant_to_enum is keyed by VARIANT leaf. Values are owner identities `<module>.<name>`.
-    // No row, the collision sentinel "", or an unqualified identity has no module part:
-    // return None so the caller refuses. Do not scan type environments for a leaf match.
-    let parent_enum = variant_to_enum.get(variant_name)?;
-    module_from_qualified_identity(parent_enum)
-}
-
-fn defining_module_for_type_identity(
-    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
-    identity: &str,
-) -> Option<String> {
-    // Exact declaration key only. type_summary_lookup / type_summary_by_leaf are leaf scans.
-    if !identity.contains('.') {
-        return None;
-    }
-    match (*crate::v1_compiler_infer_emit_info::type_summary_at_key(
-        type_summaries.clone(),
-        identity.to_string(),
-    ))
-    .clone()
-    {
-        crate::v1_compiler_infer_emit_info::TypeSummaryLookup::TypeSummaryFound { summary } => {
-            module_from_qualified_identity(&summary.key)
-        }
-        _ => None,
-    }
-}
-
-fn defining_module_for_type_expr(
-    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
-    type_decls: &Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    type_expr: &Rc<Node>,
-) -> Option<String> {
-    match (*crate::v1_compiler_infer_emit_info::type_summary_of_reference(
-        type_summaries.clone(),
-        type_decls.clone(),
-        type_expr.clone(),
-        Rc::new(source_indices.clone()),
-    ))
-    .clone()
-    {
-        crate::v1_compiler_infer_emit_info::TypeSummaryLookup::TypeSummaryFound { summary } => {
-            module_from_qualified_identity(&summary.key)
-        }
-        _ => None,
-    }
-}
-
-#[cfg(test)]
-mod defining_module_lookup_tests {
-    use super::*;
-
-    #[test]
-    fn bool_witness_claim_variant_resolves_to_verification_module() {
-        let mut variant_to_enum = im::HashMap::new();
-        variant_to_enum.insert(
-            "BoolWitnessClaim".to_string(),
-            "v2.std.verification.UnifiedTestClaim".to_string(),
-        );
-        variant_to_enum.insert(
-            "NodeCorpus".to_string(),
-            "v2.std.verification.UnifiedTestClaim".to_string(),
-        );
-        assert_eq!(
-            defining_module_for_variant(&variant_to_enum, "BoolWitnessClaim"),
-            Some("v2.std.verification".to_string()),
-            "the owned-data BoolWitnessClaim path keys variant_to_enum by the variant leaf"
-        );
-        assert_eq!(
-            defining_module_for_variant(&variant_to_enum, "UnifiedTestClaim"),
-            None,
-            "the coproduct leaf is not a variant key"
-        );
-    }
-
-    #[test]
-    fn unqualified_or_sentinel_variant_identity_refuses() {
-        let mut variant_to_enum = im::HashMap::new();
-        variant_to_enum.insert("NoDot".to_string(), "UnifiedTestClaim".to_string());
-        variant_to_enum.insert("Sentinel".to_string(), "".to_string());
-        assert_eq!(defining_module_for_variant(&variant_to_enum, "NoDot"), None);
-        assert_eq!(
-            defining_module_for_variant(&variant_to_enum, "Sentinel"),
-            None
-        );
-        assert_eq!(
-            defining_module_for_variant(&variant_to_enum, "Missing"),
-            None
-        );
-    }
-
-    #[test]
-    fn type_identity_uses_exact_summary_key_not_a_leaf() {
-        use crate::v1_compiler_infer_emit_info::{
-            empty_type_summary_index, type_summary_index_insert, TypeRepr, TypeSummary,
-        };
-        let summary = Rc::new(TypeSummary {
-            name: "UnifiedTestClaim".to_string(),
-            key: "v2.std.verification.UnifiedTestClaim".to_string(),
-            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let index = type_summary_index_insert(
-            empty_type_summary_index(),
-            "v2.std.verification.UnifiedTestClaim".to_string(),
-            "UnifiedTestClaim".to_string(),
-            summary,
-        );
-        assert_eq!(
-            defining_module_for_type_identity(&index, "v2.std.verification.UnifiedTestClaim"),
-            Some("v2.std.verification".to_string())
-        );
-        assert_eq!(
-            defining_module_for_type_identity(&index, "UnifiedTestClaim"),
-            None,
-            "a bare type leaf must not scan keys_by_leaf"
-        );
-    }
-
-    #[test]
-    fn user_type_named_like_a_known_variant_keeps_its_module() {
-        use crate::v1_compiler_infer_emit_info::{
-            empty_type_decl_index, empty_type_summary_index, type_summary_index_insert, TypeRepr,
-            TypeSummary,
-        };
-        let mut variant_to_enum = im::HashMap::new();
-        variant_to_enum.insert(
-            "BoolWitnessClaim".to_string(),
-            "v2.std.verification.UnifiedTestClaim".to_string(),
-        );
-        let summary = Rc::new(TypeSummary {
-            name: "BoolWitnessClaim".to_string(),
-            key: "owner.types.BoolWitnessClaim".to_string(),
-            repr: Rc::new(TypeRepr::StructRepr),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let index = type_summary_index_insert(
-            empty_type_summary_index(),
-            "owner.types.BoolWitnessClaim".to_string(),
-            "BoolWitnessClaim".to_string(),
-            summary,
-        );
-        let source_indices = HashMap::new();
-        let decls = empty_type_decl_index();
-        assert_eq!(
-            defining_module_for_inferred_result(
-                &variant_to_enum,
-                &index,
-                &decls,
-                &source_indices,
-                None,
-                "owner.types.BoolWitnessClaim",
-            ),
-            Some("owner.types".to_string()),
-            "a user type identity named like a variant leaf is not routed to v2.std.verification"
-        );
-        assert_eq!(
-            defining_module_for_variant(&variant_to_enum, "BoolWitnessClaim"),
-            Some("v2.std.verification".to_string()),
-            "the variant map still answers the record-lit arm"
-        );
-    }
-
-    fn synthetic_named_node(name: &str) -> Rc<Node> {
-        let span = no_span();
-        Rc::new(Node {
-            occurrence_identity: Rc::new(
-                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
-            ),
-            name: name.to_string(),
-            ident: None,
-            span: span.clone(),
-            ident_span: Some(span),
-            children: Rc::new(im::Vector::new()),
-            connective: Connective::NoConnective,
-            params: Rc::new(im::Vector::new()),
-            inferred: None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(im::Vector::new()),
-            body: None,
-            transport: None,
-            properties: Rc::new(im::Vector::new()),
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
-            declaration: None,
-            expr_data: Rc::new(ExprData::NoExprData),
-        })
-    }
-
-    #[test]
-    fn inferred_user_bool_witness_claim_keeps_its_module_at_initializer_ref() {
-        use crate::std_decl_ref::decl_ref;
-        use crate::v1_compiler_infer_emit_info::{
-            empty_emit_graph_info, empty_type_decl_index, empty_type_summary_index,
-            type_decl_index_insert, type_summary_index_insert, TypeRepr, TypeSummary,
-        };
-
-        let mut variant_to_enum = im::HashMap::new();
-        variant_to_enum.insert(
-            "BoolWitnessClaim".to_string(),
-            "v2.std.verification.UnifiedTestClaim".to_string(),
-        );
-
-        let mut type_node = (*synthetic_named_node("BoolWitnessClaim")).clone();
-        type_node.declaration = Some(decl_ref(
-            "owner.types".to_string(),
-            "BoolWitnessClaim".to_string(),
-        ));
-        let type_node = Rc::new(type_node);
-
-        let decl_item = type_node.clone();
-        let decls = type_decl_index_insert(
-            empty_type_decl_index(),
-            "owner.types".to_string(),
-            "BoolWitnessClaim".to_string(),
-            decl_item,
-        );
-        let summary = Rc::new(TypeSummary {
-            name: "BoolWitnessClaim".to_string(),
-            key: "owner.types.BoolWitnessClaim".to_string(),
-            repr: Rc::new(TypeRepr::StructRepr),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let summaries = type_summary_index_insert(
-            empty_type_summary_index(),
-            "owner.types.BoolWitnessClaim".to_string(),
-            "BoolWitnessClaim".to_string(),
-            summary,
-        );
-
-        let mut emit_info = (*empty_emit_graph_info()).clone();
-        emit_info.variant_to_enum = Rc::new(variant_to_enum);
-        emit_info.type_summaries = summaries;
-        emit_info.type_decl_items = decls;
-
-        let mut body = (*synthetic_named_node("")).clone();
-        body.inferred = Some(Rc::new(InferredNode::Resolved { node: type_node }));
-        let body = Rc::new(body);
-
-        let graph = ResolvedGraph {
-            modules: Rc::new(im::Vector::new()),
-            item_registry: Rc::new(im::HashMap::new()),
-            item_leaf_owner_modules: Rc::new(im::HashMap::new()),
-            diagnostics: Rc::new(im::Vector::new()),
-        };
-        let source_indices = HashMap::new();
-        let resolved =
-            resolved_initializer_decl_ref(&graph, &source_indices, &emit_info, &body, None)
-                .expect("initializer ref must resolve the carried user declaration");
-        assert_eq!(
-            resolved.module, "owner.types",
-            "carried BoolWitnessClaim declaration must beat variant_to_enum UnifiedTestClaim"
-        );
-        assert_eq!(resolved.name, "BoolWitnessClaim");
-    }
-
-    #[test]
-    fn ambiguous_enum_name_is_not_answered_false() {
-        use crate::v1_compiler_infer_emit_info::{
-            empty_type_summary_index, is_enum_in_summaries, type_summary_index_insert, TypeRepr,
-            TypeSummary, TypeSummaryQuestion,
-        };
-        let enum_summary = Rc::new(TypeSummary {
-            name: "SharedName".to_string(),
-            key: "owner.enums.SharedName".to_string(),
-            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let struct_summary = Rc::new(TypeSummary {
-            name: "SharedName".to_string(),
-            key: "owner.types.SharedName".to_string(),
-            repr: Rc::new(TypeRepr::StructRepr),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let index = type_summary_index_insert(
-            type_summary_index_insert(
-                empty_type_summary_index(),
-                "owner.enums.SharedName".to_string(),
-                "SharedName".to_string(),
-                enum_summary,
-            ),
-            "owner.types.SharedName".to_string(),
-            "SharedName".to_string(),
-            struct_summary,
-        );
-        assert!(
-            matches!(
-                (*is_enum_in_summaries(index, "SharedName".to_string())).clone(),
-                TypeSummaryQuestion::QuestionNameAmbiguous { leaf } if leaf == "SharedName"
-            ),
-            "disagreement must not collapse to a decided non-enum"
-        );
-    }
-
-    #[test]
-    fn ambiguous_enum_name_refuses_instead_of_non_enum_emission() {
-        use crate::v1_compiler_infer_emit_info::{
-            empty_type_summary_index, type_summary_index_insert, TypeRepr, TypeSummary,
-        };
-        let enum_summary = Rc::new(TypeSummary {
-            name: "SharedName".to_string(),
-            key: "owner.enums.SharedName".to_string(),
-            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let struct_summary = Rc::new(TypeSummary {
-            name: "SharedName".to_string(),
-            key: "owner.types.SharedName".to_string(),
-            repr: Rc::new(TypeRepr::StructRepr),
-            field_summaries: crate::v1_rt::rc_empty_map(),
-            field_type_map: crate::v1_rt::rc_empty_map(),
-            field_import_surface_names: Rc::new(im::Vector::new()),
-            variant_name_set: crate::v1_rt::rc_empty_map(),
-            generic_param_names: Rc::new(im::Vector::new()),
-            has_fn_fields: false,
-        });
-        let index = type_summary_index_insert(
-            type_summary_index_insert(
-                empty_type_summary_index(),
-                "owner.enums.SharedName".to_string(),
-                "SharedName".to_string(),
-                enum_summary,
-            ),
-            "owner.types.SharedName".to_string(),
-            "SharedName".to_string(),
-            struct_summary,
-        );
-        let parent = crate::v1_compiler_emit_rust::pattern_parent_enum(
-            "Arm".to_string(),
-            None,
-            "SharedName".to_string(),
-            index,
-        );
-        let refusal = crate::v1_compiler_emit_rust::rust_ambiguous_type_name_refusal(
-            "SharedName".to_string(),
-        );
-        assert_eq!(
-            parent,
-            Some(refusal),
-            "an ambiguous enum name must emit the typed refusal, not a non-enum parent"
-        );
-    }
-}
-
-fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
-    for tm in graph.modules.iter() {
-        if let Some(node) = lookup_type_by_name(tm.type_env.clone(), type_name.to_string()) {
-            return Some(node);
-        }
-    }
-    None
-}
-
-fn declared_type_name_from_annotation(
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    type_annotation: &Rc<Node>,
-) -> Option<String> {
-    let si = Rc::new(source_indices.clone());
-    let name = authored_name_at(si, type_annotation.clone());
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
-}
-
-fn defining_module_for_inferred_result(
-    variant_to_enum: &im::HashMap<String, String>,
-    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
-    type_decls: &Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    inferred_node: Option<&Rc<Node>>,
-    name: &str,
-) -> Option<String> {
-    // Type declaration identity first. A user type whose leaf matches a known variant
-    // (BoolWitnessClaim) must not be stolen by variant_to_enum spelling.
-    inferred_node
-        .and_then(|node| {
-            defining_module_for_type_expr(type_summaries, type_decls, source_indices, node)
-        })
-        .or_else(|| defining_module_for_type_identity(type_summaries, name))
-        .or_else(|| defining_module_for_variant(variant_to_enum, name))
-}
-
-fn resolved_decl_ref_from_type_name(
-    variant_to_enum: &im::HashMap<String, String>,
-    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
-    name: &str,
-) -> Result<ResolvedDeclRef, String> {
-    let module = defining_module_for_type_identity(type_summaries, name)
-        .or_else(|| defining_module_for_variant(variant_to_enum, name))
-        .ok_or_else(|| format!("no defining module for resolved type '{}'", name))?;
-    let stored_name = crate::v1_std_core::qualified_last_segment(name.to_string());
-    Ok(ResolvedDeclRef {
-        module,
-        name: if stored_name.is_empty() {
-            name.to_string()
-        } else {
-            stored_name
-        },
-    })
-}
-
-fn resolved_initializer_decl_ref(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    emit_info: &crate::v1_compiler_infer_emit_info::EmitGraphInfo,
-    body: &Rc<Node>,
-    type_annotation: Option<&Rc<Node>>,
-) -> Result<ResolvedDeclRef, String> {
-    let variant_to_enum = emit_info.variant_to_enum.as_ref();
-    let type_summaries = &emit_info.type_summaries;
-    let type_decls = &emit_info.type_decl_items;
-    let si = Rc::new(source_indices.clone());
-    if let ExprData::ExprRecordLit { parent_enum } = &*body.expr_data {
-        if let Some(parent_name) = parent_enum.as_deref() {
-            // A qualified constructor spelling (v2.std.verification.BoolWitnessClaim)
-            // names the same arm as its bare last segment — the module prefix already
-            // resolved the parent coproduct (the #6869 payload-variant class). The arm
-            // check and the stored decl name both use the bare arm name; a genuinely
-            // wrong variant still refuses.
-            let variant_name = crate::v1_std_core::qualified_last_segment(authored_name_at(
-                si.clone(),
-                body.clone(),
-            ));
-            if variant_name.is_empty() {
-                return Err(
-                    "coproduct variant initializer missing constructor identity".to_string()
-                );
-            }
-            let parent_type = lookup_resolved_type_node(graph, parent_name).ok_or_else(|| {
-                format!(
-                    "resolved parent coproduct '{}' not found in typed graph",
-                    parent_name
-                )
-            })?;
-            if !has_child_named(parent_type, variant_name.clone(), si.clone()) {
-                return Err(format!(
-                    "'{}' is not a resolved variant arm of coproduct '{}'",
-                    variant_name, parent_name
-                ));
-            }
-            let module =
-                defining_module_for_variant(variant_to_enum, &variant_name).ok_or_else(|| {
-                    format!(
-                        "no defining module for resolved coproduct variant '{}'",
-                        variant_name
-                    )
-                })?;
-            return Ok(ResolvedDeclRef {
-                module,
-                name: variant_name,
-            });
-        }
-    }
-
-    let inferred_name = match body.inferred.as_deref() {
-        Some(InferredNode::Resolved { node }) => {
-            let resolved_name = authored_name_at(si.clone(), node.clone());
-            if resolved_name.is_empty() {
-                None
-            } else {
-                Some(resolved_name)
-            }
-        }
-        Some(InferredNode::CompilerError { message, .. }) => {
-            return Err(format!("unresolved initializer type: {}", message));
-        }
-        Some(InferredNode::TypeVariable { .. }) => {
-            return Err("unresolved initializer type variable".to_string());
-        }
-        Some(InferredNode::Divergent) => {
-            return Err("initializer diverges, so it names no declared type".to_string());
-        }
-        None => None,
-    };
-    if let Some(name) = inferred_name {
-        let inferred_node = match body.inferred.as_deref() {
-            Some(InferredNode::Resolved { node }) => Some(node),
-            _ => None,
-        };
-        if let Some(module) = defining_module_for_inferred_result(
-            variant_to_enum,
-            type_summaries,
-            type_decls,
-            source_indices,
-            inferred_node,
-            &name,
-        ) {
-            return Ok(ResolvedDeclRef {
-                module,
-                name: crate::v1_std_core::qualified_last_segment(name),
-            });
-        }
-        return Err(format!("no defining module for resolved type '{}'", name));
-    }
-    if let Some(ann) = type_annotation {
-        if let Some(module) =
-            defining_module_for_type_expr(type_summaries, type_decls, source_indices, ann)
-        {
-            let name = declared_type_name_from_annotation(source_indices, ann)
-                .unwrap_or_else(|| "type".to_string());
-            return Ok(ResolvedDeclRef {
-                module,
-                name: crate::v1_std_core::qualified_last_segment(name),
-            });
-        }
-        if let Some(name) = declared_type_name_from_annotation(source_indices, ann) {
-            return resolved_decl_ref_from_type_name(variant_to_enum, type_summaries, &name);
-        }
-    }
-    Err(
-        "resolved initializer has empty type identity (no inferred head or declared annotation)"
-            .to_string(),
-    )
-}
-
-fn is_resolved_bool_witness_claim(resolved: &ResolvedDeclRef) -> bool {
-    resolved.module == UNIFIED_CLAIM_VERIFICATION_MODULE && resolved.name == BOOL_WITNESS_CLAIM_TYPE
-}
-
-fn is_resolved_node_corpus(resolved: &ResolvedDeclRef) -> bool {
-    resolved.module == UNIFIED_CLAIM_VERIFICATION_MODULE && resolved.name == NODE_CORPUS_TYPE
-}
-
-fn entry_typed_module(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    entry_module: &str,
-) -> Result<Rc<TypedModule>, String> {
-    let si = Rc::new(source_indices.clone());
-    graph
-        .modules
-        .iter()
-        .find(|tm| authored_name_at(si.clone(), tm.module.clone()) == entry_module)
-        .cloned()
-        .ok_or_else(|| {
-            format!(
-                "entry module '{}' not found in resolved graph",
-                entry_module
-            )
-        })
-}
-
-fn path_excluded(path: &Path, exclude_subpaths: &[String]) -> bool {
-    let path_str = path.to_string_lossy();
-    exclude_subpaths
-        .iter()
-        .any(|ex| !ex.is_empty() && path_str.contains(ex))
-}
-
-fn entry_likely_has_unified_claim_owned_data(content: &str) -> bool {
-    content
-        .lines()
-        .any(|line| line.trim_start().starts_with("data unified_claim_"))
-}
-
-fn top_level_decl_names(content: &str) -> Vec<String> {
-    const ITEM_KEYWORDS: [&str; 8] = [
-        "data ",
-        "fn ",
-        "func ",
-        "type ",
-        "service ",
-        "const ",
-        "pattern ",
-        "resource ",
-    ];
-    let mut names = Vec::new();
-    for line in content.lines() {
-        let Some(rest) = ITEM_KEYWORDS.iter().find_map(|kw| line.strip_prefix(kw)) else {
-            continue;
-        };
-        let name: String = rest
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        if !name.is_empty() {
-            names.push(name);
-        }
-    }
-    names
-}
-
-struct DiscoveryResolveGroup {
-    entries: Vec<(String, String, usize)>,
-    sources: HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
-    decl_names: HashMap<String, String>,
-}
-
-fn closure_group_conflict(
-    group: &DiscoveryResolveGroup,
-    closure: &[Rc<v1_compiler_compile::SourceFile>],
-    names_by_file: &HashMap<String, Rc<Vec<String>>>,
-) -> Option<(String, String, String)> {
-    for source in closure {
-        if group.sources.contains_key(&source.path) {
-            continue;
-        }
-        for name in names_by_file[&source.path].iter() {
-            if let Some(existing) = group.decl_names.get(name) {
-                if existing != &source.path {
-                    return Some((name.clone(), existing.clone(), source.path.clone()));
-                }
-            }
-        }
-    }
-    None
-}
-
-fn add_closure_to_group(
-    group: &mut DiscoveryResolveGroup,
-    closure: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    names_by_file: &HashMap<String, Rc<Vec<String>>>,
-) {
-    for source in closure {
-        if group.sources.contains_key(&source.path) {
-            continue;
-        }
-        for name in names_by_file[&source.path].iter() {
-            group.decl_names.insert(name.clone(), source.path.clone());
-        }
-        group.sources.insert(source.path.clone(), source);
-    }
-}
-
-pub struct OwnedDataDiscovery {
-    pub records: Vec<OwnedDataDeclRecord>,
-    pub entry_count: usize,
-    pub graph_resolves: usize,
-    pub group_split_collisions: Vec<String>,
-}
-
-pub fn discover_owned_data_decls(
-    source_roots: &[String],
-    scan_dir: &str,
-    exclude_subpaths: &[String],
-) -> Result<OwnedDataDiscovery, String> {
-    let scan_path = Path::new(scan_dir);
-    if !scan_path.is_dir() {
-        return Err(format!("scan dir does not exist: {}", scan_dir));
-    }
-
-    let mut files = Vec::new();
-    collect_dag_files(scan_path, &mut files);
-    files.retain(|p| !path_excluded(p.path(), exclude_subpaths));
-
-    // The process-shared index, so every entry's reference closure reads the one parse per file
-    // the floor's other closure walks already hold.
-    let index = try_process_shared_index(source_roots)?;
-
-    let mut names_by_file: HashMap<String, Rc<Vec<String>>> = HashMap::new();
-    let mut groups: Vec<DiscoveryResolveGroup> = Vec::new();
-    let mut group_split_collisions: Vec<String> = Vec::new();
-    let mut entry_count = 0usize;
-    for source in files {
-        let path = source.path();
-        let entry = path.to_string_lossy().to_string();
-        let content = source
-            .read()
-            .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
-        if !entry_likely_has_unified_claim_owned_data(&content) {
-            continue;
-        }
-        let entry_module = extract_module_path(&content).ok_or_else(|| {
-            format!(
-                "missing module declaration in entry {}; cannot classify owned decls",
-                entry
-            )
-        })?;
-        let marker_count = content
-            .lines()
-            .filter(|line| line.starts_with("data unified_claim_"))
-            .count();
-        entry_count += 1;
-
-        let closure = load_sources_for_entry_with_index(&index, &entry)?;
-        for source in &closure {
-            names_by_file
-                .entry(source.path.clone())
-                .or_insert_with(|| Rc::new(top_level_decl_names(&source.content)));
-        }
-
-        let member = (entry, entry_module, marker_count);
-        let mut first_conflict: Option<(String, String, String)> = None;
-        match groups.iter_mut().find(|g| {
-            match closure_group_conflict(g, &closure, &names_by_file) {
-                None => true,
-                Some(conflict) => {
-                    first_conflict.get_or_insert(conflict);
-                    false
-                }
-            }
-        }) {
-            Some(group) => {
-                group.entries.push(member);
-                add_closure_to_group(group, closure, &names_by_file);
-            }
-            None => {
-                if let Some((name, existing_file, new_file)) = first_conflict {
-                    group_split_collisions.push(format!(
-                        "entry {} split off over decl `{}` ({} vs {})",
-                        member.0, name, existing_file, new_file
-                    ));
-                }
-                let mut group = DiscoveryResolveGroup {
-                    entries: vec![member],
-                    sources: HashMap::new(),
-                    decl_names: HashMap::new(),
-                };
-                add_closure_to_group(&mut group, closure, &names_by_file);
-                groups.push(group);
-            }
-        }
-    }
-
-    let graph_resolves = groups.len();
-    let mut all_records = Vec::new();
-    for group in groups {
-        let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-            group.sources.into_iter().map(|(_, v)| v).collect();
-        sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let (graph, source_indices) = resolved_graph_from_sources(sources)?;
-        let si: HashMap<String, Rc<NewlineIndex>> = source_indices
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        // THE ONE READER OF variant_to_enum BUILDS IT, once per group graph, through the builder
-        // emission uses: the resolve no longer carries EmitGraphInfo (v1.compiler.infer_items
-        // ResolvedGraph), and owned-data discovery is the consumer that demands this projection.
-        let emit_info = v1_compiler_infer::build_emit_graph_info(
-            graph.modules.clone(),
-            graph.item_registry.clone(),
-        );
-        for (entry, entry_module, marker_count) in group.entries {
-            let records =
-                owned_data_decls_for_entry(&graph, &si, &emit_info, &entry, &entry_module)?;
-            if records.len() != marker_count {
-                return Err(format!(
-                    "{}: merged-resolve discovery found {} owned unified_claim record(s) but the entry declares {} top-level `data unified_claim_` marker(s)",
-                    entry,
-                    records.len(),
-                    marker_count
-                ));
-            }
-            all_records.extend(records);
-        }
-    }
-
-    all_records.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.decl_name.cmp(&b.decl_name))
-    });
-    verify_bool_witness_transport_projection_complete(&all_records)?;
-    Ok(OwnedDataDiscovery {
-        records: all_records,
-        entry_count,
-        graph_resolves,
-        group_split_collisions,
-    })
-}
-
-pub fn bool_witness_claim_arm_count(records: &[OwnedDataDeclRecord]) -> usize {
-    records
-        .iter()
-        .filter(|r| {
-            matches!(
-                r.initializer,
-                OwnedDataDeclInitializer::BoolWitnessClaim { .. }
-            )
-        })
-        .count()
-}
-
-fn unified_claim_arm_count(records: &[OwnedDataDeclRecord]) -> usize {
-    records
-        .iter()
-        .filter(|r| {
-            matches!(
-                r.initializer,
-                OwnedDataDeclInitializer::BoolWitnessClaim { .. }
-                    | OwnedDataDeclInitializer::NodeCorpus
-            )
-        })
-        .count()
-}
-
-fn illegal_other_init_count(records: &[OwnedDataDeclRecord]) -> usize {
-    records
-        .iter()
-        .filter(|r| {
-            let OwnedDataDeclInitializer::Other { resolved } = &r.initializer else {
-                return false;
-            };
-            is_resolved_bool_witness_claim(resolved) || is_resolved_node_corpus(resolved)
-        })
-        .count()
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OwnedDataDiscoveryReceipt {
-    pub unified_claim_arm_count: usize,
-    pub bool_witness_claim_arm_count: usize,
-    pub illegal_other_init_count: usize,
-    pub bool_witness_transport_row_count: usize,
-    pub transport_projection_complete: bool,
-}
-
-pub const MANIFEST_INLINE_LIST_MAX: usize = 64;
-
-pub fn compute_owned_data_discovery_receipt(
-    records: &[OwnedDataDeclRecord],
-) -> Result<OwnedDataDiscoveryReceipt, String> {
-    verify_bool_witness_transport_projection_complete(records)?;
-    let bool_witness_transport_row_count = owned_data_bool_witness_transport_tsv(records)?
-        .lines()
-        .filter(|l| !l.is_empty())
-        .count();
-    let bool_witness_claim_arm_count = bool_witness_claim_arm_count(records);
-    let illegal = illegal_other_init_count(records);
-    Ok(OwnedDataDiscoveryReceipt {
-        unified_claim_arm_count: unified_claim_arm_count(records),
-        bool_witness_claim_arm_count,
-        illegal_other_init_count: illegal,
-        bool_witness_transport_row_count,
-        transport_projection_complete: illegal == 0
-            && bool_witness_claim_arm_count == bool_witness_transport_row_count,
-    })
-}
-
-pub fn verify_bool_witness_transport_projection_complete(
-    records: &[OwnedDataDeclRecord],
-) -> Result<(), String> {
-    let arm_count = bool_witness_claim_arm_count(records);
-    let tsv = owned_data_bool_witness_transport_tsv(records)?;
-    let row_count = tsv.lines().filter(|l| !l.is_empty()).count();
-    if arm_count != row_count {
-        return Err(format!(
-            "BoolWitnessClaim arm count ({arm_count}) != transport projection row count ({row_count})"
-        ));
-    }
-    Ok(())
-}
-
-fn dag_string_escape_core(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
-
-fn dag_manifest_scalar_escape(s: &str) -> Result<String, String> {
-    if s.contains('{') || s.contains('}') {
-        return Err(format!(
-            "manifest scalar field must be brace-free (got '{{' or '}}'): {s:?}"
-        ));
-    }
-    Ok(dag_string_escape_core(s))
-}
-
-fn dag_embedded_dag_source_escape(s: &str) -> String {
-    dag_string_escape_core(s)
-        .replace('{', "\\{")
-        .replace('}', "\\}")
-}
-
-fn manifest_symbol_for_resolved_decl(module: &str, name: &str) -> String {
-    match (module, name) {
-        (UNIFIED_CLAIM_VERIFICATION_MODULE, BOOL_WITNESS_CLAIM_TYPE) => {
-            "unified_claim_arm_bool_witness_claim".to_string()
-        }
-        (UNIFIED_CLAIM_VERIFICATION_MODULE, NODE_CORPUS_TYPE) => {
-            "unified_claim_arm_node_corpus".to_string()
-        }
-        _ => format!("^{}", name),
-    }
-}
-
-fn emit_owned_data_initializer(initializer: &OwnedDataDeclInitializer) -> Result<String, String> {
-    match initializer {
-        OwnedDataDeclInitializer::BoolWitnessClaim {
-            witness_entry,
-            witness_function,
-        } => Ok(format!(
-            "    initializer: OwnedBoolWitnessClaimInit {{\n      witness_entry: \"{}\",\n      witness_function: \"{}\"\n    }}",
-            dag_manifest_scalar_escape(witness_entry)?,
-            dag_manifest_scalar_escape(witness_function)?
-        )),
-        OwnedDataDeclInitializer::NodeCorpus => {
-            Ok("    initializer: OwnedNodeCorpusInit".to_string())
-        }
-        OwnedDataDeclInitializer::Other { resolved } => Ok(format!(
-            "    initializer: OwnedOtherInit {{\n      resolved: ResolvedDeclRef {{\n        module: \"{}\",\n        name: {}\n      }}\n    }}",
-            dag_manifest_scalar_escape(&resolved.module)?,
-            manifest_symbol_for_resolved_decl(&resolved.module, &resolved.name)
-        )),
-    }
-}
-
-pub fn emit_owned_data_manifest(
-    path: &Path,
-    records: &[OwnedDataDeclRecord],
-) -> Result<(), String> {
-    let receipt = compute_owned_data_discovery_receipt(records)?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("failed to create manifest parent {:?}: {}", parent, e))?;
-    }
-
-    let mut out = String::new();
-    out.push_str(
-        "// GENERATED by discover_owned_data — ephemeral host transport. DO NOT COMMIT.\n",
-    );
-    out.push_str("module v2.test.claim.workflow.host_discovered_owned_data_manifest\n\n\n");
-    out.push_str("import std.types { List }\n");
-    out.push_str("import std.types { Bool }\n");
-    out.push_str(
-        "import v2.compiler.discovery_enumeration {\n  OwnedBoolWitnessClaimInit,\n  OwnedDataDeclRecord,\n  OwnedDataDiscoveryReceipt,\n  OwnedNodeCorpusInit,\n  OwnedOtherInit,\n  ResolvedDeclRef,\n  unified_claim_arm_bool_witness_claim,\n  unified_claim_arm_node_corpus\n}\n\n\n",
-    );
-    out.push_str("data host_owned_data_discovery_receipt: OwnedDataDiscoveryReceipt = OwnedDataDiscoveryReceipt {\n");
-    out.push_str(&format!(
-        "  unified_claim_arm_count: {},\n",
-        receipt.unified_claim_arm_count
-    ));
-    out.push_str(&format!(
-        "  bool_witness_claim_arm_count: {},\n",
-        receipt.bool_witness_claim_arm_count
-    ));
-    out.push_str(&format!(
-        "  illegal_other_init_count: {},\n",
-        receipt.illegal_other_init_count
-    ));
-    out.push_str(&format!(
-        "  bool_witness_transport_row_count: {},\n",
-        receipt.bool_witness_transport_row_count
-    ));
-    out.push_str(&format!(
-        "  transport_projection_complete: {}\n",
-        receipt.transport_projection_complete
-    ));
-    out.push_str("}\n\n\n");
-    let inline_records = if records.len() <= MANIFEST_INLINE_LIST_MAX {
-        records
-    } else {
-        &[]
-    };
-    if inline_records.is_empty() && !records.is_empty() {
-        out.push_str(
-            "// Large corpus: inline list omitted; standing gates use host_owned_data_discovery_receipt + transport sidecar.\n",
-        );
-    }
-    out.push_str("data host_discovered_owned_decls: List<OwnedDataDeclRecord> = [\n");
-    for (idx, rec) in inline_records.iter().enumerate() {
-        if idx > 0 {
-            out.push(',');
-            out.push('\n');
-        }
-        out.push_str("  OwnedDataDeclRecord {\n");
-        out.push_str(&format!(
-            "    entry: \"{}\",\n",
-            dag_manifest_scalar_escape(&rec.entry)?
-        ));
-        out.push_str(&format!(
-            "    module: \"{}\",\n",
-            dag_manifest_scalar_escape(&rec.module)?
-        ));
-        out.push_str(&format!(
-            "    decl_name: \"{}\",\n",
-            dag_manifest_scalar_escape(&rec.decl_name)?
-        ));
-        out.push_str(&format!(
-            "{}\n",
-            emit_owned_data_initializer(&rec.initializer)?
-        ));
-        out.push_str("  }");
-    }
-    out.push_str("\n]\n");
-
-    std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
-}
-
 #[derive(Clone)]
 pub struct DiscoveryRow {
     pub label: String,
     pub entry: String,
     pub function: String,
-    /// Declared live-tree disposition of this row's ENTRY file (`v2.std.live_tree`):
+    /// Declared live-tree disposition of this row's ENTRY file (`std.live_tree`):
     /// `true` = ReadsLiveTree (undeclared defaults here, fail-closed — never
     /// predict-skip), `false` = declared SubstrateInputsOnly (selection-eligible).
     pub reads_live_tree: bool,
@@ -23980,7 +22377,7 @@ pub struct DeferredDiscoveryRow {
     pub function: String,
     /// Which exclusion substring matched (`witness_exclusion_substrings` authority).
     pub exclude_reason: String,
-    /// Entry-grain live-tree disposition (`v2.std.live_tree`); undeclared = true.
+    /// Entry-grain live-tree disposition (`std.live_tree`); undeclared = true.
     pub reads_live_tree: bool,
 }
 
@@ -24095,7 +22492,7 @@ pub struct WitnessRowCost {
 }
 
 /// Construct the production N+1 `std.observation.ObservationEvent` stream and execute
-/// `gunbc.witness_row_cost.project_witness_cost_receipt`.
+/// `gunbc.witness.witness_row_cost.project_witness_cost_receipt`.
 ///
 /// The projector is invoked once per entry-sized group, rather than once for the whole
 /// discovery corpus: its authored fold performs cardinality checks against the supplied
@@ -24513,7 +22910,7 @@ pub fn compute_histogram_data(rows: &[WitnessRowCost]) -> HistogramData {
 pub const DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N: usize = 15;
 
 pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
-    "dag/test/claim/wet_hermetic_equivalence_witness_test.dag";
+    "dag/test/claim/wet_hermetic_equivalence_witness.dag";
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
     "wet_hermetic_equivalence_representative_prefix";
 
@@ -24569,48 +22966,50 @@ fn trim_retained_heap() -> Option<u64> {
     }
 }
 
-/// Peak resident set (high water mark) in bytes, read the PORTABLE way.
+/// This process's OWN peak resident set (high water mark) in bytes.
 ///
-/// Authority: `dag/extdeps/posix/rusage.dag` for the interface, with the unit answered by
-/// `dag/extdeps/linux/rusage.dag` (kibibytes) and `dag/extdeps/darwin/rusage.dag` (bytes).
+/// Authority: `dag/extdeps/posix/rusage.dag` for the interface and `dag/extdeps/linux/rusage.dag`
+/// / `dag/extdeps/darwin/rusage.dag` for the `ru_maxrss` unit (kibibytes / bytes).
 ///
-/// This used to be `proc_status_kb_field("VmHWM")` — a `/proc/self/status` read, which
-/// exists on exactly one kernel family. That made every consumer of peak RSS Linux-only and
-/// produced `VmHWM unavailable on this host` on macOS, a message read as "this platform
-/// cannot report peak residency". It can: POSIX `getrusage(RUSAGE_SELF)` returns the same
-/// quantity in `ru_maxrss` everywhere, and libc was already a dependency. The procfs read
-/// was a TRANSPORT choice, not a capability limit, and mistaking one for the other is what
-/// made the fact look unobservable.
-///
-/// POSIX deliberately leaves `ru_maxrss`'s unit unspecified, so the conversion is per
-/// implementation and permanent — no release reconciles them. Linux reports kibibytes,
-/// Darwin bytes; the Darwin figure was confirmed by execution (a bare python3 reported
-/// 15417344, which is 14.7 MiB read as bytes and an impossible 14.7 GiB read as kibibytes).
-/// Reading a Linux value as bytes would understate peak residency 1024x, in the direction
-/// that looks survivable.
+/// Linux reads `/proc/self/status` VmHWM, NOT `getrusage(RUSAGE_SELF).ru_maxrss`: Linux seeds
+/// `ru_maxrss` at exec from the high-water of the address space the exec replaced, so a process
+/// spawned from a large parent reads the parent's peak. VmHWM belongs to the mm the exec created.
+/// The ledger row is `gunbc.recurring_failure_mode`
+/// `a_child_peak_resident_inherits_the_predecessor_address_space`; the control is
+/// `peak_resident_inheritance_control_tests`. macOS keeps `getrusage` (the portable call,
+/// with the unit answered per implementation); whether its `ru_maxrss` is inherited across exec
+/// is unverified. Hosts other than Linux and macOS are unmodeled and answer `None`. Missing readings are `None`, never a fabricated zero.
 pub fn peak_rss_vhwm_bytes() -> Option<u64> {
+    // LINUX: THE NEW ADDRESS SPACE'S OWN HIGH-WATER, NOT `ru_maxrss`. Linux seeds a process's
+    // `ru_maxrss` at exec from the high-water of the address space it replaces, so a process spawned
+    // from a large parent reads the parent's peak (`gunbc.recurring_failure_mode`
+    // `a_child_peak_resident_inherits_the_predecessor_address_space`). `VmHWM` belongs to the mm the
+    // exec created and is not inherited. A missing field is None, never a fabricated zero.
+    #[cfg(target_os = "linux")]
+    {
+        return proc_status_kb_field("VmHWM").filter(|b| *b > 0);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        peak_rss_getrusage_bytes()
+    }
+    // Unmodeled hosts (the BSDs report kibibytes) refuse: no unit is guessed.
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        None
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn peak_rss_getrusage_bytes() -> Option<u64> {
     // SAFETY: `ru` is a live, fully-owned zeroed `rusage`; `getrusage` only writes it.
     let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
     let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
     if rc != 0 || ru.ru_maxrss <= 0 {
         return None;
     }
-    let raw = ru.ru_maxrss as u64;
-    #[cfg(target_os = "macos")]
-    {
-        Some(raw)
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Some(raw.saturating_mul(1024))
-    }
-}
-
-fn matching_discovery_exclusion_substring(path: &str) -> Option<String> {
-    witness_exclusion_substrings()
-        .iter()
-        .find(|sub| path.contains(sub.as_str()))
-        .cloned()
+    // Darwin reports bytes (extdeps.darwin.rusage).
+    Some(ru.ru_maxrss as u64)
 }
 
 fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
@@ -24619,9 +23018,9 @@ fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
 // Registered planning artifact: `gunbc.cli_run_witness_admission_scaffold` (review 44487
-// checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness_test.dag`.
+// checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness.dag`.
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
-// (gunbc.roadmap_authority / ROADMAP.md; module-identity-storage-binding-design (plan doc deleted 2026-08-28)).
+// (gunbc.roadmap.roadmap_authority / ROADMAP.md; module-identity-storage-binding-design (plan doc deleted 2026-08-28)).
 // The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in
 // dag/gunbc/ci/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the
 // cycle-free leaf src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag.
@@ -24716,7 +23115,7 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_witness_deferral_freeze`): the seed realization of the
 // frozen path-deferral wall. Registered disposition, dissolution sequence and measured LOC delta:
-// `gunbc.cli_run_witness_deferral_freeze_scaffold` (authority `gunbc.witness_deferral_freeze`).
+// `gunbc.cli_run_witness_deferral_freeze_scaffold` (authority `gunbc.witness.witness_deferral_freeze`).
 // The .dag side being the authority does NOT exempt this realization — cli_run.rs is the largest
 // hand-maintained Rust wall in the program and is growing against its own hollowing plan, so this
 // block is accounted for rather than admitted quietly. DELETE WHEN: the frozen-deferral projection
@@ -24927,7 +23326,7 @@ fn quoted_literals(text: &str) -> Vec<String> {
 /// Phase 0(b): every deferred witness row must name an executing consumer (explicit roster, or a
 /// fixture roster), and — since 2026-08-04 — a broad `OfflineLocalRecipe` path policy is no longer
 /// an answer on its own. A row that policy claims is admitted only while it sits in the frozen
-/// legacy population (`gunbc.witness_deferral_freeze`); anything new refuses.
+/// legacy population (`gunbc.witness.witness_deferral_freeze`); anything new refuses.
 /// Per-row EXECUTION STANDING — what actually runs this witness. Mirrors the
 /// `WitnessExecutionStanding` coproduct in `std.witness_admission` arm for arm, and the split is
 /// the point: `LegacyFrozenPathDeferral` means TOLERATED BY THE MIGRATION RATCHET, never COVERED.
@@ -24948,7 +23347,7 @@ pub enum WitnessExecutionStanding {
 pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static str)> {
     let offline = witness_admission_offline_exclusion_substrings();
     let mut stale: Vec<(String, String, &'static str)> = Vec::new();
-    let mut decls_cache: std::collections::BTreeMap<String, Option<Vec<String>>> =
+    let mut decls_cache: std::collections::BTreeMap<String, Option<Result<Vec<String>, String>>> =
         std::collections::BTreeMap::new();
     for key in frozen_path_deferral_keys() {
         let Some((entry, function)) = key.split_once("::") else {
@@ -24965,12 +23364,7 @@ pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static st
         let decls = decls_cache.entry(entry.to_string()).or_insert_with(|| {
             std::fs::read_to_string(workspace_root().join(entry))
                 .ok()
-                .map(|c| {
-                    scan_test_decl_lines(&c)
-                        .into_iter()
-                        .map(|(name, _)| name)
-                        .collect()
-                })
+                .map(|c| test_marker::test_marked_decl_names(&c, entry))
         });
         match decls {
             None => stale.push((
@@ -24978,12 +23372,19 @@ pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static st
                 function.to_string(),
                 "entry file is absent",
             )),
-            Some(names) if !names.iter().any(|n| n == function) => stale.push((
+            // An entry that does not parse has no determinable test set: the row is refused,
+            // never judged against a partial or text-scanned one.
+            Some(Err(_)) => stale.push((
+                entry.to_string(),
+                function.to_string(),
+                "entry does not parse, so its test-marked declarations cannot be read",
+            )),
+            Some(Ok(names)) if !names.iter().any(|n| n == function) => stale.push((
                 entry.to_string(),
                 function.to_string(),
                 "entry no longer declares this test decl",
             )),
-            Some(_) => {}
+            Some(Ok(_)) => {}
         }
     }
     stale
@@ -25331,7 +23732,7 @@ fn refuse_frozen_path_deferral_additions(additions: &[String]) -> Result<(), Str
     }
     Err(format!(
         "WITNESS ADMISSION REFUSAL cause=FrozenPathDeferralGrew count={} — \
-         gunbc.witness_deferral_freeze gained identities relative to the diff baseline. The roster \
+         gunbc.witness.witness_deferral_freeze gained identities relative to the diff baseline. The roster \
          is the FROZEN legacy population, so it may only shrink: adding a row is re-opening the \
          escape hatch it exists to close, because it admits a witness that executes nowhere. If \
          this is a new or relocated witness, give it an exact row in gunbc.explicit_witness_admission \
@@ -25358,7 +23759,7 @@ fn refuse_stale_frozen_path_deferrals(
     }
     Err(format!(
         "WITNESS ADMISSION REFUSAL cause=StaleFrozenPathDeferral count={} — \
-         gunbc.witness_deferral_freeze row(s) name witnesses the tree no longer carries. A freeze \
+         gunbc.witness.witness_deferral_freeze row(s) name witnesses the tree no longer carries. A freeze \
          row is a debt marker for one exact (entry, function); left behind it becomes a standing \
          exemption the next witness to take that name inherits. Delete the listed row(s) in the \
          change that removed or renamed the witness: {}",
@@ -25420,56 +23821,6 @@ pub(crate) fn collect_dag_files_tolerant(
     }
     out.extend(derived_row_roster::acquire_dir_files(dir, here)?);
     Ok(())
-}
-
-fn scan_test_decl_names(content: &str) -> Vec<String> {
-    scan_test_decl_lines(content)
-        .into_iter()
-        .map(|(name, _line)| name)
-        .collect()
-}
-
-fn scan_wire_contract_decl_names(content: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("data ") {
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            if name.is_empty() {
-                continue;
-            }
-            let after_name = rest.get(name.len()..).unwrap_or("").trim_start();
-            if after_name.starts_with(": CoproductWireContract")
-                || after_name.starts_with(": VariantEncoding")
-            {
-                out.push(name);
-            }
-        }
-    }
-    out
-}
-
-fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
-    let mut out = Vec::new();
-    for (i, line) in content.lines().enumerate() {
-        let trimmed = line.trim_start();
-        let rest = trimmed
-            .strip_prefix("test fn ")
-            .or_else(|| trimmed.strip_prefix("test data "));
-        if let Some(rest) = rest {
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            if !name.is_empty() {
-                out.push((name, (i + 1) as i64));
-            }
-        }
-    }
-    out
 }
 
 /// The producer entry above is repo-relative, and every resolve of it ultimately reads the
@@ -25624,462 +23975,10 @@ fn parse_floor_discovery_producer_result(
             Err(reason)
         }
         other => Err(format!(
-            "discover_floor_corpus_rows_from_host_facts returned `{}`, expected FloorDiscoveryProducerResult",
+            "floor_discovery_finalize_source_outcomes returned `{}`, expected FloorDiscoveryProducerResult",
             ctx.format_value(other)
         )),
     }
-}
-
-pub(crate) fn invoke_floor_discovery_producer(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    invoke_floor_discovery_producer_over_corpus(
-        source_roots,
-        source_roots,
-        scan_dirs,
-        exclude_substrings,
-    )
-}
-
-/// Two roles `source_roots` fuses, here separate parameters: `producer_roots` locates the
-/// MACHINERY (the `.dag` producer that decides discovery and its sidecar refusals), while
-/// `corpus_roots` is the SUBJECT (the roots whose `.dag` files are walked and judged).
-/// Production passes the same list for both — that is the whole floor's shape and does not
-/// change. What the fusion prevented was *asking about one file*: any question had to submit
-/// the entire live `src/v2` + `dag` corpus for judgement too, so an unrelated corpus file's
-/// refusal could answer first and mask the one under test (review 44641). The producer stays
-/// real machinery; only the subject narrows.
-fn invoke_floor_discovery_producer_over_corpus(
-    producer_roots: &[String],
-    corpus_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    let excludes: Vec<String> = exclude_substrings.to_vec();
-    let mut owned_data_records: Vec<OwnedDataDeclRecord> = Vec::new();
-    for scan_dir in scan_dirs {
-        let discovery = discover_owned_data_decls(corpus_roots, scan_dir, &excludes)?;
-        owned_data_records.extend(discovery.records);
-    }
-    let (graph, indices) = resolve_workspace_entry(producer_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
-        .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let source_root_values: Vec<v1_interpreter::Value> =
-        corpus_roots.iter().map(|s| str_value(s.clone())).collect();
-    let exclude_values: Vec<v1_interpreter::Value> = exclude_substrings
-        .iter()
-        .map(|s| str_value(s.clone()))
-        .collect();
-    let owned_values: Vec<v1_interpreter::Value> = owned_data_records
-        .iter()
-        .map(|rec| owned_data_decl_record_to_value(rec, &ctx))
-        .collect();
-    let args = [
-        (
-            Some("source_roots".to_string()),
-            list_value_from_vec(source_root_values),
-        ),
-        (
-            Some("exclude_substrings".to_string()),
-            list_value_from_vec(exclude_values),
-        ),
-        (
-            Some("owned_data_records".to_string()),
-            list_value_from_vec(owned_values),
-        ),
-    ];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "discover_floor_corpus_rows_from_host_facts",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("discover_floor_corpus_rows_from_host_facts: {e}"))?;
-    parse_floor_discovery_producer_result(&ctx, &result)
-}
-
-pub(crate) fn apply_discovery_scope_dirs_filter(
-    mut rows: Vec<DiscoveryRow>,
-    discovery_scope_dirs: &[String],
-) -> Vec<DiscoveryRow> {
-    if discovery_scope_dirs.is_empty() {
-        return rows;
-    }
-    rows.retain(|row| {
-        discovery_scope_dirs
-            .iter()
-            .any(|d| row.entry.contains(d.as_str()))
-    });
-    rows
-}
-
-// SCAFFOLD (§7 HAND-RUST — `cli_run_selected_closure_overlap_probe`):
-// ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap_authority /
-// ROADMAP.md), lane `ci-cost`, subject `entry-graph-union-construction` slice 1.
-// This is a ONE-SHOT INSTRUMENT, not standing infrastructure: it exists to answer whether
-// the entry-graph-union program is worth building, and it is allowed to conclude that the
-// program is worth less than assumed.
-// Unblock / DELETE WHEN: the slice-2 union verdict is taken — WHICHEVER WAY IT GOES. If
-// the union program proceeds, its own receipts supersede this probe; if the program is
-// shrunk or closed, the probe has discharged its purpose and goes with it. A standing
-// closure-overlap reader, should one ever be wanted, belongs in `v2.lens.affected_set`
-// over the containment tree, not here — this deliberately does NOT become permanent
-// host-side machinery by default.
-// DELETE WHEN dissolved: `SelectedEntryClosureOverlap`,
-// `measure_selected_entry_closure_overlap`, `render_selected_entry_closure_overlap_json`,
-// the `selected_entry_closure_overlap_arithmetic` test module, and
-// `src/v1/stage0/src/bin/measure_selected_closure_overlap.rs` — ~350 LOC incl. tests and
-// the bin.
-// Receipt: `rg -c cli_run_selected_closure_overlap_probe src/v1/stage0/src/cli_run.rs`
-// returns 4 while the scaffold stands (this block, the const, and its declaration test)
-// and must return 0 at deletion — the deletion is what the receipt checks, not a fixed hit
-// count. Not a compiler_frontier `.dag` row (seed-Rust, counted here not in the module
-// census), and not enrolled in `gunbc.ci_release_bins` — no `measure_*` probe is.
-pub(crate) const CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER: &str =
-    "cli_run_selected_closure_overlap_probe";
-
-/// Closure-overlap measurement over the PRODUCTION-selected entry set
-/// (entry-graph-union slice 1 / lane ci-cost).
-///
-/// Every input is taken from the machinery the floor actually runs — the roster from
-/// `discover_floor_witness_roster`, the diff from the same `floor_diff_observe` entry the
-/// executor observes through, the selection verdict from
-/// `entry_eligible_for_discovery_skip_before_resolve`, and each closure from
-/// `collect_both_closure_module_names_for_entry` over the pooled loader. Nothing here
-/// re-decides selection: a second hand-written selection model would measure itself
-/// rather than the floor.
-///
-/// This counts MODULE MEMBERSHIP only. It resolves and typechecks nothing, so it is an
-/// upper bound on repeated membership, never a promise of equivalent wall savings.
-#[derive(Debug, Clone)]
-pub struct SelectedEntryClosureOverlap {
-    pub source_roots: Vec<String>,
-    pub scan_dirs: Vec<String>,
-    pub head_sha: String,
-    pub diff_base_override: Option<String>,
-    pub github_event_name: Option<String>,
-    pub github_base_ref: Option<String>,
-    pub changed_paths: Vec<String>,
-    pub departed_paths: Vec<String>,
-    /// Distinct entries in the production roster, before selection.
-    pub roster_entries: usize,
-    pub selected_entries: Vec<String>,
-    pub skipped_entries: Vec<String>,
-    /// (entry, |C_i|) for each selected entry.
-    pub closure_sizes: Vec<(String, usize)>,
-    pub sum_closure_memberships: usize,
-    pub union_modules: usize,
-    /// BYTE-weighted counterparts (operator review 2026-07-31). A module-count duplication
-    /// factor weights every membership equally, but the repeated unit
-    /// (`referenced_module_paths_of_source`) costs in proportion to CONTENT BYTES, and
-    /// closure sizes here span 504 modules down to a median of 2-5. So the module-count
-    /// factor and the byte factor are different claims, and only the byte one matches how
-    /// the scan actually costs. Both are reported; neither is presented as the other.
-    pub sum_closure_bytes: u128,
-    pub union_bytes: u128,
-    /// (module, number of selected entries whose closure contains it), descending.
-    pub fanout_by_module: Vec<(String, usize)>,
-}
-
-impl SelectedEntryClosureOverlap {
-    pub fn selected_count(&self) -> usize {
-        self.selected_entries.len()
-    }
-    /// Σ|Cᵢ| / |⋃Cᵢ| — mean times a union member is re-walked across selected entries.
-    pub fn duplication_factor(&self) -> Option<f64> {
-        if self.union_modules == 0 {
-            None
-        } else {
-            Some(self.sum_closure_memberships as f64 / self.union_modules as f64)
-        }
-    }
-    /// Byte-weighted duplication: Σ bytes over closures / distinct bytes in the union.
-    /// This is the factor that matches the scan's actual cost model.
-    pub fn byte_duplication_factor(&self) -> Option<f64> {
-        if self.union_bytes == 0 {
-            None
-        } else {
-            Some(self.sum_closure_bytes as f64 / self.union_bytes as f64)
-        }
-    }
-    /// Repeated BYTES a union could at most collapse.
-    pub fn byte_upper_bound(&self) -> u128 {
-        self.sum_closure_bytes.saturating_sub(self.union_bytes)
-    }
-    /// Σ|Cᵢ| − |⋃Cᵢ| — repeated memberships a union could at most collapse.
-    pub fn membership_upper_bound(&self) -> usize {
-        self.sum_closure_memberships
-            .saturating_sub(self.union_modules)
-    }
-    /// Percentile over the per-module selected-entry fanout (nearest-rank).
-    pub fn fanout_percentile(&self, p: f64) -> Option<usize> {
-        if self.fanout_by_module.is_empty() {
-            return None;
-        }
-        let mut counts: Vec<usize> = self.fanout_by_module.iter().map(|(_, n)| *n).collect();
-        counts.sort_unstable();
-        let rank = ((p / 100.0) * counts.len() as f64).ceil().max(1.0) as usize;
-        counts.get(rank.min(counts.len()) - 1).copied()
-    }
-}
-
-/// Membership overlap for an explicit selected-entry list (slice-1's both-closure walk).
-
-pub fn measure_selected_entry_closure_overlap(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-    discovery_scope_dirs: &[String],
-) -> Result<SelectedEntryClosureOverlap, String> {
-    let rows = discover_floor_witness_roster(
-        source_roots,
-        scan_dirs,
-        exclude_substrings,
-        discovery_scope_dirs,
-    )?;
-
-    // The SAME observation the executor makes — unified diff for line grain, name-status
-    // for path identity. A failure refuses; it never widens to "measure everything".
-    let diff_text = floor_git_diff_range()?;
-    let (changed_paths, departed_paths) = floor_git_diff_name_status_range()?;
-    let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
-    for path in &changed_paths {
-        line_ranges_by_file.entry(path.clone()).or_default();
-    }
-    let added_paths = parse_unified_diff_added_paths(&diff_text);
-
-    let index = process_shared_index(source_roots);
-    let diff_edits = floor_diff_edits_from_line_ranges(
-        &index,
-        &line_ranges_by_file,
-        &departed_paths,
-        &added_paths,
-        None,
-        &std::collections::HashMap::new(),
-    )?;
-    let declared_paths = index.module_graph_facts.declared_repo_paths();
-
-    // Distinct entries in roster order; `reads_live_tree` is entry-grain, so the first
-    // row's disposition is the entry's.
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut entries: Vec<(String, bool)> = Vec::new();
-    for row in &rows {
-        if seen.insert(row.entry.clone()) {
-            entries.push((row.entry.clone(), row.reads_live_tree));
-        }
-    }
-
-    let mut selected_entries = Vec::new();
-    let mut skipped_entries = Vec::new();
-    for (entry, reads_live_tree) in &entries {
-        if entry_eligible_for_discovery_skip_before_resolve(
-            true,
-            *reads_live_tree,
-            entry,
-            &index.module_graph_facts,
-            &declared_paths,
-            &changed_paths,
-            &diff_edits,
-        )? {
-            skipped_entries.push(entry.clone());
-        } else {
-            selected_entries.push(entry.clone());
-        }
-    }
-
-    let mut closure_sizes: Vec<(String, usize)> = Vec::new();
-    let mut sum_closure_memberships: usize = 0;
-    let mut fanout: HashMap<String, usize> = HashMap::new();
-    let mut sum_closure_bytes: u128 = 0;
-    let mut union_bytes_by_module: HashMap<String, u128> = HashMap::new();
-    for entry in &selected_entries {
-        // Same pooled loader the floor uses; bytes come from the very sources the scan
-        // reads, so the byte weighting is the scan's own input volume, not an estimate.
-        let mut members: HashSet<String> = HashSet::new();
-        for source in load_sources_for_entry_with_pool(&index, entry)? {
-            let Some(name) = extract_module_path(&source.content) else {
-                return Err(format!(
-                    "closure overlap: source '{}' in entry '{}' closure declares no module \
-                     header (fail-closed)",
-                    source.path, entry
-                ));
-            };
-            let bytes = source.content.len() as u128;
-            if members.insert(name.clone()) {
-                sum_closure_bytes += bytes;
-            }
-            union_bytes_by_module.insert(name, bytes);
-        }
-        closure_sizes.push((entry.clone(), members.len()));
-        sum_closure_memberships += members.len();
-        for m in members {
-            *fanout.entry(m).or_insert(0) += 1;
-        }
-    }
-    let union_bytes: u128 = union_bytes_by_module.values().sum();
-    let union_modules = fanout.len();
-    let mut fanout_by_module: Vec<(String, usize)> =
-        fanout.into_iter().map(|(k, v)| (k, v)).collect();
-    fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    closure_sizes.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-
-    let head_sha = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map_err(|e| format!("git rev-parse HEAD: {e}"))
-        .and_then(|o| {
-            if o.status.success() {
-                Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
-            } else {
-                Err("git rev-parse HEAD failed".to_string())
-            }
-        })?;
-
-    Ok(SelectedEntryClosureOverlap {
-        source_roots: source_roots.to_vec(),
-        scan_dirs: scan_dirs.to_vec(),
-        head_sha,
-        diff_base_override: std::env::var("GUNBC_CI_DIFF_BASE").ok(),
-        github_event_name: std::env::var("GITHUB_EVENT_NAME").ok(),
-        github_base_ref: std::env::var("GITHUB_BASE_REF").ok(),
-        changed_paths,
-        // Sorted: a HashSet iteration order would make the receipt non-reproducible for
-        // the same subject, which is the one property a named subject has to have.
-        departed_paths: {
-            let mut v: Vec<String> = departed_paths.into_iter().collect();
-            v.sort();
-            v
-        },
-        roster_entries: entries.len(),
-        selected_entries,
-        skipped_entries,
-        closure_sizes,
-        sum_closure_memberships,
-        union_modules,
-        sum_closure_bytes,
-        union_bytes,
-        fanout_by_module,
-    })
-}
-
-/// Machine-readable projection of the closure-overlap measurement.
-pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverlap) -> String {
-    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
-    let str_list = |v: &[String]| {
-        let mut s = String::from("[");
-        for (i, item) in v.iter().enumerate() {
-            if i > 0 {
-                s.push(',');
-            }
-            s.push('"');
-            s.push_str(&esc(item.clone()));
-            s.push('"');
-        }
-        s.push(']');
-        s
-    };
-    let opt_str = |o: &Option<String>| match o {
-        Some(v) => format!("\"{}\"", esc(v.clone())),
-        None => "null".to_string(),
-    };
-
-    let mut out = String::from("{\"subject\":{\"source_roots\":");
-    out.push_str(&str_list(&m.source_roots));
-    out.push_str(",\"scan_dirs\":");
-    out.push_str(&str_list(&m.scan_dirs));
-    out.push_str(",\"head_sha\":\"");
-    out.push_str(&esc(m.head_sha.clone()));
-    out.push_str("\",\"diff_base_override\":");
-    out.push_str(&opt_str(&m.diff_base_override));
-    out.push_str(",\"github_event_name\":");
-    out.push_str(&opt_str(&m.github_event_name));
-    out.push_str(",\"github_base_ref\":");
-    out.push_str(&opt_str(&m.github_base_ref));
-    out.push_str(",\"changed_path_count\":");
-    out.push_str(&m.changed_paths.len().to_string());
-    out.push_str(",\"changed_paths\":");
-    out.push_str(&str_list(&m.changed_paths));
-    out.push_str(",\"departed_paths\":");
-    out.push_str(&str_list(&m.departed_paths));
-    out.push_str("},\"selection\":{\"roster_entries\":");
-    out.push_str(&m.roster_entries.to_string());
-    out.push_str(",\"selected_entries\":");
-    out.push_str(&m.selected_count().to_string());
-    out.push_str(",\"skipped_entries\":");
-    out.push_str(&m.skipped_entries.len().to_string());
-    out.push_str("},\"overlap\":{\"N\":");
-    out.push_str(&m.selected_count().to_string());
-    out.push_str(",\"sum_closure_memberships\":");
-    out.push_str(&m.sum_closure_memberships.to_string());
-    out.push_str(",\"union_modules\":");
-    out.push_str(&m.union_modules.to_string());
-    out.push_str(",\"duplication_factor\":");
-    match m.duplication_factor() {
-        Some(f) => out.push_str(&format!("{f:.4}")),
-        None => out.push_str("null"),
-    }
-    out.push_str(",\"membership_upper_bound\":");
-    out.push_str(&m.membership_upper_bound().to_string());
-    out.push_str(",\"sum_closure_bytes\":");
-    out.push_str(&m.sum_closure_bytes.to_string());
-    out.push_str(",\"union_bytes\":");
-    out.push_str(&m.union_bytes.to_string());
-    out.push_str(",\"byte_duplication_factor\":");
-    match m.byte_duplication_factor() {
-        Some(f) => out.push_str(&format!("{f:.4}")),
-        None => out.push_str("null"),
-    }
-    out.push_str(",\"byte_upper_bound\":");
-    out.push_str(&m.byte_upper_bound().to_string());
-    out.push_str("},\"fanout\":{");
-    for (i, p) in [50.0_f64, 90.0, 99.0].iter().enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str(&format!("\"p{}\":", *p as u32));
-        match m.fanout_percentile(*p) {
-            Some(v) => out.push_str(&v.to_string()),
-            None => out.push_str("null"),
-        }
-    }
-    out.push_str(",\"max\":");
-    match m.fanout_by_module.first() {
-        Some((_, n)) => out.push_str(&n.to_string()),
-        None => out.push_str("null"),
-    }
-    out.push_str(",\"highest_fanout_modules\":[");
-    for (i, (name, n)) in m.fanout_by_module.iter().take(25).enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"module\":\"");
-        out.push_str(&esc(name.clone()));
-        out.push_str("\",\"selected_entry_fanout\":");
-        out.push_str(&n.to_string());
-        out.push('}');
-    }
-    out.push_str("]},\"largest_closures\":[");
-    for (i, (entry, n)) in m.closure_sizes.iter().take(25).enumerate() {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"entry\":\"");
-        out.push_str(&esc(entry.clone()));
-        out.push_str("\",\"closure_modules\":");
-        out.push_str(&n.to_string());
-        out.push('}');
-    }
-    out.push_str("],\"interpretation_bound\":\"");
-    out.push_str(&esc(
-        "Module-membership counts from the loader's both-closure walk; nothing is resolved \
-         or typechecked. membership_upper_bound is an UPPER BOUND on repeated module \
-         membership, not a wall-time saving."
-            .to_string(),
-    ));
-    out.push_str("\"}");
-    out
 }
 
 /// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
@@ -26175,26 +24074,6 @@ pub fn run_claim_route(
         }
     }
     Ok(members)
-}
-
-pub fn discover_floor_witness_roster(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    exclude_substrings: &[String],
-    discovery_scope_dirs: &[String],
-) -> Result<Vec<DiscoveryRow>, String> {
-    let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
-    rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
-    // The module-graph facts build now serves exactly two consumers on this path:
-    // effect-reach derivation below, and the cross-worker snapshot transport in
-    // `floor_discovery_snapshot::install_floor_discovery_snapshot`. The supply-side
-    // lens censuses that used to ride along (inert-lens reach, construction-justification)
-    // are deleted — they made every discovery run acquire a whole-corpus world to answer
-    // a question about lens authorship.
-    let facts = build_module_graph_facts_live(source_roots);
-    refuse_on_module_graph_read_refusals(&facts)?;
-    apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
-    Ok(rows)
 }
 
 // ITEM 2 (reference grounding): the construction->authority graph witness.
@@ -26651,37 +24530,6 @@ fn decl_span_end_line(sorted_decl_lines: &[i64], decl_line: i64) -> i64 {
         .unwrap_or(i64::MAX)
 }
 
-fn collect_sorted_decl_lines_for_file(
-    index: &MultiEntryIndex,
-    file_path: &str,
-) -> Result<Vec<i64>, String> {
-    let file_norm = normalize_repo_path(file_path);
-    let (graph, source_indices) = resolve_entry_with_index(index, file_path)?;
-    let content = std::fs::read_to_string(file_path)
-        .map_err(|e| format!("read {file_path} for decl span: {e}"))?;
-    let mut decls: Vec<i64> = Vec::new();
-    for module in graph.modules.iter() {
-        for item in module.items.iter() {
-            if !span_file_matches(&item.span.file, &file_norm) {
-                continue;
-            }
-            let Some(nl) = newline_index_for_span(&item.span, &source_indices).cloned() else {
-                return Err(format!(
-                    "newline index missing for decl span in {file_path}"
-                ));
-            };
-            decls.push(byte_to_line_col(nl, item.span.start).line);
-        }
-    }
-    for (_, line) in scan_test_decl_lines(&content) {
-        if !decls.contains(&line) {
-            decls.push(line);
-        }
-    }
-    decls.sort_unstable();
-    Ok(decls)
-}
-
 // SCAFFOLD (DESIGN §6–§7): host-side diff→declaration attribution
 // (`floor_diff_edits_from_line_ranges`) and per-entry frontier materialization
 // (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) remain host
@@ -26920,7 +24768,7 @@ fn call_floor_row_precompute_would_skip(
 // `entry_text_indicates_live_host_scan` + the `floor:host_scaffold` marker) lived here.
 // It is dissolved into the substrate-declared `reads_live_tree` disposition: each
 // witness entry file declares `data live_tree_disposition: LiveTreeDisposition = ...`
-// (`v2.std.live_tree`); undeclared = ReadsLiveTree = never predict-skip (fail-closed).
+// (`std.live_tree`); undeclared = ReadsLiveTree = never predict-skip (fail-closed).
 // Declaration grade also closes the former cross-file deficit that was documented here
 // (a live read hidden behind an import was invisible to entry-text scanning): the
 // entry's own row asserts the fact for the whole evaluation, wherever the read hides.
@@ -26931,9 +24779,8 @@ fn call_floor_row_precompute_would_skip(
 // THAT CADENCE IS GONE: `falsifier.yml` was deleted by the 2026-08-15 floor cut and sits
 // on DESIGN's unguarded list awaiting its own re-add, so the sentence was true when
 // written and became false when the workflow died, with nothing to notice. One claim in
-// three places — here, `v2.std.live_tree` `live_tree_disposition_note`, and that module's
-// `live_tree_disposition_stamp_provenance` — all three corrected together, because a claim
-// with three homes corrected in one still has two authorities (DESIGN §3).
+// the authority module `std.live_tree` now carries it once as an annotation on
+// `LiveTreeDisposition` (DESIGN §3, §4c).
 //
 // WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. `reads_live_tree_effective` consults
 // this declaration FIRST and falls through to `effect_reach_derived_reads_live_tree_for_entry`
@@ -26972,7 +24819,7 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
         };
         let rest = rest.trim_start();
         // Qualification-invariant (namespace lane): the annotation may be the bare
-        // authority name or its qualified projection (v2.std.live_tree.LiveTreeDisposition);
+        // authority name or its qualified projection (std.live_tree.LiveTreeDisposition);
         // compare the last dot-segment, mirroring type_name_compatible's mixed-spelling
         // rule. The typechecked roster compile remains the authority behind this text scan.
         let (annotation, rest) = match rest.find(|c: char| c.is_whitespace() || c == '=') {
@@ -27341,9 +25188,9 @@ pub(crate) const CLI_RUN_AFFECTED_SET_STOP_LINE_BRIDGE_MARKER: &str =
     "cli_run_affected_set_stop_line_bridge";
 
 const COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY: &str =
-    "dag/test/claim/dag_compile_clean_shard_a_witness_test.dag";
+    "dag/test/claim/dag_compile_clean_shard_a_witness.dag";
 const COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY: &str =
-    "dag/test/claim/dag_compile_clean_scope_witness_test.dag";
+    "dag/test/claim/dag_compile_clean_scope_witness.dag";
 
 fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive) -> bool {
     !declared_source_ref_paths_for_entry(entry_path, facts).is_empty()
@@ -27806,7 +25653,7 @@ mod floor_skip_frontier_tests {
         floor_diff_edits_from_diff_text_with_base_names_and_sources, list_value_from_vec,
         parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
         parse_unified_diff_line_ranges, parse_unified_diff_rename_sources,
-        rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange, FloorDiffEdits,
+        rerun_frontier_nodes_for_entry, FileLineRange, FloorDiffEdits,
     };
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
@@ -27828,7 +25675,7 @@ mod floor_skip_frontier_tests {
     // read entries that may not resolve — the same textual model as
     // `parse_entry_live_tree_disposition`. `v2.std.fn_index` `callees_from_node`
     // needs a Node. v1 PURPOSE: evidence for the failure-mode row
-    // (`gunbc.v1_maintenance_standing` `v1_seed_standing`).
+    // (`gunbc.v1.v1_maintenance_standing` `v1_seed_standing`).
 
     fn builtin_name_spells_a_live_checkout_sink(name: &str) -> bool {
         name.starts_with("compile_dag_")
@@ -27989,10 +25836,21 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
     // asserted 1 of 2 and failed here.
     #[test]
     fn rename_destination_enrolls_every_test_decl_not_only_the_diff_touched_one() {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
             .expect("the renamed wall entry is in the tree");
-        let declared: HashSet<String> = super::scan_test_decl_names(&content).into_iter().collect();
+        let declared: HashSet<String> = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn({
+                let content = content.clone();
+                move || super::test_marker::test_marked_decl_names(&content, dest)
+            })
+            .expect("spawn the marker reader thread")
+            .join()
+            .expect("marker reader thread must not panic")
+            .expect("the renamed wall entry parses")
+            .into_iter()
+            .collect();
         assert!(
             declared.len() >= 2
                 && declared.contains("gate_red_synthetic_machine_shape_call")
@@ -28002,12 +25860,12 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
 
         // gunbc#9823's own `git diff -U0` output for the renamed entry, verbatim.
         let diff = "\
-diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall.dag
 similarity index 97%
 rename from dag/test/claim/machine_shape_construction_wall_test.dag
-rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
+rename to src/v2/test/claim/machine_shape_construction_wall.dag
 --- a/dag/test/claim/machine_shape_construction_wall_test.dag
-+++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
++++ b/src/v2/test/claim/machine_shape_construction_wall.dag
 @@ -1 +1 @@
 -module test.claim.machine_shape_construction_wall
 +module v2.test.claim.machine_shape_construction_wall
@@ -28037,7 +25895,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     // rule is ever applied unconditionally.
     #[test]
     fn in_place_modify_enrolls_only_the_touched_test_decl() {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
             .expect("the renamed wall entry is in the tree");
         let green_line = content
@@ -28063,7 +25921,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     }
 
     fn machine_shape_in_place_green_diff() -> (String, String) {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
             .expect("the renamed wall entry is in the tree");
         let green_line = content
@@ -28134,15 +25992,15 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     }
 
     fn machine_shape_rename_diff() -> (&'static str, &'static str, String) {
-        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let dest = "src/v2/test/claim/machine_shape_construction_wall.dag";
         let src = "dag/test/claim/machine_shape_construction_wall_test.dag";
         let diff = "\
-diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall.dag
 similarity index 97%
 rename from dag/test/claim/machine_shape_construction_wall_test.dag
-rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
+rename to src/v2/test/claim/machine_shape_construction_wall.dag
 --- a/dag/test/claim/machine_shape_construction_wall_test.dag
-+++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
++++ b/src/v2/test/claim/machine_shape_construction_wall.dag
 @@ -1 +1 @@
 -module test.claim.machine_shape_construction_wall
 +module v2.test.claim.machine_shape_construction_wall
@@ -28353,7 +26211,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     // No surviving declaration's own text changed, so nothing is charged.
     #[test]
     fn the_13126_claim_trim_charges_no_surviving_claim() {
-        let path = "src/v2/test/claim/parse/test_marker_channel_test.dag";
+        let path = "src/v2/test/claim/parse/test_marker_channel.dag";
         let head = include_str!("../testdata/test_marker_channel_head_587c833.dag.txt");
         let diff = include_str!("../testdata/test_marker_channel_trim_587c833.diff");
         let edits = text_attribution_edits(
@@ -28548,18 +26406,8 @@ new file mode 100644
     }
 
     #[test]
-    fn scan_test_decl_lines_pairs_names_with_1_based_lines() {
-        let source = "module m\n\ndata d: Int = 1\n\ntest fn witness_a() -> Bool { true }\n\ntest data witness_b: Int = 2\n";
-        let pairs = scan_test_decl_lines(source);
-        assert_eq!(
-            pairs,
-            vec![("witness_a".to_string(), 5), ("witness_b".to_string(), 7)]
-        );
-    }
-
-    #[test]
     fn live_tree_disposition_declared_substrate_only_is_selection_eligible() {
-        let source = "module m\n\nimport v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn pure_holds() -> Bool { true }\n";
+        let source = "module m\n\nimport std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn pure_holds() -> Bool { true }\n";
         assert!(!super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
     }
 
@@ -28678,13 +26526,13 @@ new file mode 100644
     fn named_census_specimens_declare_reads_live_tree_and_call_a_sink() {
         let ws = workspace_root();
         let specimens = [
-            "dag/test/claim/fabric/fabric_output_contract_resolution_witness_test.dag",
-            "dag/test/claim/match_exhaustiveness_coproduct_witness_test.dag",
-            "dag/test/claim/direct_call_argument_type_witness_test.dag",
-            "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
-            "dag/test/claim/declared_type_inhabitance_list_element_witness_test.dag",
-            "dag/test/claim/declared_type_expected_type_path_witness_test.dag",
-            "dag/test/claim/infer_record_lit_variant_field_witness_test.dag",
+            "dag/test/claim/fabric/fabric_output_contract_resolution_witness.dag",
+            "dag/test/claim/match_exhaustiveness_coproduct_witness.dag",
+            "dag/test/claim/direct_call_argument_type_witness.dag",
+            "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag",
+            "dag/test/claim/declared_type_inhabitance_list_element_witness.dag",
+            "dag/test/claim/declared_type_expected_type_path_witness.dag",
+            "dag/test/claim/infer_record_lit_variant_field_witness.dag",
         ];
         let mut files = Vec::new();
         for rel in specimens {
@@ -28712,7 +26560,7 @@ new file mode 100644
     #[test]
     fn named_remaining_sio_direct_live_specimen_is_joined() {
         let ws = workspace_root();
-        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness.dag";
         let content =
             std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         let files = vec![(rel.to_string(), content)];
@@ -28741,7 +26589,7 @@ new file mode 100644
     #[test]
     fn adding_the_census_marker_would_still_lose_the_conjunction_on_the_remaining_specimen() {
         let ws = workspace_root();
-        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness_test.dag";
+        let rel = "dag/test/claim/citation_cause_subject_disjointness_witness.dag";
         let content =
             std::fs::read_to_string(ws.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         assert!(
@@ -28856,7 +26704,7 @@ mod module_grain_affected_equivalence_tests {
         ]
     }
 
-    // Mirrors `gunbc.ci_layer_roots.witness_layer_roots` (`data witness_layer_roots: List<String>
+    // Mirrors `gunbc.ci.ci_layer_roots.witness_layer_roots` (`data witness_layer_roots: List<String>
     // = ["dag", "src/v2"]`) — the single authority for pool roots this receipt exercises against.
     fn pool_roots_rel() -> Vec<String> {
         vec!["dag".to_string(), "src/v2".to_string()]
@@ -29116,17 +26964,17 @@ mod module_grain_affected_equivalence_tests {
     // when it doesn't, without requiring the full ~514-entry roster.
     fn dag_only_entry_sample() -> Vec<&'static str> {
         vec![
-            "dag/test/claim/card_intake_risk_witness_test.dag",
-            "dag/test/claim/ebay_listing_witness_test.dag",
-            "src/v2/test/claim/bash_program_fold_test.dag",
-            "dag/test/claim/v1_dag_parse_witness_test.dag",
+            "dag/test/claim/card_intake_risk_witness.dag",
+            "dag/test/claim/ebay_listing_witness.dag",
+            "src/v2/test/claim/bash_program_fold.dag",
+            "dag/test/claim/v1_dag_parse_witness.dag",
             "dag/gunbc/instruments/host_prelude.dag",
             "dag/gunbc/instruments/build_step.dag",
             "dag/gunbc/ci/ci_layer_roots.dag",
-            "src/v2/test/claim/bash_command_fold_test.dag",
-            "src/v2/workflow/orchestration_emit_test.dag",
+            "src/v2/test/claim/bash_command_fold.dag",
+            "src/v2/workflow/orchestration_emit.dag",
             "dag/test/claim/long/import_closure_live_test.dag",
-            "src/v2/test/claim/affected_set_universe_test.dag",
+            "src/v2/test/claim/affected_set_universe.dag",
             "src/v2/lens/module_graph.dag",
         ]
     }
@@ -29137,18 +26985,18 @@ mod module_grain_affected_equivalence_tests {
     // affected=true), and unrelated witnesses from both trees (affected=false).
     fn v2_only_entry_sample() -> Vec<&'static str> {
         vec![
-            "src/v2/workflow/orchestration_bash_test.dag",
-            "src/v2/workflow/orchestration_emit_test.dag",
-            "src/v2/test/claim/bash_command_fold_test.dag",
-            "src/v2/test/claim/bash_program_fold_test.dag",
-            "src/v2/test/claim/manual/bash_emit_command_test.dag",
-            "src/v2/test/claim/manual/emit_directive_bash_test.dag",
-            "src/v2/test/claim/manual/emit_directive_gha_test.dag",
-            "src/v2/workflow/orchestration_retry_emit_test.dag",
-            "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators_test.dag",
-            "dag/test/claim/card_intake_risk_witness_test.dag",
+            "src/v2/workflow/orchestration_bash.dag",
+            "src/v2/workflow/orchestration_emit.dag",
+            "src/v2/test/claim/bash_command_fold.dag",
+            "src/v2/test/claim/bash_program_fold.dag",
+            "src/v2/test/claim/manual/bash_emit_command.dag",
+            "src/v2/test/claim/manual/emit_directive_bash.dag",
+            "src/v2/test/claim/manual/emit_directive_gha.dag",
+            "src/v2/workflow/orchestration_retry_emit.dag",
+            "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators.dag",
+            "dag/test/claim/card_intake_risk_witness.dag",
             "dag/gunbc/instruments/host_prelude.dag",
-            "src/v2/test/claim/affected_set_universe_test.dag",
+            "src/v2/test/claim/affected_set_universe.dag",
             "dag/test/claim/long/import_closure_live_test.dag",
         ]
     }
@@ -29161,7 +27009,7 @@ mod node_frontier_plumbing_controls {
     use super::{
         build_multi_entry_index, call_floor_kernel_would_skip, entry_touches_rerun_frontier,
         floor_diff_edits_from_diff_text, list_value_from_vec, parse_unified_diff_line_ranges,
-        rerun_frontier_nodes_for_entry, scan_test_decl_lines,
+        rerun_frontier_nodes_for_entry,
     };
     use crate::v1_interpreter::ExecutionMode;
     use std::path::PathBuf;
@@ -29623,7 +27471,7 @@ mod node_frontier_plumbing_controls {
             std::fs::write(
                 self.dir.join(super::WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL),
                 format!(
-                    "module gunbc.witness_deferral_freeze\n\n\
+                    "module gunbc.witness.witness_deferral_freeze\n\n\
                      data frozen_path_deferrals: List<FrozenPathDeferral> = [\n{body}]\n"
                 ),
             )
@@ -30036,179 +27884,10 @@ mod node_frontier_plumbing_controls {
     // fail-closed semantics and was deleted as a stale, contradictory twin (2026-07-07).
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SourceRootReadRecord {
-    pub file_path: String,
-    pub module_path: String,
-    pub source: String,
-    pub source_root: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceRootEntryAdmission {
-    pub subject: Vec<String>,
-    pub imports: Vec<Vec<String>>,
-}
-
-fn parse_dotted_module_path(path: &str) -> Option<Vec<String>> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let segments: Vec<String> = trimmed
-        .split('.')
-        .filter(|seg| !seg.is_empty())
-        .map(str::to_string)
-        .collect();
-    if segments.is_empty() {
-        None
-    } else {
-        Some(segments)
-    }
-}
-
-pub fn parse_source_root_entry_admission(source: &str) -> Result<SourceRootEntryAdmission, String> {
-    let mut subject: Option<Vec<String>> = None;
-    let mut imports: Vec<Vec<String>> = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-
-    for line in source.lines() {
-        let line = line.split("//").next().unwrap_or("").trim();
-        if let Some(rest) = line.strip_prefix("module ") {
-            subject = parse_dotted_module_path(rest);
-        } else if let Some(rest) = line.strip_prefix("import ") {
-            let module_path = rest.split_whitespace().next().unwrap_or("");
-            if let Some(segments) = parse_dotted_module_path(module_path) {
-                if seen.insert(segments.clone()) {
-                    imports.push(segments);
-                }
-            }
-        }
-    }
-
-    subject
-        .map(|subject| SourceRootEntryAdmission { subject, imports })
-        .ok_or_else(|| "entry source missing `module` declaration".to_string())
-}
-
-fn free_monoid_symbol_emit_dag(segments: &[String]) -> String {
-    if segments.is_empty() {
-        return "Empty".to_string();
-    }
-    let mut out = String::from("Empty");
-    for seg in segments.iter().rev() {
-        out = format!("Cons {{ head: ^{seg}, tail: {out} }}");
-    }
-    out
-}
-
-#[cfg(test)]
-mod manifest_emit_tests {
-    use super::{
-        dag_embedded_dag_source_escape, dag_manifest_scalar_escape, free_monoid_symbol_emit_dag,
-    };
-
-    #[test]
-    fn free_monoid_symbol_emit_dag_three_segment_path() {
-        assert_eq!(
-            free_monoid_symbol_emit_dag(&["v2".into(), "compiler".into(), "compile".into()]),
-            "Cons { head: ^v2, tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } } }"
-        );
-    }
-
-    #[test]
-    fn free_monoid_symbol_emit_dag_empty_is_empty_variant() {
-        assert_eq!(free_monoid_symbol_emit_dag(&[]), "Empty");
-    }
-
-    #[test]
-    fn manifest_scalar_escape_rejects_braces() {
-        assert!(dag_manifest_scalar_escape("src/v2/foo.dag").is_ok());
-        assert!(dag_manifest_scalar_escape("fnv1a64:abc").is_ok());
-        assert!(dag_manifest_scalar_escape("has{brace").is_err());
-        assert!(dag_manifest_scalar_escape("has}brace").is_err());
-    }
-
-    #[test]
-    fn embedded_dag_source_escape_preserves_braces_as_escapes() {
-        assert_eq!(
-            dag_embedded_dag_source_escape("match x { A => 1 }"),
-            "match x \\{ A => 1 \\}"
-        );
-    }
-
-    use super::source_root_ref_token_for_path;
-
-    #[test]
-    fn source_root_token_grounds_in_filesystem_location() {
-        let roots = vec!["src/v2".to_string(), "dag".to_string()];
-        assert_eq!(
-            source_root_ref_token_for_path("src/v2/std/algebra.dag", &roots).unwrap(),
-            "V2Tree"
-        );
-        assert_eq!(
-            source_root_ref_token_for_path("dag/std/algebra.dag", &roots).unwrap(),
-            "DagTree"
-        );
-        assert_eq!(
-            source_root_ref_token_for_path("src/v2/extdeps/shell.dag", &roots).unwrap(),
-            "V2Tree"
-        );
-        assert!(source_root_ref_token_for_path("src/v1/stage0/x.dag", &roots).is_err());
-        assert!(source_root_ref_token_for_path("src/v20/x.dag", &roots).is_err());
-    }
-
-    #[test]
-    fn source_root_token_admits_absolute_roots() {
-        let ws = super::workspace_root();
-        let abs_roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        assert_eq!(
-            source_root_ref_token_for_path(
-                ws.join("src/v2/std/algebra.dag").to_str().unwrap(),
-                &abs_roots
-            )
-            .unwrap(),
-            "V2Tree"
-        );
-        assert_eq!(
-            source_root_ref_token_for_path(
-                ws.join("dag/std/algebra.dag").to_str().unwrap(),
-                &abs_roots
-            )
-            .unwrap(),
-            "DagTree"
-        );
-        assert_eq!(
-            source_root_ref_token_for_path("dag/std/algebra.dag", &abs_roots).unwrap(),
-            "DagTree"
-        );
-        assert!(source_root_ref_token_for_path(
-            ws.join("src/v1/stage0/x.dag").to_str().unwrap(),
-            &abs_roots
-        )
-        .is_err());
-    }
-}
-
-fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
-    let mut out = String::from("Empty");
-    for import in imports.iter().rev() {
-        out = format!(
-            "Cons {{\n  head: Import {{\n    target: {},\n    visibility: ImportVisible\n  }},\n  tail: {out}\n}}",
-            free_monoid_symbol_emit_dag(import)
-        );
-    }
-    out
-}
-
 /// The fnv1a64 digest of one NUL-delimited material string, rendered as `fnv1a64:<hex>`.
 ///
-/// Extracted from `source_root_ingest_content_hash_fnv1a64` rather than copied beside it: a second
-/// site spelling out the same two constants would be one concept with two authorities, and the
-/// two would then be free to disagree about a digest two carriers are expected to compare.
+/// One site spells out the two constants: a second would be one concept with two authorities, free
+/// to disagree about a digest two carriers are expected to compare.
 pub fn fnv1a64_digest_of_material(material: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;
     for byte in material.as_bytes() {
@@ -30216,286 +27895,6 @@ pub fn fnv1a64_digest_of_material(material: &str) -> String {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     format!("fnv1a64:{hash:016x}")
-}
-
-fn path_matches_any_subpath(path: &str, subpaths: &[String]) -> bool {
-    subpaths
-        .iter()
-        .any(|sub| path.contains(sub) || path.ends_with(sub))
-}
-
-pub fn discover_source_root_reads(
-    source_roots: &[String],
-    scan_dir: &str,
-    exclude_subpaths: &[String],
-) -> Result<Vec<SourceRootReadRecord>, String> {
-    for root in source_roots {
-        let root_path = Path::new(root);
-        if !root_path.exists() {
-            return Err(format!(
-                "discover_source_root_ingest: source root does not exist: {}",
-                root
-            ));
-        }
-    }
-
-    let scan_path = Path::new(scan_dir);
-    if !scan_path.is_dir() {
-        return Err(format!(
-            "discover_source_root_ingest: scan dir does not exist: {}",
-            scan_dir
-        ));
-    }
-
-    let mut records: Vec<SourceRootReadRecord> = Vec::new();
-    let mut seen_modules: HashMap<String, String> = HashMap::new();
-    let mut dag_files = Vec::new();
-    collect_dag_files(scan_path, &mut dag_files);
-
-    for source in dag_files {
-        let path = source.path();
-        let rel_forward = path.to_string_lossy().replace('\\', "/");
-        if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
-            continue;
-        }
-        let content = source
-            .read()
-            .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
-        let module_path = extract_module_path(&content).ok_or_else(|| {
-            format!(
-                "discover_source_root_ingest: no module declaration in {}",
-                rel_forward
-            )
-        })?;
-        if let Some(prior) = seen_modules.insert(module_path.clone(), rel_forward.clone()) {
-            return Err(format!(
-                "discover_source_root_ingest: duplicate module path '{}' in {} and {}",
-                module_path, prior, rel_forward
-            ));
-        }
-        let source_root = source_root_ref_token_for_path(&rel_forward, source_roots)?;
-        records.push(SourceRootReadRecord {
-            file_path: rel_forward,
-            module_path,
-            source: content,
-            source_root,
-        });
-    }
-
-    records.sort_by(|a, b| a.file_path.cmp(&b.file_path));
-    Ok(records)
-}
-
-pub fn discover_source_root_reads_for_entry(
-    source_roots: &[String],
-    entry_path: &str,
-    exclude_subpaths: &[String],
-) -> Result<Vec<SourceRootReadRecord>, String> {
-    for root in source_roots {
-        let root_path = Path::new(root);
-        if !root_path.exists() {
-            return Err(format!(
-                "discover_source_root_ingest: source root does not exist: {}",
-                root
-            ));
-        }
-    }
-
-    let closure = load_sources_for_entry(source_roots, entry_path)
-        .map_err(|msg| format!("discover_source_root_ingest: entry closure load failed: {msg}"))?;
-
-    let mut records: Vec<SourceRootReadRecord> = Vec::new();
-    for source in closure {
-        let rel_forward = source.path.replace('\\', "/");
-        if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
-            continue;
-        }
-        let module_path = extract_module_path(&source.content).ok_or_else(|| {
-            format!(
-                "discover_source_root_ingest: no module declaration in {}",
-                rel_forward
-            )
-        })?;
-        let source_root = source_root_ref_token_for_path(&rel_forward, source_roots)?;
-        records.push(SourceRootReadRecord {
-            file_path: rel_forward,
-            module_path,
-            source: source.content.clone(),
-            source_root,
-        });
-    }
-
-    records.sort_by(|a, b| a.file_path.cmp(&b.file_path));
-    Ok(records)
-}
-
-fn source_ref_identity_digest_hex(rec: &SourceRootReadRecord) -> String {
-    let path_hash = crate::v1_rt::atom_identity_hash(rec.file_path.clone());
-    let root_hash = crate::v1_rt::atom_identity_hash(rec.source_root.clone());
-    let storage = crate::v1_rt::hash_combine(path_hash, root_hash);
-    let content_hash = crate::v1_rt::atom_identity_hash(rec.source.clone());
-    crate::v1_rt::hash_combine(storage, content_hash)
-}
-
-fn source_ref_list_structural_digest_hex(records: &[SourceRootReadRecord]) -> String {
-    let mut acc = crate::v1_rt::atom_identity_hash("source-ref-closure-list".to_string());
-    for rec in records {
-        let ref_digest = source_ref_identity_digest_hex(rec);
-        acc = crate::v1_rt::hash_combine(acc, ref_digest);
-    }
-    acc
-}
-
-#[cfg(test)]
-mod source_root_ingest_manifest_tests {
-    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord, MANIFEST_INLINE_LIST_MAX};
-
-    fn sr_record(i: usize) -> SourceRootReadRecord {
-        SourceRootReadRecord {
-            file_path: format!("src/v2/std/cov_fixture_{i}.dag"),
-            module_path: format!("v2.std.cov_fixture_{i}"),
-            source: format!("module v2.std.cov_fixture_{i}"),
-            source_root: "src/v2".to_string(),
-        }
-    }
-
-    /// Capless ref transport: over the inline cap, coverage reports typed elision
-    /// while produced_row_count and closure_refs carry the full population.
-    #[test]
-    fn receipt_reports_typed_elision_with_full_refs_past_inline_cap() {
-        let dir = std::env::temp_dir().join(format!(
-            "gunbc_cov_receipt_{}_{}",
-            std::process::id(),
-            line!()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("host_source_root_ingest_manifest.dag");
-
-        let over: Vec<SourceRootReadRecord> = (0..65).map(sr_record).collect();
-        emit_source_root_ingest_manifest(&path, &over, None).unwrap();
-        let emitted = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            emitted.contains("coverage: SourceRootManifestElided"),
-            "past inline cap must report typed elision, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains(&format!(
-                "coverage: SourceRootManifestElided {{ read_count: 65, cap: {MANIFEST_INLINE_LIST_MAX} }}"
-            )),
-            "elision must carry read_count and cap, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("produced_row_count: 65"),
-            "ref population must not be zero, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("host_source_root_closure_refs"),
-            "must carry full closure refs, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("data host_source_root_ingest: SourceRootIngest = Empty"),
-            "inline ingest stays empty past cap, got:\n{emitted}"
-        );
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    /// At or below the inline cap, coverage is complete with full ref population.
-    #[test]
-    fn receipt_reports_complete_coverage_via_closure_refs_at_inline_cap() {
-        let dir = std::env::temp_dir().join(format!(
-            "gunbc_cov_receipt_{}_{}",
-            std::process::id(),
-            line!()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("host_source_root_ingest_manifest.dag");
-
-        let over: Vec<SourceRootReadRecord> =
-            (0..MANIFEST_INLINE_LIST_MAX).map(sr_record).collect();
-        emit_source_root_ingest_manifest(&path, &over, None).unwrap();
-        let emitted = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            emitted.contains("coverage: SourceRootCoverageComplete"),
-            "at inline cap must report complete ref coverage, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains(&format!("produced_row_count: {}", MANIFEST_INLINE_LIST_MAX)),
-            "at inline cap produced_row_count must equal read count, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("host_source_root_closure_refs"),
-            "at inline cap must carry closure refs, got:\n{emitted}"
-        );
-
-        let under: Vec<SourceRootReadRecord> = (0..3).map(sr_record).collect();
-        emit_source_root_ingest_manifest(&path, &under, None).unwrap();
-        let emitted = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            emitted.contains("coverage: SourceRootCoverageComplete")
-                && emitted.contains("produced_row_count: 3"),
-            "small closure manifest must also report complete ref coverage, got:\n{emitted}"
-        );
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn receipt_reports_manifest_absent_import_and_coverage_for_zero_reads() {
-        let dir =
-            std::env::temp_dir().join(format!("gunbc_cov_zero_{}_{}", std::process::id(), line!()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("host_source_root_ingest_manifest.dag");
-
-        emit_source_root_ingest_manifest(&path, &[], None).unwrap();
-        let emitted = std::fs::read_to_string(&path).unwrap();
-        assert!(
-            emitted.contains("SourceRootManifestAbsent"),
-            "zero-read manifest must import SourceRootManifestAbsent, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("coverage: SourceRootManifestAbsent"),
-            "zero-read manifest must report absent coverage, got:\n{emitted}"
-        );
-        assert!(
-            emitted.contains("ingest_read_count: 0"),
-            "zero-read manifest must report zero ingest count, got:\n{emitted}"
-        );
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[test]
-    fn manifest_imports_grounded_source_root_constructors() {
-        // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef`
-        // (V2Tree/DagTree, #5473/#5486). The manifest references those constructors, so it
-        // MUST import them from v2.std.cross_tree.import_model -- otherwise every witness that
-        // imports the manifest fails to resolve with `undefined variable 'V2Tree'`, which was
-        // the source_root_ingest gate's persistent main-RED. RED CONTROL: delete the
-        // cross_tree.import_model import line in the emitter and this test fails.
-        let tmp = std::env::temp_dir().join(format!(
-            "sri_manifest_import_test_{}.dag",
-            std::process::id()
-        ));
-        let records = vec![SourceRootReadRecord {
-            file_path: "src/v2/x.dag".to_string(),
-            module_path: "x".to_string(),
-            source: "module x\n".to_string(),
-            source_root: "V2Tree".to_string(),
-        }];
-        emit_source_root_ingest_manifest(&tmp, &records, None).expect("emit manifest");
-        let out = std::fs::read_to_string(&tmp).expect("read manifest");
-        let _ = std::fs::remove_file(&tmp);
-        assert!(
-            out.contains("source_root: V2Tree"),
-            "manifest must emit the grounded source_root value"
-        );
-        assert!(
-            out.contains("import v2.std.cross_tree.import_model"),
-            "manifest referencing V2Tree/DagTree must import them or witnesses hit \
-             `undefined variable`; got:\n{out}"
-        );
-    }
 }
 
 #[cfg(test)]
@@ -30711,10 +28110,7 @@ mod construction_authority_graph_tests {
 }
 
 #[cfg(test)]
-mod sidecar_placement_hygiene_tests {
-    use super::scan_wire_contract_decl_names;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
+mod workspace_entry_boundary_tests {
     #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn workspace_entry_boundary_cwd_independence_positive_control() {
@@ -30725,142 +28121,6 @@ mod sidecar_placement_hygiene_tests {
         ];
         super::resolve_workspace_entry(&source_roots, super::FLOOR_DISCOVERY_PRODUCER_ENTRY)
             .expect("typed workspace-relative entry must resolve independently of process cwd");
-    }
-
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    /// Fixtures live under the workspace's own `target/`, not `std::env::temp_dir()`.
-    /// Anything on the floor's reporting path normalizes through
-    /// `repo_relative_path_normalized`, which fail-closed refuses paths outside the
-    /// workspace root — a `/tmp` fixture made this module panic on that refusal before
-    /// reaching its assertion. The refusal is correct; the fixture location was not, and
-    /// `target/` is the convention the other fixture-based tests in this file use.
-    fn tmp_dir() -> std::path::PathBuf {
-        let id = SEQ.fetch_add(1, Ordering::Relaxed);
-        super::process_workspace_root().join("target").join(format!(
-            "sidecar_placement_test_{}_{}",
-            std::process::id(),
-            id
-        ))
-    }
-
-    #[test]
-    fn scan_detects_coproduct_wire_contract_data() {
-        let content =
-            "data foo: CoproductWireContract = { coproduct: \"X\", encoding: UntaggedVariant }";
-        assert_eq!(
-            scan_wire_contract_decl_names(content),
-            vec!["foo".to_string()]
-        );
-    }
-
-    #[test]
-    fn scan_detects_variant_encoding_data() {
-        let content = "data bar: VariantEncoding = llm_snake_wire_contract";
-        assert_eq!(
-            scan_wire_contract_decl_names(content),
-            vec!["bar".to_string()]
-        );
-    }
-
-    #[test]
-    fn scan_ignores_non_wire_contract_data() {
-        let content = "data baz: Int = 42\ndata qux: String = \"hello\"\ndata flag: Bool = true";
-        assert!(
-            scan_wire_contract_decl_names(content).is_empty(),
-            "should not fire on non-wire-contract data decls"
-        );
-    }
-
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn misplaced_wire_contract_decl_drives_discover_to_err() {
-        let dir = tmp_dir();
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        let file = dir.join("anthropic.dag");
-        std::fs::write(
-            &file,
-            "data anthropic_chat_message_wire_contract: CoproductWireContract = { \
-             coproduct: \"AnthropicChatMessage\", encoding: UntaggedVariant }\n",
-        )
-        .expect("write temp file");
-        // SUBJECT is the fixture directory alone; MACHINERY roots locate the discovery
-        // producer. Passing one root list for both submitted every `.dag` in `src/v2` + `dag`
-        // for judgement too, so an unrelated corpus file's refusal could answer first and
-        // mask this assertion — the same live-tree coupling this PR removes from the
-        // resolution-divergence fixtures, recreated (review 44641). The producer is genuinely
-        // shared machinery and stays real; only the subject is narrowed.
-        //
-        // What this test uniquely carries is the WIRING: that a sidecar refusal raised inside
-        // the `.dag` producer reaches the Rust bridge as an `Err`. The rule itself is not
-        // asserted twice — `floor_discovery_hand_rust_equivalence_witness_test.dag`
-        // (`floor_discovery_equivalence_misplaced_wire_contract_refuses_holds`) already owns
-        // it content-side, so re-deriving it here would be a second representation (§2/§3).
-        // Hence the call is at the producer seam, where a wire-contract violation is
-        // observable at all. (This clause used to contrast the seam against
-        // `floor_filename_hygiene_refusal_for_paths`; that decided only the `__`-in-basename
-        // rule, which is deleted, so the contrast named nothing.)
-        //
-        // Nothing here chdirs, and that is load-bearing: the producer entry is located by
-        // `resolve_workspace_entry` (git-toplevel, not cwd), so this test
-        // behaves the same under `cargo test` (cwd = crate dir) as on the floor (cwd = repo
-        // root). Chdir is not the alternative — this harness is multi-threaded and cwd is
-        // process-global.
-        let ws = super::process_workspace_root();
-        let producer_roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        let corpus_roots = vec![dir.to_string_lossy().into_owned()];
-        let result = super::invoke_floor_discovery_producer_over_corpus(
-            &producer_roots,
-            &corpus_roots,
-            &[],
-            &[],
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-        let msg = result
-            .err()
-            .expect("misplaced wire-contract decl must drive discovery to Err");
-        assert!(
-            msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
-            "error must name the decl type and required suffix: {msg}"
-        );
-    }
-
-    /// Non-vacuity control for the test above. A narrowed corpus is a new shape for the
-    /// producer — one root, no scan dirs, an empty roster — so `Err` on its own proves
-    /// nothing: it could be the narrowing itself refusing rather than the sidecar rule.
-    /// Same call, same narrowing, only the decl's type changed, and it must come back `Ok`.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn clean_dag_file_leaves_narrowed_discovery_ok() {
-        let dir = tmp_dir();
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        std::fs::write(
-            dir.join("anthropic.dag"),
-            "data anthropic_chat_message_label: String = \"AnthropicChatMessage\"\n",
-        )
-        .expect("write temp file");
-        let ws = super::process_workspace_root();
-        let producer_roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        let corpus_roots = vec![dir.to_string_lossy().into_owned()];
-        let result = super::invoke_floor_discovery_producer_over_corpus(
-            &producer_roots,
-            &corpus_roots,
-            &[],
-            &[],
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-        let rows = result.expect("a `.dag` file with no misplaced decl must not refuse");
-        let entries: Vec<&str> = rows.iter().map(|r| r.entry.as_str()).collect();
-        assert!(
-            entries.is_empty(),
-            "the fixture enrolls no witness, so the roster must be empty rather than \
-             carrying rows from outside the narrowed corpus: {entries:?}"
-        );
     }
 }
 
@@ -32787,10 +30047,7 @@ fn nfr_strip_comments(content: &str) -> String {
 
 fn nfr_closed_coproduct_names(files: &[(String, String)]) -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
-    for (rel, content) in files {
-        if is_test_dag(rel) {
-            continue;
-        }
+    for (_rel, content) in files {
         let lines: Vec<&str> = content.lines().collect();
         let mut i = 0;
         while i < lines.len() {
@@ -33195,9 +30452,6 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
     let mut self_block_refs: BTreeMap<String, i64> = BTreeMap::new();
     let mut type_variants: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (rel, content) in files {
-        if is_test_dag(rel) {
-            continue;
-        }
         for (name, block) in inert_carrier_type_carrier_blocks(content) {
             declared.entry(name.clone()).or_insert_with(|| rel.clone());
             *decl_count.entry(name.clone()).or_insert(0) += 1;
@@ -33217,21 +30471,34 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
     let mut nontest_occ: BTreeMap<String, i64> = BTreeMap::new();
     let mut self_tested: BTreeSet<String> = BTreeSet::new();
     for (rel, content) in files {
-        let mut local: BTreeMap<String, i64> = BTreeMap::new();
-        for raw in content.lines() {
+        // A test is a declaration carrying the authored `test` marker, so a line is test code
+        // exactly when it lies inside a marked declaration's extent; every other line of the same
+        // file, helper fns and fixtures included, is production reference. A source that does not
+        // parse has no determinable test set and the lens refuses rather than guessing (the same
+        // refusal `corpus_dag_files` raises for a walk it cannot complete).
+        let extents = test_marker::test_marked_decls(content, rel)
+            .unwrap_or_else(|cause| panic!("inert-carrier lens: {cause}"));
+        let mut next_extent = 0usize;
+        let mut offset = 0i64;
+        for line in content.split_inclusive('\n') {
+            let line_start = offset;
+            offset += line.len() as i64;
+            while next_extent < extents.len() && extents[next_extent].span_end <= line_start {
+                next_extent += 1;
+            }
+            let in_test = extents[next_extent..]
+                .iter()
+                .take_while(|d| d.span_start < offset)
+                .any(|d| d.span_end > line_start);
+            let raw = line.trim_end_matches(['\n', '\r']);
             for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
                 if names.contains(&tok) {
-                    *local.entry(tok).or_insert(0) += 1;
+                    if in_test {
+                        self_tested.insert(tok);
+                    } else {
+                        *nontest_occ.entry(tok).or_insert(0) += 1;
+                    }
                 }
-            }
-        }
-        if is_test_dag(rel) {
-            for (k, _) in local {
-                self_tested.insert(k);
-            }
-        } else {
-            for (k, v) in local {
-                *nontest_occ.entry(k).or_insert(0) += v;
             }
         }
     }
@@ -33330,8 +30597,8 @@ mod inert_carrier_tests {
                 "module a\ntype BuildState\n  = BuildInit\n  | BuildReady { expr: Int }\nfn go(x: Int) -> Int {\n  match BuildInit {\n    BuildInit => 0\n    BuildReady { expr: e } => e\n  }\n}\n",
             ),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { go(x: 1) == 0 }\nfn probe(s: BuildState) -> Bool { true }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { go(x: 1) == 0 }\ntest fn probe(s: BuildState) -> Bool { true }\n",
             ),
         ]);
         assert!(
@@ -33348,8 +30615,8 @@ mod inert_carrier_tests {
                 "module a\ntype LonelyState\n  = LonelyInit\n  | LonelyReady { expr: Int }\n",
             ),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { match LonelyInit { LonelyInit => true _ => false } }\nfn probe(s: LonelyState) -> Bool { true }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { match LonelyInit { LonelyInit => true _ => false } }\ntest fn probe(s: LonelyState) -> Bool { true }\n",
             ),
         ]);
         assert!(
@@ -33369,8 +30636,8 @@ mod inert_carrier_tests {
                 "module a\ntype Reach = Reach {\n  target: Int\n  access: Int\n}\nfn go(x: Int) -> Int {\n  let r = Reach { target: x, access: x }\n  r.target\n}\n",
             ),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { go(x: 1) == 1 }\nfn probe(s: Reach) -> Bool { true }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { go(x: 1) == 1 }\ntest fn probe(s: Reach) -> Bool { true }\n",
             ),
         ]);
         assert!(
@@ -33384,8 +30651,8 @@ mod inert_carrier_tests {
         let inert = inert_names_of(&[
             ("a.dag", "module a\ntype Lonely { x: Int }\n"),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { Lonely { x: 1 } == Lonely { x: 1 } }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { Lonely { x: 1 } == Lonely { x: 1 } }\n",
             ),
         ]);
         assert!(
@@ -33403,8 +30670,8 @@ mod inert_carrier_tests {
                 "module b\nimport a { Used }\nfn f(u: Used) -> Int { u.x }\n",
             ),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n",
             ),
         ]);
         assert!(
@@ -33420,7 +30687,7 @@ mod inert_carrier_tests {
                 "lens.dag",
                 "module lens\ntype LocalFact { x: Int }\nfn clean(fs: LocalFact) -> Bool { fs.x == 0 }\n",
             ),
-            ("lens_test.dag", "module t\nfn t() -> Bool { clean(fs: LocalFact { x: 0 }) }\n"),
+            ("t.dag", "module t\ntest fn t() -> Bool { clean(fs: LocalFact { x: 0 }) }\n"),
         ]);
         assert!(
             !inert.contains(&"LocalFact".to_string()),
@@ -33446,11 +30713,48 @@ mod inert_carrier_tests {
                 "module b\n// Noted is described here\nfn f() -> Int { 1 }\n",
             ),
             (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n",
+                "t.dag",
+                "module t\ntest fn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n",
             ),
         ]);
         assert!(inert.contains(&"Noted".to_string()));
+    }
+
+    #[test]
+    fn unmarked_helper_beside_a_test_decl_is_a_production_reference() {
+        // Test-ness is declaration grain: the unmarked helper in the same file as the marked
+        // test reads the carrier, so the carrier has a consumer outside every test.
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Aided { x: Int }\n"),
+            (
+                "t.dag",
+                "module t\nfn helper(a: Aided) -> Int { a.x }\ntest fn t() -> Bool { helper(a: Aided { x: 1 }) == 1 }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"Aided".to_string()),
+            "an unmarked helper's read is not test code; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn file_name_suffix_does_not_make_a_test() {
+        // The carrier is read only from a file spelled `_test.dag` that declares no `test`
+        // marker, so nothing self-tests it and the lens (which flags only tested-but-unread
+        // carriers) stays silent. Paired with `red_control_self_tested_zero_consumer_carrier_is_inert`,
+        // which differs only by the marker, this pins that the marker decides and the spelling
+        // does not.
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Spelled { x: Int }\n"),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Spelled { x: 1 } == Spelled { x: 1 } }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"Spelled".to_string()),
+            "a `_test.dag` spelling without a marker is not test code; got {inert:?}"
+        );
     }
 
     #[test]
@@ -34076,7 +31380,7 @@ fn build_doc_graph_report(extra_roots: &[String]) -> DocGraphReport {
 }
 
 // Live derivation of seed-shrink-census (plan doc deleted 2026-08-28) §5B ("T2 coverage debt"): that table was a
-// hand-maintained snapshot of v1 test modules with no floor `*_test.dag` equivalent. This walks
+// hand-maintained snapshot of v1 test modules with no floor test-marked equivalent. This walks
 // `src/v1/tests/src/*.rs` (modules containing `#[test]`) and `corpus_dag_files()` (the same
 // witness-layer-roots roster the floor uses) and diffs them by stem, so the debt roster tracks
 // the live tree instead of drifting the moment either side changes.
@@ -34135,11 +31439,14 @@ fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDisc
     }
 
     for (path, content) in corpus_dag_files() {
-        witness_behavior_ids.extend(
-            test_migration_dag_test_fn_names(&content)
-                .into_iter()
-                .map(|name| format!("{}::{name}", normalize_repo_path(&path))),
-        );
+        match test_marker::test_marked_decl_names(&content, &path) {
+            Ok(names) => witness_behavior_ids.extend(
+                names
+                    .into_iter()
+                    .map(|name| format!("{}::{name}", normalize_repo_path(&path))),
+            ),
+            Err(err) => errors.push(err),
+        }
     }
 
     legacy_behavior_ids.sort();
@@ -34851,7 +32158,7 @@ mod witness_layer_roots_compile_clean_tests {
         });
         let observation = declared_import_closure_binding_observation_from_resolved(
             resolved.as_ref(),
-            "v2.extdeps.languages.rust_test",
+            "v2.extdeps.languages.rust_fixtures",
             "rust_selection_policy_node",
         );
         assert!(
@@ -34973,13 +32280,13 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn unrelated_hard_diagnostic_observation_is_not_runnable_at_producer() {
         use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
-        const CONSUMER: &str = "v2.extdeps.languages.rust_test";
+        const CONSUMER: &str = "v2.extdeps.languages.rust_fixtures";
         const SYMBOL: &str = "rust_selection_policy_node";
         with_workspace_cwd(|| {
-            let valid = "module v2.extdeps.languages.rust_test\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
+            let valid = "module v2.extdeps.languages.rust_fixtures\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
             let compiled = compile_declared_import_closure_only_with_pool(
                 &class_b_declared_import_pool_roots(),
-                "src/v2/extdeps/languages/rust_test_fixtures.dag",
+                "src/v2/extdeps/languages/rust_fixtures.dag",
                 Some(valid),
             )
             .expect("content override bypasses pool load");
@@ -34992,7 +32299,7 @@ mod witness_layer_roots_compile_clean_tests {
                 Rc::new(CompilerDiagnostic::InternalError {
                     message: "producer control unrelated hard diagnostic".to_string(),
                     span: Rc::new(SourceSpan {
-                        file: "src/v2/extdeps/languages/rust_test_fixtures.dag".to_string(),
+                        file: "src/v2/extdeps/languages/rust_fixtures.dag".to_string(),
                         start: 0,
                         end: 1,
                     }),
@@ -35216,7 +32523,7 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn edgeless_entry_selects_on_its_dependency_and_skips_unrelated_touch() {
         with_workspace_cwd(|| {
-            let entry = "dag/test/claim/base64_rfc4648_witness_test.dag";
+            let entry = "dag/test/claim/base64_rfc4648_witness.dag";
             let roots = default_source_roots();
             let facts = build_module_graph_facts_live(&roots);
             let declared: HashSet<String> = facts.declared_paths.clone();
@@ -35285,7 +32592,7 @@ mod witness_layer_roots_compile_clean_tests {
                 .nodes
                 .iter()
                 .map(|n| workspace_relative_repo_path(&n.path))
-                .filter(|p| p.ends_with("_test.dag") || p.contains("/test/claim/"))
+                .filter(|p| p.contains("/test/claim/"))
                 .collect();
             let edgeless: Vec<String> = claim_entries
                 .iter()
@@ -35348,7 +32655,7 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
     #[test]
-    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness.dag"]
     fn scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
             let plan = compile_clean_scope_plan_from_touched_paths(
@@ -35395,7 +32702,7 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// Lever-a receipt: a direct dag entry touch scopes to at least that entry.
     #[test]
-    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
+    #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness.dag"]
     fn scoped_plan_includes_touched_dag_entry() {
         with_workspace_cwd(|| {
             let plan = compile_clean_scope_plan_from_touched_paths(
@@ -35784,7 +33091,7 @@ mod module_path_index_tests {
 
     #[test]
     fn reader_follows_synthetic_authority_with_nondefault_roots() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              data witness_layer_roots: List<String> = [\"r_one\", \"r_two\", \"r_three\"]\n";
         assert_eq!(
             witness_layer_roots_from_source(synthetic),
@@ -35826,7 +33133,7 @@ mod module_path_index_tests {
 
     #[test]
     fn exclusion_frontier_reader_follows_synthetic_authority() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              data witness_exclusion_frontier: List<WitnessExclusionRow> = [\n\
                WitnessExclusionRow {\n\
                  pattern: \"synthetic/offline_test.dag\",\n\
@@ -35878,7 +33185,7 @@ mod module_path_index_tests {
         // That is what makes the sweep discriminating rather than merely likely.
         for shift in 0..3 {
             let synthetic = format!(
-                "module gunbc.ci_layer_roots\n\n  SubstrateLongLaneRow {{\n    \
+                "module gunbc.ci.ci_layer_roots\n\n  SubstrateLongLaneRow {{\n    \
                  entry: \"dag/test/claim/long/x_test.dag\",\n    \
                  function: \"w_x\",\n    \
                  reason: \"{pad}{dashes} tail\",\n  }}\n",
@@ -35900,7 +33207,7 @@ mod module_path_index_tests {
 
     #[test]
     fn head_scan_ignores_longer_identifiers_containing_a_head() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {\n\
                true\n\
              }\n";
@@ -35914,7 +33221,7 @@ mod module_path_index_tests {
 
     #[test]
     fn rehomed_bin_wet_rows_parse_as_explicit_consumer_keys() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              type RehomedBinWetRow {\n\
                entry: String\n\
                function: String\n\
@@ -35936,29 +33243,6 @@ mod module_path_index_tests {
     }
 
     #[test]
-    fn source_root_ingest_gate_admitted_witness_rows_parse_as_executing_consumer_keys() {
-        let synthetic = "module gunbc.explicit_witness_admission\n\n\
-             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
-               source_root_ingest_gate_admitted_witness(\n\
-                 entry: \"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag\",\n\
-                 f: \"compiler_closure_scoped_ingest_module_count_ok_holds\",\n\
-                 kind: CorpusWitnessKind,\n\
-                 reason: \"r\",\n\
-                 dissolution: unbound_dissolution(description: \"d\")\n\
-               ),\n\
-             ]\n";
-        let keys =
-            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
-        assert!(
-            keys.contains(
-                &"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_scoped_ingest_module_count_ok_holds"
-                    .to_string()
-            ),
-            "transport gate admission rows must register as executing consumer keys; got {keys:?}"
-        );
-    }
-
-    #[test]
     fn explicit_witness_admission_rows_parse_as_executing_consumer_keys() {
         // Both known-red cadences author the same row shape on the one admission authority,
         // so one head reads the hermetic (CorpusWitnessKind) and wet (ExecutionWitnessKind)
@@ -35967,7 +33251,7 @@ mod module_path_index_tests {
         let synthetic = "module gunbc.explicit_witness_admission\n\n\
              data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
                known_red_probe(\n\
-                 entry: \"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag\",\n\
+                 entry: \"dag/test/claim/self_host_body_producer_behavioral_witness.dag\",\n\
                  f: \"self_host_body_producer_behavioral_receipt_holds\",\n\
                  kind: ExecutionWitnessKind,\n\
                  reason: \"r\",\n\
@@ -35978,7 +33262,7 @@ mod module_path_index_tests {
             super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
         assert!(
             keys.contains(
-                &"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds"
+                &"dag/test/claim/self_host_body_producer_behavioral_witness.dag::self_host_body_producer_behavioral_receipt_holds"
                     .to_string()
             ),
             "exact admission rows must register as executing consumer keys; got {keys:?}"
@@ -36042,7 +33326,7 @@ mod module_path_index_tests {
 
     #[test]
     fn substrate_long_lane_rows_parse_as_explicit_consumer_keys() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              type SubstrateLongLaneRow {\n\
                entry: String\n\
                function: String\n\
@@ -36065,7 +33349,7 @@ mod module_path_index_tests {
 
     #[test]
     fn exclusion_frontier_reader_refuses_unrecognized_classification() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              data witness_exclusion_frontier: List<WitnessExclusionRow> = [\n\
                WitnessExclusionRow {\n\
                  pattern: \"synthetic/x_test.dag\",\n\
@@ -36086,7 +33370,7 @@ mod module_path_index_tests {
 
     #[test]
     fn reader_follows_synthetic_authority_scan_dirs() {
-        let synthetic = "module gunbc.ci_layer_roots\n\n\
+        let synthetic = "module gunbc.ci.ci_layer_roots\n\n\
              data witness_discovery_scan_dirs: List<String> = [\"scan/a\", \"scan/b\"]\n";
         assert_eq!(
             witness_discovery_scan_dirs_from_source(synthetic),
@@ -36112,12 +33396,6 @@ mod module_path_index_tests {
         assert_eq!(brace_delta("fn f() {"), 1);
         assert_eq!(brace_delta("let s = \"{ { {\""), 0);
         assert_eq!(brace_delta("} // }"), -1);
-    }
-
-    #[test]
-    fn is_test_dag_matches_suffix() {
-        assert!(is_test_dag("src/v2/lens/x_test.dag"));
-        assert!(!is_test_dag("src/v2/lens/x.dag"));
     }
 
     #[test]
@@ -36838,11 +34116,11 @@ pub fn extdeps_shape_transport_policy_module_facts(
 // authority is the modeled lens: v2.lens.mandatory_tag's fold, registered in
 // required_compile_lens_roster at CompileLensRoot grain (the mandatory_tag_lens
 // row) and red/green-controlled at the v2 parse grain
-// (v2.test.long.mandatory_tag_gate_witness). This block survives only because the
+// (v2.test.claim.long.mandatory_tag_gate_witness). This block survives only because the
 // interpreted v2 pipeline prices a whole-corpus witness out of every cadence
 // (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted,
 // ~330 extdeps modules ≈ 3.5h; the modeled corpus witness exists at
-// src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag, offline recipe).
+// src/v2/test/claim/long/mandatory_tag_extdeps_corpus.dag, offline recipe).
 // Dissolution: witness realization (witness-realization-plan (plan doc deleted 2026-08-28)) runs
 // that parse-grain corpus witness at native speed, then this block and its three
 // builtins (facts_for_qualified_name, live_clean_tree_holds,
@@ -37553,11 +34831,11 @@ fn serialize_untagged_variant(
 mod import_closure_equivalence_tests {
     use super::{
         build_module_graph_facts_live, build_module_index, build_multi_entry_index,
-        closure_subject_for_entry, default_source_roots, floor_discovery_path_excluded,
-        import_closure_live_paths, load_sources_for_entry_with_index,
-        module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
-        resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
-        witness_layer_roots, workspace_relative_repo_path,
+        closure_subject_for_entry, default_source_roots, import_closure_live_paths,
+        load_sources_for_entry_with_index, module_graph_facts_build_count_for_test,
+        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
+        resolve_transitively, resolve_transitively_bfs_legacy, witness_layer_roots,
+        workspace_relative_repo_path,
     };
     use im::HashMap;
     use std::collections::BTreeSet;
@@ -37622,27 +34900,6 @@ mod import_closure_equivalence_tests {
         let index = build_module_index(pool_roots);
         let facts = super::build_module_graph_facts_live(pool_roots);
         assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
-    }
-
-    /// Floor witness entry paths enrolled by the source-root `*_test.dag` pass
-    /// (`gunbc.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
-    /// Avoids `discover_floor_witness_roster`'s producer + facts work — closure set-identity
-    /// only needs the witness entry roster.
-    fn floor_witness_entry_paths_for_oracle() -> BTreeSet<String> {
-        let mut entries = BTreeSet::new();
-        for root in default_source_roots() {
-            let mut dag_files = Vec::new();
-            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files)
-                .expect("acquire witness layer root");
-            for path in dag_files {
-                let rel = workspace_relative_repo_path(&path.path().to_string_lossy());
-                if !rel.ends_with("_test.dag") || floor_discovery_path_excluded(&rel) {
-                    continue;
-                }
-                entries.insert(rel);
-            }
-        }
-        entries
     }
 
     fn module_paths_for_sources(
@@ -38448,106 +35705,6 @@ mod exclusive_cost_partition_law {
     }
 }
 
-#[cfg(test)]
-mod selected_entry_closure_overlap_arithmetic {
-    //! Controls for the overlap arithmetic. The measurement's inputs come from live
-    //! production machinery, so these pin the derivations that turn those inputs into the
-    //! reported quantities — including the degenerate poles a real corpus rarely hits.
-
-    use super::*;
-
-    fn overlap(closures: Vec<(&str, Vec<&str>)>) -> SelectedEntryClosureOverlap {
-        let mut fanout: HashMap<String, usize> = HashMap::new();
-        let mut sum = 0usize;
-        let mut sizes = Vec::new();
-        for (entry, members) in &closures {
-            sizes.push((entry.to_string(), members.len()));
-            sum += members.len();
-            for m in members {
-                *fanout.entry((*m).to_string()).or_insert(0) += 1;
-            }
-        }
-        let union_modules = fanout.len();
-        let mut fanout_by_module: Vec<(String, usize)> = fanout.into_iter().collect();
-        fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        SelectedEntryClosureOverlap {
-            source_roots: vec!["dag".to_string()],
-            scan_dirs: vec!["dag/test/claim".to_string()],
-            head_sha: "0".repeat(40),
-            diff_base_override: None,
-            github_event_name: None,
-            github_base_ref: None,
-            changed_paths: Vec::new(),
-            departed_paths: Vec::new(),
-            roster_entries: closures.len(),
-            selected_entries: closures.iter().map(|(e, _)| e.to_string()).collect(),
-            skipped_entries: Vec::new(),
-            closure_sizes: sizes,
-            sum_closure_memberships: sum,
-            union_modules,
-            sum_closure_bytes: 0,
-            union_bytes: 0,
-            fanout_by_module,
-        }
-    }
-
-    #[test]
-    fn fully_disjoint_closures_have_no_displaceable_membership() {
-        // The pole that would CLOSE the union program: nothing is shared, so a union
-        // graph collapses nothing.
-        let m = overlap(vec![("a", vec!["m1", "m2"]), ("b", vec!["m3", "m4"])]);
-        assert_eq!(m.sum_closure_memberships, 4);
-        assert_eq!(m.union_modules, 4);
-        assert_eq!(m.duplication_factor(), Some(1.0));
-        assert_eq!(m.membership_upper_bound(), 0);
-        assert_eq!(m.fanout_percentile(99.0), Some(1));
-    }
-
-    #[test]
-    fn identical_closures_duplicate_by_the_entry_count() {
-        let m = overlap(vec![
-            ("a", vec!["m1", "m2"]),
-            ("b", vec!["m1", "m2"]),
-            ("c", vec!["m1", "m2"]),
-        ]);
-        assert_eq!(m.sum_closure_memberships, 6);
-        assert_eq!(m.union_modules, 2);
-        assert_eq!(m.duplication_factor(), Some(3.0));
-        assert_eq!(m.membership_upper_bound(), 4);
-        assert_eq!(m.fanout_by_module[0].1, 3);
-    }
-
-    #[test]
-    fn percentiles_are_nearest_rank_over_per_module_fanout() {
-        // m1 in all four, m2 in two, m3/m4 in one each → sorted fanout [1,1,2,4].
-        let m = overlap(vec![
-            ("a", vec!["m1", "m2", "m3"]),
-            ("b", vec!["m1", "m2"]),
-            ("c", vec!["m1"]),
-            ("d", vec!["m1", "m4"]),
-        ]);
-        assert_eq!(m.union_modules, 4);
-        assert_eq!(m.sum_closure_memberships, 8); // 3 + 2 + 1 + 2
-        assert_eq!(m.membership_upper_bound(), 4); // 8 - 4
-        assert_eq!(m.fanout_percentile(50.0), Some(1));
-        assert_eq!(m.fanout_percentile(99.0), Some(4));
-        assert_eq!(m.fanout_percentile(100.0), Some(4));
-    }
-
-    #[test]
-    fn empty_selection_reports_no_factor_rather_than_a_fabricated_one() {
-        // A diff that selects nothing is a real outcome; 0/0 must not become 1.0.
-        let m = overlap(Vec::new());
-        assert_eq!(m.union_modules, 0);
-        assert_eq!(m.duplication_factor(), None);
-        assert_eq!(m.membership_upper_bound(), 0);
-        assert_eq!(m.fanout_percentile(50.0), None);
-        let json = render_selected_entry_closure_overlap_json(&m);
-        assert!(json.contains("\"duplication_factor\":null"));
-        assert!(json.contains("\"max\":null"));
-    }
-}
-
 #[path = "census_exclude_derive.rs"]
 pub mod census_exclude_derive;
 
@@ -39316,7 +36473,7 @@ pub fn assemble_prepared_subject_from_corpus(
             //    with one import and one bare cross-module call has that edge dropped by the
             //    loader and followed by `claim_scope_for`. Under the whole-tree subject the
             //    flat bare-name channel hid the difference; under this subject the referenced
-            //    module is simply absent (measured 2026-08-29: v2.test.lens_vacuity.vacuity_test
+            //    module is simply absent (measured 2026-08-29: v2.test.lens_vacuity.vacuity
             //    refused no-such-function `rust_target_model_staging`, then `eval_context`, one
             //    hop per run). So every module in the closure is bare-scanned here with the
             //    loader's own scanner, and each pulled module joins with its own both-closure.
@@ -39456,7 +36613,7 @@ pub fn assemble_prepared_subject_from_corpus(
     // reaches the operator then names the IMPORTER -- a file nobody touched -- while the row that
     // caused it is somewhere else entirely, so the evidence points away from the cause. Measured
     // as exactly that, twice in one hour: required-floor run 34016411960 refused at
-    // src/v2/test/claim/long/live_read_classification_test.dag:46 for an exclusion added to
+    // src/v2/test/claim/long/live_read_classification.dag:46 for an exclusion added to
     // `floor_prepared_subject_exclusions`, and the first two diagnoses of it both concluded the
     // imported module had been moved or renamed. It had not.
     //
@@ -40445,9 +37602,9 @@ fn claim_scope_for_with_memos(
     // half — a module that reaches its dependencies by bare reference was carried and one that
     // reaches them by `import` was not.
     //
-    // Measured specimen: `test.claim.host_phase_status` declares no imports at all, reaches its
+    // Measured specimen: `test.claim.host.host_phase_status_witness` declares no imports at all, reaches its
     // callees by bare reference, and failed with `undefined variable: operator_host_srv1` — a
-    // `data` declaration in `gunbc.fleet_intent_network` that a module in its closure IMPORTS.
+    // `data` declaration in `gunbc.fleet.fleet_intent_network` that a module in its closure IMPORTS.
     // The definer was one edge away the whole time, across an edge this walk did not traverse.
     let mut frontier: Vec<String> = vec![entry_module.func_env.name.clone()];
     while let Some(current) = frontier.pop() {
@@ -40663,7 +37820,7 @@ fn claim_scope_for_with_memos(
     // only print zero. DESIGN §4b(4) says a climb deletes the lower-rung PRODUCTION machinery it
     // obsoletes while the discriminating RED and positive control stay enrolled, so the per-site
     // read lines are gone and the fixture rows in
-    // `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` remain.
+    // `dag/test/claim/bare_name_ambiguity_wall_witness.dag` remain.
     //
     // THE DECLARATION-GRAIN AND QUALIFIED-READ CENSUSES ARE NOT IN SCOPE HERE AND STAY LIVE:
     // `ambiguous_bare_names` and `qualified_bare_reads` are populated on scopes this wall ACCEPTS,
@@ -40985,7 +38142,7 @@ pub enum RequiredFloorDisposition {
     /// denominators have been reconciled.
     DeclinedChangedWitnessOutsideDiscovery { module_path: String },
     /// Selected by the changed-witness sublane, and its file is a `BinWitnessWet`
-    /// `WitnessExclusionRow` (`gunbc.ci_layer_roots` `witness_exclusion_frontier`): its claims
+    /// `WitnessExclusionRow` (`gunbc.ci.ci_layer_roots` `witness_exclusion_frontier`): its claims
     /// drive compiled seed witness binaries on host effects the floor's hermetic route refuses,
     /// and NO CI LANE EXECUTES THAT CLASS -- its per-PR batch died with the floor cut, and
     /// falsifier.yml with gunbc#8283. The name says exactly that and names no owner, because no
@@ -41057,7 +38214,7 @@ pub struct WitnessExecutionOccurrence {
     /// a charge, not a failed interrupt.
     ///
     /// `opaque_host_call_unbounded:<operations>` -- the claim's cost accrued inside one or more
-    /// arms of `gunbc.v1_interpreter_opaque_host_call`'s grounded surface, where no stride point
+    /// arms of `gunbc.v1.v1_interpreter_opaque_host_call`'s grounded surface, where no stride point
     /// falls. Here completion over the ceiling means the deadline OBSERVED NOTHING, so the
     /// crossing is a missed interrupt and blocking it is the enforcement the model intends.
     ///
@@ -41503,7 +38660,7 @@ const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 7] = [
     // policy module's frame because this list IS the declaration that a module is evaluated by
     // name, and the alternative -- asking a `gunbc.*` module through a frame scoped for
     // `v2.workflow.*` -- is what this comment's own rule refuses.
-    "gunbc.v1_interpreter_opaque_host_call",
+    "gunbc.v1.v1_interpreter_opaque_host_call",
     // The enrolment margin budget (`floor_enrolment_margin_budget_ms_count`) and typed
     // cost-debt identities (`enrolment_typed_cost_debt_identities`), qualified, from
     // `floor_enrolment_margin_budget_ms` / `floor_enrolment_typed_cost_debt_identities`.
@@ -41619,8 +38776,8 @@ fn heartbeat_measured_bytes(v: Option<u64>, cause: &str) -> String {
 /// held byte-equal to the oracle by `heartbeat_tests::render_heartbeat_line_mirror_matches_seed_oracle`
 /// (which runs the `.dag` through the interpreter on the same two specimens), and the oracle's
 /// bytes for those specimens are pinned on the required floor by
-/// `test.claim.observation_seed_heartbeat_witness_test`. The stall clause is computed by the
-/// `memory_governor` mirrors of `gunbc.memory_stall_refusal` -- the same two functions the stall
+/// `test.claim.observation_seed_heartbeat_witness`. The stall clause is computed by the
+/// `memory_governor` mirrors of `gunbc.host.memory_stall_refusal` -- the same two functions the stall
 /// refusal consumes -- exactly as the `.dag` renderer calls the authority's own.
 pub(crate) fn render_heartbeat_line_mirror(
     elapsed_ms: u64,
@@ -42538,8 +39695,9 @@ mod required_floor_disposition_and_storage_agreement_law {
     /// a stand-in for it.
     #[test]
     fn qualified_declaration_reference_specimen_is_long_path_but_executing_module() {
-        let path = "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag";
-        let module = "test.claim.qualified_declaration_reference_emit_cross_module_witness";
+        let path =
+            "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness.dag";
+        let module = "test.claim.long.qualified_declaration_reference_emit_cross_module_witness";
 
         let path_is_long = is_long_home_path(path);
         let matched_prefix = long_home_prefixes_for_test()
@@ -42569,7 +39727,7 @@ mod required_floor_disposition_and_storage_agreement_law {
     fn long_home_prefixes_for_test() -> Vec<String> {
         vec![
             "test.claim.long.".to_string(),
-            "v2.test.long.".to_string(),
+            "v2.test.claim.long.".to_string(),
             "v2.test.claim.long.".to_string(),
         ]
     }
@@ -43909,4 +41067,68 @@ mod collect_node_values_depth_tests {
 
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+}
+
+/// THE CONTROL FOR `a_child_peak_resident_inherits_the_predecessor_address_space`: a tiny child under
+/// a large parent must read small. The parent touches 512 MiB and keeps it live, spawns this test
+/// binary as the child, and the child reports `peak_rss_vhwm_bytes` beside the raw `ru_maxrss` it
+/// would have reported before the fix. The child's own peak is a few MiB; the parent's is over 512.
+#[cfg(all(test, target_os = "linux"))]
+mod peak_resident_inheritance_control_tests {
+    const CHILD: &str = "GUNBC_PEAK_RSS_CONTROL_CHILD";
+    const PARENT_BYTES: usize = 512 * 1024 * 1024;
+
+    #[test]
+    fn peak_rss_vhwm_bytes_is_not_the_spawning_parents() {
+        if std::env::var(CHILD).is_ok() {
+            let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+            unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
+            println!(
+                "PEAK_CONTROL vmhwm={} raw_ru_maxrss={}",
+                super::peak_rss_vhwm_bytes().expect("VmHWM readable"),
+                (ru.ru_maxrss as u64) * 1024
+            );
+            return;
+        }
+        let mut big = vec![0u8; PARENT_BYTES];
+        for page in big.chunks_mut(4096) {
+            page[0] = 1;
+        }
+        let out = std::process::Command::new(std::env::current_exe().expect("test exe"))
+            .args([
+                "--exact",
+                "cli_run::peak_resident_inheritance_control_tests::peak_rss_vhwm_bytes_is_not_the_spawning_parents",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("child process");
+        std::hint::black_box(&big);
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let line = text
+            .lines()
+            .find_map(|l| l.find("PEAK_CONTROL").map(|at| &l[at..]))
+            .unwrap_or_else(|| panic!("child printed no reading: {text}"));
+        eprintln!("{line}");
+        let field = |name: &str| -> u64 {
+            line.split_whitespace()
+                .find_map(|f| f.strip_prefix(name))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(|| panic!("no {name} in {line}"))
+        };
+        let vmhwm = field("vmhwm=");
+        // THE SETUP MUST BE ABLE TO FAIL: the raw `ru_maxrss` the old reader returned has to show the
+        // parent's peak here, or this host/harness no longer inherits and the pass below shows nothing.
+        let raw = field("raw_ru_maxrss=");
+        assert!(
+            raw >= (PARENT_BYTES as u64) / 2,
+            "the control child did not inherit the parent's peak, so this test discriminates nothing: {line}"
+        );
+        assert!(vmhwm > 0, "a Measured peak must exist: {line}");
+        assert!(
+            vmhwm < (PARENT_BYTES as u64) / 2,
+            "the child's own peak read as the parent's: {line}"
+        );
+    }
 }

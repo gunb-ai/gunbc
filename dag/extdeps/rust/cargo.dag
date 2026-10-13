@@ -1,6 +1,6 @@
-module extdeps.cargo
+module extdeps.rust.cargo
 
-import extdeps.cargo_version { CargoPackageVersion, CargoVersionRequirement, CargoToolVersionFloor }
+import extdeps.rust.version { CargoPackageVersion, CargoVersionRequirement, CargoToolVersionFloor }
 import std.types { Bool, FilePathParts, NonEmptyStr, String, List }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, FootprintProvenance, CitedUpstream, RegenerableFromSource, LocalCacheState }
 
@@ -103,7 +103,7 @@ data default_profile: CargoProfile = "dev"
 //
 // RUSTUP_HOME is deliberately ABSENT from this coproduct. Rustup is an independently governed
 // upstream product with its own book and its own release cadence (DESIGN section 3, external
-// upstream decomposition), so its variable lives in extdeps.rustup; enumerating it here would
+// upstream decomposition), so its variable lives in extdeps.rust.rustup; enumerating it here would
 // make a rustup change require editing cargo's module.
 data cargo_environment_variables_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

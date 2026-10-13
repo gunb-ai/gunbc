@@ -1,6 +1,6 @@
 module v2.workflow.floor_discovery
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import std.execution_mode { ExecutionMode, Hermetic, Wet, Record, execution_mode_eq }
 import std.content_hash {
   Fnv1a64Structural,
@@ -12,12 +12,6 @@ import extdeps.git.object_store {
   GitSha1ObjectId,
   GitSha256ObjectId,
   git_object_id_eq,
-}
-import v2.workflow.floor_naming_hygiene {
-  floor_test_marked_decl_allowed_in_entry,
-  floor_wire_contract_decl_allowed_in_entry,
-  floor_test_sidecar_suffix,
-  floor_wire_contract_sidecar_suffix
 }
 import std.types { String, Bool, List }
 import std.optional {

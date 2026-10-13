@@ -1,4 +1,4 @@
-module gunbc.machine_intake_boot_image_export_ownership
+module gunbc.machine_intake.boot_image_export_ownership
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.algebra { trim }
@@ -13,7 +13,7 @@ import extdeps.access.posix {
   PosixUser,
   posix_root_uid,
 }
-import gunbc.fleet_posix_accounts {
+import gunbc.fleet.fleet_posix_accounts {
   FleetAccountAutomation,
   FleetAccountCiRunner,
   FleetAccountHostAdministrator,
@@ -42,7 +42,7 @@ import gunbc.fleet_posix_accounts {
 // than the earlier state, which was simply that nobody but root could write there.
 //
 // THE WRITE BOUNDARY CONSUMES THIS REQUIREMENT. observed_export_ownership_standing is the causal
-// entry; gunbc.machine_intake_boot_image_fetch admit_then_publish_boot_image refuses before the
+// entry; gunbc.machine_intake.boot_image_fetch admit_then_publish_boot_image refuses before the
 // move unless the standing is ExportOwnershipSatisfied. An earlier paragraph in this file said
 // nothing consumed it; that sentence outlived the commit that wired the gate.
 //
@@ -57,7 +57,7 @@ import gunbc.fleet_posix_accounts {
 //
 // AND IT IS AN EXISTING PRINCIPAL RATHER THAN A NEW ONE. A first draft of this row carried a free
 // PosixLoginName "gunbc-media", which is a second account vocabulary beside the one the fleet
-// already has: gunbc.fleet_posix_accounts owns FleetPosixAccountKey, and FleetAccountAutomation is
+// already has: gunbc.fleet.fleet_posix_accounts owns FleetPosixAccountKey, and FleetAccountAutomation is
 // already declared there with login_policy KeyOnlyAutomation — a non-interactive identity that
 // exists precisely for work like this. Minting a media-specific account would have been the
 // nicknaming DESIGN §3 forbids, and the requirement now names the key.
@@ -113,7 +113,7 @@ type ExportOwnershipStanding
 // a silent non-match.
 //
 // IT LIVES HERE RATHER THAN UPSTREAM ON PURPOSE, and should move if a second consumer appears:
-// gunbc.fleet_posix_accounts is the vocabulary's home, and a label fn belongs beside the type once
+// gunbc.fleet.fleet_posix_accounts is the vocabulary's home, and a label fn belongs beside the type once
 // more than one caller wants it. One caller does not justify editing the authority.
 fn fleet_account_key_label(key: FleetPosixAccountKey) -> String {
   match key {
@@ -247,7 +247,7 @@ fn boot_image_export_ownership_probe() -> ProcessExit {
 
 // THE NAME ROSTER FOR THIS EXPORT'S HOST, and it lives here for the reason fleet_account_key_label
 // above lives here: one consumer does not justify editing the fleet authority, and it should move
-// to gunbc.fleet_posix_accounts the moment a second one appears. What it maps is genuinely a fleet
+// to gunbc.fleet.fleet_posix_accounts the moment a second one appears. What it maps is genuinely a fleet
 // fact -- which local login realizes which declared principal on this host -- and gunbc-fleet is
 // read from srv2 rather than invented, as is the operator login beside it.
 //

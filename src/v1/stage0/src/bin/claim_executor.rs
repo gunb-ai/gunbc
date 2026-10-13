@@ -187,7 +187,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // kernel is enforcing a ceiling instead of thrashing against a machine.
     // A refused bind STOPS THE LINE: the run asked to be bounded, it is not bounded, and
     // proceeding would be exactly the escape hatch the request existed to close.
-    // Authority: `gunbc.memory_cgroup_binding`.
+    // Authority: `gunbc.host.memory_cgroup_binding`.
     let bind = v1_compiler::memory_governor::apply_memory_cgroup_bind();
     eprintln!("{}", v1_compiler::memory_governor::cgroup_bind_note(&bind));
     if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
@@ -613,7 +613,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         if required_ci_phase_selected(RequiredCiPhase::Parse, required_ci_lane) {
             // THE PHASES BEFORE THE FLOOR ARE SEAMS TOO: the floor enters holding whatever the
             // parse and its riders left resident, so a beat at their boundaries is what separates
-            // that inheritance from the floor's own growth (gunbc.floor_demand).
+            // that inheritance from the floor's own growth (gunbc.floor.floor_demand).
             v1_compiler::cli_run::floor_seam("parse");
             eprintln!(
                 "required-ci: phase parse (.dag: {})",
@@ -1011,8 +1011,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         // and the run reports both lanes' ledgers whatever either does.
         //
         // The SUBJECT widened with the split, which is the same ruling's other half: the
-        // roster is `src/v2/compiler/00_compile.dag`, the v2 pipeline root, where it was
-        // the smallest entry in the tree. The reason is in `gunbc.ci_layer_roots`
+        // roster is `src/v2/compiler/compile.dag`, the v2 pipeline root, where it was
+        // the smallest entry in the tree. The reason is in `gunbc.ci.ci_layer_roots`
         // `required_v2_emission_entries` -- the cost that argued against it was a cost
         // against a SERIAL run, and this lane's cost is now free up to the floor's
         // duration.
@@ -1183,7 +1183,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("required-ci: measurement completed receipt={path}");
             // THE WRITE IS NOT THE VERDICT. This branch used to return SUCCESS here because the
             // D0 design published the receipt and let a SEPARATE adjudicating step decide. That
-            // step no longer exists: `gunbc.compiler_gate_workflow`
+            // step no longer exists: `gunbc.witness.compiler_gate_workflow`
             // `compiler_gate_floor_run_step` carries no `continue-on-error` and is followed by
             // no adjudicator -- "here a refused claim refuses the lane", as its own note says --
             // while the command it runs still asks for a receipt. So the measuring process is
@@ -1276,15 +1276,13 @@ fn run() -> Result<ExitCode, ExitCode> {
             source_roots.clone()
         };
         eprintln!(
-            "v2-native-route: emitted-native compiler executes the derived v2.test.* universe (operator-invoked; not a required lane)"
+            "v2-native-route: emitted-native compiler executes the derived native-lane universe (operator-invoked; not a required lane)"
         );
-        // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern -- read from
-        // the ONE seed-side accessor rather than spelled as a literal here, so this caller and the
-        // `gunbc test` verb cannot drift about what the native universe is. A narrower pattern
-        // reaches the same runner through `gunbc test <operand>`.
-        let default_pattern =
-            v1_compiler::cli_run::target_invocation_host::native_route_default_pattern_text();
-        return match v1_compiler::cli_run::run_required_v2_native(&roots, &default_pattern) {
+        // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes no pattern: the emitted binary
+        // adjudicates by `gunbc.witness.v2_native_route` `native_route_default_pattern`, read inside
+        // the compiler where it is declared, and this caller holds no spelling of it. A narrower
+        // pattern reaches the same runner through `gunbc test <operand>`.
+        return match v1_compiler::cli_run::run_required_v2_native(&roots, None) {
             v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationHeld { .. } => {
                 Ok(ExitCode::SUCCESS)
             }
@@ -1973,7 +1971,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // than inferable.
     // AND THE SENTENCE IS NOW BOUNDED ABOVE, WHICH IT WAS NOT.
     // "every discovered site is exactly one of these" is a totality claim over SITES, and it was
-    // exact and silent at the same time: a `*_test.dag` entry declaring no `test fn` contributes
+    // exact and silent at the same time: an entry declaring no test-marked declaration contributes
     // no site at all, so it could never appear in any of the four numbers, and the line read as a
     // coverage guarantee over a denominator that had already dropped it. It cannot now — a barren
     // entry stops the line in `run_required_floor` before this point — so the guarantee is stated
@@ -1983,7 +1981,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          declined_outside_required_gate={} declined_outside_gate_closure={} \
          declined_discovery_excluded={} — every DECLARED witness identity in the tree is exactly \
          one of these, joined at identity grain (FloorDispositionJoinInexact refuses otherwise), \
-         and no `*_test.dag` entry declared zero sites (v2.workflow.floor_discovery_producer \
+         and no entry declared zero sites (v2.workflow.floor_discovery_producer \
          refuses a barren or misplaced sidecar upstream of this line, over the full module \
          index)",
         outcome.declared_identities,
@@ -2572,7 +2570,7 @@ mod tests {
         rest[..end].to_string()
     }
 
-    // Test-only mirror of gunbc.ci_materialization obligation subject rows. Production
+    // Test-only mirror of gunbc.ci.ci_materialization obligation subject rows. Production
     // parses transported obligations from WalkPlan.finalization; this module is the
     // checkable drift receipt (review 48261 / 48570).
     const TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY: &str =
@@ -2582,7 +2580,7 @@ mod tests {
         "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag";
     const TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION: &str = "native_selected_logic_production_spec";
 
-    /// Test-only obligation-subject literals must track gunbc.ci_materialization authority rows.
+    /// Test-only obligation-subject literals must track gunbc.ci.ci_materialization authority rows.
     #[test]
     fn floor_resolve_obligation_seed_constants_match_dag_authority() {
         let ci_materialization = dag_source_from_repo("dag/gunbc/ci/ci_materialization.dag");

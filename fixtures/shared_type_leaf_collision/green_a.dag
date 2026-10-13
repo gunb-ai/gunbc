@@ -1,0 +1,9 @@
+module stlc.green_a
+
+type Alpha {
+  n: Int
+}
+
+fn hold_alpha() -> Alpha {
+  Alpha { n: 0 }
+}

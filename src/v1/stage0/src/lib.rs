@@ -37,28 +37,6 @@ pub use v1_stage0_v1_infer::*;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod extdeps_cargo;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
-pub mod extdeps_cargo_version;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod extdeps_filesystem_rust_realization;
 #[allow(
     unused_imports,
@@ -71,6 +49,28 @@ pub mod extdeps_filesystem_rust_realization;
     clippy::all
 )]
 pub mod extdeps_languages_rust_derive_contracts;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod extdeps_rust_cargo;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod extdeps_rust_version;
 #[allow(
     unused_imports,
     unused_variables,
@@ -147,7 +147,7 @@ pub mod gunbc_emitted_crate_workspace;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_namespace_reference_derived_closure_admission;
+pub mod gunbc_namespace_cut_namespace_reference_derived_closure_admission;
 #[allow(
     unused_imports,
     unused_variables,
@@ -158,7 +158,7 @@ pub mod gunbc_namespace_reference_derived_closure_admission;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_reference_derived_candidate;
+pub mod gunbc_namespace_cut_reference_derived_candidate;
 #[allow(
     unused_imports,
     unused_variables,
@@ -191,7 +191,7 @@ pub mod gunbc_rust_decl_type_overlay;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_stage0_crate_layout_generated;
+pub mod gunbc_stage0_stage0_crate_layout_generated;
 #[allow(
     unused_imports,
     unused_variables,
@@ -202,7 +202,7 @@ pub mod gunbc_stage0_crate_layout_generated;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_stage0_crate_partition_generated;
+pub mod gunbc_stage0_stage0_crate_partition_generated;
 #[allow(
     unused_imports,
     unused_variables,
@@ -213,7 +213,7 @@ pub mod gunbc_stage0_crate_partition_generated;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_stage0_emitted_edge_admission;
+pub mod gunbc_stage0_stage0_emitted_edge_admission;
 #[allow(
     unused_imports,
     unused_variables,
@@ -224,7 +224,7 @@ pub mod gunbc_stage0_emitted_edge_admission;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_stage0_emitted_population_manifest;
+pub mod gunbc_stage0_stage0_emitted_population_manifest;
 #[allow(
     unused_imports,
     unused_variables,
@@ -235,7 +235,7 @@ pub mod gunbc_stage0_emitted_population_manifest;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_stage0_executable_assembly_generated;
+pub mod gunbc_stage0_stage0_executable_assembly_generated;
 #[allow(
     unused_imports,
     unused_variables,
@@ -246,7 +246,7 @@ pub mod gunbc_stage0_executable_assembly_generated;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_stage0_partition_package_graph;
+pub mod gunbc_stage0_stage0_partition_package_graph;
 #[allow(
     unused_imports,
     unused_variables,
@@ -741,6 +741,17 @@ pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod v1_tests_claim_escape_json_string_differential;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod v1_tests_claim_generic_identity_census;
 #[allow(
     unused_imports,
@@ -797,6 +808,17 @@ pub mod v1_tests_claim_production_fed_exposure_discrimination_control_test;
     clippy::all
 )]
 pub mod v1_tests_claim_reference_derived_disposition_census_witness_test;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod v1_tests_claim_shared_type_leaf_collision_census;
 #[allow(
     unused_imports,
     unused_variables,
@@ -874,6 +896,7 @@ pub mod evaluation_budget_consequence_generated;
 pub mod gunbc_file_transport_generated;
 pub mod memory_governor;
 pub mod module_path_index;
+pub mod native_route_seed_boundary_generated;
 pub mod process_group;
 pub mod recorded_fixture;
 pub mod release_locus_seed_constants_generated;

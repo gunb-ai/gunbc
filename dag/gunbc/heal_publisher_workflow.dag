@@ -3,7 +3,7 @@ module gunbc.heal_publisher_workflow
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.optional { Present, Absent }
-import v2.std.algebra { list_map }
+import std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue, YamlValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -18,7 +18,7 @@ import extdeps.github.actions {
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason, checkout_action, download_artifact_action, google_auth_action }
 import extdeps.github.action_release { ActionRelease, action_release_same_producer }
-import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
+import gunbc.roadmap.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
   workflow_job_capability_closure, capability_closure_is_closed
@@ -27,9 +27,9 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
-import gunbc.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
-import gunbc.ci_materialization { step_display_name }
-import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
+import gunbc.ci.ci_materialization { step_display_name }
+import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.heal_workflow {
   heal_workflow_name, heal_job_holds_publication_credential, step_uses_action, job_permissions_carry_write
 }
@@ -41,7 +41,7 @@ import gunbc.heal_publication { heal_publication_candidate_directory_env, heal_p
 import gunbc.auth.heal_publisher_federation {
   heal_publisher_wif_provider_resource, heal_publisher_service_account
 }
-import gunbc.ci_spec {
+import gunbc.ci.ci_spec {
   gunbc_ci_heal_publication_admit_invoke,
   gunbc_ci_heal_publication_publish_invoke
 }

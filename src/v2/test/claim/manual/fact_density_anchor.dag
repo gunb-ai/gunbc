@@ -1,4 +1,4 @@
-module v2.test.manual.fact_density_anchor
+module v2.test.claim.manual.fact_density_anchor
 
 data fact_density_anchor_hollow_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },

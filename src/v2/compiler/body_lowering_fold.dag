@@ -16,7 +16,7 @@ import v2.std.service_realization_labels {
 }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq }
 import v2.compiler.fold_lowering {
   CallbackAllByAnd,
   CallbackAnyByOr,
@@ -89,7 +89,6 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
 import v2.std.node { content_hash }
-import v2.std.algebra { fold_list, list_map, length, zip_eq }
 import v2.std.collection {
   empty_map,
   list_at_optional,
@@ -1032,6 +1031,7 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
     || (emitted == ^dag_surface_field_init_string_key)
+    || (emitted == ^dag_surface_field_init_pun)
     || (emitted == ^dag_surface_where_refinement_clause)
     || (emitted == ^dag_surface_where_predicate)
     || (emitted == ^dag_surface_arrow_lambda)
@@ -2053,7 +2053,7 @@ fn body_lower_grammar_terminals(expr: GrammarExpr) -> List<Symbol> {
 
 // Nullary, pure and reifying to symbols, so both sets are enrolled WARM in
 // v2.workflow.floor_pure_producer_share: building the grammar expressions per claim frame cost
-// ~11.4k eval steps and pushed v2.test.manual.body_lowering_normalize_add over the new-witness
+// ~11.4k eval steps and pushed v2.test.claim.manual.body_lowering_normalize_add over the new-witness
 // budget on this PR's first floor run.
 fn body_lower_binary_operator_tokens() -> List<Symbol> {
   body_lower_grammar_terminals(expr: dag_grammar_binary_expr_expr())
@@ -4353,15 +4353,13 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol, source: No
 // v2.compiler.test_marker_capture over the same parse tree, so the semantic member stays identical
 // to a plain fn's.
 //
-// TWO PRODUCERS OF TEST-NESS STAND TODAY, AND THIS NAMES BOTH RATHER THAN DROPPING ONE.
-// (1) The capture above, the compiler's. (2) The floor's witness universe, derived by
-// v2.workflow.floor_discovery_source_authority discover_floor_rows_for_source, a line scan for
-// `test fn ` / `test data ` over source text that deliberately neither parses nor resolves
-// (v2.workflow.floor_naming_hygiene names it a second parser). TRIGGER for converging it onto this
-// channel: the floor preparing a parse artifact for each discovered source, at which point discovery
-// reads the marks from that parse instead of rescanning the bytes. A third producer,
-// v2.workflow.realization_attempt's line-rewriting capture, was deleted in the change that added
-// this channel: its only reason was a grammar that could not parse the marker.
+// WHICH DECLARATIONS ARE TESTS IS ONE FACT, AND THE MARKER IS ITS ONLY SOURCE. The capture above is
+// the compiler's reading of it. The floor's witness universe
+// (v2.workflow.floor_discovery_source_authority discover_floor_rows_for_source) no longer rescans
+// source text for `test fn ` / `test data `: it takes each file's marked names as a SUPPLIED value
+// (v2.workflow.floor_discovery_row FloorMarkedSource), so no second reading of the text decides what
+// a test is. A line-rewriting capture, v2.workflow.realization_attempt's, was deleted in the change
+// that added this channel: its only reason was a grammar that could not parse the marker.
 fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
@@ -4608,7 +4606,7 @@ fn body_lower_repeated_param_binding_diagnostic(edge: Edge) -> Diagnostic {
 // SYNTAX -- namespace_graft named the member `x -> <the parse tail ': T = e'>` -- and infer was
 // asked to ground `:` and `=` tokens and the type's spelling. Nothing could ground those, so every
 // data declaration stayed on the grounding frontier and gen-one's translate gate refused the
-// one-line door probe (fixture.native_cli_door.door_probe). A constant is the nullary function that
+// one-line door probe (gunbc.native_cli_door_probe). A constant is the nullary function that
 // returns it: that is the seed's own realization (v1.compiler.emit_rust emits a data item as a
 // nullary fn and calls it at every reference), and it lets the existing Arrow, product and literal
 // derivations ground the member with no data-specific infer rule. The data-versus-fn distinction a
@@ -7252,7 +7250,7 @@ fn body_lower_postfix_projection_has_call_suffix(repeat_elem: Node) -> Bool {
 // suffix `a.b.C { f: v }`, an `as` suffix), which must REFUSE, and NO SLOT AT ALL, which is
 // simply not this shape and must DECLINE to the existing arms exactly as the pre-PR2 walk did.
 // Measured: refusing the absent case as well took the workload from 0 to 103 refusing rows over
-// ordinary modules -- src/v2/compiler/01_tokenize.dag, src/v2/std/artifact.dag and 101 others --
+// ordinary modules -- src/v2/compiler/tokenize.dag, src/v2/std/artifact.dag and 101 others --
 // which is DESIGN section 5 inverted, a decline widened into a refusal rather than a widen
 // narrowed into one.
 type PostfixSuffixRead
@@ -7358,7 +7356,7 @@ fn body_lower_string_literal_value_optional(node: Node) -> Optional<Node> {
 // THE PATTERN READER: an atom, or the first atom a pattern capture's children yield. A pattern
 // capture such as `A { x: v }` is a sequence whose first atom IS its tag, so the child search is this
 // reader's contract (the pattern claims of v2.test.claim.body_lowering.single_arm_match and
-// v2.test.manual.body_lowering_match go red without it).
+// v2.test.claim.manual.body_lowering_match go red without it).
 fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
   match body_lower_atom_node_lowered_optional(stripped: stripped) {
@@ -9922,6 +9920,36 @@ fn body_lower_field_init_is_string_keyed(item: Node) -> Bool {
   }
 }
 
+// A PUN `R { s }` IS THE FIELD `s: s`, AND THE PARSE SAYS SO. The punned field is its own production
+// (^dag_surface_field_init_pun, v2.extdeps.languages.dag dag_grammar_field_init_pun_expr), so its kind is
+// the grammar's identity and not a guess from a missing colon. It lowers to the edge the explicit long
+// form lowers to: the label is the name, and the target is the reference the name denotes as a value,
+// built as the pattern pun's binder is (body_lower_field_pattern_edge). Only a tagged record's list
+// parses a pun; a headless brace has no pun production to reach here.
+fn body_lower_field_init_is_pun(item: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+    Present { value: id } => id == ^dag_surface_field_init_pun
+    Absent => false
+  }
+}
+
+fn body_lower_field_init_pun_edge(captured: Node, item: Node) -> Outcome<Edge> {
+  match body_lower_param_binding_atom_optional(node: captured) {
+    Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item))
+    Present { value: atom } =>
+      match node_atom_identity_optional(node: atom) {
+        Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item))
+        Present { value: field_name } =>
+          outcome_accepted(
+            value: Edge {
+              label: Authored { name: field_name },
+              target: body_lower_param_ref_atom(source: atom, identity: field_name)
+            }
+          )
+      }
+  }
+}
+
 fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let stripped = body_lower_deep_unwrap_optional(node: item)
   let captured = match parse_production_captured_child_optional(node: stripped) {
@@ -9931,6 +9959,9 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
   let refuse = outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item)
   )
+  if body_lower_field_init_is_pun(item: stripped) {
+    body_lower_field_init_pun_edge(captured: captured, item: item)
+  } else {
   if body_lower_field_init_is_string_keyed(item: captured) {
     body_lower_map_literal_entry_edge_from_item(captured: captured, item: item, refuse: refuse)
   } else {
@@ -9953,6 +9984,7 @@ fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
               }
           }
       }
+  }
   }
   }
 }
@@ -10259,8 +10291,8 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
 // exceeds the emitter's bounded recursion fuel on ordinary literals. (gunbc#12208 first lowered to a
 // right-nested list_append over singletons; that forked this authority and was reversed.) The head
 // is the declaring qualified name as a spine -- resolve binds it through its qualified door and
-// mints it as a resolved reference -- and it names std.algebra, NOT v2.std.algebra: v2.std.algebra
-// imports v2.std.node, so a list literal in v2.std.node referring to v2.std.algebra would close a
+// mints it as a resolved reference -- and it names std.algebra, NOT std.algebra: std.algebra
+// imports v2.std.node, so a list literal in v2.std.node referring to std.algebra would close a
 // node -> algebra -> node cycle, and v2 collapses onto dag/std, not the reverse. The Transform is
 // not an application: 04_infer types it by its one introduction case
 // (v2.compiler.infer infer_transform_freemonoid_introduction), every element unifying to one T. The
@@ -11058,19 +11090,11 @@ fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Symbol, 
 // `S.Op.operation_input`. No new node kind (ruling on gunbc adhoc-c537b0c6-a6e: no v2.std.node change, and
 // node_minimal's TransportSlot is NOT promoted: transport is a realization handler, not a node field).
 //
-// WHAT IS NOT LOWERED IS SET ASIDE, TYPED AND LOCATED, UNDER TWO COUNTED REASONS:
-//  - body_lowering_reason_realization_member_set_aside: transport / config / exit / response /
-//    mock_response. config binds the transport's endpoint and authentication.
-//    Realization per DESIGN section 3, never part of the interface, so the interface lowers without it.
-//  - body_lowering_reason_interface_member_unmodeled: readonly / idempotent / hermetic and an io
-//    field's `from "key"` / `= default` tail. These ARE interface facts (idempotent governs retry,
-//    DESIGN section 4b) with no typed carrier yet, so they rank for modeling under their own reason
-//    instead of hiding in the realization bucket (rfm service_interface_member_has_no_carrier).
-// A set-aside member is UNREACHABLE AS LOWERED: only census grade admits them (v2.compiler.normalize
-// normalize_census, whose carrier has no route to eval or emission); every other route refuses the
-// service (body_lower_service_decl), so no stage that would need a service's realization can be
-// handed a service and assume a transport. The set-aside population is a typed list the lowering
-// builds, never a scan of diagnostic reasons. A member this lowering cannot read refuses, located.
+// Realization members lower into the MIRROR sibling (v2.compiler.service_realization). Transport
+// fields lower as Template<OperationInputName> values (XL-2 3b-ii): a string literal, a #13405
+// string-template concat of literals and name holes, a list of those (argv), or a bare input name.
+// A member this lowering cannot read refuses, located. A record-field `from` tail still refuses as
+// body_lowering_reason_interface_member_unmodeled (it is not a service io field).
 //
 // THE NAME IS ONE LABEL, THE WHOLE DECLARED SPELLING (`shell.Find`), not a per-segment spine. A
 // spine collides at the module (dag/extdeps/shell.dag declares sixteen services under `shell`) and
@@ -11078,31 +11102,6 @@ fn body_lower_type_decl_by_body(shell: Node, captured: Node, type_name: Symbol, 
 // (DESIGN section 2) and a dotted reference to it does not resolve; the trigger is v2 resolving
 // service CALLS, at which point the spine plus a graft prefix merge becomes the required shape and
 // this label migrates in one transition.
-type ServiceSetAsideKind
-  = RealizationMemberSetAside
-  | InterfaceMemberUnmodeled
-
-type ServiceSetAside {
-  kind: ServiceSetAsideKind,
-  member: Node,
-}
-
-fn service_set_aside_reason(kind: ServiceSetAsideKind) -> Symbol {
-  match kind {
-    RealizationMemberSetAside => ^body_lowering_reason_realization_member_set_aside
-    InterfaceMemberUnmodeled => ^body_lowering_reason_interface_member_unmodeled
-  }
-}
-
-fn service_set_aside_diagnostics(xs: List<ServiceSetAside>) -> Diagnostics {
-  fold(xs, init: None, f: fn(acc, x) {
-    diagnostics_merge(
-      outer: acc,
-      inner: Some { diagnostics: diagnostics_singleton(d: body_lower_diagnostic(reason: service_set_aside_reason(kind: x.kind), n: x.member)) }
-    )
-  })
-}
-
 // The production shells directly beneath a node, looking through the choice wrappers
 // (service_body_entry, operation_body_entry, resource_body_entry) that carry no fact of their own.
 fn body_lower_service_member_shells(root: Node) -> List<Node> {
@@ -11155,9 +11154,7 @@ fn body_lower_io_field_tail_present(tail: Node) -> Bool {
 
 type BodyLowerIoBlock {
   payload: Node,
-  set_aside: List<ServiceSetAside>,
   rows: List<Edge>,
-  row_items: List<Node>,
 }
 
 fn body_lower_io_block(shell: Node) -> Outcome<BodyLowerIoBlock> {
@@ -11171,12 +11168,12 @@ fn body_lower_io_block(shell: Node) -> Outcome<BodyLowerIoBlock> {
         Absent => refuse
         Present { value: items } =>
           bind_outcome(
-            o: fold(items, init: outcome_accepted(value: IoAcc { edges: Empty, set_aside: Empty, rows: Empty, row_items: Empty }), f: fn(acc, item) {
+            o: fold(items, init: outcome_accepted(value: IoAcc { edges: Empty, rows: Empty }), f: fn(acc, item) {
               bind_outcome(o: acc, f: fn(a) { body_lower_io_item_step(a: a, item: item) })
             }),
             f: fn(a) {
               outcome_accepted(
-                value: BodyLowerIoBlock { payload: body_lower_payload_node(edges: a.edges, source: shell), set_aside: a.set_aside, rows: a.rows, row_items: a.row_items }
+                value: BodyLowerIoBlock { payload: body_lower_payload_node(edges: a.edges, source: shell), rows: a.rows }
               )
             }
           )
@@ -11207,14 +11204,12 @@ fn body_lower_io_item_step_unrefined(a: IoAcc, item: Node, io: BodyLowerIoItem) 
             Present { value: key } =>
               outcome_accepted(value: IoAcc {
                 edges: list_snoc_item(xs: a.edges, item: edge),
-                set_aside: a.set_aside,
-                rows: list_snoc_item(xs: a.rows, item: Edge { label: Authored { name: io.field.name }, target: key }),
-                row_items: list_snoc_item(xs: a.row_items, item: item)
+                rows: list_snoc_item(xs: a.rows, item: Edge { label: Authored { name: io.field.name }, target: key })
               })
             Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_wire_key_unlowered, n: item))
           }
         } else {
-          outcome_accepted(value: IoAcc { edges: list_snoc_item(xs: a.edges, item: edge), set_aside: a.set_aside, rows: a.rows, row_items: a.row_items })
+          outcome_accepted(value: IoAcc { edges: list_snoc_item(xs: a.edges, item: edge), rows: a.rows })
         }
   })
 }
@@ -11309,9 +11304,7 @@ fn body_lower_io_block_binder_atoms(captured: Node) -> Optional<List<Node>> {
 
 type IoAcc {
   edges: List<Edge>,
-  set_aside: List<ServiceSetAside>,
   rows: List<Edge>,
-  row_items: List<Node>,
 }
 
 type BodyLowerOperationAcc {
@@ -11319,33 +11312,25 @@ type BodyLowerOperationAcc {
   output: Optional<Node>,
   requires: Optional<Node>,
   claims: BodyLowerOperationClaims,
-  set_aside: List<ServiceSetAside>,
   realization: BodyLowerRealizationAcc,
 }
 
-// AN OPERATION'S REALIZATION FACTS (XL-2 PR3b-i; v2.compiler.service_realization). Its transport KIND,
-// its exit or response arms, its mock_response arms and its wire-key projection rows lower into one
-// realization ENTRY beside the interface, never into the operation's Arrow. `members` are the authored
-// members those facts came from, kept so a reader with no realization sibling (a resource capability)
-// refuses them exactly as it refused them before, as set-aside members.
-// FRONTIER, declared: a transport's FIELDS (argv, path, method, ...) are not lowered; the transport
-// member stays set aside (body_lowering_reason_realization_member_set_aside) and only its kind enters
-// the entry. TRIGGER: XL-2 PR3b-ii lowers transport fields through the template model, at which point
-// the transport is no longer set aside.
+// AN OPERATION'S REALIZATION FACTS (XL-2 PR3b; v2.compiler.service_realization). Its transport kind
+// and fields, its exit or response arms, its mock_response arms and its wire-key projection rows
+// lower into one realization ENTRY beside the interface, never into the operation's Arrow.
 type BodyLowerRealizationAcc {
   transport: Optional<Node>,
   status_arms: Optional<Node>,
   mock_arms: Optional<Node>,
   rows: List<Edge>,
-  members: List<ServiceSetAside>,
 }
 
 fn body_lower_realization_acc_empty() -> BodyLowerRealizationAcc {
-  BodyLowerRealizationAcc { transport: optional_absent(), status_arms: optional_absent(), mock_arms: optional_absent(), rows: Empty, members: Empty }
+  BodyLowerRealizationAcc { transport: optional_absent(), status_arms: optional_absent(), mock_arms: optional_absent(), rows: Empty }
 }
 
 fn body_lower_operation_acc_with_realization(a: BodyLowerOperationAcc, r: BodyLowerRealizationAcc) -> BodyLowerOperationAcc {
-  BodyLowerOperationAcc { input: a.input, output: a.output, requires: a.requires, claims: a.claims, set_aside: a.set_aside, realization: r }
+  BodyLowerOperationAcc { input: a.input, output: a.output, requires: a.requires, claims: a.claims, realization: r }
 }
 
 // AN OPERATION'S DECLARED CLAIMS (XL-2 PR2c-i): its effect claims (`readonly`, `idempotent`: std.effects
@@ -11369,14 +11354,14 @@ fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node
                 Present { value: _ } =>
                   outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_io_block_repeated, n: member))
                 Absent =>
-                  outcome_accepted(value: BodyLowerOperationAcc { input: Present { value: io.payload }, output: a.output, requires: a.requires, claims: a.claims, set_aside: list_append(left: a.set_aside, right: io.set_aside), realization: body_lower_realization_with_rows(r: a.realization, io: io) })
+                  outcome_accepted(value: BodyLowerOperationAcc { input: Present { value: io.payload }, output: a.output, requires: a.requires, claims: a.claims, realization: body_lower_realization_with_rows(r: a.realization, io: io) })
               }
             } else {
               match a.output {
                 Present { value: _ } =>
                   outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_io_block_repeated, n: member))
                 Absent =>
-                  outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: Present { value: io.payload }, requires: a.requires, claims: a.claims, set_aside: list_append(left: a.set_aside, right: io.set_aside), realization: body_lower_realization_with_rows(r: a.realization, io: io) })
+                  outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: Present { value: io.payload }, requires: a.requires, claims: a.claims, realization: body_lower_realization_with_rows(r: a.realization, io: io) })
               }
             }
           })
@@ -11388,7 +11373,7 @@ fn body_lower_operation_member(acc: Outcome<BodyLowerOperationAcc>, member: Node
               outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_operation_requires_repeated, n: member))
             Absent =>
               bind_outcome(o: body_lower_operation_requires(shell: member), f: fn(target) {
-                outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: a.output, requires: Present { value: target }, claims: a.claims, set_aside: a.set_aside, realization: a.realization })
+                outcome_accepted(value: BodyLowerOperationAcc { input: a.input, output: a.output, requires: Present { value: target }, claims: a.claims, realization: a.realization })
               })
           }
         } else if id == ^dag_surface_transport {
@@ -11569,20 +11554,7 @@ fn body_lower_operation_effect_claim(a: BodyLowerOperationAcc, label: Symbol, me
 }
 
 fn body_lower_operation_acc_with_claims(a: BodyLowerOperationAcc, claims: BodyLowerOperationClaims) -> BodyLowerOperationAcc {
-  BodyLowerOperationAcc { input: a.input, output: a.output, requires: a.requires, claims: claims, set_aside: a.set_aside, realization: a.realization }
-}
-
-fn body_lower_operation_acc_set_aside(a: BodyLowerOperationAcc, kind: ServiceSetAsideKind, n: Node) -> Outcome<BodyLowerOperationAcc> {
-  outcome_accepted(
-    value: BodyLowerOperationAcc {
-      input: a.input,
-      output: a.output,
-      requires: a.requires,
-      claims: a.claims,
-      set_aside: list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: kind, member: n }),
-      realization: a.realization
-    }
-  )
+  BodyLowerOperationAcc { input: a.input, output: a.output, requires: a.requires, claims: claims, realization: a.realization }
 }
 
 fn body_lower_realization_with_rows(r: BodyLowerRealizationAcc, io: BodyLowerIoBlock) -> BodyLowerRealizationAcc {
@@ -11590,13 +11562,8 @@ fn body_lower_realization_with_rows(r: BodyLowerRealizationAcc, io: BodyLowerIoB
     transport: r.transport,
     status_arms: r.status_arms,
     mock_arms: r.mock_arms,
-    rows: list_append(left: r.rows, right: io.rows),
-    members: list_append(left: r.members, right: body_lower_set_aside_of(kind: InterfaceMemberUnmodeled, members: io.row_items))
+    rows: list_append(left: r.rows, right: io.rows)
   }
-}
-
-fn body_lower_set_aside_of(kind: ServiceSetAsideKind, members: List<Node>) -> List<ServiceSetAside> {
-  fold(members, init: Empty, f: fn(acc, m) { list_snoc_item(xs: acc, item: ServiceSetAside { kind: kind, member: m }) })
 }
 
 // A REALIZATION BLOCK IS DECLARED ONCE PER OPERATION: a second transport, a second exit or response
@@ -11605,8 +11572,9 @@ fn body_lower_realization_block_repeated<T>(member: Node) -> Outcome<T> {
   outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_realization_block_repeated, n: member))
 }
 
-// THE TRANSPORT'S KIND enters the entry (`<realization-transport> -> { <transport-kind> -> kind }`); its
-// fields stay set aside at the 3b-ii frontier (BodyLowerRealizationAcc).
+// THE TRANSPORT'S KIND AND FIELDS enter the entry (`<realization-transport> -> { <transport-kind> ->
+// kind, argv -> Template<OperationInputName> list, ... }`). Field values lower through the one value
+// reader, so a #13405 string template becomes the concat the wall decodes as ArgvTemplate.
 fn body_lower_operation_transport(a: BodyLowerOperationAcc, member: Node) -> Outcome<BodyLowerOperationAcc> {
   match a.realization.transport {
     Present { value: _ } => body_lower_realization_block_repeated(member: member)
@@ -11614,19 +11582,50 @@ fn body_lower_operation_transport(a: BodyLowerOperationAcc, member: Node) -> Out
       match body_lower_transport_kind_label_optional(member: member) {
         Absent => body_lower_service_member_unread(member: member)
         Present { value: kind } =>
-          body_lower_operation_acc_set_aside(
-            a: body_lower_operation_acc_with_realization(a: a, r: BodyLowerRealizationAcc {
-              transport: optional_present(value: body_lower_transport_kind_node(kind: kind)),
+          bind_outcome(o: body_lower_transport_field_edges(member: member), f: fn(fields) {
+            outcome_accepted(value: body_lower_operation_acc_with_realization(a: a, r: BodyLowerRealizationAcc {
+              transport: optional_present(value: body_lower_transport_node(kind: kind, fields: fields)),
               status_arms: a.realization.status_arms,
               mock_arms: a.realization.mock_arms,
-              rows: a.realization.rows,
-              members: a.realization.members
-            }),
-            kind: RealizationMemberSetAside,
-            n: member
-          )
+              rows: a.realization.rows
+            }))
+          })
       }
   }
+}
+
+fn body_lower_transport_field_edges(member: Node) -> Outcome<List<Edge>> {
+  fold(body_lower_service_member_shells(root: member), init: outcome_accepted(value: body_lower_edge_list_empty()), f: fn(acc, shell) {
+    bind_outcome(o: acc, f: fn(edges) { body_lower_transport_field_step(edges: edges, shell: shell) })
+  })
+}
+
+fn body_lower_transport_field_step(edges: List<Edge>, shell: Node) -> Outcome<List<Edge>> {
+  match parse_production_emitted_identity_optional(node: shell) {
+    Absent => outcome_accepted(value: edges)
+    Present { value: id } =>
+      if id == ^dag_surface_field_init {
+        if body_lower_field_init_is_string_keyed(item: shell) {
+          outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: shell))
+        } else {
+          bind_outcome(o: body_lower_field_init_edge(item: shell), f: fn(e) {
+            outcome_accepted(value: list_snoc_item(xs: edges, item: e))
+          })
+        }
+      } else {
+        outcome_accepted(value: edges)
+      }
+  }
+}
+
+fn body_lower_transport_node(kind: Symbol, fields: List<Edge>) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: [Edge { label: Authored { name: realization_transport_kind_label() }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: kind } }, children: Empty) }],
+      right: fields
+    )
+  )
 }
 
 // The kind as written, read from the emitting production (v2.extdeps.languages.dag
@@ -11646,13 +11645,6 @@ fn body_lower_has_production(root: Node, emitted: Symbol) -> Bool {
   }
 }
 
-fn body_lower_transport_kind_node(kind: Symbol) -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Conj },
-    children: [Edge { label: Authored { name: realization_transport_kind_label() }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: kind } }, children: Empty) }]
-  )
-}
-
 // EXIT, RESPONSE AND MOCK_RESPONSE ARMS (`pattern => payload ["doc"]`), each a Positional arm of the
 // entry's <status-arms> or <mock-arms> Conj in authored order. An exit or response payload is a TYPE,
 // lowered by the one type-position reader; a mock payload is a VALUE, lowered by the one value reader,
@@ -11667,8 +11659,7 @@ fn body_lower_operation_status_arms(a: BodyLowerOperationAcc, member: Node, mock
           transport: a.realization.transport,
           status_arms: if mock { a.realization.status_arms } else { optional_present(value: arms) },
           mock_arms: if mock { optional_present(value: arms) } else { a.realization.mock_arms },
-          rows: a.realization.rows,
-          members: list_snoc_item(xs: a.realization.members, item: ServiceSetAside { kind: RealizationMemberSetAside, member: member })
+          rows: a.realization.rows
         }))
       })
   }
@@ -11919,9 +11910,7 @@ fn body_lower_io_payload_or_empty(o: Optional<Node>, source: Node) -> Node {
 
 type BodyLowerOperation {
   edge: Edge,
-  set_aside: List<ServiceSetAside>,
   entry: Optional<Node>,
-  realization_members: List<ServiceSetAside>,
 }
 
 fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
@@ -11934,7 +11923,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
           bind_outcome(
             o: fold(
               body_lower_service_member_shells(root: captured),
-              init: outcome_accepted(value: BodyLowerOperationAcc { input: Absent, output: Absent, requires: Absent, claims: BodyLowerOperationClaims { effects: Empty, mode: Absent }, set_aside: Empty, realization: body_lower_realization_acc_empty() }),
+              init: outcome_accepted(value: BodyLowerOperationAcc { input: Absent, output: Absent, requires: Absent, claims: BodyLowerOperationClaims { effects: Empty, mode: Absent }, realization: body_lower_realization_acc_empty() }),
               f: fn(acc, member) { body_lower_operation_member(acc: acc, member: member) }
             ),
             f: fn(a) {
@@ -11957,9 +11946,7 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
                       occurrence_id: shell.occurrence_id
                     ))
                   },
-                  set_aside: a.set_aside,
-                  entry: body_lower_realization_entry_optional(r: a.realization),
-                  realization_members: a.realization.members
+                  entry: body_lower_realization_entry_optional(r: a.realization)
                 }
               )
             }
@@ -11971,7 +11958,6 @@ fn body_lower_operation(shell: Node) -> Outcome<BodyLowerOperation> {
 type BodyLowerServiceAcc {
   operations: List<Edge>,
   operation_shells: List<Node>,
-  set_aside: List<ServiceSetAside>,
   entries: List<Edge>,
   config: Optional<Node>,
 }
@@ -11989,7 +11975,6 @@ fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) ->
               value: BodyLowerServiceAcc {
                 operations: list_snoc_item(xs: a.operations, item: op.edge),
                 operation_shells: list_snoc_item(xs: a.operation_shells, item: member),
-                set_aside: list_append(left: a.set_aside, right: op.set_aside),
                 entries: body_lower_service_entry_with(entries: a.entries, op: op),
                 config: a.config
               }
@@ -12000,19 +11985,11 @@ fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) ->
             Present { value: _ } => body_lower_realization_block_repeated(member: member)
             Absent =>
               bind_outcome(o: body_lower_service_config_node(member: member), f: fn(config) {
-                outcome_accepted(value: BodyLowerServiceAcc { operations: a.operations, operation_shells: a.operation_shells, set_aside: a.set_aside, entries: a.entries, config: optional_present(value: config) })
+                outcome_accepted(value: BodyLowerServiceAcc { operations: a.operations, operation_shells: a.operation_shells, entries: a.entries, config: optional_present(value: config) })
               })
           }
         } else if id == ^dag_surface_transport {
-          outcome_accepted(
-            value: BodyLowerServiceAcc {
-              operations: a.operations,
-              operation_shells: a.operation_shells,
-              set_aside: list_snoc_item(xs: a.set_aside, item: ServiceSetAside { kind: RealizationMemberSetAside, member: member }),
-              entries: a.entries,
-              config: a.config
-            }
-          )
+          body_lower_service_member_unread(member: member)
         } else {
           body_lower_service_member_unread(member: member)
         }
@@ -12035,14 +12012,7 @@ fn body_lower_service_name_optional(captured: Node) -> Optional<List<Symbol>> {
   }
 }
 
-// THE TWO GRADES DIFFER ONLY IN WHAT A SET-ASIDE MEMBER MEANS. At census grade
-// (v2.compiler.normalize normalize_census, whose carrier has no route past the symbol index) the
-// interface is admitted and each set-aside member rides as a located advisory. On every other route
-// the lowered service would reach resolution, eval or emission, each of which would have to assume
-// the set-aside facts, so it REFUSES at the service with every member's own located diagnostic
-// pending: a set-aside realization is unreachable as lowered by construction, not by a door that
-// scans reasons.
-fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLowering> {
+fn body_lower_service_decl(shell: Node) -> Outcome<BodyLowering> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
@@ -12051,7 +12021,7 @@ fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLo
         Present { value: service_name } =>
           match fold(
             body_lower_service_member_shells(root: captured),
-            init: outcome_accepted(value: BodyLowerServiceAcc { operations: Empty, operation_shells: Empty, set_aside: Empty, entries: Empty, config: optional_absent() }),
+            init: outcome_accepted(value: BodyLowerServiceAcc { operations: Empty, operation_shells: Empty, entries: Empty, config: optional_absent() }),
             f: fn(acc, member) { body_lower_service_member(acc: acc, member: member) }
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -12068,44 +12038,11 @@ fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLo
               match body_lower_service_realization_refusal_optional(shell: shell, a: a) {
                 Present { value: refused } => Rejected { diagnostics: diagnostics_singleton(d: refused) }
                 Absent =>
-              match a.set_aside {
-                Empty =>
-                  match body_lower_service_realization_leaf_optional(a: a) {
-                    Absent => body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: optional_absent())))
-                    Present { value: _ } => body_lower_service_held(shell: shell, service_path: service_name, a: a, admit_set_aside: admit_set_aside)
-                  }
-                Cons { head: _, tail: _ } => body_lower_service_held(shell: shell, service_path: service_name, a: a, admit_set_aside: admit_set_aside)
-              }
+                  body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: body_lower_service_realization_leaf_optional(a: a))))
               }
               }
           }
       }
-  }
-}
-
-// A SERVICE THAT CARRIES A REALIZATION IS HELD OFF THE FULL ROUTE UNTIL XL-2 PR3c gives each stage that
-// cannot yet consume the sibling its own located cause: held whenever ANY member is set aside OR a
-// realization leaf is present -- a config-only service sets nothing aside, so the leaf alone must keep
-// the full route closed. At census grade the service is admitted with its sibling and its set-aside
-// members as advisories; on every other route it refuses as service_realization_unreachable, with each
-// set-aside member's own diagnostic pending.
-fn body_lower_service_held(shell: Node, service_path: List<Symbol>, a: BodyLowerServiceAcc, admit_set_aside: Bool) -> Outcome<BodyLowering> {
-  if admit_set_aside {
-    Accepted {
-      value: BodyLowered { node: body_lower_service_node(shell: shell, service_path: service_path, operations: a.operations, realization: body_lower_service_realization_leaf_optional(a: a)) },
-      diagnostics: service_set_aside_diagnostics(xs: a.set_aside)
-    }
-  } else {
-    match a.set_aside {
-      Empty => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_realization_unreachable, n: shell))
-      Cons { head: _, tail: _ } =>
-        Rejected {
-          diagnostics: rejected_with_pending(
-            pending: service_set_aside_diagnostics(xs: a.set_aside),
-            rejected: diagnostics_singleton(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_realization_unreachable, n: shell))
-          )
-        }
-    }
   }
 }
 
@@ -12357,25 +12294,17 @@ fn body_lower_resource_with_release(a: BodyLowerResourceAcc, entry: Node) -> Out
   }
 }
 
-// A CAPABILITY'S io TAILS ARE THE SERVICE'S, AND REFUSE THE SERVICE'S WAY. A capability reads its
-// input/output blocks through the shared io field grammar, which admits a `from "key"` wire key and an
-// `= expr` default; body_lower_operation sets each aside as interface_member_unmodeled, located at the
-// io item. A resource then refuses exactly as a service with a set-aside member does on a route past
-// the census: the owned fatal cause service_realization_unreachable, at the capability, with each
-// member's own located diagnostic pending. So body_lowering_reason_resource_entry_unread is reached
-// only by a malformed entry, never by a well-formed tail.
+// A CAPABILITY IS AN INTERFACE ARROW. Realization facts that body_lower_operation now lowers into
+// an entry have no resource carrier (DESIGN section 3: a resource is not a service), so a capability
+// that authored them refuses at the capability, located, under its own cause -- never the service
+// blanket and never by dropping the entry.
 fn body_lower_resource_with_capability(a: BodyLowerResourceAcc, entry: Node) -> Outcome<BodyLowerResourceAcc> {
   bind_outcome(o: body_lower_operation(shell: entry), f: fn(op) {
-    match list_append(left: op.set_aside, right: op.realization_members) {
-      Empty =>
+    match op.entry {
+      Present { value: _ } =>
+        outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_resource_capability_realization_unconsumed, n: entry))
+      Absent =>
         outcome_accepted(value: BodyLowerResourceAcc { capabilities: list_snoc_item(xs: a.capabilities, item: op.edge), capability_shells: list_snoc_item(xs: a.capability_shells, item: entry), kind: a.kind, mode: a.mode, expires: a.expires, acquire_read: a.acquire_read, release_read: a.release_read })
-      Cons { head: _, tail: _ } =>
-        Rejected {
-          diagnostics: rejected_with_pending(
-            pending: service_set_aside_diagnostics(xs: list_append(left: op.set_aside, right: op.realization_members)),
-            rejected: diagnostics_singleton(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_realization_unreachable, n: entry))
-          )
-        }
     }
   })
 }
@@ -12467,7 +12396,7 @@ fn body_lower_resource_decl_declared_kind_optional(shell: Node) -> Optional<Decl
 
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
   if emitted == ^dag_surface_service_decl {
-    body_term_sealed_lowering(o: body_lower_service_decl(shell: shell, admit_set_aside: false), shape: LoweredServiceDeclaration)
+    body_term_sealed_lowering(o: body_lower_service_decl(shell: shell), shape: LoweredServiceDeclaration)
   } else if emitted == ^dag_surface_resource_decl {
     body_term_sealed_lowering(o: body_lower_resource_decl(shell: shell), shape: LoweredResourceDeclaration)
   } else if emitted == ^dag_surface_type_decl {

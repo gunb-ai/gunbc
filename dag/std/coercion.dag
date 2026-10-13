@@ -1,5 +1,7 @@
 module std.coercion
 
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef }
 import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind }
 
 type TypeCheckpoint {
@@ -62,7 +64,7 @@ type TypeCheckpoint {
 // reference whose declaration identity the caller could not supply -- never a guess standing in
 // for Unrealized, because a silently-assumed Unrealized is exactly the false negative this
 // decision keeps out of the render path (DESIGN section 5). Named Unrealized rather than
-// Structural because gunbc.ci_failure_class already declares a fielded Structural { reason:
+// Structural because gunbc.ci.ci_failure_class already declares a fielded Structural { reason:
 // String } resolved as an unqualified global name (imports do not bind it), so a second,
 // differently-shaped Structural here would collide corpus-wide.
 //
@@ -230,7 +232,7 @@ type CastRule {
 // (a Peano Zero | Succ coproduct) -- and only the first is a refinement of Int. A consumer that
 // holds a resolved declaration keys on to_declaration; to_type remains the spelling an explicit
 // `as` target is authored with. This module declares NO imports on purpose: it is in the v2
-// self-compile closure, which does not reach v2.std.algebra, and importing any one name switches
+// self-compile closure, which does not reach std.algebra, and importing any one name switches
 // a file's bare channel off
 // (the unimported-bare-provider gate). DeclarationRef, decl_ref and declaration_ref_eq resolve
 // through that same bare channel to their single declarer, std.decl_ref.

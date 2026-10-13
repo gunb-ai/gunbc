@@ -1,4 +1,4 @@
-module gunbc.roadmap_provider_events
+module gunbc.roadmap.roadmap_provider_events
 
 import std.algebra { trim }
 

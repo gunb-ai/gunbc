@@ -23,12 +23,6 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, d
 import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.rust.emit { RuntimeFunction, rt_function_registry }
-import gunbc.rust_item_scan { scan_rust_source, RustFileScanned, RustFileScanRefused }
-import gunbc.rust_item_identity { RustFunction, RustItemIdentity }
-import gunbc.v1_interpreter_primitive_surface {
-  v1_interpreter_primitive_arms,
-  v1_interpreter_row_count,
-}
 import std.primitive_projection {
   PrimitiveIdentity, primitive_identity_slug,
   ProjectionFidelity, HostRealizedSeam, ModeledProjection, DivergentProjection,
@@ -46,7 +40,7 @@ import std.primitive_projection {
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
 // mechanism across five carriers, five refusal variants typed, three refusal detectors executing
 // with witnesses (see primitive_d0_refusal_execution_note), derived census across all five surfaces
-// including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1
+// including InterpreterDispatch from gunbc.v1.v1_interpreter_primitive_surface. D1
 // (interpreter-primitive-roster consumption): measurement scaffold deleted;
 // primitive_surface_census_derived reads the roster authority. Population-wide identity join
 // closure remains the terminal acceptance bar.
@@ -60,20 +54,21 @@ import std.primitive_projection {
 
 // D2 (primitive projection authority): the join gains the question a callable-resolution wall
 // actually asks -- given a DECLARATION, is it the modeled surface of a PRIMITIVE, and are the two
-// ONE authority or genuinely two. primitive_projection_for_declaration is total over every
-// DeclarationRef; ProjectionFidelity separates a host-realized seam from a modeled projection from
-// a divergent one, and only the first two mean one authority. Consumer: the bare-call candidate
-// collector in gunbc#8952, whose first corpus run refused 1215 sites across five names precisely
-// because a modeled std surface and the primitive it projects were two co-candidates with no
-// relation between them. D2 also replaces the prose open denominator with a counted one:
-// primitive_undisposed_surface_symbol_count enumerates, at symbol grain, how far the five-surface
-// census is from the terminal bar. It does NOT close that bar -- see
-// primitive_undisposed_residue_note.
+// ONE authority or genuinely two. primitive_projection_for_declaration_in is total over every
+// DeclarationRef given a supplied surface-symbol census; ProjectionFidelity separates a
+// host-realized seam from a modeled projection from a divergent one, and only the first two mean
+// one authority. The five-surface closed form lives in gunbc.primitive_egress.d0_census.
+// Consumer: the bare-call candidate collector in gunbc#8952, whose first corpus run refused 1215
+// sites across five names precisely because a modeled std surface and the primitive it projects
+// were two co-candidates with no relation between them. D2 also replaces the prose open
+// denominator with a counted one: primitive_undisposed_surface_symbol_count enumerates, at symbol
+// grain, how far the five-surface census is from the terminal bar. It does NOT close that bar --
+// see primitive_undisposed_residue_note.
 
 // D0 (primitive-identity-join first slice): semantic primitive identity is ONE join key across five
 // independently-writable surfaces. See primitive_identity_d0_scope_note — NOT the closing contract.
 // primitive_surface_census_derived reads five live authorities including InterpreterDispatch from
-// gunbc.v1_interpreter_primitive_surface. Open denominator receipt:
+// gunbc.v1.v1_interpreter_primitive_surface. Open denominator receipt:
 // primitive_d0_open_denominator_receipt. Dissolve-on:
 // feature:primitive-realization-single-authority.
 
@@ -82,7 +77,7 @@ data primitive_d0_derived_surface_drift_audit_note: String = "Derived-surface dr
 // Typed located counted denominator (rung-honesty receipt): derived_surface_authority_count=5
 // (BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler, InterpreterDispatch);
 // open_surface_authority_count=0; interpreter dispatch rows/arm-identities/spellings derived from
-// gunbc.v1_interpreter_primitive_surface counters (v1_interpreter_row_count,
+// gunbc.v1.v1_interpreter_primitive_surface counters (v1_interpreter_row_count,
 // distinct_arm_identity_count, authored_spelling_count).
 // primitive_d0_interpreter_census_matches_roster links census to roster authority.
 // derived_census_rows_missing_identity_count is measured live by
@@ -105,7 +100,7 @@ data primitive_d0_parallel_roster_surface_authority_count: Int = 2
 // does not mean complete; parallel roster does not mean single-authority.
 
 // Interpreter dispatch is six dispatch symbols in v1_interpreter
-// (gunbc.v1_interpreter_primitive_surface): eval_builtin_inner; eval_algebra_method_inner;
+// (gunbc.v1.v1_interpreter_primitive_surface): eval_builtin_inner; eval_algebra_method_inner;
 // eval_call (bridge families plus native fold intercept);
 // try_v2_std_collection_map_primitive_grounding; eval_method_call
 // lookup short-circuit; eval_service_call Filesystem.Read carve-out. Row/arm-identity/spelling
@@ -115,7 +110,7 @@ data primitive_d0_parallel_roster_surface_authority_count: Int = 2
 
 // Finding (inherits to v1 exit lane): the interpreter primitive surface was six hand-written Rust
 // dispatch sites in v1_interpreter, not one. v1_interpreter eval_builtin_inner is the main
-// free-call site. v2.compiler.eval v2_eval_call_primitive (carrier src/v2/compiler/05_eval.dag) is
+// free-call site. v2.compiler.eval v2_eval_call_primitive (carrier src/v2/compiler/eval.dag) is
 // a separate v2 witness hook — real symbol, NOT v1 dispatch (§3 cite-the-symbol: never attribute it
 // to v1_interpreter.rs). eval_call native intercept for fold_list fires before eval_builtin_inner —
 // explains registry absence. clever-crab-111 macro authority may make eval_builtin_inner derivable
@@ -209,7 +204,7 @@ fn primitive_signature(contract: PrimitiveSemanticContract) -> PrimitiveSignatur
 
 // ARITY IS DERIVED AND HAS NO FIELD. There is deliberately no arity: Int anywhere in this
 // module. A stored arity is a hand transcription that rots the first time the signature it
-// describes changes -- the decorative-roster failure gunbc.v1_interpreter_primitive_surface
+// describes changes -- the decorative-roster failure gunbc.v1.v1_interpreter_primitive_surface
 // arm_accepted_shape_gap_note refuses an Int for -- so arity exists only as the length of the
 // parameter list it is the length of. An unresolved signature therefore has NO arity rather
 // than a guessed one: the absent arm returns Absent, not zero, because a primitive taking no
@@ -668,9 +663,11 @@ fn contract_contains_name(name: String) -> Bool {
   primitive_contract_roster() |> any(contract => contract.name == name)
 }
 
-// Each surface's authored symbols, in one place. The census rows below map over these lists, and
-// primitive_surface_carries_symbol reads them directly: a membership question needs the names, not
-// the full rows (each row also resolves its primitive identity and authority reference).
+// Each std-owned surface's authored symbols, in one place. The census rows below map over these
+// lists, and primitive_surface_carries_symbol_in reads a caller-supplied concat of them: a
+// membership question needs the names, not the full rows (each row also resolves its primitive
+// identity and authority reference). InterpreterDispatch names are not in this tree; the
+// five-surface concat is gunbc.primitive_egress.d0_census primitive_surface_symbols.
 fn primitive_registry_surface_symbols() -> List<String> {
   builtin_registry_surface_names()
 }
@@ -687,9 +684,6 @@ fn primitive_emit_surface_symbols() -> List<String> {
   rt_function_registry |> map(entry => entry.name)
 }
 
-fn primitive_interpreter_surface_symbols() -> List<String> {
-  v1_interpreter_primitive_arms() |> map(arm => arm.authored_spelling as String)
-}
 
 fn primitive_registry_surface_rows() -> List<PrimitiveSurfaceRow> {
   primitive_registry_surface_symbols()
@@ -750,44 +744,6 @@ fn primitive_emit_surface_rows() -> List<PrimitiveSurfaceRow> {
     )
 }
 
-fn primitive_interpreter_surface_rows() -> List<PrimitiveSurfaceRow> {
-  primitive_interpreter_surface_symbols()
-    |> map(sym =>
-      surface_row(
-        authority: InterpreterDispatch,
-        authored_symbol: sym,
-        authority_ref: decl_ref(
-          module_path: "gunbc.v1_interpreter_primitive_surface",
-          decl_name: "v1_interpreter_primitive_arms",
-        ),
-        primitive: primitive_identity_for_symbol(
-          authority: InterpreterDispatch,
-          authored_symbol: sym,
-        ),
-        provenance: DerivedFromAuthority,
-      )
-    )
-}
-
-fn primitive_surface_census_derived() -> List<PrimitiveSurfaceRow> {
-  concat(
-    concat(
-      concat(
-        concat(
-          primitive_registry_surface_rows(),
-          primitive_contract_surface_rows()
-        ),
-        primitive_algebra_surface_rows()
-      ),
-      primitive_emit_surface_rows()
-    ),
-    primitive_interpreter_surface_rows()
-  )
-}
-
-fn primitive_d0_surface_census() -> List<PrimitiveSurfaceRow> {
-  primitive_surface_census_derived()
-}
 
 data primitive_map_keys_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact {
   primitive: primitive_map_keys,
@@ -1087,127 +1043,11 @@ fn primitive_realization_unknown_primitive_violation(
   }
 }
 
-fn primitive_d0_derived_rows_missing_identity_count() -> Int {
-  count(primitive_surface_rows_missing_identity_violations(rows: primitive_surface_census_derived()))
-}
-
-fn primitive_d0_interpreter_surface_row_count() -> Int {
-  count(primitive_interpreter_surface_rows())
-}
-
-fn primitive_d0_interpreter_census_matches_roster() -> Bool {
-  primitive_d0_interpreter_surface_row_count() == v1_interpreter_row_count()
-}
-
-fn primitive_d0_open_denominator_receipt_holds() -> Bool {
-  primitive_d0_derived_surface_authority_count == 5
-    && primitive_d0_open_surface_authority_count == 0
-    && primitive_d0_interpreter_census_matches_roster()
-    && primitive_d0_derived_rows_missing_identity_count() > 0
-}
-
-fn primitive_d0_surface_census_row_count() -> Int {
-  count(primitive_d0_surface_census())
-}
-
-fn primitive_d0_surface_census_derived_row_count() -> Int {
-  count(primitive_surface_census_derived())
-}
-
-fn primitive_d0_surface_census_missing_identity_count() -> Int {
-  count(primitive_surface_rows_missing_identity_violations(rows: primitive_d0_surface_census()))
-}
-
-fn primitive_d0_surface_census_rows_for(
-  authority: PrimitiveSurfaceAuthority,
-  authored_symbol: String,
-) -> List<PrimitiveSurfaceRow> {
-  primitive_d0_surface_census()
-    |> filter(fn(row) {
-      row.authority == authority && (row.authored_symbol as String) == authored_symbol
-    })
-}
-
-fn primitive_d0_surface_census_row_identity_coherent(
-  authority: PrimitiveSurfaceAuthority,
-  authored_symbol: String,
-  expected: PrimitiveIdentity,
-) -> Bool {
-  let rows = primitive_d0_surface_census_rows_for(
-    authority: authority,
-    authored_symbol: authored_symbol,
-  )
-  count(rows) == 1
-    && match rows |> first {
-      Present { value: row } =>
-        match primitive_surface_row_identity_violation(row: row, expected: expected) {
-          Absent => true
-          Present { value: _ } => false
-        }
-      Absent => false
-    }
-}
-
-fn primitive_d0_fold_list_spelling_fork_holds() -> Bool {
-  primitive_d0_surface_census_row_identity_coherent(
-    authority: PrimitiveContractRow,
-    authored_symbol: "fold",
-    expected: primitive_fold_list,
-  )
-    && primitive_d0_surface_census_row_identity_coherent(
-      authority: InterpreterDispatch,
-      authored_symbol: "fold_list",
-      expected: primitive_fold_list,
-    )
-    && !registry_contains_symbol(sym: "fold_list")
-}
-
 fn primitive_d0_index_by_registry_algebra_gap_holds() -> Bool {
   !registry_contains_symbol(sym: "index_by")
     && !algebra_contains_template_name(name: "index_by")
     && contract_contains_name(name: "index_by")
     && emit_contains_symbol(sym: "index_by")
-}
-
-fn primitive_d0_fold_list_registry_gap_holds() -> Bool {
-  !registry_contains_symbol(sym: "fold_list")
-    && primitive_d0_surface_census_row_identity_coherent(
-      authority: InterpreterDispatch,
-      authored_symbol: "fold_list",
-      expected: primitive_fold_list,
-    )
-}
-
-fn primitive_d0_authority_map_keys_rows_coherent(authority: PrimitiveSurfaceAuthority) -> Bool {
-  let rows = primitive_d0_surface_census()
-    |> filter(fn(row) {
-      row.authority == authority && (row.authored_symbol as String) == "map_keys"
-    })
-  count(rows) >= 1
-    && rows |> all(fn(row) {
-      match primitive_surface_row_identity_violation(row: row, expected: primitive_map_keys) {
-        Absent => true
-        Present { value: _ } => false
-      }
-    })
-}
-
-fn primitive_d0_map_keys_five_surface_join_holds() -> Bool {
-  primitive_d0_authority_map_keys_rows_coherent(authority: BuiltinRegistry)
-    && primitive_d0_authority_map_keys_rows_coherent(authority: PrimitiveContractRow)
-    && primitive_d0_authority_map_keys_rows_coherent(authority: AlgebraTemplate)
-    && primitive_d0_authority_map_keys_rows_coherent(authority: EmitHandler)
-    && primitive_d0_authority_map_keys_rows_coherent(authority: InterpreterDispatch)
-}
-
-fn primitive_d0_interpreter_rows_are_from_authority() -> Bool {
-  primitive_interpreter_surface_rows()
-    |> all(fn(row) { row.provenance == DerivedFromAuthority })
-}
-
-fn primitive_d0_derived_rows_are_from_authority() -> Bool {
-  primitive_surface_census_derived()
-    |> all(fn(row) { row.provenance == DerivedFromAuthority })
 }
 
 fn primitive_d0_host_unspecified_traversal_classified() -> Bool {
@@ -1268,6 +1108,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "utf8_encode_bytes",
   "pure_dag_seam_unreachable",
   "to_string",
+  "string_contains",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
@@ -1284,33 +1125,40 @@ fn primitive_identity_is_declared(identity: PrimitiveIdentity) -> Bool {
 
 data primitive_projection_query_note: String = "The question a candidate collector asks, and it is TOTAL: every DeclarationRef gets an answer. Absence and divergence are different states at the consumer, which is the distinction a boolean suppress flag could not carry.
 
-AND ABSENCE ITSELF IS TWO STATES, NOT ONE -- the top-as-answer / top-as-ignorance split, in the arm where it is most expensive. DeclarationProjectsNoPrimitive means CLASSIFIED: no primitive-bearing surface carries this declaration's name at all, so no builtin co-candidate can exist and a consumer may treat two candidates as two authorities. DeclarationPrimitiveUndisposed means UNCLASSIFIED: a surface does carry the name, but nobody has declared whether this declaration projects it. Collapsing them would hand a consumer one answer meaning both -this is genuinely not a projection- and -I do not know-, and at a candidate-resolution wall the ignorance arm lands on the REFUSING side: measured at the time of writing, 13 symbols are disposed against 196 undisposed, so the collapsed answer is the shortest path to a corpus-wide false-refusal storm. Requested by gunbc#8952, which consumes this query, and correct independently of that consumer.
+AND ABSENCE ITSELF IS TWO STATES, NOT ONE -- the top-as-answer / top-as-ignorance split, in the arm where it is most expensive. DeclarationProjectsNoPrimitive means CLASSIFIED: no primitive-bearing surface in the SUPPLIED census carries this declaration's name at all, so no builtin co-candidate can exist and a consumer may treat two candidates as two authorities. DeclarationPrimitiveUndisposed means UNCLASSIFIED: a supplied surface does carry the name, but nobody has declared whether this declaration projects it. Collapsing them would hand a consumer one answer meaning both -this is genuinely not a projection- and -I do not know-, and at a candidate-resolution wall the ignorance arm lands on the REFUSING side: measured at the time of writing, 13 symbols are disposed against 196 undisposed, so the collapsed answer is the shortest path to a corpus-wide false-refusal storm. Requested by gunbc#8952, which consumes this query, and correct independently of that consumer.
 
-The discrimination is DERIVED, not declared: it asks whether the five-surface census carries the declaration's name, so it stays right as the disposition population grows without anyone maintaining a second list."
+The discrimination is DERIVED from the caller-supplied surface-symbol list, not from a second authored roster. primitive_identity_surface_symbols is the four std-owned surfaces (registry, contract, algebra, emit). The five-surface census that also includes InterpreterDispatch is gunbc.primitive_egress.d0_census primitive_surface_symbols; its closed projection query is the form that still asks whether that join carries the declaration's name."
 
-fn primitive_surface_symbols() -> List<String> {
+
+fn primitive_identity_surface_symbols() -> List<String> {
   concat(
     concat(
-      concat(
-        concat(primitive_registry_surface_symbols(), primitive_contract_surface_symbols()),
-        primitive_algebra_surface_symbols()
-      ),
-      primitive_emit_surface_symbols()
+      concat(primitive_registry_surface_symbols(), primitive_contract_surface_symbols()),
+      primitive_algebra_surface_symbols()
     ),
-    primitive_interpreter_surface_symbols()
+    primitive_emit_surface_symbols()
   )
 }
 
-fn primitive_surface_carries_symbol(authored_symbol: String) -> Bool {
-  primitive_surface_symbols() |> any(fn(sym) { sym == authored_symbol })
+fn primitive_surface_carries_symbol_in(
+  authored_symbol: String,
+  surface_symbols: List<String>,
+) -> Bool {
+  surface_symbols |> any(fn(sym) { sym == authored_symbol })
 }
 
-fn primitive_projection_for_declaration(declaration: DeclarationRef) -> PrimitiveProjectionAnswer {
+fn primitive_projection_for_declaration_in(
+  declaration: DeclarationRef,
+  surface_symbols: List<String>,
+) -> PrimitiveProjectionAnswer {
   match primitive_projection_row_for_declaration(declaration: declaration) {
     Present { value: row } =>
       DeclarationProjectsPrimitive { identity: row.primitive, fidelity: row.fidelity }
     Absent =>
-      if primitive_surface_carries_symbol(authored_symbol: declaration.decl_name as String) {
+      if primitive_surface_carries_symbol_in(
+        authored_symbol: declaration.decl_name as String,
+        surface_symbols: surface_symbols,
+      ) {
         DeclarationPrimitiveUndisposed { authored_symbol: declaration.decl_name }
       } else {
         DeclarationProjectsNoPrimitive
@@ -1326,11 +1174,15 @@ fn projection_fidelity_is_one_authority(fidelity: ProjectionFidelity) -> Bool {
   }
 }
 
-fn declaration_and_primitive_are_one_authority(
+fn declaration_and_primitive_are_one_authority_in(
   declaration: DeclarationRef,
   primitive: PrimitiveIdentity,
+  surface_symbols: List<String>,
 ) -> Bool {
-  match primitive_projection_for_declaration(declaration: declaration) {
+  match primitive_projection_for_declaration_in(
+    declaration: declaration,
+    surface_symbols: surface_symbols,
+  ) {
     DeclarationProjectsNoPrimitive => false
     DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
     DeclarationProjectsPrimitive { identity: id, fidelity: fidelity } =>
@@ -1425,17 +1277,6 @@ type PrimitiveSymbolDisposition
     }
   | SymbolUndisposed { authored_symbol: NonEmptyStr }
 
-fn primitive_surface_distinct_symbols() -> List<String> {
-  primitive_surface_census_derived()
-    |> fold(init: [], f: fn(acc, row) {
-      let sym = row.authored_symbol as String
-      if acc |> any(seen => seen == sym) {
-        acc
-      } else {
-        concat(acc, [sym])
-      }
-    })
-}
 
 fn primitive_symbol_disposition(authored_symbol: String) -> PrimitiveSymbolDisposition {
   if primitive_identity_is_declared(identity: primitive_identity_slug(name: authored_symbol)) {
@@ -1448,10 +1289,6 @@ fn primitive_symbol_disposition(authored_symbol: String) -> PrimitiveSymbolDispo
   }
 }
 
-fn primitive_surface_symbol_dispositions() -> List<PrimitiveSymbolDisposition> {
-  primitive_surface_distinct_symbols()
-    |> map(sym => primitive_symbol_disposition(authored_symbol: sym))
-}
 
 fn primitive_symbol_disposition_is_undisposed(d: PrimitiveSymbolDisposition) -> Bool {
   match d {
@@ -1460,23 +1297,6 @@ fn primitive_symbol_disposition_is_undisposed(d: PrimitiveSymbolDisposition) -> 
   }
 }
 
-fn primitive_surface_distinct_symbol_count() -> Int {
-  count(primitive_surface_distinct_symbols())
-}
-
-fn primitive_undisposed_surface_symbol_count() -> Int {
-  count(
-    primitive_surface_symbol_dispositions()
-      |> filter(fn(d) { primitive_symbol_disposition_is_undisposed(d: d) })
-  )
-}
-
-fn primitive_disposed_surface_symbol_count() -> Int {
-  count(
-    primitive_surface_symbol_dispositions()
-      |> filter(fn(d) { !primitive_symbol_disposition_is_undisposed(d: d) })
-  )
-}
 
 // ---------------------------------------------------------------------------
 // The other direction: given a SYMBOL on a surface, does any runtime row join it?
@@ -1484,7 +1304,7 @@ fn primitive_disposed_surface_symbol_count() -> Int {
 
 data primitive_runtime_coverage_note: String = "The projection query asks, of a DECLARATION, which primitive it projects. This asks the opposite and the two catch different defects. A primitive registered on the typecheck surface with NO row on any runtime-bearing surface typechecks clean at every call site and answers NoSuchFunction when one is actually evaluated -- the class gunbc#8952 found in emit_map_has by probing, where every one of its 21 live call sites happened to reach a same-named declaration through its own import closure so nobody noticed. The projection direction is blind to it BY CONSTRUCTION, because the defect is a primitive with no declaration rather than a declaration with a divergent primitive.
 
-WHAT THIS ANSWERS AND WHAT IT DOES NOT, AND IT IS THE SAME NAMED CLASS AS THE PROJECTION QUERY'S ABSENCE SPLIT, ONE LAYER DOWN. RuntimeRowAbsentFromEnumeratedSurfaces is top-as-answer about the DENOMINATOR -- nothing on the runtime-bearing surfaces of the derived census joins this symbol. It is NOT top-as-answer about the INTERPRETER -- 'no runtime exists' is a different and stronger claim this carrier cannot make, because a dispatch site the interpreter roster does not enumerate is invisible here exactly as it is invisible to every other consumer of that roster, which is the standing limit gunbc.v1_interpreter_primitive_surface records for itself. So the answer is a CANDIDATE SET, never a defect count: a consumer that reads it as the latter has performed the same conflation primitive_projection_query_note refuses in the projection direction.
+WHAT THIS ANSWERS AND WHAT IT DOES NOT, AND IT IS THE SAME NAMED CLASS AS THE PROJECTION QUERY'S ABSENCE SPLIT, ONE LAYER DOWN. RuntimeRowAbsentFromEnumeratedSurfaces is top-as-answer about the DENOMINATOR -- nothing on the runtime-bearing surfaces of the derived census joins this symbol. It is NOT top-as-answer about the INTERPRETER -- 'no runtime exists' is a different and stronger claim this carrier cannot make, because a dispatch site the interpreter roster does not enumerate is invisible here exactly as it is invisible to every other consumer of that roster, which is the standing limit gunbc.v1.v1_interpreter_primitive_surface records for itself. So the answer is a CANDIDATE SET, never a defect count: a consumer that reads it as the latter has performed the same conflation primitive_projection_query_note refuses in the projection direction.
 
 THE ARM IS NAMED FOR WHAT IT MEASURES, WHICH IS WHY IT IS NOT CALLED NoRuntimeRow. absence-of-OBSERVATION and observation-of-ABSENCE are two states with opposite repairs -- the first is closed by enumerating a dispatch site on the roster, the second by supplying a runtime -- and a name that spells the first while reading as the second hands every consumer the conflation for free. RuntimeRowAbsentFromEnumeratedSurfaces says the rosters do not enumerate this; it does not say nothing runs it. to_int and with are exactly the symbols where that distinction decides whether someone files a defect against a live method-dispatch path. Carried as a TYPE rather than a caveat deliberately: a caveat is read later as hedging and dropped, a variant has to be named to compile."
 
@@ -1524,12 +1344,6 @@ fn primitive_runtime_coverage_in(
   }
 }
 
-fn primitive_runtime_coverage(authored_symbol: String) -> PrimitiveSurfaceRuntimeCoverage {
-  primitive_runtime_coverage_in(
-    rows: primitive_surface_census_derived(),
-    authored_symbol: authored_symbol,
-  )
-}
 
 fn primitive_runtime_coverage_is_unenumerated(coverage: PrimitiveSurfaceRuntimeCoverage) -> Bool {
   match coverage {
@@ -1550,13 +1364,6 @@ fn registry_symbols_with_no_enumerated_runtime_row_in(rows: List<PrimitiveSurfac
     })
 }
 
-fn registry_symbols_with_no_enumerated_runtime_row() -> List<String> {
-  registry_symbols_with_no_enumerated_runtime_row_in(rows: primitive_surface_census_derived())
-}
-
-fn registry_symbols_with_no_enumerated_runtime_row_count() -> Int {
-  count(registry_symbols_with_no_enumerated_runtime_row())
-}
 
 // ---------------------------------------------------------------------------
 // Traversal-order denominator (determinism-denominator-closure first slice).
@@ -1764,56 +1571,6 @@ type PrimitiveRuntimeBodyCheck
   | PrimitiveRuntimeBodiesMissing { violations: List<PrimitiveRuntimeBodyViolation> }
   | PrimitiveRuntimeBodiesUnreadable { line: Int, detail: String }
 
-// The item scanner also recognizes semicolon-terminated declarations. A runtime BODY must
-// close a block; a function declaration alone is no realization. Extents come from the shared
-// scanner, so comments, nested modules and impl methods cannot mint a file-level function.
-fn primitive_runtime_item_has_body(item: RustItemIdentity, lines: List<String>) -> Bool {
-  match lines |> skip(item.start_line + item.loc - 2) |> first {
-    Present { value: line } => ends_with(s: trim(s: line), suffix: "}")
-    Absent => false
-  }
-}
-
-fn primitive_runtime_body_census_in(
-  registry: List<RuntimeFunction>,
-  source: String,
-) -> PrimitiveRuntimeBodyCensus {
-  let lines = split(s: source, delimiter: "\n")
-  match scan_rust_source(repo_path: "v1_rt.rs", content: source) {
-    RustFileScanRefused { repo_path: _, line: line, line_text: text, detail: detail } =>
-      PrimitiveRuntimeBodyScanRefused { line: line, detail: concat(detail, concat(": ", text)) }
-    RustFileScanned { repo_path: _, items: items, macro_regions: _, line_count: _ } =>
-      PrimitiveRuntimeBodiesObserved {
-        rows: items
-          |> filter(item => item.kind == RustFunction && item.enclosing_module == ""
-            && primitive_runtime_item_has_body(item: item, lines: lines))
-          |> flat_map(item => primitive_runtime_body_rows_for_symbol(
-            registry: registry, symbol: item.name as String
-          ))
-      }
-  }
-}
-
-// Preserve every bridge-to-body join. Two operations targeting one body must remain visible
-// to the identity reconciliation; choosing the last registry row would erase that evidence.
-fn primitive_runtime_body_rows_for_symbol(
-  registry: List<RuntimeFunction>, symbol: String,
-) -> List<PrimitiveSurfaceRow> {
-  let bridges = registry |> filter(entry => entry.bridge_name == symbol)
-  let identities = if count(bridges) == 0 { [none] } else {
-    bridges |> map(entry => primitive_identity_for_symbol(authority: EmitHandler, authored_symbol: entry.name))
-  }
-  identities |> map(identity => surface_row(
-    authority: RuntimeBody,
-    authored_symbol: symbol,
-    authority_ref: decl_ref(module_path: "v1_rt", decl_name: symbol),
-    primitive: identity,
-    provenance: DerivedFromAuthority,
-  ))
-}
-
-// Both the regression control and the runtime producer call this same acceptance boundary.
-// Join on bridge_name: empty_map is realized by rc_empty_map, not by an empty_map definition.
 fn primitive_runtime_body_check_in(
   registry: List<RuntimeFunction>,
   census: PrimitiveRuntimeBodyCensus,
@@ -1832,16 +1589,5 @@ fn primitive_runtime_body_check_in(
       if count(missing) == 0 { PrimitiveRuntimeBodiesComplete }
       else { PrimitiveRuntimeBodiesMissing { violations: missing } }
     }
-  }
-}
-
-fn primitive_surface_census_with_runtime(
-  runtime: PrimitiveRuntimeBodyCensus,
-) -> PrimitiveRuntimeBodyCensus {
-  match runtime {
-    PrimitiveRuntimeBodyScanRefused { line: line, detail: detail } =>
-      PrimitiveRuntimeBodyScanRefused { line: line, detail: detail }
-    PrimitiveRuntimeBodiesObserved { rows: rows } =>
-      PrimitiveRuntimeBodiesObserved { rows: concat(primitive_surface_census_derived(), rows) }
   }
 }

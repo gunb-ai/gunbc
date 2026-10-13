@@ -1,21 +1,21 @@
-module gunbc.fabric_cell_observe
+module gunbc.fabric.fabric_cell_observe
 
 import std.types { String, List, Bool, NonEmptyStr }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.host_identity { HostIdentity }
 import extdeps.systemd { systemd_slice_ancestor_names, systemd_slice_suffix }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
-import gunbc.runner_slot_allocation {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
+import gunbc.runner.runner_slot_allocation {
   fabric_execution_slot_identities,
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
-import gunbc.fleet_runner_connectivity {
+import gunbc.fleet.fleet_runner_connectivity {
   fleet_committed_slot_identities,
   FleetHostWidthUnresolved,
 }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.fabric_cell_converge {
   FabricCellResourceAddress,
   FabricCellRootAddress,
   FabricCellAttemptRootAddress,
@@ -49,7 +49,7 @@ import gunbc.fabric_cell_converge {
 data fabric_cell_observe_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // THIS MODULE IS THE PURE HALF OF THE OBSERVER AND CARRIES NO HOST EFFECT. It turns probe RESULTS
-// into the observation vocabulary gunbc.fabric_cell_converge already owns; acquiring those results
+// into the observation vocabulary gunbc.fabric.fabric_cell_converge already owns; acquiring those results
 // -- listing a directory, reading a cgroup -- is a realization handler bound to this shape, one of
 // N, and modelling a transport here would fuse dispatch into the interface (DESIGN section 3). The
 // split is what makes every law below authorable as a fixture: an adversarial probe result is a
@@ -114,7 +114,7 @@ fn fabric_cell_namespace_wire(n: FabricCellNamespace) -> String {
 // and its child arm already carries an exact `RunnerSlotIdentity`, so comparing two rendered
 // strings makes a DISPLAY projection the backward identity test for a fact the type owns -- the
 // same second-naming-scheme move `observation_targets` was repaired for in
-// gunbc.fabric_cell_converge. Rendering is for transport and display.
+// gunbc.fabric.fabric_cell_converge. Rendering is for transport and display.
 fn fabric_cell_namespace_eq(a: FabricCellNamespace, b: FabricCellNamespace) -> Bool {
   match a {
     FabricCellsRootNamespace =>
@@ -567,7 +567,7 @@ fn fabric_cell_named_among(
 // AN EARLIER REVISION ASKED THAT QUESTION WITH `string_contains` WHILE THE DECODER ASKED IT WITH
 // `starts_with`, over the same prefix authority: one relation, two implementations, disagreeing
 // observably -- `backup-srv2-01` was a candidate here and not there. Both are now
-// gunbc.build_cache_instance slot_name_could_belong_to_host, and the rendering difference that
+// gunbc.build_cache.build_cache_instance slot_name_could_belong_to_host, and the rendering difference that
 // motivated `contains` is handled where it belongs: the PREFIX is rendered the way THIS name was
 // rendered, so a slice named `fabric-cell-srv2-01.slice` is compared against `fabric-cell-srv2-`.
 fn fabric_cell_rendered_host_prefix(rendering: FabricCellNamespaceRendering, host: HostIdentity) -> String {
@@ -630,7 +630,7 @@ fn fabric_cell_is_expected_slice_ancestor(name: String, members: List<RunnerSlot
 // globally committed and globally fabric-expected. The observed fact is that an artifact named
 // srv3-06 exists ON srv4, which is not evidence that srv3's expected cell exists, and treating it
 // as such would let one host's listing satisfy another host's expectation. Same cross-host join
-// class gunbc.fabric_cell_converge just repaired one layer later, and it is the reason the fourth
+// class gunbc.fabric.fabric_cell_converge just repaired one layer later, and it is the reason the fourth
 // arm exists rather than folding into ForeignArtifact: a name that IS a committed slot elsewhere is
 // a different remedy from a name nothing committed anywhere.
 fn fabric_cell_classify_discovered_name(
@@ -676,7 +676,7 @@ fn fabric_cell_classify_discovered_name(
 // beside that fold said an incomplete enumeration removes the right to conclude that no host
 // committed the name; the fold then made exactly that conclusion.
 //
-// gunbc.fleet_runner_connectivity already carries the standing, so this reads it directly instead
+// gunbc.fleet.fleet_runner_connectivity already carries the standing, so this reads it directly instead
 // of maintaining a second fold that strips its unresolved half. A one-line wrapper around that
 // read would have been the other half of the same rule: a second name for one concept is what this
 // change deleted gunbc_runner_pool_budget_for for (DESIGN 3).
@@ -863,7 +863,7 @@ fn fabric_cell_projection_refusals(projection: FabricCellObserverProjection) -> 
   ))
 }
 
-// DISCOVERY PROJECTS INTO THE REFUSAL VOCABULARY gunbc.fabric_cell_converge OWNS, which is what
+// DISCOVERY PROJECTS INTO THE REFUSAL VOCABULARY gunbc.fabric.fabric_cell_converge OWNS, which is what
 // keeps the direction acyclic: this module imports that one, so that one cannot name
 // FabricCellDiscovery. Expected cells and their structural slice ancestors project no refusal;
 // ancestors remain explicit discovery subjects but are not cell resources. An earlier cut got that population wrong

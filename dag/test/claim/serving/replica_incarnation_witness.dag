@@ -1,0 +1,168 @@
+module test.claim.serving.replica_incarnation_witness
+
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.optional { Present, Absent }
+import std.decimal { ExactDecimal }
+import std.measure { hertz, clock_tick_count }
+import std.content_hash { ContentHash }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
+import gunbc.serving.replica_endpoint_launch { replica_incarnation_unverified_obligation }
+import gunbc.serving.turn_admission {
+  BatchQualityTolerant, SeatStandingRead, ServingSessionRecord, SessionRecord, TurnReuseRead,
+  ServingSessionResidency, ReusedAtTurn, MustReconstruct, TokenPrefixBroken, ResidencyUnread,
+}
+import gunbc.serving.replica_incarnation {
+  ProcessStartReading, ProcessJoined, ProcessJoinNone, ProcessJoinAmbiguous, join_exported_start,
+  ReplicaIncarnationStanding, ReplicaIncarnationBound, ReplicaIncarnationUnread, replica_incarnation_witness_fixture, bind_digested_executable, exported_start_equals_process_start,
+}
+import gunbc.harness.harness_seat { HarnessCandidates, harness_add_serving_candidate }
+import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
+import gunbc.serving.rented_offer_admission { rented_production_sources }
+import test.claim.serving.serving_session_attachment_witness {
+  w_endpoint, w_replica, w_subject, w_launch, w_engine_with, w_record, w_own_key,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn w_digest() -> ContentHash? {
+  match sha256sum_line_digest(line: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  /proc/1/exe") {
+    Absent => none
+    Present { value: d } => sha256_digest_content_hash(digest: d)
+  }
+}
+
+fn w_bound(field: String) -> ReplicaIncarnationStanding? {
+  match w_digest() {
+    Absent => none
+    Present { value: h } => Present { value: replica_incarnation_witness_fixture(launch: w_launch(field: field), pid: 4242, executable_digest: h) }
+  }
+}
+
+fn w_place(session: ServingSessionRecord, incarnation: ReplicaIncarnationStanding) -> HarnessCandidates {
+  let field = "1789300000.12"
+  harness_add_serving_candidate(
+    acc_in: HarnessCandidates { candidates: [], notes: [], retryable: false, owner_standing: none },
+    endpoint: w_endpoint,
+    class: BatchQualityTolerant,
+    launch: w_launch(field: field),
+    engine: w_engine_with(field: field),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: session,
+    incarnation: incarnation,
+    sources: rented_production_sources(replica: w_replica),
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1789300000,
+  )
+}
+
+fn w_exported() -> ExactDecimal {
+  ExactDecimal { units: 178934488391, fraction_digits: 2 }
+}
+
+test fn the_process_started_at_the_exported_instant_is_the_one_joined() -> Bool {
+  match join_exported_start(
+    candidates: [ProcessStartReading { pid: 10, start_ticks: clock_tick_count(count: 5) }, ProcessStartReading { pid: 11, start_ticks: clock_tick_count(count: 71392591) }],
+    exported: w_exported(), boot: 1788630958, ticks: hertz(count: 100),
+  ) {
+    ProcessJoined { process: p } => p.pid == 11
+    _ => false
+  }
+}
+
+test fn no_candidate_at_the_exported_instant_joins_nothing_and_never_the_nearest() -> Bool {
+  match join_exported_start(
+    candidates: [ProcessStartReading { pid: 11, start_ticks: clock_tick_count(count: 71392592) }],
+    exported: w_exported(), boot: 1788630958, ticks: hertz(count: 100),
+  ) {
+    ProcessJoinNone { candidates: n } => n == 1
+    _ => false
+  }
+}
+
+test fn two_candidates_at_the_exported_instant_refuse_rather_than_choose() -> Bool {
+  match join_exported_start(
+    candidates: [ProcessStartReading { pid: 11, start_ticks: clock_tick_count(count: 71392591) }, ProcessStartReading { pid: 12, start_ticks: clock_tick_count(count: 71392591) }],
+    exported: w_exported(), boot: 1788630958, ticks: hertz(count: 100),
+  ) {
+    ProcessJoinAmbiguous { pids: ps } => count(ps) == 2
+    _ => false
+  }
+}
+
+test fn a_wrapping_tick_rate_is_not_a_match() -> Bool {
+  !exported_start_equals_process_start(exported: ExactDecimal { units: 1, fraction_digits: 0 }, boot_epoch_seconds: 9000000000000000000, ticks_per_second: hertz(count: 9000000000000000000), start_ticks: clock_tick_count(count: 0))
+}
+
+test fn a_bound_incarnation_of_the_owner_launch_is_judged_reused_at_the_turn() -> Bool {
+  match w_bound(field: "1789300000.12") {
+    Absent => false
+    Present { value: inc } =>
+      match w_place(session: w_record(owner: w_own_key(), intact: true), incarnation: inc).owner_standing {
+        Present { value: ReusedAtTurn { cached_tokens: _, launch: _, turn: _ } } => true
+        _ => false
+      }
+  }
+}
+
+test fn a_bound_incarnation_with_a_broken_prefix_must_reconstruct_and_is_never_warm() -> Bool {
+  match w_bound(field: "1789300000.12") {
+    Absent => false
+    Present { value: inc } =>
+      match w_place(session: w_record(owner: w_own_key(), intact: false), incarnation: inc).owner_standing {
+        Present { value: MustReconstruct { cause: TokenPrefixBroken } } => true
+        _ => false
+      }
+  }
+}
+
+test fn a_bound_incarnation_of_another_launch_leaves_the_owner_unread() -> Bool {
+  match w_bound(field: "1789399999.99") {
+    Absent => false
+    Present { value: inc } =>
+      match w_place(session: w_record(owner: w_own_key(), intact: true), incarnation: inc).owner_standing {
+        Present { value: ResidencyUnread { obligation: o } } => (o as String) == (replica_incarnation_unverified_obligation as String)
+        _ => false
+      }
+  }
+}
+
+fn w_exe_line() -> String {
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  /proc/11/exe"
+}
+
+fn w_joined() -> ProcessStartReading {
+  ProcessStartReading { pid: 11, start_ticks: clock_tick_count(count: 71392591) }
+}
+
+fn w_post_digest(reread: ProcessStartReading?) -> ReplicaIncarnationStanding {
+  bind_digested_executable(launch: w_launch(field: "1788630958.5"), joined: w_joined(), digest_line: w_exe_line(), reread: reread)
+}
+
+// PID REUSE BETWEEN THE STAT READ AND THE EXE READ, DRIVEN THROUGH THE DECISION bind_executable CALLS
+// AFTER THE DIGEST: the joined generation S with a successful digest, then the later stat read. Same pid
+// and start binds; the same pid with a successor start, or an unread stat, is Unread. Checked by mutation:
+// with the same_generation guard removed from bind_digested_executable, the two refusing rows go red.
+test fn a_later_stat_of_the_same_generation_binds_the_incarnation() -> Bool {
+  match w_post_digest(reread: Present { value: w_joined() }) {
+    ReplicaIncarnationBound { incarnation: _ } => true
+    ReplicaIncarnationUnread { obligation: _ } => false
+  }
+}
+
+test fn a_pid_replaced_by_a_successor_start_after_the_digest_is_unread() -> Bool {
+  match w_post_digest(reread: Present { value: ProcessStartReading { pid: 11, start_ticks: clock_tick_count(count: 71399999) } }) {
+    ReplicaIncarnationBound { incarnation: _ } => false
+    ReplicaIncarnationUnread { obligation: _ } => true
+  }
+}
+
+test fn an_unread_stat_after_the_digest_is_unread() -> Bool {
+  match w_post_digest(reread: none) {
+    ReplicaIncarnationBound { incarnation: _ } => false
+    ReplicaIncarnationUnread { obligation: _ } => true
+  }
+}

@@ -1,13 +1,13 @@
 module gunbc.native_cache_root_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // FORWARD-FREEZE RECEIPT for the hand Rust that places the native-cache namespace and serializes its
 // writers (gunbc#12887).
 //
-// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The three emit_host_identity_cast_native
+// PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing). The three emit_host_identity_cast_native
 // witnesses were red on srv1 because, with GUNBC_NATIVE_CACHE_ROOT unset, the seed's cached host
 // transport kept the namespace at its literal /tmp/gunbc_ spelling -- one directory for every user
 // and runner instance on a host, written in place with no owner. The transport that performs those

@@ -1,0 +1,177 @@
+module v2.compiler.module_header
+
+import std.types { List }
+import v2.compiler.grammar_reach { Reach, ReachUnbounded, Reaches, grammar_production_tail }
+import v2.compiler.parse { PreparedGrammar, PreparedModeled, PreparedModeledGrammar, PreparedVoidGrammar, parse_production_prefix_prepared }
+import v2.compiler.tokenize { LexWalkUntil, PreparedLexRules, tokenize_prefix_prepared }
+import v2.extdeps.languages.dag { qualified_name_from_parsed_module_root }
+import v2.std.compilers.lexing { Token }
+import std.algebra { is_empty }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+// THE ONE READING OF A SOURCE FILE'S DECLARED MODULE: the real lexer over the START of the file, and the
+// grammar's module_header production over the start of its tokens, through the generic prefix door
+// (v2.compiler.parse parse_production_prefix_prepared). Nothing here recognises a keyword, a name, a
+// delimiter or a line: what is a header, what is trivia and what is a name are the lexer's and the
+// grammar's, so a header spelled with tabs, CRLF, a trailing annotation, split across lines or sharing
+// its line with the first declaration reads exactly as it parses, and a later string or comment that
+// mentions `module` is never reached.
+//
+// WHERE THE HEADER ENDS IS THE PRODUCTION'S, NOT THIS MODULE'S. The prefix door returns the artifact of
+// the tokens the production consumed and leaves the rest unread, so no rule about lines, trivia or
+// stream length stands beside the grammar's. An earlier reading cut the file at the first line that
+// held a token and demanded the production consume that line whole; it refused programs the grammar
+// accepts, which made it a second authority on what a header is.
+//
+// HOW MUCH OF THE FILE IS READ IS DECIDED BY THE GRAMMAR TOO. The header is a handful of tokens at the
+// head of a file whose body is thousands, and lexing the body to read the header was the cost this
+// reader exists to avoid: the lexer is shown a window of the file's scalars (v2.compiler.tokenize
+// tokenize_prefix_prepared, whose tokens are the leading tokens of the whole lex) and the window grows
+// by doubling while it cannot settle the reading. Only the window crosses into structural text, so the
+// cost of an attempt follows the window and not the file; a token the window's edge falls inside is
+// undecided, not emitted, and a larger window decides it. A window settles it exactly when its lex is complete,
+// or the production ACCEPTED and left unread at least the production's tail: the tokens a parse examines
+// beyond the ones it consumes, derived from the grammar (v2.compiler.grammar_reach
+// grammar_production_tail). An accepted parse that examined only the tokens it was handed is the parse
+// the whole file would give. A rule such as "grow while the production consumes the whole window" is
+// not that: the window `module rt .` accepts `module rt` with one token unread, while the whole file
+// continues `.match` and the full parse refuses it by name. Every window that does not settle grows,
+// so a file with no header, or one the grammar refuses, is lexed whole as before and refuses with the
+// whole parse's cause. A production whose tail is not bounded is refused and not read through a
+// guessed window.
+//
+// THE EQUIVALENCE THIS READER OWES: whenever the file's full module parse accepts, the name read here
+// is the name v2.extdeps.languages.dag qualified_name_from_module_node reads off that parse
+// (v2.test.claim.module_header). A file that lexes but does not parse as a module still yields its
+// header when the header itself parses, so a layout verdict does not wait on the body being sound,
+// and the same holds for a body the lexer refuses: only the lexing of the tokens the header needs is
+// owed, and a lexical error inside that window is the whole lex's first error, refused with its own
+// cause. A lexical error beyond the window is the body's, found by the parse of the whole file.
+//
+// The reader holds the prepared lexer and grammar, and the tail derived from that grammar, once per
+// run, exactly as the acquisition and the population jobs hold them: preparing or deriving them per
+// file would be the per-file cost the carriers exist to remove.
+type ModuleHeaderReader {
+  lex: PreparedLexRules
+  grammar: PreparedGrammar
+  tail: Reach
+}
+
+type ModuleHeaderRead
+  = ModuleHeaderDeclared { module: String }
+  | ModuleHeaderAbsent
+  | ModuleHeaderRefused { cause: String }
+
+// THE TAIL OF THE HEADER PRODUCTION, derived from the grammar once per run. A void grammar has no
+// production, so its tail is unbounded and the reader refuses before any read.
+fn module_header_tail(grammar: PreparedGrammar) -> Reach {
+  match grammar {
+    PreparedVoidGrammar => ReachUnbounded
+    PreparedModeled { modeled: modeled } =>
+      grammar_production_tail(productions: modeled.analysis.productions_by_name, production: ^dag_production_module_header)
+  }
+}
+
+fn module_header_reader(lex: PreparedLexRules, grammar: PreparedGrammar) -> ModuleHeaderReader {
+  ModuleHeaderReader { lex: lex, grammar: grammar, tail: module_header_tail(grammar: grammar) }
+}
+
+// The first window, in scalars of the file. A policy row and not a fact of the grammar: it is
+// the size of the first attempt, and a window that is too small costs one more doubling and never a
+// wrong reading, because the grammar's tail decides whether a window settles.
+fn module_header_first_window() -> Int { 256 }
+
+// WHAT THE HEADER PRODUCTION MADE OF A WINDOW OF TOKENS. `unread` is the number of the handed tokens
+// it left unread, which is the one fact that decides whether the window settles the reading.
+type ModuleHeaderWindow
+  = WindowParsed { read: ModuleHeaderRead, unread: Int }
+  | WindowRejected { cause: String }
+
+fn module_header_window_read(modeled: PreparedModeledGrammar, tokens: List<Token>) -> ModuleHeaderWindow {
+  match parse_production_prefix_prepared(
+    tokens: tokens,
+    validated: modeled.validated,
+    analysis: modeled.analysis,
+    production_name: ^dag_production_module_header
+  ) {
+    Rejected { diagnostics: d } => WindowRejected { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }
+    Accepted { value: prefix, diagnostics: _ } =>
+      match qualified_name_from_parsed_module_root(root: prefix.artifact.tree) {
+        Rejected { diagnostics: d } =>
+          WindowParsed { read: ModuleHeaderRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }, unread: prefix.unread }
+        Accepted { value: name, diagnostics: _ } =>
+          WindowParsed { read: ModuleHeaderDeclared { module: qualified_name_to_dotted_string(qn: name) }, unread: prefix.unread }
+      }
+  }
+}
+
+// Whether `unread` tokens are enough to take an accepted window parse for the whole file's.
+fn module_header_window_settles(tail: Reach, unread: Int) -> Bool {
+  match tail {
+    ReachUnbounded => false
+    Reaches { tokens: t } => unread >= t
+  }
+}
+
+// The module a source file declares. `file` names the file in the diagnostics a refusal carries.
+// Absent only when the whole file holds no token at all (empty, blank, annotations only); every other
+// failure is Refused with the lexer's or the parse's own cause, never a shorter name.
+fn module_header_read(reader: ModuleHeaderReader, file: String, content: String) -> ModuleHeaderRead {
+  module_header_read_from(reader: reader, file: file, content: content, window: module_header_first_window())
+}
+
+// The same reading with the first window named, so a claim can hold the reading to the whole file's at
+// every window and not only at the policy's. A window that cannot settle grows; the answer is the
+// window's alone to reach and never depends on where it began.
+fn module_header_read_from(reader: ModuleHeaderReader, file: String, content: String, window: Int) -> ModuleHeaderRead {
+  if window < 1 {
+    ModuleHeaderRefused { cause: "the first window of a module header read must hold at least one scalar, since a window that holds none can never grow" }
+  } else {
+    match reader.grammar {
+      PreparedVoidGrammar => ModuleHeaderRefused { cause: "the prepared grammar is void, so no module header can be parsed" }
+      PreparedModeled { modeled: modeled } =>
+        match reader.tail {
+          ReachUnbounded =>
+            ModuleHeaderRefused { cause: "the module header production examines an unbounded number of tokens, so no window of a file can be taken for the whole" }
+          Reaches { tokens: _ } =>
+            module_header_read_window(reader: reader, modeled: modeled, file: symbol_intern_lexeme(lexeme: file), content: content, window: window)
+        }
+    }
+  }
+}
+
+// One attempt over a window of `window` scalars, and the doubled window when it does not settle.
+// Descent: the window is at least one (module_header_read_from refuses otherwise) and doubles, and a
+// window grows only when its prefix is not complete, which is only when the file has scalars past the
+// window, so it is below the file's scalar count; at or past the count the carrier is the whole file,
+// the lex is complete and the attempt settles.
+fn module_header_read_window(reader: ModuleHeaderReader, modeled: PreparedModeledGrammar, file: Symbol, content: String, window: Int) -> ModuleHeaderRead {
+  match tokenize_prefix_prepared(text: content, file: file, prepared: reader.lex, limit: LexWalkUntil { scalars: window }) {
+    Rejected { diagnostics: d } => ModuleHeaderRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }
+    Accepted { value: prefix, diagnostics: _ } =>
+      if prefix.complete {
+        if is_empty(xs: prefix.stream.all) {
+          ModuleHeaderAbsent
+        } else {
+          match module_header_window_read(modeled: modeled, tokens: prefix.stream.all) {
+            WindowRejected { cause: cause } => ModuleHeaderRefused { cause: cause }
+            WindowParsed { read: read, unread: _ } => read
+          }
+        }
+      } else {
+        match module_header_window_read(modeled: modeled, tokens: prefix.stream.all) {
+          WindowParsed { read: read, unread: unread } =>
+            if module_header_window_settles(tail: reader.tail, unread: unread) {
+              read
+            } else {
+              module_header_read_window(reader: reader, modeled: modeled, file: file, content: content, window: window * 2)
+            }
+          WindowRejected { cause: _ } =>
+            module_header_read_window(reader: reader, modeled: modeled, file: file, content: content, window: window * 2)
+        }
+      }
+  }
+}

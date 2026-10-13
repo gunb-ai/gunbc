@@ -20,12 +20,12 @@ import gunbc.cloudflare.r2_staged_transfer {
   R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
   R2StagingNotCreated, r2_release_staging, r2_put_staged_file, r2_fetch_into_staging,
 }
-import gunbc.fabric_storage_r2_head { R2HeadStagingCustody, r2_head_staging_of, r2_head_staging_join }
+import gunbc.fabric.fabric_storage_r2_head { R2HeadStagingCustody, r2_head_staging_of, r2_head_staging_join }
 import gunbc.fabric.fabric_blob_r2 {
   FabricBlobReadDirection, FabricBlobWriteDirection, FabricBlobTargetReady, FabricBlobTargetRefused, resolve_fabric_blob_target,
 }
 
-// std.fabric_storage OBJECTS OVER R2: THE OBJECT HALF THE R2 HEAD (gunbc.fabric_storage_r2_head) SAYS
+// std.fabric_storage OBJECTS OVER R2: THE OBJECT HALF THE R2 HEAD (gunbc.fabric.fabric_storage_r2_head) SAYS
 // THE COMPOSED REALIZATION OWES. An object is stored as its canonical preimage
 // (std.fabric_storage fabric_object_preimage) under a key derived from its ref, create-only by the
 // bucket purpose's admission. A get decodes the preimage and routes it through

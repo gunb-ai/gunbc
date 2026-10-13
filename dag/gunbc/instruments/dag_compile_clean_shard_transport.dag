@@ -1,4 +1,4 @@
-module tools.dag_compile_clean_shard_transport
+module gunbc.instruments.dag_compile_clean_shard_transport
 
 import extdeps.shell
 import extdeps.git
@@ -6,7 +6,7 @@ import extdeps.git.inspect
 import extdeps.gunbc
 import std.logic { Bool }
 import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence, subject_evidence_establishes }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   WitnessBin,
   witness_bin,
   witness_bin_ensure_built_typed,
@@ -14,7 +14,7 @@ import tools.host_prelude {
   WitnessBinRefused,
   WitnessBinRefusal
 }
-import tools.dag_compile_clean_transport {
+import gunbc.instruments.dag_compile_clean_transport {
   dcc_fixture_only_compile_args
 }
 

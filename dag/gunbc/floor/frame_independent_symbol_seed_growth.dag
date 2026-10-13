@@ -1,6 +1,6 @@
-module gunbc.frame_independent_symbol_seed_growth
+module gunbc.floor.frame_independent_symbol_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 

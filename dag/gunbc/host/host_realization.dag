@@ -1,4 +1,4 @@
-module gunbc.host_realization
+module gunbc.host.host_realization
 
 import std.types { String, Bool, Int, List }
 import std.decl_ref { DeclarationRef }

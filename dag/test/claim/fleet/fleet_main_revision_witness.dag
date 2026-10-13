@@ -1,0 +1,93 @@
+module test.claim.fleet.fleet_main_revision_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id, git_object_id_eq }
+import gunbc.live_deploy.revision {
+  SameRevision,
+  DeployedIsAncestor,
+  CandidateIsAncestor,
+  UnrelatedHistories,
+  DivergedHistories,
+  RelationUnverifiable,
+}
+import gunbc.fleet.fleet_main_revision {
+  fleet_landed_main_ref_name,
+  classify_landed_on_main,
+  RevisionLandedOnMain,
+  RevisionNotLandedOnMain,
+  RevisionLandedUnobserved,
+  converge_target_revision,
+  RemoteRevisionPresent,
+  RemoteRevisionAbsent,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_rev(hex_char: String) -> GitObjectId? {
+  git_sha1_object_id(hex: join([hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char,hex_char], ""))
+}
+
+test fn landed_main_ref_is_origin_heads_main() -> Bool {
+  fleet_landed_main_ref_name == "refs/heads/main"
+}
+
+test fn equal_to_main_is_landed() -> Bool {
+  match classify_landed_on_main(relation: SameRevision) {
+    RevisionLandedOnMain => true
+    RevisionNotLandedOnMain { relation: _ } => false
+    RevisionLandedUnobserved { cause: _ } => false
+  }
+}
+
+test fn ancestor_of_main_is_landed() -> Bool {
+  match classify_landed_on_main(relation: DeployedIsAncestor) {
+    RevisionLandedOnMain => true
+    RevisionNotLandedOnMain { relation: _ } => false
+    RevisionLandedUnobserved { cause: _ } => false
+  }
+}
+
+test fn tree_ahead_of_main_is_not_landed() -> Bool {
+  match classify_landed_on_main(relation: CandidateIsAncestor) {
+    RevisionNotLandedOnMain { relation: r } => match r { CandidateIsAncestor => true  _ => false }
+    RevisionLandedOnMain => false
+    RevisionLandedUnobserved { cause: _ } => false
+  }
+}
+
+test fn unrelated_and_diverged_are_not_landed() -> Bool {
+  match classify_landed_on_main(relation: UnrelatedHistories) {
+    RevisionNotLandedOnMain { relation: _ } =>
+      match classify_landed_on_main(relation: DivergedHistories) {
+        RevisionNotLandedOnMain { relation: _ } => true
+        RevisionLandedOnMain => false
+        RevisionLandedUnobserved { cause: _ } => false
+      }
+    RevisionLandedOnMain => false
+    RevisionLandedUnobserved { cause: _ } => false
+  }
+}
+
+test fn unverifiable_is_unobserved_not_a_landing_verdict() -> Bool {
+  match classify_landed_on_main(relation: RelationUnverifiable { cause: "x" as NonEmptyStr }) {
+    RevisionLandedUnobserved { cause: c } => c == "x"
+    RevisionNotLandedOnMain { relation: _ } => false
+    RevisionLandedOnMain => false
+  }
+}
+
+test fn converge_target_is_present_main_head() -> Bool {
+  match fixture_rev(hex_char: "a") {
+    Present { value: r } =>
+      match converge_target_revision(observed: RemoteRevisionPresent { revision: r }) {
+        Present { value: t } => git_object_id_eq(left: t, right: r)
+        Absent => false
+      }
+        && match converge_target_revision(observed: RemoteRevisionAbsent) {
+          Absent => true
+          Present { value: _ } => false
+        }
+    none => false
+  }
+}

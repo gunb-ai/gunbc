@@ -1,4 +1,4 @@
-module tools.emit_host_fixtures
+module gunbc.instruments.emit_host_fixtures
 
 import std.measure { ByteSize, byte_size }
 import std.integer { int_to_decimal_string }

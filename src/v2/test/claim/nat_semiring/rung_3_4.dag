@@ -1,4 +1,4 @@
-module v2.test.nat_semiring.rung_3_4
+module v2.test.claim.nat_semiring.rung_3_4
 
 
 data claim_phase1_nat_semiring_module_roundtrip: TestClaim = RoundTripClaim {

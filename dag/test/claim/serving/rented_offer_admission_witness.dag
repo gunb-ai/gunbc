@@ -1,0 +1,496 @@
+module test.claim.serving.rented_offer_admission_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.work { Shape }
+import product.fabric.offer_route { OfferRouteRow }
+import product.fabric.supply { SupplierOffer }
+import product.fabric.candidate_field { FieldRequest }
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
+import std.nat { Nat }
+import gunbc.serving.turn_demand { serving_token_capability, serving_replica_trust_domain, serving_unstated_shape }
+import gunbc.serving.turn_admission { serving_isolation_profile, BatchQualityTolerant, SeatStandingRead, NoSessionRecord, QueueDepthRead, RouteAdmittingMore }
+import gunbc.serving.replica_incarnation { ReplicaIncarnationUnread }
+import gunbc.harness.harness_backend { HarnessEngineReading }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.serving.replica_endpoint_launch { ReplicaLaunchObserved, replica_endpoint_launch }
+import gunbc.serving.replica_endpoint_launch { replica_incarnation_unverified_obligation, ReplicaEndpointLaunch }
+import gunbc.serving.rented_offer_admission {
+  OperatorPostureAttestation, RentedAdmissionSources, RentedOfferRead, RentedWorkScope, RentedWorkScopeReading, RentedWorkScopeDeclared, RentedWorkScopeUnread,
+  rented_work_scope_unread_obligation, RentedOfferNotRead,
+  RentedAdmission, RentedCandidateAdmitted, RentedAdmissionRefused,
+  PostureStanding, PostureAttested, PostureUnattested, PostureAmbiguous, rented_posture_standing,
+  rented_production_sources, admit_rented_offer,
+  rented_rental_record_unread_obligation, rented_posture_unattested_obligation,
+  rented_posture_attested_twice_obligation,
+}
+import std.measure { gibibyte, gibibyte_to_byte_size }
+import product.fabric.envelope { ResourceEnvelope, GpuRequirement }
+import extdeps.gpu.types { Cuda }
+import gunbc.serving.rented_instance_offer { rented_replica_offer_reading, rented_replica_offer_key }
+import gunbc.harness.harness_seat { HarnessCandidate, HarnessCandidates, harness_add_serving_candidate, harness_candidate_for_key }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint, serving_route_endpoint_wire }
+import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
+import test.claim.fabric.spill_candidate_field_witness {
+  s_request, s_hetzner_route, s_hetzner_sibling_route, s_facts, s_posture, s_customer_profile,
+  s_data_handling_profile, s_agreement, s_cleared, s_requirements, s_hetzner_exercise, s_at,
+}
+import test.claim.serving.serving_session_attachment_witness {
+  w_replica, w_endpoint, w_launch, w_engine_with, w_subject, w_record, w_own_key,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn r_attestation() -> OperatorPostureAttestation {
+  OperatorPostureAttestation {
+    attestation: decl_ref(module_path: "test.claim.serving.rented_offer_admission_witness", decl_name: "r_attestation"),
+    route: s_hetzner_route(),
+    attested_by: "witness-operator" as NonEmptyStr,
+    attested_at: "2026-10-12T00:00:00Z",
+    posture: s_posture(),
+    customer_profile: s_customer_profile(),
+    data_handling_profile: s_data_handling_profile(),
+    agreement: s_agreement(),
+    terms_relied_on: s_agreement(),
+    further_terms_relied_on: [],
+  }
+}
+
+fn r_offer_request() -> FieldRequest<NonEmptyStr> {
+  s_request(key: "rented-offer-1", route: s_hetzner_route(), amount: 1000)
+}
+
+fn r_serving_request() -> FieldRequest<NonEmptyStr> {
+  r_serving_request_keyed(key: "rented-offer-1")
+}
+
+fn r_serving_request_keyed(key: String) -> FieldRequest<NonEmptyStr> {
+  let base = s_request(key: key, route: s_hetzner_route(), amount: 1000)
+  FieldRequest {
+    offer: SupplierOffer {
+      id: base.offer.id,
+      executor: base.offer.executor,
+      route: base.offer.route,
+      shape: serving_unstated_shape(),
+      capabilities: serving_token_capability(),
+      trust_domain: serving_replica_trust_domain,
+      isolation: serving_isolation_profile(),
+      quantity_bound: base.offer.quantity_bound,
+      ready_at: base.offer.ready_at,
+      quote: base.offer.quote,
+      billing_quantum: base.offer.billing_quantum,
+      evidence: base.offer.evidence,
+    },
+    dispatch: base.dispatch,
+    delivery: base.delivery,
+  }
+}
+
+fn r_roster() -> List<OfferRouteRow<NonEmptyStr>> {
+  [OfferRouteRow { offer: r_offer_request().offer.id, facts: s_facts(route: s_hetzner_route()) }]
+}
+
+fn r_roster_keyed(key: String) -> List<OfferRouteRow<NonEmptyStr>> {
+  [OfferRouteRow { offer: r_serving_request_keyed(key: key).offer.id, facts: s_facts(route: s_hetzner_route()) }]
+}
+
+fn r_other_ref(name: String) -> DeclarationRef {
+  decl_ref(module_path: "test.claim.serving.rented_offer_admission_witness", decl_name: name)
+}
+
+fn r_work_scope() -> RentedWorkScope {
+  RentedWorkScope {
+    customer_profile: s_customer_profile(),
+    data_handling_profile: s_data_handling_profile(),
+    agreement: s_agreement(),
+    prohibited_use_disposition: s_cleared(ev: s_agreement()),
+    sanctions_disposition: s_cleared(ev: s_agreement()),
+    export_disposition: s_cleared(ev: s_agreement()),
+  }
+}
+
+fn r_sources_scoped(request: FieldRequest<NonEmptyStr>, replica: RentedReplicaIdentity, scope: RentedWorkScopeReading, roster: List<OfferRouteRow<NonEmptyStr>>) -> RentedAdmissionSources {
+  RentedAdmissionSources {
+    reading: RentedOfferRead { replica: replica, request: request },
+    work_scope: scope,
+    roster: roster,
+    attestations: [r_attestation()],
+    exercises: [s_hetzner_exercise(valid_through: 2000)],
+  }
+}
+
+fn r_sources(request: FieldRequest<NonEmptyStr>, attestations: List<OperatorPostureAttestation>, roster: List<OfferRouteRow<NonEmptyStr>>) -> RentedAdmissionSources {
+  RentedAdmissionSources {
+    reading: RentedOfferRead { replica: w_replica, request: request },
+    work_scope: RentedWorkScopeDeclared { scope: r_work_scope() },
+    roster: roster,
+    attestations: attestations,
+    exercises: [s_hetzner_exercise(valid_through: 2000)],
+  }
+}
+
+fn r_admit(sources: RentedAdmissionSources) -> RentedAdmission {
+  admit_rented_offer(
+    replica: w_replica,
+    sources: sources, at: s_at, requirements: s_requirements(),
+    demand: FabricIdentity { principal: "gunbc", key: "spill-demand-1" },
+    work: FabricIdentity { principal: "gunbc", key: "spill-work-1" },
+  )
+}
+
+fn r_refusal(a: RentedAdmission) -> String {
+  match a {
+    RentedCandidateAdmitted { candidate: _ } => ""
+    RentedAdmissionRefused { detail: d } => d
+  }
+}
+
+// POSITIVE CONTROL, ON A SUPPLIED FULLY-READ FIXTURE: an offer read from a rental, a route-facts row
+// whose paths are all located, an operator attestation and an exercised route admit and seal a
+// candidate for that offer.
+test fn a_fully_read_rented_offer_with_an_attested_posture_is_admitted() -> Bool {
+  match r_admit(sources: r_sources(request: r_offer_request(), attestations: [r_attestation()], roster: r_roster())) {
+    RentedCandidateAdmitted { candidate: c } => (c.offer.id.key as String) == "rented-offer-1"
+    RentedAdmissionRefused { detail: _ } => false
+  }
+}
+
+// NEGATIVE CONTROLS, one per unread fact: each removal alone refuses and names its own cause.
+test fn an_unattested_route_admits_nothing_and_names_the_attestation() -> Bool {
+  (r_refusal(a: r_admit(sources: r_sources(request: r_offer_request(), attestations: [], roster: r_roster())))
+    == join(["offer rented-offer-1: ", rented_posture_unattested_obligation as String], ""))
+}
+
+test fn an_attestation_for_a_sibling_region_does_not_attest_this_route() -> Bool {
+  let other = OperatorPostureAttestation {
+    attestation: r_attestation().attestation, route: s_hetzner_sibling_route(), attested_by: r_attestation().attested_by,
+    attested_at: r_attestation().attested_at, posture: r_attestation().posture, customer_profile: r_attestation().customer_profile,
+    data_handling_profile: r_attestation().data_handling_profile, agreement: r_attestation().agreement,
+    terms_relied_on: r_attestation().terms_relied_on, further_terms_relied_on: [],
+  }
+  match rented_posture_standing(attestations: [other], route: s_hetzner_route()) {
+    PostureUnattested { route: _, obligation: _ } => true
+    PostureAmbiguous { route: _, claimed: _, obligation: _ } => false
+    PostureAttested { attestation: _ } => false
+  }
+}
+
+test fn two_attestations_for_one_route_are_not_resolved_by_order() -> Bool {
+  match rented_posture_standing(attestations: [r_attestation(), r_attestation()], route: s_hetzner_route()) {
+    PostureAmbiguous { route: _, claimed: c, obligation: o } => count(c) == 2 && (o as String) == (rented_posture_attested_twice_obligation as String)
+    PostureUnattested { route: _, obligation: _ } => false
+    PostureAttested { attestation: _ } => false
+  }
+}
+
+test fn an_unmodeled_route_admits_nothing_though_the_posture_is_attested() -> Bool {
+  r_refusal(a: r_admit(sources: r_sources(request: r_offer_request(), attestations: [r_attestation()], roster: [])))
+    == "no provider route facts are modeled for offer rented-offer-1"
+}
+
+test fn an_unexercised_route_admits_nothing() -> Bool {
+  let s = r_sources(request: r_offer_request(), attestations: [r_attestation()], roster: r_roster())
+  r_refusal(a: r_admit(sources: RentedAdmissionSources { reading: s.reading, work_scope: s.work_scope, roster: s.roster, attestations: s.attestations, exercises: [] }))
+    == "the route of offer rented-offer-1 has never been exercised"
+}
+
+// THE INHABITANCE CLAIM: the REAL production sources -- the same value harness_seat evaluates --
+// refuse a replica with the unread rental record, and they hold no roster row, no attestation and no
+// exercise to admit it with. Deleting the harness wiring or supplying fixture sources in production
+// breaks this claim.
+test fn the_production_sources_refuse_a_replica_for_want_of_a_rental_record() -> Bool {
+  let sources = rented_production_sources(replica: w_replica)
+  (r_refusal(a: r_admit(sources: sources)) == (rented_rental_record_unread_obligation as String))
+    && (match sources.reading {
+      RentedOfferNotRead { replica: _, obligation: _ } => true
+      RentedOfferRead { replica: _, request: _ } => false
+    })
+    && (match sources.work_scope {
+      RentedWorkScopeUnread { obligation: _ } => true
+      RentedWorkScopeDeclared { scope: _ } => false
+    })
+    && count(sources.roster) == 0
+    && count(sources.attestations) == 0
+    && count(sources.exercises) == 0
+}
+
+fn r_place(sources: RentedAdmissionSources) -> HarnessCandidates {
+  let field = "1789300000.12"
+  harness_add_serving_candidate(
+    acc_in: HarnessCandidates { candidates: [], notes: [], retryable: false, owner_standing: none },
+    endpoint: w_endpoint,
+    class: BatchQualityTolerant,
+    launch: w_launch(field: field),
+    engine: w_engine_with(field: field),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: NoSessionRecord,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: sources,
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1000,
+  )
+}
+
+test fn the_harness_seam_places_a_replica_whose_offer_is_read_and_attested() -> Bool {
+  let placed = r_place(sources: r_sources(request: r_serving_request(), attestations: [r_attestation()], roster: r_roster()))
+  count(placed.candidates) == 1
+    && (match placed.candidates.first() {
+      Present { value: c } => (c.key as String) == "rented-offer-1" && c.ceiling == 4
+      Absent => false
+    })
+}
+
+test fn the_harness_seam_notes_the_refusal_for_a_replica_with_no_rental_record() -> Bool {
+  let placed = r_place(sources: rented_production_sources(replica: w_replica))
+  count(placed.candidates) == 0 && count(placed.notes) == 1 && !placed.retryable
+}
+
+fn r_scope_with(customer: DeclarationRef, handling: DeclarationRef, agreement: DeclarationRef) -> RentedWorkScopeReading {
+  RentedWorkScopeDeclared { scope: RentedWorkScope {
+    customer_profile: customer, data_handling_profile: handling, agreement: agreement,
+    prohibited_use_disposition: r_work_scope().prohibited_use_disposition,
+    sanctions_disposition: r_work_scope().sanctions_disposition,
+    export_disposition: r_work_scope().export_disposition,
+  } }
+}
+
+fn r_scoped_admit(scope: RentedWorkScopeReading) -> RentedAdmission {
+  r_admit(sources: r_sources_scoped(request: r_offer_request(), replica: w_replica, scope: scope, roster: r_roster()))
+}
+
+fn r_admitted(a: RentedAdmission) -> Bool {
+  match a {
+    RentedCandidateAdmitted { candidate: _ } => true
+    RentedAdmissionRefused { detail: _ } => false
+  }
+}
+
+// THE WORK'S SCOPE IS INDEPENDENT OF THE ATTESTATION: with the offer and the attestation fixed, the
+// matching work scope admits and each of a different customer profile, data handling and agreement
+// refuses, because the comparison is between what the work requires and what was attested.
+test fn a_work_scope_matching_the_attestation_admits() -> Bool {
+  r_admitted(a: r_scoped_admit(scope: r_scope_with(customer: s_customer_profile(), handling: s_data_handling_profile(), agreement: s_agreement())))
+}
+
+test fn a_work_with_another_customer_profile_is_refused() -> Bool {
+  !r_admitted(a: r_scoped_admit(scope: r_scope_with(customer: r_other_ref(name: "r_other_customer"), handling: s_data_handling_profile(), agreement: s_agreement())))
+}
+
+test fn a_work_with_another_data_handling_profile_is_refused() -> Bool {
+  !r_admitted(a: r_scoped_admit(scope: r_scope_with(customer: s_customer_profile(), handling: r_other_ref(name: "r_other_handling"), agreement: s_agreement())))
+}
+
+test fn a_work_under_another_agreement_is_refused() -> Bool {
+  !r_admitted(a: r_scoped_admit(scope: r_scope_with(customer: s_customer_profile(), handling: s_data_handling_profile(), agreement: r_other_ref(name: "r_other_agreement"))))
+}
+
+test fn an_undeclared_work_scope_admits_nothing_and_names_the_declaration() -> Bool {
+  r_refusal(a: r_scoped_admit(scope: RentedWorkScopeUnread { obligation: rented_work_scope_unread_obligation }))
+    == (rented_work_scope_unread_obligation as String)
+}
+
+// AN OFFER READ FOR ONE REPLICA CANNOT PLACE ANOTHER: the reading retains its replica and admission
+// requires it to be the replica being placed.
+fn r_replica_b() -> RentedReplicaIdentity {
+  RentedReplicaIdentity { node: w_replica.node, device_index: 1, served_name: w_replica.served_name }
+}
+
+test fn an_offer_read_for_replica_a_does_not_place_replica_b() -> Bool {
+  let a_sources = r_sources_scoped(request: r_serving_request(), replica: w_replica, scope: RentedWorkScopeDeclared { scope: r_work_scope() }, roster: r_roster())
+  let placed_on_b = r_place_on(acc: r_empty(), replica: r_replica_b(), sources: a_sources)
+  count(placed_on_b.candidates) == 0 && count(placed_on_b.notes) == 1
+}
+
+fn r_empty() -> HarnessCandidates {
+  HarnessCandidates { candidates: [], notes: [], retryable: false, owner_standing: none }
+}
+
+fn r_place_on(acc: HarnessCandidates, replica: RentedReplicaIdentity, sources: RentedAdmissionSources) -> HarnessCandidates {
+  harness_add_serving_candidate(
+    acc_in: acc,
+    endpoint: r_endpoint_for(replica: replica),
+    class: BatchQualityTolerant,
+    launch: r_launch_for(replica: replica),
+    engine: r_engine_for(replica: replica),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: NoSessionRecord,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: sources,
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1000,
+  )
+}
+
+fn r_two_gpu(key_b: String) -> HarnessCandidates {
+  let scope = RentedWorkScopeDeclared { scope: r_work_scope() }
+  let a = r_place_on(acc: r_empty(), replica: w_replica, sources: r_sources_scoped(request: r_serving_request_keyed(key: "rented-offer-a"), replica: w_replica, scope: scope, roster: r_roster_keyed(key: "rented-offer-a")))
+  r_place_on(acc: a, replica: r_replica_b(), sources: r_sources_scoped(request: r_serving_request_keyed(key: key_b), replica: r_replica_b(), scope: scope, roster: r_roster_keyed(key: key_b)))
+}
+
+test fn two_gpus_with_their_own_offers_yield_distinct_candidates() -> Bool {
+  let placed = r_two_gpu(key_b: "rented-offer-b")
+  count(placed.candidates) == 2
+    && (match harness_candidate_for_key(candidates: placed.candidates, key: "rented-offer-b" as NonEmptyStr) {
+      Present { value: c } => (c.replica.device_index == 1)
+      Absent => false
+    })
+}
+
+test fn two_gpus_sharing_one_offer_identity_place_only_the_first() -> Bool {
+  let placed = r_two_gpu(key_b: "rented-offer-a")
+  count(placed.candidates) == 1 && count(placed.notes) == 1
+}
+
+fn r_instance() -> FieldRequest<NonEmptyStr> {
+  let base = r_serving_request_keyed(key: "rented-instance-1")
+  let priced = s_request(key: "rented-instance-1", route: s_hetzner_route(), amount: money_amount_micro(count: 3000))
+  FieldRequest {
+    offer: SupplierOffer {
+      id: base.offer.id, executor: base.offer.executor, route: base.offer.route,
+      shape: Shape {
+        hard: base.offer.shape.hard,
+        envelope: ResourceEnvelope {
+          cpu: none,
+          gpu: Present { value: GpuRequirement { count: 2, min_vram: gibibyte_to_byte_size(g: gibibyte(count: 96)), runtimes: [Cuda] } },
+          memory: none, storage: none, network: none,
+        },
+      },
+      capabilities: base.offer.capabilities, trust_domain: base.offer.trust_domain, isolation: base.offer.isolation,
+      quantity_bound: base.offer.quantity_bound, ready_at: base.offer.ready_at, quote: priced.offer.quote,
+      billing_quantum: base.offer.billing_quantum, evidence: base.offer.evidence,
+    },
+    dispatch: base.dispatch,
+    delivery: base.delivery,
+  }
+}
+
+fn r_derived(replica: RentedReplicaIdentity) -> RentedOfferReading {
+  rented_replica_offer_reading(instance: r_instance().offer, inputs: r_instance().dispatch, replica: replica)
+}
+
+fn r_derived_id(reading: RentedOfferReading) -> List<OfferRouteRow<NonEmptyStr>> {
+  match reading {
+    RentedOfferRead { replica: _, request: q } => [OfferRouteRow { offer: q.offer.id, facts: s_facts(route: s_hetzner_route()) }]
+    RentedOfferNotRead { replica: _, obligation: _ } => []
+  }
+}
+
+fn r_derived_sources(replica: RentedReplicaIdentity) -> RentedAdmissionSources {
+  let reading = r_derived(replica: replica)
+  RentedAdmissionSources {
+    reading: reading,
+    work_scope: RentedWorkScopeDeclared { scope: r_work_scope() },
+    roster: r_derived_id(reading: reading),
+    attestations: [r_attestation()],
+    exercises: [s_hetzner_exercise(valid_through: 2000)],
+  }
+}
+
+fn r_endpoint_for(replica: RentedReplicaIdentity) -> ServingRouteEndpoint {
+  ServingRouteEndpoint { replica: replica, address: "10.0.0.7" as NonEmptyStr, port: 8000 + replica.device_index }
+}
+
+fn r_launch_for(replica: RentedReplicaIdentity) -> ReplicaEndpointLaunch {
+  replica_endpoint_launch(replica: replica, endpoint: serving_route_endpoint_wire(e: r_endpoint_for(replica: replica)), process_start_field: "1789300000.12" as NonEmptyStr)
+}
+
+fn r_engine_for(replica: RentedReplicaIdentity) -> HarnessEngineReading {
+  HarnessEngineReading {
+    queue: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore },
+    launch: ReplicaLaunchObserved { launch: r_launch_for(replica: replica), receipt: "w" as ObservationReceiptRef },
+    progress: none,
+  }
+}
+
+fn r_place_coherent(acc: HarnessCandidates, replica: RentedReplicaIdentity, sources: RentedAdmissionSources) -> HarnessCandidates {
+  harness_add_serving_candidate(
+    acc_in: acc,
+    endpoint: r_endpoint_for(replica: replica),
+    class: BatchQualityTolerant,
+    launch: r_launch_for(replica: replica),
+    engine: r_engine_for(replica: replica),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: NoSessionRecord,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: sources,
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1000,
+  )
+}
+
+fn r_coherent(c: HarnessCandidate) -> Bool {
+  rented_replica_wire(id: c.launch.replica) == rented_replica_wire(id: c.replica)
+    && rented_replica_wire(id: c.endpoint.replica) == rented_replica_wire(id: c.replica)
+    && (c.launch.endpoint as String) == (serving_route_endpoint_wire(e: c.endpoint) as String)
+}
+
+test fn a_launch_naming_another_endpoint_for_the_same_replica_places_nothing() -> Bool {
+  let b = r_replica_b()
+  let stale = replica_endpoint_launch(replica: b, endpoint: serving_route_endpoint_wire(e: r_endpoint_for(replica: w_replica)), process_start_field: "1789300000.12" as NonEmptyStr)
+  let placed = harness_add_serving_candidate(
+    acc_in: r_empty(),
+    endpoint: r_endpoint_for(replica: b),
+    class: BatchQualityTolerant,
+    launch: stale,
+    engine: r_engine_for(replica: b),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: NoSessionRecord,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: r_derived_sources(replica: b),
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1000,
+  )
+  count(placed.candidates) == 0 && count(placed.notes) == 1
+}
+
+test fn a_launch_naming_another_replica_than_the_endpoint_places_nothing() -> Bool {
+  let placed = harness_add_serving_candidate(
+    acc_in: r_empty(),
+    endpoint: r_endpoint_for(replica: r_replica_b()),
+    class: BatchQualityTolerant,
+    launch: r_launch_for(replica: w_replica),
+    engine: r_engine_for(replica: w_replica),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: NoSessionRecord,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: r_derived_sources(replica: r_replica_b()),
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1000,
+  )
+  count(placed.candidates) == 0 && count(placed.notes) == 1
+}
+
+test fn one_two_gpu_instance_places_both_replicas_each_on_its_own_derived_offer() -> Bool {
+  let a = r_place_coherent(acc: r_empty(), replica: w_replica, sources: r_derived_sources(replica: w_replica))
+  let placed = r_place_coherent(acc: a, replica: r_replica_b(), sources: r_derived_sources(replica: r_replica_b()))
+  let key_a = rented_replica_offer_key(instance: r_instance().offer, replica: w_replica) as String
+  let key_b = rented_replica_offer_key(instance: r_instance().offer, replica: r_replica_b()) as String
+  count(placed.candidates) == 2
+    && key_a != key_b
+    && (match harness_candidate_for_key(candidates: placed.candidates, key: key_a as NonEmptyStr) {
+      Present { value: c } => c.replica.device_index == 0 && c.endpoint.replica.device_index == 0 && r_coherent(c: c)
+      Absent => false
+    })
+    && (match harness_candidate_for_key(candidates: placed.candidates, key: key_b as NonEmptyStr) {
+      Present { value: c } => c.replica.device_index == 1 && c.endpoint.replica.device_index == 1 && c.endpoint.port == 8001 && r_coherent(c: c)
+      Absent => false
+    })
+}

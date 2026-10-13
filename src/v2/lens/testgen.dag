@@ -5,8 +5,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
-import std.algebra { FreeMonoid, Empty, Cons, list_append, list_snoc_item }
-import v2.std.algebra { count_where, fold_list, fold_list_right, length, list_flat_map, list_map, non_empty, zip_eq }
+import std.algebra { FreeMonoid, Empty, Cons, list_append, list_snoc_item, count_where, fold_list, fold_list_right, length, list_flat_map, list_map, non_empty, zip_eq }
 import v2.std.diagnostic {
   Outcome,
   DeclarationLocus,
@@ -122,7 +121,7 @@ import v2.std.verification {
   test_claim_classification,
   test_claim_anchor
 }
-import v2.test.manual.connective_anchors {
+import v2.test.claim.manual.connective_anchors {
   stub_empty_conj,
   stub_empty_disj,
   stub_empty_transform,
@@ -138,7 +137,7 @@ import v2.test.manual.connective_anchors {
   claim_loop_empty_rejected,
   claim_bind_zero_children_rejected
 }
-import v2.test.manual.nat_law_anchors {
+import v2.test.claim.manual.nat_law_anchors {
   claim_nat_add_associativity,
   claim_nat_add_left_identity,
   claim_nat_add_right_identity,

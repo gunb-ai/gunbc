@@ -5,13 +5,13 @@ import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.fleet_bootstrap_principal_session {
+import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   BootstrapCredentialInRunEnvironment,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
 }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
   portable_remote_word,
@@ -26,7 +26,7 @@ import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 // it and is described in its own section. No
 // script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access
 // path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses
-// gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute
+// gunbc.fleet.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute
 // (one authority, no typed_argv fork). typed_remote_file_write_over_fleet_ssh accepts only
 // TypedRemoteFileWriteAdmitted. TypedRemoteFileWriteOutcome success arm is
 // TypedRemoteFileWriteRemoteExecAccepted (tee exit 0 only) — NOT convergence. A zero tee exit
@@ -65,13 +65,33 @@ type TypedRemoteFileWriteOutcome
 // the declared bytes are at the declared path with the declared mode. This section adds the arm that
 // ruling reserved.
 //
-// FOUR STEPS, and the ORDER is the property.
+// FIVE STEPS, and the ORDER is the property.
 //
-//   1. stage    -- write the bytes to a sibling staging path, never to the destination
-//   2. mode     -- set the mode on the staged file, before anything can observe it at its real name
-//   3. rename   -- `mv -f` within one directory, which POSIX makes atomic, so no reader ever sees a
+//   1. unlink-staging -- `rm -f --` the sibling staging name. `rm` does not follow a symlink and
+//                        does not touch its referent, so a pre-existing `<dest>.gunbc-staging`
+//                        planted as a link (the old Cursor layout: operator-owned directory) cannot
+//                        become the write target. A missing staging name is success (`-f`).
+//   2. stage    -- write the bytes to that sibling with `dd`, which now creates a FRESH REGULAR
+//                  file inside the destination's directory. `dd of=` on a leftover symlink would
+//                  follow it and write outside custody; the unlink is why that is unwritable here.
+//   3. mode     -- set the mode on the staged file, before anything can observe it at its real name
+//   4. rename   -- `mv -fT` within one directory. `-T` treats the destination as a file, so a
+//                  planted directory at the dest name refuses at rename rather than receiving the
+//                  staged file. POSIX rename is still atomic for two names in one directory.
+//                  Every caller of this fold goes through FleetSsh plus sudo to GNU/systemd fleet
+//                  hosts, never into a guest, so GNU `mv -T` is available at every site.
 //                  partially written or wrong-moded file at the destination
-//   4. read back-- `cmp -s -` the DESTINATION against the declared content on stdin, FAR-SIDE
+//   5. read back-- `cmp -s -` the DESTINATION against the declared content on stdin, FAR-SIDE
+//
+// WHY THE UNLINK LIVES HERE AND NOT ONLY ON THE CUSTODY RECEIPT. Every caller of this fold stages
+// the same sibling name beside the destination. `gunbc.fleet.host_credential_custody_converge`
+// `write_and_own` places the credential FILE itself through this fold, in the same formerly
+// operator-owned directory as the export receipt. A receipt-only unlink would leave the credential
+// write following a planted staging symlink. The other callers (runner host files, PXE edge,
+// approval keyring, spark remote file bytes, host_command_binding, microVM admin staging) lose a
+// leftover staging sibling and refuse a staging *directory* (`rm -f` does not recurse); they do not
+// gain a new success arm. `create_only_publish` uses the same unlink-then-stage pair because it
+// builds those argv itself rather than calling this fold.
 //
 // Writing straight to the destination and then chmod-ing is the shape this replaces: it publishes
 // incomplete bytes under the real name, and on a unit file that is a window where systemd can read
@@ -93,7 +113,7 @@ type TypedRemoteFileWriteOutcome
 // cmp's exit vocabulary plus the whole route over a hermetic fixture, not a near-side byte compare.
 // For a unit file the transfer is a few hundred bytes.
 // OWNER-READ-ONLY IS ITS OWN ARM, not a caller-supplied octal: a signing key read by root alone
-// (gunbc.host_credential_custody_converge ControllerAppKey) has no reason to be writable even by its owner, and an
+// (gunbc.fleet.host_credential_custody_converge ControllerAppKey) has no reason to be writable even by its owner, and an
 // open octal parameter would let any consumer spell a group- or world-readable key.
 type RemoteFileMode
   = RemoteFileModeOwnerReadWrite
@@ -241,8 +261,51 @@ fn typed_remote_file_staging_path(write: TypedRemoteFileWrite) -> String {
   concat(write.path as String, ".gunbc-staging")
 }
 
+fn typed_remote_file_unlink_staging_argv(write: TypedRemoteFileWrite) -> List<String> {
+  ["rm", "-f", "--", typed_remote_file_staging_path(write: write)]
+}
+
 fn typed_remote_file_stage_argv(write: TypedRemoteFileWrite) -> List<String> {
   ["dd", "status=none", concat("of=", typed_remote_file_staging_path(write: write))]
+}
+
+type TypedRemoteFileWriteStep {
+  step: String
+  argv: List<String>
+  stdin_payload: String
+}
+
+fn typed_remote_file_fresh_staging_steps(write: TypedRemoteFileWrite) -> List<TypedRemoteFileWriteStep> {
+  [
+    TypedRemoteFileWriteStep {
+      step: "unlink-staging",
+      argv: typed_remote_file_unlink_staging_argv(write: write),
+      stdin_payload: "",
+    },
+    TypedRemoteFileWriteStep {
+      step: "stage",
+      argv: typed_remote_file_stage_argv(write: write),
+      stdin_payload: typed_remote_file_write_stdin_payload(write: write),
+    },
+  ]
+}
+
+fn typed_remote_file_pre_compare_steps(write: TypedRemoteFileWrite, mode: RemoteFileMode) -> List<TypedRemoteFileWriteStep> {
+  concat(
+    typed_remote_file_fresh_staging_steps(write: write),
+    [
+      TypedRemoteFileWriteStep {
+        step: "mode",
+        argv: typed_remote_file_chmod_argv(write: write, mode: mode),
+        stdin_payload: "",
+      },
+      TypedRemoteFileWriteStep {
+        step: "rename",
+        argv: typed_remote_file_rename_argv(write: write),
+        stdin_payload: "",
+      },
+    ],
+  )
 }
 
 fn typed_remote_file_chmod_argv(write: TypedRemoteFileWrite, mode: RemoteFileMode) -> List<String> {
@@ -250,7 +313,7 @@ fn typed_remote_file_chmod_argv(write: TypedRemoteFileWrite, mode: RemoteFileMod
 }
 
 fn typed_remote_file_rename_argv(write: TypedRemoteFileWrite) -> List<String> {
-  ["mv", "-f", typed_remote_file_staging_path(write: write), write.path as String]
+  ["mv", "-fT", typed_remote_file_staging_path(write: write), write.path as String]
 }
 
 // THE COMPARISON HAPPENS FAR-SIDE, AND ONLY AN EXIT CODE COMES BACK.
@@ -431,7 +494,7 @@ fn typed_remote_file_write_outcome_after_ssh_exec(
 // THE SESSION COMES FROM THE PRINCIPAL IN THE TARGET, not from this call site. This leg used
 // to name shape_fleet_ssh_exec directly, which silently asserted that every principal a
 // caller might write a file as holds the fleet key. The bootstrap principal does not, and
-// gunbc.fleet_bootstrap_principal_session is now the one place that decides.
+// gunbc.fleet.fleet_bootstrap_principal_session is now the one place that decides.
 fn typed_remote_file_write_over_fleet_ssh(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -529,10 +592,31 @@ fn typed_remote_file_step_outcome(
   }
 }
 
-// STAGE -> MODE -> RENAME -> READ BACK, halting at the first refusal. Each step's failure is located
-// by name, so a converge that stops is a statement about WHICH invariant did not hold rather than a
-// single opaque false. Nothing is published under the destination name until the rename, and nothing
-// is called converged until the destination has been read back and compared.
+fn typed_remote_file_run_steps(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  privilege: RemoteFilePrivilege,
+  steps: List<TypedRemoteFileWriteStep>,
+) -> TypedRemoteFileConvergence? {
+  fold(steps, init: none, f: (acc, st) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        typed_remote_file_step_outcome(
+          target: target,
+          context: context,
+          step: st.step,
+          raws: remote_file_privileged_argv(privilege: privilege, argv: st.argv),
+          stdin_payload: st.stdin_payload,
+        )
+    }
+  )
+}
+
+// UNLINK-STAGING -> STAGE -> MODE -> RENAME -> READ BACK, halting at the first refusal. Each step's
+// failure is located by name, so a converge that stops is a statement about WHICH invariant did not
+// hold rather than a single opaque false. Nothing is published under the destination name until the
+// rename, and nothing is called converged until the destination has been read back and compared.
 fn converge_typed_remote_file(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -544,51 +628,36 @@ fn converge_typed_remote_file(
     TypedRemoteFileWriteAdmissionRefused { cause: cause } =>
       TypedRemoteFileConvergenceRefused { step: "admission", reason: cause as String }
     TypedRemoteFileWriteAdmitted { write: write } =>
-      match typed_remote_file_step_outcome(
-        target: target, context: context, step: "stage",
-        raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_stage_argv(write: write)),
-        stdin_payload: typed_remote_file_write_stdin_payload(write: write),
+      match typed_remote_file_run_steps(
+        target: target,
+        context: context,
+        privilege: privilege,
+        steps: typed_remote_file_pre_compare_steps(write: write, mode: mode),
       ) {
         Present { value: refusal } => refusal
         Absent =>
-          match typed_remote_file_step_outcome(
-            target: target, context: context, step: "mode",
-            raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_chmod_argv(write: write, mode: mode)),
-            stdin_payload: "",
+          match typed_remote_file_step(
+            target: target, context: context,
+            raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_compare_argv(write: write)),
+            stdin_payload: write.content,
           ) {
-            Present { value: refusal } => refusal
-            Absent =>
-              match typed_remote_file_step_outcome(
-                target: target, context: context, step: "rename",
-                raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_rename_argv(write: write)),
-                stdin_payload: "",
-              ) {
-                Present { value: refusal } => refusal
-                Absent =>
-                  match typed_remote_file_step(
-                    target: target, context: context,
-                    raws: remote_file_privileged_argv(privilege: privilege, argv: typed_remote_file_compare_argv(write: write)),
-                    stdin_payload: write.content,
-                  ) {
-                    TypedRemoteFileStepArgvRefused =>
-                      TypedRemoteFileConvergenceRefused {
-                        step: "compare",
-                        reason: "remote argv refused as non-portable under the far-side shell re-parse allowlist",
-                      }
-                    TypedRemoteFileStepLegRefused { cause: why } =>
-                      TypedRemoteFileConvergenceRefused { step: "compare", reason: why as String }
-                    TypedRemoteFileStepRan { result: back } =>
-                      remote_file_converged_from_report(
-                        target: target,
-                        write: write,
-                        report: classify_typed_remote_file_comparison(
-                          write: write,
-                          compare_exit_code: back.exit_code,
-                          compare_stderr: back.stderr,
-                        ),
-                      )
-                  }
+            TypedRemoteFileStepArgvRefused =>
+              TypedRemoteFileConvergenceRefused {
+                step: "compare",
+                reason: "remote argv refused as non-portable under the far-side shell re-parse allowlist",
               }
+            TypedRemoteFileStepLegRefused { cause: why } =>
+              TypedRemoteFileConvergenceRefused { step: "compare", reason: why as String }
+            TypedRemoteFileStepRan { result: back } =>
+              remote_file_converged_from_report(
+                target: target,
+                write: write,
+                report: classify_typed_remote_file_comparison(
+                  write: write,
+                  compare_exit_code: back.exit_code,
+                  compare_stderr: back.stderr,
+                ),
+              )
           }
       }
   }

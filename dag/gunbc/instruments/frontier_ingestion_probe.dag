@@ -1,8 +1,8 @@
-module gunbc.tools.frontier_ingestion_probe
+module gunbc.instruments.frontier_ingestion_probe
 
 import v2.std.text { String }
 import v2.std.integer { Int }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.node { Symbol }
 import std.content_hash { ContentHash, content_hash_atom, content_hash_combine_structural, as_content_hash_structural }
 import std.types { NonEmptyStr, List }
@@ -44,7 +44,7 @@ import extdeps.filesystem.filesystem_io
 // continuing to exist, so it would go RED on the repair and GREEN on a regression. The durable
 // claims — that the stage classifier separates its states, that reasons are read by containment,
 // and that census reconciliation is a two-directional join over the roster — live in
-// gunbc.test.claim.normalize_retention_contract_probe_test and import classify_source from here, so
+// test.claim.normalize_retention_contract_probe and import classify_source from here, so
 // there is one classifier authority and not two.
 //
 // Reason reads are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS
@@ -313,7 +313,7 @@ type MemberObservation {
 }
 
 data frontier_roster: List<FrontierMember> = [
-  FrontierMember { label: ^entry, path: "src/v2/test/claim/manual/cross_tree_constructor_binding_test.dag" },
+  FrontierMember { label: ^entry, path: "src/v2/test/claim/manual/cross_tree_constructor_binding.dag" },
   FrontierMember { label: ^primitives, path: "dag/std/primitives.dag" },
   FrontierMember { label: ^collection, path: "src/v2/std/collection.dag" },
   FrontierMember { label: ^witness, path: "src/v2/std/witness.dag" },
@@ -321,12 +321,11 @@ data frontier_roster: List<FrontierMember> = [
   FrontierMember { label: ^node, path: "src/v2/std/node.dag" },
   FrontierMember { label: ^content_hash, path: "dag/std/content_hash.dag" },
   FrontierMember { label: ^dag_algebra, path: "dag/std/algebra.dag" },
-  FrontierMember { label: ^v2_algebra, path: "src/v2/std/algebra.dag" },
   FrontierMember { label: ^logic, path: "src/v2/std/logic.dag" },
   FrontierMember { label: ^optional, path: "src/v2/std/optional.dag" },
   FrontierMember { label: ^diagnostic, path: "src/v2/std/diagnostic.dag" },
   FrontierMember { label: ^occurrence, path: "dag/std/occurrence_identity.dag" },
-  FrontierMember { label: ^live_tree, path: "src/v2/std/live_tree.dag" },
+  FrontierMember { label: ^live_tree, path: "dag/std/live_tree.dag" },
   FrontierMember { label: ^error_primitives, path: "dag/std/error_primitives.dag" },
 ]
 

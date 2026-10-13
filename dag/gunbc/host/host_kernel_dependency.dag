@@ -1,4 +1,4 @@
-module gunbc.host_kernel_dependency
+module gunbc.host.host_kernel_dependency
 
 import std.types { String, NonEmptyStr, Bool, List, CommitSha }
 import std.algebra { trim }
@@ -6,10 +6,10 @@ import std.upsert_decision { Noop, Apply, Refuse, UpsertDecision }
 import gunbc.ensure { ensure_decide, EnsureMayApply, EnsureObserved, EnsureInaccessible, EnsurePlanAvailable, EnsurePlanUnavailable }
 import extdeps.linux.kernel { LinuxKernelRelease }
 import extdeps.linux.tun_fdinfo { TunAttachedQueueRequirement, TunQueueReading, TunQueuesAttached, TunQueuesRefused, TunCensusQueueCountUnsupported, tun_census_refusal_text }
-import extdeps.dpkg { dpkg_record_field, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
+import extdeps.package_managers.dpkg { dpkg_record_field, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import extdeps.shell.exec { ProcessObservation }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 
 // A provider selection is host policy, never a requirement authored by VM code. The selected
 // TUN census asks for TunAttachedQueueRequirement. This Ubuntu realization can establish it
@@ -148,7 +148,7 @@ fn host_kernel_dependency_action_lines(plan: HostKernelDependencyPlan) -> List<S
     "observed-capability:unsupported (errno EOPNOTSUPP)"] + install + [
     concat("activate-kernel:", plan.provider.kernel_release as String),
     "activation-prerequisites: plan-bound host interruption authority; drained runners; operator BMC recovery; external boot observer",
-    "maintenance: gunbc.host_kernel_dependency_apply administrator entries consume this canonical dependency; no job-user grant",
+    "maintenance: gunbc.host.host_kernel_dependency_apply administrator entries consume this canonical dependency; no job-user grant",
     "readback: running kernel and new boot identity; KVM; network and services; successful TUN queue query",
     "continuation: rerun the same commissioning goal; sanitation must still prove zero holders",
     "standing: dependency remedy planned; VM remains uncommissioned",

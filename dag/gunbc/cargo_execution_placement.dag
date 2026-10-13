@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // consumer that cared expressed it the only way left — by naming a path inside a
 // shell string.
 //
-// The measured consequence is in tools.interpreter_dispatch_bijection_real_roster_transport:
+// The measured consequence is in gunbc.instruments.interpreter_dispatch_bijection_real_roster_transport:
 // it hardcoded /opt/cargo/bin/cargo twice, and its own note records WHY — the modeled
 // cargo.Build.Test operation spells argv ["cargo", ...], which resolves through PATH,
 // and in this environment PATH's cargo is a shim that dispatches to a remote builder.

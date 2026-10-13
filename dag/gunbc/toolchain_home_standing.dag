@@ -27,7 +27,7 @@ import v2.workflow.ci_workflow_run_emit {
 // exists is reachable by whoever remembers it, which is how fleet-desired.yml came to install a
 // toolchain into the shared home for as long as it has existed while the fix sat one import away.
 //
-// WHY THE DENOMINATOR IS THE EMITTED WORKFLOW AND NOT A ROSTER OF JOBS. gunbc.witness_floor_workflow
+// WHY THE DENOMINATOR IS THE EMITTED WORKFLOW AND NOT A ROSTER OF JOBS. gunbc.witness.witness_floor_workflow
 // witness_floor_capability_closure_per_job_note states the defect this avoids in its own words: the
 // capability closure is conjoined PER JOB into the emission, so "adding a third job without adding
 // its conjunct would emit that job unchecked". A hand-maintained roster of jobs to check is a second

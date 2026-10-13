@@ -10,7 +10,7 @@ import extdeps.standards.nic_attachment { NicAttachmentClass, PcieCem }
 
 // IBM's FRU is shared by EC2T and EC2U. The bracket fitted to the ordered card
 // is an operator report downstream, not something inferred from the FRU number.
-// Consumer: gunbc.machine_intake_mtcollins1_expansion_candidates.candidate_verdicts.
+// Consumer: gunbc.machine_intake.mtcollins1_expansion_candidates.candidate_verdicts.
 // SFP28 names the port connector; no Ethernet link mode or aggregate is inferred.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority { uri: Uri {
   scheme: Https,

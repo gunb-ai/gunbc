@@ -8,6 +8,7 @@ import std.optional { Optional, Present, Absent, optional_present, optional_abse
 import std.types { String, List, NonEmptyStr }
 import std.integer { Int }
 import std.measure { Millisecond }
+import gunbc.instruments.native_process_memory_reading { NativeMeasuredWorkload }
 
 // A TARGET AND THE MECHANISM THAT REALIZES IT ARE PEER FACTS. BuildTarget owns the stable graph
 // identity and dependency edges; this relation answers the separate realization question. In
@@ -57,6 +58,7 @@ type TargetProducer
   | DependencyDemandCensusProducer
   | GenericIdentityCensusProducer
   | InterpolationHoleCensusProducer
+  | SharedTypeLeafCollisionCensusProducer
   | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
   | NativeServeProgramProducer { entry: String }
@@ -97,6 +99,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     DependencyDemandCensusProducer {} => optional_absent()
     GenericIdentityCensusProducer {} => optional_absent()
     InterpolationHoleCensusProducer {} => optional_absent()
+    SharedTypeLeafCollisionCensusProducer {} => optional_absent()
     RegenRoundCostProducer {} => optional_absent()
     NativeServeProgramProducer { entry: _ } => optional_absent()
   }
@@ -110,9 +113,13 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
 //   TypeDeclarationUseReading: `census-infer` with the type-declaration census's fixture and
 //     unindexed controls (the nominal-type plan's M0), read by
 //     gunbc.instruments.type_declaration_use_census_reading.
+//   NativeProcessMemoryReading: the named workload's verb, run once over a one-module control root and
+//     once over the source roots, each child reaped by wait4 so its own peak is read and cargo's is
+//     not; read by gunbc.instruments.native_process_memory_reading.
 type V2NativeCensusReading
   = RefusalCensusReading
   | TypeDeclarationUseReading
+  | NativeProcessMemoryReading { workload: NativeMeasuredWorkload }
 
 type TargetBinding {
   target: Label
@@ -402,7 +409,7 @@ type RawDiagnosticClassObservation {
 
 // THE OBSERVATION'S PROVENANCE, FIVE DIGESTS THAT EACH CLOSE ONE WAY THE READING COULD BE ABOUT
 // SOMETHING ELSE. The field set is the Step 0 binding-provenance contract's receipt roster
-// (gunbc.namespace_step0_binding_provenance_contract step0_census_receipt_fields) projected onto a
+// (gunbc.namespace_cut.namespace_step0_binding_provenance_contract step0_census_receipt_fields) projected onto a
 // census that has no strip: source vector, compiler executable, resolver policy, class schema,
 // closure. What each digest binds:
 //

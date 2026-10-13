@@ -1,8 +1,8 @@
-module gunbc.memory_envelope
+module gunbc.host.memory_envelope
 
 import std.types { Bool, Int, String }
 import std.optional { Present, Absent }
-import gunbc.memory_cgroup_binding {
+import gunbc.host.memory_cgroup_binding {
   CgroupBindDecision,
   BindNotRequested,
   BindUnnecessaryLimitAlreadyBinds,
@@ -11,14 +11,14 @@ import gunbc.memory_cgroup_binding {
 }
 
 // WHAT BOUNDS A `gunbc test` RUN'S MEMORY, DECIDED BEFORE ANY PRODUCER, AS A FOLD OVER SUPPLIED
-// INPUTS -- the sibling of gunbc.memory_cgroup_binding cgroup_bind_decision, and for the same
+// INPUTS -- the sibling of gunbc.host.memory_cgroup_binding cgroup_bind_decision, and for the same
 // reason: every discriminating case is reachable from a claim on any machine, and the seed
 // (v1_compiler.target_invocation_host) mirrors this module rather than authoring the decision
 // inline over the live environment, where no claim could reach it (review of gunbc#13658, option
 // B: the first version decided inline and admitted a cgroup with no numeric memory.max as a bound,
 // because it located the cgroup by the presence of memory.peak).
 //
-// THE THREE INPUTS. The bind decision the governor already took (gunbc.memory_cgroup_binding); the
+// THE THREE INPUTS. The bind decision the governor already took (gunbc.host.memory_cgroup_binding); the
 // requirement the invocation carried (gunbc.emitted_subject_build_gate
 // native_step_memory_envelope_env_name, whose one value is the projection below); and whether a
 // NUMERIC memory.max binds this process -- the governor's leaf-to-root walk
@@ -27,7 +27,7 @@ import gunbc.memory_cgroup_binding {
 // here reads a file; the host reads them and supplies the answers.
 //
 // THE ONE VALUE THE REQUIREMENT CARRIES is `slot`: the step must already sit under a cgroup
-// memory.max -- the fleet slot's (gunbc.runner_slot_desired) -- and its OOM kills and swap are
+// memory.max -- the fleet slot's (gunbc.runner.runner_slot_desired) -- and its OOM kills and swap are
 // receipted at that grain. A bind the governor applied or found unnecessary bounds the step at a
 // finer grain and satisfies the requirement too.
 type MemoryEnvelopeRequirement

@@ -6,7 +6,7 @@ import extdeps.clock { clock_timestamp_to_unix_secs, ClockTimestampObserved, Clo
 import std.types { String, NonEmptyStr, List, Timestamp, EpochSecs }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
-import product.fabric.demand { BuyTerms }
+import product.fabric.demand { BuyTerms, debt_payoff_objective }
 import product.fabric.selection { ResourceBudgetPolicy }
 import product.fabric.supply { GrantDuration }
 import product.fabric.budget { MoneyAccount }
@@ -15,7 +15,7 @@ import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope 
 import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
 import product.fabric.candidate_field { FieldRequest }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation { WorkspaceRequest }
 import gunbc.workspace_allocation_reservation { workspace_demand }
 import gunbc.workspace_allocation_supply { workspace_candidate_field, workspace_supply_from_field }
@@ -52,7 +52,7 @@ fn workspace_prepare_convergence_at_observed_clock(store: FabricStorageBinding, 
   submitted_at: Timestamp, now: Timestamp, at: EpochSecs) -> WorkspaceConvergenceObservation
   admit_callers: [decl_ref(module_path: "gunbc.workspace_prepare_convergence", decl_name: "workspace_prepare_convergence_from_observations")]
 {
-  let admitted_demand = workspace_demand(request: request, submitted_at: submitted_at, buy: policy.buy)
+  let admitted_demand = workspace_demand(request: request, submitted_at: submitted_at, buy: policy.buy, objective: debt_payoff_objective)
   if !fabric_identity_eq(left: policy.scope.demand, right: admitted_demand.id)
     || !fabric_identity_eq(left: policy.scope.work, right: admitted_demand.work) {
     WorkspaceConvergenceUnobserved { reason: "provider-use policy scope belongs to another demand or Work" }

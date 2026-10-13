@@ -1,0 +1,353 @@
+module test.claim.harness_turn_admission_witness
+
+import std.types { Bool, Int, NonEmptyStr, String, List }
+import std.nat { Nat }
+import std.measure {
+  second_count, money_rate_micros, money_amount_micro, MoneyRate, second,
+  HardwareThreadCount, hardware_thread_count,
+}
+import std.decl_ref { declaration_ref_eq }
+import product.fabric.work {
+  OfferedService, MaterializedProgram, Shape, HardRequirements, ExecutionRequirements,
+  CapabilityManifestRef, TrustDomainRef, ControlPlaneCapacity, WarmResidencyRequired,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import gunbc.serving.turn_demand { serving_turn_work }
+import gunbc.harness.harness_wire { OpenAiChatCompletionsShape, AnthropicMessagesShape }
+import gunbc.harness.harness_reasoning_wire { Glm53FlashOnVllm }
+import gunbc.harness.harness_seat {
+  HarnessTurnSubject, AnyAdmittedModel, ExactServingUnit,
+  harness_turn_subject, harness_turn_request, harness_execution_requirements, harness_placement_grant_duration,
+  harness_priced_selection_inputs,
+  harness_select_supply,
+}
+import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape, harness_seat_policy }
+import product.fabric.supply {
+  ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration,
+  SupplierOffer, QuotedPerSecond, ObservedSupply, PlacementAffinityKey, StableRosterOrder,
+}
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound,
+  DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
+  PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
+  AvailableIndefinitely, PayAsYouGo, StartCostMeasured, NoTransitionRequired,
+  OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
+  OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SupplySelection,
+}
+import product.fabric.demand {
+  AdmissionTerms, BuyTerms, DemandObjective,
+  debt_payoff_objective, latency_sensitive_objective, demand_delay_valuation,
+}
+import test.claim.fabric.provider_use_fixture {
+  fixture_admitted_for_offer, fixture_route, fixture_demand_for, fixture_work_for,
+}
+import extdeps.currency.currency { Usd, Eur, CurrencyCode, currency_code_eq }
+
+// ── A TURN IS PLACED AS ONE WORK AND ONE DEMAND ──
+//
+// The harness builds the turn's subject once at harness_bind_seat. These witnesses pin the subject,
+// the factored work and demand, and the placement duration. The rented-replica offer and its
+// provider-use admission are a declared frontier (DESIGN 3c) owned by the warm-trace vertical: no
+// witness here claims an admitted candidate, because none can be produced until that offer exists.
+
+fn t_buy() -> BuyTerms {
+  BuyTerms {
+    budget_account: "witness",
+    currency: Usd,
+    reservation_price: money_amount_micro(count: 0),
+    maximum_buy_order: money_amount_micro(count: 0),
+  }
+}
+
+fn t_admission(objective: DemandObjective) -> AdmissionTerms {
+  AdmissionTerms {
+    deadline: none,
+    buy: t_buy(),
+    objective: objective,
+  }
+}
+
+fn t_subject(prompt: String, attempt: String) -> HarnessTurnSubject {
+  harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", prompt]),
+    attempt: attempt as NonEmptyStr,
+    admission: t_admission(objective: debt_payoff_objective),
+  )
+}
+
+
+
+
+// THE SUBJECT IS THE REQUEST'S. Its Work is serving_turn_work over the normalized request and the same
+// requirements select_supply ranks against, and its Demand is the caller's attempt.
+test fn the_turn_subject_is_the_offered_service_work_and_the_attempt_demand() -> Bool {
+  let request = harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"])
+  let subject = harness_turn_subject(request: request, attempt: "a-1" as NonEmptyStr, admission: t_admission(objective: debt_payoff_objective))
+  let direct = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request, requirements: harness_execution_requirements())
+  (subject.work.id.key as String) == (direct.id.key as String)
+    && (subject.demand.key as String) == "a-1"
+    && (match subject.work.contract.execution {
+      OfferedService { interface: i } => (i as String) == "openai.chat-completions"
+      MaterializedProgram { program: _, source: _, runtime_closure: _ } => false
+    })
+}
+
+// RED: TWO ATTEMPTS OF ONE REQUEST ARE ONE WORK AND TWO DEMANDS; A DIFFERENT PROMPT IS DIFFERENT WORK.
+test fn attempts_share_work_and_prompts_do_not() -> Bool {
+  let a1 = t_subject(prompt: "p", attempt: "a-1")
+  let a2 = t_subject(prompt: "p", attempt: "a-2")
+  let other = t_subject(prompt: "q", attempt: "a-1")
+  (a1.work.id.key as String) == (a2.work.id.key as String)
+    && (a1.demand.key as String) != (a2.demand.key as String)
+    && (a1.work.id.key as String) != (other.work.id.key as String)
+}
+
+// RED: THE INPUT IDENTITY IS INJECTIVE IN THE LIST. A separator inside one input, an input split
+// in two, and an empty input each name a different turn; a delimited join would fold the first
+// two together.
+fn t_inputs_identity(inputs: List<String>) -> String {
+  harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: inputs).inputs as String
+}
+
+test fn the_inputs_identity_does_not_collapse_on_a_separator() -> Bool {
+  t_inputs_identity(inputs: ["a\u{1f}b"]) != t_inputs_identity(inputs: ["a", "b"])
+    && t_inputs_identity(inputs: ["ab"]) != t_inputs_identity(inputs: ["a", "b"])
+    && t_inputs_identity(inputs: ["a", ""]) != t_inputs_identity(inputs: ["a"])
+    && t_inputs_identity(inputs: ["a", "b"]) == t_inputs_identity(inputs: ["a", "b"])
+}
+
+// RED: THE NORMALIZED MODEL REQUEST IS THE WORK. A worker's rendered system prompt depends on the
+// gunbc program it names, so two turns on one brief with different programs are different Work; one
+// rendered request placed twice is one Work and two Demands; and the model requirement is request
+// identity, so an exact-unit turn on the same request is a third Work.
+fn t_worker_subject(gunbc_program: String, attempt: String) -> HarnessTurnSubject {
+  let prompt = harness_worker_system_prompt_at(worktree: "/w", repo_root: "/r", gunbc_program: gunbc_program)
+  harness_turn_subject(
+    request: harness_turn_request(shape: harness_default_wire_shape, requirement: AnyAdmittedModel, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: prompt, user_input: "brief")),
+    attempt: attempt as NonEmptyStr,
+    admission: t_admission(objective: debt_payoff_objective),
+  )
+}
+
+test fn the_rendered_request_is_the_work_and_the_attempt_is_the_demand() -> Bool {
+  let a = t_worker_subject(gunbc_program: "/bin/gunbc-a", attempt: "a-1")
+  let b = t_worker_subject(gunbc_program: "/bin/gunbc-b", attempt: "a-1")
+  let a2 = t_worker_subject(gunbc_program: "/bin/gunbc-a", attempt: "a-2")
+  let exact = harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, inputs: ["witness", "p"]),
+    attempt: "a-1" as NonEmptyStr,
+    admission: t_admission(objective: debt_payoff_objective),
+  )
+  let any = harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]),
+    attempt: "a-1" as NonEmptyStr,
+    admission: t_admission(objective: debt_payoff_objective),
+  )
+  (a.work.id.key as String) != (b.work.id.key as String)
+    && (a.work.id.key as String) == (a2.work.id.key as String)
+    && (a.demand.key as String) != (a2.demand.key as String)
+    && (exact.work.id.key as String) != (any.work.id.key as String)
+    && (exact.work.requirements.capabilities as String) == (any.work.requirements.capabilities as String)
+}
+
+// RED: THE WIRE SHAPE IS THE INTERFACE, so one prompt spoken over two interfaces is two Works.
+test fn the_wire_shape_is_the_interface() -> Bool {
+  let openai = harness_turn_subject(request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr, admission: t_admission(objective: debt_payoff_objective))
+  let anthropic = harness_turn_subject(request: harness_turn_request(shape: AnthropicMessagesShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]), attempt: "a-1" as NonEmptyStr, admission: t_admission(objective: debt_payoff_objective))
+  (openai.work.id.key as String) != (anthropic.work.id.key as String)
+}
+
+// THE PLACEMENT DURATION CARRIES THE POLICY SECONDS AS A Second. harness_placement_round once handed
+// EstimatedGrantDuration.seconds a bare Nat where a Second belongs; no claim had priced a bound
+// candidate, and the first live dispatch that did (2026-09-20) died in select_supply at second_count
+// ("cannot access field 'count' on Int"). The constructor is shared with the production fold, so this
+// row reads back exactly the duration that fold builds; under the old inline shape it errors.
+test fn the_placement_duration_carries_the_policy_seconds_as_a_second() -> Bool {
+  match harness_placement_grant_duration(policy: harness_seat_policy) {
+    EstimatedGrantDuration { seconds: sc } => second_count(s: sc) == harness_seat_policy.maximum_duration_seconds
+    ExactGrantDuration { seconds: _ } => false
+    UnobservedGrantDuration { obligation: _ } => false
+  }
+}
+
+fn delay_micros(admission: AdmissionTerms) -> Int {
+  money_rate_micros(q: harness_priced_selection_inputs(admission: admission).delay_valuation) as Int
+}
+
+// RED: a selector that ignores the demand and always reads latency_sensitive_objective returns
+// the same delay for both profiles. The wall is harness_priced_selection_inputs.
+fn red_hardcoded_latency_delay(_admission: AdmissionTerms) -> Int {
+  money_rate_micros(q: demand_delay_valuation(terms: t_admission(objective: latency_sensitive_objective))) as Int
+}
+
+test fn a_hardcoded_profile_cannot_discriminate_serving_demands() -> Bool {
+  let wait = t_admission(objective: debt_payoff_objective)
+  let move = t_admission(objective: latency_sensitive_objective)
+  red_hardcoded_latency_delay(admission: wait) == red_hardcoded_latency_delay(admission: move)
+}
+
+test fn debt_and_latency_demands_reach_select_supply_with_different_delay_valuations() -> Bool {
+  let wait = t_admission(objective: debt_payoff_objective)
+  let move = t_admission(objective: latency_sensitive_objective)
+  let wait_subject = harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]),
+    attempt: "a-1" as NonEmptyStr,
+    admission: wait,
+  )
+  let move_subject = harness_turn_subject(
+    request: harness_turn_request(shape: OpenAiChatCompletionsShape, requirement: AnyAdmittedModel, inputs: ["witness", "p"]),
+    attempt: "a-1" as NonEmptyStr,
+    admission: move,
+  )
+  let wait_rate = delay_micros(admission: wait_subject.admission)
+  let move_rate = delay_micros(admission: move_subject.admission)
+  wait_rate == 0
+    && move_rate > wait_rate
+    && declaration_ref_eq(a: wait_subject.admission.objective.profile, b: debt_payoff_objective.profile)
+    && declaration_ref_eq(a: move_subject.admission.objective.profile, b: latency_sensitive_objective.profile)
+}
+
+fn t_caps() -> CapabilityManifestRef {
+  "gunbc.capabilities.linux-rust-toolchain"
+}
+
+fn t_trust() -> TrustDomainRef {
+  "gunbc.trust.internal-fleet"
+}
+
+fn t_shape() -> Shape {
+  Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 64) },
+    envelope: unstated_envelope(),
+  }
+}
+
+fn t_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: t_shape(),
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    revocation: WarmResidencyRequired,
+  }
+}
+
+fn t_offer(key: OfferKey, quote_count: Nat) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: key },
+    executor: "gunbc",
+    route: fixture_route(),
+    shape: t_shape(),
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: quote_count), currency: Usd }),
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply {
+      observed_at: "2026-08-27T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+fn t_bound(offer: SupplierOffer<NonEmptyStr>, delay_seconds: Nat) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: DispatchInputs {
+      offer: offer.id,
+      availability: AvailableIndefinitely {
+        delay: second(count: delay_seconds),
+        receipt: "gunbc.observation.availability-1",
+      },
+      commitment: PayAsYouGo,
+      start: StartCostMeasured {
+        amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+        receipt: "gunbc.observation.start-cost-1",
+      },
+      transition: NoTransitionRequired,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: NoFeasibleAlternativeUse { receipt: "gunbc.observation.alternative-uses-1" },
+    },
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
+  }
+}
+
+fn t_delay_tradeoff_candidates() -> List<CandidateOffer<NonEmptyStr>> {
+  concat(
+    t_bound(offer: t_offer(key: "offer-wait", quote_count: 0), delay_seconds: 50),
+    t_bound(offer: t_offer(key: "offer-move", quote_count: 0), delay_seconds: 0),
+  )
+}
+
+fn t_priced_buy(currency: CurrencyCode) -> BuyTerms {
+  BuyTerms {
+    budget_account: "witness",
+    currency: currency,
+    reservation_price: money_amount_micro(count: 0),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+  }
+}
+
+fn t_priced_admission(objective: DemandObjective, currency: CurrencyCode) -> AdmissionTerms {
+  AdmissionTerms {
+    deadline: none,
+    buy: t_priced_buy(currency: currency),
+    objective: objective,
+  }
+}
+
+fn t_select_for_admission(admission: AdmissionTerms) -> SupplySelection<NonEmptyStr> {
+  harness_select_supply(
+    admission: admission,
+    requirements: t_requirements(),
+    candidates: t_delay_tradeoff_candidates(),
+    duration: ExactGrantDuration { seconds: second(count: 90) },
+    tie: StableRosterOrder,
+    affinity: "test.demand" as PlacementAffinityKey,
+  )
+}
+
+fn selected_offer_key(sel: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
+  match sel {
+    OfferSelected { candidate: c, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+      c.candidate.offer.id.key as NonEmptyStr
+    NoAdmissibleOffer { considered: _ } => "none"
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie"
+  }
+}
+
+test fn debt_and_latency_demands_select_different_offers_through_harness_select_supply() -> Bool {
+  let wait = t_priced_admission(objective: debt_payoff_objective, currency: Usd)
+  let move = t_priced_admission(objective: latency_sensitive_objective, currency: Usd)
+  (selected_offer_key(sel: t_select_for_admission(admission: wait)) as String) == "offer-wait"
+    && (selected_offer_key(sel: t_select_for_admission(admission: move)) as String) == "offer-move"
+}
+
+test fn delay_rate_denomination_is_the_buy_currency() -> Bool {
+  let usd = t_priced_admission(objective: debt_payoff_objective, currency: Usd)
+  let eur = t_priced_admission(objective: debt_payoff_objective, currency: Eur)
+  currency_code_eq(a: harness_priced_selection_inputs(admission: usd).delay_valuation.currency, b: Usd)
+    && currency_code_eq(a: harness_priced_selection_inputs(admission: eur).delay_valuation.currency, b: Eur)
+}
+
+test fn matching_buy_currency_is_admitted_and_a_mismatch_refuses() -> Bool {
+  let matched = t_priced_admission(objective: debt_payoff_objective, currency: Usd)
+  let mismatched = t_priced_admission(objective: debt_payoff_objective, currency: Eur)
+  (selected_offer_key(sel: t_select_for_admission(admission: matched)) as String) == "offer-wait"
+    && (selected_offer_key(sel: t_select_for_admission(admission: mismatched)) as String) == "none"
+}

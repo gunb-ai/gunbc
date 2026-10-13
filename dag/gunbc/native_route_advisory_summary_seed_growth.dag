@@ -1,6 +1,6 @@
 module gunbc.native_route_advisory_summary_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -42,7 +42,7 @@ data native_route_advisory_summary_seed_growth_justification: SeedGrowthJustific
 
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
 
-  trigger: "Delete these declarations (and the advisory arm and count check in parse_native_run_output) when the native lane's row decode and summary are emitted from a .dag fold over NativeTestFileAdvisories rather than hand-decoded in native_lane_runner (including the census-infer decode in decode_native_census_output), SUFFICIENT FOR a native-route run (gunbc test over the //v2/test/... universe, or claim_executor's required native lane, and the eval-driver census door) to print each accepted file's advisory reasons and their tally with no hand-authored decode or rendering.",
+  trigger: "Delete these declarations (and the advisory arm and count check in parse_native_run_output) when the native lane's row decode and summary are emitted from a .dag fold over NativeTestFileAdvisories rather than hand-decoded in native_lane_runner (including the census-infer decode in decode_native_census_output), SUFFICIENT FOR a native-route run (gunbc test over the //v2/... universe, or claim_executor's required native lane, and the eval-driver census door) to print each accepted file's advisory reasons and their tally with no hand-authored decode or rendering.",
 
   current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs: the accepted_file_advisories arm and advised_files check in parse_native_run_output, reached by every native run's stdout decode; native_file_advisories_summary, called once from run_required_v2_native_inner after the file-refusal summary; decode_native_census_output, reached by every run_v2_native_census (gunbc test //gunbc/instruments:v2-native-census) through the shared row decode and count check"
 }

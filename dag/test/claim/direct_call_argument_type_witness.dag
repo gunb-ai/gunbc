@@ -1,0 +1,144 @@
+module test.claim.direct_call_argument_type_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+}
+import gunbc.guarantee_probe_corpus {
+  active_probe_row,
+  census_blocking_count_for_class,
+  direct_call_arg_type_ordinary_module_red_probe,
+  direct_call_arg_type_v2_green_control_probe,
+  direct_call_arg_type_v2_module_red_probe,
+  probe_row_expectation_holds,
+}
+import std.types { Bool, Int, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.optional { Absent, Present }
+
+// THIS MODULE EXISTS BECAUSE ITS ASSERTIONS HAVE TO EXECUTE, AND THE OBVIOUS HOME FOR THEM DID
+// NOT WHILE DeclinedLiveTree stood. The three probes below belong to the guarantee probe corpus
+// and were first authored inside test.claim.guarantee_probe_corpus_witness beside their
+// siblings. That module declares ReadsLiveTree -- correctly, because it reads harness source
+// files off disk -- and was declined before the fold. Measured: run 32570670086 refused with
+// ExpectedRedIdentityDidNotExecute.
+//
+// Splitting them out was how they became evidence rather than description. The SubstrateInputsOnly
+// stamp on THIS file was the lie that bought execution: it calls compile_dag_diagnostic_census,
+// which walks the checkout. DeclinedLiveTree is deleted. ReadsLiveTree is the honest stamp.
+//
+// WHAT THIS DOES NOT CLAIM. It does not fix the siblings still living in the live-tree corpus
+// witness file.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn direct_call_arg_type_census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// The three sources differ on exactly two axes and nothing else, which is what makes the trio
+// readable. The RED pair differ ONLY in the module name (v2.probe_... vs probe_...): same callee,
+// same formal, same actual, same call form. The v2 GREEN differs from the v2 RED only in the
+// actual's type. Any wider difference would let a reader attribute a verdict to something other
+// than the axis being tested.
+data direct_call_arg_type_v2_red_source: String = "module v2.probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
+
+data direct_call_arg_type_ordinary_red_source: String = "module probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
+
+data direct_call_arg_type_v2_green_source: String = "module v2.probe_direct_call_arg_type_green\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: 7) }\n"
+
+// Expression-form controls for type-head exposure.  The RED differs from the first GREEN only in
+// the argument expression.  The concat row is the live-corpus counterexample that disproved a
+// scalar-shape-only wall: after synthesis both a String literal and that conforming call had been
+// presented as Primitive(String), so only the authored expression form retained the premise.
+data applied_formal_string_red_source: String = "module probe_applied_formal_string_red\nfn consume(xs: List<Int>) -> Int { 0 }\nfn f() -> Int { consume(xs: \"not a list\") }\n"
+data applied_formal_list_green_source: String = "module probe_applied_formal_list_green\nfn consume(xs: List<Int>) -> Int { 0 }\nfn f() -> Int { consume(xs: [1, 2]) }\n"
+data applied_formal_concat_green_source: String = "module probe_applied_formal_concat_green\nfn consume(xs: List<Int>) -> Int { 0 }\nfn f() -> Int { consume(xs: concat([1], [2])) }\n"
+data applied_formal_wrong_element_red_source: String = "module probe_applied_formal_wrong_element_red\nfn consume(xs: List<Int>) -> Int { 0 }\nfn f() -> Int { consume(xs: [\"not an int\"]) }\n"
+data nat_string_red_source: String = "module probe_nat_string_red\nimport std.nat { Nat }\nfn consume(n: Nat) -> Int { 0 }\nfn f() -> Int { consume(n: \"forty\") }\n"
+
+fn observed_blocking_count(census: CompileDiagnosticCensus) -> Int? {
+  match census {
+    CensusObserved { rows: rows } => Present { value: census_total_count(rows: census_blocking_rows(rows: rows)) }
+    CensusNotRunnable { cause: _ } => none
+  }
+}
+
+fn source_has_blocking_type_mismatch(source: String) -> Bool {
+  match census_blocking_count_for_class(census: direct_call_arg_type_census_of(source: source), wanted: "TypeMismatch") {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
+fn source_has_zero_blocking_diagnostics(source: String) -> Bool {
+  match observed_blocking_count(census: direct_call_arg_type_census_of(source: source)) {
+    Present { value: n } => n == 0
+    Absent => false
+  }
+}
+
+// The former discriminating red for the v2.* direct-call argument-type exemption, retained after
+// the climb as a permanent regression control. Declaration-bound formal carriage makes it pass in
+// every module without reconstructing the callee's formal in the caller environment.
+test fn direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch() -> Bool {
+  let census = direct_call_arg_type_census_of(source: direct_call_arg_type_v2_red_source)
+  match active_probe_row(probe: direct_call_arg_type_v2_module_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
+          Present { value: n } => n >= 1
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+// The paired nonzero, and it PASSES today with the exemption in place, because the exemption never
+// covered an ordinary module name. That is what makes the rostered red above interpretable: a red
+// on the v2 row alone cannot distinguish "the judgment is switched off for v2 callers" from "the
+// harness reds on anything". When the exemption goes, both are green and both are ordinary
+// regression controls.
+test fn direct_call_arg_type_ordinary_module_red_refuses_blocking_type_mismatch() -> Bool {
+  let census = direct_call_arg_type_census_of(source: direct_call_arg_type_ordinary_red_source)
+  match active_probe_row(probe: direct_call_arg_type_ordinary_module_red_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: census, row: row)
+        && match census_blocking_count_for_class(census: census, wanted: "TypeMismatch") {
+          Present { value: n } => n >= 1
+          Absent => false
+        }
+    Absent => false
+  }
+}
+
+// Without this, a seam refusing EVERY argument in a v2.* module would satisfy both reds.
+test fn direct_call_arg_type_v2_green_control_has_zero_diagnostics() -> Bool {
+  match active_probe_row(probe: direct_call_arg_type_v2_green_control_probe) {
+    Present { value: row } =>
+      probe_row_expectation_holds(census: direct_call_arg_type_census_of(source: direct_call_arg_type_v2_green_source), row: row)
+    Absent => false
+  }
+}
+
+test fn applied_formal_refuses_string_literal() -> Bool {
+  source_has_blocking_type_mismatch(source: applied_formal_string_red_source)
+}
+
+test fn applied_formal_accepts_list_introduction() -> Bool {
+  source_has_zero_blocking_diagnostics(source: applied_formal_list_green_source)
+}
+
+test fn applied_formal_accepts_conforming_concat_call() -> Bool {
+  source_has_zero_blocking_diagnostics(source: applied_formal_concat_green_source)
+}
+
+test fn list_introduction_recursively_refuses_wrong_element() -> Bool {
+  source_has_blocking_type_mismatch(source: applied_formal_wrong_element_red_source)
+}
+
+test fn nat_declared_identity_refuses_string_literal() -> Bool {
+  source_has_blocking_type_mismatch(source: nat_string_red_source)
+}

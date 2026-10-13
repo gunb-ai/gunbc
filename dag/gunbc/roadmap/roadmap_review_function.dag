@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_review_role {
   ReviewReceiptSource, ReviewReconciliation, WorkerFeedback,
   review_brief, review_reconcile_standings, review_feedback_standings, review_feedback_text,
 }
-import gunbc.roadmap_workflow_stage { WorkflowSegmentRefused, WorkflowSegmentComplete, WorkflowSegmentPending, WorkflowSegmentFailed, WorkflowSegmentActive, WorkflowSegmentStopped }
+import gunbc.roadmap.roadmap_workflow_stage { WorkflowSegmentRefused, WorkflowSegmentComplete, WorkflowSegmentPending, WorkflowSegmentFailed, WorkflowSegmentActive, WorkflowSegmentStopped }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_array }
 import gunbc.worker_lifecycle { WorkerProcessEvidence }
 

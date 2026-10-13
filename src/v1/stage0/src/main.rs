@@ -523,7 +523,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             // — was armed and live, and is deleted in the same change for the first reason alone.
             //
             // The `v1_rt` recording hooks themselves are LEFT IN PLACE deliberately: they were
-            // PRESERVED by an operator decision (`gunbc.ci_layer_roots`
+            // PRESERVED by an operator decision (`gunbc.ci.ci_layer_roots`
             // `resolution_divergence_silent_pick_gate_retirement_receipt`, 2026-08-18) whose
             // stated premise — that they are a compile-path proxy — this measurement refutes.
             // Overturning that preservation is the operator's call, not this change's; the
@@ -829,7 +829,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // `gunbc.instrument_targets`, and the realization is selected one level below. A second
         // instrument adds a row there and nothing here. A set PATTERN (`//pkg:all`, `//pkg/...`)
         // is admitted by the same host's `parse_target_pattern` mirror and executed by the route
-        // whose universe contains it -- the native test route (`//v2/test/...`) or the claim
+        // whose universe contains it -- the native test route (`//v2/...`) or the claim
         // route (`//test/claim/...`); outside both it is refused with status 2, never widened.
         //
         // The status is the producer's own termination, not an aggregate verdict: 0 the reading
@@ -854,7 +854,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
 
         // SERVE IS WIRED AGAIN, AND IT IS A FROZEN QUARRY ROUTE RATHER THAN A DESIGN.
         // #8286 deleted this seam together with converge's, but converge has a successor that
-        // EXISTS (the spine above) while serve's declared successor -- gunbc.roadmap_serve
+        // EXISTS (the spine above) while serve's declared successor -- gunbc.roadmap.roadmap_serve
         // roadmap_serve_interpreted_scaffold, dissolving to emit-on-demand of the serve closure
         // -- was never built, so the deletion removed a live outward-facing production route
         // with no minimal Y to hold the boundary. DESIGN section 3 names that carve-out: where
@@ -863,7 +863,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         //
         // FROZEN MEANS: no new options, verbs, routes into the interpreter, or completion work.
         // The deleted refusal's claim is NOT retracted -- serve is a desired service occurrence
-        // that convergence should observe and reconcile, and gunbc.host_effect has no
+        // that convergence should observe and reconcile, and gunbc.host.host_effect has no
         // service-occurrence member to express that. This seam runs until it does.
         //
         // The engine objection is recorded, not argued away: this makes the interpreter
@@ -1442,7 +1442,8 @@ fn report_pre_entry_phases(
             "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
             ms(usage.ru_utime),
             ms(usage.ru_stime),
-            usage.ru_maxrss
+            cli_run::peak_rss_vhwm_bytes()
+                .map_or("refused".to_string(), |b| (b / 1024).to_string())
         );
     }
 }

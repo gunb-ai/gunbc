@@ -5,7 +5,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat }
-import std.checked_arithmetic { IntegerOverflow, IntegerAdd, BinaryOperands, int_inclusive_max }
+import std.decimal { ExactDecimal, checked_decimal_pow10 }
+import std.checked_arithmetic {
+  IntegerOverflow, IntegerAdd, IntegerMultiply, BinaryOperands, int_inclusive_max,
+  checked_int_multiply, checked_int_to_nat, CheckedIntReady, CheckedIntOverflow,
+}
 import std.algebra { FieldOfFractions }
 import std.types { Int, Bool, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
@@ -484,7 +488,7 @@ type Milliwatt = Measure<Power, Milli, Nat>
 // the dangerous combination: a reader takes the stated mechanism as a general licence to buy
 // dimensional safety by minting a Quantity arm, and does not get it.
 //
-// THE PROPERTY IS WITNESSED, NOT TRANSCRIBED HERE. test.claim.marker_argument_not_consulted_witness_test
+// THE PROPERTY IS WITNESSED, NOT TRANSCRIBED HERE. test.claim.marker_argument_not_consulted_witness
 // carries it as three enrolled fixtures -- two named aliases over DIFFERENT markers must refuse, two
 // named aliases over the SAME marker must ALSO refuse, and the same two different markers spelled
 // INLINE with no alias must be ACCEPTED. The last two are the load-bearing pair: identical markers
@@ -753,7 +757,7 @@ type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
 // seconds-per-minute. Sibling of RevolutionsPerMinute (whose per-minute period rode into
 // its Quantity) and MegatransfersPerSecond (frequency at Mega): a per-second and a
 // per-minute figure can never be compared or assigned across without a modeled
-// conversion. First consumer: gunbc.memory_stall_refusal's major-fault rate.
+// conversion. First consumer: gunbc.host.memory_stall_refusal's major-fault rate.
 type EventsPerMinute = Measure<Frequency, Sixty, Nat>
 
 fn events_per_minute(count: Nat) -> EventsPerMinute {
@@ -827,7 +831,7 @@ fn gibibyte_grain() -> FiniteByteSize {
 
 // ROUNDING A BYTE COUNT UP TO A GRAIN, ONCE, WITH THE GRAIN A DECLARED INPUT.
 //
-// This is the corpus's one rounder. It replaced gunbc.floor_demand's gibibyte-fixed
+// This is the corpus's one rounder. It replaced gunbc.floor.floor_demand's gibibyte-fixed
 // round_up_to_gibibyte_grain, which now binds this function to gibibyte_grain: a policy whose grain
 // is one of its declared inputs could not reuse a rounder that fixed the grain, and minting a second
 // one beside it was the DESIGN 3 fork. The grain is a FiniteByteSize so the modulus is never zero
@@ -844,7 +848,7 @@ fn gibibyte_grain() -> FiniteByteSize {
 // refused it. Here the pad is derived first, (grain - n mod grain) mod grain, strictly below the
 // grain and computed without leaving the range; the one comparison, n > int_inclusive_max() - pad,
 // is exactly "does the ceiling fit", and n + pad is evaluated only after it has been established
-// to. That is the same subtraction construction gunbc.runner_microvm guest_memory_fits uses and
+// to. That is the same subtraction construction gunbc.runner.runner_microvm guest_memory_fits uses and
 // DESIGN 4b names as rung 4 over a checked-add guard at rung 1. The refusal still carries an
 // IntegerOverflow cause, and it names the operation that was NOT performed: the add of n and pad.
 type GrainRounding
@@ -1057,6 +1061,19 @@ fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
   measure_count(m)
 }
 
+// Signed money-micros: NetValue subtracts HigherIsBetter terms, so contribution,
+// sum and score payloads go negative. Scale itself is MoneyAmountMicro (Nat).
+// CONSUMERS: std.decision valued-objective contribution/sum/score payloads.
+type SignedMoneyAmountMicro = Measure<Currency, Micro, Int>
+
+fn signed_money_amount_micro(count: Int) -> SignedMoneyAmountMicro {
+  Measure { count: count }
+}
+
+fn signed_money_amount_micro_count(m: SignedMoneyAmountMicro) -> Int {
+  measure_count(m)
+}
+
 // A whole-dollar monetary amount in USD, on the Currency axis at the One scale (cf. MoneyAmountMicro
 // at Micro). Defined here alongside MoneyAmountMicro because a second consumer (extdeps.sec.facts
 // and now extdeps.network.mikrotik_crs812) independently needed the same shape; defining it once
@@ -1089,6 +1106,23 @@ type Once
 type MoneyRate<P> {
   amount: MoneyAmountMicro
   currency: CurrencyCode
+}
+
+// Undenominated rate: period is the type argument, denomination is supplied by
+// the buyer when a MoneyRate is minted. CONSUMERS: product.fabric.demand
+// TermValuations.delay (BuyTerms.currency is stamped in demand_delay_valuation).
+type MoneyAmountRate<P> {
+  amount: MoneyAmountMicro
+}
+
+type MoneyAmountPerSecond = MoneyAmountRate<PerSecond>
+
+fn money_amount_per_second(count: Nat) -> MoneyAmountPerSecond {
+  MoneyAmountRate { amount: money_amount_micro(count: count) }
+}
+
+fn money_amount_per_second_count(q: MoneyAmountPerSecond) -> Nat {
+  money_amount_micro_count(m: q.amount)
 }
 
 type MoneyPerSecond = MoneyRate<PerSecond>
@@ -1126,6 +1160,78 @@ fn money_per_minute_micros(q: MoneyPerMinute) -> Nat {
 
 fn money_per_hour_micros(q: MoneyPerHour) -> Nat {
   money_rate_micros(q: q)
+}
+
+// DECLARED ExactDecimal → micro conversion. RFC 8259 numbers are exact decimals; MoneyAmountMicro
+// is Nat micros of a dollar. Implicit Int/Float coercion is refused (DESIGN §4). Bids and
+// liabilities ROUND UP: understating a min_bid or a tariff would admit a cash obligation the
+// wire did not cover. Consumers in this change: extdeps.cloud.vast_ai vast_ai_min_bid_money_per_hour
+// and vast_ai_dph_total_money_per_hour, and product.fabric.flex_policy flex_bid_admission (those
+// three have a declared §3c frontier; their executing route today is the flex admission witness).
+data money_micro_fraction_digits: Int = 6
+
+type DecimalMoneyConversion
+  = DecimalMoneyConverted { amount: MoneyAmountMicro }
+  | DecimalMoneyNegativeRefused { units: Int }
+  | DecimalMoneyScaleRefused { fraction_digits: Int }
+  | DecimalMoneyUnrepresentable { cause: IntegerOverflow }
+
+fn exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal) -> DecimalMoneyConversion {
+  if d.fraction_digits < 0 {
+    DecimalMoneyScaleRefused { fraction_digits: d.fraction_digits }
+  } else if d.units < 0 {
+    DecimalMoneyNegativeRefused { units: d.units }
+  } else if d.fraction_digits <= money_micro_fraction_digits {
+    match checked_decimal_pow10(exponent: money_micro_fraction_digits - d.fraction_digits) {
+      CheckedIntOverflow { cause: c } => DecimalMoneyUnrepresentable { cause: c }
+      CheckedIntReady { value: factor } =>
+        match checked_int_multiply(a: d.units, b: factor) {
+          CheckedIntOverflow { cause: c } => DecimalMoneyUnrepresentable { cause: c }
+          CheckedIntReady { value: scaled } =>
+            match checked_int_to_nat(n: scaled) {
+              Absent => DecimalMoneyUnrepresentable {
+                cause: IntegerOverflow {
+                  operation: IntegerMultiply,
+                  operands: BinaryOperands { lhs: d.units, rhs: factor },
+                }
+              }
+              Present { value: micros } => DecimalMoneyConverted { amount: money_amount_micro(count: micros) }
+            }
+        }
+    }
+  } else {
+    match checked_decimal_pow10(exponent: d.fraction_digits - money_micro_fraction_digits) {
+      CheckedIntOverflow { cause: c } => DecimalMoneyUnrepresentable { cause: c }
+      CheckedIntReady { value: grain } => {
+        let q = d.units / grain
+        let r = d.units - (q * grain)
+        let ceiled = if r == 0 { q } else { q + 1 }
+        match checked_int_to_nat(n: ceiled) {
+          Absent => DecimalMoneyUnrepresentable {
+            cause: IntegerOverflow { operation: IntegerAdd, operands: BinaryOperands { lhs: q, rhs: 1 } }
+          }
+          Present { value: micros } => DecimalMoneyConverted { amount: money_amount_micro(count: micros) }
+        }
+      }
+    }
+  }
+}
+
+type DecimalMoneyPerHourConversion
+  = DecimalMoneyPerHourConverted { rate: MoneyPerHour }
+  | DecimalMoneyPerHourRefused { conversion: DecimalMoneyConversion }
+
+fn exact_decimal_to_money_per_hour_ceil(d: ExactDecimal, currency: CurrencyCode) -> DecimalMoneyPerHourConversion {
+  match exact_decimal_to_money_amount_micro_ceil(d: d) {
+    DecimalMoneyConverted { amount: a } =>
+      DecimalMoneyPerHourConverted { rate: MoneyPerHour { amount: a, currency: currency } }
+    DecimalMoneyNegativeRefused { units: u } =>
+      DecimalMoneyPerHourRefused { conversion: DecimalMoneyNegativeRefused { units: u } }
+    DecimalMoneyScaleRefused { fraction_digits: f } =>
+      DecimalMoneyPerHourRefused { conversion: DecimalMoneyScaleRefused { fraction_digits: f } }
+    DecimalMoneyUnrepresentable { cause: c } =>
+      DecimalMoneyPerHourRefused { conversion: DecimalMoneyUnrepresentable { cause: c } }
+  }
 }
 
 fn money_per_month_micros(q: MoneyPerMonth) -> Nat {
@@ -1808,7 +1914,7 @@ data clock_basis_authority_reachability_note: String = "WHY THIS CARRIER LIVES I
 
 // Two nullary constructors exist so the v1 seed can hand a ClockBasis across the interpreter
 // boundary WITHOUT building a Value in Rust — the same discipline millisecond(count:) and
-// nanosecond(count:) already carry at this seam, and the reason gunbc.witness_row_cost's seed notes
+// nanosecond(count:) already carry at this seam, and the reason gunbc.witness.witness_row_cost's seed notes
 // give for it: a carrier assembled on the Rust side is a second copy of this module's shape, and it
 // drifts silently. WHICH one the seed calls is chosen by matching its own typed BudgetKind, so the
 // clock is never recovered from a label string; the function name is a symbol the seed selects, not

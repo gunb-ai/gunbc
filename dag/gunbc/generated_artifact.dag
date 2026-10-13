@@ -2,10 +2,17 @@
 module gunbc.generated_artifact
 
 import gunbc.os_install { HostAutoinstall }
-import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanProjectsDerivedMarkdown, PlanIsAuthorityOnly }
+import gunbc.plan {
+  Plan,
+  PlanIsAuthorityOnly,
+  PlanProjectsCommittedMarkdown,
+  PlanProjectsDerivedMarkdown,
+  plan_doc_directory,
+  plan_doc_name,
+}
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
-import gunbc.fleet_intent { ComputeHost }
+import gunbc.fleet.fleet_intent { ComputeHost }
 import product.host_identity { HostIdentity }
 import std.decl_ref { DeclarationRef, decl_ref }
 
@@ -40,6 +47,7 @@ type GeneratedArtifact
   | EvaluationBudgetConsequenceGeneratedRsArtifact
   | ReleaseLocusSeedConstantsGeneratedRsArtifact
   | FileTransportRealizationGeneratedRsArtifact
+  | NativeRouteSeedBoundaryGeneratedRsArtifact
   | Fci1BoundedExecutionContextArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | RunnerHostSudoersArtifact { host: HostIdentity }
@@ -55,7 +63,7 @@ type GeneratedArtifact
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
 // CargoToolchain: cargo itself reads the file, discovered from the invocation's directory, before
-// any target is built (gunbc.cargo_config_emit).
+// any target is built (gunbc.repo.cargo_config_emit).
 // CrossLanguageClientTest: a client written in another language reads the file as its test oracle
 // for bytes this tree defines (gunbc.auth.approval_device_redemption_fixtures, read by the iOS
 // app's XCTest), so a stale commit fails the drift gate here rather than silently passing there.
@@ -79,59 +87,6 @@ type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
   | NotCommitted
 
-// WHO REPAIRS A CONCURRENTLY-DIVERGED PROJECTION IS NOT ITS COMMIT POLICY. Both kinds below stay
-// committed, stay in the generated-artifact drift population, and stay protected by the refusing
-// merge driver. This axis answers only who pays to derive the merged authorities after that driver
-// has done its job.
-//
-// The rung-drop ledger remains the exceptional committed projection whose authority is a
-// small authored append while the projection is unbounded. Requiring every lane to run the
-// whole-tree regenerator before it can finish an otherwise mechanical merge puts that shared
-// projection on every lane's critical path. heal-generated-artifacts already checks out the
-// pushed branch head, derives every committed artifact from that head's authorities, commits
-// the result. So for that artifact heal
-// IS the route, not one of two: this arm is what the selector returns and what the emitted recipe
-// instructs, and no value in this module means "either actuator". THAT EXCLUSIVITY IS THE MODELED
-// POLICY AND IS ASSERTED IN BOTH DIRECTIONS by
-// gunbc.test.claim.generated_artifact_assessment_witness_test
-// `only_design_ledgers_delegate_concurrent_regeneration_to_heal`.
-//
-// The failure-mode ledger is no longer in this pair: its committed projection was the merge
-// hotspot, so it is NotCommitted (generated on demand) and its membership list is derived from
-// the row directory rather than hand-appended. Independent failure-mode appends do not share
-// a committed merge region.
-//
-// THE PROVISIONAL BYTES ARE THE BASE-SIDE PROJECTION, NEVER THE DRIVER-LEFT WORKTREE BYTES. This
-// sentence previously said ours, which is the action gunbc.generated_artifact_merge_driver measured
-// as row-deleting across four heads and now instructs against in its own step 1: the driver leaves
-// the ours side in the worktree, so staging it commits this branch's rows over the base's and drops
-// every row the base added since the merge base. Taking the base side is not a resolution either --
-// it leaves the tree authority-ahead-of-artifact by exactly this branch's rows, which is the state
-// heal exists to close -- but it is preservation-safe, and that is the whole requirement on a
-// provisional head.
-//
-// THE ORDERING IS THE INVARIANT, and it is what both actuators owe -- "who runs the regenerator" is
-// an actuator choice, while deriving against a pre-merge branch is a defect either one can commit:
-// preserve the base-side projection, complete the authored-authority merge, publish that as H0,
-// heal derives the projection from H0's AUTHORITIES, publish H1, verify H1. DERIVE ONLY AFTER THE
-// INTEGRATED AUTHORITY STATE EXISTS AS THE SUBJECT.
-// The required generated-artifact phase remains unchanged: it may red on H0 and must agree on H1.
-//
-// Every other artifact retains AuthorRegeneratesBeforeMerge. In particular this is not inferred
-// from ProjectDocumentation: DESIGN.md and ROADMAP.md do not share the ledger's append/content
-// asymmetry, and widening by consumer would silently move future documents onto a repair route
-// nobody judged for them.
-type ConcurrentDivergenceRepair
-  = AuthorRegeneratesBeforeMerge
-  | HealRegeneratesAfterProvisionalMerge
-
-fn concurrent_divergence_repair(a: GeneratedArtifact) -> ConcurrentDivergenceRepair {
-  match a {
-    DesignRungDropsArtifact => HealRegeneratesAfterProvisionalMerge
-    _ => AuthorRegeneratesBeforeMerge
-  }
-}
-
 // THE PATH IS A PROJECTION OF ITS PARTS, NOT THE OTHER WAY ROUND. Every row below CONSTRUCTS its
 // path from a directory and an entry name -- some literal, some computed from a spec host or a plan
 // slug -- and the joined string was the only thing this module published. A consumer that must LIST
@@ -150,12 +105,12 @@ fn concurrent_divergence_repair(a: GeneratedArtifact) -> ConcurrentDivergenceRep
 // join is the only place that knows the root renders without a prefix.
 
 // THE ROW IS KEYED BY HOST IDENTITY, NOT BY THE DEPLOY ROW, AND THAT IS AN ACYCLICITY FACT RATHER
-// THAN A PREFERENCE. gunbc.runner_host_deploy reaches this module transitively
+// THAN A PREFERENCE. gunbc.runner.runner_host_deploy reaches this module transitively
 // (runner_host_deploy -> runner_slot_allocation -> ci_failure_class -> merge_admission ->
 // commit_workflow -> generated_artifact), so importing the deploy roster here closes the one
 // structural law the import graph has (DESIGN section 3) and the compiler refuses it. The identity
 // is the same key the deploy dispatch already resolves on, so nothing is lost: the registry names
-// the population from the enrollment authority (gunbc.fleet_intent, which is also what decides
+// the population from the enrollment authority (gunbc.fleet.fleet_intent, which is also what decides
 // whether a host takes fleet work at all), and gunbc.generated_artifact_emit -- which sits above
 // both -- resolves the identity to its deploy row and REFUSES by name for a host that has none.
 //
@@ -214,6 +169,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     EvaluationBudgetConsequenceGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "evaluation_budget_consequence_generated.rs" }
     ReleaseLocusSeedConstantsGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "release_locus_seed_constants_generated.rs" }
     FileTransportRealizationGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "gunbc_file_transport_generated.rs" }
+    NativeRouteSeedBoundaryGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "native_route_seed_boundary_generated.rs" }
     Fci1BoundedExecutionContextArtifact => ArtifactLocation { directory: "tools", name: "fabric_ci_fci1_bounded_execution_context.env" }
     AutoinstallUserDataArtifact { spec } =>
       ArtifactLocation { directory: concat("provisioning/", spec.host), name: "user-data" }
@@ -240,11 +196,8 @@ fn artifact_path(a: GeneratedArtifact) -> String {
   if l.directory == "." { l.name } else { concat(concat(l.directory, "/"), l.name) }
 }
 
-// THE PLAN DECIDES ITS OWN ARM, NOT THIS ROW. A plan whose markdown the repository removed on
-// purpose (gunbc.plan PlanIsAuthorityOnly) is still rostered, still generated, and still refused
-// if its generation refuses -- it is simply not expected on disk. Answering CommitRequired for
-// every plan is what let a deleted projection read as an absent one, and once a drift phase
-// adjudicates the population that reads as an obligation to recreate the deleted file.
+// PLAN MARKDOWN COMMIT DISPOSITION IS `Plan.projection` AND NOTHING ELSE (`gunbc.plan`
+// `PlanProjection`). This function reads that field; it does not override it.
 // THE COUPON PROGRAM IS GENERATED BUT NOT COMMITTED, because RepoConsumer answers a narrower
 // question than "what eventually consumes these bytes": it answers WHY THEY MUST PERSIST IN A GIT
 // CHECKOUT. A CAD kernel executing an emitted program establishes no such requirement -- the kernel
@@ -273,17 +226,16 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     HealPublisherWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     DriftWatchWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     BranchRunGrantBrokerWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
-    RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
+    RoadmapArtifact => NotCommitted
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignFailureModesArtifact => NotCommitted
-    DesignRungDropsArtifact => CommitRequired { consumer: ProjectDocumentation }
-    ContributorOnboardingArtifact => CommitRequired { consumer: ProjectDocumentation }
-    PlanArtifact { plan } =>
-      match plan.projection {
-        PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
-        PlanProjectsDerivedMarkdown { derive: _ } => CommitRequired { consumer: ProjectDocumentation }
-        PlanIsAuthorityOnly { ruling: _ } => NotCommitted
-      }
+    DesignRungDropsArtifact => NotCommitted
+    ContributorOnboardingArtifact => NotCommitted
+    PlanArtifact { plan } => match plan.projection {
+      PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
+      PlanProjectsDerivedMarkdown { derive: _ } => CommitRequired { consumer: ProjectDocumentation }
+      PlanIsAuthorityOnly { ruling: _ } => NotCommitted
+    }
     RunnerDeployArtifact => NotCommitted
     CouponCadQueryProgramArtifact => NotCommitted
     WholeCorpusCompileMeasuredRootDemandsArtifact => CommitRequired { consumer: CompilerRunInput }
@@ -302,6 +254,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     EvaluationBudgetConsequenceGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     ReleaseLocusSeedConstantsGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     FileTransportRealizationGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
+    NativeRouteSeedBoundaryGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Fci1BoundedExecutionContextArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     RunnerHostSudoersArtifact { host: _ } => CommitRequired { consumer: HostReconciler }
@@ -311,6 +264,75 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
 fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
   match artifact_commit_policy(a: a) {
     CommitRequired { consumer: _ } => true
+    NotCommitted => false
+  }
+}
+
+// THE DOCUMENTATION FAMILY IS THE VARIANT SET, NOT THE COMMIT POLICY. CommitRequired vs
+// NotCommitted answers whether a checkout must carry the bytes; this predicate answers whether
+// the artifact's only declared consumer is ProjectDocumentation. The two must stay independent
+// so a new PlanProjectsCommittedMarkdown row cannot hide from the "only Design stays committed"
+// join by also being absent from a hand-written family list.
+fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
+  match a {
+    RoadmapArtifact => true
+    DesignArtifact => true
+    DesignFailureModesArtifact => true
+    DesignRungDropsArtifact => true
+    ContributorOnboardingArtifact => true
+    PlanArtifact { plan: _ } => true
+    WitnessFloorYamlArtifact => false
+    FleetConvergeYamlArtifact => false
+    MicrovmShakedownYamlArtifact => false
+    InstrumentDispatchYamlArtifact => false
+    HealWorkflowYamlArtifact => false
+    HealPublisherWorkflowYamlArtifact => false
+    DriftWatchWorkflowYamlArtifact => false
+    BranchRunGrantBrokerWorkflowYamlArtifact => false
+    GitignoreArtifact => false
+    GitattributesArtifact => false
+    CargoConfigArtifact => false
+    GithooksPrePushArtifact => false
+    GithooksPreCommitArtifact => false
+    GeneratedArtifactMergeDriverArtifact => false
+    RunnerDeployArtifact => false
+    Stage0CrateLayoutGeneratedDagArtifact => false
+    Stage0CrateLayoutGeneratedRsArtifact => false
+    Stage0CratePartitionGeneratedDagArtifact => false
+    Stage0ExecutableAssemblyGeneratedDagArtifact => false
+    Stage0LinkedPartitionCratesArtifact => false
+    SeedRetentionFrontierGeneratedRsArtifact => false
+    V1InterpreterDispatchGeneratedRsArtifact => false
+    EvaluationBudgetConsequenceGeneratedRsArtifact => false
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => false
+    FileTransportRealizationGeneratedRsArtifact => false
+    NativeRouteSeedBoundaryGeneratedRsArtifact => false
+    Fci1BoundedExecutionContextArtifact => false
+    AutoinstallUserDataArtifact { spec: _ } => false
+    RunnerHostSudoersArtifact { host: _ } => false
+    CouponCadQueryProgramArtifact => false
+    WholeCorpusCompileMeasuredRootDemandsArtifact => false
+    ApprovalDeviceVectorsArtifact => false
+    ApproveIosProjectYmlArtifact => false
+    ApproveIosProtocolSwiftArtifact => false
+    ApproveIosWireSwiftArtifact => false
+    ApproveIosProtocolVectorTestsSwiftArtifact => false
+  }
+}
+
+fn artifact_is_commit_required_project_documentation(a: GeneratedArtifact) -> Bool {
+  match artifact_commit_policy(a: a) {
+    CommitRequired { consumer } => match consumer {
+      ProjectDocumentation => true
+      GitProtocol => false
+      CargoToolchain => false
+      GithubActionsWorkflow => false
+      HostReconciler => false
+      CompilerRunInput => false
+      CrossLanguageClientTest => false
+      XcodeProjectGenerator => false
+      SwiftCompiler => false
+    }
     NotCommitted => false
   }
 }
@@ -362,6 +384,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     EvaluationBudgetConsequenceGeneratedRsArtifact => match b { EvaluationBudgetConsequenceGeneratedRsArtifact => true  _ => false }
     ReleaseLocusSeedConstantsGeneratedRsArtifact => match b { ReleaseLocusSeedConstantsGeneratedRsArtifact => true  _ => false }
     FileTransportRealizationGeneratedRsArtifact => match b { FileTransportRealizationGeneratedRsArtifact => true  _ => false }
+    NativeRouteSeedBoundaryGeneratedRsArtifact => match b { NativeRouteSeedBoundaryGeneratedRsArtifact => true  _ => false }
     Fci1BoundedExecutionContextArtifact => match b { Fci1BoundedExecutionContextArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     RunnerHostSudoersArtifact { host } => match b { RunnerHostSudoersArtifact { host: host2 } => (host as String) == (host2 as String)  _ => false }
@@ -373,9 +396,9 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // projection of one .dag declaration -- the `expected_*` function gunbc.generated_artifact_emit
 // artifact_generate_unadorned dispatches to -- and that declaration is where a v1 reference inside
 // the artifact is AUTHORED: a `target/release/gunbc` argv in witnesses.yml is a literal in
-// gunbc.witness_floor_workflow, not a fact about the YAML. So the workflow YAML, .gitattributes, the
+// gunbc.witness.witness_floor_workflow, not a fact about the YAML. So the workflow YAML, .gitattributes, the
 // git hooks and the committed stage0 mirrors are not four consumer media with no declaration
-// identity (gunbc.v1_consumer_census ConsumerMedium WorkflowArgv, GitHookScript,
+// identity (gunbc.v1.v1_consumer_census ConsumerMedium WorkflowArgv, GitHookScript,
 // CommittedGeneratedMirror): each is the .dag medium seen through a producer, and a consumer census
 // that keys the .dag population at declaration grain already holds their rows. What that reduction
 // needs to be SOUND is exactly this map plus the join below: an artifact whose producer is not a
@@ -391,37 +414,37 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 // variant with the call target it reaches -- and is this class's next-rung trigger, not a ceiling.
 //
 // WHO CONSUMES THE JOIN, AND WHEN (DESIGN section 3c, a declared frontier). Today the executing
-// consumer is test.claim.generated_artifact_producer_coverage_witness_test on the required floor,
+// consumer is test.claim.generated_artifact_producer_coverage_witness on the required floor,
 // which refuses a push that leaves any registry row's producer unresolvable. The census-side
-// consumer is gunbc.v1_consumer_census v1_consumer_population_for: it may count WorkflowArgv,
+// consumer is gunbc.v1.v1_consumer_census v1_consumer_population_for: it may count WorkflowArgv,
 // GitHookScript, CommittedGeneratedMirror and the .gitattributes rows as JOINED media only when
 // every_generated_artifact_producer_covered holds over the same pool roots its .dag-medium producer
 // folds, and must otherwise stay PopulationMeasuredLowerBound. That read lands in the change that
-// gives the census a per-medium joined_media state (PR #10939, tools.v1_consumer_discovery); it is
+// gives the census a per-medium joined_media state (PR #10939, gunbc.instruments.v1_consumer_discovery); it is
 // not authored here because the census on main carries no such state yet, and adding one beside
 // that in-flight change would be the second vocabulary section 3 forbids. Trigger: #10939 merged.
 fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
   match a {
-    WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.compiler_gate_workflow", decl_name: "expected_compiler_gate_yml")
-    FleetConvergeYamlArtifact => decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "expected_fleet_converge_yml")
-    MicrovmShakedownYamlArtifact => decl_ref(module_path: "gunbc.runner_microvm_shakedown_workflow", decl_name: "expected_microvm_shakedown_yml")
-    InstrumentDispatchYamlArtifact => decl_ref(module_path: "gunbc.instrument_dispatch_workflow", decl_name: "expected_instrument_dispatch_yml")
+    WitnessFloorYamlArtifact => decl_ref(module_path: "gunbc.witness.compiler_gate_workflow", decl_name: "expected_compiler_gate_yml")
+    FleetConvergeYamlArtifact => decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "expected_fleet_converge_yml")
+    MicrovmShakedownYamlArtifact => decl_ref(module_path: "gunbc.runner.runner_microvm_shakedown_workflow", decl_name: "expected_microvm_shakedown_yml")
+    InstrumentDispatchYamlArtifact => decl_ref(module_path: "gunbc.instruments.instrument_dispatch_workflow", decl_name: "expected_instrument_dispatch_yml")
     HealWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_workflow", decl_name: "expected_heal_workflow_yml")
     HealPublisherWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_publisher_workflow", decl_name: "expected_heal_publisher_workflow_yml")
     DriftWatchWorkflowYamlArtifact => decl_ref(module_path: "gunbc.drift_watch_workflow", decl_name: "expected_drift_watch_workflow_yml")
-    BranchRunGrantBrokerWorkflowYamlArtifact => decl_ref(module_path: "gunbc.branch_run_grant_broker_workflow", decl_name: "expected_branch_run_grant_broker_workflow_yml")
+    BranchRunGrantBrokerWorkflowYamlArtifact => decl_ref(module_path: "gunbc.fleet.branch_run_grant_broker_workflow", decl_name: "expected_branch_run_grant_broker_workflow_yml")
     GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
     GitattributesArtifact => decl_ref(module_path: "gunbc.gitattributes_emit", decl_name: "expected_gitattributes")
-    CargoConfigArtifact => decl_ref(module_path: "gunbc.cargo_config_emit", decl_name: "expected_cargo_config_toml")
-    RoadmapArtifact => decl_ref(module_path: "gunbc.roadmap_authority", decl_name: "expected_roadmap_md")
+    CargoConfigArtifact => decl_ref(module_path: "gunbc.repo.cargo_config_emit", decl_name: "expected_cargo_config_toml")
+    RoadmapArtifact => decl_ref(module_path: "gunbc.roadmap.roadmap_authority", decl_name: "expected_roadmap_md")
     DesignArtifact => decl_ref(module_path: "gunbc.design_document", decl_name: "expected_design_md")
     DesignFailureModesArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_failure_modes_md")
     DesignRungDropsArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_rung_drops_md")
     ContributorOnboardingArtifact => decl_ref(module_path: "gunbc.contributor_onboarding_path", decl_name: "expected_contributor_onboarding_md")
-    GithooksPrePushArtifact => decl_ref(module_path: "gunbc.githooks_pre_push_emit", decl_name: "expected_githooks_pre_push_sh")
-    GithooksPreCommitArtifact => decl_ref(module_path: "gunbc.githooks_pre_commit_emit", decl_name: "expected_githooks_pre_commit_sh")
+    GithooksPrePushArtifact => decl_ref(module_path: "gunbc.githooks.githooks_pre_push_emit", decl_name: "expected_githooks_pre_push_sh")
+    GithooksPreCommitArtifact => decl_ref(module_path: "gunbc.githooks.githooks_pre_commit_emit", decl_name: "expected_githooks_pre_commit_sh")
     GeneratedArtifactMergeDriverArtifact => decl_ref(module_path: "gunbc.generated_artifact_merge_driver", decl_name: "expected_generated_artifact_merge_driver_sh")
-    RunnerDeployArtifact => decl_ref(module_path: "gunbc.runner_deploy_emit", decl_name: "expected_runner_deploy_manifest")
+    RunnerDeployArtifact => decl_ref(module_path: "gunbc.runner.runner_deploy_emit", decl_name: "expected_runner_deploy_manifest")
     CouponCadQueryProgramArtifact => decl_ref(module_path: "product.printed_chassis.cadquery_realization", decl_name: "expected_coupon_cadquery_program")
     WholeCorpusCompileMeasuredRootDemandsArtifact => decl_ref(module_path: "gunbc.whole_corpus_compile_demand_projection", decl_name: "expected_whole_corpus_compile_measured_root_demands_json")
     ApprovalDeviceVectorsArtifact => decl_ref(module_path: "gunbc.auth.approval_device_redemption_fixtures", decl_name: "approval_device_vectors_json")
@@ -429,19 +452,20 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     ApproveIosProtocolSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol", decl_name: "expected_approve_ios_protocol_swift")
     ApproveIosWireSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "expected_approve_ios_wire_swift")
     ApproveIosProtocolVectorTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol_vector_tests", decl_name: "expected_approve_ios_protocol_vector_tests_swift")
-    Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
-    Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
-    Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")
-    Stage0ExecutableAssemblyGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_executable_assembly_emit", decl_name: "expected_stage0_executable_assembly_generated_dag")
-    Stage0LinkedPartitionCratesArtifact => decl_ref(module_path: "gunbc.stage0_executable_assembly_emit", decl_name: "expected_stage0_linked_partition_crates_txt")
-    SeedRetentionFrontierGeneratedRsArtifact => decl_ref(module_path: "gunbc.seed_retention_frontier_emit", decl_name: "expected_seed_retention_frontier_generated_rs")
-    V1InterpreterDispatchGeneratedRsArtifact => decl_ref(module_path: "gunbc.v1_interpreter_dispatch_emit", decl_name: "expected_v1_interpreter_dispatch_generated_rs")
+    Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
+    Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
+    Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")
+    Stage0ExecutableAssemblyGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_executable_assembly_emit", decl_name: "expected_stage0_executable_assembly_generated_dag")
+    Stage0LinkedPartitionCratesArtifact => decl_ref(module_path: "gunbc.stage0.stage0_executable_assembly_emit", decl_name: "expected_stage0_linked_partition_crates_txt")
+    SeedRetentionFrontierGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0.seed_retention_frontier_emit", decl_name: "expected_seed_retention_frontier_generated_rs")
+    V1InterpreterDispatchGeneratedRsArtifact => decl_ref(module_path: "gunbc.v1.v1_interpreter_dispatch_emit", decl_name: "expected_v1_interpreter_dispatch_generated_rs")
     EvaluationBudgetConsequenceGeneratedRsArtifact => decl_ref(module_path: "gunbc.evaluation_budget_consequence_emit", decl_name: "expected_evaluation_budget_consequence_generated_rs")
     ReleaseLocusSeedConstantsGeneratedRsArtifact => decl_ref(module_path: "gunbc.release_locus_seed_constants_emit", decl_name: "expected_release_locus_seed_constants_generated_rs")
     FileTransportRealizationGeneratedRsArtifact => decl_ref(module_path: "extdeps.filesystem.rust_realization", decl_name: "expected_gunbc_file_transport_generated_rs")
-    Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
+    NativeRouteSeedBoundaryGeneratedRsArtifact => decl_ref(module_path: "gunbc.native_route_seed_boundary_emit", decl_name: "expected_native_route_seed_boundary_generated_rs")
+    Fci1BoundedExecutionContextArtifact => decl_ref(module_path: "gunbc.fabric.fci1_bounded_execution_context_emit", decl_name: "expected_fci1_bounded_execution_context_env")
     AutoinstallUserDataArtifact { spec: _ } => decl_ref(module_path: "gunbc.os_install_emit", decl_name: "autoinstall_user_data")
-    RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner_host_grants", decl_name: "runner_host_sudoers_content")
+    RunnerHostSudoersArtifact { host: _ } => decl_ref(module_path: "gunbc.runner.runner_host_grants", decl_name: "runner_host_sudoers_content")
     PlanArtifact { plan: _ } => decl_ref(module_path: "gunbc.plan", decl_name: "plan_generation")
   }
 }

@@ -1,0 +1,65 @@
+module test.claim.regeneration_rosters_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool }
+import gunbc.generated_artifact { artifact_path }
+import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
+import gunbc.seed_build_artifact_emit { seed_build_artifacts }
+import gunbc.heal_candidate_stage0 { seed_build_artifact_paths, mirror_paths_of, stage0_round_writes_among }
+import gunbc.heal_publication_boundary { path_is_stage0_mirror }
+import gunbc.tier_o_artifact_emit { tier_o_artifacts }
+
+// THE TWO REGENERATION ROSTERS ARE SUBSETS OF THE REGISTRY, JOINED BY PATH.
+// gunbc.seed_build_artifact_emit and gunbc.tier_o_artifact_emit list the artifacts they produce
+// without loading the registry's closure, so the registry cannot be consulted at runtime to keep them
+// honest; this is where the two are joined. A roster entry the registry does not commit would be an
+// artifact the push-back job or the drift check writes or judges that no authority rosters (a
+// parallel authority, DESIGN section 3).
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn registry_commits(path: String) -> Bool {
+  any(committed_generated_artifact_paths(), p => p == path)
+}
+
+test fn witness_every_seed_build_artifact_is_a_committed_registry_artifact() -> Bool {
+  seed_build_artifacts().length() > 0
+    && all(seed_build_artifacts(), a => registry_commits(path: artifact_path(a: a)))
+}
+
+test fn witness_every_tier_o_artifact_is_a_committed_registry_artifact() -> Bool {
+  tier_o_artifacts().length() > 0
+    && all(tier_o_artifacts(), a => registry_commits(path: artifact_path(a: a)))
+}
+
+// THE DISCRIMINATING CONTROL: the rosters are not "everything". A registry artifact that is in neither
+// (the design document, which needs the whole registry's projections) is absent from both, so a
+// roster that quietly swallowed the registry would go red here.
+test fn witness_the_design_document_is_in_neither_roster() -> Bool {
+  !any(seed_build_artifacts(), a => artifact_path(a: a) == "DESIGN.md")
+    && !any(tier_o_artifacts(), a => artifact_path(a: a) == "DESIGN.md")
+}
+
+test fn witness_the_two_rosters_share_no_artifact() -> Bool {
+  !any(seed_build_artifacts(), a => any(tier_o_artifacts(), b => artifact_path(a: b) == artifact_path(a: a)))
+}
+
+// A PATH THE CANDIDATE NAMES TWICE IS REFUSED WHOLE AT ADMISSION, and the demonstration run of the
+// producer did exactly that: a seed-build artifact that is also a stage0 mirror was listed by both
+// rosters. The control is that the overlap is real (some seed-build artifact is a mirror) and that
+// the mirror category is derived without the paths a seed-build producer owns.
+test fn witness_a_seed_build_artifact_that_is_a_mirror_is_named_once() -> Bool {
+  let overlap = filter(seed_build_artifact_paths(), p => path_is_stage0_mirror(path: p))
+  let listing = ["gunbc_file_transport_generated.rs", "lib.rs"]
+  overlap.length() > 0
+    && any(overlap, p => p == "src/v1/stage0/src/gunbc_file_transport_generated.rs")
+    && !any(mirror_paths_of(names: listing), p => p == "src/v1/stage0/src/gunbc_file_transport_generated.rs")
+    && any(mirror_paths_of(names: listing), p => p == "src/v1/stage0/src/lib.rs")
+}
+
+// RED: a stage0 round that changed a seed-build roster path is two writers for one file, so the
+// overlap is named; a round that changed only an ordinary mirror is not.
+test fn witness_a_stage0_round_write_to_a_seed_build_path_is_named() -> Bool {
+  let hit = "src/v1/stage0/src/gunbc_file_transport_generated.rs"
+  stage0_round_writes_among(changed: ["src/v1/stage0/src/lib.rs", hit]) == [hit]
+    && stage0_round_writes_among(changed: ["src/v1/stage0/src/lib.rs"]) == []
+}

@@ -1,13 +1,12 @@
-module gunbc.witness_v2_native_route
+module gunbc.witness.v2_native_route
 
-import v2.std.algebra { count_where, fold_list, is_empty, length, list_find_first }
-import std.algebra { list_append, list_snoc_item }
+import std.algebra { list_append, list_snoc_item, count_where, fold_list, is_empty, length, list_find_first }
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present }
 import std.types { NonEmptyStr, List }
-import extdeps.bazel.label { LabelParse, PackagePath, parse_label }
-import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern }
+import extdeps.bazel.label { LabelParse, LabelParsed, LabelRefused, PackagePath, parse_label }
+import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern, target_pattern_matches }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
@@ -21,13 +20,13 @@ import v2.workflow.compile_door_cause_ownership {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
-import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
+import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 
 // THE LANE AUTHORITY FOR THE required-v2-native CI JOB (operator authorization 2026-09-09: one
 // additional required job, modelled beside the workflow authority that projects it — never a
 // hand-edit of the generated YAML). The job's subject is the compiler/test EXECUTION ROUTE
-// itself: the emitted-native compiler binary, invoked by explicit path, executing a derived
-// v2.test.* population through its own whole-source-root Eval driver
+// itself: the emitted-native compiler binary, invoked by explicit path, executing the
+// marked test declarations of the modules it acquires through its own whole-source-root Eval driver
 // (std.compiler_entry SourceRootEvalDriver — the v2.compiler.compile native_test_* fold), and
 // reaching a TERMINAL TEST VERDICT per identity. The 32 native-only construct arms are
 // explicitly NOT this proof — they show generated Rust programs ran natively while the claim
@@ -53,26 +52,27 @@ import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 // all cite this declaration; no second spelling of the job name anywhere.
 data required_v2_native_job_name: String = "required-v2-native"
 
-// THE UNIVERSE IS A PREFIX, NOT A ROSTER. The population is DERIVED from the tree's test
-// discovery by prefix membership — a hand-listed roster would silently drift from the tree it
-// claims to cover. The prefix is the same `v2.test.` the required floor gates on
-// (v2.workflow.required_floor required_gate_prefixes): the native lane's universe is the floor's
-// witness universe asked of a different route. The universe is derived INSIDE the emitted native
-// compiler from the floor's own discovery producer (v2.workflow.floor_discovery_producer), read
-// per source beside that source's authored module header, and carried on the receipt; admission
-// checks its shape and joins the observed population against it exactly. The seed derived it
-// through the v1 interpreter until 2026-09-10; the derivation and this admission are now the same
-// process, and what the join still discriminates is discovery's textual answer against the
-// execution route's — two readings of the same bytes, not two processes.
-data native_route_universe_prefix: String = "v2.test."
-
-fn native_route_universe_member(module_qn: String) -> Bool {
-  starts_with(s: module_qn, prefix: native_route_universe_prefix)
-}
+// THE UNIVERSE IS THE MARKED DECLARATIONS OF THE MODULES THE ROUTE ACQUIRES, NOT A NAMESPACE AND NOT A
+// ROSTER. A test is a declaration carrying the authored `test` marker and nothing else, so the
+// population is DERIVED from what the acquirer captured off each acquired module's parse tree
+// (v2.compiler.module_acquisition AcquiredModule test_markers): a hand-listed roster would silently
+// drift from the tree it claims to cover, and a location predicate beside the marker would be a
+// second statement of what a test is -- it silently dropped every marked declaration that lived
+// outside the namespace it named. WHICH marked declarations the run executes is the pattern's
+// question, asked of each label by the one matcher (extdeps.bazel.target_pattern), and WHICH
+// operands this route owns at all is the default pattern's, below.
+//
+// The universe is derived INSIDE the emitted native compiler from the floor's own discovery
+// producer (v2.workflow.floor_discovery_source_authority discover_floor_rows_for_source), read per
+// source beside the markers the acquirer supplied, and carried on the receipt; admission checks its
+// shape and joins the observed population against it exactly. The seed derived it through the v1
+// interpreter until 2026-09-10; the derivation and this admission are now the same process, and what
+// the join still discriminates is discovery's textual answer against the execution route's -- two
+// readings of the same bytes, not two processes.
 
 // A TARGET PATTERN SELECTS THE UNIVERSE, AND THE MATCHING IS `extdeps.bazel.target_pattern`'S.
 //
-// The universe above is a namespace prefix chosen once and compiled in. An operator asking for a
+// The universe above is every marked declaration of every acquired module. An operator asking for a
 // subset -- `gunbc test //v2/test/parse/...` -- is asking the same question with a different
 // pattern, and the cited authority already answers it: `target_pattern_matches` owns subtree
 // containment, package equality and single-target equality. This module owns exactly one fact
@@ -80,7 +80,7 @@ fn native_route_universe_member(module_qn: String) -> Bool {
 //
 // THE MAPPING FROM IDENTITY TO LABEL IS A GUNBC FACT, NOT A BAZEL ONE, which is why it lives here.
 // The cited authority spells packages as PATH SEGMENTS; this corpus's targets are DECLARED MODULE
-// NAMESPACES (the `module` line, never the file path -- see gunbc.namespace_cut_stage for why
+// NAMESPACES (the `module` line, never the file path -- see gunbc.namespace_cut.namespace_cut_stage for why
 // those are different facts) holding declarations. A module's namespace segments ARE the package
 // segments and the declaration IS the target name, so the label is spelled and handed to the
 // upstream's own `parse_label`: its segment and target-name refusals apply to an identity exactly
@@ -99,6 +99,20 @@ fn native_route_module_package_text(module_qn: String) -> String {
   )
 }
 
+// THE SAME CORRESPONDENCE READ FROM THE PACKAGE SIDE: the module whose namespace segments are the
+// package's segments. It lives here, beside native_route_module_package_text, so the one fact has one
+// home; a consumer holding a package (the census subject's label) names the module through it rather
+// than re-folding the separator itself.
+fn native_route_package_text_module(package_text: String) -> String {
+  fold_list(
+    xs: split(s: package_text, delimiter: "/"),
+    empty: "",
+    cons: fn(acc, segment) {
+      if acc == "" { concat("", segment) } else { concat(concat(acc, "."), segment) }
+    }
+  )
+}
+
 fn native_route_label_in_package(package_text: String, declaration: String) -> LabelParse {
   parse_label(text: concat(concat(concat("//", package_text), ":"), declaration))
 }
@@ -110,24 +124,60 @@ fn native_route_identity_label(module_qn: String, declaration: String) -> LabelP
   )
 }
 
-// THE DEFAULT PATTERN IS `//v2/test/...`, AND IT NARROWS NOTHING. The universe stays the floor's
-// prefix; a pattern only selects within it (v2.compiler.compile `native_lane_identity_admitted`).
-// The two differ on exactly one module name -- `v2.test` itself, which the subtree form includes
-// and the gate prefix does not -- and no such module exists; the conjunction makes that difference
-// unobservable rather than a second population. `the_default_pattern_admits_every_universe_member`
-// is the law: were the default ever narrower than the universe, the lane would silently drop
-// members at its default.
+// THE DEFAULT PATTERN IS `//v2/...`: THE ROUTE BOUNDARY, AND THE LANE'S DEFAULT POPULATION. It is a
+// declared value about which operands the native route is asked first, never a statement of what a
+// test is -- the marker is that. The pattern selects within the universe (v2.compiler.compile
+// `native_lane_identity_admitted`) and does not narrow it: `the_default_pattern_admits_every_universe_member`
+// is the law, were the default ever narrower than the boundary the lane would silently drop members
+// at its default. The segment boundary is the matcher's (`target_pattern_matches`): `//v2/...`
+// selects `v2.test.x` and `v2.testing.x` alike and selects `v22.x` never.
 //
 // CONSUMERS. `v2.compiler.compile` `native_lane_universe_selected` consumes the pattern at
 // execution; `native_lane_universe` (the required-v2-native lane's rendered main) consumes it at
-// this default. AN OPERATOR-SUPPLIED PATTERN NOW REACHES THAT SAME PRODUCER: `gunbc test <operand>`
+// this default. AN OPERATOR-SUPPLIED PATTERN REACHES THAT SAME PRODUCER: `gunbc test <operand>`
 // admits the operand against THIS row as its universe (`gunbc.target_invocation`
 // `admit_test_operand`, whose containment decides the executor) and hands the operand's own pattern
 // to the emitted binary's `adjudicate` verb. So this declaration is read in two directions -- as
 // the lane's default population, and as the boundary that says which operands the native route
-// owns -- and they are one value, not two spellings of one.
+// owns -- and they are one value, not two spellings of one. The receipt checks the third reading:
+// every universe identity lies inside it (`native_route_universe_in_boundary`).
+//
+// WHAT NO BOUNDARY COVERS is the marked declarations under `dag/test/manual`, which neither this
+// pattern nor `gunbc.discovery_census` `claim_route_universe` selects
+// (`gunbc.recurring_failure_mode` `test_identity_restated_as_a_location_predicate_beside_the_marker`).
 fn native_route_default_pattern() -> TargetPattern {
-  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
+  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr] } }
+}
+
+// THE DECLARATION A MODULE IS LABELED WITH when only its package is in question: a package or subtree
+// pattern admits any declaration, so the module-grain probes (this boundary's, and the lane's
+// acquisition probe in v2.compiler.compile) spell the same one.
+data native_route_module_probe_declaration: String = "any_declaration"
+
+// WHETHER A LABEL LIES INSIDE THE ROUTE BOUNDARY, decided by the matcher against the default pattern
+// and by nothing else. A label that cannot be formed is outside: unlike the lane's acquisition probe,
+// which widens the acquisition by one module when a name cannot be judged, a boundary claim is made
+// of a label or not at all.
+fn native_route_label_in_boundary(parse: LabelParse) -> Bool {
+  match parse {
+    LabelRefused { cause: _ } => false
+    LabelParsed { label: label } => target_pattern_matches(pattern: native_route_default_pattern(), target: label)
+  }
+}
+
+fn native_route_identity_in_boundary(identity: NativeRouteTestIdentity) -> Bool {
+  native_route_label_in_boundary(
+    parse: native_route_identity_label(module_qn: identity.module, declaration: identity.declaration)
+  )
+}
+
+fn native_route_module_in_boundary(module_qn: String) -> Bool {
+  native_route_label_in_boundary(
+    parse: native_route_label_in_package(
+      package_text: native_route_module_package_text(module_qn: module_qn),
+      declaration: native_route_module_probe_declaration
+    )
+  )
 }
 
 // ONE TEST IDENTITY, STRUCTURED. The module qualified name and the declaration name are separate
@@ -168,7 +218,7 @@ fn native_route_identities_unique(xs: List<NativeRouteTestIdentity>) -> Bool {
 // the required floor's, joined at the exact qualified identity. Three arms, derived — never
 // transcribed: route-gap membership is asked FIRST because an identity on both rosters is a
 // route-gap fact (the floor executes it and it gaps), and expected-red second; the remainder is
-// the floor's standing expectation for every discovered v2.test.* member — pass — which is the
+// the floor's standing expectation for every discovered universe member — pass — which is the
 // expectation a green floor asserts of every unrostered identity by construction.
 type NativeRouteReference
   = FloorExpectedPass
@@ -495,7 +545,7 @@ fn native_route_census(
 // Passed — or refuses it, or loses it — has a dead or diverted verdict arm, and every pass in
 // the population is then worthless) and the true control RETURN TRUE (a route that falsifies or
 // refuses everything cannot green either). Both controls live in v2.native_lane_fixture.control
-// — outside the universe prefix, plain `fn` so floor discovery enrolls no rows for them — and
+// — unmarked plain `fn`, so floor discovery enrolls no rows for them and they are in no universe — and
 // this authority names them (native_route_live_control_module and its two declarations), so the
 // route executes them beside the derived universe. Absent is
 // representable so a missing observation refuses by name rather than pattern-matching to a
@@ -567,7 +617,7 @@ type NativeRouteOldRouteControl
 // crate compiled on one and refused with status 101 on the other with the receipt unable to say
 // why. The five facts here are the ones that decide whether one run's "compiled" can be compared
 // with another's: the exact argv cargo was spawned with, the RUSTFLAGS the lane SET on that spawn
-// (never inherited -- the value is the repository's own row, gunbc.repo_self_warning_policy
+// (never inherited -- the value is the repository's own row, gunbc.repo.repo_self_warning_policy
 // repo_self_warning_denial_rustflags, applied at the invocation, on BOTH channels cargo reads),
 // the one compiler executable cargo was BOUND to (RUSTC set on the spawn, both wrapper channels
 // disabled there -- a receipt naming a compiler cargo was free to replace via config or a
@@ -617,7 +667,7 @@ type NativeRouteReceipt {
 
 // ADMISSION IS THE CONTRACT, ONE AUTHORITY, ONE CLAUSE PER PREDICATE. The job greens only when
 // all hold: the receipt is well-formed (right job, every identity recorded); the universe is
-// derived and well-formed (non-empty, duplicate-free, prefix-closed); the observed population
+// derived and well-formed (non-empty, duplicate-free, inside the route boundary); the observed population
 // JOINS the universe exactly (no duplicates, no foreign rows, no omissions — "no silent
 // remainder" as an executing check, not a comment); the positive population is non-empty (an
 // all-refused census proves the route refused, not that it routed); every identity on the
@@ -635,7 +685,7 @@ type NativeRouteAdmissionRefusalCause
   | RouteIdentityUnrecorded
   | UniverseUnderived
   | UniverseDuplicatesPresent
-  | UniversePrefixViolationsPresent
+  | UniverseBoundaryViolationsPresent
   | PopulationDuplicatesPresent
   | PopulationForeignRowsPresent
   | PopulationOmissionsPresent
@@ -700,9 +750,13 @@ fn native_route_universe_unique(receipt: NativeRouteReceipt) -> Bool {
   native_route_identities_unique(xs: receipt.universe)
 }
 
-fn native_route_universe_prefix_closed(receipt: NativeRouteReceipt) -> Bool {
+// EVERY UNIVERSE IDENTITY LIES INSIDE THE ROUTE BOUNDARY. The universe is selected from the marked
+// declarations of the acquired modules by a pattern the route admitted against the default, so an
+// identity outside the default is a selection that escaped the boundary operand routing enforces. An
+// identity whose label cannot be formed is outside it: the boundary can only be judged of a label.
+fn native_route_universe_in_boundary(receipt: NativeRouteReceipt) -> Bool {
   !any(xs: receipt.universe, predicate: fn(i) {
-    !native_route_universe_member(module_qn: i.module)
+    !native_route_identity_in_boundary(identity: i)
   })
 }
 
@@ -928,7 +982,7 @@ fn native_route_context_refusals_backed(receipt: NativeRouteReceipt) -> Bool {
 }
 
 // THE LIVE-VERDICT CONTROLS ARE NAMED BY THE AUTHORITY, NOT BY THE HARNESS. The pair sits
-// OUTSIDE the universe prefix on purpose — discovery enrols no row for it, so nothing but this
+// UNMARKED on purpose — discovery enrols no row for it, so nothing but this
 // declaration can put it in front of the route — and the clauses below judge the verdicts it
 // produced. While the seed derived the universe, these two names lived as Rust constants beside
 // the derivation; the derivation is now the emitted binary's own fold, and a control the route
@@ -1117,7 +1171,7 @@ fn native_route_admission_with(receipt: NativeRouteReceipt, live_pair: NativeRou
     NativeRouteClauseCheck { holds: native_route_identity_recorded(receipt: receipt), cause: RouteIdentityUnrecorded },
     NativeRouteClauseCheck { holds: native_route_universe_derived(receipt: receipt), cause: UniverseUnderived },
     NativeRouteClauseCheck { holds: native_route_universe_unique(receipt: receipt), cause: UniverseDuplicatesPresent },
-    NativeRouteClauseCheck { holds: native_route_universe_prefix_closed(receipt: receipt), cause: UniversePrefixViolationsPresent },
+    NativeRouteClauseCheck { holds: native_route_universe_in_boundary(receipt: receipt), cause: UniverseBoundaryViolationsPresent },
     NativeRouteClauseCheck { holds: native_route_population_unique(receipt: receipt), cause: PopulationDuplicatesPresent },
     NativeRouteClauseCheck { holds: native_route_population_no_foreign(receipt: receipt), cause: PopulationForeignRowsPresent },
     NativeRouteClauseCheck { holds: native_route_population_covers_universe(receipt: receipt), cause: PopulationOmissionsPresent },
@@ -1163,7 +1217,7 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     RouteIdentityUnrecorded => "route_identity_unrecorded"
     UniverseUnderived => "universe_underived"
     UniverseDuplicatesPresent => "universe_duplicates_present"
-    UniversePrefixViolationsPresent => "universe_prefix_violations_present"
+    UniverseBoundaryViolationsPresent => "universe_boundary_violations_present"
     PopulationDuplicatesPresent => "population_duplicates_present"
     PopulationForeignRowsPresent => "population_foreign_rows_present"
     PopulationOmissionsPresent => "population_omissions_present"

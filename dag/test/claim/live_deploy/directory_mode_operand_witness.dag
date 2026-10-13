@@ -1,0 +1,74 @@
+module test.claim.live_deploy.directory_mode_operand_witness
+
+import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.access.posix { PosixUser, LoginShellUnobserved }
+import std.effect_grant { Read, Write, Execute }
+import gunbc.ownership { Owned }
+import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged }
+import gunbc.fabric.fabric_storage_placement { fabric_storage_directory }
+import gunbc.live_deploy.emit { install_d_managed_command }
+import gunbc.executor_privileged_operation { runner_slot_install_operations, executor_privileged_operation_argv }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A DIRECTORY'S DECLARED MODE REACHES THE HOST AS DECLARED, SET-ID BITS INCLUDED (srv1, 2026-10-12).
+// GNU install(1) keeps an existing directory's set-user-ID and set-group-ID bits when given a numeric
+// mode of four digits, so the production apply's repair of /opt/gunbc/fabric-storage/objects (observed
+// 2700, declared 0700) ran `install -d -m 0700` and left 2700: the member identity check refused after
+// every cutover. The operand is spelled with five digits (extdeps.tools.gnu_coreutils
+// coreutils_directory_mode_operand), which states the set-id bits rather than inheriting them.
+// These claims run the real producers -- the live deploy's managed-directory install and the executor's
+// runner-slot install -- and each was red on main, where both spelled the mode with four digits or three.
+
+fn words_of(command: String) -> List<String> {
+  split(s: command, sep: " ")
+}
+
+// A WORD AS THE SHELL TEXT SPELLS IT, bare or single-quoted, so the claim reads the operand and not the
+// renderer's quoting choice.
+fn has_word(words: List<String>, word: String) -> Bool {
+  any(words, w => w == word || w == join(["'", word, "'"], ""))
+}
+
+test fn the_fabric_storage_directory_install_states_its_set_id_bits() -> Bool {
+  let command = install_d_managed_command(dir: fabric_storage_directory(
+    member: "fabric-storage-objects" as NonEmptyStr,
+    path: "/opt/gunbc/fabric-storage/objects" as NonEmptyStr,
+    writes: true,
+  ))
+  has_word(words: words_of(command: command), word: "00700") && !has_word(words: words_of(command: command), word: "0700")
+}
+
+test fn the_runner_slot_install_states_its_set_id_bits() -> Bool {
+  let ops = runner_slot_install_operations(slot_dirs: ["/opt/actions-runner/srv1-01" as NonEmptyStr], slot_owner: "ghrunner" as NonEmptyStr)
+  let words = ops |> flat_map(op => executor_privileged_operation_argv(op: op) |> map(w => w as String))
+  has_word(words: words, word: "00755") && !has_word(words: words, word: "755")
+}
+
+// THE POSITIVE CONTROL: a declaration that STATES a set-id bit keeps it. A directory shared with a writer
+// outside the owner's group is declared setgid (gunbc.managed_directory), and its install spells 02770,
+// so the five-digit operand clears only what the declaration does not state.
+fn owner_user() -> PosixUser {
+  PosixUser { name: "svc", uid: 4000, gid: 4000, shell: LoginShellUnobserved }
+}
+
+fn stranger_user() -> PosixUser {
+  PosixUser { name: "outsider", uid: 4002, gid: 4002, shell: LoginShellUnobserved }
+}
+
+test fn a_declared_setgid_directory_keeps_its_setgid_bit() -> Bool {
+  let shared = ManagedDirectory {
+    member: "synthetic-store",
+    path: "/synthetic/store",
+    owner: owner_user(),
+    group_principal: stranger_user(),
+    dependents: [
+      DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
+      DirectoryDependent { who: stranger_user(), needs: [Read, Write, Execute] },
+    ],
+    ownership: Owned,
+    entries: EntriesUnmanaged,
+  }
+  has_word(words: words_of(command: install_d_managed_command(dir: shared)), word: "02770")
+}

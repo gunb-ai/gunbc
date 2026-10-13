@@ -1,4 +1,4 @@
-module synthetic.fn_family.planted_family
+module v2.test.fixture.fn_family.planted_family
 
 
 fn planted_alpha(x: std.nat.Nat) -> std.nat.Nat { x }

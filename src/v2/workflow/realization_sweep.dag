@@ -10,40 +10,26 @@ import v2.workflow.realization_attempt {
   attempt_phase_label,
   entry_witness_source
 }
-import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.workflow.floor_discovery_producer { floor_discovery_walk_dir }
-import v2.workflow.floor_discovery_source_authority {
-  FloorDiscoveryWalkState,
-  floor_discovery_walk_state_zero
-}
+import v2.compiler.name_resolve { Admission }
 import gunbc.explicit_witness_admission { explicit_witness_admissions }
-import gunbc.ci_layer_roots { falsifier_substrate_long_lane_rows }
-import v2.compiler.source_authority {
-  SourceRef,
-  SourceRootIngest
-}
-import v2.compiler.source_authority_read {
-  SourceRootIngestBuildOk,
-  SourceRootIngestBuildReadFailed,
-  source_root_ingest_build_from_source_refs
-}
+import gunbc.ci.ci_layer_roots { falsifier_substrate_long_lane_rows }
+import v2.compiler.source_authority { SourceRootIngest }
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent }
-import v2.std.algebra { fold_list, length }
+import std.algebra { fold_list, length }
 import v2.std.collection { list_at_optional }
 import std.types { Int, List, String }
-import std.algebra { Cons, Empty }
 
 // CI2-0 Commit B sweep (operator mandate 2026-08-08, convergence mandate 2026-08-09): the
-// machine-derived census replacing the circular one — for each roster entry, the host-discovered
-// import closure (the executor's own discover_source_root_reads_for_entry, transported as the SAME
-// host_source_root_ingest_manifest overlay the frontier probe survey rides — never a .dag-side
-// re-discovery forking the closure authority) is driven through attempt_closure_rows: ONE canonical
+// machine-derived census replacing the circular one — for each roster entry, the entry's
+// import closure (supplied by the caller as a SourceRootIngest -- the one acquirer,
+// v2.compiler.module_acquisition, is the closure authority, never a .dag-side re-discovery forking it)
+// is driven through attempt_closure_rows: ONE canonical
 // assembly per entry, one attempt per required test-fn identity, a typed standing per identity,
 // exactly once. The receipt is a phase-and-cause histogram whose laws are structural (row count
 // equals identity count; every row typed), never tree-copied literals. Identity source: the entry's
-// authored test-fn roster, scanned from the entry witness's own source text at line grain — the
-// same 'test fn ' surface the floor's discovery walk recognizes — and interned to the resolved
+// test declarations, which are the declarations carrying the authored `test` marker — a SUPPLIED
+// fact (the entry's marked names), never a scan of its source text — interned to the resolved
 // declaration name the exactly-one join consumes.
 
 type RealizationSweepRow {
@@ -59,32 +45,11 @@ fn no_name_strings() -> List<String> {
 }
 
 // Roster authority correction (operator verdict, msg_6305b900): identities come from the CANONICAL
-// enrolled floor population — the same floor_discovery_producer walk the floor's discovery batch
-// runs, filtered to the entry — never a source-text line scan, which would be a second census
-// beside the execution roster (the class the circular census died of). The walk is over the entry's
-// own directory; a walk failure or empty roster is a refusal surface, not an empty list, because
-// the survey verdict downstream refuses on canonical/output mismatch.
-
-fn sweep_dir_join(out: String, seg: String) -> String {
-  if out == "" { seg } else { concat(out, "/", seg) }
-}
-
-fn entry_parent_dir(entry: String) -> String {
-  let segs = split(s: entry, delimiter: "/")
-  let n = length(xs: segs)
-  let folded = fold_list(xs: segs, empty: SweepDirState { index: 0, out: "" }, cons: fn(st, seg) {
-    SweepDirState {
-      index: st.index + 1,
-      out: if st.index + 1 == n { st.out } else { sweep_dir_join(out: st.out, seg: seg) }
-    }
-  })
-  folded.out
-}
-
-type SweepDirState {
-  index: Int
-  out: String
-}
+// enrolled population -- the entry's marked test declarations, the same fact the floor's discovery
+// enrols from -- never a source-text line scan, which would be a second census beside the execution
+// roster (the class the circular census died of). The marker fact is a supplied value: this module
+// neither parses nor walks the entry's directory, so a sibling file can neither contribute an
+// identity nor refuse the sweep.
 
 fn identity_snoc_unique(acc: List<String>, f: String) -> List<String> {
   if fold_list(xs: acc, empty: false, cons: fn(found, x) { found || (x == f) }) {
@@ -95,24 +60,16 @@ fn identity_snoc_unique(acc: List<String>, f: String) -> List<String> {
 }
 
 // The canonical enrolled population per entry is the UNION of the cadences that execute it: the
-// per-PR discovery roster (the floor walk, which deliberately excludes exactly-admitted rows from
-// ITS cadence), plus the exact-admission roster (gunbc.explicit_witness_admission), plus the
-// substrate long-lane rows (ci_layer_roots) — each an enrolled executing consumer. Discovery
-// exclusion is a CADENCE fact, not an enrollment fact; deriving the population from discovery alone
-// would silently drop every long-lane witness.
+// entry's marked test declarations (the source of the per-PR discovery roster, whose corpus-mode row
+// admission deliberately excludes exactly-admitted rows from ITS cadence), plus the exact-admission
+// roster (gunbc.explicit_witness_admission), plus the substrate long-lane rows (ci_layer_roots) --
+// each an enrolled executing consumer. Discovery exclusion is a CADENCE fact, not an enrollment
+// fact; deriving the population from discovery's admitted rows alone would silently drop every
+// long-lane witness.
 
-fn entry_canonical_identities(entry: String) -> List<String> {
-  let state = floor_discovery_walk_dir(
-    state: floor_discovery_walk_state_zero(),
-    dir_path: entry_parent_dir(entry: entry),
-    exclude_substrings: []
-  )
-  let discovered = fold_list(xs: state.rows, empty: no_name_strings(), cons: fn(acc, r) {
-    if r.entry == entry {
-      identity_snoc_unique(acc: acc, f: r.function)
-    } else {
-      acc
-    }
+fn entry_canonical_identities(entry: String, marked: List<String>) -> List<String> {
+  let discovered = fold_list(xs: marked, empty: no_name_strings(), cons: fn(acc, name) {
+    identity_snoc_unique(acc: acc, f: name)
   })
   let with_admitted = fold_list(xs: explicit_witness_admissions, empty: discovered, cons: fn(acc, a) {
     if a.witness.entry == entry {
@@ -148,12 +105,12 @@ fn sweep_row_cause(a: EntryRealizationAttempt) -> String {
   }
 }
 
-fn sweep_rows(ingest: SourceRootIngest, admission: Admission, entry: String) -> List<RealizationSweepRow> {
+fn sweep_rows(ingest: SourceRootIngest, admission: Admission, entry: String, marked: List<String>) -> List<RealizationSweepRow> {
   sweep_rows_with_identities(
     ingest: ingest,
     admission: admission,
     entry: entry,
-    identities: entry_canonical_identities(entry: entry)
+    identities: entry_canonical_identities(entry: entry, marked: marked)
   )
 }
 
@@ -228,27 +185,6 @@ type SweepPairState {
   out: List<RealizationSweepRow>
 }
 
-// Read-through seam for closures past the manifest inline cap (the SAME
-// source_root_ingest_build_from_source_refs the frontier probe rides): the host manifest carries
-// SourceRef rows (path + root + content hash, no inline source), the sweep reads them through the
-// filesystem with content-hash verification, and a read failure is ONE located refusal row for the
-// entry — typed, counted, never an empty roster.
-
-fn sweep_rows_from_refs(refs: List<SourceRef>, admission: Admission, entry: String, identities: List<String>) -> List<RealizationSweepRow> {
-  match source_root_ingest_build_from_source_refs(refs: refs) {
-    SourceRootIngestBuildReadFailed { result: _ } =>
-      [RealizationSweepRow {
-        entry: entry,
-        function: "",
-        phase_label: "read",
-        cause: "realization_sweep_closure_read_refused",
-        located: entry
-      }]
-    SourceRootIngestBuildOk { ingest: ingest } =>
-      sweep_rows_with_identities(ingest: ingest, admission: admission, entry: entry, identities: identities)
-  }
-}
-
 fn sweep_row_count_for(rows: List<RealizationSweepRow>, entry: String, function: String) -> Int {
   fold_list(xs: rows, empty: 0, cons: fn(acc, r) {
     if (r.entry == entry) && (r.function == function) { acc + 1 } else { acc }
@@ -263,85 +199,6 @@ fn sweep_rows_join_canonical(rows: List<RealizationSweepRow>, entry: String, ide
     acc && fold_list(xs: identities, empty: false, cons: fn(found, f) { found || (f == r.function) })
   })
   forward && backward && (length(xs: rows) == length(xs: identities))
-}
-
-// Located attribution for assembly-parse refusals: each closure member is driven through the SAME
-// canonical assembly as a singleton ingest — its own module header as the admission subject, no
-// imports — so a member whose source the canonical grammar cannot parse yields a frontend-phase row
-// whose entry IS the member's path. SourcePortLocus now carries file and extent when a refusal
-// belongs to a source construct; InvariantPortLocus instead names the source-independent invariant
-// and cannot masquerade as source location. A resolve-phase refusal here is EXPECTED (imports are
-// absent by construction) and is not reported; only frontend rows are the scan's product. The
-// single-module probe instrument (ingested_resolved_module_from_source) is NOT used: it has
-// measurably narrower grammar coverage than the assembled route and misattributes (== comparisons,
-// projections and generic signatures refuse under it while parsing through assembly).
-
-fn module_subject_of(source: String) -> List<Symbol> {
-  fold_list(xs: split(s: source, delimiter: "\n"), empty: no_fn_symbols(), cons: fn(acc, line) {
-    if (length(xs: acc) == 0) && starts_with(s: line, prefix: "module ") {
-      fold_list(
-        xs: split(s: substring(s: line, start: 7, end: string_length(s: line)), delimiter: "."),
-        empty: no_fn_symbols(),
-        cons: fn(inner, seg) { concat(inner, [symbol_intern_lexeme(lexeme: seg)]) }
-      )
-    } else {
-      acc
-    }
-  })
-}
-
-fn subject_admission(segments: List<Symbol>) -> Admission {
-  let reversed = fold_list(xs: segments, empty: Empty, cons: fn(acc, seg) { Cons { head: seg, tail: acc } })
-  Admission {
-    subject: ResolutionSubject {
-      name: fold_list(xs: reversed, empty: Empty, cons: fn(acc, seg) { Cons { head: seg, tail: acc } })
-    },
-    imports: Empty
-  }
-}
-
-fn member_parse_rows(ingest: SourceRootIngest) -> List<RealizationSweepRow> {
-  fold_list(xs: ingest, empty: no_sweep_rows(), cons: fn(acc, r) {
-    let singleton = Cons { head: r, tail: Empty }
-    let rows = fold_list(
-      xs: attempt_closure_rows(
-        ingest: singleton,
-        admission: subject_admission(segments: module_subject_of(source: r.source.carried)),
-        fn_names: [^zz_member_scan],
-        entry: r.artifact.file_path
-      ),
-      empty: no_sweep_rows(),
-      cons: fn(inner, a) {
-        let label = attempt_phase_label(a: a)
-        if label == "frontend" {
-          concat(inner, [RealizationSweepRow {
-            entry: r.artifact.file_path,
-            function: "(member-scan)",
-            phase_label: label,
-            cause: sweep_row_cause(a: a),
-            located: r.artifact.file_path
-          }])
-        } else {
-          inner
-        }
-      }
-    )
-    concat(acc, rows)
-  })
-}
-
-fn member_parse_rows_from_refs(refs: List<SourceRef>) -> List<RealizationSweepRow> {
-  match source_root_ingest_build_from_source_refs(refs: refs) {
-    SourceRootIngestBuildReadFailed { result: _ } =>
-      [RealizationSweepRow {
-        entry: "",
-        function: "(member-scan)",
-        phase_label: "read",
-        cause: "realization_sweep_closure_read_refused",
-        located: ""
-      }]
-    SourceRootIngestBuildOk { ingest: ingest } => member_parse_rows(ingest: ingest)
-  }
 }
 
 fn no_sweep_rows() -> List<RealizationSweepRow> {

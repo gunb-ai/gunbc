@@ -9,7 +9,7 @@ import v2.std.diagnostic { Diagnostic }
 // import alone. Path patterns are LiteralPath when a string literal is statable in the reachable
 // skeleton, ParamRef when a filesystem_read path argument is a parameter, UnknownPath fail-closed
 // otherwise. Subsumes witness_cost_locality.ambient_read_carrier_modules_v0 at steady state. Lives
-// in v2.std.live_read (not v2.std.live_tree) so the widely-imported disposition module stays
+// in v2.std.live_read (not std.live_tree) so the widely-imported disposition module stays
 // import-free.
 
 type LiveReadCarrierKind
@@ -63,9 +63,9 @@ data live_read_carrier_homes_v0: List<LiveReadCarrierHome> = [
   LiveReadCarrierHome { module: "v2.compiler.self_host", kind: FilesystemReadCarrier },
   LiveReadCarrierHome { module: "v2.std.decl_index", kind: DeclFactsReflectionCarrier },
   LiveReadCarrierHome { module: "v2.lens.module_graph", kind: ModuleDeclarationFactsCarrier },
-  LiveReadCarrierHome { module: "tools.dag_compile_clean_shard_roster", kind: ModuleDeclarationFactsCarrier },
-  LiveReadCarrierHome { module: "tools.dag_compile_clean_scope", kind: ModuleDeclarationFactsCarrier },
-  LiveReadCarrierHome { module: "gunbc.namespace_cut_subject_observation", kind: DeclFactsReflectionCarrier }
+  LiveReadCarrierHome { module: "gunbc.instruments.dag_compile_clean_shard_roster", kind: ModuleDeclarationFactsCarrier },
+  LiveReadCarrierHome { module: "gunbc.instruments.dag_compile_clean_scope", kind: ModuleDeclarationFactsCarrier },
+  LiveReadCarrierHome { module: "gunbc.namespace_cut.namespace_cut_subject_observation", kind: DeclFactsReflectionCarrier }
 ]
 
 data live_read_carrier_callee_symbols_v0: List<String> = [

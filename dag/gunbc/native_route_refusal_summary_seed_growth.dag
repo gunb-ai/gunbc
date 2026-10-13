@@ -1,6 +1,6 @@
 module gunbc.native_route_refusal_summary_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -22,7 +22,7 @@ data native_route_refusal_summary_seed_growth_justification: SeedGrowthJustifica
 
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
 
-  trigger: "Delete this declaration when the native lane's row decode and summary are emitted from a .dag fold over NativeTestFileRefusal rather than hand-decoded in native_lane_runner, SUFFICIENT FOR a native-route run (gunbc test over the //v2/test/... universe, or claim_executor's required native lane) to print each refused file with its fatal cause and advisory head with no hand-authored rendering.",
+  trigger: "Delete this declaration when the native lane's row decode and summary are emitted from a .dag fold over NativeTestFileRefusal rather than hand-decoded in native_lane_runner, SUFFICIENT FOR a native-route run (gunbc test over the //v2/... universe, or claim_executor's required native lane) to print each refused file with its fatal cause and advisory head with no hand-authored rendering.",
 
   current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs native_file_refusal_summary, called once from run_required_v2_native_inner after the population line; reached through run_required_v2_native by gunbc test over the native route universe and by claim_executor"
 }

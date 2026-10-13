@@ -2,8 +2,7 @@ module gunbc.native_frontier_ratchet
 
 import std.types { List }
 import v2.std.node { symbol_lexeme }
-import v2.std.algebra { fold_list, is_empty, length, list_flat_map, list_map }
-import std.algebra { list_append }
+import std.algebra { list_append, fold_list, is_empty, length, list_flat_map, list_map }
 import v2.std.collection { Map, map_lookup }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
@@ -13,12 +12,12 @@ import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval
 }
-import gunbc.witness_v2_native_route {
+import gunbc.witness.v2_native_route {
   NativeRouteReceipt, NativeRouteMemberRow, NativeRouteTestIdentity, native_route_identity_qualified,
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   NativeRouteAdmissionRefusalCause,
   JobNameMismatch, TestedTreeUnrecorded, PreparationSeedUnrecorded, EmittedClosureUnrecorded,
-  RouteIdentityUnrecorded, UniverseUnderived, UniverseDuplicatesPresent, UniversePrefixViolationsPresent,
+  RouteIdentityUnrecorded, UniverseUnderived, UniverseDuplicatesPresent, UniverseBoundaryViolationsPresent,
   PopulationDuplicatesPresent, PopulationForeignRowsPresent, PopulationOmissionsPresent,
   PositivePopulationEmpty, RequiredNativePassRegressed, DivergencesPresent, UnattributedExclusionsPresent,
   UnattributedFileRefusalsPresent, ContextRefusalsUnbacked, FrontierRetirementCausesUnowned,
@@ -57,7 +56,7 @@ import v2.workflow.compile_door_cause_ownership {
   known_frontier_causes, known_correctness_flips, cause_correctness_flip_lookup_over
 }
 
-// THE NATIVE V2 FRONTIER RATCHET: whether one complete native run over the v2.test.* universe
+// THE NATIVE V2 FRONTIER RATCHET: whether one complete native run over the whole native universe
 // kept, lost or advanced the debt `gunbc.native_frontier_roster` records.
 //
 // WHERE IT RUNS, AND WHY THERE. It is evaluated by the emitted-native compiler inside its own
@@ -347,7 +346,7 @@ fn native_frontier_clause_is_integrity(cause: NativeRouteAdmissionRefusalCause) 
     RouteIdentityUnrecorded => true
     UniverseUnderived => true
     UniverseDuplicatesPresent => true
-    UniversePrefixViolationsPresent => true
+    UniverseBoundaryViolationsPresent => true
     PopulationDuplicatesPresent => true
     PopulationForeignRowsPresent => true
     PopulationOmissionsPresent => true
@@ -626,7 +625,7 @@ fn native_frontier_verdict_over(
 ) -> NativeFrontierVerdict {
   let integrity = native_frontier_integrity_refusals(admission: admission)
   if native_frontier_pattern_is_whole(pattern: pattern) == false {
-    FrontierNotAMeasurement { reasons: ["the adjudicated pattern does not cover the whole v2.test.* universe"] }
+    FrontierNotAMeasurement { reasons: ["the adjudicated pattern does not cover the whole native universe"] }
   } else if is_empty(xs: integrity) == false {
     FrontierNotAMeasurement { reasons: integrity }
   } else {
@@ -758,7 +757,7 @@ fn native_frontier_proposal_lines(receipt: NativeRouteReceipt, proposal: NativeF
         "module gunbc.native_frontier_roster",
         "",
         "import v2.compiler.native_test_vocabulary { NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval }",
-        "import gunbc.witness_v2_native_route {",
+        "import gunbc.witness.v2_native_route {",
         "  NativeRouteTestIdentity,",
         "  CompilerFrontierAttributed, NativeEntryResolutionLimit, NativeEvalBoundary, UnattributedRefusal,",
         "  NativePassedExpectedRed, NativeFalseExpectedPass, NativeReturnedOtherVerdict, NativeReachedRouteGap",

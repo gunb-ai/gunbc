@@ -1,0 +1,217 @@
+module v2.test.claim.generated_dag_artifacts_at_rule_position
+
+import std.types { Bool, List }
+import std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+import std.algebra { length, list_map }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.compiler.source_authority {
+  LayoutFileHeader,
+  LayoutHolds,
+  LayoutRefused,
+  layout_check,
+  module_namespace
+}
+import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderRead, ModuleHeaderRefused, module_header_read }
+import v2.test.claim.source_layout_lookup { header_reader }
+import v2.cli.repository_layout { repository_module_file_of_path, repository_storage_layout }
+import gunbc.generated_artifact { GeneratedArtifact, Stage0CrateLayoutGeneratedDagArtifact, artifact_path }
+import gunbc.generated_artifact_registry { generated_artifact_registry }
+import gunbc.generated_artifact_assessment {
+  GeneratedArtifactCommittedAbsent,
+  GeneratedArtifactObservation,
+  GeneratedArtifactObservationRefused,
+  GeneratedArtifactObserved
+}
+import gunbc.generated_artifact_observation {
+  distinct_artifact_directories,
+  observe_directory_listings,
+  observe_generated_artifact_with
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE REGISTRY'S SIDE OF THE LAYOUT, BOTH WAYS. The layout check holds every governed `.dag` file to
+// its rule position and says nothing about which files are generated: `gunbc.generated_artifact_registry`
+// is that fact's single authority, and it cannot be read from the compiler's own CLI without pulling
+// the fleet hosts and plans it enumerates into that closure. So the registry's half is owed here,
+// beside the registry. A registered `.dag` artifact is
+//   1. COMMITTED: the file exists at its registered path (a registered file that is absent is a module
+//      the layout check never sees, because the check walks files and a missing one is not a file);
+//   2. UNEDITED: its content is what its producer emits, so a hand edit to a generated file is refused
+//      here and the producer stays the only author (`gunbc.generated_artifact_emit` `artifact_generate`);
+//   3. AT THE RULE POSITION OF ITS MODULE LINE: the module line the file declares is the one its
+//      registered path is the rule position of, so a registry row moved without its producer (or the
+//      reverse) is refused.
+//
+// ONE OBSERVATION PER ARTIFACT, never a second producer run: the existence, equality and position
+// judgments all read `gunbc.generated_artifact_observation` `observe_generated_artifact_with`, the one
+// live producer of the committed-versus-generated pair, restricted to the registered `.dag` rows. Its
+// directory listing is what separates an absent file from an unreadable one; an unobservable artifact
+// is a refusal here, never a pass.
+//
+// WHERE THIS RUNS, stated at its true rung. No required compile reaches a registered `.dag`
+// artifact, and nothing on the required job runs claims, so this is mitigation: it executes when the
+// claim set is run and not on `witnesses`. That loss is held by the declared drop `gunbc.rung_drop`
+// `v1_required_lanes_withdrawn`, which names the artifacts. The layout check on the required job still
+// refuses a registered file that exists at the wrong position, since it walks every governed file.
+
+// The one namespace row the single header occupies, so the layout check's row join judges the
+// position and nothing else.
+fn registered_namespace_rows(declared: ModuleHeaderRead) -> List<String> {
+  match declared {
+    ModuleHeaderDeclared { module: name } => [module_namespace(name: name)]
+    ModuleHeaderAbsent => []
+    ModuleHeaderRefused { cause: _ } => []
+  }
+}
+
+// Empty when the content's module line is the rule position of the path; otherwise the cause.
+fn registered_position_cause(path: String, content: String) -> String {
+  match repository_module_file_of_path(path: path) {
+    Absent => concat(path, ": the registered path lies under no governed tree")
+    Present { value: file } => {
+      let declared = module_header_read(reader: header_reader(), file: path, content: content)
+      match layout_check(
+        layout: repository_storage_layout(),
+        namespaces: registered_namespace_rows(declared: declared),
+        headers: [LayoutFileHeader { file: file, declared: declared }]
+      ) {
+        LayoutHolds => ""
+        LayoutRefused { refusals: _ } =>
+          concat(path, ": the committed module line is not the rule position of the registered path")
+      }
+    }
+  }
+}
+
+// Empty when the observed registered artifact is committed, unedited and at its rule position;
+// otherwise the cause.
+fn registered_observation_cause(o: GeneratedArtifactObservation) -> String {
+  match o {
+    GeneratedArtifactCommittedAbsent { artifact: _, path: path, detail: detail } =>
+      concat(path, ": the registered artifact is not in the tree: ", detail)
+    GeneratedArtifactObservationRefused { artifact: _, path: path, cause: cause } =>
+      concat(path, ": the registered artifact could not be observed: ", cause)
+    GeneratedArtifactObserved { artifact: _, path: path, generated_content: generated, committed_content: committed, extra_validation: _ } =>
+      if generated != committed {
+        concat(path, ": the committed file is not what its producer emits; it is generated, so regenerate it and never edit it")
+      } else {
+        registered_position_cause(path: path, content: committed)
+      }
+  }
+}
+
+fn registered_dag_artifacts() -> List<GeneratedArtifact> {
+  generated_artifact_registry |> filter(fn(a) { artifact_path(a: a).ends_with(suffix: ".dag") })
+}
+
+fn registered_dag_artifact_observations() -> List<GeneratedArtifactObservation> {
+  let artifacts = registered_dag_artifacts()
+  let rows = observe_directory_listings(directories: distinct_artifact_directories(artifacts: artifacts))
+  list_map(xs: artifacts, f: fn(a) { observe_generated_artifact_with(a: a, rows: rows) })
+}
+
+fn registered_dag_artifact_causes() -> List<String> {
+  list_map(xs: registered_dag_artifact_observations(), f: fn(o) { registered_observation_cause(o: o) }) |> filter(fn(cause) { cause != "" })
+}
+
+// ---- supplied values: one discriminating red per fact, against a positive control -------------------
+
+test fn a_producer_declaring_the_registered_dag_module_holds() -> Bool {
+  registered_position_cause(path: "dag/a/b/c.dag", content: "module a.b.c\n") == ""
+}
+
+test fn a_producer_declaring_the_registered_v2_module_holds() -> Bool {
+  registered_position_cause(path: "src/v2/std/text.dag", content: "// GENERATED\nmodule v2.std.text\n") == ""
+}
+
+// The module line names another module than the registered path is the rule position of: the row
+// and its producer have drifted apart, and neither is the authority for the other.
+test fn a_producer_declaring_another_module_than_its_registered_path_is_refused() -> Bool {
+  registered_position_cause(path: "dag/a/b/c.dag", content: "module a.b.zzz\n") != ""
+}
+
+test fn a_producer_without_a_module_line_is_refused() -> Bool {
+  registered_position_cause(path: "dag/a/b/c.dag", content: "fn f() -> Bool { true }\n") != ""
+}
+
+test fn a_registered_path_under_no_governed_tree_is_refused() -> Bool {
+  registered_position_cause(path: "docs/a/b/c.dag", content: "module a.b.c\n") != ""
+}
+
+// A v2 module registered under the dag tree is the one misplacement the rule's elision exists to
+// forbid: its position is src/v2/std/text.dag.
+test fn a_v2_module_registered_under_the_dag_tree_is_refused() -> Bool {
+  registered_position_cause(path: "dag/v2/std/text.dag", content: "module v2.std.text\n") != ""
+}
+
+// The observation judgment: each arm, its red against the committed-unedited-positioned control.
+data observed_at_position: GeneratedArtifactObservation = GeneratedArtifactObserved {
+  artifact: Stage0CrateLayoutGeneratedDagArtifact,
+  path: "dag/a/b/c.dag",
+  generated_content: "module a.b.c\n",
+  committed_content: "module a.b.c\n",
+  extra_validation: true
+}
+
+test fn an_observed_registered_artifact_that_is_unedited_and_positioned_holds() -> Bool {
+  registered_observation_cause(o: observed_at_position) == ""
+}
+
+// The registered file is not in the tree: the layout check walks files and cannot see this.
+test fn an_absent_registered_artifact_is_refused() -> Bool {
+  registered_observation_cause(
+    o: GeneratedArtifactCommittedAbsent { artifact: Stage0CrateLayoutGeneratedDagArtifact, path: "dag/a/b/c.dag", detail: "the listing does not name it" }
+  ) != ""
+}
+
+// An observation that was not made is not a pass.
+test fn an_unobserved_registered_artifact_is_refused() -> Bool {
+  registered_observation_cause(
+    o: GeneratedArtifactObservationRefused { artifact: Stage0CrateLayoutGeneratedDagArtifact, path: "dag/a/b/c.dag", cause: "the listing was refused" }
+  ) != ""
+}
+
+// A hand edit that keeps the module line at its rule position: only the equality can refuse it,
+// and the position of the committed content is asserted clean so the red is the equality's alone.
+test fn a_hand_edited_registered_artifact_is_refused_by_equality_alone() -> Bool {
+  registered_position_cause(path: "dag/a/b/c.dag", content: "module a.b.c\n// hand edit\n") == ""
+    && registered_observation_cause(
+      o: GeneratedArtifactObserved {
+        artifact: Stage0CrateLayoutGeneratedDagArtifact,
+        path: "dag/a/b/c.dag",
+        generated_content: "module a.b.c\n",
+        committed_content: "module a.b.c\n// hand edit\n",
+        extra_validation: true
+      }
+    ) != ""
+}
+
+// A committed file equal to its producer's emission whose module line is not the registered
+// path's rule position: only the position can refuse it.
+test fn an_unedited_registered_artifact_at_another_position_is_refused() -> Bool {
+  registered_observation_cause(
+    o: GeneratedArtifactObserved {
+      artifact: Stage0CrateLayoutGeneratedDagArtifact,
+      path: "dag/a/b/c.dag",
+      generated_content: "module a.b.zzz\n",
+      committed_content: "module a.b.zzz\n",
+      extra_validation: true
+    }
+  ) != ""
+}
+
+// ---- the real registry, the real producers and the real tree (the inhabitance claims) -----------------
+
+// A registry that registered no `.dag` artifact would make the next claim vacuous.
+test fn the_registry_registers_dag_artifacts() -> Bool {
+  length(xs: registered_dag_artifacts()) > 0
+}
+
+// Observes every registered `.dag` artifact in the tree against its real producer: deleting the
+// registry, a producer or a committed file, hand-editing a committed file, or moving the registry
+// and the file away from each other fails this claim.
+test fn every_registered_dag_artifact_is_committed_unedited_and_at_its_rule_position() -> Bool {
+  registered_dag_artifact_causes() == []
+}

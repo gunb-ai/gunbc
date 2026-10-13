@@ -50,7 +50,7 @@ data cloud_init_installer_config_paths: List<NonEmptyStr> = [
 // tempting inference, 'the generator is disabled, therefore its output is not in effect', is FALSE,
 // and it is false in the direction that produces a confident wrong diagnosis rather than a visible
 // error. It was drawn live on srv4 (2026-07-25) against a host whose netplan was present, correct,
-// and applied, and whose actual fault was a dead physical link. gunbc.host_network_diagnosis
+// and applied, and whose actual fault was a dead physical link. gunbc.host.host_network_diagnosis
 // carries that inference as an executable RED control so it cannot be drawn again unnoticed.
 
 fn cloud_init_is_disabled(d: CloudInitDisposition) -> Bool {

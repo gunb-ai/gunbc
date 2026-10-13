@@ -4,6 +4,7 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ol, cell, row, task, tasks, Unchecked }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn value_null_split_body() -> List<MarkdownBlock> {
   [
@@ -46,7 +47,7 @@ fn value_null_split_body() -> List<MarkdownBlock> {
     ]),
     h2(text: "4. Phased landing (construction-first)"),
     tasks(items: [
-      task(state: Unchecked, text: "**Phase A (this lane):** plan + discriminating witnesses pinning carrier invariants (`value_null_split_witness_test.dag`); emitter row table above is authority for S2 emit."),
+      task(state: Unchecked, text: "**Phase A (this lane):** plan + discriminating witnesses pinning carrier invariants (`value_null_split_witness.dag`); emitter row table above is authority for S2 emit."),
       task(state: Unchecked, text: "**Phase B:** stop *producing* `Null` where the return type is `Optional<T>` — route `map_get`/`get`+Optional context through `map_lookup_as_optional` (keep raw `get` returning bare value + `Null` miss for `map_lookup_dual_dispatch` until typed overload lands)."),
       task(state: Unchecked, text: "**Phase C:** delete `match_pattern` `Null` bridges (`:2808–2834`) once no producer emits `Null` for Optional/Witness arms."),
       task(state: Unchecked, text: "**Phase D:** type-directed `None` literal → `optional_absent()` where inhabiting `Optional<_>`; migrate `== None` sites (~218) to `match Absent` or `optional_is_absent` helper."),
@@ -58,7 +59,7 @@ fn value_null_split_body() -> List<MarkdownBlock> {
 }
 
 data value_null_split_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "value-null-split",
   title: "Plan — Value::Null split (Optional / Witness / lookup-miss carriers)",
   body: value_null_split_body(),

@@ -1,0 +1,86 @@
+module v2.test.claim.manual.fold_source
+
+import std.algebra { Cons, Empty }
+import v2.std.text { SourceFold, String, fold_source }
+
+type CountAcc {
+  count: Int
+  done: Bool
+}
+
+fn count_init(_source: String) -> CountAcc {
+  CountAcc { count: 0, done: false }
+}
+
+fn count_is_done(acc: CountAcc) -> Bool {
+  acc.done
+}
+
+fn count_step(acc: CountAcc) -> CountAcc {
+  let next = acc.count + 1
+  CountAcc { count: next, done: next >= 3 }
+}
+
+fn count_three_algebra() -> SourceFold<CountAcc> {
+  SourceFold {
+    init: count_init,
+    is_done: count_is_done,
+    step: count_step
+  }
+}
+
+// THE SOURCE MUST BE LONGER THAN THE STOP. With a three-byte source and a fold that stops at
+// three, "stops at is_done" is unobservable: the fold runs out of input on exactly the step the
+// stop would have fired, so an algebra that ignores is_done entirely produces the identical
+// count. Two spare bytes past the stop are what make the assertion discriminating — a step that
+// applies after is_done turns true counts five, not three (verified by mutation, gunbc#8505).
+data src_abcde: String = Cons { head: 97, tail: Cons { head: 98, tail: Cons { head: 99, tail: Cons { head: 100, tail: Cons { head: 101, tail: Empty } } } } }
+
+test fn witness_fold_source_stops_at_is_done() -> Bool {
+  let result = fold_source(src: src_abcde, algebra: count_three_algebra())
+  result.count == 3 && result.done
+}
+
+type StepCount {
+  steps: Int
+}
+
+fn never_done_counting_algebra() -> SourceFold<StepCount> {
+  SourceFold {
+    init: fn(_source) { StepCount { steps: 0 } },
+    is_done: fn(_acc) { false },
+    step: fn(acc) { StepCount { steps: acc.steps + 1 } }
+  }
+}
+
+fn done_at_three_counting_algebra() -> SourceFold<StepCount> {
+  SourceFold {
+    init: fn(_source) { StepCount { steps: 0 } },
+    is_done: fn(acc) { acc.steps >= 3 },
+    step: fn(acc) { StepCount { steps: acc.steps + 1 } }
+  }
+}
+
+data src_abc: String = Cons { head: 97, tail: Cons { head: 98, tail: Cons { head: 99, tail: Empty } } }
+
+data src_none: String = Empty
+
+// THE END OF THE SOURCE IS A STEP. An algebra that is never done is stepped once per scalar and once
+// more at the end of the source, so the count is the scalar count plus one; before the end step was
+// taken here it was the scalar count, and an algebra whose step on an exhausted source is a decision
+// (the lexer's end-of-input verdict) never reached it when every earlier step took one scalar.
+test fn witness_fold_source_takes_one_step_past_the_last_scalar() -> Bool {
+  fold_source(src: src_abc, algebra: never_done_counting_algebra()).steps == 4
+}
+
+// The same step on an empty source: the end of the source is there even when no scalar is.
+test fn witness_fold_source_takes_the_end_step_on_an_empty_source() -> Bool {
+  fold_source(src: src_none, algebra: never_done_counting_algebra()).steps == 1
+}
+
+// THE END STEP OBEYS is_done. The algebra is done on the third step, which is the last scalar of a
+// three-scalar source, so the end step must not be taken: a fold that took it unconditionally counts
+// four.
+test fn witness_fold_source_end_step_is_subject_to_is_done() -> Bool {
+  fold_source(src: src_abc, algebra: done_at_three_counting_algebra()).steps == 3
+}

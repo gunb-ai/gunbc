@@ -396,7 +396,7 @@ fn coproduct_disj_node(ctx: &InterpContext, item: &Rc<Node>) -> Option<Rc<Node>>
 /// inferred node is the `Disj` of `Pick`, so every function returning a coproduct registered
 /// itself as a second declarer of that coproduct's arms. The tier then saw two visible owners --
 /// the real `type Pick` and the phantom `probe` -- and refused a read the author had named
-/// perfectly well. Measured on `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag`: both
+/// perfectly well. Measured on `dag/test/claim/bare_name_ambiguity_wall_witness.dag`: both
 /// arm controls were RED with the branch and are green without it, in the site's own module and
 /// through an explicit import alike. Reading a declaration off an inferred type is the same
 /// category error in miniature that this whole wall exists to refuse.
@@ -4086,13 +4086,13 @@ mod cross_claim_demand_census_tests {
 // What separates an index from a scan is that the corpus is walked ONCE however many times it is
 // asked, so this reads the fill counter. Restoring the scan removes the accessor named here -- a
 // compile error in `cargo clippy --all-targets`, which IS a required lane
-// (`gunbc.repo_self_build` `repo_self_clippy_command`) -- and weakening the index to refill per
+// (`gunbc.repo.repo_self_build` `repo_self_clippy_command`) -- and weakening the index to refill per
 // lookup fails the assertion.
 //
 // Rung honesty: the assertion executes under `cargo test`, which no CI step runs as of the
 // 2026-09-04 runner-capacity ruling (declared drop `gunbc.rung_drop`
 // `rust_unit_tests_off_the_merge_path`). The required-path evidence for the repair is the cost
-// gate on `v2.test.claim.construction_justification.outside_modeled_guarantee_witness_test`
+// gate on `v2.test.claim.construction_justification.outside_modeled_guarantee_witness`
 // reaching a verdict inside its budget; this is the authorable red at the fixture boundary, and
 // it is what attributes a future regression to this lookup rather than to whatever change
 // happens to be in flight when a witness goes slow.
@@ -6369,7 +6369,7 @@ impl PreparedScopeIndexes {
     /// imported by name. Measured on the corpus at the revision this landed against: five such
     /// sites, `std.fidelity` and `v2.extdeps.languages.cpp` reading arms of their OWN
     /// coproducts, and `gunbc.live_deploy.unit_standing`, `v2.test.lens_cost.valuation` and
-    /// `v2.test.manual.infer_ground_add` reading arms they import by name. None of the five
+    /// `v2.test.claim.manual.infer_ground_add` reading arms they import by name. None of the five
     /// means either claimant type, so all five are sites a refusal keyed on this population
     /// must NOT refuse.
     ///
@@ -9668,7 +9668,7 @@ fn current_witness_evaluation_frame() -> Option<Value> {
 // transition are .dag; this code keeps a state value, a clock value and the dispatch log, and
 // dispatches. Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS), with the
 // witness-frame stack above. Deletion condition, checkable by execution: the emitted runtime realizes
-// the evaluation frame and its modeled realization, and `test.claim.operation_realization_witness_test`
+// the evaluation frame and its modeled realization, and `test.claim.operation_realization_witness`
 // stays green without this code.
 /// The dynamic-extent state of one witness frame's modeled operation realization. The model is
 /// `.dag` (`v2.std.operation_realization`): this slot only holds its current state, the virtual
@@ -10965,7 +10965,7 @@ macro_rules! v1_bridge_family_arms {
             // drops both out of that closure by identity. `is_v4_bridge_family` matches the item
             // registry's module name against this literal, so the literal moves the bridge; the
             // family enum, lookup fn and arm macro are generated from the same
-            // `EvalCallBridgeFamilySite.module` in gunbc.v1_interpreter_primitive_surface, and a
+            // `EvalCallBridgeFamilySite.module` in gunbc.v1.v1_interpreter_primitive_surface, and a
             // name disagreeing with the roster fails to compile.
             family STD_NODE_REFLECTION_BRIDGE_FNS "v2.std.node_reflection"
                 lookup_eval_call_bridge_std_node_reflection eval_call_bridge__v2_std_node_reflection_arm {
@@ -15746,14 +15746,14 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 /// Encode one `ReferenceDerivedClosureAdmission` as an interpreter value.
 ///
 /// Pure encoding. The judgement was made by
-/// `gunbc.namespace_reference_derived_closure_admission assess_reference_binding_observation`,
+/// `gunbc.namespace_cut.namespace_reference_derived_closure_admission assess_reference_binding_observation`,
 /// which the `.dag` producer calls; nothing here decides, reclassifies, or defaults. The
 /// three payload vocabularies are nullary coproducts, carried by name.
 fn reference_derived_closure_admission_value(
-    admission: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission,
+    admission: &crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission,
     ctx: &InterpContext,
 ) -> Value {
-    use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission as A;
+    use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission as A;
     let nullary = |type_name: &str, variant_name: String| Value::Variant {
         type_name: ctx.sym(type_name),
         variant_name: ctx.sym(&variant_name),
@@ -15765,8 +15765,8 @@ fn reference_derived_closure_admission_value(
     // but at RUNTIME; a total match makes it a COMPILE error (construction over validation,
     // DESIGN 5) and stops the Rust identifier being a second representation of the variant's
     // identity (DESIGN 3).
-    let capability = |c: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability| {
-        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability as C;
+    let capability = |c: &crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability| {
+        use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability as C;
         let name = match c {
             C::SameFileEarlierNeighbourVisible => "SameFileEarlierNeighbourVisible",
             C::SiblingDecisionBranchExcluded => "SiblingDecisionBranchExcluded",
@@ -15777,8 +15777,8 @@ fn reference_derived_closure_admission_value(
         };
         nullary("ReferenceDerivedClosureCapability", name.to_string())
     };
-    let trigger_value = |t: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger| {
-        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger as T;
+    let trigger_value = |t: &crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger| {
+        use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger as T;
         let name = match t {
             T::P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515",
             T::P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515",
@@ -15786,8 +15786,8 @@ fn reference_derived_closure_admission_value(
         };
         nullary("ReferenceDerivedClosureTrigger", name.to_string())
     };
-    let scenario_failure = |f: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure| {
-        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure as F;
+    let scenario_failure = |f: &crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure| {
+        use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure as F;
         let name = match f {
             F::SameFileNeighbourMissing => "SameFileNeighbourMissing",
             F::SiblingBranchLeaked => "SiblingBranchLeaked",
@@ -16064,7 +16064,7 @@ fn import_statement_parse_cause_value(
 
 fn namespace_structural_observation_admissions_value(
     compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
-    admissions: &[Rc<crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
+    admissions: &[Rc<crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
     ctx: &InterpContext,
 ) -> Value {
     list_value(
@@ -16208,7 +16208,7 @@ fn compile_diagnostic_census_value(
     }
 }
 
-/// Projects a host CLAIM SCOPE fixture outcome into the `tools.multi_module_compile_fixture`
+/// Projects a host CLAIM SCOPE fixture outcome into the `gunbc.instruments.multi_module_compile_fixture`
 /// coproduct. Four arms, kept distinct for the reason the compile projection keeps three: a
 /// refusal about the HOST PROCESS (`ClaimScopeInstrumentRefused`) and one about the SUBJECT
 /// (`ClaimScopeRefused`) must not wear each other's verdict, and a manifest that never reached
@@ -16277,7 +16277,7 @@ fn claim_scope_fixture_value(
     }
 }
 
-/// Projects a host multi-module fixture outcome into the `tools.multi_module_compile_fixture`
+/// Projects a host multi-module fixture outcome into the `gunbc.instruments.multi_module_compile_fixture`
 /// coproduct. The three arms stay distinct to the substrate: a broken harness must never wear
 /// the compiler's verdict, and a compile that never ran must never arrive as
 /// `FixtureCompileCompleted` with an empty diagnostic list (DESIGN §5 — could-not-measure
@@ -17083,7 +17083,7 @@ fn reference_occurrence_binding_census_value(
     }
 }
 
-/// Projects a host gate receipt into the `gunbc.ci_gate` `GateReceipt` coproduct. Arms stay
+/// Projects a host gate receipt into the `gunbc.ci.ci_gate` `GateReceipt` coproduct. Arms stay
 /// distinct to the substrate as `compile_diagnostic_census_value`'s do: `GateNotRun` must
 /// never arrive as a clean verdict — could-not-measure and passing are different facts with
 /// different owners, and a `Bool` at this seam made them one value.
@@ -21210,7 +21210,7 @@ fn map_response_to_value_json(
 // output field says, so a field declared as a nullary coproduct (`status: WorkflowRunStatus`)
 // carried the wire spelling "completed" into a program that matches on `Completed`. Every such
 // match took its wildcard arm or refused non-exhaustively -- silent wrongness at the language
-// layer, measured live on gunbc.fleet_desired_admission's merge-queue route, which refused every
+// layer, measured live on gunbc.fleet.fleet_desired_admission's merge-queue route, which refused every
 // real landing as RequiredCiMergeGroupRunUnconcluded while its fold witness, fed constructed
 // records, stayed green (gunbc.recurring_failure_mode
 // rest_response_coproduct_decoded_type_blind).
@@ -22280,7 +22280,7 @@ fn eval_emit_host_run_transport_builtin(
     result
 }
 
-/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.roadmap_authority
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.roadmap.roadmap_authority
 /// v1-materialization-kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
 /// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
 /// content-addressed emit_host transport persists the workspace under workspace_dir and skips
@@ -22707,7 +22707,7 @@ fn run_cached_process_spec(
 /// the absorbing fallback hermetic-tool-provisioning-design (deleted) §1 names).
 ///
 /// HAND-RUST GATE explicit deferral (review 44883): seed retained, not a new resolver
-/// authority. Lane: ROADMAP `toolchain-single-resolver` (gunbc.roadmap_authority,
+/// authority. Lane: ROADMAP `toolchain-single-resolver` (gunbc.roadmap.roadmap_authority,
 /// hermetic-tool-provisioning-design (plan doc deleted 2026-08-28) P2 — "one resolver",
 /// handback: delete `resolve_host_tool_program` and the bash ladder). This PR repairs only the
 /// fail-open terminal arm; no parallel key, no census growth. Delete the whole function when
@@ -23578,15 +23578,24 @@ macro_rules! v1_builtin_arms {
                     .max(0)
                     .min(len)
                     .max(start);
-                let s: String = cps
-                    .skip(start as usize)
-                    .take((end - start) as usize)
-                    .iter()
-                    .filter_map(|v| match v {
-                        Value::Int(cp) => char::from_u32(*cp as u32),
-                        _ => None,
-                    })
-                    .collect();
+                let mut s = String::new();
+                for v in cps.skip(start as usize).take((end - start) as usize).iter() {
+                    match v {
+                        Value::Int(cp) => match u32::try_from(*cp).ok().and_then(char::from_u32) {
+                            Some(ch) => s.push(ch),
+                            None => {
+                                return Err(InterpError::TypeError {
+                                    msg: format!("chars_to_string: {cp} is not a Unicode scalar value: runtime representation-invariant violation; refusing to drop or substitute it"),
+                                });
+                            }
+                        },
+                        _ => {
+                            return Err(InterpError::TypeError {
+                                msg: "chars_to_string: element is not an Int code point".to_string(),
+                            });
+                        }
+                    }
+                }
                 Ok(Some(str_value(s)))
             },
 
@@ -23860,12 +23869,6 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Int(cp)))
             },
 
-            arm "free_call.from_code_point" { "from_code_point" } => {
-                let cp = expect_int($positional.first().copied(), "from_code_point")?;
-                let c = char::from_u32(cp as u32).unwrap_or('\0');
-                Ok(Some(str_value(c.to_string())))
-            },
-
             arm "free_call.is_xid_start" { "is_xid_start" } => {
                 let cp = expect_int($positional.first().copied(), "is_xid_start")?;
                 Ok(Some(Value::Bool(v1_rt::is_xid_start(cp))))
@@ -24049,7 +24052,7 @@ macro_rules! v1_builtin_arms {
             // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
             arm "free_call.observed_peak_resident_bytes" { "observed_peak_resident_bytes" } => match $positional.as_slice() {
                 [] => {
-                    // Routed through the single portable reader. This arm previously carried
+                    // Routed through the single peak reader (VmHWM on Linux, getrusage on macOS; see its docblock). This arm previously carried
                     // its OWN /proc/self/status VmHWM read — a second implementation of one
                     // observation (section 3), and the copy executing for witnesses, so fixing
                     // only cli_run's would have left this Linux-only. Authority for the
@@ -24059,7 +24062,7 @@ macro_rules! v1_builtin_arms {
                     match bytes {
                         Some(b) => Ok(Some(Value::Int(b))),
                         None => Err(InterpError::TypeError {
-                            msg: "observed_peak_resident_bytes: getrusage(RUSAGE_SELF).ru_maxrss unavailable on this host (refusing to fabricate a Measured space fact)"
+                            msg: "observed_peak_resident_bytes: no own-process peak reader for this host (Linux VmHWM or macOS getrusage); refusing to fabricate a Measured space fact"
                                 .to_string(),
                         }),
                     }
@@ -25187,7 +25190,7 @@ macro_rules! v1_builtin_dispatch {
 //
 // WHY THIS EXISTS AND WHY IT IS HERE RATHER THAN AT THE FLOOR. `v2.workflow.required_floor`
 // classifies a completed-over-limit claim as `CompletedPastSafetyLimit` CARRYING a
-// `ClaimPreemptionReachability`, and `gunbc.v1_interpreter_opaque_host_call` already grounds
+// `ClaimPreemptionReachability`, and `gunbc.v1.v1_interpreter_opaque_host_call` already grounds
 // which operations are unpollable. But the seed had no way to say which arm a claim actually
 // REACHED, so the field was supplied by hand in `test.claim.preemption_reachability` and
 // discarded everywhere else -- the two populations the model distinguishes arrived at the floor
@@ -25198,7 +25201,7 @@ macro_rules! v1_builtin_dispatch {
 // IT RECORDS, IT DOES NOT DECIDE. Nothing here compares a cost or blocks a claim: the floor
 // reads this to REPORT which population a crossing belongs to, and blocking behaviour is
 // unchanged. The roster is NOT duplicated in Rust -- the floor reads
-// `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface()` and arms this recorder with
+// `gunbc.v1.v1_interpreter_opaque_host_call.opaque_host_call_surface()` and arms this recorder with
 // it, so the surface keeps one authority and an ungrounded surface refuses the run rather than
 // arming an empty one (an empty roster would report every crossing as pollable, which is the
 // reassuring direction and exactly the absorbing fallback DESIGN section 5 forbids).
@@ -25273,7 +25276,7 @@ pub enum OpaqueHostCallReach {
 
 /// Record a dispatch if the arm identity is on the armed surface. The identity compared is the
 /// AUTHORED SPELLING, which is the BARE dispatch key and is what
-/// `gunbc.v1_interpreter_opaque_host_call` `opaque_host_call_surface` actually publishes -- not
+/// `gunbc.v1.v1_interpreter_opaque_host_call` `opaque_host_call_surface` actually publishes -- not
 /// the `free_call.*` arm identity, which is the join's INPUT and never its output.
 fn note_opaque_host_call_reach(name: &str) {
     BUILTIN_DISPATCHES_OBSERVED.with(|c| c.set(c.get().saturating_add(1)));
@@ -25284,9 +25287,9 @@ fn note_opaque_host_call_reach(name: &str) {
             return;
         };
         // THE SURFACE PUBLISHES `authored_spelling`, WHICH IS THE BARE DISPATCH KEY, AND THIS
-        // COMPARED AN ARM IDENTITY AGAINST IT. `gunbc.v1_interpreter_opaque_host_call`
+        // COMPARED AN ARM IDENTITY AGAINST IT. `gunbc.v1.v1_interpreter_opaque_host_call`
         // `opaque_host_call_surface` projects `roster_arms_for_identity(..) |> map(a =>
-        // a.authored_spelling)`, and `gunbc.v1_interpreter_primitive_surface` carries
+        // a.authored_spelling)`, and `gunbc.v1.v1_interpreter_primitive_surface` carries
         // `authored_spelling: "compile_dag_rust_emit_check"` beside
         // `identity: "free_call.compile_dag_rust_emit_check"`. This built the identity form and
         // compared it to a list of spellings, so the two vocabularies never intersected and no
@@ -26271,7 +26274,7 @@ fn free_monoid_ctx_syms(ctx: &InterpContext) -> Option<(Symbol, Symbol, Symbol, 
 }
 
 /// The elements of a list value in either representation -- a kernel `List` or the structural
-/// `FreeMonoid` (`Cons`/`Empty`) that `v2.std.algebra` folds return -- read in `ctx`.
+/// `FreeMonoid` (`Cons`/`Empty`) that `std.algebra` folds return -- read in `ctx`.
 pub fn list_value_items(ctx: &InterpContext, val: &Value) -> Option<Vec<Value>> {
     with_active_ctx(ctx, || free_monoid_to_vec(val))
 }
@@ -27213,7 +27216,7 @@ mod file_effect_trace_tests {
     /// THE EXPECTED STRINGS ARE ASSERTED TOO, so the three agree over one input: if the .dag
     /// moves, this reds; if the mirror moves, this reds; and neither can pass by the other's
     /// construction. The operand is asserted separately in every case, because that is the half
-    /// the retired raw line carried and the half whose loss gunbc.roadmap_dispatch_actuator
+    /// the retired raw line carried and the half whose loss gunbc.roadmap.roadmap_dispatch_actuator
     /// records as the srv1 2026-08-19 publication incident.
     fn oracle_context() -> super::InterpContext {
         let root = crate::cli_run::workspace_root();

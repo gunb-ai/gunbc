@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_expansion_attachment
+module gunbc.machine_intake.mtcollins1_expansion_attachment
 
 import std.types { NonEmptyStr }
 import std.nat { Nat }
@@ -9,7 +9,7 @@ import extdeps.standards.ocp_nic_3_0 { ocp_nic_3_generation_label }
 import extdeps.ampere.mt_collins_1u_product_brief.specifications {
   OcpSlotStanding, OcpMezzanineSlotPresent, NoOcpSlot, mt_collins_1u_ocp_slot,
 }
-import gunbc.machine_intake_mtcollins1_expansion_observation {
+import gunbc.machine_intake.mtcollins1_expansion_observation {
   MtCollinsUnitExpansionEvidence, UnitExpansionEvidence, NoExpansionObservationForUnit,
   OcpPhysicalVariantStanding, OcpPhysicalVariantUnresolved, OcpPhysicalVariantCited,
   AttachmentPointOffered, AttachmentPointUnobserved, AttachmentPointAbsent,

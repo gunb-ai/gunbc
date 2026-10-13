@@ -1,4 +1,4 @@
-//! The v2-native ROUTE's host harness (route authority: `gunbc.witness_v2_native_route`),
+//! The v2-native ROUTE's host harness (route authority: `gunbc.witness.v2_native_route`),
 //! reached as `claim_executor --v2-native-route`.
 //!
 //! IT IS NOT A REQUIRED LANE, and the prefixes below say so. The required-v2-native CI job was
@@ -20,9 +20,9 @@
 //! THE SEED PREPARES; THE EMITTED COMPILER DECIDES. This harness emits the compiler closure once,
 //! builds it with cargo, withdraws the old-route CLI, and spawns the emitted binary — twice: once
 //! in `census` mode over the malformed specimen's scratch root, and once in `adjudicate` mode over
-//! the real source roots. Everything semantic happens inside that binary: it derives the
-//! `v2.test.*` universe with the floor's own per-file discovery producer, executes every derived
-//! identity plus the authority's named live-verdict controls, mints the `NativeRouteReceipt`, and
+//! the real source roots. Everything semantic happens inside that binary: it derives the universe
+//! (the marked declarations of the `v2` modules) with the floor's own per-file discovery producer,
+//! executes every derived identity plus the authority's named live-verdict controls, mints the `NativeRouteReceipt`, and
 //! evaluates `native_route_admission` and `native_route_admission_summary` over it
 //! (`v2.compiler.compile` `native_lane_run`).
 //!
@@ -48,7 +48,7 @@ use std::process::Command;
 
 /// THE FAULT-EXPERIMENT INPUT, joined to `gunbc.emitted_subject_build_gate`
 /// `native_fault_experiment_env_name` / `native_fault_experiment_skip_value` by
-/// `test.claim.compiler_gate_emit_build_lane_witness_test` `the_seed_fault_experiment_input_is_the_dag_rows`.
+/// `test.claim.compiler_gate_emit_build_lane_witness` `the_seed_fault_experiment_input_is_the_dag_rows`.
 const FAULT_EXPERIMENT_ENV: &str = "GUNBC_NATIVE_FAULT_EXPERIMENT";
 const FAULT_EXPERIMENT_SKIP_VALUE: &str = "skip_pull_request";
 
@@ -67,7 +67,7 @@ const PRODUCT_REUSE_FRESH_VALUE: &str = "fresh";
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
 /// authority is now inside that closure, the binary judges its own receipt.
-const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/compile.dag";
 
 /// THE V2-EXCLUSIVE CLI'S ENTRY, AND WHY IT IS A SECOND CONSTANT RATHER THAN A SECOND ROUTE.
 ///
@@ -80,12 +80,22 @@ const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/00_compile.dag";
 /// than this file growing a second copy of that sequence.
 const V2_NATIVE_CLI_ENTRY: &str = "src/v2/cli/compile_cli.dag";
 
+pub(crate) fn native_compile_entry() -> &'static str {
+    NATIVE_COMPILE_ENTRY
+}
+
+pub(crate) fn v2_native_cli_entry() -> &'static str {
+    V2_NATIVE_CLI_ENTRY
+}
+
 /// The malformed control: deliberately unterminating bytes any honest front-end must refuse at
 /// tokenize. THE COMMITTED CARRIER IS NOT A `.dag` FILE — the bytes are not a dag program, and
 /// carrying the extension put them in the changed-witness observation's parse path, where the
 /// deliberate tokenize failure refused the whole floor lane (run 34471447387). The harness
-/// materializes the specimen as `poison.dag` under the lane's scratch root, and only that
-/// materialized copy ever enters an ingest — the control run's own source root.
+/// materializes the specimen under the lane's scratch root at the position the storage rule gives
+/// the module `gunbc.malformed_specimen` (a census reads the modules a tree's declared namespaces
+/// hold, so a file at any other position would never be read), and only that materialized copy ever
+/// enters an ingest — the control run's own source root.
 const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poison.dag.poisoned";
 /// The control run's scratch source root and the materialized specimen's path under it,
 /// workspace-relative like every path this harness hands the binary (its working directory is
@@ -93,7 +103,7 @@ const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poiso
 /// requires it non-empty, and this harness requires it to name the materialized specimen.
 const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root/dag";
 const MALFORMED_MATERIALIZED_PATH: &str =
-    "target/v2-native-lane/malformed-control-root/dag/poison.dag";
+    "target/v2-native-lane/malformed-control-root/dag/gunbc/malformed_specimen.dag";
 
 /// THE TWO DOORS' CONTROL INPUTS, AS THE THREE FACTS THEIR ARGV IS BUILT FROM.
 ///
@@ -101,10 +111,12 @@ const MALFORMED_MATERIALIZED_PATH: &str =
 /// the CLI door emits this subject, and the eval driver's accepting control censuses it. A
 /// `CLI_DOOR_` prefix would have been a fact about which caller was written first.
 ///
-/// The source root is a directory of its own because the CLI walks a root RECURSIVELY for every
-/// `.dag` file under it: a control sharing a directory with other fixtures would ingest whatever
-/// their authors add next, so what the door compiled would stop being a fact this harness states.
-/// The subject is the module that directory's one file declares.
+/// The source root is a directory of its own, named for the governed tree it stands for (`dag`),
+/// because a root is recognised by the tree directory it ends in and never by what it contains.
+/// The door reads only the modules the entry's closure requests, so a sibling file would not be
+/// compiled; the directory still holds one file, because the census control enumerates the declared
+/// namespaces under it and a second module there would change what that control observes.
+/// The subject is the module that directory's one file declares, stored where its name puts it.
 ///
 /// `CLI_DOOR_EMITTED_WITNESS` AND `CLI_DOOR_EMITTED_VALUE` ARE WHAT AN EMISSION MUST CARRY, and the
 /// NAME ALONE WAS AN OVER-CLAIM. On 2026-09-23 this arm was flipped to admit exit 0 plus the
@@ -115,11 +127,22 @@ const MALFORMED_MATERIALIZED_PATH: &str =
 /// ACCEPTS; anything less is that class returning, not an emission.
 const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door/dag";
 const NATIVE_INGEST_COPIED_SINGLE_ROOT: &str = "fixtures/native_ingest_copied_single_root";
-const NATIVE_INGEST_SRC_IN_DAG_ROOT: &str = "fixtures/native_ingest_src_in_dag/dag";
+const LAYOUT_CHECK_MISPLACED_ROOT: &str = "fixtures/layout_check_misplaced/dag";
 const NATIVE_INGEST_TWO_ROOTS_DAG: &str = "fixtures/native_ingest_two_roots/dag";
 const NATIVE_INGEST_TWO_ROOTS_V2: &str = "fixtures/native_ingest_two_roots/src/v2";
-const NATIVE_INGEST_DUPLICATE_MODULE_ROOT: &str = "fixtures/native_ingest_duplicate_module/dag";
-const CLI_DOOR_ENTRY_MODULE: &str = "fixture.native_cli_door.door_probe";
+const CLI_DOOR_ENTRY_MODULE: &str = "gunbc.native_cli_door_probe";
+/// THE ACQUISITION-PROJECTION CONTROLS' SUBJECT: one committed tree, `dag`-rooted, holding two entries and
+/// the module `product.y` that one of them spells as a field projection and the other names for real. The
+/// two scratch trees the walk derives from it differ from it in that module alone.
+const NATIVE_PROJECTION_ROOT: &str = "fixtures/native_acquisition_projection/dag";
+const NATIVE_PROJECTION_SAME_NAMED_FILE: &str = "product/y.dag";
+const NATIVE_PROJECTION_PROJECTED_ENTRY: &str = "fixture.native_projection.projected";
+/// The module the projection entry spells as a field access and the qualified entry names for real: the
+/// closure the door reports holds it for one entry and must not hold it for the other.
+const NATIVE_PROJECTION_SAME_NAMED_MODULE: &str = "product.y";
+const NATIVE_PROJECTION_QUALIFIED_ENTRY: &str = "fixture.native_projection.qualified";
+/// The declaration the same-named module emits, present in the carrier's arm for that module when it is read.
+const NATIVE_PROJECTION_SAME_NAMED_WITNESS: &str = "projection_same_named_value";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 const CLI_DOOR_EMITTED_VALUE: &str = "606060";
 
@@ -231,7 +254,7 @@ struct EmittedPreparation {
 }
 
 /// The emitted compiler's build as the receipt records it — mirror of
-/// `gunbc.witness_v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
+/// `gunbc.witness.v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
 /// spawn that ran or the toolchain that answered, never composed from what was intended.
 struct EmittedBuildObserved {
     cargo_argv: Vec<String>,
@@ -716,7 +739,7 @@ fn prepare_emitted_compiler_for_entry(
         .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EntryModuleUnreadable — {cause}"))?;
     // THE FAULT EXPERIMENT IS SKIPPED ONLY WHEN THE WORKFLOW SAYS SO, and says so in the log. The
     // input is `gunbc.emitted_subject_build_gate` `native_fault_experiment_env_name`, set by
-    // `gunbc.compiler_gate_workflow` from the event: pull_request passes `skip_pull_request`,
+    // `gunbc.witness.compiler_gate_workflow` from the event: pull_request passes `skip_pull_request`,
     // merge_group and workflow_dispatch pass `run`. Absent or any other value RUNS it. The skip is
     // the declared drop `gunbc.rung_drop` `native_fault_experiment_off_pull_requests`.
     let mut red_completed = false;
@@ -1655,7 +1678,7 @@ fn write_host_facts(
         ),
     ];
     // THE EMITTED BUILD CROSSES AS ROWS TOO: the six facts of NativeRouteEmittedBuild
-    // (gunbc.witness_v2_native_route) are the host's own spawn observations, so they are host
+    // (gunbc.witness.v2_native_route) are the host's own spawn observations, so they are host
     // facts by the same rule as the identities above. The argv is one row per word under a
     // length row, because a word is opaque bytes and the TSV grammar has one value per key --
     // no separator is smuggled into a value.
@@ -1705,7 +1728,7 @@ fn write_host_facts(
 ///
 /// WHY THIS IS A PREFIX OF `--v2-native-route` RATHER THAN A SECOND PATH. That route already
 /// performs exactly these boundaries in `prepare_emitted_compiler` and then spends roughly nine
-/// further minutes executing the v2.test.* universe through the emitted binary. The test fold is a
+/// further minutes executing the marked `v2` declarations through the emitted binary. The test fold is a
 /// different claim -- what the emitted compiler ANSWERS -- and bundling it here would price the
 /// self-host question at the cost of a question nobody asked. So this calls the same producer and
 /// returns on its verdict; the two modes cannot disagree about whether the seed can build v2,
@@ -1792,7 +1815,7 @@ pub struct SelfHostHeld {
 /// everything would pass the second alone, and one whose front-end refusal arm is dead would pass
 /// the first alone; only the pair discriminates. It is `census` rather than `adjudicate` because
 /// the question is whether the ENTRYPOINT executes and the front end answers, and adjudication
-/// would additionally derive and judge the whole `v2.test.*` universe — the hours-long subject of
+/// would additionally derive and judge the whole native universe — the hours-long subject of
 /// the required-v2-native route, and a different claim.
 fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<String, String> {
     let clean_root = workspace.join(WELL_FORMED_CONTROL_ROOT);
@@ -1961,10 +1984,10 @@ pub struct V2NativeCliHeld {
 ///
 /// WHAT IS STILL NOT CLAIMED, and the distinction is the whole reason the door exists. This is not
 /// the second generation: that is this binary emitting the COMPILER'S OWN closure, and the subject
-/// walked here is `fixture.native_cli_door.door_probe`, a single import-free module. What the walk
+/// walked here is `gunbc.native_cli_door_probe`, a single import-free module. What the walk
 /// establishes is that argv parsing, the source-root read, ingest, resolution, emission and the
 /// process exit all execute in the built artifact — the inhabitance obligation beside
-/// `v2.test.cli.v2_native_cli`, whose rows supply their argv and their ingest and are claims about
+/// `v2.test.claim.cli.v2_native_cli`, whose rows supply their argv and their ingest and are claims about
 /// the folds rather than about the program.
 /// SPAWN THE BUILT CLI ONCE, BY EXPLICIT PATH, AND CARRY WHAT IT DID.
 ///
@@ -2112,6 +2135,23 @@ fn cli_door_member_arm(stdout: &str, module: &str) -> Result<CliDoorMemberArm, S
             "the arm for {module} is neither exactly `emitted` nor exactly `refused`"
         )),
     }
+}
+
+/// The modules the door's `ClosureEmission` carrier reports reading: its `members`, every entry a string.
+fn cli_door_carrier_members(stdout: &str) -> Result<Vec<String>, String> {
+    let carrier: serde_json::Value = serde_json::from_str(stdout)
+        .map_err(|e| format!("stdout is not the door's ClosureEmission carrier: {e}"))?;
+    carrier
+        .get("members")
+        .and_then(|m| m.as_array())
+        .ok_or_else(|| "the carrier has no `members` array".to_string())?
+        .iter()
+        .map(|m| {
+            m.as_str()
+                .map(str::to_string)
+                .ok_or_else(|| format!("the carrier's `members` holds a non-string entry: {m}"))
+        })
+        .collect()
 }
 
 /// What the CLI's refusal rendering decoded to: the determining reason and where it was located.
@@ -2426,7 +2466,7 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
 /// WHAT THIS CLOSES. Before it, `//gunbc/instruments:v2-native-cli` emitted the CLI's closure and
 /// built it, and stopped — the door compiled and nothing ever opened it. DESIGN section 5 names
 /// that exactly: a typecheck is not a consumer, and "done" is a real consumer green BY EXECUTION
-/// plus a discriminating input that goes red. `v2.test.cli.v2_native_cli` executes the door's
+/// plus a discriminating input that goes red. `v2.test.claim.cli.v2_native_cli` executes the door's
 /// FOLDS over supplied argv and a supplied ingest, which is the right subject for those claims and
 /// is not this one; the inhabitance obligation beside them is that the REAL PATH runs, and the real
 /// path is the built process reading real argv and real files.
@@ -2449,7 +2489,7 @@ fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> St
 /// does establish is that THE BUILT BINARY'S ENTRYPOINT EXECUTES: the `cli_no_entry` arm reaches a
 /// LOCATED refusal that only this program's own `.dag` fold can produce, which means the process
 /// started, read argv, parsed it, decided, rendered its own cause and set its own exit status.
-/// That is the inhabitance claim `v2.test.cli.v2_native_cli` cannot make, because its rows supply
+/// That is the inhabitance claim `v2.test.claim.cli.v2_native_cli` cannot make, because its rows supply
 /// argv and ingest rather than running the program.
 ///
 /// TWO SPAWNS, ONE BINARY, DIFFERING IN ONE ARGUMENT. The emit probe hands the door a complete
@@ -2584,21 +2624,39 @@ fn walk_cli_door(
             refused.stderr.trim()
         ));
     }
-    // Permanent filesystem controls execute the same built CLI as the emission control.
-    // A panic is not a typed refusal: require the declared usage status, empty stdout,
-    // and the located acquisition diagnostic, including the host's kind.
+    // Permanent filesystem controls execute the same built CLI as the emission control. Each root is
+    // spelled as the governed tree directory it stands for (`dag`), because a root is recognised by
+    // that name and an argument naming no tree is refused as usage before any file is read. A panic
+    // is not a typed refusal: require the acquisition refusal's status, empty stdout, and the
+    // located diagnostic. The unreadable file is stored where the entry's name puts it, so the exact
+    // read reaches it and the host's kind rides the refusal; the absent root names a directory that
+    // is not there, so the exact read of the entry's file concludes absence for that path alone.
     let filesystem_probe = scratch.join("filesystem-door-controls");
     std::fs::create_dir_all(&filesystem_probe)
         .map_err(|e| format!("create filesystem controls: {e}"))?;
-    for (name, bytes, expected_kind) in [
-        ("invalid-utf8", Some(&[0xff_u8][..]), "other"),
-        ("absent-root", None, "not_found"),
+    let acquisition_refusal_frame =
+        format!("{CLI_REFUSAL_PREFIX}the source roots did not yield an exact closure: ");
+    for (name, bytes, expected_causes) in [
+        (
+            "invalid-utf8",
+            Some(&[0xff_u8][..]),
+            vec![
+                format!("module {CLI_DOOR_ENTRY_MODULE} at "),
+                "could not be read: other:".to_string(),
+            ],
+        ),
+        (
+            "absent-root",
+            None,
+            vec![format!("no module is stored for {CLI_DOOR_ENTRY_MODULE}")],
+        ),
     ] {
-        let subject = filesystem_probe.join(name);
+        let subject = filesystem_probe.join(name).join("dag");
         if let Some(bytes) = bytes {
-            std::fs::create_dir(&subject)
-                .map_err(|e| format!("create {}: {e}", subject.display()))?;
-            std::fs::write(subject.join("unreadable.dag"), bytes)
+            let stored = subject.join("gunbc");
+            std::fs::create_dir_all(&stored)
+                .map_err(|e| format!("create {}: {e}", stored.display()))?;
+            std::fs::write(stored.join("native_cli_door_probe.dag"), bytes)
                 .map_err(|e| format!("write unreadable source: {e}"))?;
         }
         let observation = run_cli_door(
@@ -2611,13 +2669,11 @@ fn walk_cli_door(
                 subject.display().to_string(),
             ],
         )?;
-        let expected = format!("[{expected_kind}]");
-        if observation.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        if observation.status != Some(CLI_DOOR_REFUSAL_EXIT)
             || !observation.stdout.is_empty()
             || !observation.stderr.lines().any(|line| {
-                line.starts_with("REFUSED: could not read source root at ")
-                    && line.contains(&subject.display().to_string())
-                    && line.contains(&expected)
+                line.starts_with(&acquisition_refusal_frame)
+                    && expected_causes.iter().all(|cause| line.contains(cause))
             })
         {
             return Err(format!(
@@ -2627,15 +2683,24 @@ fn walk_cli_door(
     }
     eprintln!("v2-native-cli: filesystem controls refused absent root and unreadable source with typed, located causes");
     walk_native_ingest_layout_controls(binary, workspace)?;
+    walk_native_acquisition_projection_controls(binary, workspace, scratch)?;
+    walk_population_controls(binary, workspace, scratch)?;
     let refusal_status = i64::from(refused.status.unwrap_or_default());
     eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
     Ok((door_exit_status, emitted_bytes, refusal_status))
 }
 
-/// THE LAYOUT REDS THE PARENT ASKED THE NATIVE DOOR TO EXECUTE. Claims over `v2_cli_run` supply
-/// ingest at that fold; these walks are the inhabitance that the discovering --source-root, not
-/// the file spelling, tags the tree — deleting any of the four fixture roots makes this control
-/// fail.
+/// THE LAYOUT REDS THE NATIVE DOOR IS ASKED TO EXECUTE. Claims over `v2_cli_run` supply ingest at
+/// that fold; these walks are the inhabitance that a root is a governed tree's directory and that the
+/// acquirer reads the entry's closure and nothing beside it -- deleting any of the fixture roots
+/// makes this control fail. Three controls, each differing from the accepting one in a single fact:
+///
+/// - a root that is no tree's directory is refused as usage, naming the argument;
+/// - two roots, each a tree's directory, emit the entry that lives in one of them, and the module the
+///   OTHER root stores (which nothing requests) is absent from the emission, so a door that read
+///   whatever its roots held would be told apart from one that reads the requested closure;
+/// - two directories for one tree are refused as usage, because which of them stores a module would
+///   otherwise be a fact of argument order.
 ///
 /// SEED DELTA (ctrl hand-Rust receipt): extend `walk_cli_door`; no new production route and no
 /// deleted scaffold. Accounted on `gunbc.source_root_eval_driver_seed_growth`
@@ -2643,16 +2708,14 @@ fn walk_cli_door(
 /// this inhabitance walk over existing `run_cli_door`.
 fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result<(), String> {
     let copied = workspace.join(NATIVE_INGEST_COPIED_SINGLE_ROOT);
-    let src_in_dag = workspace.join(NATIVE_INGEST_SRC_IN_DAG_ROOT);
+    let copied_dag = copied.join("dag");
     let two_dag = workspace.join(NATIVE_INGEST_TWO_ROOTS_DAG);
     let two_v2 = workspace.join(NATIVE_INGEST_TWO_ROOTS_V2);
-    let dup = workspace.join(NATIVE_INGEST_DUPLICATE_MODULE_ROOT);
     for (label, path) in [
         ("copied-single-root", copied.as_path()),
-        ("src-in-dag", src_in_dag.as_path()),
+        ("copied-single-root-dag", copied_dag.as_path()),
         ("two-roots-dag", two_dag.as_path()),
         ("two-roots-v2", two_v2.as_path()),
-        ("duplicate-module", dup.as_path()),
     ] {
         if !path.is_dir() {
             return Err(format!(
@@ -2676,31 +2739,13 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
         || !copied_obs.stdout.is_empty()
         || !copied_obs
             .stderr
-            .contains("source root is not a dag or src/v2 tree")
+            .contains("source root is not a governed tree directory")
         || !copied_obs.stderr.contains(&copied.display().to_string())
     {
         return Err(format!(
             "V2-NATIVE REFUSAL cause=NativeIngestCopiedRootNotUnrecognized — status={:?} stderr={}",
             copied_obs.status,
             copied_obs.stderr.trim()
-        ));
-    }
-
-    let src_obs = run_cli_door(
-        binary,
-        &[
-            "emit".into(),
-            "--entry".into(),
-            "fixture.native_ingest.src_in_dag".into(),
-            "--source-root".into(),
-            src_in_dag.display().to_string(),
-        ],
-    )?;
-    if src_obs.status != Some(0) || src_obs.stdout.is_empty() {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativeIngestSrcInDagPathMisclassified — status={:?} stderr={}",
-            src_obs.status,
-            src_obs.stderr.trim()
         ));
     }
 
@@ -2716,36 +2761,686 @@ fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result
             two_v2.display().to_string(),
         ],
     )?;
-    if two_obs.status != Some(0) || two_obs.stdout.is_empty() {
+    if two_obs.status != Some(0)
+        || !two_obs.stdout.contains("native_ingest_dag_entry_value")
+        || two_obs.stdout.contains("native_ingest_v2_other_value")
+    {
         return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativeIngestTwoRootsDidNotEmit — status={:?} stderr={}",
+            "V2-NATIVE REFUSAL cause=NativeIngestTwoRootsDidNotEmitTheRequestedClosure — status={:?} \
+             stdout_bytes={} stderr={}",
             two_obs.status,
+            two_obs.stdout.len(),
             two_obs.stderr.trim()
         ));
     }
 
-    let dup_obs = run_cli_door(
+    let duplicate_obs = run_cli_door(
         binary,
         &[
             "emit".into(),
             "--entry".into(),
-            "fixture.native_ingest.collision".into(),
+            "fixture.native_ingest.dag_entry".into(),
             "--source-root".into(),
-            dup.display().to_string(),
+            two_dag.display().to_string(),
+            "--source-root".into(),
+            copied_dag.display().to_string(),
         ],
     )?;
-    if dup_obs.status != Some(CLI_DOOR_REFUSAL_EXIT)
-        || !dup_obs.stderr.contains("closure_census_duplicate_module")
-        || !dup_obs.stderr.contains("collision_a.dag")
-        || !dup_obs.stderr.contains("collision_b.dag")
+    if duplicate_obs.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        || !duplicate_obs.stdout.is_empty()
+        || !duplicate_obs
+            .stderr
+            .contains("source root names a tree another --source-root already binds")
+        || !duplicate_obs
+            .stderr
+            .contains(&copied_dag.display().to_string())
     {
         return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativeIngestDuplicateDidNotNameBothFiles — status={:?} stderr={}",
-            dup_obs.status,
-            dup_obs.stderr.trim()
+            "V2-NATIVE REFUSAL cause=NativeIngestDuplicateRootNotRefused — status={:?} stderr={}",
+            duplicate_obs.status,
+            duplicate_obs.stderr.trim()
         ));
     }
-    eprintln!("v2-native-cli: native-ingest layout controls held (unrecognized copied root, /src/ under dag, two roots, both-files duplicate)");
+    eprintln!("v2-native-cli: native-ingest layout controls held (unrecognized copied root, two roots emit only the requested closure, two directories for one tree)");
+    Ok(())
+}
+
+/// THE ACQUISITION-PROJECTION CONTROLS: WHAT A DOTTED SPELLING MEANS IS A FACT OF THE PROGRAM'S BINDERS AND
+/// NEVER OF WHICH FILES THE ROOT HOLDS. Claims over `v2.compiler.module_acquisition` supply the member's text
+/// and read the requests it makes; these walks are the inhabitance that the built door, over a real source
+/// root, reads no file for a spelling whose head a visible binder binds -- deleting the fixture tree, or
+/// letting acquisition probe `product.y` for the projection `product.y`, makes this control fail. The subject is the
+/// module `product.y`, a two-segment name stored at `product/y.dag` under the root, and the two entries below it.
+/// THE OBSERVATION IS THE CLOSURE THE DOOR REPORTS (the carrier's `members`: what acquisition read), not the
+/// entry's emission, so the control holds whatever the entry's own verdict is and pins none:
+///
+/// - `projected` spells `product.y` where `product` is a parameter the function binds: a field projection, no module reference. It is
+///   walked over three trees that differ only in whether `product/y.dag` is absent, malformed or well-formed;
+///   the closure must be the entry alone, with the same status and the same carrier, in all three. A malformed
+///   file that was read would refuse the closure; a well-formed one that was read would make it a member.
+/// - `qualified` names `product.y.projection_same_named_value`, which no binder binds, so it IS a qualified
+///   reference. The well-formed tree's closure holds the module and carries its declaration, and the malformed
+///   tree refuses naming the file, so silence about the file in the first control is the head's binding and not
+///   a door that never reads `product/y.dag`.
+///
+/// The scratch trees are rebuilt from the committed one on every run (a tree that kept what an earlier run
+/// left could carry a second file into the closure).
+///
+/// SEED DELTA (ctrl hand-Rust receipt): extend `walk_cli_door`; no new production route and no deleted
+/// scaffold. Accounted on `gunbc.source_root_eval_driver_seed_growth`
+/// `source_root_eval_driver_seed_growth_justification` (lane `v1-hand-queue-drain`). Net seed is this
+/// inhabitance walk over existing `run_cli_door`.
+fn walk_native_acquisition_projection_controls(
+    binary: &Path,
+    workspace: &Path,
+    scratch: &Path,
+) -> Result<(), String> {
+    let present = workspace.join(NATIVE_PROJECTION_ROOT);
+    let same_named_present = present.join(NATIVE_PROJECTION_SAME_NAMED_FILE);
+    if !same_named_present.is_file() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeAcquisitionProjectionRootAbsent — {} is not a file, so the \
+             projection controls have no same-named module and a green here would describe nothing",
+            same_named_present.display()
+        ));
+    }
+    let poison = workspace.join(MALFORMED_SPECIMEN_COMMITTED);
+    let poison_bytes = std::fs::read(&poison).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=MalformedSpecimenUnreadable — reading {}: {e}",
+            poison.display()
+        )
+    })?;
+    let scratch_trees = scratch.join("acquisition-projection-controls");
+    if scratch_trees.exists() {
+        std::fs::remove_dir_all(&scratch_trees)
+            .map_err(|e| format!("clearing {}: {e}", scratch_trees.display()))?;
+    }
+    let absent = scratch_trees.join("absent").join("dag");
+    copy_directory_tree(&present, &absent)?;
+    std::fs::remove_file(absent.join(NATIVE_PROJECTION_SAME_NAMED_FILE)).map_err(|e| {
+        format!(
+            "removing the same-named module from {}: {e}",
+            absent.display()
+        )
+    })?;
+    let malformed = scratch_trees.join("malformed").join("dag");
+    copy_directory_tree(&present, &malformed)?;
+    std::fs::write(
+        malformed.join(NATIVE_PROJECTION_SAME_NAMED_FILE),
+        poison_bytes,
+    )
+    .map_err(|e| {
+        format!(
+            "poisoning the same-named module in {}: {e}",
+            malformed.display()
+        )
+    })?;
+
+    let emit = |root: &Path, entry: &str| {
+        run_cli_door(
+            binary,
+            &[
+                "emit".into(),
+                "--entry".into(),
+                entry.into(),
+                "--source-root".into(),
+                root.display().to_string(),
+            ],
+        )
+    };
+
+    let mut projected: Option<(Option<i32>, String)> = None;
+    for (label, root) in [
+        ("absent", absent.as_path()),
+        ("malformed", malformed.as_path()),
+        ("well-formed", present.as_path()),
+    ] {
+        let observation = emit(root, NATIVE_PROJECTION_PROJECTED_ENTRY)?;
+        let members = cli_door_carrier_members(&observation.stdout).map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeProjectionReadSameNamedModule — the projection entry over \
+                 the {label} same-named module exited {:?} without the closure carrier a closure that \
+                 read nothing of `{NATIVE_PROJECTION_SAME_NAMED_MODULE}` prints: {e}; stderr={}",
+                observation.status,
+                observation.stderr.trim()
+            )
+        })?;
+        if members != [NATIVE_PROJECTION_PROJECTED_ENTRY] {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeProjectionReadSameNamedModule — the projection entry over \
+                 the {label} same-named module reported the closure {members:?}; a projection requests no \
+                 module, so the closure it reads is the entry alone"
+            ));
+        }
+        match &projected {
+            None => projected = Some((observation.status, observation.stdout)),
+            Some((status, stdout))
+                if *status == observation.status && *stdout == observation.stdout => {}
+            Some(_) => {
+                return Err(format!(
+                    "V2-NATIVE REFUSAL cause=NativeProjectionVerdictDependsOnSameNamedModule — the \
+                     projection entry's status or carrier over the {label} same-named module differs from \
+                     the absent one, so a file the program does not mention changed what it means"
+                ))
+            }
+        }
+    }
+
+    let referenced = emit(&present, NATIVE_PROJECTION_QUALIFIED_ENTRY)?;
+    let referenced_members = cli_door_carrier_members(&referenced.stdout).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeQualifiedReferenceDidNotReadNamedModule — the qualified entry \
+             over the well-formed same-named module exited {:?} without the closure carrier: {e}; stderr={}",
+            referenced.status,
+            referenced.stderr.trim()
+        )
+    })?;
+    let mut expected_members = vec![
+        NATIVE_PROJECTION_QUALIFIED_ENTRY.to_string(),
+        NATIVE_PROJECTION_SAME_NAMED_MODULE.to_string(),
+    ];
+    let mut reported_members = referenced_members.clone();
+    expected_members.sort();
+    reported_members.sort();
+    let named_arm = cli_door_member_arm(&referenced.stdout, NATIVE_PROJECTION_SAME_NAMED_MODULE);
+    if reported_members != expected_members
+        || !matches!(&named_arm, Ok(CliDoorMemberArm::Emitted(text)) if text.contains(NATIVE_PROJECTION_SAME_NAMED_WITNESS))
+    {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeQualifiedReferenceDidNotReadNamedModule — the qualified entry \
+             over the well-formed same-named module reported the closure {referenced_members:?}; a qualified \
+             reference reads the module it names, so the closure must hold `{NATIVE_PROJECTION_SAME_NAMED_MODULE}` \
+             and carry its `{NATIVE_PROJECTION_SAME_NAMED_WITNESS}` declaration (that module's arm: {})",
+            match &named_arm {
+                Ok(CliDoorMemberArm::Emitted(_)) => "emitted without the declaration".to_string(),
+                Ok(CliDoorMemberArm::Refused(reason)) => format!("refused {reason}"),
+                Err(e) => e.clone(),
+            }
+        ));
+    }
+    let refused = emit(&malformed, NATIVE_PROJECTION_QUALIFIED_ENTRY)?;
+    if refused.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !refused.stdout.is_empty()
+        || !refused.stderr.contains(CLI_REFUSAL_PREFIX)
+        || !refused.stderr.contains(NATIVE_PROJECTION_SAME_NAMED_FILE)
+    {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeQualifiedReferenceDidNotRefuseMalformedModule — the qualified \
+             entry over the malformed same-named module exited {:?} with {} stdout byte(s); a qualified \
+             reference reads the module it names, so this must refuse (exit {CLI_DOOR_REFUSAL_EXIT}, empty \
+             stdout, a `{CLI_REFUSAL_PREFIX}` line naming `{NATIVE_PROJECTION_SAME_NAMED_FILE}`); stderr={}",
+            refused.status,
+            refused.stdout.len(),
+            refused.stderr.trim()
+        ));
+    }
+    eprintln!("v2-native-cli: acquisition-projection controls held (a projection reads no module, with the same-named module absent, malformed and well-formed, and one carrier in all three; a qualified reference reads it)");
+    Ok(())
+}
+
+/// Copy a directory tree, creating `to`. The projection controls derive their scratch trees from the
+/// committed one with it so the three trees share every byte the control does not vary.
+fn copy_directory_tree(from: &Path, to: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(to).map_err(|e| format!("creating {}: {e}", to.display()))?;
+    let entries =
+        std::fs::read_dir(from).map_err(|e| format!("reading {}: {e}", from.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("reading {}: {e}", from.display()))?;
+        let target = to.join(entry.file_name());
+        let kind = entry
+            .file_type()
+            .map_err(|e| format!("typing {}: {e}", entry.path().display()))?;
+        if kind.is_dir() {
+            copy_directory_tree(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), &target).map_err(|e| {
+                format!(
+                    "copying {} to {}: {e}",
+                    entry.path().display(),
+                    target.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+/// THE FIRST LINES OF THE TWO POPULATION VERBS' HELD REPORTS, from `v2.compiler.source_authority`
+/// `layout_verdict_text` and `v2.cli.population_verbs` `population_parse_report`. Each control reads
+/// the head it owes and no more, so a report that held for a different reason cannot satisfy it.
+const POPULATION_LAYOUT_HOLDS_HEAD: &str = "layout holds";
+const POPULATION_PARSES_HEAD: &str = "population parses: ";
+const POPULATION_PARSED_UNIT: &str = " module(s)";
+const POPULATION_NOTHING_DETAIL: &str = "a parse over nothing is not a parse of zero";
+/// What follows `D` in the tally every held parse report carries, declared or not
+/// (`v2.cli.population_verbs` `population_parse_report`): D declared modules were met refused exactly as
+/// declared by `gunbc.parse_population_refusals`, and a held report says every declared refusal was met.
+const POPULATION_DECLARED_TALLY_TAIL: &str =
+    " refusal(s) declared by gunbc.parse_population_refusals, each met";
+/// What every located line of a declared refusal the walk never judged contains
+/// (`v2.cli.population_verbs` `population_parse_unmet`).
+const POPULATION_UNMET_MARKER: &str = "but the population parse never met the module";
+
+/// The count of modules a held parse report says parsed outright (`population parses: N module(s)...`).
+fn population_parsed_count(report: &str) -> Option<usize> {
+    report
+        .trim()
+        .strip_prefix(POPULATION_PARSES_HEAD)?
+        .split_once(POPULATION_PARSED_UNIT)?
+        .0
+        .parse()
+        .ok()
+}
+
+/// How many `.dag` files lie under a governed tree directory, walked on disk: the referent the parse
+/// verb's population is joined to. The verb walks the namespaces the layout declares and parses each
+/// module; this reads the directory, so a verb that walked fewer modules than the tree holds cannot
+/// satisfy the join by agreeing with itself.
+fn count_dag_files(root: &Path) -> Result<usize, String> {
+    let mut count = 0;
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        let entries = std::fs::read_dir(&directory)
+            .map_err(|e| format!("reading {}: {e}", directory.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("reading {}: {e}", directory.display()))?;
+            let kind = entry
+                .file_type()
+                .map_err(|e| format!("reading {}: {e}", entry.path().display()))?;
+            if kind.is_dir() {
+                pending.push(entry.path());
+            } else if entry.path().extension().is_some_and(|ext| ext == "dag") {
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
+}
+
+/// The number of declared refusals a held parse report says it met, or `None` when it carries no tally,
+/// which the verb never does: it prints the tally even when nothing is declared, so a report without one
+/// is a verb that stopped reporting what it judged. A held report meets EVERY declared refusal, so this
+/// is also the size of the declaration.
+fn population_declared_met(report: &str) -> Option<usize> {
+    report
+        .trim()
+        .strip_suffix(POPULATION_DECLARED_TALLY_TAIL)?
+        .rsplit("; ")
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// The lines of a population report worth quoting in a refusal: the report of a refused layout
+/// lists one line per refusal, so the whole of it would bury the control that failed.
+fn population_excerpt(text: &str) -> String {
+    population_excerpt_lines(text, 12)
+}
+
+// A refused population is reported by the list of its members, so the excerpt of that verdict
+// carries every line (bounded only so a runaway report cannot flood a log).
+fn population_excerpt_lines(text: &str, limit: usize) -> String {
+    let lines: Vec<&str> = text.lines().take(limit).collect();
+    format!(
+        "{} (first {} line(s) of {} byte(s))",
+        lines.join(" // "),
+        lines.len(),
+        text.len()
+    )
+}
+
+fn population_argv(verb: &str, roots: &[&Path]) -> Vec<String> {
+    let mut argv = vec![verb.to_string()];
+    for root in roots {
+        argv.push("--source-root".to_string());
+        argv.push(root.display().to_string());
+    }
+    argv
+}
+
+/// A line of `stderr` the rendered main framed as a refusal and that carries every part in `parts`.
+fn population_refusal_framed(stderr: &str, parts: &[&str]) -> bool {
+    stderr.lines().any(|line| {
+        line.starts_with(CLI_REFUSAL_PREFIX) && parts.iter().all(|part| line.contains(part))
+    })
+}
+
+/// THE WHOLE-POPULATION VERBS, WALKED. `check-layout` and `parse-population`
+/// (`v2.cli.population_verbs`) are folds over what the host handed them; claims over those folds
+/// supply the observations, so these walks are the inhabitance that the BUILT binary reads real
+/// directories and decides with the real verdicts -- deleting the integration makes a control here
+/// fail. Both verbs hold over the live governed roots (`dag` and `src/v2`), which is the job these
+/// verbs have on `witnesses`; every other control differs from a holding one in a single fact:
+///
+/// - `parse-population` over the door fixture's root refuses every declared refusal the root does not
+///   hold (the declaration is an obligation on the walk) and nothing else, and over the materialized
+///   malformed specimen refuses it by file; an empty root refuses (a parse over nothing is not a parse
+///   of zero) and an absent root refuses instead of reading as empty;
+/// - the same specimen, as the dag tree of a compile whose closure never requests it, is refused by
+///   `parse-population` while that compile's verdict and emission equal the clean tree's;
+/// - `check-layout` over the misplaced fixture refuses the module whose line disagrees with its
+///   position and the namespace no row declares, while the door fixture, where the same module line
+///   IS at its rule position, is not refused for either; both refuse the declared rows their small
+///   roots do not occupy, which is the check observing the whole declared roster;
+/// - a population verb takes source roots and nothing else, and an argument naming no tree is usage.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): extend `walk_cli_door` with one inhabitance walk over the
+/// existing `run_cli_door`; no new production route and no scaffold. Accounted on
+/// `gunbc.source_root_eval_driver_seed_growth` `source_root_eval_driver_seed_growth_justification`
+/// (lane `v1-hand-queue-drain`), with the walk above it.
+fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> Result<(), String> {
+    let live_dag = workspace.join("dag");
+    let live_v2 = workspace.join("src/v2");
+    let door_root = workspace.join(WELL_FORMED_CONTROL_ROOT);
+    let misplaced_root = workspace.join(LAYOUT_CHECK_MISPLACED_ROOT);
+    let copied_root = workspace.join(NATIVE_INGEST_COPIED_SINGLE_ROOT);
+    let malformed_root = workspace.join(materialize_malformed_specimen(workspace)?);
+    for (label, path) in [
+        ("live-dag", live_dag.as_path()),
+        ("live-v2", live_v2.as_path()),
+        ("door", door_root.as_path()),
+        ("misplaced", misplaced_root.as_path()),
+        ("copied-single-root", copied_root.as_path()),
+        ("malformed", malformed_root.as_path()),
+    ] {
+        if !path.is_dir() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativePopulationControlRootAbsent — {label} {} is not a directory, \
+                 so the control has no input and a green here would describe nothing",
+                path.display()
+            ));
+        }
+    }
+    let probes = scratch.join("population-door-controls");
+    let empty_root = probes.join("empty").join("dag");
+    let absent_root = probes.join("absent").join("dag");
+    if probes.exists() {
+        std::fs::remove_dir_all(&probes)
+            .map_err(|e| format!("clearing {}: {e}", probes.display()))?;
+    }
+    std::fs::create_dir_all(&empty_root)
+        .map_err(|e| format!("create {}: {e}", empty_root.display()))?;
+
+    let fail = |cause: &str, run: &CliDoorRun| -> String {
+        format!(
+            "V2-NATIVE REFUSAL cause={cause} — status={:?} stdout={} stderr={}",
+            run.status,
+            population_excerpt(&run.stdout),
+            population_excerpt(&run.stderr)
+        )
+    };
+
+    // THE JOB THE VERBS HAVE ON `witnesses`: both hold over the live governed roots.
+    eprintln!("v2-native-cli: population controls — check-layout and parse-population over the live roots");
+    let live = [live_dag.as_path(), live_v2.as_path()];
+    let layout_live = run_cli_door(binary, &population_argv("check-layout", &live))?;
+    if layout_live.status != Some(0)
+        || !layout_live.stdout.starts_with(POPULATION_LAYOUT_HOLDS_HEAD)
+    {
+        return Err(fail(
+            "NativeLayoutCheckDoesNotHoldOverTheLiveRoots",
+            &layout_live,
+        ));
+    }
+    let parse_live = run_cli_door(binary, &population_argv("parse-population", &live))?;
+    // THE VERDICT IS THE VERB'S (`v2.cli.population_verbs` `population_parse_report`): a declared refusal
+    // the walk did not meet is a located red the verb reports itself, so the list cannot outlive its files
+    // there. THIS JOIN IS ONLY REDUNDANT EVIDENCE THAT THE VERB JUDGED THE POPULATION IT NAMES: a held
+    // report without its tally, or one whose modules (parsed outright plus refused as declared) are not
+    // the `.dag` files the two trees hold on disk, did not walk the repository, whatever it printed.
+    let walked_files = count_dag_files(&live_dag)? + count_dag_files(&live_v2)?;
+    let declared_live = population_declared_met(&parse_live.stdout);
+    let population_unjudged = match (population_parsed_count(&parse_live.stdout), declared_live) {
+        (Some(parsed), Some(met)) => parsed + met != walked_files,
+        _ => true,
+    };
+    if parse_live.status != Some(0)
+        || !parse_live.stdout.starts_with(POPULATION_PARSES_HEAD)
+        || population_unjudged
+    {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativePopulationParseDoesNotHoldOverTheLiveRoots — status={:?} stdout={} stderr={}",
+            parse_live.status,
+            population_excerpt_lines(&parse_live.stdout, 2000),
+            population_excerpt(&parse_live.stderr)
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: live roots — check-layout held; parse-population: {}",
+        parse_live.stdout.trim()
+    );
+
+    // PARSE: the door root is refused for the declaration alone, the malformed specimen is refused by file.
+    let door = run_cli_door(
+        binary,
+        &population_argv("parse-population", &[door_root.as_path()]),
+    )?;
+    // THE DOOR ROOT HOLDS ONE CLEAN MODULE AND NONE OF THE DECLARED ONES, so the declaration is the only
+    // thing that can refuse it: every declared refusal is a module this root does not have, one located
+    // line each, and nothing else is reported (the module it holds parses). The line count is the live
+    // report's own count of met refusals, a join of two runs of the verb on the size of the declaration.
+    let door_text = door.stdout.trim();
+    let door_declared_unmet = door_text
+        .lines()
+        .filter(|line| line.contains(POPULATION_UNMET_MARKER))
+        .count();
+    let door_is_only_the_unmet_declaration = !door_text.is_empty()
+        && door_text
+            .lines()
+            .all(|line| line.contains(POPULATION_UNMET_MARKER))
+        && declared_live == Some(door_declared_unmet);
+    // WITH NO DECLARED REFUSAL THE DECLARATION CANNOT REFUSE THE DOOR ROOT: there is no unmet class to
+    // report, so the root's one clean module parses and the verb holds with its zero tally. That is the
+    // only reading consistent with the live report (`declared_live == Some(0)`); the unmet-declaration
+    // arm below runs whenever a class is declared; its discriminating case with a SUPPLIED roster is the claim suite
+    // `v2.test.claim.cli.population_verbs` `a_walk_that_never_met_a_declared_refusal_does_not_hold`, since the built
+    // binary reads only the compiled roster.
+    let door_holds_with_nothing_declared = declared_live == Some(0)
+        && door.status == Some(0)
+        && population_parsed_count(&door.stdout) == Some(1)
+        && population_declared_met(&door.stdout) == Some(0);
+    if !door_holds_with_nothing_declared
+        && (door.status != Some(CLI_DOOR_REFUSAL_EXIT)
+            || door.stdout.starts_with(POPULATION_PARSES_HEAD)
+            || !door_is_only_the_unmet_declaration
+            || !population_refusal_framed(
+                &door.stderr,
+                &[
+                    "0 module(s) did not parse",
+                    &format!("{door_declared_unmet} declared refusal(s) never met"),
+                ],
+            ))
+    {
+        return Err(fail(
+            "NativePopulationParseDoorRootDeclarationNotUnmet",
+            &door,
+        ));
+    }
+    let malformed = run_cli_door(
+        binary,
+        &population_argv("parse-population", &[malformed_root.as_path()]),
+    )?;
+    if malformed.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || malformed.stdout.starts_with(POPULATION_PARSES_HEAD)
+        || !malformed
+            .stdout
+            .lines()
+            .any(|line| line.starts_with("dag:gunbc/malformed_specimen.dag: "))
+        || !population_refusal_framed(&malformed.stderr, &["1 module(s) did not parse"])
+    {
+        return Err(fail(
+            "NativePopulationParseMalformedSpecimenNotRefusedByFile",
+            &malformed,
+        ));
+    }
+    // A MODULE NO REQUEST NAMES FAILS THE POPULATION AND CHANGES NOTHING ABOUT A COMPILE. The malformed
+    // specimen's root is the dag tree of a compile whose closure (a v2 entry importing nothing) never asks
+    // for it: the emission must be the one a clean dag tree gives, so the specimen is neither read into
+    // the verdict nor into the output, while the population parse over the same two roots still refuses it
+    // by file. Reading it would change the verdict, because the acquirer refuses a read nothing requested.
+    let outside_two_v2 = workspace.join(NATIVE_INGEST_TWO_ROOTS_V2);
+    let outside_clean_dag = workspace.join(NATIVE_INGEST_TWO_ROOTS_DAG);
+    let emit_v2_entry = |dag_root: &Path| {
+        run_cli_door(
+            binary,
+            &[
+                "emit".to_string(),
+                "--entry".to_string(),
+                "v2.native_ingest.v2_other".to_string(),
+                "--source-root".to_string(),
+                dag_root.display().to_string(),
+                "--source-root".to_string(),
+                outside_two_v2.display().to_string(),
+            ],
+        )
+    };
+    let outside_clean = emit_v2_entry(&outside_clean_dag)?;
+    let outside_poisoned = emit_v2_entry(&malformed_root)?;
+    if outside_clean.status != Some(0)
+        || !outside_clean
+            .stdout
+            .contains("native_ingest_v2_other_value")
+        || outside_poisoned.status != outside_clean.status
+        || outside_poisoned.stdout != outside_clean.stdout
+    {
+        return Err(fail(
+            "NativeMalformedModuleOutsideTheClosureChangedTheCompile",
+            &outside_poisoned,
+        ));
+    }
+    let outside_parse = run_cli_door(
+        binary,
+        &population_argv(
+            "parse-population",
+            &[malformed_root.as_path(), outside_two_v2.as_path()],
+        ),
+    )?;
+    if outside_parse.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !outside_parse
+            .stdout
+            .lines()
+            .any(|line| line.starts_with("dag:gunbc/malformed_specimen.dag: "))
+        || !population_refusal_framed(&outside_parse.stderr, &["1 module(s) did not parse"])
+    {
+        return Err(fail(
+            "NativeMalformedModuleOutsideTheClosureNotRefusedByTheParse",
+            &outside_parse,
+        ));
+    }
+    let empty = run_cli_door(
+        binary,
+        &population_argv("parse-population", &[empty_root.as_path()]),
+    )?;
+    if empty.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !population_refusal_framed(&empty.stderr, &[POPULATION_NOTHING_DETAIL])
+    {
+        return Err(fail("NativePopulationParseEmptyRootNotRefused", &empty));
+    }
+    for verb in ["parse-population", "check-layout"] {
+        let absent = run_cli_door(binary, &population_argv(verb, &[absent_root.as_path()]))?;
+        if absent.status != Some(CLI_DOOR_REFUSAL_EXIT)
+            || absent.stdout.starts_with(POPULATION_PARSES_HEAD)
+            || absent.stdout.starts_with(POPULATION_LAYOUT_HOLDS_HEAD)
+            || !absent.stdout.contains(&absent_root.display().to_string())
+            || !absent
+                .stderr
+                .lines()
+                .any(|line| line.starts_with(CLI_REFUSAL_PREFIX))
+        {
+            return Err(fail("NativePopulationAbsentRootNotRefused", &absent));
+        }
+    }
+
+    // LAYOUT: the misplaced fixture is refused by file; the door fixture, whose module line is at its
+    // rule position, is refused for neither fact.
+    let misplaced = run_cli_door(
+        binary,
+        &population_argv("check-layout", &[misplaced_root.as_path()]),
+    )?;
+    let misplaced_line = "dag:gunbc/misplaced.dag: declares module gunbc.native_cli_door_probe, \
+                          whose rule position is dag:gunbc/native_cli_door_probe.dag";
+    if misplaced.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !misplaced.stdout.lines().any(|line| line == misplaced_line)
+        || !misplaced.stdout.lines().any(|line| {
+            line.starts_with("dag:undeclared_probe/member.dag: ")
+                && line.contains("has no declared row")
+        })
+    {
+        return Err(fail(
+            "NativeLayoutCheckMisplacementNotRefusedByFile",
+            &misplaced,
+        ));
+    }
+    let placed = run_cli_door(
+        binary,
+        &population_argv("check-layout", &[door_root.as_path()]),
+    )?;
+    if placed.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || placed.stdout.contains("whose rule position is")
+        || placed.stdout.contains("has no declared row")
+        || placed.stdout.contains("namespace gunbc is declared but")
+        || !placed
+            .stdout
+            .contains("is declared but no governed file holds a module in it")
+    {
+        return Err(fail(
+            "NativeLayoutCheckPlacedFixtureRefusedForTheWrongFact",
+            &placed,
+        ));
+    }
+
+    // USAGE: a population verb takes source roots, at least one, each a governed tree directory.
+    let no_roots = run_cli_door(binary, &["check-layout".to_string()])?;
+    if no_roots.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        || !no_roots.stdout.is_empty()
+        || !population_refusal_framed(
+            &no_roots.stderr,
+            &["check-layout needs at least one source root"],
+        )
+    {
+        return Err(fail("NativePopulationVerbWithoutRootsNotUsage", &no_roots));
+    }
+    let with_entry = run_cli_door(
+        binary,
+        &[
+            "parse-population".to_string(),
+            "--entry".to_string(),
+            CLI_DOOR_ENTRY_MODULE.to_string(),
+            "--source-root".to_string(),
+            door_root.display().to_string(),
+        ],
+    )?;
+    if with_entry.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        || !with_entry.stdout.is_empty()
+        || !population_refusal_framed(&with_entry.stderr, &["unknown option --entry"])
+    {
+        return Err(fail("NativePopulationVerbTookAnEntry", &with_entry));
+    }
+    let unrecognized = run_cli_door(
+        binary,
+        &population_argv("check-layout", &[copied_root.as_path()]),
+    )?;
+    if unrecognized.status != Some(CLI_DOOR_USAGE_REFUSAL_EXIT)
+        || !unrecognized.stdout.is_empty()
+        || !unrecognized
+            .stderr
+            .contains("source root is not a governed tree directory")
+        || !unrecognized
+            .stderr
+            .contains(&copied_root.display().to_string())
+    {
+        return Err(fail(
+            "NativePopulationVerbUnrecognizedRootNotUsage",
+            &unrecognized,
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: population controls held (live roots hold both verbs; door root parses one module, \
+         the malformed specimen and an empty or absent root refuse, and a malformed module outside a compile's \
+         closure refuses the parse and leaves the compile unchanged; misplaced and undeclared files are \
+         refused by file; usage refusals)"
+    );
     Ok(())
 }
 
@@ -3273,7 +3968,7 @@ fn native_serve_start(
 /// of a decision this function already holds, free to disagree with it.
 ///
 /// THE ARMS ARE NAMED FOR WHAT THE BIT ACTUALLY DECIDES, AND THE NAMING IS THE WHOLE POINT. It is
-/// `gunbc.witness_v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
+/// `gunbc.witness.v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
 /// -- a conjunction over roughly twenty clauses including `JobNameMismatch`,
 /// `PreparationSeedUnrecorded`, `EmittedBuildNotClean`, `MalformedControlAcceptedByRoute`,
 /// `PositivePopulationEmpty` and `RequiredNativePassRegressed`. It is NOT "the targets the operator
@@ -3303,7 +3998,10 @@ pub enum NativeRouteOutcome {
     Unreached { cause: String },
 }
 
-pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeRouteOutcome {
+pub fn run_required_v2_native(
+    source_roots: &[String],
+    pattern: Option<&str>,
+) -> NativeRouteOutcome {
     // The `?`-carrying body stays one function; only the ADMISSION leaves it as a value, so this
     // wrapper is the single place the three-way partition is made and no consumer re-derives it.
     match run_required_v2_native_inner(source_roots, pattern) {
@@ -3334,13 +4032,11 @@ pub struct NativeFrontierRun {
     pub admission_summary: String,
 }
 
-/// The same adjudicating run the lane and `gunbc test` spawn. The caller passes the default pattern
-/// (the whole planned universe); over a narrower one the ratchet answers `not-a-measurement`.
-pub fn run_v2_native_frontier(
-    source_roots: &[String],
-    pattern: &str,
-) -> Result<NativeFrontierRun, String> {
-    run_required_v2_native_inner(source_roots, pattern).map(|admission| NativeFrontierRun {
+/// The same adjudicating run the lane and `gunbc test` spawn, over the whole planned universe: no
+/// pattern is passed, so the emitted binary adjudicates by its own default. A narrower pattern would
+/// make the ratchet answer `not-a-measurement`, and the only way to name one is `gunbc test <operand>`.
+pub fn run_v2_native_frontier(source_roots: &[String]) -> Result<NativeFrontierRun, String> {
+    run_required_v2_native_inner(source_roots, None).map(|admission| NativeFrontierRun {
         frontier: admission.frontier,
         admission_summary: admission.summary,
     })
@@ -3421,7 +4117,7 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
 }
 
 /// WHERE THE RUN'S MEMORY BUDGET CAME FROM, IN THE RECEIPT. A whole-tree census is admitted against a
-/// declared demand (`gunbc.instrument_dispatch_workflow` `instrument_dispatch_memory_demands`), and
+/// declared demand (`gunbc.instruments.instrument_dispatch_workflow` `instrument_dispatch_memory_demands`), and
 /// the budget this process actually runs under is a separate fact. A receipt that does not say
 /// which source answered cannot tell an observed cgroup bound from an operator's unverified
 /// declaration, or from no bound at all. The line renders the one typed resolution
@@ -3623,6 +4319,280 @@ pub fn run_type_declaration_use_census_runs(
     })
 }
 
+/// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
+/// this process folds in every child it ever reaped -- cargo and rustc included -- so it cannot
+/// answer for the native binary alone; `wait4` returns the usage of the one pid it reaps. The host
+/// decides nothing: `gunbc.instruments.native_process_memory_reading` reads these fields.
+pub struct NativeChildMeasured {
+    pub stdout: String,
+    /// `ru_maxrss` verbatim (Linux: kibibytes, `extdeps.linux.rusage`).
+    pub maxrss_kib: i64,
+    pub elapsed_ns: i64,
+    pub exit_code: i32,
+    /// 0 when the child exited; else the terminating signal.
+    pub signal: i32,
+}
+
+/// The runs `gunbc test //gunbc/instruments:native-process-memory-census` reads, over ONE prepared
+/// binary: the one-module control root first, then the source roots.
+pub struct NativeProcessMemoryRuns {
+    pub binary_identity: String,
+    pub envelope: String,
+    pub control: NativeChildMeasured,
+    pub workload: NativeChildMeasured,
+}
+
+/// The environment variable that turns the seed executable into the measured-spawn trampoline: its
+/// value is the receipt path, and the argv to spawn is read from `<receipt>.argv`, one argument per
+/// line. Read at the top of `gunbc test` (`target_invocation_host::test_verb_checked`), before any
+/// work: the generated `main` is not edited for it.
+pub const MEASURED_SPAWN_RECEIPT_ENV: &str = "GUNBC_MEASURED_SPAWN_RECEIPT";
+
+/// The one operand that enters the trampoline. It is reserved: no `gunbc.instrument_targets` row
+/// names it, and only `run_native_child_measured` emits it.
+pub const MEASURED_SPAWN_OPERAND: &str = "//gunbc/internal:measured-spawn";
+
+/// The only directory the measurement writes: the control root, the receipt and its argv file.
+/// The trampoline refuses a receipt anywhere else.
+pub const MEASURED_SPAWN_DIR: &str = "target/native-process-memory-census";
+
+/// What `gunbc test <operand>` does about the trampoline, decided before any other act.
+#[derive(Debug, PartialEq, Eq)]
+pub enum MeasuredSpawnRoute {
+    NotRequested,
+    Enter(std::path::PathBuf),
+    Refuse(String),
+}
+
+/// THE TRAMPOLINE IS ENTERED ONLY BY ITS RESERVED OPERAND WITH A RECEIPT UNDER THE DECLARED DIR.
+/// The environment variable alone never enters it: set beside an ordinary operand it is refused,
+/// typed, rather than ignored or obeyed, because obeying it would answer a label with the exit of
+/// whatever `<receipt>.argv` names (an escape hatch, DESIGN section 5), and ignoring it would leave a
+/// caller believing it measured something.
+pub fn measured_spawn_route(
+    operand: &str,
+    receipt: Option<std::ffi::OsString>,
+) -> MeasuredSpawnRoute {
+    let refuse = |cause: &str, detail: String| {
+        MeasuredSpawnRoute::Refuse(format!(
+            "MEASURED-SPAWN REFUSAL cause={cause} operand={operand} — {detail}"
+        ))
+    };
+    match (operand == MEASURED_SPAWN_OPERAND, receipt) {
+        (false, None) => MeasuredSpawnRoute::NotRequested,
+        (true, None) => refuse(
+            "ReceiptUnnamed",
+            format!("the reserved operand runs only with {MEASURED_SPAWN_RECEIPT_ENV} set"),
+        ),
+        (false, Some(_)) => refuse(
+            "ReceiptOnOrdinaryOperand",
+            format!(
+                "{MEASURED_SPAWN_RECEIPT_ENV} is set, and only {MEASURED_SPAWN_OPERAND} reads it"
+            ),
+        ),
+        (true, Some(receipt)) => {
+            let path = std::path::PathBuf::from(receipt);
+            let contained = path.starts_with(MEASURED_SPAWN_DIR)
+                && path
+                    .components()
+                    .all(|c| matches!(c, std::path::Component::Normal(_)));
+            if contained {
+                MeasuredSpawnRoute::Enter(path)
+            } else {
+                refuse(
+                    "ReceiptOutsideDeclaredDir",
+                    format!("{} is not under {MEASURED_SPAWN_DIR}", path.display()),
+                )
+            }
+        }
+    }
+}
+
+/// THE TRAMPOLINE. Linux seeds a process's `ru_maxrss` at exec from the high-water mark of the
+/// address space it replaces, so a child spawned straight from the seed (which has just emitted the
+/// closure in process) inherits the seed's peak. Re-entered as this function before doing any work,
+/// the seed's address space is small; the native child it spawns starts from that, and its `wait4`
+/// rusage is its own. Writes `maxrss_kib elapsed_ns exit_code signal` to the receipt path and
+/// returns the process exit code: 0 when the receipt was written, 2 when nothing was observed.
+pub fn measured_spawn_trampoline(receipt: std::path::PathBuf) -> i32 {
+    let mut argv_path = receipt.clone().into_os_string();
+    argv_path.push(".argv");
+    let argv_text = match std::fs::read_to_string(&argv_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("measured-spawn trampoline: reading {argv_path:?}: {e}");
+            return 2;
+        }
+    };
+    let mut argv = argv_text.lines();
+    let Some(binary) = argv.next() else {
+        eprintln!("measured-spawn trampoline: no binary to spawn");
+        return 2;
+    };
+    let started = std::time::Instant::now();
+    let child = Command::new(&binary)
+        .args(argv)
+        .env_remove(MEASURED_SPAWN_RECEIPT_ENV)
+        .spawn();
+    let child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("measured-spawn trampoline: spawning {binary:?}: {e}");
+            return 2;
+        }
+    };
+    let pid = child.id() as libc::pid_t;
+    let mut status: libc::c_int = 0;
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    let waited = unsafe { libc::wait4(pid, &mut status, 0, &mut usage) };
+    let elapsed = started.elapsed();
+    if waited != pid {
+        eprintln!(
+            "measured-spawn trampoline: wait4 failed: {}",
+            std::io::Error::last_os_error()
+        );
+        return 2;
+    }
+    let (exit_code, signal) = if libc::WIFSIGNALED(status) {
+        (-1, libc::WTERMSIG(status))
+    } else {
+        (libc::WEXITSTATUS(status), 0)
+    };
+    let line = format!(
+        "{} {} {exit_code} {signal}\n",
+        usage.ru_maxrss,
+        elapsed.as_nanos()
+    );
+    match std::fs::write(&receipt, line) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("measured-spawn trampoline: writing {receipt:?}: {e}");
+            2
+        }
+    }
+}
+
+fn run_native_child_measured(
+    binary: &std::path::Path,
+    args: &[String],
+    receipt: &std::path::Path,
+) -> Result<NativeChildMeasured, String> {
+    use std::io::Read;
+    let refusal = |cause: &str, detail: String| {
+        format!("NATIVE-PROCESS-MEMORY REFUSAL cause={cause} — {detail}")
+    };
+    let _ = std::fs::remove_file(receipt);
+    let argv: Vec<String> = std::iter::once(binary.to_string_lossy().into_owned())
+        .chain(args.iter().cloned())
+        .collect();
+    if argv.iter().any(|a| a.contains('\n')) {
+        return Err(refusal("ArgvNotLineSafe", format!("{argv:?}")));
+    }
+    let mut argv_path = receipt.as_os_str().to_owned();
+    argv_path.push(".argv");
+    std::fs::write(&argv_path, argv.join("\n"))
+        .map_err(|e| refusal("TrampolineArgvUnwritable", e.to_string()))?;
+    let trampoline =
+        std::env::current_exe().map_err(|e| refusal("TrampolineUnlocated", e.to_string()))?;
+    let mut child = Command::new(&trampoline)
+        .args(["test", MEASURED_SPAWN_OPERAND])
+        .env(MEASURED_SPAWN_RECEIPT_ENV, receipt)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            refusal(
+                "TrampolineSpawnFailed",
+                format!("{}: {e}", trampoline.display()),
+            )
+        })?;
+    let mut stdout = Vec::new();
+    if let Some(mut out) = child.stdout.take() {
+        out.read_to_end(&mut stdout)
+            .map_err(|e| refusal("NativeRunStdoutUnreadable", e.to_string()))?;
+    }
+    let status = child
+        .wait()
+        .map_err(|e| refusal("TrampolineWaitFailed", e.to_string()))?;
+    if !status.success() {
+        return Err(refusal(
+            "TrampolineObservedNothing",
+            format!("the trampoline exited {status}"),
+        ));
+    }
+    let text = std::fs::read_to_string(receipt)
+        .map_err(|e| refusal("TrampolineReceiptUnreadable", e.to_string()))?;
+    let fields: Vec<i64> = text
+        .split_whitespace()
+        .map(|f| f.parse::<i64>())
+        .collect::<Result<_, _>>()
+        .map_err(|e| refusal("TrampolineReceiptMalformed", format!("{text:?}: {e}")))?;
+    let [maxrss_kib, elapsed_ns, exit_code, signal] = fields[..] else {
+        return Err(refusal(
+            "TrampolineReceiptMalformed",
+            format!("{text:?} is not four fields"),
+        ));
+    };
+    let stdout = String::from_utf8(stdout)
+        .map_err(|cause| refusal("NativeRunStdoutNotUtf8", cause.to_string()))?;
+    Ok(NativeChildMeasured {
+        stdout,
+        maxrss_kib,
+        elapsed_ns,
+        exit_code: exit_code as i32,
+        signal: signal as i32,
+    })
+}
+
+/// ONE RUN'S PRIVATE DIRECTORY, created EXCLUSIVELY under `MEASURED_SPAWN_DIR`
+/// (`emitted_closure_compile_host` `create_private_probe_root`: the kernel's exclusive mkdir is the
+/// ownership claim). It holds this run's receipt, its argv file and its control root, and dropping it
+/// removes only this run's directory, so two overlapping invocations can neither read each other's
+/// receipt nor delete each other's control.
+pub fn measured_spawn_run_dir(
+) -> Result<super::emitted_closure_compile_host::PrivateProbeRoot, String> {
+    super::emitted_closure_compile_host::create_private_probe_root(std::path::Path::new(
+        MEASURED_SPAWN_DIR,
+    ))
+    .map_err(|e| format!("NATIVE-PROCESS-MEMORY REFUSAL cause=RunDirUncreatable — {e}"))
+}
+
+fn measured_spawn_receipt_in(run_dir: &std::path::Path) -> std::path::PathBuf {
+    run_dir.join("child.rusage")
+}
+
+/// `write_control` receives this run's private directory and returns the control root it wrote there.
+pub fn run_native_process_memory_runs(
+    source_roots: &[String],
+    verb: &str,
+    write_control: impl FnOnce(&std::path::Path) -> Result<std::path::PathBuf, String>,
+) -> Result<NativeProcessMemoryRuns, String> {
+    let envelope =
+        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution());
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let run_dir = measured_spawn_run_dir()?;
+    let control_root = write_control(run_dir.path())?;
+    let receipt = measured_spawn_receipt_in(run_dir.path());
+    let control = run_native_child_measured(
+        &preparation.binary_path,
+        &[
+            verb.to_string(),
+            control_root.to_string_lossy().into_owned(),
+        ],
+        &receipt,
+    )?;
+    let mut args = vec![verb.to_string()];
+    args.extend(source_roots.iter().cloned());
+    let workload = run_native_child_measured(&preparation.binary_path, &args, &receipt)?;
+    drop(run_dir);
+    Ok(NativeProcessMemoryRuns {
+        binary_identity: preparation.binary_identity.clone(),
+        envelope,
+        control,
+        workload,
+    })
+}
+
 /// What the adjudicating run decided, carried out of the body as a value.
 struct NativeRunAdmission {
     admitted: bool,
@@ -3633,12 +4603,12 @@ struct NativeRunAdmission {
 
 fn run_required_v2_native_inner(
     source_roots: &[String],
-    pattern: &str,
+    pattern: Option<&str>,
 ) -> Result<NativeRunAdmission, String> {
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     // THE TESTED TREE IS OBSERVED OR THE RUN REFUSES (review 64210). This defaulted to the literal
-    // "local", and `tested_tree` is not telemetry: `gunbc.witness_v2_native_route`
+    // "local", and `tested_tree` is not telemetry: `gunbc.witness.v2_native_route`
     // `native_route_tested_tree_recorded` admits on `tested_tree != ""`, so the default SATISFIED
     // its own admission clause and the receipt then asserted it described a tree named `local`.
     // That is the defect the rendered main fixes for its sibling field in this same change, and
@@ -3721,18 +4691,20 @@ fn run_required_v2_native_inner(
     // 5. THE LANE RUN. The emitted binary, by explicit path, over the real source roots: it
     // derives the universe, executes it, mints the receipt and judges it.
     eprintln!("v2-native-route: adjudicating through the emitted compiler");
-    // THE PATTERN IS THE CALLER'S, AND THAT IS WHAT MAKES A FOCUSED RUN POSSIBLE. The lane passes
-    // `gunbc.witness_v2_native_route` `native_route_default_pattern` (`//v2/test/...`, which
-    // narrows nothing within the floor's universe); `gunbc test <operand>` passes the operand's own
-    // pattern, already admitted by `extdeps.bazel.target_pattern` and rendered by its own renderer.
-    // This runner does not parse it, default it, or widen it: a pattern that reached here was
-    // decided by the authority, and substituting one here would let the run adjudicate a population
-    // the caller did not ask for while reporting under the caller's name.
-    let mut args = vec![
-        "adjudicate".to_string(),
-        facts_file.display().to_string(),
-        pattern.to_string(),
-    ];
+    // A PATTERN IS PASSED ONLY WHEN THE OPERATOR WROTE ONE, which is what makes a focused run
+    // possible. `gunbc test <operand>` passes the operand's own pattern, already admitted by
+    // `extdeps.bazel.target_pattern` and rendered by its own renderer; the lane and the frontier
+    // pass none, and the emitted binary adjudicates by its own default,
+    // `gunbc.witness.v2_native_route` `native_route_default_pattern` (the whole native universe), read
+    // inside the compiler where it is declared. The seed therefore carries no spelling of that default
+    // to hand over. This runner does not parse, default or widen the pattern it is given: a pattern
+    // that reached here was decided by the authority, and substituting one here would let the run
+    // adjudicate a population the caller did not ask for while reporting under the caller's name.
+    let mut args = vec!["adjudicate".to_string(), facts_file.display().to_string()];
+    if let Some(pattern) = pattern {
+        args.push("--pattern".to_string());
+        args.push(pattern.to_string());
+    }
     args.extend(source_roots.iter().cloned());
     let rows_file = workspace
         .join("target")
@@ -3769,7 +4741,7 @@ fn run_required_v2_native_inner(
     // the slot cgroup's memory.current/memory.peak (peak spans the runner service's lifetime,
     // not this run), and the lane's wall. It re-derives the run's cost; it decides nothing.
     // Resource preflight (predicted critical path and memory envelope against
-    // gunbc.runner_slot_allocation's slot rows) is std.realization cost vocabulary and lands
+    // gunbc.runner.runner_slot_allocation's slot rows) is std.realization cost vocabulary and lands
     // with route integration, not here.
     let (cgroup_current, cgroup_peak) = super::p1_cohort::p1_cohort_cgroup_memory();
     eprintln!(
@@ -3801,6 +4773,130 @@ fn run_required_v2_native_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// THE ESCAPE-HATCH RED (review on #13857 at c0a1cd3f): the receipt variable beside an ordinary
+    /// label must refuse, never route to the trampoline, so it can neither report success nor spawn
+    /// what an argv file names.
+    #[test]
+    fn receipt_variable_beside_an_ordinary_operand_refuses() {
+        let route = measured_spawn_route(
+            "//not-a-real-target:all",
+            Some(format!("{MEASURED_SPAWN_DIR}/child.rusage").into()),
+        );
+        let MeasuredSpawnRoute::Refuse(message) = route else {
+            panic!("expected a refusal, got {route:?}");
+        };
+        assert!(
+            message.contains("cause=ReceiptOnOrdinaryOperand"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn reserved_operand_without_a_receipt_or_outside_the_dir_refuses() {
+        assert!(matches!(
+            measured_spawn_route(MEASURED_SPAWN_OPERAND, None),
+            MeasuredSpawnRoute::Refuse(m) if m.contains("cause=ReceiptUnnamed")
+        ));
+        for outside in [
+            "/tmp/x.rusage",
+            "x.rusage",
+            "target/native-process-memory-census/../../x",
+        ] {
+            assert!(
+                matches!(
+                    measured_spawn_route(MEASURED_SPAWN_OPERAND, Some(outside.into())),
+                    MeasuredSpawnRoute::Refuse(m) if m.contains("cause=ReceiptOutsideDeclaredDir")
+                ),
+                "{outside}"
+            );
+        }
+        assert_eq!(
+            measured_spawn_route("//gunbc/instruments:self-host", None),
+            MeasuredSpawnRoute::NotRequested
+        );
+    }
+
+    /// THE POSITIVE CONTROL: the legitimate route enters, and the trampoline really spawns, reaps and
+    /// writes a four-field receipt with a positive peak.
+    #[test]
+    fn reserved_operand_with_a_contained_receipt_spawns_and_reads_the_child() {
+        let receipt = format!("{MEASURED_SPAWN_DIR}/test-{}.rusage", std::process::id());
+        let MeasuredSpawnRoute::Enter(path) =
+            measured_spawn_route(MEASURED_SPAWN_OPERAND, Some(receipt.clone().into()))
+        else {
+            panic!("the legitimate route must enter");
+        };
+        std::fs::create_dir_all(MEASURED_SPAWN_DIR).unwrap();
+        std::fs::write(format!("{receipt}.argv"), "/bin/sh\n-c\nexit 3").unwrap();
+        assert_eq!(measured_spawn_trampoline(path), 0);
+        let text = std::fs::read_to_string(&receipt).unwrap();
+        let _ = std::fs::remove_file(&receipt);
+        let _ = std::fs::remove_file(format!("{receipt}.argv"));
+        let fields: Vec<i64> = text
+            .split_whitespace()
+            .map(|f| f.parse().unwrap())
+            .collect();
+        assert_eq!(fields.len(), 4, "{text:?}");
+        assert!(fields[0] > 0, "{text:?}");
+        assert_eq!((fields[2], fields[3]), (3, 0), "{text:?}");
+    }
+
+    /// OVERLAPPING INVOCATIONS ARE ISOLATED (side-chat review at 46307efc). Two runs, each in its own
+    /// exclusively created directory, spawn distinguishable children at once; the second finishes and
+    /// cleans up while the first is still running. Each reads its own child (exit 3 vs 5, the slow one
+    /// visibly longer), and the first run's directory survives the second's cleanup. Bounded: the slow
+    /// child sleeps one second.
+    #[test]
+    fn overlapping_runs_read_their_own_receipts_and_clean_only_their_own_dirs() {
+        let slow_dir = measured_spawn_run_dir().unwrap();
+        let fast_dir = measured_spawn_run_dir().unwrap();
+        assert_ne!(slow_dir.path(), fast_dir.path());
+        let arm = |dir: &std::path::Path, script: &str| {
+            let receipt = measured_spawn_receipt_in(dir);
+            std::fs::write(
+                format!("{}.argv", receipt.display()),
+                format!("/bin/sh\n-c\n{script}"),
+            )
+            .unwrap();
+            let MeasuredSpawnRoute::Enter(path) = measured_spawn_route(
+                MEASURED_SPAWN_OPERAND,
+                Some(receipt.clone().into_os_string()),
+            ) else {
+                panic!("a private run dir is under the declared dir");
+            };
+            path
+        };
+        let slow_receipt = arm(slow_dir.path(), "sleep 1; exit 3");
+        let fast_receipt = arm(fast_dir.path(), "exit 5");
+        let slow = std::thread::spawn({
+            let r = slow_receipt.clone();
+            move || measured_spawn_trampoline(r)
+        });
+        assert_eq!(measured_spawn_trampoline(fast_receipt.clone()), 0);
+        let fast_text = std::fs::read_to_string(&fast_receipt).unwrap();
+        let fast_path = fast_dir.path().to_path_buf();
+        drop(fast_dir);
+        assert!(!fast_path.exists());
+        assert!(
+            slow_dir.path().exists(),
+            "the other run's cleanup removed this run's dir"
+        );
+        assert_eq!(slow.join().unwrap(), 0);
+        let slow_text = std::fs::read_to_string(&slow_receipt).unwrap();
+        let fields =
+            |t: &str| -> Vec<i64> { t.split_whitespace().map(|f| f.parse().unwrap()).collect() };
+        let (slow_f, fast_f) = (fields(&slow_text), fields(&fast_text));
+        assert_eq!(
+            (slow_f[2], fast_f[2]),
+            (3, 5),
+            "{slow_text:?} {fast_text:?}"
+        );
+        assert!(
+            slow_f[1] >= 1_000_000_000 && fast_f[1] < slow_f[1],
+            "{slow_text:?} {fast_text:?}"
+        );
+    }
 
     /// THE IDENTITY IS THE WORKSPACE'S FILES, NOT ITS MODULE DIRECTORY. Relocating identical files
     /// keeps it; changing only the binary's entry, or only a crate root outside the module
@@ -3980,7 +5076,7 @@ mod tests {
     /// byte-for-byte verified. All 3992 carried `NativeTestRefused`. So this is a reading of the
     /// shape the real producer emits, not a hypothesis about it, and it needs no closure to run --
     /// which is the point: a decoder over rows must be reddable by handing it rows.
-    const REAL_REFUSED_ROW: &str = r#"{"identity":{"module":"v2.test.v2_native_route","declaration":"a_divergence_is_refused"},"verdict":{"_variant":"NativeTestRefused","stage":{"_variant":"NativeTestStageContext"},"diagnostics":{"head":{"reason":"parse_g0_tokens_remain","at":{"_variant":"Textual","file":"src/v2/test/v2_native_route_test.dag","extent":{"_variant":"WholeFile"}},"correction":{"_variant":"Unavailable","reason":{"_variant":"UserInputBoundary"}}},"tail":[]}}}"#;
+    const REAL_REFUSED_ROW: &str = r#"{"identity":{"module":"v2.test.v2_native_route","declaration":"a_divergence_is_refused"},"verdict":{"_variant":"NativeTestRefused","stage":{"_variant":"NativeTestStageContext"},"diagnostics":{"head":{"reason":"parse_g0_tokens_remain","at":{"_variant":"Textual","file":"src/v2/test/v2_native_route.dag","extent":{"_variant":"WholeFile"}},"correction":{"_variant":"Unavailable","reason":{"_variant":"UserInputBoundary"}}},"tail":[]}}}"#;
 
     #[test]
     fn a_real_refused_row_decodes_and_folds_to_subject_unreached() {
@@ -4518,7 +5614,7 @@ mod cli_emit_probe_tests {
     /// locus, and does not compare offsets.
     fn located_body_refusal() -> String {
         format!(
-            "REFUSED: the closure did not emit; diagnostic chain: {CLI_DOOR_EMIT_BODY_REFUSAL} @ fixtures/native_cli_door/door_probe.dag bytes 43..47 | FATAL AT fixtures/native_cli_door/door_probe.dag bytes 43..47"
+            "REFUSED: the closure did not emit; diagnostic chain: {CLI_DOOR_EMIT_BODY_REFUSAL} @ fixtures/native_cli_door/dag/gunbc/native_cli_door_probe.dag bytes 43..47 | FATAL AT fixtures/native_cli_door/dag/gunbc/native_cli_door_probe.dag bytes 43..47"
         )
     }
 
@@ -4531,7 +5627,7 @@ mod cli_emit_probe_tests {
             &located_body_refusal(),
         )) {
             CliEmitProbeVerdict::BodyRefusalReturned { locus } => {
-                assert!(locus.contains("door_probe.dag bytes 43..47"));
+                assert!(locus.contains("native_cli_door_probe.dag bytes 43..47"));
             }
             other => panic!("expected BodyRefusalReturned, got {other:?}"),
         }
@@ -4588,7 +5684,7 @@ mod cli_emit_probe_tests {
     }
 
     /// ACCEPTED: name, value and a compiler that accepts -- the one admitting arm. The text is what
-    /// the door's fold emits for the fixture (`v2_cli_run` over `fixture.native_cli_door.door_probe`).
+    /// the door's fold emits for the fixture (`v2_cli_run` over `gunbc.native_cli_door_probe`).
     #[test]
     fn a_rust_emission_carrying_the_value_passes() {
         let emitted =

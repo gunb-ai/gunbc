@@ -1,0 +1,83 @@
+module test.claim.generated_artifact_merge_driver_recipe
+
+import std.logic { Bool }
+import std.types { String }
+import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
+import gunbc.ci.ci_spec { generated_artifact_author_regen_command }
+import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_emit_dissolution_trigger }
+import gunbc.local_tidy_spec { generated_artifact_merge_driver_emit_scaffold }
+import std.dissolution { dissolution_description }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A REPAIR RECIPE IS A COMMAND, AND A COMMAND THAT REFUSES WHEN PASTED IS NOT A REPAIR. This file
+// is the enrolled evidence for that property over the emitted driver, and it exists because the
+// property held false twice on the same script at once, each defect invisible to every other
+// instrument in the tree:
+//
+//   - the author-regeneration arm's LAST command ended `claim_executor --required-regen-fixed-point`
+//     with no --source-root, and claim_executor's argument guard exits 2 on exactly that. The author
+//     reached it after two builds and two regen passes, so the cost was paid before the refusal.
+//     That mode is deleted (operator ruling 2026-10-04); the property is held for the calls left.
+//   - the heal arm's set-difference command is written between backticks, and the driver echoes its
+//     lines inside DOUBLE quotes, so bash ran the capture group as a command substitution and printed
+//     the instruction with the capture group deleted. The pasted result extracts no rows, and the
+//     comparison then reports EMPTY -- a pass measured over two empty sets, which is the exact
+//     vacuous green the recipe exists to prevent.
+//
+// THE SUBJECT IS THE EMITTED SCRIPT, NOT THE AUTHORED LIST, because the second defect lives in the
+// quoting and is invisible in the authored string. These assertions are string reads over the
+// emitter's output and cannot claim the command RUNS; the wet arm that executes the script is
+// test.claim.generated_artifact_merge_driver_real_execution. What they do close is the class that
+// was actually live: a recipe line that git renders differently from how its author wrote it.
+
+fn emitted_driver_script() -> String {
+  expected_generated_artifact_merge_driver_sh(
+    regen_command: generated_artifact_author_regen_command
+  )
+}
+
+// claim_executor refuses every mode below its argument guard with `provide at least one
+// --source-root`. The recipe's surviving call must carry the roots, and must not name the deleted
+// fixed-point mode, which no longer parses as a flag. RED: the recipe as it stood before
+// 2026-10-04, whose last command was that mode.
+test fn author_regeneration_recipe_passes_source_roots_to_every_claim_executor_call() -> Bool {
+  let script = emitted_driver_script()
+  string_contains(
+    s: script,
+    pattern: "target/release/claim_executor --required-regen --source-root dag --source-root src/v2"
+  )
+    && string_contains(s: script, pattern: "--required-regen\" >&2") == false
+    && string_contains(s: script, pattern: "--required-regen-fixed-point") == false
+}
+
+// THE HEAL CASE ARM IS DELETED. Its quoting defects (the specimens of
+// printed_remedy_is_mangled_by_the_medium_that_prints_it) had no remaining subject once
+// DesignRungDrops left the committed roster. This file is hermetic discovery; the real-execution
+// module is excluded from that path, so the replacement control lives here and is executed.
+test fn emitted_driver_has_no_empty_heal_case_arm() -> Bool {
+  let script = emitted_driver_script()
+  string_contains(s: script, pattern: "case \"$merged_path\" in") == false
+    && string_contains(s: script, pattern: generated_artifact_author_regen_command)
+    && string_contains(s: script, pattern: "exit 1")
+}
+
+// THE MEDIUM DISPOSITION IS A TYPED, BOUND ROW -- not a comment and not a String of prose. The
+// binding is the whole of it: a Scaffold that names no declaration marks nothing, and a trigger
+// that names the artifact rather than the capability retires while the capability stays dead
+// (DESIGN section 4b(3)).
+test fn emitted_driver_carries_a_bound_medium_disposition_with_a_capability_trigger() -> Bool {
+  match generated_artifact_merge_driver_emit_scaffold {
+    Scaffold { dissolves_to: to, bind: b } =>
+      match to { RealizationDispatch => true _ => false }
+        && b.module_path == "gunbc.generated_artifact_merge_driver"
+        && b.decl_name == "expected_generated_artifact_merge_driver_sh"
+    _ => false
+  }
+    && string_contains(
+         s: dissolution_description(condition: generated_artifact_merge_driver_emit_dissolution_trigger),
+         pattern: "no concat-built shell literal and no emit-time escaping arm"
+       )
+}
