@@ -285,10 +285,7 @@ import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.node { Node }
 import gunbc.ci.ci_deploy_access {
   DeployAccess,
-  ci_deploy_srv1_access_or_refusal,
-  DeployAccessReady,
-  DeployAccessJobPrincipalRefused,
-  deploy_access_job_principal_refused_emit_poison,
+  ci_deploy_srv1_access,
 }
 import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_install_shell }
 import extdeps.sudo.elevation { sudo_elevate_argv }
@@ -2368,7 +2365,7 @@ fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 //
 // THE COPY IS LOCAL, AND THAT IS A PROPERTY OF THE TRANSPORT RATHER THAN A HOPE. The job runs on a
 // self-hosted runner labelled with the dispatch's own host input, and gunbc.ci.ci_deploy_access
-// ci_deploy_srv1_access_or_refusal binds LocalShell -- so the script executes ON the target host,
+// ci_deploy_srv1_access binds LocalShell -- so the script executes ON the target host,
 // and "$PWD" is that job's checkout. The same fact is what makes the rsync above work; the binary
 // copy is not reaching any further than the tree copy already does. Were the transport ever remote,
 // both would break together and loudly, rather than this one silently copying a file that is not
@@ -4467,26 +4464,21 @@ fn live_deploy_apply_script_for(
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
 ) -> String {
-  match ci_deploy_srv1_access_or_refusal() {
-    DeployAccessJobPrincipalRefused { refusal: r } =>
-      deploy_access_job_principal_refused_emit_poison(refusal: r)
-    DeployAccessReady { access: access } =>
-      match membership_effects(plan: deployment_apply_plan(spec: spec)) {
-        EffectsReady { effects: es } =>
-          emit_pipeline_or_poison(
-            p: apply_intent_from_effects(
-              spec: spec,
-              effects: es,
-              access: access,
-              plan: plan,
-              cap_authorization: cap_authorization,
-              oidc_now: oidc_now,
-            ),
-            refused: live_deploy_apply_emit_refused_poison
-          )
-        ApplyRefused { refusals: rs } =>
-          live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
-      }
+  match membership_effects(plan: deployment_apply_plan(spec: spec)) {
+    EffectsReady { effects: es } =>
+      emit_pipeline_or_poison(
+        p: apply_intent_from_effects(
+          spec: spec,
+          effects: es,
+          access: ci_deploy_srv1_access,
+          plan: plan,
+          cap_authorization: cap_authorization,
+          oidc_now: oidc_now,
+        ),
+        refused: live_deploy_apply_emit_refused_poison
+      )
+    ApplyRefused { refusals: rs } =>
+      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
   }
 }
 
@@ -4502,19 +4494,14 @@ fn live_deploy_retract_script_for(spec: DeploymentSpec) -> String {
 }
 
 fn live_deploy_retract_script_with_scoped_removal(spec: DeploymentSpec) -> String {
-  match ci_deploy_srv1_access_or_refusal() {
-    DeployAccessJobPrincipalRefused { refusal: r } =>
-      deploy_access_job_principal_refused_emit_poison(refusal: r)
-    DeployAccessReady { access: access } =>
-      match membership_effects(plan: deployment_retract_plan(spec: spec)) {
-        EffectsReady { effects: es } =>
-          emit_pipeline_or_poison(
-            p: retract_intent_from_effects(spec: spec, effects: es, access: access),
-            refused: live_deploy_retract_emit_refused_poison
-          )
-        ApplyRefused { refusals: rs } =>
-          live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
-      }
+  match membership_effects(plan: deployment_retract_plan(spec: spec)) {
+    EffectsReady { effects: es } =>
+      emit_pipeline_or_poison(
+        p: retract_intent_from_effects(spec: spec, effects: es, access: ci_deploy_srv1_access),
+        refused: live_deploy_retract_emit_refused_poison
+      )
+    ApplyRefused { refusals: rs } =>
+      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
   }
 }
 
