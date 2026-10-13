@@ -2,11 +2,11 @@ module v2.test.claim.dag_acceptance
 
 import std.types { List }
 import std.algebra { FreeSemigroup }
-import v2.std.algebra { length }
+import v2.std.algebra { HeadFound, length, list_head }
 import std.content_hash { content_hash_atom }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { millisecond }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_type_node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.extdeps.languages.rust { rust_target_model }
@@ -42,9 +42,15 @@ import v2.workflow.dag_acceptance {
   DagAcceptanceReceipt,
   DagCandidate,
   DagStageObligation,
+  EvalClaim,
+  EvalStage,
+  EvaluatesWithoutRefusal,
   ExecutorUnavailable,
   FullLedger,
   InferStage,
+  NoDeclaredCandidateBudget,
+  NormalizeStage,
+  ParseStage,
   InteractiveFailFast,
   NotRequiredByContract,
   OutcomeNotRequired,
@@ -75,7 +81,10 @@ import v2.workflow.dag_acceptance {
   acceptance_first_rejection,
   acceptance_verdict,
   collect_labels,
+  execute_obligation,
   fail_fast_skip_reason,
+  is_front_end_obligation,
+  obligation_front_end_depth,
   obligation_label,
   obligation_prerequisites,
   row_frontier_label,
@@ -560,4 +569,91 @@ test fn acceptance_collect_labels_folds_over_the_partition() -> Bool {
       == [^obligation_infer])
     && (collect_labels(rows: [passed_row_class(), rejected_row_class(), not_required_row_class()], select: row_frontier_label)
       == [])
+}
+
+
+data a7_acceptance_obligation_partition_note: String = "The three acceptance_obligation_partition roster rows dissolve because obligation_partition is now the ONE authority that names all eight DagStageObligation cases, and obligation_front_end_depth / is_front_end_obligation / execute_obligation all fold over it instead of repeating a per-case list. These controls pin each of those three consumers on EVERY obligation arm with the values main produced before the rewrite, so the pins fail if any partition arm or any projection arm drifts. The positive control is that all eight arms answer at once; the discriminating pair is the front-end/back-end cut at equal depth: ResolveStage and TargetCompileStage are BOTH front_end_depth 4, so depth alone cannot tell them apart, and only is_front_end_obligation plus the execute_obligation cause keep them on opposite sides. That witness is the discriminating RED: flipping the single TargetCompileStage arm of obligation_partition to a FrontEndObligation turns a7_partition_keeps_front_end_and_back_end_apart, a7_is_front_end_obligation_pins_main_values, a7_obligation_front_end_depth_pins_main_values, and a7_execute_obligation_pins_fresh_state_causes RED by execution (observed by temporarily flipping the arm, running gunbc run --claim-run, and restoring it), and it is the reason the partition is derived from DagStageObligation rather than re-declared: one arm, one fact."
+
+fn a7_fresh_state() -> AcceptanceRunState {
+  AcceptanceRunState {
+    rows: [],
+    resolved: optional_absent(),
+    inferred: optional_absent(),
+    translations: [],
+    spent: millisecond(count: 0),
+    first_rejection: optional_absent()
+  }
+}
+
+fn a7_eval_claim() -> EvalClaim {
+  EvalClaim {
+    identity: ^a7_eval,
+    evaluated_function: ^a7_eval,
+    runtime: symbol_type_node(),
+    budget: NoDeclaredCandidateBudget,
+    expectation: EvaluatesWithoutRefusal
+  }
+}
+
+fn a7_execute_pins_cause(obligation: DagStageObligation) -> String {
+  match execute_obligation(state: a7_fresh_state(), env: unbounded_env(), obligation: obligation) {
+    AcceptanceRunState { rows: rows } =>
+      match fold(rows, init: optional_absent(), f: fn(acc, row) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match row {
+              StageNotRun { reason: ExecutorUnavailable { cause: cause } } => optional_present(value: cause)
+              _ => optional_absent()
+            }
+        }
+      }) {
+        Present { value: cause } => cause
+        Absent => "a7:no-executor-unavailable-not-run-row-produced"
+      }
+  }
+}
+
+test fn a7_obligation_front_end_depth_pins_main_values() -> Bool {
+  (obligation_front_end_depth(obligation: TokenizeStage) == 1)
+    && (obligation_front_end_depth(obligation: ParseStage) == 2)
+    && (obligation_front_end_depth(obligation: NormalizeStage) == 3)
+    && (obligation_front_end_depth(obligation: ResolveStage) == 4)
+    && (obligation_front_end_depth(obligation: InferStage) == 4)
+    && (obligation_front_end_depth(obligation: EvalStage { claim: a7_eval_claim() }) == 4)
+    && (obligation_front_end_depth(obligation: TranslateStage { claim: rust_translation_claim() }) == 4)
+    && (obligation_front_end_depth(obligation: TargetCompileStage { claim: rustc_target_compile_claim() }) == 4)
+}
+
+test fn a7_is_front_end_obligation_pins_main_values() -> Bool {
+  (is_front_end_obligation(obligation: TokenizeStage))
+    && (is_front_end_obligation(obligation: ParseStage))
+    && (is_front_end_obligation(obligation: NormalizeStage))
+    && (is_front_end_obligation(obligation: ResolveStage))
+    && (!is_front_end_obligation(obligation: InferStage))
+    && (!is_front_end_obligation(obligation: EvalStage { claim: a7_eval_claim() }))
+    && (!is_front_end_obligation(obligation: TranslateStage { claim: rust_translation_claim() }))
+    && (!is_front_end_obligation(obligation: TargetCompileStage { claim: rustc_target_compile_claim() }))
+}
+
+test fn a7_execute_obligation_pins_fresh_state_causes() -> Bool {
+  (a7_execute_pins_cause(TokenizeStage) == "front-end obligations execute inside the staged front-end fold")
+    && (a7_execute_pins_cause(ParseStage) == "front-end obligations execute inside the staged front-end fold")
+    && (a7_execute_pins_cause(NormalizeStage) == "front-end obligations execute inside the staged front-end fold")
+    && (a7_execute_pins_cause(ResolveStage) == "front-end obligations execute inside the staged front-end fold")
+    && (a7_execute_pins_cause(InferStage) == "resolve passed but the staged front end carried no resolved module")
+    && (a7_execute_pins_cause(EvalStage { claim: a7_eval_claim() }) == "infer passed but no inferred tree was carried")
+    && (a7_execute_pins_cause(TranslateStage { claim: rust_translation_claim() }) == "infer passed but no inferred tree was carried")
+    && (a7_execute_pins_cause(TargetCompileStage { claim: rustc_target_compile_claim() }) == "no emitted target source was recorded for the declared translation")
+}
+
+test fn a7_partition_keeps_front_end_and_back_end_apart() -> Bool {
+  let front = ResolveStage
+  let back = TargetCompileStage { claim: rustc_target_compile_claim() }
+  (is_front_end_obligation(obligation: front))
+    && (!is_front_end_obligation(obligation: back))
+    && (obligation_front_end_depth(obligation: front) == 4)
+    && (obligation_front_end_depth(obligation: back) == 4)
+    && (a7_execute_pins_cause(front) == "front-end obligations execute inside the staged front-end fold")
+    && (a7_execute_pins_cause(back) == "no emitted target source was recorded for the declared translation")
 }
