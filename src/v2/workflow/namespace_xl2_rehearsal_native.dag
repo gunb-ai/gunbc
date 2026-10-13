@@ -2,7 +2,6 @@ module v2.workflow.namespace_xl2_rehearsal_native
 
 import std.types { Bool, List, String }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimHeld, NativeClaimNotHeld, NativeClaimReport }
-import std.algebra { all, count }
 import v2.workflow.namespace_xl2_rehearsal_census { Xl2RehearsalObserved, Xl2RehearsalRun, xl2_strip_members }
 import v2.workflow.namespace_xl2_rehearsal_controls { xl2_clean_fixture, xl2_control_rehearse, xl2_provider_fixture, xl2_residual_fixture }
 
