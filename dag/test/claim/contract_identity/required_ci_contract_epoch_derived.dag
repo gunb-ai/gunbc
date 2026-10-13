@@ -13,7 +13,9 @@ import gunbc.emitted_subject_build_gate {
 import gunbc.host.memory_envelope { MemoryEnvelopeContract }
 import gunbc.required_ci_contract_epoch {
   required_ci_context_name,
-  required_ci_contract_epoch,
+  required_ci_contract_epoch_derivation,
+  required_ci_contract_epoch_is_derived,
+  required_ci_contract_epoch_yaml_value,
   required_ci_contract_epoch_of,
   required_ci_obligation_rows,
   required_ci_obligation_digest_text,
@@ -30,7 +32,7 @@ import gunbc.required_ci_contract_epoch {
 }
 
 fn production_epoch_text() -> String {
-  required_ci_contract_epoch as String
+  required_ci_contract_epoch_yaml_value()
 }
 
 fn derived_epoch_text(rows: List<RequiredCiObligation>) -> String? {
@@ -45,10 +47,11 @@ test fn the_required_context_name_is_v2_bootstrap() -> Bool {
 }
 
 test fn production_rows_derive_an_epoch() -> Bool {
-  match required_ci_contract_epoch_of(rows: required_ci_obligation_rows()) {
-    RequiredCiEpochDerived { epoch: epoch } => (epoch as String) == production_epoch_text()
-    RequiredCiObligationIdentityDuplicated { identity: _ } => false
-  }
+  required_ci_contract_epoch_is_derived()
+    && match required_ci_contract_epoch_derivation {
+      RequiredCiEpochDerived { epoch: epoch } => (epoch as String) == production_epoch_text()
+      RequiredCiObligationIdentityDuplicated { identity: _ } => false
+    }
 }
 
 test fn permuting_obligation_rows_leaves_the_epoch_equal() -> Bool {
@@ -110,7 +113,8 @@ test fn a_duplicated_identity_refuses() -> Bool {
   match required_ci_obligation_rows() {
     Cons { head: first, tail: rest } =>
       match required_ci_contract_epoch_of(rows: Cons { head: first, tail: Cons { head: first, tail: rest } }) {
-        RequiredCiObligationIdentityDuplicated { identity: _ } => true
+        RequiredCiObligationIdentityDuplicated { identity: _ } =>
+          required_ci_contract_epoch_is_derived()
         RequiredCiEpochDerived { epoch: _ } => false
       }
     _ => false

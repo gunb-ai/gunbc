@@ -174,17 +174,24 @@ fn required_ci_contract_epoch_of(rows: List<RequiredCiObligation>) -> RequiredCi
   }
 }
 
-fn required_ci_contract_epoch_admitted(derivation: RequiredCiContractEpochDerivation) -> ContractEpoch {
-  match derivation {
-    RequiredCiEpochDerived { epoch: epoch } => epoch
-    RequiredCiObligationIdentityDuplicated { identity: identity } =>
-      serialize_content_hash(hash: content_hash_of_value(value: concat("duplicate-identity-refused:", identity as String) as NonEmptyStr)) as ContractEpoch
+data required_ci_contract_epoch_derivation: RequiredCiContractEpochDerivation = required_ci_contract_epoch_of(
+  rows: required_ci_obligation_rows()
+)
+
+fn required_ci_contract_epoch_is_derived() -> Bool {
+  match required_ci_contract_epoch_derivation {
+    RequiredCiEpochDerived { epoch: _ } => true
+    RequiredCiObligationIdentityDuplicated { identity: _ } => false
   }
 }
 
-data required_ci_contract_epoch: ContractEpoch = required_ci_contract_epoch_admitted(
-  derivation: required_ci_contract_epoch_of(rows: required_ci_obligation_rows())
-)
+fn required_ci_contract_epoch_yaml_value() -> String {
+  match required_ci_contract_epoch_derivation {
+    RequiredCiEpochDerived { epoch: epoch } => epoch as String
+    RequiredCiObligationIdentityDuplicated { identity: identity } =>
+      concat("REFUSED-duplicate-identity:", identity as String)
+  }
+}
 
 // The env member name the workflow authority emits and the exact-commit reader looks up. It is
 // declared here beside the value because the KEY and the VALUE are one fact about how this epoch is

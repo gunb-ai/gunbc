@@ -9,7 +9,7 @@ import extdeps.github.workflow_runs {
 }
 import extdeps.github.push_event { PushRefUpdate, push_ref_update_from_event_json, PushRefUpdateObserved, PushRefUpdateMemberAbsent }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
-import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch_yaml_value }
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
 import gunbc.fleet.fleet_revision_acceptance {
   RequiredCiAdmission, RequiredCiAdmitted, RequiredCiRefused,
@@ -37,7 +37,7 @@ data sha_r: String = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
 data sha_other: String = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
 
 fn epoch_match() -> RequiredCiEpochObservation {
-  RequiredCiEpochObserved { epoch: required_ci_contract_epoch }
+  RequiredCiEpochObserved { epoch: required_ci_contract_epoch_yaml_value() as ContractEpoch }
 }
 
 fn push_to(ref: String, after: String) -> PushRefUpdate {

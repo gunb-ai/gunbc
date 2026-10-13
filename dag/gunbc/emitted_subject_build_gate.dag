@@ -121,36 +121,33 @@ data native_fault_experiment_run_value: String = "run"
 // cargo's own dependency reuse inside the job's checkout is untouched.
 data native_product_reuse_env_name: String = "GUNBC_NATIVE_PRODUCT_REUSE"
 
-// THE EXECUTION CONTRACT THE REQUIRED SUBJECT STEPS DISCHARGE, typed here because this module is
-// what asks the seed to emit, build-fresh, and start. The env spelling is a projection of
-// ProductReuseFresh, not the fact the contract epoch hashes.
-type NativeProductReusePolicy
-  = ProductReuseFresh
-  | ProductReuseRestored
-
+// THE EXECUTION CONTRACT THE REQUIRED SUBJECT STEPS DISCHARGE, one coproduct. Fresh vs restored
+// is an arm of this contract (so a restored green is a different obligation and moves the epoch),
+// not a second writable policy beside it. The env spelling is a projection of the same row.
 type EmittedSubjectExecutionContract
   = EmitThenBuildFreshThenStart
+  | EmitThenBuildRestoredThenStart
   | EmitWithoutStart
-
-data native_product_reuse_policy: NativeProductReusePolicy = ProductReuseFresh
 
 data emitted_subject_execution_contract: EmittedSubjectExecutionContract = EmitThenBuildFreshThenStart
 
-fn native_product_reuse_env_value(policy: NativeProductReusePolicy) -> String {
-  match policy {
-    ProductReuseFresh => "fresh"
-    ProductReuseRestored => "restored"
+fn native_product_reuse_env_value(contract: EmittedSubjectExecutionContract) -> String {
+  match contract {
+    EmitThenBuildFreshThenStart => "fresh"
+    EmitThenBuildRestoredThenStart => "restored"
+    EmitWithoutStart => "fresh"
   }
 }
 
 fn emitted_subject_execution_digest(contract: EmittedSubjectExecutionContract) -> String {
   match contract {
     EmitThenBuildFreshThenStart => "emit_then_build_fresh_then_start"
+    EmitThenBuildRestoredThenStart => "emit_then_build_restored_then_start"
     EmitWithoutStart => "emit_without_start"
   }
 }
 
-data native_product_reuse_fresh_value: String = native_product_reuse_env_value(policy: native_product_reuse_policy)
+data native_product_reuse_fresh_value: String = native_product_reuse_env_value(contract: emitted_subject_execution_contract)
 
 // THE MEMORY ENVELOPE OF A SUBJECT STEP (operator ruling 2026-10-09: "MemorySwapMax=0 and a fixed
 // hard memory maximum; a lower compiler abort/trip threshold; a peak and swap receipt; no larger-
