@@ -6,42 +6,56 @@ import gunbc.compile_diagnostic_census {
   CensusNotRunnable,
   census_blocking_rows,
   census_total_count,
-}
-
-fn red_source() -> String {
-  concat(
-    "module probe.empty_conformance_homes\n",
-    concat(prelude(), "fn probe() -> FreeSemigroup<Int> { FreeSemigroup { tail: Empty } }\n"),
-  )
-}
-
-fn green_source() -> String {
-  concat(
-    "module probe.one_conformance_home\n",
-    concat(prelude(), "fn probe() -> FreeSemigroup<Int> { FreeSemigroup { head: 1, tail: Empty } }\n"),
-  )
-}
-
-fn blocking_count(source: String) -> Int {
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => -1
-  }
+  censuses_differ_by_exactly_the_target_key,
 }
 
 fn prelude() -> String {
   "import std.algebra { Empty, FreeSemigroup }\n"
 }
 
-// RED: FreeSemigroup has a required head, so an empty homes list is unwritable. A literal
-// missing `head` on the real carrier refuses; restoring a possibly-empty List field would
-// admit `[]`. Positive control: one-element FreeSemigroup is Accepted.
-test fn an_empty_conformance_home_list_refuses_inhabitance() -> Bool {
-  let red = blocking_count(source: red_source())
-  let green = blocking_count(source: green_source())
-  red >= 0 && green >= 0 && red > green
+fn missing_head_source() -> String {
+  concat(
+    "module probe.empty_conformance_homes\n",
+    concat(prelude(), "fn probe() -> FreeSemigroup<Int> { FreeSemigroup { tail: Empty } }\n"),
+  )
 }
 
+fn one_element_source() -> String {
+  concat(
+    "module probe.one_conformance_home\n",
+    concat(prelude(), "fn probe() -> FreeSemigroup<Int> { FreeSemigroup { head: 1, tail: Empty } }\n"),
+  )
+}
+
+fn observed_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// POSITIVE: one-element FreeSemigroup on the imported carrier is Accepted (zero blocking).
 test fn a_one_element_free_semigroup_is_accepted() -> Bool {
-  blocking_count(source: green_source()) == 0
+  observed_blocking_count(source: one_element_source()) == 0
+}
+
+// RED: empty homes are unwritable because FreeSemigroup requires `head`. Census key is
+// MissingField / "head" against std.algebra.FreeSemigroup, not a local stand-in. The
+// Empty-at-FreeSemigroup-formal inhabitance seam (DeclaredTypeNotInhabited) is still
+// silent; that is cardinality-vertical-slice, not this first-slice construction wall.
+test fn an_empty_conformance_home_list_refuses_inhabitance() -> Bool {
+  match compile_dag_diagnostic_census(missing_head_source()) {
+    CensusNotRunnable { cause: _ } => false
+    CensusObserved { rows: red } => match compile_dag_diagnostic_census(one_element_source()) {
+      CensusNotRunnable { cause: _ } => false
+      CensusObserved { rows: green } =>
+        census_total_count(rows: census_blocking_rows(rows: green)) == 0
+          && censuses_differ_by_exactly_the_target_key(
+            red: red,
+            green: green,
+            target_class: "MissingField",
+            target_subject: "head",
+          )
+    }
+  }
 }
