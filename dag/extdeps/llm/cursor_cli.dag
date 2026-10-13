@@ -110,7 +110,7 @@ data cursor_observed_model_roster_size: Int = 193
 // DELIBERATELY NOT USED: -w/--worktree starts the agent in an isolated git worktree the CLI creates under ~/.cursor/worktrees/<repo>/<name>. This repository's belt already creates and owns attempt worktrees under the dashboard instance's own attempts root, with the branch name and attempt identity bound to the roadmap node.\n\nAccepting the CLI's worktree would hand that ownership to the provider: the location would move outside the instance root the model treats as owned, the naming would stop deriving from the attempt, and teardown would belong to a directory nobody declared. The flag is recorded so the choice is visible rather than looking like an oversight — a later reader finding two worktree mechanisms should know only one is ours.
 // THE RUN AND THE CREDENTIAL ARE TWO FACTS. Everything but the key decides the argv; the key decides
 // only where the credential travels. Keeping them apart lets a caller whose key is not in hand (a
-// spawn that exports it from a custody file in the child, gunbc.roadmap_dispatch_actuator) build the
+// spawn that exports it from a custody file in the child, gunbc.roadmap.roadmap_dispatch_actuator) build the
 // same argv this module builds, rather than spelling cursor-agent's flags a second time.
 type CursorRunShape {
   model: CursorModelId

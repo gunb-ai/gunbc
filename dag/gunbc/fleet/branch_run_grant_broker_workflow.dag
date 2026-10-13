@@ -1,4 +1,4 @@
-module gunbc.branch_run_grant_broker_workflow
+module gunbc.fleet.branch_run_grant_broker_workflow
 
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
@@ -15,7 +15,7 @@ import extdeps.github.actions {
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason, checkout_action,
 }
-import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
+import gunbc.roadmap.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
   workflow_job_capability_closure, capability_closure_is_closed
@@ -24,9 +24,9 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
-import gunbc.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
-import gunbc.repo_self_build { repo_self_build_command }
-import gunbc.ci_spec { gunbc_ci_branch_run_grant_broker_invoke }
+import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
+import gunbc.repo.repo_self_build { repo_self_build_command }
+import gunbc.ci.ci_spec { gunbc_ci_branch_run_grant_broker_invoke }
 import gunbc.auth.branch_dispatch_federation { branch_run_key_variable, run_scoped_modes }
 import gunbc.auth.branch_run_grant_broker { branch_run_title_variable }
 
@@ -192,17 +192,17 @@ type BranchRunGrantBrokerWorkflowGenerationOutcome
 fn expected_branch_run_grant_broker_workflow_yml() -> BranchRunGrantBrokerWorkflowGenerationOutcome {
   match admit_workflow_checkout_refs(workflow: branch_run_grant_broker_workflow, declared: []) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
-      BranchRunGrantBrokerWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.branch_run_grant_broker_workflow", refusals: crs) }
+      BranchRunGrantBrokerWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.fleet.branch_run_grant_broker_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted => match admit_workflow_toolchain_homes(workflow: branch_run_grant_broker_workflow) {
       WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
         BranchRunGrantBrokerWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
       WorkflowToolchainHomesAdmitted =>
         if !branch_run_grant_broker_capability_closure_holds() {
-          BranchRunGrantBrokerWorkflowGenerationRefused { reason: "REFUSED gunbc.branch_run_grant_broker_workflow: the job's capability closure does not hold. No workflow yaml was emitted." }
+          BranchRunGrantBrokerWorkflowGenerationRefused { reason: "REFUSED gunbc.fleet.branch_run_grant_broker_workflow: the job's capability closure does not hold. No workflow yaml was emitted." }
         } else {
           match emit_yaml(v: project_workflow_to_yaml(workflow: branch_run_grant_broker_workflow)) {
             EmittedYaml { text: t } => BranchRunGrantBrokerWorkflowGenerated { content: t }
-            YamlEmitRefused { path: p, reason: r } => BranchRunGrantBrokerWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.branch_run_grant_broker_workflow", path: p, reason: r) }
+            YamlEmitRefused { path: p, reason: r } => BranchRunGrantBrokerWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.fleet.branch_run_grant_broker_workflow", path: p, reason: r) }
           }
         }
     }

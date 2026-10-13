@@ -2,7 +2,7 @@ module gunbc.process_lifecycle_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 // Seed-growth obligation for the typed process-lifecycle realization in the v1 seed: the
 // detached-spawn half of the shell transport (extdeps.posix.process StartDetached) and the
@@ -10,7 +10,7 @@ import gunbc.roadmap_model { RoadmapNodeId }
 //
 // WHAT THE CHANGE IS. dispatch_shell spawned every transport argv synchronously and waited, so
 // "start a server, hold a pid, kill it later" was inexpressible as typed ops -- the last untyped
-// process lifecycle (the retained_foreign node-http heredoc in tools.emit_host_transport, whose
+// process lifecycle (the retained_foreign node-http heredoc in gunbc.instruments.emit_host_transport, whose
 // `&` / `$!` / `trap` plumbing carried exactly these facts in shell text) had no typed route. The
 // interface is modeled in extdeps first (dag/extdeps/posix/process.dag, POSIX spawn anchor); the
 // seed only realizes it: a native StartDetached handler keyed like shell.Env.Get (the operation

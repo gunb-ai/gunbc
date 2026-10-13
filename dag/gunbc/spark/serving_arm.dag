@@ -1138,7 +1138,7 @@ data glm_native_engine_build: GlmNativeEngineBuild = GlmNativeEngineDerived8d098
 
 // RUNG HONESTY: this is mechanically preventable, not structural -- the profile is a data row and
 // cannot refuse its own field, so the gate is the witness in
-// dag/test/claim/spark/serving_arm_kv_dtype_witness_test.dag, which goes red if the profile
+// dag/test/claim/spark/serving_arm_kv_dtype_witness.dag, which goes red if the profile
 // carries a dtype its declared build refuses. The next-rung trigger is a profile constructor that
 // takes the admission as an argument, making a refused dtype unconstructible.
 type GlmNativeKvCacheDtypeAdmission

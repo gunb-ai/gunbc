@@ -422,7 +422,7 @@ data constructor_binding_channel_indirect_fixture_files: List<FixtureModuleFile>
 // THE TRIGGER THIS PARAGRAPH USED TO NAME WAS ALREADY SATISFIED WHEN IT WAS WRITTEN, and that is
 // worth more than the correction (review 61858). It said the trigger was "a compile surface that
 // admits a closure of several named .dag sources as one subject", on the strength of
-// compile_dag_rust_emit_check taking a single source string. But `tools.multi_module_compile_fixture`,
+// compile_dag_rust_emit_check taking a single source string. But `gunbc.instruments.multi_module_compile_fixture`,
 // over the host `compile_dag_multi_module_fixture`, takes exactly that closure of several named
 // sources -- it is what gunbc#10740 consumes for the neighbouring class. A trigger naming a
 // capability that already exists CANNOT FIRE, so the class never ranks for climbing and the stall
@@ -463,7 +463,7 @@ data regen_cannot_see_v2_corpus_emission_change: DeclarationRef = decl_ref(
 //
 // The trigger this carrier shipped with named "a compile surface that admits a closure of several
 // named .dag sources as one subject". That surface already existed when the sentence was written --
-// `tools.multi_module_compile_fixture` over the host `compile_dag_multi_module_fixture` -- so the
+// `gunbc.instruments.multi_module_compile_fixture` over the host `compile_dag_multi_module_fixture` -- so the
 // trigger could never fire, the class could never rank for climbing, and the stall was untracked
 // while looking tracked. The tell was one grep for the capability, and nobody ran it. A trigger
 // written as a capability should be checkable that way; if it is not, it is a wish.
@@ -508,7 +508,7 @@ type EvidenceStanding {
 data constructor_binding_channel_evidence_standing: EvidenceStanding = {
   rung: "mitigatable",
   ceiling: "mechanically preventable",
-  next_rung_trigger: "a test.claim module that builds the rostered fixture modules through tools.multi_module_compile_fixture, asserts the case6-versus-case7 flip, and is admitted to v2.workflow.required_floor required_gate_prefixes -- the roster row without which a witness module is discovered and never run",
+  next_rung_trigger: "a test.claim module that builds the rostered fixture modules through gunbc.instruments.multi_module_compile_fixture, asserts the case6-versus-case7 flip, and is admitted to v2.workflow.required_floor required_gate_prefixes -- the roster row without which a witness module is discovered and never run",
   why_the_rung_is_not_higher: "unbuilt work, NOT an absent capability. The fixture surface exists and the fixture modules are committed; nothing runs them. The new geometries widen what a single unenrolled measurement covers, they do not climb the rung",
 }
 

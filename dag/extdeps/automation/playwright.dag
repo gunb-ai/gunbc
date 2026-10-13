@@ -157,7 +157,7 @@ type PlaywrightBrowserDownload {
 // chromium-linux-arm64.zip" and "builds/chromium/%s/chromium-headless-shell-linux-arm64.zip" for
 // ubuntu24.04-arm64). Upstream publishes NO digest beside these archives: the sha256 a converge
 // verifies against is this repository's observation and lives downstream as a receipt
-// (gunbc.runner_browser_toolchain), not here.
+// (gunbc.runner.runner_browser_toolchain), not here.
 data playwright_chromium_1234_linux_arm64: PlaywrightBrowserDownload = PlaywrightBrowserDownload {
   browser_name: PlaywrightChromium,
   build: chromium_151_0_7922_34,

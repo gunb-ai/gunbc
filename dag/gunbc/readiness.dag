@@ -8,7 +8,7 @@ module gunbc.readiness
 // Pending. An observer returns this after ONE attempt; retry cadence belongs
 // to the transaction caller.
 // CONSUMERS: gunbc.live_deploy.readiness live_deploy_service_ready_once_for_deploy,
-// gunbc.dashboard_provider_readiness observe_dashboard_provider_readiness.
+// gunbc.roadmap.dashboard_provider_readiness observe_dashboard_provider_readiness.
 // Callers match the coproduct; this module does not re-project arms to Bool.
 
 type Readiness<Evidence, PendingCause, RefusalCause>

@@ -1,4 +1,4 @@
-module v2.test.fixture.meta_exec_confinement_scan.leak_plant
+module v2.test.fixture.meta_exec_confinement_scan.leak.plant
 
 import extdeps.shell.exec { TransportScript }
 

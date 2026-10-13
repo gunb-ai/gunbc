@@ -20,7 +20,7 @@ import extdeps.filesystem.filesystem_io {
 import extdeps.git
 import extdeps.git.plumbing
 import extdeps.git { git_ref_missing_exit_code, git_repository_unusable_exit_code }
-import extdeps.cargo {
+import extdeps.rust.cargo {
   CargoEnvironmentVariable,
   CargoHomeEnv,
   CargoTargetDirEnv,
@@ -28,7 +28,7 @@ import extdeps.cargo {
   RustcWrapperEnv,
   cargo_environment_variable_name,
 }
-import extdeps.rustup { rustup_home_env_name }
+import extdeps.rust.rustup { rustup_home_env_name }
 import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
 import v2.std.orchestration { EnvBinding, EnvSet }
 import extdeps.git.object_store { GitObjectId, GitRefName, git_object_id_from_untagged_hex }

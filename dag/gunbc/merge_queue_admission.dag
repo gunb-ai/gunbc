@@ -20,7 +20,7 @@ import extdeps.github.rulesets {
   RulesetBypassActor,
   merge_queue_grouping_strategy_wire_label,
 }
-import gunbc.witness_floor_workflow { witness_floor_triggers }
+import gunbc.witness.witness_floor_workflow { witness_floor_triggers }
 import v2.std.collection { Absent, Present }
 
 // WHAT A MERGE QUEUE IS, AS A FACT ABOUT ADMISSION RATHER THAN ABOUT THROUGHPUT.
@@ -42,8 +42,8 @@ import v2.std.collection { Absent, Present }
 // a state that must be detected and becomes a state with no constructor.
 //
 // THIS MODULE IS THE ADMISSION HALF AND OWNS NO SETTINGS. Which queue this repository wants and
-// what the live ruleset says are gunbc.repo_ruleset's facts; whether the required workflow can
-// schedule for a merge_group is gunbc.witness_floor_workflow's. This module joins them into the
+// what the live ruleset says are gunbc.repo.repo_ruleset's facts; whether the required workflow can
+// schedule for a merge_group is gunbc.witness.witness_floor_workflow's. This module joins them into the
 // two terminals below and models the laws a queue must satisfy for either terminal to be honest.
 //
 // DISSOLVE/REBIND-ON: MAIN-6 replaces GitHub merge publication with the BusinessMain
@@ -73,7 +73,7 @@ data merge_queue_admission_rebind: DissolutionCondition = unbound_dissolution(de
 // repository and stays unobserved until the queue is enabled. That is a gap in the EVIDENCE, not a
 // weaker claim: MergeQueueOperational is not reported for gunb-ai/gunbc, because its standing reads
 // NoMergeQueueRule.
-data merge_queue_world_half_gap: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the merge queue is enabled on gunb-ai/gunbc after operator sign-off (gunbc.repo_ruleset desired_merge_queue moves to MergeQueueSignedOff), and one merge_group run of the required aggregate is observed on a queue-built composition -- the run's subject commit equal to the composition GitHub fast-forwards. Until that observation exists, the exact-subject and ordering laws below are established over authored inputs only, and the terminal for this repository is MergeQueueUnconfigured. This gap is why merge_queue_terminal reports a terminal rather than this module asserting one.")
+data merge_queue_world_half_gap: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the merge queue is enabled on gunb-ai/gunbc after operator sign-off (gunbc.repo.repo_ruleset desired_merge_queue moves to MergeQueueSignedOff), and one merge_group run of the required aggregate is observed on a queue-built composition -- the run's subject commit equal to the composition GitHub fast-forwards. Until that observation exists, the exact-subject and ordering laws below are established over authored inputs only, and the terminal for this repository is MergeQueueUnconfigured. This gap is why merge_queue_terminal reports a terminal rather than this module asserting one.")
 
 // THE BYPASS QUESTION IS SETTLED, IN THE POSITIVE DIRECTION, AND THE ROUTE TO SETTLING IT IS THE
 // PART WORTH KEEPING.

@@ -13,7 +13,7 @@ import gunbc.seed_growth_admission { SeedGrowthChangeDisposition, ExistingSeedIt
 // ambient environment, now applies the same constructed environment as the cached one.
 // No capability is new: the seed could already build and run an emitted program; it now does
 // so under a modeled environment instead of the shell's. ADMITTED AGAINST THE v1 FREEZE BY
-// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing): the required floor executes
+// PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing): the required floor executes
 // emit_host witnesses in the seed, and a seed whose realization silently varies with the
 // CI shell's flags makes those witnesses assert about the shell -- the class named in
 // DESIGN section 3 (policy leaking into realization) and in gunbc.recurring_failure_mode

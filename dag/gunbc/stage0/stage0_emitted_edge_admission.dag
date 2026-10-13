@@ -1,4 +1,4 @@
-module gunbc.stage0_emitted_edge_admission
+module gunbc.stage0.stage0_emitted_edge_admission
 
 import std.types { Bool, Int, List, String }
 import gunbc.rust_emitted_edge {
@@ -13,8 +13,8 @@ import gunbc.rust_emitted_edge {
   InlinePathReference,
   ServiceRuntimeSurface
 }
-import gunbc.stage0_crate_partition_generated { GeneratedPartitionCrateRow }
-import gunbc.stage0_partition_package_graph {
+import gunbc.stage0.stage0_crate_partition_generated { GeneratedPartitionCrateRow }
+import gunbc.stage0.stage0_partition_package_graph {
   partition_package_dependency_names_over,
   stage0_partition_row_is_module_bearing_package
 }
@@ -24,7 +24,7 @@ import gunbc.stage0_partition_package_graph {
 // the crate re-exports (transitively, since each layered facade is `pub use <dep>::*;`). The
 // emitter returns each such edge beside the text it wrote (gunbc.rust_emitted_edge); this admission
 // maps both endpoints through the partition's owner rows and the package graph
-// (gunbc.stage0_partition_package_graph), and refuses an edge whose target package the source
+// (gunbc.stage0.stage0_partition_package_graph), and refuses an edge whose target package the source
 // package cannot reach -- the E0432 class, named before rustc is asked.
 //
 // THE POPULATION IS THE STAGE0 SEED, and it is stated rather than assumed. A module is owned by the
@@ -35,8 +35,8 @@ import gunbc.stage0_partition_package_graph {
 // by name.
 
 // THE PACKAGE GRAPH THE EMITTED TREE WILL BE BUILT UNDER, as that tree declares it: its partition rows
-// (gunbc.stage0_crate_partition_generated) and the host shell node above them
-// (gunbc.stage0_executable_assembly_generated). All three are supplied by the caller and every owner,
+// (gunbc.stage0.stage0_crate_partition_generated) and the host shell node above them
+// (gunbc.stage0.stage0_executable_assembly_generated). All three are supplied by the caller and every owner,
 // dependency and reach lookup below reads them and nothing else, so no answer here re-enters the rows
 // or shell edges compiled into the binary that asks.
 type Stage0EmittedTreePackages {
@@ -172,7 +172,7 @@ fn stage0_emitted_edge_crossing(edge: EmittedEdge, host_shell_modules: List<Stri
 // THE PACKAGE GRAPH IS THE TREE BEING EMITTED'S, SUPPLIED BY THE CALLER -- never the rows or shell
 // edges compiled into the binary asking. Required-regen emits the seed from the corpus in hand and admits
 // that emission's edges; the only partition that emission will be built under is the one in the same
-// corpus (gunbc.stage0_crate_partition_generated as that corpus declares it). Reading the committed
+// corpus (gunbc.stage0.stage0_crate_partition_generated as that corpus declares it). Reading the committed
 // rows instead admitted a candidate against its predecessor's partition: a module added to the
 // partition in the same change had no row in the binary, so the regen refused NotCovered until a
 // regen had already installed the row it was refusing to produce -- a bootstrap deadlock broken only

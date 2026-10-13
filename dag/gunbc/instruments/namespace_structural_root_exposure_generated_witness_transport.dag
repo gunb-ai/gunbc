@@ -1,6 +1,6 @@
-module tools.namespace_structural_root_exposure_generated_witness_transport
+module gunbc.instruments.namespace_structural_root_exposure_generated_witness_transport
 
-import tools.host_prelude { WitnessBin, run_witness_bin_program }
+import gunbc.instruments.host_prelude { WitnessBin, run_witness_bin_program }
 
 fn namespace_structural_root_exposure_generated_witness_bin() -> WitnessBin {
   WitnessBin {

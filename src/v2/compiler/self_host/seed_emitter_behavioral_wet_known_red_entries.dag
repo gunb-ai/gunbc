@@ -15,7 +15,7 @@ import v2.std.text { String }
 // admission authority gunbc.explicit_witness_admission: they are its ExecutionWitnessKind known-red
 // rows, the same rows the hermetic probe roster projects at CorpusWitnessKind, so a quarantine is
 // authored once whatever cadence executes it. Hand rows previously lived here beside a paired
-// QuarantineProbeExpectRed path pattern in gunbc.ci_layer_roots; both are gone. Consumed by
+// QuarantineProbeExpectRed path pattern in gunbc.ci.ci_layer_roots; both are gone. Consumed by
 // v2.compiler.self_host.wet_receipt_enrollment (falsifier batch enrollment) and
 // v2.compiler.self_host.emitter_producer_provenance (producer receipt citation gate); this decl
 // keeps its name so neither consumer changed. Cycle-free leaf: neither consumer is imported here.

@@ -1,0 +1,12 @@
+module gunbc.native_cli_door_probe
+
+// THE LAYOUT CHECK'S MISPLACEMENT CONTROL. This file declares a module whose rule position is
+// `gunbc/native_cli_door_probe.dag`, and it is stored at `gunbc/misplaced.dag`: the position and the
+// `module` line disagree, which `check-layout` must refuse by naming both. The positive control is
+// the sibling fixture root `fixtures/native_cli_door/dag`, where the same module line IS at its rule
+// position, so the refusal is attributable to the file's position and to nothing else in the module.
+//
+// IT LIVES OUTSIDE EVERY GOVERNED ROOT, which is what lets a deliberately misplaced file exist at all:
+// a governed root holds only files at their rule position, and a fixture exemption kind was ruled out
+// in favour of this placement.
+data layout_check_misplaced_value: Int = 1

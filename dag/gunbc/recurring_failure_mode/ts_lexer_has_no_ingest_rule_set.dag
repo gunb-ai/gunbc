@@ -9,7 +9,7 @@ data ts_lexer_has_no_ingest_rule_set: RecurringFailureMode = RecurringFailureMod
   receipts: [
     "STATED FRONTIER, not a repaired defect. v2.extdeps.languages.typescript ts_lex has no whitespace trivia rule: every rule is an emission spelling with baked spacing (eq as space-equals, colon as colon-space), so TypeScript text not laid out exactly as the emitter writes it is unlexable. `const bit: string = bit;` refuses at the space after `=` (gunbc run, BuildBuddy invocation b9e2870f).",
 
-    "MEMBERS: v2.test.parse.typescript claim_ts_union_task_status_parses and claim_ts_union_minimal_parses. They assume an ingest lexer, stay ungated as data rows, and are red until this frontier closes; their string literals lex since ts_single_quoted_string_body_reuses_the_double_quoted_char_class was repaired.",
+    "MEMBERS: v2.test.claim.parse.typescript claim_ts_union_task_status_parses and claim_ts_union_minimal_parses. They assume an ingest lexer, stay ungated as data rows, and are red until this frontier closes; their string literals lex since ts_single_quoted_string_body_reuses_the_double_quoted_char_class was repaired.",
 
     "WHY A FRONTIER: nothing in v2 ingests TypeScript today, and the operator's phase-4 ruling (via sharp-raven-357) keeps the grammar valid but unconsumed. An ingest set is new capability, not a repair of this one.",
 

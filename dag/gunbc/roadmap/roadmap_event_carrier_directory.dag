@@ -1,13 +1,13 @@
 module gunbc.roadmap.roadmap_event_carrier_directory
 
 import std.types { String, NonEmptyStr }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_shared_directory }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_shared_directory }
 import gunbc.owned_directory { OwnedDirectoryTarget }
 
 // The event carrier's directory demand, split out of gunbc.roadmap.roadmap_event_carrier so that
 // gunbc.roadmap.dashboard_instance_directories can list it without importing the carrier and,
-// through it, the dispatch actuator: that edge closed an import cycle through gunbc.host_standup,
-// gunbc.host_effect and gunbc.live_deploy.spec.
+// through it, the dispatch actuator: that edge closed an import cycle through gunbc.host.host_standup,
+// gunbc.host.host_effect and gunbc.live_deploy.spec.
 data roadmap_events_worktree_child: String = "roadmap-events"
 
 // THE DIRECTORY THE CARRIER DEMANDS: the worktree it checks the event branch out into, under the instance

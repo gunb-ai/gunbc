@@ -10,7 +10,7 @@ import std.optional { Present, Absent }
 // lane ownership are themselves host facts: RequiredCiPhase, its exhaustive lane match, and
 // REQUIRED_CI_PHASES have no substrate authority" -- and named this carrier as its next rung
 // (required_ci_phase_roster_next_rung). Phase identity and lane ownership are one roster, consumed
-// by the workflow emission (gunbc.fabric_witness_run takes its lane vocabulary from
+// by the workflow emission (gunbc.fabric.fabric_witness_run takes its lane vocabulary from
 // required_ci_lane_name). Until 2026-09-19 the program-standing derivation also read it
 // (gunbc.compiler_frontend_program_status derived NamespaceWaveAdmissionEnrolled from membership
 // in required_ci_phases); with the wall deleted by that day's operator ruling, the milestone reads
@@ -207,11 +207,11 @@ fn required_ci_lane_phase_rows() -> List<RequiredCiLanePhaseRow> {
 // vocabulary -- they are an open host vocabulary with no substrate authority, so a reading carries
 // the word as the host spelled it and never maps it onto RequiredCiPhase. What this module owns is
 // the reading's denominator: these rows are the timings OF required_ci_phases' FloorPhase, which is
-// why gunbc.runner_throughput_qualification_route names this module as their producer.
+// why gunbc.runner.runner_throughput_qualification_route names this module as their producer.
 //
 // THE LINE ENCODING IS `[tag] key=value key=value`, one row per line, possibly behind the timestamp
 // GitHub prefixes to each job-log line. floor_log_row_fields is the one reader of that encoding; the
-// [floor-cgroup] reader (gunbc.host_budget_source) uses it rather than tokenizing a second time. A
+// [floor-cgroup] reader (gunbc.host.host_budget_source) uses it rather than tokenizing a second time. A
 // value may itself contain `=` (the cgroup pressure field does), so only the FIRST `=` splits.
 type FloorLogField {
   key: String

@@ -11,7 +11,7 @@ import v2.workflow.required_floor {
   DeclinedChangedWitnessOutsideDiscovery, module_name_is_or_is_contained_by,
   ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
 }
-import gunbc.ci_layer_roots { non_executing_witness_module_prefixes }
+import gunbc.ci.ci_layer_roots { non_executing_witness_module_prefixes }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
   Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
@@ -110,7 +110,7 @@ type ChangedWitnessExecutionStanding =
 // in the name of the field holding it, so `wall_nanos` and `cpu_nanos` compare, add and
 // threshold as if they were one quantity -- and `std.observation` already carries the resolution:
 // `List<TimedMeasurement>`, every clock tagged, read back by basis through
-// `observation_duration_of`. That is the same shape `gunbc.witness_row_cost`
+// `observation_duration_of`. That is the same shape `gunbc.witness.witness_row_cost`
 // `WitnessCostReceiptRow` uses for its `eval` term, so this is a reuse rather than a fourth
 // spelling. `Measured` keeps an unreadable clock a NAMED state with its cause instead of a
 // fabricated zero.
@@ -349,7 +349,7 @@ fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) ->
 // discharges with a real bin_wet receipt. Exhaustive, so a new disposition states its polarity.
 //
 // A SELECTION OUTSIDE DISCOVERY BLOCKS UNLESS ITS HOME IS DECLARED NON-EXECUTING, and the grant is
-// membership in `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes` under the named-module
+// membership in `gunbc.ci.ci_layer_roots` `non_executing_witness_module_prefixes` under the named-module
 // subtree rule, never the absence of a match elsewhere: an empty or unrostered home blocks. This is
 // the seed's `identity_home_is_declared_non_executing`, and the exemption goes away with the roster row.
 fn changed_witness_decline_blocks(disposition: RequiredFloorDisposition) -> Bool {

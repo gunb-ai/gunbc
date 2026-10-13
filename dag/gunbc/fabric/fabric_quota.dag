@@ -1,4 +1,4 @@
-module gunbc.fabric_quota
+module gunbc.fabric.fabric_quota
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
@@ -10,9 +10,9 @@ import product.capacity.event_chain { PartitionId }
 import product.capacity.pool_events { PoolSettled, PoolUpstreamObserved, SeatRequest }
 import product.capacity.pool { pool_window_at, WindowResolved, WholeLifetime, InstantBeforeAnchor }
 import product.capacity.lease { LeasePolicy, LeaseGrant, FencedResource }
-import gunbc.fabric_event_log_host { HostEventLogStore, HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
-import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.fabric_event_log {
+import gunbc.fabric.fabric_event_log_host { HostEventLogStore, HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_event_log {
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire,
   PoolTransition, PoolTransitionAppended, fabric_pool_transition, pool_transition_wire,
 }
@@ -153,7 +153,7 @@ type QuotaSettle
   = QuotaSettled { partition: PartitionId, actual: Nat }
   | QuotaSettleRefused { detail: String }
 
-// SETTLEMENT IS ONE CHECKED PARTITION TRANSITION (gunbc.fabric_event_log fabric_pool_transition): the
+// SETTLEMENT IS ONE CHECKED PARTITION TRANSITION (gunbc.fabric.fabric_event_log fabric_pool_transition): the
 // partition is folded and the settlement applied to it before anything is written, under the same
 // compare-and-set the acquisition used. It was an unchecked append, which reported success for a
 // settlement whose lease had already lapsed -- an event the fold refuses on replay, leaving the whole

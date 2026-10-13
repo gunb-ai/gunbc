@@ -1,4 +1,4 @@
-module tools.build_step_transport
+module gunbc.instruments.build_step_transport
 
 
 import extdeps.shell
@@ -11,7 +11,7 @@ import gunbc.cli_invoke { claim_executor_bin_name }
 import gunbc.cli_services
 import gunbc.output_policy { ExpectSuccess, OutcomeIsData }
 import std.logic { Bool }
-import tools.host_prelude {
+import gunbc.instruments.host_prelude {
   WitnessBinArtifactAbsent,
   WitnessBinArtifactEmpty,
   WitnessBinArtifactNotExecutable,
@@ -88,7 +88,7 @@ fn corruption_probe_with_content(content: String, expect_verify_success: Bool) -
   }
 }
 
-data witness_bin_readiness_probe_note: String = "DISCRIMINATING controls for the typed witness-binary readiness carrier (tools.host_prelude). Each probe builds a real fixture on disk and asserts the arm it must produce, so the carrier cannot regress to answering one verdict for every input — the failure mode that made the previous Bool shape useless for diagnosis. Every assertion checks the LOCATION too (the refusal must carry the path it probed), because a typed refusal that does not say where is only marginally better than a false.
+data witness_bin_readiness_probe_note: String = "DISCRIMINATING controls for the typed witness-binary readiness carrier (gunbc.instruments.host_prelude). Each probe builds a real fixture on disk and asserts the arm it must produce, so the carrier cannot regress to answering one verdict for every input — the failure mode that made the previous Bool shape useless for diagnosis. Every assertion checks the LOCATION too (the refusal must carry the path it probed), because a typed refusal that does not say where is only marginally better than a false.
 
 The four arms are exercised against genuinely distinct on-disk states: no file at all; a written file never marked executable; a zero-byte file marked executable — the shape the sccache exit-0-no-binary flake actually leaves behind, which is why it is a separate arm from absent; and a non-empty executable, the only Ready state. The BuildFailed arm is deliberately NOT probed here: producing it requires a failing cargo build, which this harness cannot stage without minutes of wall time, and it is the one arm whose trigger is unambiguous in the code path. Recorded rather than silently omitted.
 

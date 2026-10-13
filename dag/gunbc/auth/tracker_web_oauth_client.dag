@@ -30,9 +30,9 @@ import extdeps.google.workspace { AuthPlatformClient, RegisteredWebClient }
 import gunbc.auth.oidc_deployment_config {
   oidc_config_schema, oidc_config_env_var, oidc_session_lifetime, oidc_login_transaction_lifetime,
 }
-import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id }
-import gunbc.fleet_tailnet { fleet_tailnet_domain }
-import gunbc.fleet_intent { srv1_host, srv2_host }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
+import gunbc.fleet.fleet_intent { srv1_host, srv2_host }
 import extdeps.languages.json.emit {
   json_object, json_kv, json_string, json_int, json_array, serialize_json,
 }

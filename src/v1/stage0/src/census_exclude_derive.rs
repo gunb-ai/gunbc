@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn refuse_silent_live_importer_loss_refuses_unreceipted_drop() {
         let mut before = BTreeSet::new();
-        before.insert("src/v2/compiler/04_infer.dag".to_string());
+        before.insert("src/v2/compiler/infer.dag".to_string());
         let after = BTreeSet::new();
         let receipt = DerivedExcludeClosure {
             memo_content_hash: String::new(),
@@ -322,7 +322,7 @@ mod tests {
             live_importers_excluded: vec![],
             convergence_rounds: 1,
         };
-        let live = vec!["src/v2/compiler/04_infer.dag".to_string()];
+        let live = vec!["src/v2/compiler/infer.dag".to_string()];
         assert!(
             refuse_silent_live_importer_loss(&before, &after, &receipt, &live).is_err(),
             "live pipeline module lost without receipt must refuse"
@@ -332,17 +332,17 @@ mod tests {
     #[test]
     fn refuse_silent_live_importer_loss_holds_when_receipted() {
         let mut before = BTreeSet::new();
-        before.insert("src/v2/compiler/04_infer.dag".to_string());
+        before.insert("src/v2/compiler/infer.dag".to_string());
         let after = BTreeSet::new();
         let mut module_paths = BTreeSet::new();
-        module_paths.insert("src/v2/compiler/04_infer.dag".to_string());
+        module_paths.insert("src/v2/compiler/infer.dag".to_string());
         let receipt = DerivedExcludeClosure {
             memo_content_hash: String::new(),
             module_paths,
             live_importers_excluded: vec![],
             convergence_rounds: 1,
         };
-        let live = vec!["src/v2/compiler/04_infer.dag".to_string()];
+        let live = vec!["src/v2/compiler/infer.dag".to_string()];
         assert!(
             refuse_silent_live_importer_loss(&before, &after, &receipt, &live).is_ok(),
             "receipted exclusion must not trip silent-loss guard"

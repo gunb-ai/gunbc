@@ -1,4 +1,4 @@
-module gunbc.fleet_health_observe
+module gunbc.fleet.fleet_health_observe
 
 import extdeps.bmc.http
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
@@ -109,7 +109,7 @@ import gunbc.auth.netrc_binding {
 // fetched another way. Read only: every request it can make is an arm of FleetHealthRedfishRead,
 // whose only realization is health_redfish_read below, and every arm is a `readonly` GET on
 // redfish.Http -- no variant can name a POST, PATCH, reset, log clear or fan-control write. It
-// authenticates as the gunbc_health ReadOnly account (gunbc.bmc_health_reader) through a private,
+// authenticates as the gunbc_health ReadOnly account (gunbc.bmc.bmc_health_reader) through a private,
 // per-run netrc it shreds on every path out. Goal blind: it takes no expectation; it reads the whole
 // telemetry surface and the whole event log, and the assessment decides what was expected.
 //

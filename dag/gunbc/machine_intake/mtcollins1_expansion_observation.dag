@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_expansion_observation
+module gunbc.machine_intake.mtcollins1_expansion_observation
 
 import std.types { Bool, NonEmptyStr }
 import std.nat { Nat, nat_compare }
@@ -6,14 +6,14 @@ import std.algebra { Ordering, Less, Equal, Greater }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import std.measure { RackUnit, rack_unit }
 import extdeps.publication { SpecificationDocumentDate }
-import gunbc.machine_intake_mtcollins1_dimm_connector_observation { observed_unit }
+import gunbc.machine_intake.mtcollins1_dimm_connector_observation { observed_unit }
 import extdeps.ampere.mt_collins_1u_product_brief.specifications {
   MtCollins1UExpansion, mt_collins_1u_expansion,
   OcpSlotStanding, OcpMezzanineSlotPresent, NoOcpSlot, mt_collins_1u_ocp_slot,
 }
 
 // A report relayed by eager-owl-205, not an inspection performed by this session, on the shape of
-// gunbc.machine_intake_mtcollins1_dimm_connector_observation. The unit is named through its
+// gunbc.machine_intake.mtcollins1_dimm_connector_observation. The unit is named through its
 // existing intake receipt rather than a newly invented fleet identity.
 //
 // WHY THIS MODULE IS PUBLIC, stated because the nearer authority points the other way.
@@ -25,7 +25,7 @@ import extdeps.ampere.mt_collins_1u_product_brief.specifications {
 // The 2026-09-14 report is an INTERIOR one and the arms below moved accordingly; the module stayed
 // public because the precedent above is about the kind of fact, not about which panel it was seen
 // through.
-// THE UNIT IS NOT RE-DECLARED. gunbc.machine_intake_mtcollins1_dimm_connector_observation already
+// THE UNIT IS NOT RE-DECLARED. gunbc.machine_intake.mtcollins1_dimm_connector_observation already
 // names this machine through its intake receipt; a second DeclarationRef literal pointing at the
 // same access observation would be one fact with two authors (DESIGN section 3). Imported instead,
 // so a change of unit identity moves in one place.

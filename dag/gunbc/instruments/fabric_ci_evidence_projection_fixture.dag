@@ -1,4 +1,4 @@
-module tools.fabric_ci_evidence_projection_fixture
+module gunbc.instruments.fabric_ci_evidence_projection_fixture
 
 import std.types { NonEmptyStr, String }
 
