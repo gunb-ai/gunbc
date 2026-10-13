@@ -36,28 +36,6 @@ fn host_spool_stage_wire(stage: HostSpoolStage) -> String {
   }
 }
 
-fn host_spool_stage_eq(a: HostSpoolStage, b: HostSpoolStage) -> Bool {
-  match a {
-    AttemptExitInbox => match b { AttemptExitInbox => true  _ => false }
-    AttemptExitQueued => match b { AttemptExitQueued => true  _ => false }
-    AttemptExitRunning => match b { AttemptExitRunning => true  _ => false }
-    AttemptExitDone => match b { AttemptExitDone => true  _ => false }
-    AttemptExitRefused => match b { AttemptExitRefused => true  _ => false }
-  }
-}
-
-fn host_spool_stage_is_inbox(stage: HostSpoolStage) -> Bool {
-  match stage { AttemptExitInbox => true  _ => false }
-}
-
-fn host_spool_stage_is_queued(stage: HostSpoolStage) -> Bool {
-  match stage { AttemptExitQueued => true  _ => false }
-}
-
-fn host_spool_stage_is_running(stage: HostSpoolStage) -> Bool {
-  match stage { AttemptExitRunning => true  _ => false }
-}
-
 type HostSpoolCreateObservation
   = HostSpoolNameAbsent
   | HostSpoolNamePresent
@@ -99,7 +77,7 @@ type HostSpoolHealth
   | HostSpoolHealthUnobserved { detail: String }
 
 fn host_spool_bound_for(bounds: List<HostSpoolHealthBound>, stage: HostSpoolStage) -> Second? {
-  match filter(bounds, b => host_spool_stage_eq(a: b.stage, b: stage)) |> first {
+  match filter(bounds, b => b.stage == stage) |> first {
     Present { value: b } => Present { value: b.bound }
     Absent => none
   }
@@ -140,9 +118,9 @@ fn host_spool_health_judge(entries: List<HostSpoolHealthEntry>, bounds: List<Hos
         }
       }
     HostSpoolNoStaleYet => HostSpoolHealthClear {
-      depth_inbox: count(filter(entries, e => host_spool_stage_is_inbox(stage: e.stage))),
-      depth_queued: count(filter(entries, e => host_spool_stage_is_queued(stage: e.stage))),
-      depth_running: count(filter(entries, e => host_spool_stage_is_running(stage: e.stage))),
+      depth_inbox: count(filter(entries, e => e.stage == AttemptExitInbox)),
+      depth_queued: count(filter(entries, e => e.stage == AttemptExitQueued)),
+      depth_running: count(filter(entries, e => e.stage == AttemptExitRunning)),
     }
   }
 }
