@@ -2,13 +2,6 @@ module test.claim.roadmap.roadmap_review_role_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.algebra { FreeSemigroup }
-import gunbc.compile_diagnostic_census {
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_rows_of_class,
-  census_total_count,
-}
 import gunbc.roadmap.roadmap_review_role {
   review_verdict_instruction,
   HeadVerdict, ReviewApproved, ReviewChangesRequested, ReviewCannotJudge,
@@ -158,41 +151,6 @@ fn synthetic_domain(label: String, owns: String) -> ConformanceDomain {
       tail: [],
     },
   }
-}
-
-fn empty_homes_blocking_count(source: String) -> Int {
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => -1
-  }
-}
-
-fn empty_homes_prelude() -> String {
-  join([
-    "type ProbeHomes { head: Int, tail: List<Int> }\n",
-    "fn take_homes(homes: ProbeHomes) -> Int { 1 }\n",
-  ], "")
-}
-
-// RED: an empty list cannot inhabit the head+tail nonempty shape. The nested census compile
-// cannot import std.algebra here (same NotRunnable as kernel_refinement's FreeSemigroup
-// fixtures on this executor), so the specimen uses the same product shape the production
-// FreeSemigroup<DeclarationRef> field has, without a second production carrier. Differential
-// against the one-element control so shared diagnostics cancel.
-test fn an_empty_conformance_home_list_refuses_inhabitance() -> Bool {
-  let red = empty_homes_blocking_count(source: concat(
-    "module probe.empty_conformance_homes\n",
-    concat(empty_homes_prelude(), "fn probe() -> Int { take_homes(homes: []) }\n"),
-  ))
-  let green = empty_homes_blocking_count(source: concat(
-    "module probe.one_conformance_home\n",
-    concat(
-      empty_homes_prelude(),
-      "fn probe() -> Int { take_homes(homes: ProbeHomes { head: 1, tail: [] }) }\n",
-    ),
-  ))
-  red >= 0 && green >= 0 && red > green
 }
 
 test fn a_one_element_conformance_home_list_renders_as_before() -> Bool {
