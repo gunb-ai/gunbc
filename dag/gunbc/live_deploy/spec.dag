@@ -121,6 +121,24 @@ type OwnedArtifactKind =
   | TailnetDoorServeUnit
   | OidcConfigArtifact
 
+// Kinds whose upsert still lives on emit_artifact_upsert. Compose-owned kinds
+// (SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit/Mapping,
+// TailnetDoorServeUnit, OidcConfigArtifact) are not inhabitants — they cannot
+// be written at that function's kind argument.
+type LegacyUpsertKind =
+    LegacyServeBinary
+  | LegacyGunbcSourceTree
+  | LegacyBeltEventPathUnit
+  | LegacyTailscaleServeMapping
+  | LegacyDeployedTreeRemoteUnit
+  | LegacyPublicationHelperPathUnit
+  | LegacyApprovalBrokerFrontDoor
+
+type LegacyUpsertArtifact {
+  kind: LegacyUpsertKind
+  path: NonEmptyStr
+}
+
 // AN ENSURED HOST RESOURCE: converged on every apply, never torn down, TeardownRefuses{
 // TeardownOutsideOwnership}. Only packages remain; the directory arms became owned-directory targets.
 type EnsuredDependencyKind =

@@ -170,6 +170,9 @@ import gunbc.live_deploy.spec {
   deployment_directory_demands,
   DeploymentArtifactStep,
   OwnedArtifactKind,
+  LegacyUpsertKind,
+  LegacyUpsertArtifact,
+  LegacyServeBinary, LegacyGunbcSourceTree, LegacyBeltEventPathUnit, LegacyTailscaleServeMapping, LegacyDeployedTreeRemoteUnit, LegacyPublicationHelperPathUnit, LegacyApprovalBrokerFrontDoor,
   ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
@@ -242,7 +245,7 @@ import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_c
 import gunbc.live_deploy.operations {
   deploy_stage_dir_var,
   deploy_cap_stage_dir_var,
-  deploy_apply_stage_dirs_exit_trap_command,
+  deploy_stage_dirs_exit_trap_command,
   deploy_stage_write_command,
   deploy_stage_write_expansion_command,
   deploy_stage_install_command,
@@ -2088,7 +2091,7 @@ fn compose_host_script(fragments: List<HostScriptFragment>) -> Pipeline {
 }
 
 fn composed_artifact_upsert(
-  art: DeploymentArtifactStep,
+  art: LegacyUpsertArtifact,
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
   oidc_now: Second?,
@@ -3302,11 +3305,9 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
 // line above and the planned identity name one file.
 data release_executable_install_source: String = "target/release/gunbc"
 
-data compose_owns_artifact_kind_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ emit_artifact_upsert reached a kind compose_host_script owns: "
-
-fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
+fn emit_artifact_upsert(art: LegacyUpsertArtifact, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   match art.kind {
-    GunbcSourceTree => [
+    LegacyGunbcSourceTree => [
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
       deploy_raw(command: deploy_stage_write_expansion_command(
@@ -3330,7 +3331,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       )),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
     ]
-    ServeBinary => concat([
+    LegacyServeBinary => concat([
       deploy_raw(command: install_directory_command(
         mode: install_d_shared_mode,
         path: path_parent_dir(path: art.path as String),
@@ -3358,10 +3359,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
     ]))
-    SystemdUnit => [
-      deploy_raw(command: concat(compose_owns_artifact_kind_poison, "SystemdUnit")),
-    ]
-    PublicationHelperPathUnit => concat(
+    LegacyPublicationHelperPathUnit => concat(
       concat(
         apply_publication_spool_steps(spec: spec),
         [
@@ -3390,7 +3388,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         ]
       )
     )
-    BeltEventPathUnit => concat(
+    LegacyBeltEventPathUnit => concat(
       [
         deploy_raw(command: install_d_owned_command(
           spec: spec,
@@ -3428,27 +3426,12 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         path: deployment_retired_belt_timer_unit_path(names: spec.names),
       )
     )
-    FleetConvergeTimerUnit => [
-      deploy_raw(command: concat(compose_owns_artifact_kind_poison, "FleetConvergeTimerUnit")),
-    ]
-    TailscaleServeMapping => tailscale_serve_mapping_apply_steps(spec: spec)
-    FabricStorageServeUnit => [
-      deploy_raw(command: concat(compose_owns_artifact_kind_poison, "FabricStorageServeUnit")),
-    ]
-    FabricStorageServeMapping => [
-      deploy_raw(command: concat(compose_owns_artifact_kind_poison, "FabricStorageServeMapping")),
-    ]
-    TailnetDoorServeUnit => [
-      deploy_raw(command: concat(compose_owns_artifact_kind_poison, "TailnetDoorServeUnit")),
-    ]
-    ApprovalBrokerFrontDoor => map(
+    LegacyTailscaleServeMapping => tailscale_serve_mapping_apply_steps(spec: spec)
+    LegacyApprovalBrokerFrontDoor => map(
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e)))),
     )
-    OidcConfigArtifact => [
-      deploy_raw(command: concat(compose_owns_artifact_kind_poison, "OidcConfigArtifact")),
-    ]
-    DeployedTreeRemoteUnit => [
+    LegacyDeployedTreeRemoteUnit => [
       apply_tree_remote_unit_write_step(spec: spec),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: deployment_tree_remote_unit_name(names: spec.names) as String,
@@ -3758,12 +3741,50 @@ fn deploy_apply_frame_mutate_steps() -> List<PipelineStep> {
   [
     deploy_stage_directory_let_step(),
     deploy_cap_stage_directory_let_step(),
-    deploy_raw(command: deploy_apply_stage_dirs_exit_trap_command()),
+    deploy_raw(command: deploy_stage_dirs_exit_trap_command(dir_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var])),
   ]
 }
 
 fn deploy_apply_frame_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   concat(deploy_apply_frame_decide_steps(spec: spec), deploy_apply_frame_mutate_steps())
+}
+
+fn deploy_stage_cleanup_frame_pipeline(bind_vars: List<String>, trap_vars: List<String>) -> Pipeline {
+  Pipeline {
+    steps: concat(
+      [deploy_raw(command: deploy_shell_strict_options_command)],
+      concat(
+        fold(bind_vars, init: [], f: (acc, v) => concat(acc, [deploy_mktemp_dir_let_step(name: v)])),
+        [deploy_raw(command: deploy_stage_dirs_exit_trap_command(dir_vars: trap_vars))],
+      ),
+    ),
+    on_failure: FailFast,
+  }
+}
+
+fn deploy_stage_cleanup_frame_script(bind_vars: List<String>, trap_vars: List<String>) -> String {
+  emit_pipeline_or_poison(
+    p: deploy_stage_cleanup_frame_pipeline(bind_vars: bind_vars, trap_vars: trap_vars),
+    refused: "__GUNBC_STAGE_CLEANUP_FRAME_REFUSED__",
+  )
+}
+
+fn deploy_retract_stage_cleanup_frame_script() -> String {
+  deploy_stage_cleanup_frame_script(bind_vars: [deploy_stage_dir_var], trap_vars: [deploy_stage_dir_var])
+}
+
+fn deploy_apply_stage_cleanup_frame_script() -> String {
+  deploy_stage_cleanup_frame_script(
+    bind_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var],
+    trap_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var],
+  )
+}
+
+fn deploy_two_dir_trap_one_var_mutant_script() -> String {
+  deploy_stage_cleanup_frame_script(
+    bind_vars: [deploy_stage_dir_var],
+    trap_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var],
+  )
 }
 
 fn apply_oidc_fragments(spec: DeploymentSpec, oidc_now: Second?) -> List<HostScriptFragment> {
@@ -4237,17 +4258,68 @@ fn retract_or_apply_effect_fragments(
           LiveDeployOidcEnvAdmitted { directives: _ } =>
             host_script_member_proceed(
               member: "serve-unit" as NonEmptyStr,
-              mutate_steps: emit_artifact_upsert(art: art, spec: spec, revision: revision, oidc_now: oidc_now, principal: principal),
+              mutate_steps: [],
             )
         }
         FabricStorageServeUnit => fabric_storage_fragments(spec: spec, revision: revision)
         FabricStorageServeMapping => fabric_storage_fragments(spec: spec, revision: revision)
         TailnetDoorServeUnit => tailnet_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
         FleetConvergeTimerUnit => fleet_converge_timer_fragments(spec: spec)
-        _ =>
+        ServeBinary =>
           host_script_member_proceed(
             member: "spec-step" as NonEmptyStr,
-            mutate_steps: emit_artifact_upsert(art: art, spec: spec, revision: revision, oidc_now: oidc_now, principal: principal),
+            mutate_steps: emit_artifact_upsert(
+              art: LegacyUpsertArtifact { kind: LegacyServeBinary, path: art.path },
+              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
+            ),
+          )
+        GunbcSourceTree =>
+          host_script_member_proceed(
+            member: "spec-step" as NonEmptyStr,
+            mutate_steps: emit_artifact_upsert(
+              art: LegacyUpsertArtifact { kind: LegacyGunbcSourceTree, path: art.path },
+              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
+            ),
+          )
+        BeltEventPathUnit =>
+          host_script_member_proceed(
+            member: "spec-step" as NonEmptyStr,
+            mutate_steps: emit_artifact_upsert(
+              art: LegacyUpsertArtifact { kind: LegacyBeltEventPathUnit, path: art.path },
+              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
+            ),
+          )
+        TailscaleServeMapping =>
+          host_script_member_proceed(
+            member: "spec-step" as NonEmptyStr,
+            mutate_steps: emit_artifact_upsert(
+              art: LegacyUpsertArtifact { kind: LegacyTailscaleServeMapping, path: art.path },
+              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
+            ),
+          )
+        DeployedTreeRemoteUnit =>
+          host_script_member_proceed(
+            member: "spec-step" as NonEmptyStr,
+            mutate_steps: emit_artifact_upsert(
+              art: LegacyUpsertArtifact { kind: LegacyDeployedTreeRemoteUnit, path: art.path },
+              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
+            ),
+          )
+        PublicationHelperPathUnit =>
+          host_script_member_proceed(
+            member: "spec-step" as NonEmptyStr,
+            mutate_steps: emit_artifact_upsert(
+              art: LegacyUpsertArtifact { kind: LegacyPublicationHelperPathUnit, path: art.path },
+              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
+            ),
+          )
+        ApprovalBrokerFrontDoor =>
+          host_script_member_proceed(
+            member: "spec-step" as NonEmptyStr,
+            mutate_steps: emit_artifact_upsert(
+              art: LegacyUpsertArtifact { kind: LegacyApprovalBrokerFrontDoor, path: art.path },
+              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
+            ),
           )
       }
     }
@@ -4288,7 +4360,7 @@ fn retract_intent_fragments(
         member: "frame" as NonEmptyStr,
         steps: [
           deploy_stage_directory_let_step(),
-          deploy_raw(command: deploy_apply_stage_dirs_exit_trap_command()),
+          deploy_raw(command: deploy_stage_dirs_exit_trap_command(dir_vars: [deploy_stage_dir_var])),
         ],
       },
       Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },

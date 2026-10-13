@@ -49,6 +49,8 @@ import gunbc.live_deploy.spec {
   gunbc_roadmap_unit_name,
   ServeBinary,
   OwnedArtifactKind,
+  LegacyUpsertArtifact,
+  LegacyTailscaleServeMapping,
   GunbcSourceTree,
   SystemdUnit,
   FleetConvergeTimerUnit,
@@ -108,7 +110,7 @@ import gunbc.live_deploy.operations {
   install_file_owned_command,
   deploy_stage_dir_var,
   deploy_cap_stage_dir_var,
-  deploy_apply_stage_dirs_exit_trap_command,
+  deploy_stage_dirs_exit_trap_command,
 }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command,
@@ -126,8 +128,10 @@ import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison, deployment_directory_demands }
 import gunbc.live_deploy.emit {
-  emit_artifact_upsert,
   composed_artifact_upsert,
+  deploy_retract_stage_cleanup_frame_script,
+  deploy_apply_stage_cleanup_frame_script,
+  deploy_two_dir_trap_one_var_mutant_script,
   retract_intent_fragments_for,
   approval_broker_tree_copy_steps,
   owned_directory_install_steps,
@@ -1101,8 +1105,8 @@ test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
   let spec = deployment_spec_srv1()
   let own = pipeline_steps_text(steps: composed_artifact_upsert(
     principal: fleet_posix_ci_runner_principal(),
-    art: DeploymentArtifactStep {
-      kind: TailscaleServeMapping,
+    art: LegacyUpsertArtifact {
+      kind: LegacyTailscaleServeMapping,
       path: tailscale_serve_route_member_path(endpoint: spec.names.tailscale_serve_endpoint),
     },
     spec: spec,
@@ -1761,14 +1765,20 @@ test fn apply_frame_merges_stderr_onto_stdout() -> Bool {
 }
 
 test fn apply_stage_dirs_exit_trap_is_the_grammar_serialized_line() -> Bool {
-  let got = deploy_apply_stage_dirs_exit_trap_command()
+  let got = deploy_stage_dirs_exit_trap_command(dir_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var])
+  let retract = deploy_stage_dirs_exit_trap_command(dir_vars: [deploy_stage_dir_var])
   let hand = "trap 'rm -rf \"$_gunbc_stage\" \"$_gunbc_cap_stage\"' EXIT"
   got != hand
+    && retract != got
     && starts_with(s: got, prefix: "'trap'")
     && ends_with(s: got, suffix: "'EXIT'")
     && string_contains(
       s: pipeline_steps_text(steps: deploy_apply_frame_mutate_steps()),
       pattern: got,
+    )
+    && !string_contains(
+      s: pipeline_steps_text(steps: deploy_apply_frame_mutate_steps()),
+      pattern: retract,
     )
 }
 
@@ -1858,7 +1868,7 @@ fn fragment_is_refused_member(f: HostScriptFragment, name: String) -> Bool {
 
 // RED at 414c595: SystemdUnit upsert still daemon-reloaded / enabled / restarted after an OIDC
 // refuse. GREEN: composed apply and retract carry that refuse as Decide; no Mutate of a refused
-// member; the upsert arm is unreachable poison, not a restart.
+// member. emit_artifact_upsert no longer inhabits SystemdUnit.
 test fn a_refused_serve_unit_is_not_reloaded_enabled_or_restarted() -> Bool {
   let a = ci_deploy_srv1_access
   let spec = srv1_twin_spec()
@@ -1874,13 +1884,6 @@ test fn a_refused_serve_unit_is_not_reloaded_enabled_or_restarted() -> Bool {
   let apply_mutate = pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: apply_frags))
   let retract_frags = retract_intent_fragments_for(spec: spec, access: a)
   let retract_pipe = compose_host_script(fragments: retract_frags)
-  let upsert = pipeline_steps_text(steps: emit_artifact_upsert(
-    principal: fleet_posix_ci_runner_principal(),
-    art: DeploymentArtifactStep { kind: SystemdUnit, path: spec.service.unit_name },
-    spec: spec,
-    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    oidc_now: Absent,
-  ))
   any(apply_frags, f => fragment_is_refused_member(f: f, name: "serve-unit"))
     && any(apply_frags, f => fragment_is_refused_member(f: f, name: "oidc"))
     && count(compose_host_script_mutate_steps(fragments: apply_frags)) == 0
@@ -1891,8 +1894,6 @@ test fn a_refused_serve_unit_is_not_reloaded_enabled_or_restarted() -> Bool {
         count(s) > 0 && any(retract_frags, d => fragment_is_refused_member(f: d, name: m as String))
       Decide { member: _, standing: _, steps: _ } => false
     })
-    && string_contains(s: upsert, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
-    && !string_contains(s: upsert, pattern: "daemon-reload")
     && !string_contains(s: pipeline_steps_text(steps: retract_pipe.steps), pattern: join(["restart ", unit], ""))
 }
 
