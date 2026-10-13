@@ -9,7 +9,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, Rejected, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { list_snoc_item }
 import std.types { Bool, List, String }
 
