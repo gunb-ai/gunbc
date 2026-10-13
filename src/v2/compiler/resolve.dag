@@ -3613,14 +3613,13 @@ fn resolve_construct_tag_reference(ctx: ResolveContext, reference: Node, path: Q
 }
 
 // THE WRONG LINK WAS COMMITTING TO PROJECTION FROM THE FIRST SEGMENT ALONE.
-// qualified_head_scope_binding only looks up that segment (lookup_chain). For an unshadowed
-// module-qualified tag (`v2.test.kab.m.R`) the first segment can be BoundAtRoot as a namespace
-// prefix; sending that binding down resolve_bound_head_projection refuses a legitimate
-// constructor (the positive control). BoundInFrame still always projects: a frame binder `m`
-// must not lose to absolute_candidates of a global record `m.R`. BoundAtRoot projects only
-// when the declaration the binding names is a value AND the whole path names no declared
-// payload (`data m` then `m.R { }`). A nonempty payload candidate field is the declaration
-// reading, even if the first segment happens to be bound at root.
+// qualified_head_scope_binding only looks up that segment (lookup_chain). An unshadowed
+// module-qualified tag (`v2.test.kab.m.R`, more than two segments) must take the
+// declared-payload door even if that first segment is BoundInFrame or BoundAtRoot — otherwise
+// the path is read as a projection off `v2` and the constructor is refused. A two-segment
+// BoundInFrame path (`m.R` with a frame binder `m`) still always projects, so absolute
+// candidates cannot select a global record over the binder. BoundAtRoot on a two-segment
+// path projects only when the binding names a value and the path names no declared payload.
 fn resolve_construct_tag_dotted_reading(
   ctx: ResolveContext,
   reference: Node,
@@ -3630,7 +3629,11 @@ fn resolve_construct_tag_dotted_reading(
 ) -> Outcome<Node> {
   match head_binding {
     BoundInFrame { canonical: _, kind: _ } =>
-      resolve_construct_tag_projection(ctx: ctx, reference: reference, pending: pending)
+      if length(xs: path) > 2 {
+        resolve_construct_tag_declared_payload_path(ctx: ctx, reference: reference, path: path, pending: pending)
+      } else {
+        resolve_construct_tag_projection(ctx: ctx, reference: reference, pending: pending)
+      }
     BoundAtRoot { canonical: canonical } =>
       match construct_tag_absolute_payload_candidates(ctx: ctx, path: path) {
         Cons { head: _, tail: _ } =>
