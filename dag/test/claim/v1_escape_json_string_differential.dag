@@ -1,6 +1,8 @@
 module test.claim.v1_escape_json_string_differential
 
 import v1.compiler.emit_core_support { escape_json_string }
+import std.unicode.scalar { from_code_point }
+import std.error_primitives { Ok, Err }
 import test.claim.v1_escape_json_string_authority_view { authority_escape_json_string }
 
 // The seed's copy of escape_json_string (v1.compiler.emit_core_support) must equal the JSON
