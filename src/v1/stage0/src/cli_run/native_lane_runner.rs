@@ -3191,7 +3191,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             std::fs::copy(f, std_dir.join(f.file_name().unwrap()))
                 .map_err(|e| format!("profile copy: {e}"))?;
         }
-        if std::env::var_os("PROFILE_PERF").is_some() && false {
+        if std::env::var_os("PROFILE_PERF").is_some() {
             let data = scratch.join("perf.data");
             let st = Command::new("perf")
                 .args(["record", "-F", "149", "--call-graph", "dwarf,24576", "-o"])
@@ -3220,23 +3220,23 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             }
             return Err("PROFILE done".to_string());
         }
-        let t = std::time::Instant::now();
-        let r = run_cli_door(
-            binary,
-            &population_argv("parse-population", &[slice.as_path()]),
-        )?;
-        eprintln!(
-            "PROFILE parse-population slice={n} modules wall_ms={} status={:?} stdout_lines={}",
-            t.elapsed().as_millis(),
-            r.status,
-            r.stdout.lines().count()
-        );
-        eprintln!("PROFILE stdout-digest {:x}", {
-            use std::hash::{Hash, Hasher};
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            r.stdout.hash(&mut h);
-            h.finish()
-        });
+        for rep in 0..3 {
+            let t = std::time::Instant::now();
+            let r = run_cli_door(
+                binary,
+                &population_argv("parse-population", &[slice.as_path()]),
+            )?;
+            eprintln!(
+                "PROFILE rep={rep} slice={n} wall_ms={} status={:?}",
+                t.elapsed().as_millis(),
+                r.status
+            );
+            if rep == 0 {
+                for l in r.stdout.lines() {
+                    eprintln!("PROFILE-STDOUT {l}");
+                }
+            }
+        }
     }
     return Err("PROFILE done".to_string());
     let t_layout = std::time::Instant::now();
