@@ -1743,7 +1743,10 @@ service github.AppInstallationAccessTokens {
 // for an app, app_permissions_citation / docs.github.com/en/rest/apps/apps): each documented App
 // permission this module has an axis for is OPTIONAL. An omitted key is not requested; GitHub
 // then grants the installation's default for that axis, which is why a contents-only mint must
-// not send `pull_requests` at all. Wire names are permission_axis_wire_name, not a second spelling.
+// not send `pull_requests` at all. The REST encoder keys this record by each field's authored
+// name (`contents`, `pull_requests`, …), which matches GitHub's documented permission keys.
+// `permission_axis_wire_name` is the same spelling on GitHubAppPermission rows; it is not this
+// record's wire key.
 type GitHubInstallationTokenPermissions {
   actions: String?
   administration: String?

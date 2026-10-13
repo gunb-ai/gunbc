@@ -36,20 +36,37 @@ fn source_head(repo: FilePath) -> String {
   trim(s: git.Core.RevParseInRepo(repo: repo, target: "HEAD" as GitRef).revision)
 }
 
-fn with_seeded_source(scenario: fn(FilePath) -> Bool) -> Bool {
+fn scratch_child(root: FilePath, name: String) -> FilePath {
+  concat(concat(root as String, "/"), name) as FilePath
+}
+
+fn mkdir_for_git_c(path: FilePath) -> Bool {
+  shell.Mkdir.Parents(path: path).success
+}
+
+fn with_scratch(scenario: fn(FilePath) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
-  let seeded = seed_source_repository(repo: dir.path)
   let observed = scenario(dir.path)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && seeded && observed && cleaned.success
+  dir.success && observed && cleaned.success
+}
+
+fn with_seeded_linked_and_mirror(scenario: fn(FilePath, FilePath, FilePath, String) -> Bool) -> Bool {
+  with_scratch(scenario: fn(scratch) {
+    let source = scratch_child(root: scratch, name: "source")
+    let linked = scratch_child(root: scratch, name: "linked")
+    let mirror = scratch_child(root: scratch, name: "mirror.git")
+    let prepared = mkdir_for_git_c(path: source)
+      && seed_source_repository(repo: source)
+      && mkdir_for_git_c(path: mirror)
+    let sha = source_head(repo: source)
+    let added = git.Core.WorktreeAddInRepo(repo: source, path: linked, start_point: "HEAD").exit_code
+    prepared && added == 0 && scenario(scratch, linked, mirror, sha)
+  })
 }
 
 test fn stage_linked_worktree_into_persistent_mirror_by_real_execution() -> Bool {
-  with_seeded_source(scenario: fn(source) {
-    let sha = source_head(repo: source)
-    let linked = concat(source as String, "-linked") as FilePath
-    let added = git.Core.WorktreeAddInRepo(repo: source, path: linked, start_point: "HEAD").exit_code
-    let mirror = concat(source as String, "-mirror.git") as FilePath
+  with_seeded_linked_and_mirror(scenario: fn(_scratch, linked, mirror, sha) {
     let first = stage_captured_candidate_sha(
       source_worktree: linked,
       mirror: mirror,
@@ -60,24 +77,20 @@ test fn stage_linked_worktree_into_persistent_mirror_by_real_execution() -> Bool
       mirror: mirror,
       expected_head: sha as CommitSha,
     )
-    added == 0
-      && match first { CapturedShaStaged => true _ => false }
+    match first { CapturedShaStaged => true _ => false }
       && match second { CapturedShaStaged => true _ => false }
   })
 }
 
 test fn push_from_bare_mirror_to_a_file_remote_by_real_execution() -> Bool {
-  with_seeded_source(scenario: fn(source) {
-    let sha = source_head(repo: source)
-    let linked = concat(source as String, "-linked") as FilePath
-    let added = git.Core.WorktreeAddInRepo(repo: source, path: linked, start_point: "HEAD").exit_code
-    let mirror = concat(source as String, "-mirror.git") as FilePath
+  with_seeded_linked_and_mirror(scenario: fn(scratch, linked, mirror, sha) {
+    let remote = scratch_child(root: scratch, name: "remote.git")
+    let placed = mkdir_for_git_c(path: remote)
     let staged = stage_captured_candidate_sha(
       source_worktree: linked,
       mirror: mirror,
       expected_head: sha as CommitSha,
     )
-    let remote = concat(source as String, "-remote.git") as FilePath
     let inited = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: remote }, path: remote)
     let branch = "dispatch/n1-aabc" as NonEmptyStr
     let pushed = push_captured_sha_from_bare_mirror(
@@ -88,7 +101,7 @@ test fn push_from_bare_mirror_to_a_file_remote_by_real_execution() -> Bool {
       token: "dummy-token" as Secret,
     )
     let remote_head = trim(s: git.Core.RevParseInRepo(repo: remote, target: publication_mirror_ref(branch: branch) as GitRef).revision)
-    added == 0
+    placed
       && match staged { CapturedShaStaged => true _ => false }
       && inited.exit_code == 0
       && match pushed { CapturedShaPushed => true _ => false }
@@ -97,11 +110,7 @@ test fn push_from_bare_mirror_to_a_file_remote_by_real_execution() -> Bool {
 }
 
 test fn refused_push_to_a_missing_remote_shreds_by_real_execution() -> Bool {
-  with_seeded_source(scenario: fn(source) {
-    let sha = source_head(repo: source)
-    let linked = concat(source as String, "-linked") as FilePath
-    let added = git.Core.WorktreeAddInRepo(repo: source, path: linked, start_point: "HEAD").exit_code
-    let mirror = concat(source as String, "-mirror.git") as FilePath
+  with_seeded_linked_and_mirror(scenario: fn(scratch, linked, mirror, sha) {
     let staged = stage_captured_candidate_sha(
       source_worktree: linked,
       mirror: mirror,
@@ -109,13 +118,12 @@ test fn refused_push_to_a_missing_remote_shreds_by_real_execution() -> Bool {
     )
     let pushed = push_captured_sha_from_bare_mirror(
       mirror: mirror,
-      remote: concat(source as String, "-missing.git") as NonEmptyStr,
+      remote: scratch_child(root: scratch, name: "missing.git") as String as NonEmptyStr,
       branch: "dispatch/n1-aabc" as NonEmptyStr,
       expected_head: sha as CommitSha,
       token: "dummy-token" as Secret,
     )
-    added == 0
-      && match staged { CapturedShaStaged => true _ => false }
+    match staged { CapturedShaStaged => true _ => false }
       && match pushed {
         CapturedShaPushRefused { exit_code: _, stderr: _ } => true
         CapturedShaPushNetrcResidueRemains { captured_sha_on_remote: _, exit_code: _, stderr: _ } => false
