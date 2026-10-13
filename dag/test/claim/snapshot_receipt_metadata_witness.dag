@@ -8,15 +8,15 @@ import gunbc.worker_turn_snapshot_custody { cursor_worker_turn_snapshot_custody 
 import gunbc.dispatch_credential_snapshot {
   snapshot_receipt_metadata_decision,
   SnapshotReceiptObservedMetadata,
-  SnapshotReceiptStatRegular,
+  SnapshotReceiptObservedRegular,
+  SnapshotReceiptObservedNotRegular,
   SnapshotReceiptMetadataAsDeclared,
   SnapshotReceiptMetadataRefused,
   SnapshotReceiptNotRegularFile,
   SnapshotReceiptWrongOwner,
   SnapshotReceiptGroupOrOtherWritable,
   SnapshotReceiptDirectoryWrongOwner,
-  SnapshotReceiptDirectoryReaderWritable,
-  SnapshotReceiptStatNotRegular,
+  SnapshotReceiptDirectoryGroupOrOtherWritable,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -40,8 +40,7 @@ fn fx_mode(octal: String) -> FileMode {
 }
 
 fn fx_regular_obs(file_owner: String, file_octal: String, dir_owner: String, dir_octal: String) -> SnapshotReceiptObservedMetadata {
-  SnapshotReceiptObservedMetadata {
-    kind: SnapshotReceiptStatRegular,
+  SnapshotReceiptObservedRegular {
     file_owner: file_owner,
     file_mode: fx_mode(octal: file_octal),
     dir_owner: dir_owner,
@@ -66,13 +65,7 @@ test fn a_regular_receipt_as_declared_is_admitted() -> Bool {
 test fn a_symlink_observation_is_not_a_regular_file() -> Bool {
   let d = cursor_worker_turn_snapshot_custody
   match snapshot_receipt_metadata_decision(
-    observed: SnapshotReceiptObservedMetadata {
-      kind: SnapshotReceiptStatNotRegular,
-      file_owner: d.publisher as String,
-      file_mode: fx_mode(octal: "640"),
-      dir_owner: d.publisher as String,
-      dir_mode: fx_mode(octal: "750"),
-    },
+    observed: SnapshotReceiptObservedNotRegular,
     declared: d,
   ) {
     SnapshotReceiptMetadataRefused { reason } =>
@@ -123,7 +116,7 @@ test fn a_reader_owned_or_group_writable_directory_is_refused() -> Bool {
     declared: d,
   ) {
     SnapshotReceiptMetadataRefused { reason } =>
-      match reason { SnapshotReceiptDirectoryReaderWritable => true  _ => false }
+      match reason { SnapshotReceiptDirectoryGroupOrOtherWritable => true  _ => false }
     SnapshotReceiptMetadataAsDeclared => false
   }
   owned && writable
