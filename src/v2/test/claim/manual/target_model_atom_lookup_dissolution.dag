@@ -7,7 +7,7 @@ import v2.extdeps.languages.typescript {
   ts_target_atom_realization_bool,
   ts_target_atom_realization_catalog
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,

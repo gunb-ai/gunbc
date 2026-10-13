@@ -1,8 +1,7 @@
 module gunbc.refusal_reason_ownership_join
 
 import v2.std.node { Symbol }
-import v2.std.algebra { fold_list, length }
-import std.algebra { Empty, list_snoc_item }
+import std.algebra { Empty, list_snoc_item, fold_list, length }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }

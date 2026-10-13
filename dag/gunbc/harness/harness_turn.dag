@@ -416,7 +416,7 @@ fn harness_worktree_files_changed(environment: HarnessToolEnvironment) -> Int? {
   if !status.success {
     none
   } else {
-    Present { value: list_length(items: split(s: status.entries_nul, delimiter: from_code_point(0)) |> filter(e => e != "")) }
+    Present { value: list_length(items: split(s: status.entries_nul, delimiter: "\u{0}") |> filter(e => e != "")) }
   }
 }
 

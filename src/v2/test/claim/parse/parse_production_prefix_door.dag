@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import v2.compiler.parse { ParseArtifact, ParsePrefix, PreparedModeled, PreparedVoidGrammar, parse_production_prefix_prepared, parse_production_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
-import v2.std.algebra { for_all, length, list_reverse }
+import std.algebra { for_all, length, list_reverse }
 import v2.std.compilers.lexing { Token, token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

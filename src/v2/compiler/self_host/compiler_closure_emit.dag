@@ -11,7 +11,7 @@ import v2.compiler.source_authority { SourceRootIngest }
 import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
-import v2.std.algebra { contains, length }
+import std.algebra { contains, length }
 import v2.std.dependency {
   DependencyView,
   dependency_lens,

@@ -6,7 +6,7 @@ import v2.compiler.parse { PreparedGrammar, PreparedModeled, PreparedModeledGram
 import v2.compiler.tokenize { LexWalkUntil, PreparedLexRules, tokenize_prefix_prepared }
 import v2.extdeps.languages.dag { qualified_name_from_parsed_module_root }
 import v2.std.compilers.lexing { Token }
-import v2.std.algebra { is_empty }
+import std.algebra { is_empty }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.node { Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { qualified_name_to_dotted_string }

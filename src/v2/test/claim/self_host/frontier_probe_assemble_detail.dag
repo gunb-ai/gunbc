@@ -19,7 +19,7 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_probe_receipt_without_assemble_detail,
   RealizationGap
 }
-import v2.std.algebra { Cons, Empty, length }
+import std.algebra { Cons, Empty, length }
 import v2.std.node { Symbol }
 
 fn assemble_detail_test_diagnostic(reason: Symbol) -> Diagnostic {

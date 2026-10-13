@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.measure { BasisPoint, basis_point, basis_point_count, Second, second_count }
-import v2.std.algebra { length }
+import std.algebra { length }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_subject_key, ServingSubjectKey, serving_subject_key_equal,

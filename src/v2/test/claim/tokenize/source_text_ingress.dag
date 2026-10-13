@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // construction against the defect it was written to catch. The public-boundary rows red if the
 // conversion is removed or moved below the match, because both arms read the converted value.
 //
-// THE ASSERTIONS ARE STATED OVER v2.std.algebra OPERATIONS, NOT OVER v2.std.text ONES, AND THAT IS
+// THE ASSERTIONS ARE STATED OVER std.algebra OPERATIONS, NOT OVER v2.std.text ONES, AND THAT IS
 // NOT A STYLE CHOICE. v2.std.text's own operations declare their parameter as a bare String, which
 // resolves to the KERNEL String under uniform kernel precedence -- so string_head and
 // string_is_empty take HOST text and refuse a scalar sequence. The structural carrier's operations

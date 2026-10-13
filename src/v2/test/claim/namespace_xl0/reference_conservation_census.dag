@@ -15,8 +15,7 @@ import v2.compiler.reference_conservation_census {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
-import v2.std.algebra { fold_list, length }
-import std.algebra { Empty, FreeMonoid, list_snoc_item }
+import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list, length }
 import v2.std.integer { Int }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

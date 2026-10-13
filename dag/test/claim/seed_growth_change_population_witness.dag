@@ -10,7 +10,7 @@ import gunbc.instruments.seed_growth_change_population {
   RosterCoverageVerdict, RosterCoverageComplete, RosterCoverageRefused,
   roster_coverage_verdict, coverage_refusal_reason
 }
-import v2.std.algebra { length }
+import std.algebra { length }
 
 // THE ARM A GREEN RUN OVER THIS BRANCH CANNOT REACH.
 //
