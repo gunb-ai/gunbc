@@ -1,7 +1,6 @@
 module test.claim.fleet.app_control_plane_inspection_witness
 
-import std.types { Bool, Int, String, NonEmptyStr, List }
-import v2.std.cardinality { Never }
+import std.types { Bool, Int, String, NonEmptyStr, List, Never }
 import std.algebra { non_empty_to_list }
 import extdeps.uri { Uri, Http, Https, uri_wire, uri_from_wire, uri_scheme_is_http }
 import extdeps.github.app {

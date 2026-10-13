@@ -8,7 +8,7 @@ import v2.compiler.infer {
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_specimen_inferred
 }
-import std.kind { TypeDenotationKind, kind_node }
+import v2.std.kind { TypeDenotationKind, kind_node }
 import v2.extdeps.languages.dag {
   dag_binding_denotation,
   dag_int_type_binding
@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // resolved tree carries canonical binding atoms (`dag_binding_type_int`, the resolver's binding
 // of the surface spelling "Int"). The positive control pins both the derivation and its evidence:
 // every canonical Int binding atom carries DerivedGrounding whose structural evidence is its KIND
-// (std.kind TypeDenotationKind: the expression `Int` is a type), and the census count (4) pins that
+// (v2.std.kind TypeDenotationKind: the expression `Int` is a type), and the census count (4) pins that
 // the witness actually saw them. What the binding DENOTES is a separate fact, pinned by
 // dag_binding_denotation_rows_point_at_std_authorities_holds: each row is the std authority's node
 // (v2.std.integer, v2.std.logic), never a node the language row mints and never the roster's Int

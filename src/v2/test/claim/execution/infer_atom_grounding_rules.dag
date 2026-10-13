@@ -7,7 +7,7 @@ import v2.compiler.infer { DerivedGrounding, GroundingNotDerived, InferredTree }
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_specimen_inferred
 }
-import std.kind { TypeDenotationKind, TypeFactKind, kind_node }
+import v2.std.kind { TypeDenotationKind, TypeFactKind, kind_node }
 import v2.extdeps.languages.dag {
   dag_grammar_surface_production_type_node,
   dag_inhabitant_atom,
@@ -58,7 +58,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // boundary control pins that a bare atom with no authority membership and no domain declaration
 // stays on the frontier. The roster-root red pins that no specimen node's derived type is the
 // canonical-operations roster root (provenance is not a type, DESIGN section 3). The
-// declared-inhabitant controls pin that a record derives its KIND (std.kind TypeDenotationKind),
+// declared-inhabitant controls pin that a record derives its KIND (v2.std.kind TypeDenotationKind),
 // a fact hung off a record derives TypeFactKind -- each asserts the exact kind node, so a roster
 // root reaching derived_type reddens both. The predicate controls pin that a comparison's predicate
 // atom derives the predicate type its comparison declares -- OrderingPredicate for an ordering

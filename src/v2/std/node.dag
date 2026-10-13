@@ -946,7 +946,7 @@ fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
 // (type_binder_conj_conforms). A Conj can carry the core marker only as a binder set -- no authored
 // label spells a core marker -- so the Conj arm answers for exactly those. The one classification
 // every reader that walks values through either asks -- v2.compiler.infer (its gather fold and product
-// evidence) and std.kind's roster-kind index -- so no reader keeps its own list of metadata labels.
+// evidence) and v2.std.kind's roster-kind index -- so no reader keeps its own list of metadata labels.
 fn arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
     TypeNode { connective: Arrow } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)

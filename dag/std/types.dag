@@ -106,6 +106,12 @@ type Bool = True | False
 
 type Unit
 
+// THE UNINHABITED TYPE. An arm instantiated at Never has no constructor: the binding declares
+// that arm unreachable for that subject (std.goal_assessment AssessRefusal, an observe that cannot
+// fail). It lives beside Unit, not in v2.std.cardinality, so a dag-tree module may import it
+// (v2.std.cross_tree.import_model: dag may not import v2).
+type Never
+
 type Json
 type Bytes
 

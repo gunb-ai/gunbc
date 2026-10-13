@@ -1,5 +1,5 @@
 module v2.extdeps.languages.rust
-import std.types { List }
+import std.types { List, Never }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import extdeps.languages.rust.capabilities {
@@ -328,9 +328,6 @@ import std.algebra {
   fold_list_right
 }
 import v2.std.algebra_structure_signature { algebra_binary_fn_node, approximate_field_node, approximate_field_type_node, boolean_algebra_node, boolean_algebra_type_node, ordered_ring_node, ordered_ring_type_node }
-import v2.std.cardinality {
-  Never
-}
 import v2.std.host_transport {
   HostBuildEnvironment,
   host_process_location_names,
