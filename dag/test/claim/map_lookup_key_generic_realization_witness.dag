@@ -2,7 +2,7 @@ module test.claim.map_lookup_key_generic_realization_witness
 
 import std.types { Bool, String }
 import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

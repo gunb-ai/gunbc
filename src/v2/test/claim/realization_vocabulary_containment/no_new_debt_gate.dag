@@ -11,7 +11,7 @@ import v2.lens.realization_vocabulary_containment {
   RealizationVocabImportEdge
 }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

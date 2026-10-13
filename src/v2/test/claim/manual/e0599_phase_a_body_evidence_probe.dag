@@ -110,7 +110,7 @@ fn e0599pa_file_report(path: String) -> List<Int> {
 
 fn e0599pa_site_bearing_paths() -> List<String> {
   [
-    "src/v2/std/algebra.dag",
+    "dag/std/algebra.dag",
     "src/v2/std/diagnostic.dag",
     "src/v2/std/optional.dag",
     "src/v2/std/node.dag",

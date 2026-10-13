@@ -5,7 +5,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat }
-import std.checked_arithmetic { IntegerOverflow, IntegerAdd, BinaryOperands, int_inclusive_max }
+import std.decimal { ExactDecimal, checked_decimal_pow10 }
+import std.checked_arithmetic {
+  IntegerOverflow, IntegerAdd, IntegerMultiply, BinaryOperands, int_inclusive_max,
+  checked_int_multiply, checked_int_to_nat, CheckedIntReady, CheckedIntOverflow,
+}
 import std.algebra { FieldOfFractions }
 import std.types { Int, Bool, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
@@ -1057,6 +1061,19 @@ fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
   measure_count(m)
 }
 
+// Signed money-micros: NetValue subtracts HigherIsBetter terms, so contribution,
+// sum and score payloads go negative. Scale itself is MoneyAmountMicro (Nat).
+// CONSUMERS: std.decision valued-objective contribution/sum/score payloads.
+type SignedMoneyAmountMicro = Measure<Currency, Micro, Int>
+
+fn signed_money_amount_micro(count: Int) -> SignedMoneyAmountMicro {
+  Measure { count: count }
+}
+
+fn signed_money_amount_micro_count(m: SignedMoneyAmountMicro) -> Int {
+  measure_count(m)
+}
+
 // A whole-dollar monetary amount in USD, on the Currency axis at the One scale (cf. MoneyAmountMicro
 // at Micro). Defined here alongside MoneyAmountMicro because a second consumer (extdeps.sec.facts
 // and now extdeps.network.mikrotik_crs812) independently needed the same shape; defining it once
@@ -1089,6 +1106,23 @@ type Once
 type MoneyRate<P> {
   amount: MoneyAmountMicro
   currency: CurrencyCode
+}
+
+// Undenominated rate: period is the type argument, denomination is supplied by
+// the buyer when a MoneyRate is minted. CONSUMERS: product.fabric.demand
+// TermValuations.delay (BuyTerms.currency is stamped in demand_delay_valuation).
+type MoneyAmountRate<P> {
+  amount: MoneyAmountMicro
+}
+
+type MoneyAmountPerSecond = MoneyAmountRate<PerSecond>
+
+fn money_amount_per_second(count: Nat) -> MoneyAmountPerSecond {
+  MoneyAmountRate { amount: money_amount_micro(count: count) }
+}
+
+fn money_amount_per_second_count(q: MoneyAmountPerSecond) -> Nat {
+  money_amount_micro_count(m: q.amount)
 }
 
 type MoneyPerSecond = MoneyRate<PerSecond>
@@ -1126,6 +1160,78 @@ fn money_per_minute_micros(q: MoneyPerMinute) -> Nat {
 
 fn money_per_hour_micros(q: MoneyPerHour) -> Nat {
   money_rate_micros(q: q)
+}
+
+// DECLARED ExactDecimal → micro conversion. RFC 8259 numbers are exact decimals; MoneyAmountMicro
+// is Nat micros of a dollar. Implicit Int/Float coercion is refused (DESIGN §4). Bids and
+// liabilities ROUND UP: understating a min_bid or a tariff would admit a cash obligation the
+// wire did not cover. Consumers in this change: extdeps.cloud.vast_ai vast_ai_min_bid_money_per_hour
+// and vast_ai_dph_total_money_per_hour, and product.fabric.flex_policy flex_bid_admission (those
+// three have a declared §3c frontier; their executing route today is the flex admission witness).
+data money_micro_fraction_digits: Int = 6
+
+type DecimalMoneyConversion
+  = DecimalMoneyConverted { amount: MoneyAmountMicro }
+  | DecimalMoneyNegativeRefused { units: Int }
+  | DecimalMoneyScaleRefused { fraction_digits: Int }
+  | DecimalMoneyUnrepresentable { cause: IntegerOverflow }
+
+fn exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal) -> DecimalMoneyConversion {
+  if d.fraction_digits < 0 {
+    DecimalMoneyScaleRefused { fraction_digits: d.fraction_digits }
+  } else if d.units < 0 {
+    DecimalMoneyNegativeRefused { units: d.units }
+  } else if d.fraction_digits <= money_micro_fraction_digits {
+    match checked_decimal_pow10(exponent: money_micro_fraction_digits - d.fraction_digits) {
+      CheckedIntOverflow { cause: c } => DecimalMoneyUnrepresentable { cause: c }
+      CheckedIntReady { value: factor } =>
+        match checked_int_multiply(a: d.units, b: factor) {
+          CheckedIntOverflow { cause: c } => DecimalMoneyUnrepresentable { cause: c }
+          CheckedIntReady { value: scaled } =>
+            match checked_int_to_nat(n: scaled) {
+              Absent => DecimalMoneyUnrepresentable {
+                cause: IntegerOverflow {
+                  operation: IntegerMultiply,
+                  operands: BinaryOperands { lhs: d.units, rhs: factor },
+                }
+              }
+              Present { value: micros } => DecimalMoneyConverted { amount: money_amount_micro(count: micros) }
+            }
+        }
+    }
+  } else {
+    match checked_decimal_pow10(exponent: d.fraction_digits - money_micro_fraction_digits) {
+      CheckedIntOverflow { cause: c } => DecimalMoneyUnrepresentable { cause: c }
+      CheckedIntReady { value: grain } => {
+        let q = d.units / grain
+        let r = d.units - (q * grain)
+        let ceiled = if r == 0 { q } else { q + 1 }
+        match checked_int_to_nat(n: ceiled) {
+          Absent => DecimalMoneyUnrepresentable {
+            cause: IntegerOverflow { operation: IntegerAdd, operands: BinaryOperands { lhs: q, rhs: 1 } }
+          }
+          Present { value: micros } => DecimalMoneyConverted { amount: money_amount_micro(count: micros) }
+        }
+      }
+    }
+  }
+}
+
+type DecimalMoneyPerHourConversion
+  = DecimalMoneyPerHourConverted { rate: MoneyPerHour }
+  | DecimalMoneyPerHourRefused { conversion: DecimalMoneyConversion }
+
+fn exact_decimal_to_money_per_hour_ceil(d: ExactDecimal, currency: CurrencyCode) -> DecimalMoneyPerHourConversion {
+  match exact_decimal_to_money_amount_micro_ceil(d: d) {
+    DecimalMoneyConverted { amount: a } =>
+      DecimalMoneyPerHourConverted { rate: MoneyPerHour { amount: a, currency: currency } }
+    DecimalMoneyNegativeRefused { units: u } =>
+      DecimalMoneyPerHourRefused { conversion: DecimalMoneyNegativeRefused { units: u } }
+    DecimalMoneyScaleRefused { fraction_digits: f } =>
+      DecimalMoneyPerHourRefused { conversion: DecimalMoneyScaleRefused { fraction_digits: f } }
+    DecimalMoneyUnrepresentable { cause: c } =>
+      DecimalMoneyPerHourRefused { conversion: DecimalMoneyUnrepresentable { cause: c } }
+  }
 }
 
 fn money_per_month_micros(q: MoneyPerMonth) -> Nat {

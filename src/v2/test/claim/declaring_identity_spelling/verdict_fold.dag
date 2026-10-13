@@ -15,7 +15,7 @@ import std.declaring_identity_spelling {
   declaring_identity_spelling_unresolvable,
   resolved_path_verdict
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

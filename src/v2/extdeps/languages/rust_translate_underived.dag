@@ -1,6 +1,6 @@
 module v2.extdeps.languages.rust_translate_underived
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.collection { empty_map }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,

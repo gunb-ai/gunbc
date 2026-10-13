@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_tracker_bundle_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.google.issue_tracker {
   issue_type_vocabulary, issue_type_wire, issue_results_columns, issue_results_sort_key_wire,
   issue_results_column_kind_wire, issue_results_sort_numeric, IssueSortPriority, IssueSortTitle,

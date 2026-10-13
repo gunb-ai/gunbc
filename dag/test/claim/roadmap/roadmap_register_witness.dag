@@ -35,7 +35,7 @@ import gunbc.roadmap.roadmap_interaction {
 import gunbc.design.archetype {
   dashboard_archetype, archetype_demands_role, archetype_admits_verb,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

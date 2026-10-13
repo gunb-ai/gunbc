@@ -17,7 +17,7 @@ module test.claim.roadmap.roadmap_belt_supersession_witness
 
 import std.types { Bool, String, List, Int }
 import std.minted_identity { minted_id_ordinal }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,

@@ -1,8 +1,7 @@
 module v2.std.bounded_lattice_completeness
 
 import std.types { List }
-import v2.std.algebra { BoundedLatticeComplete, BoundedLatticeInstanceCompleteness, BoundedLatticeMissingWitness, BoundedLatticePartial, MissingJoin, MissingLatticeField, MissingMeet, NotBoundedLatticeInstance, fold_list_right }
-import std.algebra { list_snoc_item }
+import std.algebra { fold_list_right, list_snoc_item }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -37,6 +36,17 @@ import v2.std.node_query {
   NamedChildMissing,
   named_child_lookup
 }
+
+type BoundedLatticeMissingWitness
+  = MissingMeet
+  | MissingJoin
+  | MissingLatticeField
+
+type BoundedLatticeInstanceCompleteness
+  = NotBoundedLatticeInstance
+  | BoundedLatticeComplete
+  | BoundedLatticePartial { missing: BoundedLatticeMissingWitness }
+
 
 fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeInstanceCompleteness {
   match named_child_lookup(root: lattice, name: ^lattice_field_meet) {

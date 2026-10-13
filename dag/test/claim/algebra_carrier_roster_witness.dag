@@ -7,7 +7,7 @@ import std.algebra {
   carrier_container_alias_rows, kernel_algebra_profile
 }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

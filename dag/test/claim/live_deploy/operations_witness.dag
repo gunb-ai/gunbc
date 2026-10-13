@@ -26,7 +26,7 @@ import gunbc.live_deploy.operations {
   systemctl_disable_now_command,
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.operation_argv { OperationRef, operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
 import v2.workflow.effect_plan_bash_materialize { bash_bind_operation_invocation }
 import extdeps.posix.shell_command_language { posix_single_quote }

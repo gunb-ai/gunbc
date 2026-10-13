@@ -12,7 +12,7 @@ import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_serv
 import gunbc.host_command_binding { LocalCommandHost }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

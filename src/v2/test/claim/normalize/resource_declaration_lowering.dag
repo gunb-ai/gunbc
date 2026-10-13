@@ -8,12 +8,11 @@ import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_match
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_declares_resource_at, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, None, Outcome, Rejected, Some, bind_outcome, diagnostics_fatal_reason }
-import v2.std.algebra { fold_list }
 import std.optional { Absent, Present }
 import v2.std.integer { Int }
 import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_intern_lexeme }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list }
 import std.types { List }
 
 // DECLARATION-GRADE RESOURCE LOWERING (v2.compiler.body_lowering_fold body_lower_resource_decl). A
@@ -333,17 +332,16 @@ test fn default_tail_stream_is_what_tokenize_produces_holds() -> Bool {
   supplied_stream_matches_tokenize(text: default_tail_source, file: ^resource_lowering_probe, supplied: default_tail_stream())
 }
 
-// A well-formed io tail on a capability output field with a `from "k"` wire key: the shared io grammar admits it, and it refuses as a service's
-// set-aside member does -- the owned fatal service_realization_unreachable at the capability, with
-// interface_member_unmodeled pending at the tail -- never as the malformed-entry cause.
+// A well-formed io tail on a capability output field with a `from "k"` wire key: the shared io grammar admits it, and it refuses as
+// body_lowering_reason_resource_capability_realization_unconsumed at the capability -- never as the
+// malformed-entry cause and never under the deleted service set-aside blanket.
 data wire_key_tail_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability c {\n    output { o: Int from \"k\" }\n  }\n}\n"
 
-test fn a_wire_key_tail_refuses_as_a_service_set_aside_RED() -> Bool {
+test fn a_wire_key_tail_refuses_as_a_resource_realization_RED() -> Bool {
   match census_of_stream(tokens: wire_key_tail_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>
-      (diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_realization_unreachable)
-        && carries(ne: r, reason: ^body_lowering_reason_interface_member_unmodeled)
+      (diagnostics_fatal_reason(d: r) == ^body_lowering_reason_resource_capability_realization_unconsumed)
         && !carries(ne: r, reason: ^body_lowering_reason_resource_entry_unread)
   }
 }

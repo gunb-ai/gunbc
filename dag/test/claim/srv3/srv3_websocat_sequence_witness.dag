@@ -22,8 +22,8 @@ import gunbc.host.host_effect_realize {
   websocat_trace_from_outcomes,
   websocat_trace_labels,
 }
-import v2.std.algebra { fold_list }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { fold_list }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,6 +1,6 @@
 module test.claim.machine_intake.mtcollins1_census_member_readback_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
 import gunbc.host.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }

@@ -1,0 +1,184 @@
+module v2.test.claim.module_acquisition_reachability
+
+import std.types { Bool, List }
+import v2.compiler.module_acquisition { AcquireImportedModule, AcquireQualifiedReference, AcquiredModule }
+import v2.test.claim.module_acquisition { a_member, a_request, key_of, verdict_over }
+import std.algebra { list_map }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES THAT THE EXACTNESS VERDICT IS A REACHABILITY CLAIM, NOT A NAMING CLAIM
+// (v2.compiler.module_acquisition acquisition_exactness). The verdict says the read set IS the requested
+// closure, so a member counts as requested only when the entries reach it along the requests of members
+// that are themselves reached. Each RED below is a receipt in which EVERY member is named by some
+// member's request, so a union over all requests certifies it, and no entry reaches the member the
+// verdict must name. Each is paired with a positive control that differs in the one fact that makes the
+// member reachable, so the RED cannot be satisfied by some unrelated refusal.
+//
+// Every receipt reads exactly the members it holds, so read-twice, member-not-read and
+// read-without-member cannot be the cause of a verdict.
+
+fn reach_member(name: String, imports: List<String>) -> AcquiredModule {
+  a_member(
+    name: name,
+    path: concat("test/reach/", name, ".dag"),
+    requests: list_map(xs: imports, f: fn(spelling) { a_request(from_module: name, spelling: spelling, kind: AcquireImportedModule {}) })
+  )
+}
+
+fn reach_referencing(name: String, spelling: String) -> AcquiredModule {
+  a_member(
+    name: name,
+    path: concat("test/reach/", name, ".dag"),
+    requests: [a_request(from_module: name, spelling: spelling, kind: AcquireQualifiedReference {})]
+  )
+}
+
+fn reach_verdict(entries: List<String>, modules: List<AcquiredModule>) -> String {
+  verdict_over(entries: entries, modules: modules, reads: list_map(xs: modules, f: fn(member) { key_of(member: member) }))
+}
+
+data entry_name: String = "v2.test.reach.entry"
+
+fn from_entry(modules: List<AcquiredModule>) -> String {
+  reach_verdict(entries: [entry_name], modules: modules)
+}
+
+// ---- reached: the positive controls -----------------------------------------------------------------------
+
+test fn a_chain_the_entry_reaches_is_exact() -> Bool {
+  from_entry(modules: [
+    reach_member(name: entry_name, imports: ["v2.test.reach.a"]),
+    reach_member(name: "v2.test.reach.a", imports: ["v2.test.reach.b"]),
+    reach_member(name: "v2.test.reach.b", imports: [])
+  ]) == "exact"
+}
+
+// A cycle is not the defect; a cycle NO ENTRY REACHES is. Here the entry reaches a, and a and b request
+// each other.
+test fn a_cycle_the_entry_reaches_is_exact() -> Bool {
+  from_entry(modules: [
+    reach_member(name: entry_name, imports: ["v2.test.reach.a"]),
+    reach_member(name: "v2.test.reach.a", imports: ["v2.test.reach.b"]),
+    reach_member(name: "v2.test.reach.b", imports: ["v2.test.reach.a"])
+  ]) == "exact"
+}
+
+test fn a_diamond_the_entry_reaches_is_exact() -> Bool {
+  from_entry(modules: [
+    reach_member(name: entry_name, imports: ["v2.test.reach.a", "v2.test.reach.b"]),
+    reach_member(name: "v2.test.reach.a", imports: ["v2.test.reach.c"]),
+    reach_member(name: "v2.test.reach.b", imports: ["v2.test.reach.c"]),
+    reach_member(name: "v2.test.reach.c", imports: [])
+  ]) == "exact"
+}
+
+test fn a_member_that_requests_itself_is_exact_when_the_entry_reaches_it() -> Bool {
+  from_entry(modules: [
+    reach_member(name: entry_name, imports: ["v2.test.reach.s"]),
+    reach_member(name: "v2.test.reach.s", imports: ["v2.test.reach.s"])
+  ]) == "exact"
+}
+
+test fn every_entry_of_several_reaches_its_own_closure() -> Bool {
+  reach_verdict(
+    entries: [entry_name, "v2.test.reach.second"],
+    modules: [
+      reach_member(name: entry_name, imports: ["v2.test.reach.a"]),
+      reach_member(name: "v2.test.reach.a", imports: []),
+      reach_member(name: "v2.test.reach.second", imports: ["v2.test.reach.b"]),
+      reach_member(name: "v2.test.reach.b", imports: [])
+    ]
+  ) == "exact"
+}
+
+// A reference made by a REACHED member selects the module that owns it, and what that module requests is
+// reached in turn.
+test fn a_reference_by_a_reached_member_reaches_the_module_that_owns_it() -> Bool {
+  from_entry(modules: [
+    reach_member(name: entry_name, imports: ["v2.test.reach.a"]),
+    reach_referencing(name: "v2.test.reach.a", spelling: "v2.test.reach.owner.value"),
+    reach_member(name: "v2.test.reach.owner", imports: ["v2.test.reach.deep"]),
+    reach_member(name: "v2.test.reach.deep", imports: [])
+  ]) == "exact"
+}
+
+// ---- unreached: the REDs a union over all requests certifies ------------------------------------------------
+
+// RED: A DISCONNECTED CYCLE. a and b request each other and nothing reached requests either.
+test fn a_disconnected_cycle_is_refused() -> Bool {
+  from_entry(modules: [
+    reach_member(name: entry_name, imports: []),
+    reach_member(name: "v2.test.reach.a", imports: ["v2.test.reach.b"]),
+    reach_member(name: "v2.test.reach.b", imports: ["v2.test.reach.a"])
+  ]) == "read-not-requested:v2.test.reach.a"
+}
+
+// RED: A DISCONNECTED SELF-LOOP. s requests itself, which names it and reaches nothing.
+test fn a_disconnected_self_loop_is_refused() -> Bool {
+  from_entry(modules: [
+    reach_member(name: entry_name, imports: []),
+    reach_member(name: "v2.test.reach.s", imports: ["v2.test.reach.s"])
+  ]) == "read-not-requested:v2.test.reach.s"
+}
+
+// RED: A MODULE REQUESTED ONLY BY AN UNREACHABLE MODULE. t is named by u, and u is named by nobody the
+// entry reaches, so t is requested by no reached member; the verdict names t, the first such member in
+// acquisition order, where a union over all requests would have named only u.
+test fn a_module_requested_only_by_an_unreachable_module_is_refused() -> Bool {
+  from_entry(modules: [
+    reach_member(name: entry_name, imports: []),
+    reach_member(name: "v2.test.reach.t", imports: []),
+    reach_member(name: "v2.test.reach.u", imports: ["v2.test.reach.t"])
+  ]) == "read-not-requested:v2.test.reach.t"
+}
+
+// RED: THE OWNER OF A REFERENCE MADE ONLY BY AN UNREACHABLE MODULE. The reference names owner, and the
+// member making it is not reached.
+test fn a_module_referenced_only_by_an_unreachable_module_is_refused() -> Bool {
+  from_entry(modules: [
+    reach_member(name: entry_name, imports: []),
+    reach_member(name: "v2.test.reach.owner", imports: []),
+    reach_referencing(name: "v2.test.reach.u", spelling: "v2.test.reach.owner.value")
+  ]) == "read-not-requested:v2.test.reach.owner"
+}
+
+// ---- a reference selects its longest member prefix, and no shorter one ------------------------------------
+
+// RED: BOTH THE LONGEST AND A SHORTER PREFIX WERE READ. The lookup probes longest-first and reads the first
+// file present, so a reference whose longest prefix is a member selected that module; the shorter prefix is
+// a member too, but this reference did not ask for it and nothing else does. A union over every prefix of
+// every reference names it anyway.
+test fn a_shorter_prefix_read_beside_the_longest_is_refused() -> Bool {
+  from_entry(modules: [
+    reach_referencing(name: entry_name, spelling: "v2.test.reach.owner.value"),
+    reach_member(name: "v2.test.reach.owner", imports: []),
+    reach_member(name: "v2.test.reach", imports: [])
+  ]) == "read-not-requested:v2.test.reach"
+}
+
+// Positive: the same two members, with the shorter one asked for by an import of its own.
+test fn a_shorter_prefix_that_something_else_requests_is_exact() -> Bool {
+  from_entry(modules: [
+    a_member(
+      name: entry_name,
+      path: "test/reach/entry.dag",
+      requests: [
+        a_request(from_module: entry_name, spelling: "v2.test.reach.owner.value", kind: AcquireQualifiedReference {}),
+        a_request(from_module: entry_name, spelling: "v2.test.reach", kind: AcquireImportedModule {})
+      ]
+    ),
+    reach_member(name: "v2.test.reach.owner", imports: []),
+    reach_member(name: "v2.test.reach", imports: [])
+  ]) == "exact"
+}
+
+// Positive: when the longer prefix is not a member, the reference selects the shorter one.
+test fn a_reference_whose_longer_prefix_is_not_a_member_selects_the_shorter() -> Bool {
+  from_entry(modules: [
+    reach_referencing(name: entry_name, spelling: "v2.test.reach.owner.value"),
+    reach_member(name: "v2.test.reach", imports: [])
+  ]) == "exact"
+}

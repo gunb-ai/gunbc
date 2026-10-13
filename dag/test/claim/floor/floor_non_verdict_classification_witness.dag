@@ -9,7 +9,7 @@ import gunbc.floor.floor_non_verdict_classification {
   stale_enrolment_count,
   unmeasured_count
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // SubstrateInputsOnly is truthful: this reads the classification carrier and, through it, the
 // floor_non_verdict roster -- both authored `.dag` data, no live tree and no host effect. It

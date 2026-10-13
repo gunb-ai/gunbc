@@ -48,7 +48,7 @@ import extdeps.realization.emit_on_demand_host {
   ToolchainIdentityRefusedCrypto,
 }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

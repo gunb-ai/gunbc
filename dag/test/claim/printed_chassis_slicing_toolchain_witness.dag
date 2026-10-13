@@ -10,7 +10,7 @@ import product.printed_chassis.slicing_toolchain {
   judge_host_abi, admit_slice,
   observed_container_glibc, observed_srv2_glibc, container_execution, srv2_execution,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE REFUSAL IS THE BEHAVIOUR UNDER TEST, so these witnesses are written to fail if it ever quietly

@@ -19,7 +19,7 @@ import v2.test.claim.complexity_gate.subject_complexity_budget_roster {
   complexity_budget_row_table_fixture_branch,
   complexity_declared_budget_for_row
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

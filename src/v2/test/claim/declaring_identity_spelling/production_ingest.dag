@@ -20,11 +20,10 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.std.namespace_alias { ModuleBindingSource, module_binding_source_roots }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { fold_list, is_empty }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name {
@@ -38,7 +37,7 @@ import v2.test.claim.provenance.cross_file_provenance {
   cfp_own_module_site,
   cfp_roster
 }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty }
 import std.declaring_identity_spelling {
   IdentityUnbound,
   IdentityAmbiguous,

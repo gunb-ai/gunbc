@@ -1,6 +1,6 @@
 module test.claim.floor.floor_discovery_exact_subject_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { List, String }
 import std.execution_mode { ExecutionMode, Hermetic, Wet }
 import std.content_hash { Fnv1a64Structural, Sha1Digest, content_hash_atom }

@@ -2,7 +2,7 @@ module test.claim.fleet.site_pxe_edge_converge_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.host_identity { HostIdentity }

@@ -2,8 +2,7 @@ module gunbc.declined_live_tree_defect_classification
 
 import std.types { String, List }
 import v2.std.integer { Int }
-import v2.std.algebra { count_where, length, fold_list }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, count_where, length, fold_list }
 
 // WHY THIS CARRIER EXISTS. Thirteen witness identities were measured failing on
 // royal-cat-509's run 32794539384 -- the only tree in which the required floor's

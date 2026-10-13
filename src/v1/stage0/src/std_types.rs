@@ -171,6 +171,9 @@ pub type Bool = bool;
 
 pub type Unit = ();
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Never(pub std::marker::PhantomData<()>);
+
 pub type Json = serde_json::Value;
 
 pub type Bytes = std::vec::Vec<u8>;
@@ -383,7 +386,7 @@ pub fn file_path_sentinel_scaffold_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SourceSpan {
     pub file: FilePath,
     pub start: i64,

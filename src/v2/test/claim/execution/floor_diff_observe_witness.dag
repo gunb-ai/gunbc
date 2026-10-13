@@ -22,7 +22,7 @@ import v2.workflow.floor_diff_observe {
   floor_base_test_decl_census_from_listing,
   floor_base_test_decl_names_for_path
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -8,7 +8,7 @@ import gunbc.instruments.rust_stage0_gates {
   witness_empty_paths_gate_fires_without_per_pr_selection,
   witness_declared_unit_must_run_without_per_pr_selection
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

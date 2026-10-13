@@ -3,7 +3,7 @@ module test.claim.dag_line_comment_annotation_channel
 import std.types { List }
 import v2.std.node { symbol_lexeme }
 import v2.std.text { String }
-import v2.std.algebra { fold_list, length }
+import std.algebra { fold_list, length }
 import v2.std.compilers.lexing {
   LexArtifact,
   UnboundSourceAnnotation,

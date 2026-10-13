@@ -23,7 +23,7 @@ import v2.lens.testgen {
   lbe_subject_conj_dag_surface,
   refinement_preservation_subject_nonempty_list_base
 }
-import v2.std.algebra { length }
+import std.algebra { length }
 
 import v2.std.node { Conj, Node, Symbol }
 import v2.std.verification {

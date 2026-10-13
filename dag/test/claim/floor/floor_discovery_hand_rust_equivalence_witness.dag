@@ -27,7 +27,7 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_surface_text_scan_scaffold,
   floor_discovery_wire_contract_sidecar_refusal_for_content
 }
-import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
+import std.algebra { length, list_head, HeadFound, HeadAbsent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.collection {
   fold_list
@@ -39,7 +39,7 @@ import std.optional {
 }
 import std.types { Bool, Int, String, List }
 import std.disposition { Scaffold, SingleAuthority }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

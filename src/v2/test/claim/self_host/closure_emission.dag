@@ -12,7 +12,7 @@ import extdeps.languages.json.parse {
   json_field_string_list,
   parse_json_document
 }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length, list_find_first }
 import std.optional { Absent, Optional, Present }
 import v2.compiler.self_host.closure_emission {
   ClosureEmission,
@@ -27,12 +27,11 @@ import v2.compiler.self_host.closure_emission {
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.algebra { contains, fold_list, length, list_find_first }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text_in_spans }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, node_synthetic }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import v2.std.text { String }

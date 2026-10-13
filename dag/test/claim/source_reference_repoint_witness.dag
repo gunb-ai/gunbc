@@ -2,7 +2,7 @@ module test.claim.source_reference_repoint_witness
 
 import std.types { Bool, Int, List, String }
 import gunbc.namespace_cut.parsed_import_statement_production { parsed_import_observation_live }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.instruments.source_reference_repoint {
   SourceEdit, ReferenceRepoint, ImportMemberRetirement,
   apply_source_edits, module_path_repoint_edits, repointed_source_text, retired_source_text
@@ -74,7 +74,7 @@ test fn edits_are_applied_in_position_order() -> Bool {
 
 // RETIRING A MEMBER: a name dropped from one module's import lists, with nothing to repoint it to.
 fn filter_retired() -> List<ImportMemberRetirement> {
-  [ImportMemberRetirement { module_path: "v2.std.algebra", member: "filter" }]
+  [ImportMemberRetirement { module_path: "std.algebra", member: "filter" }]
 }
 
 fn retired(text: String) -> String {
@@ -82,42 +82,42 @@ fn retired(text: String) -> String {
 }
 
 test fn a_retired_member_leaves_its_list() -> Bool {
-  retired(text: "module p.m\nimport v2.std.algebra \{ filter, fold_list \}\n")
-    == "module p.m\nimport v2.std.algebra \{ fold_list \}\n"
+  retired(text: "module p.m\nimport std.algebra \{ filter, fold_list \}\n")
+    == "module p.m\nimport std.algebra \{ fold_list \}\n"
 }
 
 test fn a_retired_last_member_takes_the_comma_before_it() -> Bool {
-  retired(text: "module p.m\nimport v2.std.algebra \{ fold_list, filter \}\n")
-    == "module p.m\nimport v2.std.algebra \{ fold_list \}\n"
+  retired(text: "module p.m\nimport std.algebra \{ fold_list, filter \}\n")
+    == "module p.m\nimport std.algebra \{ fold_list \}\n"
 }
 
 test fn an_import_of_only_the_retired_member_loses_its_line() -> Bool {
-  retired(text: "module p.m\nimport v2.std.algebra \{ filter \}\nimport v2.std.node \{ Node \}\n")
+  retired(text: "module p.m\nimport std.algebra \{ filter \}\nimport v2.std.node \{ Node \}\n")
     == "module p.m\nimport v2.std.node \{ Node \}\n"
 }
 
 // A comment is not a token, a string is one token, and the same name imported from ANOTHER module is a
 // different reference: all three survive.
 test fn a_comment_a_string_and_another_module_are_untouched() -> Bool {
-  let text = "module p.m\n// filter is retired from v2.std.algebra\nimport other.mod \{ filter \}\ndata s: String = \"import v2.std.algebra \{ filter \}\"\n"
+  let text = "module p.m\n// filter is retired from std.algebra\nimport other.mod \{ filter \}\ndata s: String = \"import std.algebra \{ filter \}\"\n"
   retired(text: text) == text
 }
 
 test fn a_multi_line_list_keeps_its_layout() -> Bool {
-  retired(text: "module p.m\nimport v2.std.algebra \{\n  fold_list,\n  filter,\n  zip_map\n\}\n")
-    == "module p.m\nimport v2.std.algebra \{\n  fold_list,\n  zip_map\n\}\n"
-    && retired(text: "module p.m\nimport v2.std.algebra \{\n  fold_list,\n  filter,\n\}\n")
-      == "module p.m\nimport v2.std.algebra \{\n  fold_list,\n\}\n"
+  retired(text: "module p.m\nimport std.algebra \{\n  fold_list,\n  filter,\n  zip_map\n\}\n")
+    == "module p.m\nimport std.algebra \{\n  fold_list,\n  zip_map\n\}\n"
+    && retired(text: "module p.m\nimport std.algebra \{\n  fold_list,\n  filter,\n\}\n")
+      == "module p.m\nimport std.algebra \{\n  fold_list,\n\}\n"
 }
 
 test fn two_adjacent_retired_members_are_one_deletion() -> Bool {
-  retired_source_text(path: "probe.dag", text: "module p.m\nimport v2.std.algebra \{ fold_list, filter, any \}\n", retirements: [
-    ImportMemberRetirement { module_path: "v2.std.algebra", member: "filter" },
-    ImportMemberRetirement { module_path: "v2.std.algebra", member: "any" }
-  ]) == "module p.m\nimport v2.std.algebra \{ fold_list \}\n"
+  retired_source_text(path: "probe.dag", text: "module p.m\nimport std.algebra \{ fold_list, filter, any \}\n", retirements: [
+    ImportMemberRetirement { module_path: "std.algebra", member: "filter" },
+    ImportMemberRetirement { module_path: "std.algebra", member: "any" }
+  ]) == "module p.m\nimport std.algebra \{ fold_list \}\n"
 }
 
 test fn a_second_retirement_run_is_a_no_op() -> Bool {
-  let once = retired(text: "module p.m\nimport v2.std.algebra \{ filter, fold_list \}\n")
+  let once = retired(text: "module p.m\nimport std.algebra \{ filter, fold_list \}\n")
   retired(text: once) == once
 }
