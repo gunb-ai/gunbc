@@ -2,9 +2,9 @@ module v2.compiler.service_realization
 
 import std.fidelity { TransportClass, LocalDirect, ShellLocal, FileBoundary, RestNetwork, InterfaceStub, Unknown }
 import extdeps.ietf.http_semantics { HttpStatusClass, Informational, Successful, Redirection, ClientError, ServerError, http_status_class_digit }
-import extdeps.transports.shell_declared { ShellArgv, ShellExitCode, ShellExitNonzero, ShellExitPattern, shell_binding_field_key, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
-import extdeps.transports.rest_declared { RestResponseStatus, RestStatusClass, RestStatusCode, rest_binding_field_of_key }
-import extdeps.transports.file_declared { file_binding_field_of_key, file_output_channel_of_key }
+import extdeps.transports.shell_declared { ShellArgv, ShellStdin, ShellExitCode, ShellExitNonzero, ShellExitPattern, shell_binding_field_key, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
+import extdeps.transports.rest_declared { RestAuthBasic, RestBody, RestHeaders, RestMethod, RestPath, RestQuery, RestResponseFormat, RestResponseStatus, RestStatusClass, RestStatusCode, RestTls, rest_binding_field_of_key }
+import extdeps.transports.file_declared { FileBindingPath, FileBindingVerb, file_binding_field_of_key, file_output_channel_of_key }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
 import std.types { http_status_of }
 import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
@@ -521,7 +521,8 @@ fn realization_binding_field_refusal(kind: DeclaredTransport, op: Node, field: E
       if n == realization_transport_kind_label() { optional_absent() }
       else if !declared_transport_admits_field(kind: kind, key: symbol_lexeme(sym: n)) { realization_refusal(reason: ^service_realization_binding_field_unknown, at: field.target) }
       else if declared_field_is_shell_argv(kind: kind, n: n) { shell_argv_refusal(op: op, argv: field.target) }
-      else { transport_string_field_refusal(op: op, value: field.target) }
+      else if declared_field_carries_string_template(kind: kind, n: n) { transport_string_field_refusal(op: op, value: field.target) }
+      else { optional_absent() }
     Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: field.target)
   }
 }
@@ -531,6 +532,48 @@ fn declared_field_is_shell_argv(kind: DeclaredTransport, n: Symbol) -> Bool {
     DeclaredShell => symbol_lexeme(sym: n) == shell_binding_field_key(field: ShellArgv)
     DeclaredRest => false
     DeclaredFile => false
+  }
+}
+
+// String-shaped binding fields are Template<OperationInputName> (or a list of those). Method,
+// verb, body, query, headers and the rest are other contracts in the declared vocabularies; the
+// template wall must not read them as holes or refuse them as argv expressions.
+fn declared_field_carries_string_template(kind: DeclaredTransport, n: Symbol) -> Bool {
+  let key = symbol_lexeme(sym: n)
+  match kind {
+    DeclaredShell =>
+      match shell_binding_field_of_key(key: key) {
+        Present { value: field } =>
+          match field {
+            ShellArgv => false
+            ShellStdin => true
+          }
+        Absent => false
+      }
+    DeclaredRest =>
+      match rest_binding_field_of_key(key: key) {
+        Present { value: field } =>
+          match field {
+            RestPath => true
+            RestMethod => false
+            RestQuery => false
+            RestHeaders => false
+            RestBody => false
+            RestTls => false
+            RestAuthBasic => false
+            RestResponseFormat => false
+          }
+        Absent => false
+      }
+    DeclaredFile =>
+      match file_binding_field_of_key(key: key) {
+        Present { value: field } =>
+          match field {
+            FileBindingPath => true
+            FileBindingVerb => false
+          }
+        Absent => false
+      }
   }
 }
 
@@ -559,7 +602,7 @@ fn transport_string_field_refusal(op: Node, value: Node) -> Optional<Realization
   }
 }
 
-// A non-argv transport field is Template<OperationInputName>, or a list of those. Each element
+// A string-shaped transport field is Template<OperationInputName>, or a list of those. Each element
 // uses the hole check argv uses, without argv[0]'s executable-literal rule. An element that is
 // not a template refuses located (ArgvExpressionUnsupported) rather than admitting.
 fn transport_template_element_refusal(op: Node, el: Node) -> Optional<RealizationRefusal> {
