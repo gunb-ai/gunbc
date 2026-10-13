@@ -1,0 +1,57 @@
+module gunbc.emit_state_threading_specimen
+
+import std.types { Bool, Int, List, Map }
+import std.optional { Optional, Present, Absent }
+import v2.std.collection { list_at_optional }
+
+// EMISSION-MINIMUM-COST building block: observation and state threading (roadmap node
+// emission-building-block-realization, first slice). Shape taken from the parse-population profile:
+// a cursor over one retained source advanced by a scalar index, and a wide record accumulator
+// rebuilt each step with two fields changed and the rest carried unchanged.
+type SpecCursor {
+  source: List<Int>
+  index: Int
+}
+
+type SpecAcc {
+  remaining: SpecCursor
+  tokens: List<Int>
+  pos: Int
+  done: Bool
+  context: Map<String, Int>
+  tag: Int
+}
+
+fn spec_head(c: SpecCursor) -> Int {
+  match list_at_optional(xs: c.source, index: c.index) {
+    Present { value: v } => v
+    Absent => 0 - 1
+  }
+}
+
+fn spec_step(acc: SpecAcc) -> SpecAcc {
+  let h = spec_head(c: acc.remaining)
+  if h < 0 {
+    SpecAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, context: acc.context, tag: acc.tag }
+  } else {
+    SpecAcc {
+      remaining: SpecCursor { source: acc.remaining.source, index: acc.remaining.index + 1 },
+      tokens: list_push(acc.tokens, h),
+      pos: acc.pos + 1,
+      done: false,
+      context: acc.context,
+      tag: acc.tag
+    }
+  }
+}
+
+fn spec_build(n: Int) -> List<Int> {
+  if n == 0 { [] } else { list_push(spec_build(n: n - 1), n) }
+}
+
+fn spec_walk(n: Int) -> Int {
+  let src = spec_build(n: n)
+  let r = src |> fold(init: SpecAcc { remaining: SpecCursor { source: src, index: 0 }, tokens: [], pos: 0, done: false, context: empty_map(), tag: 7 }, f: (acc, e) =>
+    if acc.done { acc } else { spec_step(acc: acc) })
+  count(r.tokens) + r.pos + r.tag
+}
