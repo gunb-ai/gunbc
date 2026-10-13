@@ -1,7 +1,7 @@
 module gunbc.serving.rented_allocation
 
-import std.types { String, NonEmptyStr, Port }
-import std.nat { Nat }
+import std.types { String, NonEmptyStr, Port, EpochMs }
+import gunbc.principal_projection { PrincipalRef }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
@@ -76,14 +76,17 @@ fn rented_allocation_wire(id: RentedAllocationIdentity) -> NonEmptyStr {
 // type because Vast is the only bidder; a second acquiring provider makes it a per-provider receipt
 // rather than a widened field here.
 type RentedAllocationOrigin
-  = RentedAllocationImported { imported_by: NonEmptyStr, imported_on: NonEmptyStr, found_running: DeclarationRef }
-  | RentedAllocationAcquired { owner: NonEmptyStr, asked_at: String, asked_rate: MoneyPerHour, provider_ask: VastAiAskReceipt }
+  = RentedAllocationImported { imported_by: PrincipalRef, imported_at: EpochMs, found_running: DeclarationRef }
+  | RentedAllocationAcquired { owner: NonEmptyStr, asked_at: EpochMs, asked_rate: MoneyPerHour, provider_ask: VastAiAskReceipt }
 
 // WHEN THE ALLOCATION IS MEANT TO END. An allocation with no stated end is an open-ended spend, so the end
-// is a required field, and "the operator decides" is a stated end rather than its absence.
+// is a required field, and "the operator decides" is a stated end rather than its absence. EVERY INSTANT
+// ON THIS CARRIER IS EpochMs, the magnitude extdeps.clock UnixMillis reads, because release and settlement
+// compare these instants with the clock; std.types Timestamp is rendered text and cannot be ordered.
+// Principals are gunbc.principal_projection PrincipalRef, the identity the auth layer authorizes against.
 type RentedEndCondition
-  = RentedEndsOnOperatorRelease { decided_by: NonEmptyStr }
-  | RentedEndsBy { at: String }
+  = RentedEndsOnOperatorRelease { decided_by: PrincipalRef }
+  | RentedEndsBy { at: EpochMs }
 
 // THE ENGINE THE CARD IS MEANT TO RUN: ninfer-serve at a build revision with its launch flags and listen
 // port. One arm because one engine is consumed; vLLM (gunbc.serving.rented_replica rented_replica_launch)
@@ -111,6 +114,9 @@ type RentedContractStanding
   = RentedContractRead { offer: SupplierOffer<NonEmptyStr> }
   | RentedContractUnread { obligation: NonEmptyStr }
 
+// NO CREDENTIAL IS A FIELD YET. Credentials are grants bound to the allocation, so the credentials slice
+// adds them as a grant keyed by RentedAllocationIdentity that release revokes; a bare generation counter
+// here would name no grant and be revoked by nothing.
 type RentedServingAllocation {
   identity: RentedAllocationIdentity
   origin: RentedAllocationOrigin
@@ -121,7 +127,6 @@ type RentedServingAllocation {
   artifact: NinferModelRow
   host: RentedHostAccessDeclaration
   route: RentedAccessRoute
-  credential_generation: Nat
 }
 
 data rented_route_lands_off_engine_port_obligation: NonEmptyStr = "the allocation's access route lands on a card port the desired engine does not listen on, so a turn sent through it would reach no engine" as NonEmptyStr

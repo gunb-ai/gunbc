@@ -6,6 +6,7 @@ import std.optional { Present, Absent }
 import std.decl_ref { decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
+import gunbc.principal_projection { PrincipalRef }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward, RemoteForward }
@@ -29,6 +30,10 @@ import test.claim.serving.rented_enrollment_witness { e_access }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+fn a_operator() -> PrincipalRef {
+  PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "witness-operator" as NonEmptyStr }
+}
+
 fn a_loopback(port: Port) -> SocketAddress {
   socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)), port: port)
 }
@@ -48,15 +53,14 @@ fn a_tunnel(target_port: Port) -> RentedAccessRoute {
 fn a_allocation(route: RentedAccessRoute) -> RentedServingAllocation {
   RentedServingAllocation {
     identity: rented_allocation_identity(provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"), contract: "1001" as NonEmptyStr),
-    origin: RentedAllocationImported { imported_by: "witness" as NonEmptyStr, imported_on: "2026-10-13" as NonEmptyStr, found_running: decl_ref(module_path: "gunbc.harness.harness_operator_route", decl_name: "operator_observed_launch") },
+    origin: RentedAllocationImported { imported_by: a_operator(), imported_at: 1792022400000, found_running: decl_ref(module_path: "gunbc.harness.harness_operator_route", decl_name: "operator_observed_launch") },
     contract: RentedContractUnread { obligation: "witness: price not read" as NonEmptyStr },
     card: RentedGpuDevice { index: 0, model: "RTX PRO 5000 Blackwell" as NonEmptyStr, memory: byte_size(count: 51539607552) },
-    end: RentedEndsOnOperatorRelease { decided_by: "witness" as NonEmptyStr },
+    end: RentedEndsOnOperatorRelease { decided_by: a_operator() },
     engine: RentedNinferEngine { revision: "81c8ce09" as NonEmptyStr, launch: operator_observed_launch, listen_port: 8000 },
     artifact: qwen3_8_27b_nvfp4_row,
     host: e_access(endpoint: "203.0.113.7"),
     route: route,
-    credential_generation: 1,
   }
 }
 
@@ -135,12 +139,12 @@ test fn an_acquired_allocation_derives_the_same_endpoint_as_an_imported_one() ->
     identity: imported.identity,
     origin: RentedAllocationAcquired {
       owner: "gunbc-flex" as NonEmptyStr,
-      asked_at: "2026-10-13T20:00:00Z",
+      asked_at: 1792008000000,
       asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
       provider_ask: VastAiAskReceipt { ask_id: 77, machine_id: 42 },
     },
     contract: imported.contract, card: imported.card, end: imported.end, engine: imported.engine,
-    artifact: imported.artifact, host: imported.host, route: imported.route, credential_generation: imported.credential_generation,
+    artifact: imported.artifact, host: imported.host, route: imported.route,
   }
   a_endpoint_wire(e: rented_allocation_enrollment(a: acquired)) == a_endpoint_wire(e: rented_allocation_enrollment(a: imported))
 }
