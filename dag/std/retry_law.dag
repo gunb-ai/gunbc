@@ -46,6 +46,7 @@ type RetryLaw {
 
 type RetryAdmissibility
   = RetryAdmissible { earliest: EpochSecs, real_work_failures: Nat }
+  | RetryAdmissibleNow { real_work_failures: Nat }
   | RetryTerminalExhausted { real_work_failures: Nat }
   | RetryTerminalCancelled { by: NonEmptyStr }
   | RetryAlreadySucceeded
@@ -123,8 +124,8 @@ fn retry_terminal_in_history(history: List<RetryHistoryEvent>) -> RetryAdmissibi
 
 // jitter is sampled by the realization and SUPPLIED; the law never draws entropy.
 // hint is an upstream Retry-After (or none): a lower bound on the delay, never a cap.
-// earliest is last RealWorkFailure in history plus the delay. The caller does not supply a
-// second clock; retry_last_real_work_failure_at is the one source (DESIGN §3).
+// earliest is last RealWorkFailure in history plus the delay. No last failure is
+// RetryAdmissibleNow — not epoch 0. The caller does not supply a second clock (DESIGN §3, §5).
 fn retry_admissibility(
   law: RetryLaw,
   history: List<RetryHistoryEvent>,
@@ -138,17 +139,18 @@ fn retry_admissibility(
       if failures >= law.real_work_failure_bound {
         RetryTerminalExhausted { real_work_failures: failures }
       } else {
-        let backoff = retry_backoff(law: law, real_work_failures: failures)
-        let hinted = match hint {
-          Absent => backoff
-          Present { value: h } => retry_max_second(a: backoff, b: h)
+        match retry_last_real_work_failure_at(history: history) {
+          Absent => RetryAdmissibleNow { real_work_failures: failures }
+          Present { value: last_at } => {
+            let backoff = retry_backoff(law: law, real_work_failures: failures)
+            let hinted = match hint {
+              Absent => backoff
+              Present { value: h } => retry_max_second(a: backoff, b: h)
+            }
+            let delay = second(count: second_count(s: hinted) + second_count(s: jitter))
+            RetryAdmissible { earliest: last_at + (second_count(s: delay) as Int), real_work_failures: failures }
+          }
         }
-        let delay = second(count: second_count(s: hinted) + second_count(s: jitter))
-        let last_at = match retry_last_real_work_failure_at(history: history) {
-          Present { value: t } => t
-          Absent => 0
-        }
-        RetryAdmissible { earliest: last_at + (second_count(s: delay) as Int), real_work_failures: failures }
       }
     }
   }

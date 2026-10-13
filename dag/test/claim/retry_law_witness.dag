@@ -5,7 +5,7 @@ import std.nat { Nat, Zero }
 import std.measure { second }
 import std.retry_law {
   RetryLaw, RetryHistoryEvent, RetryObservedClass, RealWorkFailure, RealWorkSuccess, ProbeOutcome, Cancelled,
-  RetryAdmissible, RetryTerminalExhausted, RetryTerminalCancelled, RetryAlreadySucceeded,
+  RetryAdmissible, RetryAdmissibleNow, RetryTerminalExhausted, RetryTerminalCancelled, RetryAlreadySucceeded,
   retry_admissibility, retry_no_hint, retry_hint_from_delta,
 }
 
@@ -94,6 +94,17 @@ test fn exhaustion_and_cancellation_are_persisted_terminals() -> Bool {
     _ => false
   }) && (match retry_admissibility(law: witness_law, history: succeeded, hint: retry_no_hint(), jitter: second(count: Zero)) {
     RetryAlreadySucceeded => true
+    _ => false
+  })
+}
+
+test fn no_real_work_failure_is_admissible_now_not_epoch_zero() -> Bool {
+  let probes_only = [ev(class: ProbeOutcome { succeeded: true }, at: 50)]
+  (match retry_admissibility(law: witness_law, history: [], hint: retry_no_hint(), jitter: second(count: Zero)) {
+    RetryAdmissibleNow { real_work_failures: n } => (n as Int) == 0
+    _ => false
+  }) && (match retry_admissibility(law: witness_law, history: probes_only, hint: retry_hint_from_delta(delay: second(count: 10)), jitter: second(count: Zero)) {
+    RetryAdmissibleNow { real_work_failures: n } => (n as Int) == 0
     _ => false
   })
 }
