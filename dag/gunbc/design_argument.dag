@@ -452,6 +452,68 @@ data conformance_domains: List<ConformanceDomain> = [
       ],
     },
   },
+  ConformanceDomain {
+    key: "conformance-cardinality-absence",
+    label: "Cardinality / absence",
+    question: "Does the change inhabit the existing presence, optional-layer and collection-cardinality authorities at each counted position, preserve their distinctions through its producer-to-consumer path, and state the reason for any departure? Bound by gunbc.design_ruling one_cardinality_concept_existing_authorities, one_dag_absence_meaning, explicit_present_is_the_current_authoring_policy, t_question_is_declaration_bound_sugar, nonemptiness_is_constructed_or_proved, and native_first_complete_cuts_then_repository_wide_retirement.",
+    tells: [
+      "none, null or another sentinel answers for DAG absence through a second typing or runtime rule rather than the declared Optional constructor or a named foreign conversion",
+      "a new Absent, Missing or Unset carrier has exactly a zero-or-one-value contract and no independent cause, progress, policy or upstream meaning",
+      "a bare value is implicitly wrapped, or an optional payload is implicitly extracted, without a declared conversion satisfying section 4; the checker and realization insert different conversions",
+      "Option types, constructors, patterns or equality are selected by leaf spelling rather than resolved declaration identity and the admitted realization",
+      "nested optional layers, collection boundaries or absent-versus-empty states are collapsed as normalization rather than changed by an explicit operation",
+      "a new head-and-tail NonEmpty record restates FreeSemigroup, or a validated/nonempty brand can be constructed without establishing its claimed invariant",
+      "a possibly-empty producer enters a nonempty consumer without evidence; an operation preserves a lower bound it can invalidate; or unmeasured cardinality is treated as zero",
+      "a cardinality flag or metadata field independently restates structure already carried by the type and can disagree with it"
+    ],
+    owns: "Presence and absence, optional-layer nesting, collection emptiness and nonemptiness, and the preservation of these facts from source through typing, execution, realization and declared ingestion conversions. Cardinality belongs to a named position and measure within the value's structure.",
+    boundaries: [
+      "Failure causes, search progress, policy states and independently governed upstream null or missing states retain their own meanings. Factor their optional parts without erasing those distinctions; classify by contract, not by a variant-name suffix.",
+      "Conversion legality is section 4's judgment. This domain checks inhabitance and preservation; target realization cannot authorize a conversion, and a stated departure does not waive another design obligation.",
+      "Data cardinality is not evaluation multiplicity or a termination proof. The existing bound witnesses are not a claim that general collection-interval propagation or every acceptance path is implemented."
+    ],
+    home_groups: ConformanceHomeGroups {
+      first: ConformanceHomeGroup {
+        label: "Presence and sequences",
+        purpose: "the canonical optional, possibly-empty sequence and nonempty sequence carriers",
+        homes: ConformanceHomes {
+          first: decl_ref(module_path: "std.optional", decl_name: "Optional"),
+          rest: [
+            decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
+            decl_ref(module_path: "std.algebra", decl_name: "FreeSemigroup"),
+          ],
+        },
+      },
+      rest: [
+        ConformanceHomeGroup {
+          label: "Optional-layer structure",
+          purpose: "read and construct consecutive optional layers without collapsing their depth",
+          homes: ConformanceHomes {
+            first: decl_ref(module_path: "v2.std.optional_layers", decl_name: "type_node_occupancy_read"),
+            rest: [
+              decl_ref(module_path: "v2.std.optional_layers", decl_name: "wrap_type_node_occupancy"),
+            ],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Declared-type boundaries",
+          purpose: "the existing producer-versus-declared-type inhabitance judgment",
+          homes: ConformanceHomes {
+            first: decl_ref(module_path: "v2.std.inhabitance", decl_name: "declared_type_inhabitance"),
+            rest: [],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Natural bounds",
+          purpose: "the existing natural-order witness from which its two bounds are read",
+          homes: ConformanceHomes {
+            first: decl_ref(module_path: "v2.std.cardinality", decl_name: "NatLeWitness"),
+            rest: [],
+          },
+        },
+      ],
+    },
+  },
 ]
 
 fn conformance_review_part(d: ConformanceDomain) -> PropositionReview {

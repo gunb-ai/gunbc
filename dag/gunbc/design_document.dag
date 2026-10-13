@@ -22,6 +22,12 @@ import gunbc.design_ruling {
   v1_withdrawn_one_required_job,
   memory_envelope_is_part_of_the_verdict,
   project_documentation_projections_are_not_checkout_artifacts,
+  one_cardinality_concept_existing_authorities,
+  one_dag_absence_meaning,
+  explicit_present_is_the_current_authoring_policy,
+  t_question_is_declaration_bound_sugar,
+  nonemptiness_is_constructed_or_proved,
+  native_first_complete_cuts_then_repository_wide_retirement,
 }
 import gunbc.documentary_refs {
   documentary_ref_symbol_text,
@@ -145,16 +151,34 @@ fn conformance_boundary_blocks(d: ConformanceDomain) -> List<MarkdownBlock> {
   }
 }
 
+fn cardinality_absence_ruling_blocks() -> List<MarkdownBlock> {
+  [
+    p(text: concat("**One cardinality concept, existing structural authorities** ", concat(ruling(r: one_cardinality_concept_existing_authorities), ". `std.optional.Optional`, `std.algebra.FreeMonoid` and `std.algebra.FreeSemigroup` remain the authorities for optional values, possibly-empty sequences and nonempty sequences. Cardinality facts compose at named structural positions and measures; they do not replace the value's structure or collapse nesting. Redundant flags and competing carriers are consolidated through complete consumer cuts."))),
+    p(text: concat("**One DAG absence meaning; foreign and domain meanings preserved** ", concat(ruling(r: one_dag_absence_meaning), ". DAG absence uses the declared `Absent` constructor. Retire the independent `none`/`null` typing and sentinel semantics by complete cohorts. This does **not** delete faithful foreign null models, reason-bearing refusals, progress states or policy meanings. Their conversion to Optional, when appropriate, is explicit and declared."))),
+    p(text: concat("**Explicit `Present` is the current authoring policy** ", concat(ruling(r: explicit_present_is_the_current_authoring_policy), ". Do not implicitly wrap or extract Optional values through checker exceptions, branch-join tricks or target emission. A future implicit injection is permissible only through the existing §4 law: a declared route that is total, exact, semantics-preserving, unique, pure and consent-free, represented in the typed program. Until such a route is admitted, author `Present` explicitly."))),
+    p(text: concat("**`T?` is declaration-bound sugar** ", concat(ruling(r: t_question_is_declaration_bound_sugar), ". `T?` denotes the canonical Optional declaration application and introduces its precise acquisition dependency. Local homonyms cannot redirect it. A missing or incompatible authority refuses; it never recreates a kernel mint. This grants no broad ambient prelude and does not automatically make constructor names available unqualified."))),
+    p(text: concat("**Nonemptiness is constructed or proved, then consumed** ", concat(ruling(r: nonemptiness_is_constructed_or_proved), ". Use `FreeSemigroup` where a nonempty sequence is the value contract. A possibly-empty producer enters a nonempty consumer only through established evidence or explicit checked admission. A type name, arbitrary predicate callback or sealed wrapper alone does not establish the claimed guarantee. General bound propagation is delivered by the existing `cardinality-vertical-slice`; its Required activation remains `extended-admission-cardinality`."))),
+    p(text: concat("**Native-first complete cuts, with eventual repository-wide retirement** ", concat(ruling(r: native_first_complete_cuts_then_repository_wide_retirement), ". Prioritize complete native consumer cohorts. Each migrated cohort uses one semantic authority across its participating layers and has no legacy fallback. The remainder is explicit, identity-based and shrink-only; counts are observations, not acceptance oracles. Whole-corpus naming cleanup and unrelated target completion do not gate the typed native closure. The parent cannot close until the retained paths are covered and the obsolete production authorities and migration allowances are gone."))),
+  ]
+}
+
 fn conformance_domain_section(d: ConformanceDomain) -> List<MarkdownBlock> {
   concat(
     concat(
-      [h3(text: d.label), p(text: concat("**Owns.** ", d.owns))],
-      conformance_boundary_blocks(d: d),
+      concat(
+        [h3(text: d.label), p(text: concat("**Owns.** ", d.owns))],
+        conformance_boundary_blocks(d: d),
+      ),
+      [
+        p(text: "**Existing authorities**"),
+        ul(items: map(conformance_domain_home_groups(d: d), g => conformance_home_group_item(g: g))),
+      ],
     ),
-    [
-      p(text: "**Existing authorities**"),
-      ul(items: map(conformance_domain_home_groups(d: d), g => conformance_home_group_item(g: g))),
-    ],
+    if d.key == "conformance-cardinality-absence" {
+      cardinality_absence_ruling_blocks()
+    } else {
+      []
+    },
   )
 }
 

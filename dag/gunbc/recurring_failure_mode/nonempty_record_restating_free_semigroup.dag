@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.nonempty_record_restating_free_semigroup
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data nonempty_record_restating_free_semigroup: RecurringFailureMode = RecurringFailureMode {
+  identity: "nonempty_record_restating_free_semigroup" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a new head-and-tail NonEmpty record restates std.algebra FreeSemigroup, or a validated/nonempty brand can be constructed without establishing its claimed invariant. A sealed Refined wrapper is not sufficient merely because its constructor is sealed.",
+    "HARM: each extra nonempty record is a second construction wall and a second inhabitance judgment. RUNG FOUND AT: mitigatable. CEILING: structurally impossible for a nonempty sequence whose only contract is head-and-tail once FreeSemigroup is that constructor.",
+    "NEXT-RUNG TRIGGER: use FreeSemigroup where a nonempty sequence is the value contract; general bound propagation stays with cardinality-vertical-slice. Bound by gunbc.design_ruling nonemptiness_is_constructed_or_proved. First consolidation cohort includes gunbc.design_argument ConformanceHomes if its complete contract is only a nonempty sequence.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.algebra", decl_name: "FreeSemigroup", field: WholeDeclaration },
+  ],
+}

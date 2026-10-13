@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.option_selected_by_leaf_spelling
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data option_selected_by_leaf_spelling: RecurringFailureMode = RecurringFailureMode {
+  identity: "option_selected_by_leaf_spelling" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: Option types, constructors, patterns or equality are selected by leaf spelling (Optional, Present, Absent, none, null) rather than resolved declaration identity and the admitted realization. Neighbours already filed: import_collides_with_a_kernel_name, kernel_type_spelling_captured_a_module_declaration, bare_variant_elected_by_spelling_not_by_expected_coproduct. This class is the remaining spelling-keyed lowering and kernel-mint path.",
+    "HARM: a local homonym or kernel mint redirects T? and constructors, so sugar and authored Optional disagree. RUNG FOUND AT: mitigatable. CEILING: structurally guaranteed once T? and constructors bind only through declaration identity.",
+    "NEXT-RUNG TRIGGER: T? is declaration-bound sugar (roadmap cardinality-optional-declaration) and spelling-keyed Option lowering is deleted (cardinality-absence-retirement). Bound by gunbc.design_ruling t_question_is_declaration_bound_sugar.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.optional", decl_name: "Optional", field: WholeDeclaration },
+  ],
+}

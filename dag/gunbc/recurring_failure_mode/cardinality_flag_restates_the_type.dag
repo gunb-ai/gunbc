@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.cardinality_flag_restates_the_type
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data cardinality_flag_restates_the_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "cardinality_flag_restates_the_type" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a cardinality flag or metadata field independently restates structure already carried by the type and can disagree with it — CardOptional beside T?, a nonempty Bool beside FreeSemigroup, std.constructors Cardinality beside Optional/FreeMonoid/FreeSemigroup.",
+    "HARM: the flag and the type can disagree, and consumers pick one. RUNG FOUND AT: mitigatable. CEILING: structurally impossible once cardinality is only a named position and measure within the value's structure.",
+    "NEXT-RUNG TRIGGER: delete std.constructors Cardinality and duplicate flags through complete consumer cuts (cardinality-carrier-consolidation, then cardinality-absence-retirement). Bound by gunbc.design_ruling one_cardinality_concept_existing_authorities.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.optional", decl_name: "Optional", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "FreeMonoid", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "FreeSemigroup", field: WholeDeclaration },
+  ],
+}

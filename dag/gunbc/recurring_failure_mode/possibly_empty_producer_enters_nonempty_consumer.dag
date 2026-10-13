@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.possibly_empty_producer_enters_nonempty_consumer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data possibly_empty_producer_enters_nonempty_consumer: RecurringFailureMode = RecurringFailureMode {
+  identity: "possibly_empty_producer_enters_nonempty_consumer" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a possibly-empty producer enters a nonempty consumer without established evidence or explicit checked admission; an operation preserves a lower bound it can invalidate (filter keeping 1..n); or unmeasured cardinality is treated as zero.",
+    "HARM: the motivating seam — List into nonempty — is accepted and fails later, or is refused without a located interval. RUNG FOUND AT: mitigatable. CEILING: structurally guaranteed on the retained acceptance path once cardinality-vertical-slice lands and extended-admission-cardinality activates it as Required.",
+    "NEXT-RUNG TRIGGER: the real path accepts a proved nonempty producer and refuses empty or merely possibly-empty producers; map preserves the appropriate bound; filter loses an unjustified positive lower bound. Bound by gunbc.design_ruling nonemptiness_is_constructed_or_proved. NatLeWitness is the existing bound-witness home, not a claim that general collection-interval propagation is already implemented.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.std.cardinality", decl_name: "NatLeWitness", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "FreeSemigroup", field: WholeDeclaration },
+  ],
+}

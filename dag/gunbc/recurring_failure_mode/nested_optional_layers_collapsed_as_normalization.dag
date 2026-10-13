@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.nested_optional_layers_collapsed_as_normalization
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data nested_optional_layers_collapsed_as_normalization: RecurringFailureMode = RecurringFailureMode {
+  identity: "nested_optional_layers_collapsed_as_normalization" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: nested optional layers, collection boundaries or absent-versus-empty states are collapsed as normalization rather than changed by an explicit operation. Present(Absent) becomes Absent; a present empty collection becomes absence; a collection of optional entries is flattened.",
+    "HARM: layer depth is a fact v2.std.optional_layers already models; collapsing it silently loses a distinction consumers match on. RUNG FOUND AT: mitigatable. CEILING: structurally guaranteed where occupancy depth is preserved unless an explicit operation changes it.",
+    "NEXT-RUNG TRIGGER: wrap_type_node_occupancy and type_node_occupancy_read remain the layer authority; realization paths (roadmap cardinality-realization-conformance) preserve Absent, Present(Absent) and Present(Present(value)) as distinct. Bound by gunbc.design_ruling one_cardinality_concept_existing_authorities.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.std.optional_layers", decl_name: "type_node_occupancy_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.optional_layers", decl_name: "wrap_type_node_occupancy", field: WholeDeclaration },
+  ],
+}

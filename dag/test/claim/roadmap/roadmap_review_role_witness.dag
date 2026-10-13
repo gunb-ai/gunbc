@@ -231,3 +231,21 @@ test fn every_conformance_domain_is_a_criterion_whose_brief_names_its_homes() ->
       Present { value: c } => !string_contains(s: review_brief(criterion: c, node_id: "n1", headline: "H", boundary: "B", out_of_scope: "O", red_control: "R", acceptance_command: "x", base_sha: "a", head_sha: "b", verification_detail: "p"), pattern: "Home authorities")
     })
 }
+
+// ENROLLMENT: adding the Cardinality / absence domain produces one three-valued criterion whose
+// homes appear in both the reviewer brief and the DESIGN projection. A missing-home mutation is
+// unwritable (ConformanceHomes requires first); a disconnected row would fail every_conformance_domain
+// above. This control is the positive identity for the enrolled key.
+test fn cardinality_absence_domain_enrolls_one_three_valued_criterion() -> Bool {
+  match review_criterion_by_key(key: "conformance-cardinality-absence") {
+    Absent => false
+    Present { value: c } =>
+      (match c.answer { ConformanceThreeValued => true  YesIsADefect => false })
+        && string_contains(s: expected_design_md(), pattern: "### Cardinality / absence")
+        && string_contains(s: expected_design_md(), pattern: "`std.optional::Optional`")
+        && string_contains(s: expected_design_md(), pattern: "`std.algebra::FreeSemigroup`")
+        && string_contains(s: expected_design_md(), pattern: "`v2.std.cardinality::NatLeWitness`")
+        && string_contains(s: expected_design_md(), pattern: "one_cardinality_concept_existing_authorities")
+        && string_contains(s: expected_design_md(), pattern: "native_first_complete_cuts_then_repository_wide_retirement")
+  }
+}

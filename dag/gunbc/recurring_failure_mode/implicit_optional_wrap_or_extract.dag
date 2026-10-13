@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.implicit_optional_wrap_or_extract
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data implicit_optional_wrap_or_extract: RecurringFailureMode = RecurringFailureMode {
+  identity: "implicit_optional_wrap_or_extract" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a bare value is implicitly wrapped into Optional, or an optional payload is implicitly extracted, without a declared conversion that is total, exact, semantics-preserving, unique, pure and consent-free (DESIGN section 4). Specimens: checker exceptions that insert Present, branch-join tricks that treat T and Optional<T> as joinable, target emission that unwraps without a match.",
+    "HARM: checker and realization can insert different conversions, so a program that typechecks is not the program that runs. RUNG FOUND AT: mitigatable. CEILING: structurally guaranteed once implicit wrap/extract has no constructor and only a declared section-4 route can inject.",
+    "NEXT-RUNG TRIGGER: production paths refuse implicit wrap and extract; Present is authored until a section-4 route is admitted. Bound by gunbc.design_ruling explicit_present_is_the_current_authoring_policy.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.optional", decl_name: "Optional", field: WholeDeclaration },
+  ],
+}

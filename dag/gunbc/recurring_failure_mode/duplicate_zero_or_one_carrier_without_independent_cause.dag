@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.duplicate_zero_or_one_carrier_without_independent_cause
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data duplicate_zero_or_one_carrier_without_independent_cause: RecurringFailureMode = RecurringFailureMode {
+  identity: "duplicate_zero_or_one_carrier_without_independent_cause" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a new Absent, Missing, Unset, HeadAbsent or similar carrier has exactly a zero-or-one-value contract and no independent cause, progress, policy or upstream meaning — a second Optional (DESIGN section 3 nickname). The tell is contract, not a variant-name suffix: MissingPermission with a reason is not this class; JsonNull faithful to an upstream null is not this class; HeadFound | HeadAbsent with no extra fields is.",
+    "HARM: each extra 0..1 coproduct forces its own constructors, patterns, equality and realization, then a later consolidation rewrite. RUNG FOUND AT: mitigatable. CEILING: structurally impossible once Optional is the only zero-or-one constructor for that contract.",
+    "NEXT-RUNG TRIGGER: complete consumer cuts onto std.optional Optional, owned by roadmap cardinality-carrier-consolidation. Bound by gunbc.design_ruling one_cardinality_concept_existing_authorities and the conformance-cardinality-absence tell. SUFFICIENT THAT a new 0..1 carrier without an independent distinction is refused or unwritable.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.optional", decl_name: "Optional", field: WholeDeclaration },
+  ],
+}
