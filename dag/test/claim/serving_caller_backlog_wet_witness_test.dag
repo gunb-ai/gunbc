@@ -11,6 +11,7 @@ import gunbc.serving.caller_backlog {
   LogicalWorkId, CallerBacklogSnapshot, empty_caller_backlog, waiting_record, encode_waiting, decode_waiting,
   DurableWaitingPersisted, DurablePhasePersisted, DurablePersistIdempotent, DurablePersistRefusedTerminal,
   DurablePersistStoreRefused, DurablePersistKeyNotSlotAddressable, DurablePersistPayloadUnencodable,
+  DurablePersistUnknownWork, DurablePersistDuplicate,
   WaitingWireEncoded, WaitingWireUnencodable,
   DurableResumedWaiting, DurableResumedTerminal, DurableResumeUnknownWork,
   DurableResumeStoreUnreadable, DurableResumePayloadUndecodable, DurableResumeWorkMismatch,
@@ -61,6 +62,8 @@ test fn persist_then_resume_reads_the_slot_not_memory_by_real_execution() -> Boo
     DurablePersistStoreRefused { detail: _ } => none
     DurablePersistKeyNotSlotAddressable { work: _ } => none
     DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
   }
   let disk_record = waiting_record(
     work: work,
@@ -149,6 +152,8 @@ test fn persist_cancel_and_commit_resume_as_terminal_by_real_execution() -> Bool
     DurablePersistStoreRefused { detail: _ } => none
     DurablePersistKeyNotSlotAddressable { work: _ } => none
     DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
   }
   let commit_snap = match commit_persist {
     DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
@@ -158,6 +163,8 @@ test fn persist_cancel_and_commit_resume_as_terminal_by_real_execution() -> Bool
     DurablePersistStoreRefused { detail: _ } => none
     DurablePersistKeyNotSlotAddressable { work: _ } => none
     DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
   }
   let cancelled = match cancel_snap {
     Absent => false
@@ -269,6 +276,8 @@ test fn persist_recovery_history_survives_resume_by_real_execution() -> Bool {
     DurablePersistStoreRefused { detail: _ } => none
     DurablePersistKeyNotSlotAddressable { work: _ } => none
     DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
   }
   let after_probe = match snap0 {
     Absent => none
@@ -287,6 +296,8 @@ test fn persist_recovery_history_survives_resume_by_real_execution() -> Bool {
         DurablePersistStoreRefused { detail: _ } => none
         DurablePersistKeyNotSlotAddressable { work: _ } => none
         DurablePersistPayloadUnencodable { reason: _ } => none
+        DurablePersistUnknownWork => none
+        DurablePersistDuplicate => none
       }
   }
   let after_fail = match after_probe {
@@ -306,6 +317,8 @@ test fn persist_recovery_history_survives_resume_by_real_execution() -> Bool {
         DurablePersistStoreRefused { detail: _ } => none
         DurablePersistKeyNotSlotAddressable { work: _ } => none
         DurablePersistPayloadUnencodable { reason: _ } => none
+        DurablePersistUnknownWork => none
+        DurablePersistDuplicate => none
       }
   }
   let resume_root = root_path as NonEmptyStr
@@ -347,7 +360,7 @@ test fn persist_recovery_history_survives_resume_by_real_execution() -> Bool {
       ) {
         DurablePhasePersisted { record: r } =>
           match r.phase {
-            WorkRecoveryBoundExceeded { deficit: d } => string_contains(s: d as String, pattern: "requests failed")
+            WorkRecoveryBoundExceeded { deficit: d } => d.requests_failed >= 1
             WorkWaiting => false
             WorkCompleted => false
             WorkCancelled => false
@@ -358,6 +371,8 @@ test fn persist_recovery_history_survives_resume_by_real_execution() -> Bool {
         DurablePersistStoreRefused { detail: _ } => false
         DurablePersistKeyNotSlotAddressable { work: _ } => false
         DurablePersistPayloadUnencodable { reason: _ } => false
+        DurablePersistUnknownWork => false
+        DurablePersistDuplicate => false
       }
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)

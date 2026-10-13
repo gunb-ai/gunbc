@@ -12,20 +12,22 @@ import product.fabric.execution { ReservationRef }
 import gunbc.serving.caller_backlog {
   LogicalWorkId, CallerBacklogSnapshot, CallerWorkRecord, RecoveryEvent, RecoveryProbe, RecoveryRequest,
   WorkWaiting, WorkCompleted, WorkCancelled, WorkRecoveryBoundExceeded,
-  WaitingPersisted, PersistIdempotent, PersistRefusedTerminal,
-  OfferedAfterPersist, OfferRefusedUnpersisted, OfferRefusedPhase,
-  ResumedWaiting, ResumedTerminal, ResumeUnknownWork,
-  AttemptCommitted, AttemptFenceRefused, AttemptNotWaiting, AttemptUnknownWork,
-  CancelledWaiting, CancelAlreadyTerminal, CancelUnknownWork,
+  WaitingPersisted, PersistIdempotent, PersistRefusedTerminal, PersistRefusedDuplicate,
+  OfferedAfterPersist, OfferRefusedUnpersisted, OfferRefusedPhase, OfferRefusedDuplicate,
+  ResumedWaiting, ResumedTerminal, ResumeUnknownWork, ResumeDuplicateWork,
+  AttemptCommitted, AttemptFenceRefused, AttemptNotWaiting, AttemptUnknownWork, AttemptDuplicate,
+  CancelledWaiting, CancelAlreadyTerminal, CancelUnknownWork, CancelDuplicate,
+  RecoveryNoted, RecoveryBoundExceeded, RecoveryUnknownWork, RecoveryAlreadyTerminal, RecoveryDuplicate,
+  CallerRecordFound, CallerRecordAbsent, CallerRecordDuplicated,
   RetryComeBack, RetryTerminal,
   empty_caller_backlog, persist_waiting, snapshot_after_persist, offer_persisted,
   encode_waiting, decode_waiting, WaitingWireEncoded, WaitingWireUnencodable,
   resume_from_snapshot, view_after_controller_restart, resume_after_restart,
   waiting_survives_ready_supply, apply_ready_supply, apply_ready_supply_law, offer_against_ready_supply,
   KeepWaitingAcrossZeroSupply, ExpireWaitingOnZeroSupply,
-  SupplyReady, SupplyAbsentWaiting, SupplyUnknownWork, SupplyTerminal,
+  SupplyReady, SupplyAbsentWaiting, SupplyUnknownWork, SupplyTerminal, SupplyDuplicate,
   commit_attempt, snapshot_after_commit,
-  cancel_work, snapshot_after_cancel, note_recovery, caller_retry_disposition, lookup_record,
+  cancel_work, snapshot_after_cancel, note_recovery, snapshot_after_recovery, caller_retry_disposition, lookup_record,
   persist_before_offer_basis, retriable_refusal_basis, stable_turn_identity_basis, idempotent_retry_basis,
   no_expiry_on_long_wait_basis, durable_cancellation_basis, no_double_execution_basis,
   caller_backlog_basis_refs,
@@ -63,13 +65,15 @@ fn persisted_waiting() -> CallerBacklogSnapshot {
     WaitingPersisted { record: r } => snapshot_after_persist(snapshot: empty_caller_backlog, standing: WaitingPersisted { record: r })
     PersistIdempotent { record: r } => snapshot_after_persist(snapshot: empty_caller_backlog, standing: PersistIdempotent { record: r })
     PersistRefusedTerminal { phase: _ } => empty_caller_backlog
+    PersistRefusedDuplicate => empty_caller_backlog
   }
 }
 
 fn is_waiting(s: CallerBacklogSnapshot) -> Bool {
   match lookup_record(snapshot: s, work: work_a) {
-    Absent => false
-    Present { value: r } =>
+    CallerRecordAbsent => false
+    CallerRecordDuplicated => false
+    CallerRecordFound { record: r } =>
       match r.phase {
         WorkWaiting => true
         WorkCompleted => false
@@ -82,21 +86,24 @@ fn is_waiting(s: CallerBacklogSnapshot) -> Bool {
 // Persist-before-offer: an unpersisted turn cannot be offered; after persist, the same logical
 // identity is offered. A second persist of waiting work is idempotent, not a second record.
 test fn w_persist_before_offer_and_duplicate_persist_is_one_waiting_record() -> Bool {
-  (match offer_persisted(snapshot: empty_caller_backlog, work: work_a) { OfferRefusedUnpersisted => true  OfferedAfterPersist { record: _ } => false  OfferRefusedPhase { phase: _ } => false })
+  (match offer_persisted(snapshot: empty_caller_backlog, work: work_a) { OfferRefusedUnpersisted => true  OfferedAfterPersist { record: _ } => false  OfferRefusedPhase { phase: _ } => false  OfferRefusedDuplicate => false })
     && (match persist_waiting(snapshot: empty_caller_backlog, work: work_a, reservation: reservation_a, generation: 2) {
       WaitingPersisted { record: r } =>
         match offer_persisted(snapshot: snapshot_after_persist(snapshot: empty_caller_backlog, standing: WaitingPersisted { record: r }), work: work_a) {
           OfferedAfterPersist { record: offered } => (offered.work as String) == (work_a as String)
           OfferRefusedUnpersisted => false
           OfferRefusedPhase { phase: _ } => false
+          OfferRefusedDuplicate => false
         }
       PersistIdempotent { record: _ } => false
       PersistRefusedTerminal { phase: _ } => false
+      PersistRefusedDuplicate => false
     })
     && (match persist_waiting(snapshot: persisted_waiting(), work: work_a, reservation: reservation_a, generation: 2) {
       PersistIdempotent { record: r } => (r.work as String) == (work_a as String) && is_waiting(s: persisted_waiting())
       WaitingPersisted { record: _ } => false
       PersistRefusedTerminal { phase: _ } => false
+      PersistRefusedDuplicate => false
     })
 }
 
@@ -120,14 +127,14 @@ test fn w_waiting_survives_ready_supply_drop_and_controller_restart_without_nudg
     work: work_a,
     ready: 0,
   )
-  (match after_supply { ResumedWaiting { record: r } => (r.work as String) == (work_a as String)  ResumedTerminal { phase: _ } => false  ResumeUnknownWork => false })
+  (match after_supply { ResumedWaiting { record: r } => (r.work as String) == (work_a as String)  ResumedTerminal { phase: _ } => false  ResumeUnknownWork => false  ResumeDuplicateWork => false })
     && is_waiting(s: after_zero)
-    && (match resume_from_snapshot(snapshot: expired, work: work_a) { ResumeUnknownWork => true  ResumedWaiting { record: _ } => false  ResumedTerminal { phase: _ } => false })
-    && (match resume_from_snapshot(snapshot: kept, work: work_a) { ResumedWaiting { record: r } => (r.work as String) == (work_a as String)  ResumedTerminal { phase: _ } => false  ResumeUnknownWork => false })
-    && (match offer_against_ready_supply(snapshot: after_zero, work: work_a, ready: 0) { SupplyAbsentWaiting { record: r } => (r.work as String) == (work_a as String)  SupplyReady { record: _ } => false  SupplyUnknownWork => false  SupplyTerminal { phase: _ } => false })
-    && (match offer_against_ready_supply(snapshot: durable, work: work_a, ready: 2) { SupplyReady { record: r } => (r.work as String) == (work_a as String)  SupplyAbsentWaiting { record: _ } => false  SupplyUnknownWork => false  SupplyTerminal { phase: _ } => false })
-    && (match resume_from_snapshot(snapshot: view.memory, work: work_a) { ResumeUnknownWork => true  ResumedWaiting { record: _ } => false  ResumedTerminal { phase: _ } => false })
-    && (match resume_after_restart(view: view, work: work_a) { ResumedWaiting { record: r } => (r.work as String) == (work_a as String)  ResumedTerminal { phase: _ } => false  ResumeUnknownWork => false })
+    && (match resume_from_snapshot(snapshot: expired, work: work_a) { ResumeUnknownWork => true  ResumedWaiting { record: _ } => false  ResumedTerminal { phase: _ } => false  ResumeDuplicateWork => false })
+    && (match resume_from_snapshot(snapshot: kept, work: work_a) { ResumedWaiting { record: r } => (r.work as String) == (work_a as String)  ResumedTerminal { phase: _ } => false  ResumeUnknownWork => false  ResumeDuplicateWork => false })
+    && (match offer_against_ready_supply(snapshot: after_zero, work: work_a, ready: 0) { SupplyAbsentWaiting { record: r } => (r.work as String) == (work_a as String)  SupplyReady { record: _ } => false  SupplyUnknownWork => false  SupplyTerminal { phase: _ } => false  SupplyDuplicate => false })
+    && (match offer_against_ready_supply(snapshot: durable, work: work_a, ready: 2) { SupplyReady { record: r } => (r.work as String) == (work_a as String)  SupplyAbsentWaiting { record: _ } => false  SupplyUnknownWork => false  SupplyTerminal { phase: _ } => false  SupplyDuplicate => false })
+    && (match resume_from_snapshot(snapshot: view.memory, work: work_a) { ResumeUnknownWork => true  ResumedWaiting { record: _ } => false  ResumedTerminal { phase: _ } => false  ResumeDuplicateWork => false })
+    && (match resume_after_restart(view: view, work: work_a) { ResumedWaiting { record: r } => (r.work as String) == (work_a as String)  ResumedTerminal { phase: _ } => false  ResumeUnknownWork => false  ResumeDuplicateWork => false })
 }
 
 // A stale attempt from a resumed old replica (generation 1 while the grant holds 2) cannot commit.
@@ -138,41 +145,51 @@ test fn w_stale_replica_generation_cannot_commit_and_completion_is_not_rerun() -
   let live = commit_attempt(snapshot: waiting, account: fenced_account(generation: 2), work: work_a, presented: 2)
   let completed = snapshot_after_commit(snapshot: waiting, standing: live)
   let again = commit_attempt(snapshot: completed, account: fenced_account(generation: 2), work: work_a, presented: 2)
-  (match stale { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false })
-    && (match live { AttemptCommitted { record: r } => match r.phase { WorkCompleted => true  WorkWaiting => false  WorkCancelled => false  WorkRecoveryBoundExceeded { deficit: _ } => false }  AttemptFenceRefused => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false })
-    && (match again { AttemptNotWaiting { phase: p } => match p { WorkCompleted => true  WorkWaiting => false  WorkCancelled => false  WorkRecoveryBoundExceeded { deficit: _ } => false }  AttemptCommitted { record: _ } => false  AttemptFenceRefused => false  AttemptUnknownWork => false })
+  (match stale { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
+    && (match live { AttemptCommitted { record: r } => match r.phase { WorkCompleted => true  WorkWaiting => false  WorkCancelled => false  WorkRecoveryBoundExceeded { deficit: _ } => false }  AttemptFenceRefused => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
+    && (match again { AttemptNotWaiting { phase: p } => match p { WorkCompleted => true  WorkWaiting => false  WorkCancelled => false  WorkRecoveryBoundExceeded { deficit: _ } => false }  AttemptCommitted { record: _ } => false  AttemptFenceRefused => false  AttemptUnknownWork => false  AttemptDuplicate => false })
 }
 
 // Probe succeeds, real requests fail: the bound spans the whole recovery history (probe included)
 // and the deficit is surfaced. Probe success does not reset the count.
 test fn w_probe_success_does_not_reset_request_failures_past_the_bound() -> Bool {
   let bound = 3
-  let after_probe = note_recovery(
+  let after_probe = snapshot_after_recovery(
     snapshot: persisted_waiting(),
-    work: work_a,
-    event: RecoveryEvent { kind: RecoveryProbe, succeeded: true },
-    bound: bound,
+    standing: note_recovery(
+      snapshot: persisted_waiting(),
+      work: work_a,
+      event: RecoveryEvent { kind: RecoveryProbe, succeeded: true },
+      bound: bound,
+    ),
   )
-  let after_fail_1 = note_recovery(
+  let after_fail_1 = snapshot_after_recovery(
     snapshot: after_probe,
-    work: work_a,
-    event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
-    bound: bound,
+    standing: note_recovery(
+      snapshot: after_probe,
+      work: work_a,
+      event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+      bound: bound,
+    ),
   )
-  let after_fail_2 = note_recovery(
+  let after_fail_2 = snapshot_after_recovery(
     snapshot: after_fail_1,
-    work: work_a,
-    event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
-    bound: bound,
+    standing: note_recovery(
+      snapshot: after_fail_1,
+      work: work_a,
+      event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+      bound: bound,
+    ),
   )
   is_waiting(s: after_probe)
     && is_waiting(s: after_fail_1)
     && (match lookup_record(snapshot: after_fail_2, work: work_a) {
-      Absent => false
-      Present { value: r } =>
+      CallerRecordAbsent => false
+      CallerRecordDuplicated => false
+      CallerRecordFound { record: r } =>
         match r.phase {
           WorkRecoveryBoundExceeded { deficit: d } =>
-            string_contains(s: d as String, pattern: "probe success is not a request completion")
+            d.probes_succeeded == 1 && d.requests_failed == 2
               && (match caller_retry_disposition(record: r) { RetryTerminal { work: w, cause: c } => (w as String) == (work_a as String) && string_contains(s: c as String, pattern: "requests failed")  RetryComeBack { work: _ } => false })
           WorkWaiting => false
           WorkCompleted => false
@@ -194,23 +211,27 @@ test fn w_cancellation_is_terminal() -> Bool {
     }
     CancelAlreadyTerminal { phase: _ } => false
     CancelUnknownWork => false
+    CancelDuplicate => false
   })
     && (match resume_from_snapshot(snapshot: cancelled, work: work_a) {
       ResumedTerminal { phase: p } => match p { WorkCancelled => true  WorkWaiting => false  WorkCompleted => false  WorkRecoveryBoundExceeded { deficit: _ } => false }
       ResumedWaiting { record: _ } => false
       ResumeUnknownWork => false
+      ResumeDuplicateWork => false
     })
     && (match persist_waiting(snapshot: cancelled, work: work_a, reservation: reservation_a, generation: 2) {
       PersistRefusedTerminal { phase: p } => match p { WorkCancelled => true  WorkWaiting => false  WorkCompleted => false  WorkRecoveryBoundExceeded { deficit: _ } => false }
       WaitingPersisted { record: _ } => false
       PersistIdempotent { record: _ } => false
+      PersistRefusedDuplicate => false
     })
     && (match lookup_record(snapshot: persisted_waiting(), work: work_a) {
-      Present { value: r } => match caller_retry_disposition(record: r) {
+      CallerRecordFound { record: r } => match caller_retry_disposition(record: r) {
         RetryComeBack { work: w } => (w as String) == (work_a as String)
         RetryTerminal { work: _, cause: _ } => false
       }
-      Absent => false
+      CallerRecordAbsent => false
+      CallerRecordDuplicated => false
     })
 }
 
@@ -316,4 +337,47 @@ test fn w_tab_in_reservation_is_unencodable() -> Bool {
     WaitingWireEncoded { payload: _ } => false
     WaitingWireUnencodable { reason: _ } => true
   }
+}
+
+test fn w_note_recovery_unknown_work_is_refused() -> Bool {
+  match note_recovery(
+    snapshot: empty_caller_backlog,
+    work: work_a,
+    event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+    bound: 3,
+  ) {
+    RecoveryUnknownWork => true
+    RecoveryNoted { record: _ } => false
+    RecoveryBoundExceeded { record: _ } => false
+    RecoveryAlreadyTerminal { phase: _ } => false
+    RecoveryDuplicate => false
+  }
+}
+
+test fn w_duplicate_records_refuse_persist_and_do_not_revive() -> Bool {
+  let one = persisted_waiting()
+  let dup = CallerBacklogSnapshot { records: concat(one.records, one.records) }
+  (match persist_waiting(snapshot: dup, work: work_a, reservation: reservation_a, generation: 9) {
+    PersistRefusedDuplicate => true
+    WaitingPersisted { record: _ } => false
+    PersistIdempotent { record: _ } => false
+    PersistRefusedTerminal { phase: _ } => false
+  })
+    && (match lookup_record(snapshot: dup, work: work_a) {
+      CallerRecordDuplicated => true
+      CallerRecordFound { record: _ } => false
+      CallerRecordAbsent => false
+    })
+    && (match note_recovery(
+      snapshot: dup,
+      work: work_a,
+      event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
+      bound: 1,
+    ) {
+      RecoveryDuplicate => true
+      RecoveryNoted { record: _ } => false
+      RecoveryBoundExceeded { record: _ } => false
+      RecoveryUnknownWork => false
+      RecoveryAlreadyTerminal { phase: _ } => false
+    })
 }

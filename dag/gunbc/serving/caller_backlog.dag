@@ -31,11 +31,16 @@ import gunbc.durable_cas_file_store {
 
 type LogicalWorkId = NonEmptyStr where brand("LogicalWorkId")
 
+type RecoveryBoundDeficit {
+  probes_succeeded: Int
+  requests_failed: Int
+}
+
 type CallerWorkPhase
   = WorkWaiting
   | WorkCompleted
   | WorkCancelled
-  | WorkRecoveryBoundExceeded { deficit: NonEmptyStr }
+  | WorkRecoveryBoundExceeded { deficit: RecoveryBoundDeficit }
 
 type RecoveryKind
   = RecoveryProbe
@@ -68,12 +73,22 @@ fn records_for(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> List<Cal
   filter(snapshot.records, r => logical_work_eq(a: r.work, b: work))
 }
 
-fn lookup_record(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CallerWorkRecord? {
+type CallerRecordLookup
+  = CallerRecordFound { record: CallerWorkRecord }
+  | CallerRecordAbsent
+  | CallerRecordDuplicated
+
+fn lookup_record(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CallerRecordLookup {
   let found = records_for(snapshot: snapshot, work: work)
-  if length(found) == 1 {
-    found.first()
+  if length(found) == 0 {
+    CallerRecordAbsent
+  } else if length(found) == 1 {
+    match found.first() {
+      Absent => CallerRecordAbsent
+      Present { value: record } => CallerRecordFound { record: record }
+    }
   } else {
-    none
+    CallerRecordDuplicated
   }
 }
 
@@ -103,6 +118,7 @@ type PersistStanding
   = WaitingPersisted { record: CallerWorkRecord }
   | PersistIdempotent { record: CallerWorkRecord }
   | PersistRefusedTerminal { phase: CallerWorkPhase }
+  | PersistRefusedDuplicate
 
 fn persist_waiting(
   snapshot: CallerBacklogSnapshot,
@@ -111,8 +127,9 @@ fn persist_waiting(
   generation: Int,
 ) -> PersistStanding {
   match lookup_record(snapshot: snapshot, work: work) {
-    Absent => WaitingPersisted { record: waiting_record(work: work, reservation: reservation, generation: generation) }
-    Present { value: head } =>
+    CallerRecordAbsent => WaitingPersisted { record: waiting_record(work: work, reservation: reservation, generation: generation) }
+    CallerRecordDuplicated => PersistRefusedDuplicate
+    CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting => PersistIdempotent { record: head }
         WorkCompleted => PersistRefusedTerminal { phase: head.phase }
@@ -127,6 +144,7 @@ fn snapshot_after_persist(snapshot: CallerBacklogSnapshot, standing: PersistStan
     WaitingPersisted { record: r } => replace_record(snapshot: snapshot, next: r)
     PersistIdempotent { record: _ } => snapshot
     PersistRefusedTerminal { phase: _ } => snapshot
+    PersistRefusedDuplicate => snapshot
   }
 }
 
@@ -134,11 +152,13 @@ type OfferStanding
   = OfferedAfterPersist { record: CallerWorkRecord }
   | OfferRefusedUnpersisted
   | OfferRefusedPhase { phase: CallerWorkPhase }
+  | OfferRefusedDuplicate
 
 fn offer_persisted(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> OfferStanding {
   match lookup_record(snapshot: snapshot, work: work) {
-    Absent => OfferRefusedUnpersisted
-    Present { value: head } =>
+    CallerRecordAbsent => OfferRefusedUnpersisted
+    CallerRecordDuplicated => OfferRefusedDuplicate
+    CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting => OfferedAfterPersist { record: head }
         WorkCompleted => OfferRefusedPhase { phase: head.phase }
@@ -154,11 +174,13 @@ type ResumeStanding
   = ResumedWaiting { record: CallerWorkRecord }
   | ResumedTerminal { phase: CallerWorkPhase }
   | ResumeUnknownWork
+  | ResumeDuplicateWork
 
 fn resume_from_snapshot(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> ResumeStanding {
   match lookup_record(snapshot: snapshot, work: work) {
-    Absent => ResumeUnknownWork
-    Present { value: head } =>
+    CallerRecordAbsent => ResumeUnknownWork
+    CallerRecordDuplicated => ResumeDuplicateWork
+    CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting => ResumedWaiting { record: head }
         WorkCompleted => ResumedTerminal { phase: head.phase }
@@ -235,12 +257,50 @@ fn waiting_generation_wire(generation: Int) -> String? {
   }
 }
 
+fn encode_bound_deficit(deficit: RecoveryBoundDeficit) -> String {
+  concat(to_string(deficit.probes_succeeded), concat(":", to_string(deficit.requests_failed)))
+}
+
+fn decode_bound_deficit(s: String) -> RecoveryBoundDeficit? {
+  let parts = s.split(delimiter: ":")
+  if length(parts) != 2 {
+    none
+  } else {
+    match parts.first() {
+      Absent => none
+      Present { value: probes_s } =>
+        match parts.skip(n: 1).first() {
+          Absent => none
+          Present { value: requests_s } =>
+            match parse_int(s: probes_s) {
+              Absent => none
+              Present { value: probes_succeeded } =>
+                match parse_int(s: requests_s) {
+                  Absent => none
+                  Present { value: requests_failed } =>
+                    if probes_succeeded < 0 || requests_failed < 0 {
+                      none
+                    } else {
+                      Present {
+                        value: RecoveryBoundDeficit {
+                          probes_succeeded: probes_succeeded,
+                          requests_failed: requests_failed,
+                        },
+                      }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
 fn encode_phase_deficit(phase: CallerWorkPhase) -> String {
   match phase {
     WorkWaiting => ""
     WorkCompleted => ""
     WorkCancelled => ""
-    WorkRecoveryBoundExceeded { deficit: d } => d as String
+    WorkRecoveryBoundExceeded { deficit: d } => encode_bound_deficit(deficit: d)
   }
 }
 
@@ -270,10 +330,9 @@ fn decode_phase_from_rows(tag: String, deficit: String) -> CallerWorkPhase? {
       match row.closed {
         Present { value: p } => if deficit == "" { Present { value: p } } else { none }
         Absent =>
-          if waiting_wire_field_is_clean(field: deficit) {
-            Present { value: WorkRecoveryBoundExceeded { deficit: deficit as NonEmptyStr } }
-          } else {
-            none
+          match decode_bound_deficit(s: deficit) {
+            Absent => none
+            Present { value: d } => Present { value: WorkRecoveryBoundExceeded { deficit: d } }
           }
       }
   }
@@ -453,6 +512,8 @@ type DurablePersistStanding
   | DurablePersistStoreRefused { detail: NonEmptyStr }
   | DurablePersistKeyNotSlotAddressable { work: LogicalWorkId }
   | DurablePersistPayloadUnencodable { reason: NonEmptyStr }
+  | DurablePersistUnknownWork
+  | DurablePersistDuplicate
 
 fn persist_record_cas(
   root: NonEmptyStr,
@@ -535,6 +596,7 @@ fn persist_waiting_durable(
     WaitingPersisted { record: r } => persist_waiting_on_store(root: root, record: r)
     PersistIdempotent { record: r } => DurablePersistIdempotent { record: r }
     PersistRefusedTerminal { phase: p } => DurablePersistRefusedTerminal { phase: p }
+    PersistRefusedDuplicate => DurablePersistDuplicate
   }
 }
 
@@ -592,6 +654,7 @@ type ReadyOffer
   | SupplyAbsentWaiting { record: CallerWorkRecord }
   | SupplyUnknownWork
   | SupplyTerminal { phase: CallerWorkPhase }
+  | SupplyDuplicate
 
 fn offer_against_ready_supply(
   snapshot: CallerBacklogSnapshot,
@@ -599,8 +662,9 @@ fn offer_against_ready_supply(
   ready: Nat,
 ) -> ReadyOffer {
   match lookup_record(snapshot: snapshot, work: work) {
-    Absent => SupplyUnknownWork
-    Present { value: head } =>
+    CallerRecordAbsent => SupplyUnknownWork
+    CallerRecordDuplicated => SupplyDuplicate
+    CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting =>
           if ready == 0 {
@@ -640,6 +704,7 @@ fn apply_ready_supply_law(
       }
     SupplyUnknownWork => snapshot
     SupplyTerminal { phase: _ } => snapshot
+    SupplyDuplicate => snapshot
   }
 }
 
@@ -665,6 +730,7 @@ type AttemptCommit
   | AttemptFenceRefused
   | AttemptNotWaiting { phase: CallerWorkPhase }
   | AttemptUnknownWork
+  | AttemptDuplicate
 
 // Attempt fencing is product.fabric.budget fence_admits over the grant's reservation and the
 // generation the replica presents. A resumed old replica presenting a superseded generation
@@ -677,8 +743,9 @@ fn commit_attempt(
   presented: Int,
 ) -> AttemptCommit {
   match lookup_record(snapshot: snapshot, work: work) {
-    Absent => AttemptUnknownWork
-    Present { value: head } =>
+    CallerRecordAbsent => AttemptUnknownWork
+    CallerRecordDuplicated => AttemptDuplicate
+    CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting =>
           if !fence_admits(a: account, reference: head.reservation, presented: presented) {
@@ -707,6 +774,7 @@ fn snapshot_after_commit(snapshot: CallerBacklogSnapshot, standing: AttemptCommi
     AttemptFenceRefused => snapshot
     AttemptNotWaiting { phase: _ } => snapshot
     AttemptUnknownWork => snapshot
+    AttemptDuplicate => snapshot
   }
 }
 
@@ -714,11 +782,13 @@ type CancelStanding
   = CancelledWaiting { record: CallerWorkRecord }
   | CancelAlreadyTerminal { phase: CallerWorkPhase }
   | CancelUnknownWork
+  | CancelDuplicate
 
 fn cancel_work(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CancelStanding {
   match lookup_record(snapshot: snapshot, work: work) {
-    Absent => CancelUnknownWork
-    Present { value: head } =>
+    CallerRecordAbsent => CancelUnknownWork
+    CallerRecordDuplicated => CancelDuplicate
+    CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting =>
           CancelledWaiting {
@@ -742,6 +812,7 @@ fn snapshot_after_cancel(snapshot: CallerBacklogSnapshot, standing: CancelStandi
     CancelledWaiting { record: r } => replace_record(snapshot: snapshot, next: r)
     CancelAlreadyTerminal { phase: _ } => snapshot
     CancelUnknownWork => snapshot
+    CancelDuplicate => snapshot
   }
 }
 
@@ -769,7 +840,10 @@ fn cancel_work_durable(
         DurablePersistStoreRefused { detail: d } => DurableCancelStoreRefused { detail: d }
         DurablePersistKeyNotSlotAddressable { work: w } => DurableCancelKeyNotSlotAddressable { work: w }
         DurablePersistPayloadUnencodable { reason: r } => DurableCancelStoreRefused { detail: r }
+        DurablePersistUnknownWork => DurableCancelUnknownWork
+        DurablePersistDuplicate => DurableCancelStoreRefused { detail: "snapshot has duplicate records for this work" as NonEmptyStr }
       }
+    CancelDuplicate => DurableCancelStoreRefused { detail: "snapshot has duplicate records for this work" as NonEmptyStr }
   }
 }
 
@@ -801,7 +875,10 @@ fn commit_attempt_durable(
         DurablePersistStoreRefused { detail: d } => DurableAttemptStoreRefused { detail: d }
         DurablePersistKeyNotSlotAddressable { work: w } => DurableAttemptKeyNotSlotAddressable { work: w }
         DurablePersistPayloadUnencodable { reason: r } => DurableAttemptStoreRefused { detail: r }
+        DurablePersistUnknownWork => DurableAttemptUnknownWork
+        DurablePersistDuplicate => DurableAttemptStoreRefused { detail: "snapshot has duplicate records for this work" as NonEmptyStr }
       }
+    AttemptDuplicate => DurableAttemptStoreRefused { detail: "snapshot has duplicate records for this work" as NonEmptyStr }
   }
 }
 
@@ -809,50 +886,76 @@ fn is_failed_request(event: RecoveryEvent) -> Bool {
   event.kind == RecoveryRequest && !event.succeeded
 }
 
-fn recovery_deficit(events: List<RecoveryEvent>) -> NonEmptyStr {
-  let probes_ok = length(filter(events, e => e.kind == RecoveryProbe && e.succeeded))
-  let requests_failed = length(filter(events, e => is_failed_request(event: e)))
+fn recovery_bound_deficit(events: List<RecoveryEvent>) -> RecoveryBoundDeficit {
+  RecoveryBoundDeficit {
+    probes_succeeded: length(filter(events, e => e.kind == RecoveryProbe && e.succeeded)),
+    requests_failed: length(filter(events, e => is_failed_request(event: e))),
+  }
+}
+
+fn recovery_deficit_text(deficit: RecoveryBoundDeficit) -> NonEmptyStr {
   join([
     "recovery bound exhausted across the logical work's whole history; probes succeeded: ",
-    to_string(probes_ok),
+    to_string(deficit.probes_succeeded),
     "; requests failed: ",
-    to_string(requests_failed),
+    to_string(deficit.requests_failed),
     "; probe success is not a request completion and does not reset the bound",
   ], "") as NonEmptyStr
 }
+
+type RecoveryStanding
+  = RecoveryNoted { record: CallerWorkRecord }
+  | RecoveryBoundExceeded { record: CallerWorkRecord }
+  | RecoveryUnknownWork
+  | RecoveryAlreadyTerminal { phase: CallerWorkPhase }
+  | RecoveryDuplicate
 
 fn note_recovery(
   snapshot: CallerBacklogSnapshot,
   work: LogicalWorkId,
   event: RecoveryEvent,
   bound: Nat,
-) -> CallerBacklogSnapshot {
+) -> RecoveryStanding {
   match lookup_record(snapshot: snapshot, work: work) {
-    Absent => snapshot
-    Present { value: head } =>
+    CallerRecordAbsent => RecoveryUnknownWork
+    CallerRecordDuplicated => RecoveryDuplicate
+    CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting => {
           let next_events = concat(head.recovery, [event])
           let next_phase = if length(next_events) >= bound && is_failed_request(event: event) {
-            WorkRecoveryBoundExceeded { deficit: recovery_deficit(events: next_events) }
+            WorkRecoveryBoundExceeded { deficit: recovery_bound_deficit(events: next_events) }
           } else {
             WorkWaiting
           }
-          replace_record(
-            snapshot: snapshot,
-            next: CallerWorkRecord {
-              work: head.work,
-              reservation: head.reservation,
-              generation: head.generation,
-              phase: next_phase,
-              recovery: next_events,
-            },
-          )
+          let next = CallerWorkRecord {
+            work: head.work,
+            reservation: head.reservation,
+            generation: head.generation,
+            phase: next_phase,
+            recovery: next_events,
+          }
+          match next_phase {
+            WorkRecoveryBoundExceeded { deficit: _ } => RecoveryBoundExceeded { record: next }
+            WorkWaiting => RecoveryNoted { record: next }
+            WorkCompleted => RecoveryNoted { record: next }
+            WorkCancelled => RecoveryNoted { record: next }
+          }
         }
-        WorkCompleted => snapshot
-        WorkCancelled => snapshot
-        WorkRecoveryBoundExceeded { deficit: _ } => snapshot
+        WorkCompleted => RecoveryAlreadyTerminal { phase: head.phase }
+        WorkCancelled => RecoveryAlreadyTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => RecoveryAlreadyTerminal { phase: head.phase }
       }
+  }
+}
+
+fn snapshot_after_recovery(snapshot: CallerBacklogSnapshot, standing: RecoveryStanding) -> CallerBacklogSnapshot {
+  match standing {
+    RecoveryNoted { record: r } => replace_record(snapshot: snapshot, next: r)
+    RecoveryBoundExceeded { record: r } => replace_record(snapshot: snapshot, next: r)
+    RecoveryUnknownWork => snapshot
+    RecoveryAlreadyTerminal { phase: _ } => snapshot
+    RecoveryDuplicate => snapshot
   }
 }
 
@@ -863,10 +966,12 @@ fn note_recovery_durable(
   event: RecoveryEvent,
   bound: Nat,
 ) -> DurablePersistStanding {
-  let next = note_recovery(snapshot: snapshot, work: work, event: event, bound: bound)
-  match lookup_record(snapshot: next, work: work) {
-    Absent => DurablePersistStoreRefused { detail: "no waiting record to persist recovery against" as NonEmptyStr }
-    Present { value: record } => persist_phase_on_store(root: root, record: record)
+  match note_recovery(snapshot: snapshot, work: work, event: event, bound: bound) {
+    RecoveryUnknownWork => DurablePersistUnknownWork
+    RecoveryDuplicate => DurablePersistDuplicate
+    RecoveryAlreadyTerminal { phase: p } => DurablePersistRefusedTerminal { phase: p }
+    RecoveryNoted { record: r } => persist_phase_on_store(root: root, record: r)
+    RecoveryBoundExceeded { record: r } => persist_phase_on_store(root: root, record: r)
   }
 }
 
@@ -881,7 +986,7 @@ fn caller_retry_disposition(record: CallerWorkRecord) -> CallerRetryDisposition 
     WorkWaiting => RetryComeBack { work: record.work }
     WorkCompleted => RetryTerminal { work: record.work, cause: "logical work already completed" as NonEmptyStr }
     WorkCancelled => RetryTerminal { work: record.work, cause: "cancellation is terminal" as NonEmptyStr }
-    WorkRecoveryBoundExceeded { deficit: d } => RetryTerminal { work: record.work, cause: d }
+    WorkRecoveryBoundExceeded { deficit: d } => RetryTerminal { work: record.work, cause: recovery_deficit_text(deficit: d) }
   }
 }
 
