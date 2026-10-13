@@ -4535,32 +4535,47 @@ fn run_native_child_measured(
     })
 }
 
+/// ONE RUN'S PRIVATE DIRECTORY, created EXCLUSIVELY under `MEASURED_SPAWN_DIR`
+/// (`emitted_closure_compile_host` `create_private_probe_root`: the kernel's exclusive mkdir is the
+/// ownership claim). It holds this run's receipt, its argv file and its control root, and dropping it
+/// removes only this run's directory, so two overlapping invocations can neither read each other's
+/// receipt nor delete each other's control.
+pub fn measured_spawn_run_dir(
+) -> Result<super::emitted_closure_compile_host::PrivateProbeRoot, String> {
+    super::emitted_closure_compile_host::create_private_probe_root(std::path::Path::new(
+        MEASURED_SPAWN_DIR,
+    ))
+    .map_err(|e| format!("NATIVE-PROCESS-MEMORY REFUSAL cause=RunDirUncreatable — {e}"))
+}
+
+fn measured_spawn_receipt_in(run_dir: &std::path::Path) -> std::path::PathBuf {
+    run_dir.join("child.rusage")
+}
+
+/// `write_control` receives this run's private directory and returns the control root it wrote there.
 pub fn run_native_process_memory_runs(
     source_roots: &[String],
     verb: &str,
-    control_root: &str,
+    write_control: impl FnOnce(&std::path::Path) -> Result<std::path::PathBuf, String>,
 ) -> Result<NativeProcessMemoryRuns, String> {
     let envelope =
         host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution());
     let preparation = prepare_emitted_compiler(source_roots)?;
-    std::fs::create_dir_all(MEASURED_SPAWN_DIR).map_err(|e| {
-        format!(
-            "NATIVE-PROCESS-MEMORY REFUSAL cause=ReceiptDirUnwritable — {MEASURED_SPAWN_DIR}: {e}"
-        )
-    })?;
-    let receipt = std::path::Path::new(MEASURED_SPAWN_DIR).join("child.rusage");
+    let run_dir = measured_spawn_run_dir()?;
+    let control_root = write_control(run_dir.path())?;
+    let receipt = measured_spawn_receipt_in(run_dir.path());
     let control = run_native_child_measured(
         &preparation.binary_path,
-        &[verb.to_string(), control_root.to_string()],
+        &[
+            verb.to_string(),
+            control_root.to_string_lossy().into_owned(),
+        ],
         &receipt,
     )?;
     let mut args = vec![verb.to_string()];
     args.extend(source_roots.iter().cloned());
     let workload = run_native_child_measured(&preparation.binary_path, &args, &receipt)?;
-    let _ = std::fs::remove_file(&receipt);
-    let mut argv_path = receipt.into_os_string();
-    argv_path.push(".argv");
-    let _ = std::fs::remove_file(argv_path);
+    drop(run_dir);
     Ok(NativeProcessMemoryRuns {
         binary_identity: preparation.binary_identity.clone(),
         envelope,
@@ -4814,6 +4829,62 @@ mod tests {
         assert_eq!(fields.len(), 4, "{text:?}");
         assert!(fields[0] > 0, "{text:?}");
         assert_eq!((fields[2], fields[3]), (3, 0), "{text:?}");
+    }
+
+    /// OVERLAPPING INVOCATIONS ARE ISOLATED (side-chat review at 46307efc). Two runs, each in its own
+    /// exclusively created directory, spawn distinguishable children at once; the second finishes and
+    /// cleans up while the first is still running. Each reads its own child (exit 3 vs 5, the slow one
+    /// visibly longer), and the first run's directory survives the second's cleanup. Bounded: the slow
+    /// child sleeps one second.
+    #[test]
+    fn overlapping_runs_read_their_own_receipts_and_clean_only_their_own_dirs() {
+        let slow_dir = measured_spawn_run_dir().unwrap();
+        let fast_dir = measured_spawn_run_dir().unwrap();
+        assert_ne!(slow_dir.path(), fast_dir.path());
+        let arm = |dir: &std::path::Path, script: &str| {
+            let receipt = measured_spawn_receipt_in(dir);
+            std::fs::write(
+                format!("{}.argv", receipt.display()),
+                format!("/bin/sh\n-c\n{script}"),
+            )
+            .unwrap();
+            let MeasuredSpawnRoute::Enter(path) = measured_spawn_route(
+                MEASURED_SPAWN_OPERAND,
+                Some(receipt.clone().into_os_string()),
+            ) else {
+                panic!("a private run dir is under the declared dir");
+            };
+            path
+        };
+        let slow_receipt = arm(slow_dir.path(), "sleep 1; exit 3");
+        let fast_receipt = arm(fast_dir.path(), "exit 5");
+        let slow = std::thread::spawn({
+            let r = slow_receipt.clone();
+            move || measured_spawn_trampoline(r)
+        });
+        assert_eq!(measured_spawn_trampoline(fast_receipt.clone()), 0);
+        let fast_text = std::fs::read_to_string(&fast_receipt).unwrap();
+        let fast_path = fast_dir.path().to_path_buf();
+        drop(fast_dir);
+        assert!(!fast_path.exists());
+        assert!(
+            slow_dir.path().exists(),
+            "the other run's cleanup removed this run's dir"
+        );
+        assert_eq!(slow.join().unwrap(), 0);
+        let slow_text = std::fs::read_to_string(&slow_receipt).unwrap();
+        let fields =
+            |t: &str| -> Vec<i64> { t.split_whitespace().map(|f| f.parse().unwrap()).collect() };
+        let (slow_f, fast_f) = (fields(&slow_text), fields(&fast_text));
+        assert_eq!(
+            (slow_f[2], fast_f[2]),
+            (3, 5),
+            "{slow_text:?} {fast_text:?}"
+        );
+        assert!(
+            slow_f[1] >= 1_000_000_000 && fast_f[1] < slow_f[1],
+            "{slow_text:?} {fast_text:?}"
+        );
     }
 
     /// THE IDENTITY IS THE WORKSPACE'S FILES, NOT ITS MODULE DIRECTORY. Relocating identical files

@@ -3,8 +3,7 @@ module gunbc.instruments.v1_consumer_discovery
 import std.types { Bool, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
-import v2.std.algebra { fold_list }
-import std.algebra { list_append, list_snoc_item }
+import std.algebra { list_append, list_snoc_item, fold_list }
 import v2.std.decl_index { DeclFact, decl_facts, decl_facts_at }
 import v2.std.fn_index { atom_identities_in_node }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }

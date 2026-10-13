@@ -1,7 +1,6 @@
 module test.claim.type_declaration_use_census_witness
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import gunbc.instruments.type_declaration_use_census {

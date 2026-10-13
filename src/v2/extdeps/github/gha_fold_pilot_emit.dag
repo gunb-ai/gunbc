@@ -9,7 +9,7 @@ import extdeps.github.actions {
   Step,
   UsesStep
 }
-import v2.std.algebra { for_all }
+import std.algebra { for_all }
 import std.optional {
   Absent,
   Optional,

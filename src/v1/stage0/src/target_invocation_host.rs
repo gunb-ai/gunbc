@@ -1533,10 +1533,10 @@ fn run_native_process_memory(
             Err(cause) => Err(format!("{label_name}: {function} failed: {cause}")),
         }
     };
-    let control_root = std::path::Path::new(cli_run::MEASURED_SPAWN_DIR).join("control");
-    let written = (|| -> Result<std::path::PathBuf, String> {
-        let _ = std::fs::remove_dir_all(&control_root);
-        let tree = control_root.join(read_str("native_process_memory_control_tree")?);
+    let write_control = |run_dir: &std::path::Path| -> Result<std::path::PathBuf, String> {
+        let tree = run_dir
+            .join("control")
+            .join(read_str("native_process_memory_control_tree")?);
         let target = tree.join(read_str("native_process_memory_control_path")?);
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("{label_name}: {e}"))?;
@@ -1544,18 +1544,10 @@ fn run_native_process_memory(
         std::fs::write(&target, read_str("native_process_memory_control_content")?)
             .map_err(|e| format!("{label_name}: {e}"))?;
         Ok(tree)
-    })();
-    let control_root = match written {
-        Ok(tree) => tree,
-        Err(cause) => return unreached(cause),
     };
     let NativeMeasuredWorkload::Census { verb } = workload;
     let (argv, verb_variant) = verb.argv_and_variant();
-    let runs = match cli_run::run_native_process_memory_runs(
-        source_roots,
-        argv,
-        &control_root.to_string_lossy(),
-    ) {
+    let runs = match cli_run::run_native_process_memory_runs(source_roots, argv, write_control) {
         Ok(runs) => runs,
         Err(cause) => return unreached(cause),
     };

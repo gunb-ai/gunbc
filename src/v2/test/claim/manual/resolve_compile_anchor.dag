@@ -20,7 +20,6 @@ import v2.extdeps.languages.dag {
   dag_surface_edge,
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_node }
 import v2.std.diagnostic {
   Accepted,
   None,
@@ -37,6 +36,7 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
+  fold_list_node
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.resolution_policy { ImportScoped }

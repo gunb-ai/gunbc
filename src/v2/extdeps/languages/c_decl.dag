@@ -24,8 +24,7 @@ import v2.std.compilers.semantic_decl_emission {
   semantic_decl_lex_whitespace_trivia_row,
   semantic_decl_serialize_profile_bundle
 }
-import v2.std.algebra { fold_list }
-import std.algebra { list_append, list_snoc_item }
+import std.algebra { list_append, list_snoc_item, fold_list }
 import v2.std.integer { Int }
 import v2.std.node {
   Conj,
