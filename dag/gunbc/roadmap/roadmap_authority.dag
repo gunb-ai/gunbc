@@ -2322,7 +2322,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Decide every name one canonical way",
           boundary: "The namespace cut as gunbc.namespace_cut.namespace_cut_stage stages it: F-0, XL-0 to XL-4 (evidence and the reference-derived graph), ACT-0 and XL-5 (waves), XL-6 (atomic cutover), XL-7 (grammar deletion). Rows are the stages that still have open work. The stage chain itself stays in the module.",
-          approach: "XL-2 and XL-3 wait on frontend prerequisites (LoweringOccurrenceProjection, ServiceModuleLowering, ResolverBoundDeclaringIdentity). The declaration-identity switch-over is the XL-6 construction, built in shadow now. Per the 2026-09-12 interlock edge, XL-6 and XL-7 run after seed retirement.",
+          approach: "XL-2 and XL-3 wait on frontend prerequisites (UsesClauseCarrier, ResolverBoundDeclaringIdentity; LoweringOccurrenceProjection is delivered, gunbc#13828; ServiceModuleLowering is delivered, gunbc#13833, 7c9319cbaf). The declaration-identity switch-over is the XL-6 construction, built in shadow now. Per the 2026-09-12 interlock edge, XL-6 and XL-7 run after seed retirement.",
           red_control: "ACT-0 release stays blocked while gunbc.rung_drop namespace_wave_admission_wall_removed stands or any act0_release_milestones entry is OUTSTANDING. A name answered two ways after XL-6 is a defect of this project.",
           displaced_cost: "Several mechanisms decide one name differently, so a proof about a program can be a proof about a program other than the one written.",
           handback: "XL-7 delivered: import is a typed, located parse error, and the legacy deciding mechanisms are deleted."
@@ -2363,6 +2363,101 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "v2-compiler-live", contribution: "A compiler that cannot build itself is not self-hosted. This project turns 'v2 emits Rust' into a second and third generation that need nothing from the seed."),
     ),
 
+    roadmap_node(
+      identity: "rn_B7B9QVT0KCWB5PVWG9SE6PHFS7",
+      id: "emission-minimum-cost",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/emit_copy_qualification.dag"),
+      line: ticket(t: level_fields(
+          headline: "Every .dag building block has an understood, minimum-cost Rust realization, proven by execution, and larger programs inherit it",
+          boundary: "The .dag core is small and fold-heavy: Node and Edge, Value, Transform, Branch, Loop, Bind and Match, plus record and variant construction, field reads, generic instantiation and closures. Each of those building blocks gets a stated realization contract (what it may allocate, copy, retain or share, and why) and an executing specimen that holds it, through the real emitter, an untouched emitted crate, a release build and a run. Composite patterns are qualified only on top of qualified building blocks. The contracts are stated against the source construct, not against Rust spelling, so a later target adds realization rows under the same contracts. Rust is the first target.",
+          approach: "Production-selected, bottom-up repair in short cycles. The real-consumer profile (emission-real-consumer-profiles) picks which building blocks to qualify first; each block is qualified alone (emission-building-block-realization), its failure is repaired at the earliest incorrect layer (emission-ownership-facts-survive-lowering), the fixed production workload is re-measured, and only then do composites built from repaired blocks qualify (emission-composite-patterns). The v2 emitter is attempted from the first specimen; emission-cost-native-successor owns terminal qualification and the required-route row, not the first look at v2 behavior. gunbc.emit_copy_qualification is the existing cost model and is extended, never forked; its battery has never executed (gunbc.rung_drop.emit_copy_qualification_without_a_consumer), and this project is what restores it.",
+          red_control: "A building block or composite whose contract is stated but whose specimen did not execute through the production emitter reads unqualified, never qualified. A deliberately violating realization (a redundant owning retain on an observation, a copied accumulated prefix, a mutated retained snapshot) must turn its control red through the same observation path that greens the valid one.",
+          displaced_cost: "The emitter's ownership and allocation choices are not stated anywhere a reader can check, so the cost of a .dag program is discovered after the fact. Receipt: the native parse-population control (v2.cli.population_verbs) added about 15 minutes to every pull request's witnesses run once it walked the whole corpus, and nobody could say from the source which part of that cost was the algorithm and which was the realization.",
+          handback: "Every building block and composite family in this project reads qualified by execution under the v2-emitted producer and its successor, the seed result kept only as a measured baseline (seed repairs are made only where the native transition or selected operational relief needs them); the real consumers show the before and after; and gunbc.rung_drop.emit_copy_qualification_without_a_consumer is retired by its own trigger."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "v2 is meant to be better than the seed, not only to compile. A self-hosted compiler whose emitted code has no stated cost cannot scale to the corpus it compiles, and a fold-heavy language only stays cheap if its few building blocks are."),
+    ),
+    roadmap_node(
+      identity: "rn_90MWFH4W3TY4WJCEYX1YEHBPKA",
+      id: "emission-building-block-realization",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/emit_copy_qualification.dag"),
+      line: ticket(t: fields(
+        headline: "Each .dag building block, alone, emits Rust whose ownership and allocation are stated and checked by execution",
+        boundary: "One minimal specimen per building block: a Value (scalar, record, nonrecursive variant, generic instance over a scalar and over a nontrivial payload), a Transform, a Branch, a Loop with a record accumulator, a Bind, a Match (on an owned temporary and on a borrowed shared sum), a field read, a record rebuild with one field changed, a local and an escaping closure, and the collection operation families under them: sequence build, element read and sequential traversal (PersistentSequenceCarrier), and index build, lookup and traversal (PersistentMapCarrier). Each carries a contract in gunbc.emit_copy_qualification terms (OwnershipPattern, CarrierRealization, ControlShape, ConsumerContract) and v2.lens.cost, conditional on the state it runs in: input size and payload shape, observation versus consumption, live aliases or retained versions, escape, and the representation entering and leaving the operation. Owning retains, payload copies and collection copy-on-write are distinct observations. The measured lifetime includes teardown: construction, steady-state use and release are reported separately and in total, and a traversal count is reported where the claim depends on it. The specimen is ordinary .dag compiled by the production frontend and emitter into an untouched crate, built in release and run; the counters and the emitted operations are both read, because neither alone establishes the contract.",
+        displaced_cost: "Today a reader cannot say what a record rebuild or a fold step costs in emitted Rust without reading generated code, and the seed's habits (an Rc around every record, a .clone() at every read) are inherited by every program above them unexamined.",
+        first_slice: "Observation and state threading, chosen from the parse-population profile: a small nonescaping result and cursor advanced in a repeated walk, a match on a borrowed shared sum, and an owned record accumulator carrying unchanged context. Each lands with its contract, specimen, violating variant and discriminating run, under the seed emitter and attempted under the v2 emitter (where v2 cannot yet execute it, the exact blocker is named and the v2 result reads unqualified). Next: unique sequence and index construction versus retained snapshots.",
+        red_control: "For each specimen a violating variant goes through the same path and goes red: an owning retain added to the observation, a per-step allocation of the accumulator, a copy of the unchanged context. A contract whose specimen did not execute reads unqualified.",
+        out_of_scope: "Composite patterns (emission-composite-patterns). Repairing the emitter (emission-ownership-facts-survive-lowering). Partial evaluation or specialization of constant data: the reference realization executes the same algorithm as the source.",
+        handback: "The building-block contracts, their executing specimens and violating variants, and the measured realization of each under the seed emitter and, where it executes, the v2 emitter, including the ones that currently fail."
+      )),
+      parent: in_project(project: "emission-minimum-cost", contribution: "The building blocks are the floor: every larger pattern's cost is only explainable if these are."),
+    ),
+    roadmap_node(
+      identity: "rn_N8V3A6H9W3XX87NPVJ81E78M5X",
+      id: "emission-ownership-facts-survive-lowering",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/compiler/wrap_decision.dag"),
+      line: ticket(t: fields(
+        headline: "A failing contract is repaired at its earliest incorrect layer: a missing fact, a wrong decision from available facts, the collection realization, or work no consumer demands",
+        boundary: "For each building-block contract that fails, find the earliest incorrect layer (DESIGN section 6b) and repair it there, with its consumer and a discriminating source-to-Rust control in the same change. It may be a missing or discarded fact (use kind: observe, transfer, retain, consume; coexistence across branches and joins; escape of closures and fields; liveness across a loop step), a wrong decision taken from facts that were available, or the collection or runtime realization that consumes a correct decision; correct ownership does not by itself establish a good collection realization, and replacing the collection library is not a first move. Result demand is in scope too (DESIGN section 2): a producer with two consumers, one retaining the full result and one needing only a verdict, as with v2.compiler.module_acquisition acquisition_parse, which builds provenance and span maps and keeps only Accepted or Rejected. A verdict-only realization must keep every acceptance and refusal the full producer performs, keep one production parsing authority (no hand-written recognizer), and leave the full-result consumer's occurrence identities, provenance and extents unchanged; an ignored field does not license deleting a check made while producing it. The v1 model conflates a use proven not to consume with a use never classified (Read in src/v1/ownership.dag); v2 must keep unknown distinct from proven, so an unknown neither becomes an unsafe borrow nor an expensive default reported as minimum cost. v2.compiler.translate and v2.compiler.wrap_decision already consume representation decisions and are extended, not paralleled.",
+        displaced_cost: "Without the facts, the emitter can only choose the safe expensive realization everywhere, and every future emitter (a second target, the v2 successor) rediscovers the same missing facts.",
+        first_slice: "Trace the first failing observation-and-state-threading contract to its earliest incorrect layer and land that repair with its consumer, its control and the re-measured parse-population workload.",
+        red_control: "A repaired fact with no consumer in the emitter is dangling and refuses review. A use whose classification is unknown is emitted with the conservative realization and is counted as unknown, never as qualified.",
+        out_of_scope: "Rewriting generated Rust by hand or by a post-pass. Name-keyed shortcuts (recognizing a function name and applying a special realization).",
+        handback: "Each repair, the layer that now carries it, its consumer, the building-block contract that turned green because of it, and the production comparison after it."
+      )),
+      parent: in_project(project: "emission-minimum-cost", contribution: "Contracts expose where cost is lost; this node repairs the loss at its source so every program benefits."),
+    ),
+    roadmap_node(
+      identity: "rn_PF21EXV44N0VP89DSHTG1E8ZNM",
+      id: "emission-composite-patterns",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/emit_copy_qualification.dag"),
+      line: ticket(t: fields(
+        headline: "Composite patterns built only from qualified building blocks keep the blocks' costs",
+        boundary: "About ten small specimen families, each composed from building blocks already qualified: read-only fan-out, read then project then transfer, branch split and join, loop-carried state, unique sequence and text construction, persistent update with a retained old version, closure capture and invocation, a data-driven rule interpreter over runtime-supplied rules, and a parallel diamond. Each states which costs are necessary (a retained snapshot, a genuinely shared child, a task boundary) and which are not. Text specimens include multibyte Unicode and check byte spans separately from character positions; collection specimens use sizes on both sides of the pinned collection implementation's representation transitions, not only the existing 0, 4, 16, 64 grid.",
+        displaced_cost: "Without composites, a qualified block can still be realized expensively once combined (a branch join that manufactures sharing, a closure that clones its environment per call), and that is where real programs spend.",
+        first_slice: "Read-only fan-out, loop-carried state and unique sequence construction, each with its snapshot or violating control.",
+        red_control: "A composite qualifies only over blocks whose contracts read qualified after repair, and only when each block's output state (aliases, retained versions, representation) meets the next block's stated preconditions; a cost beyond those conditional contracts without a stated necessary cost goes red. A snapshot specimen in which the old version is changed goes red even if it is faster. A composite over a block still reading failed is unqualified, not qualified.",
+        out_of_scope: "Qualifying building blocks (emission-building-block-realization). Changing the algorithm a specimen executes.",
+        handback: "The composite families, their stated necessary costs, and their executing controls."
+      )),
+      parent: in_project(project: "emission-minimum-cost", contribution: "Composites prove the blocks compose: confidence in a small set of patterns only holds if combining them adds no hidden cost."),
+    ),
+    roadmap_node(
+      identity: "rn_4FHSKX20JR8S9SGE3E7GEG1S73",
+      id: "emission-real-consumer-profiles",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/compiler/tokenize.dag"),
+      line: ticket(t: fields(
+        headline: "Real emitted hot paths are profiled against the building-block contracts and their cost is attributed to the realization or the algorithm",
+        boundary: "An initial and recurring input, not a final step: the profile picks the first specimens, orders the repairs, and is re-run on the fixed workload after each relevant repair. Profile the emitted v2 lexer and parser (the parse-population verb over the live roots, and full-artifact parsing as a separate benchmark so a verdict-only speedup cannot hide unchanged map construction), one compiler graph traversal and one scheduler payload path, using the actual emitted artifacts. Self time in a named function is not the cost of its algorithm (its collection and allocation work runs in callees), unresolved samples stay unresolved, and a per-byte difference between populations is a scaling warning until a controlled size series of one source shape confirms it. Each hot spot is attributed to a building-block or composite contract it violates, or to the algorithm itself. A realization defect becomes a row for emission-ownership-facts-survive-lowering; an algorithmic cost (interpreting constant rules per character) is recorded separately and only then considered for preparation or specialization.",
+        displaced_cost: "The parse-population control costs about 15 minutes on every pull request and its split between realization and algorithm is unknown, so any fix today is a guess at the measured link (DESIGN section 6b, measurement is the adversary).",
+        first_slice: "Record the baseline already taken (seed-emitted parse-population on the 5 largest dag modules and a 165-module sample, perf self time grouped by collection, allocation, provenance index, lexer and parser), fix those two populations as the benchmark, and close the attribution gaps it names: call graphs with frame pointers, and symbols for the unresolved samples.",
+        red_control: "A claimed speedup must name the contract or algorithmic change it comes from and show the old computation gone; an improvement on a small specimen is not evidence for the consumer.",
+        out_of_scope: "Reducing what the CI population control covers; that is a CI scope decision outside this project.",
+        handback: "Per consumer, the attributed profile, the contract rows or algorithmic findings it produced, and before-and-after measurements on the fixed workloads for verdict-only and full-artifact parsing and the other declared consumers."
+      )),
+      parent: in_project(project: "emission-minimum-cost", contribution: "Real consumers are the test that the building blocks were the right ones and that qualifying them actually moved production cost."),
+    ),
+    roadmap_node(
+      identity: "rn_W009PFM599AS8444GNDVTE2D3F",
+      id: "emission-cost-native-successor",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/emitted_subject_build_gate.dag"),
+      line: ticket(t: fields(
+        headline: "The qualified specimens hold under the v2 emitter and its successor, on the required route",
+        boundary: "Terminal qualification: run the building-block and composite specimens through the v2-emitted subject and the successor-v2-emitted subject after a source change, with the v1 generator and interpreter unavailable on that route and producer identity on every result; the seed-emitted result is a baseline. An unsupported route reads unqualified and never substitutes the seed. The battery joins the required route as a row judged through gunbc test, not as a new job (the job roster is closed to growth), and reports the runner time it adds to that route.",
+        displaced_cost: "A qualification that only holds for the seed's emitter is lost at promotion, which is exactly when the seed stops being available to compare against.",
+        first_slice: "The first-slice building-block specimens run under the v2-emitted subject with producer identity recorded.",
+        red_control: "A result whose producer is the seed while the run claims the v2 emitter refuses. A specimen that is qualified under the seed and unqualified under v2 blocks promotion of that claim.",
+        out_of_scope: "Adding a CI job.",
+        handback: "The specimens qualified under the v2 producer and its successor after a source change, the required-route row with its added runner cost, and gunbc.rung_drop.emit_copy_qualification_without_a_consumer retired."
+      )),
+      parent: in_project(project: "emission-minimum-cost", contribution: "Carries the qualification across self-hosting so it survives the seed's retirement."),
+    ),
     roadmap_node(
       identity: "rn_GG8OZ558D0UB3R98N5MQCDPKB",
       id: "ci-end-to-end-execution",
@@ -2586,7 +2681,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/compiler_frontend_program_interlock.dag"),
       line: ticket(t: level_fields(
           headline: "The new compiler is the one that runs",
-          boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its seven member projects.",
+          boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its eight member projects.",
           approach: "Order: frontend first (the native seven, then the whole corpus), then generations (a second build made by the built CLI), then the native route made required and admitted (D10), then the seed retired. The namespace cutover (XL-6/XL-7) comes after seed retirement. gunbc.compiler_frontend_program_interlock owns this order, and this node does not restate it.",
           red_control: "Seed retirement stays unreachable while any SelfHostSeedRetirement prerequisite in gunbc.compiler_frontend_program_status reads OUTSTANDING. A v2 task whose membership walk does not reach this node refuses as unrooted.",
           displaced_cost: "v2 work is spread over about 12 disconnected roadmap components, and the page's focus filter hid most of them. So nobody can tell whether a v2 PR moves the compiler closer to running.",
@@ -2883,16 +2978,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "xl2-body-lowering",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/compiler_frontend_program_status.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
           headline: "Every lowered node keeps its occurrence, and service modules lower",
-          boundary: "The two xl2_prerequisites still PrerequisiteOutstanding in gunbc.compiler_frontend_program_status: LoweringOccurrenceProjection (#12108 to #12793 largely landed) and ServiceModuleLowering (a carrier for interface members; gunbc.recurring_failure_mode service_interface_member_has_no_carrier).",
-          displaced_cost: "Service modules refuse whole at normalize, so their references are outside the XL-2 residual instead of counted in it.",
-          first_slice: "Close the LoweringOccurrenceProjection residue, then design the service-member carrier.",
-          red_control: "A rebuilt atom without its occurrence, or a service module refused at normalize, keeps the prerequisite OUTSTANDING.",
-          out_of_scope: "The rehearsal itself.",
-          handback: "Both prerequisites PrerequisiteDelivered, with evidence rows."
-        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design.")),
-      parent: in_project(project: "v2-frontend", contribution: "The last two XL-2 prerequisites are lowering gaps; closing them puts every module's references into the census namespace XL-2 needs."),
+          boundary: "gunbc.compiler_frontend_program_status: ServiceModuleLowering is PrerequisiteDelivered (gunbc#13833, merge 7c9319cbaf, measured_at 4ff78bc650). LoweringOccurrenceProjection is Delivered (gunbc#13828, cdbaa92531d). Outstanding: UsesClauseCarrier.",
+          displaced_cost: "A fn with a uses clause still refuses its module at lowering, so those references stay outside the XL-2 residual.",
+          first_slice: "UsesClauseCarrier: a fn declaring a uses clause reaches the census instead of refusing its module at lowering.",
+          red_control: "A uses-clause fn refused at lowering keeps UsesClauseCarrier OUTSTANDING.",
+          out_of_scope: "The rehearsal itself. Service-member carriers are delivered; do not redesign them.",
+          handback: "The remaining outstanding arms PrerequisiteDelivered, with evidence rows."
+        ), on: "2026-09-30", note: "Not yet centered: ServiceModuleLowering needs a new carrier design."), on: "2026-10-13", note: "Service-member carriers landed on gunbc#13833; the standing stays Outstanding until the merge SHA exists."), on: "2026-10-13", note: "ServiceModuleLowering flipped to PrerequisiteDelivered citing merge 7c9319cbaf.")),
+      parent: in_project(project: "v2-frontend", contribution: "The remaining XL-2 lowering gap (uses-clause carrier) keeps those modules' references out of the census namespace XL-2 needs."),
     ),
     roadmap_node(
       identity: "rn_BNEYWCR707T5D0BRH8G6VZKGY5",
@@ -3221,15 +3316,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "demand-d13-dependency-demand",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
           headline: "Dependencies derived from bodies, bound at the composition root",
-          boundary: "D13: a DependencyDemand carrier produced once by resolution, plus composition-root binding. Cut (c) landed (#11993, #12125). The type does not exist on main.",
+          boundary: "D13: DependencyDemand lives in v2.compiler.dependency_demand, produced once over resolved references keyed by resource declaration identity (native_demand_census_report). Cut (c) landed (#11993, #12125). This slice owns that producer and the census route. The census elides the uses clause; it does not rewrite aliases. A body that names a uses alias stays unobserved until resolve models the clause. UsesClauseCarrier refusal stays. Composition-root binding and production-resolve attachment are the next slice.",
           displaced_cost: "Authored uses rows restate dependencies the bodies already declare.",
-          first_slice: "Design the DependencyDemand carrier.",
-          red_control: "An authored uses row restating a derivable dependency refuses; an unbound demanded subject refuses at the root.",
-          out_of_scope: "Scheduling.",
-          handback: "The carrier landed with its refusals."
-        ), on: "2026-09-30", note: "Not yet centered: carrier design.")),
+          first_slice: "Own the existing producer; run the census at this head; do not delete corpus uses rows; keep the clause refusal.",
+          red_control: "A service call declared requires none does not derive Network; a uses clause still refuses at lowering; a Network row whose derived demand does not name Network is not deleted.",
+          out_of_scope: "Scheduling. Production resolve attachment. Composition-root provider binding. Binding uses aliases in resolve.",
+          handback: "Whole-tree census refused; no held observation and no corpus deletions"
+        ), on: "2026-09-30", note: "Not yet centered: carrier design."), on: "2026-10-13", note: "The type exists on main as v2.compiler.dependency_demand; the 2026-09-30 boundary was stale."), on: "2026-10-13", note: "Census-only alias rewrite removed; no deletion or held observation.")),
       parent: in_project(project: "demand-engine", contribution: "D13 derives dependencies from bodies and binds them at the composition root, which native admission needs."),
     ),
     roadmap_node(
@@ -4578,6 +4673,11 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-mercurial-upstream-model", parent: "fabric-bringup"),
     edge(child: "2-scm-pijul-upstream-model", parent: "fabric-bringup"),
     edge(child: "2-claim-indexed-evidence", parent: "fabric-bringup"),
+    edge(child: "emission-ownership-facts-survive-lowering", parent: "emission-building-block-realization"),
+    edge(child: "emission-composite-patterns", parent: "emission-building-block-realization"),
+    edge(child: "emission-cost-native-successor", parent: "emission-composite-patterns"),
+    edge(child: "emission-cost-native-successor", parent: "emission-ownership-facts-survive-lowering"),
+    edge(child: "emission-cost-native-successor", parent: "emission-real-consumer-profiles"),
     edge(child: "fabric-consequence-standing", parent: "fabric-demand-objective"),
     edge(child: "fabric-dimension-extension-law", parent: "fabric-consequence-standing"),
     edge(child: "fabric-scenario-evaluation", parent: "fabric-consequence-standing"),
@@ -5478,7 +5578,7 @@ fn preamble() -> List<MarkdownBlock> {
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
     ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted minus withheld (revoked receipts whose disposition keeps a superseded node off the frontier), so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
     ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [v2 closed-PR recovery](docs/plans/v2-closed-pr-recovery.md)." }] },
+    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [roadmap spawner](docs/plans/roadmap-spawner.md)." }] },
   ]
 }
 
@@ -5938,6 +6038,124 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "compiler-guarantee", contribution: "Each closes one ordinary-floor class the blocking door requires."),
     ),
     roadmap_node(
+      identity: "rn_KGZG93FSJ53MTWC2F4V3U9GY9L",
+      id: "cardinality-absence",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "Cardinality / absence: one model through every retained compiler path",
+        boundary: "Consolidate presence and nonempty-sequence meaning, deliver cardinality enforcement, and retire the competing production authorities across retained source, runtime, target and ingestion paths. Containment is not serial order: a child is a prerequisite of another only through an explicit edge, and only cardinality-optional-declaration and cardinality-native-closure-cutover gate the typed native closure (the native-seven node stays the authority for whether it is typed). The permanent Cardinality / absence conformance domain (gunbc.design_argument conformance_domains) survives this parent. Front-end manager owns the program; emitter and native-runtime children coordinate with the native-execution manager.",
+        displaced_cost: "Without one program, presence, absence and nonemptiness keep several authorities and each consumer disagrees at its seam.",
+        first_slice: "Run the children in dependency order from their own edges; none waits on the parent.",
+        red_control: "Any retained path still typing, evaluating or realizing absence by a rival authority keeps this red.",
+        out_of_scope: "Not the permanent conformance domain, not foreign null models or reason-bearing meanings, and not a second omnibus implementation task.",
+        handback: "Executed child results joined to the retained consumer and target population; required cardinality admission active; obsolete absence authorities and migration allowances retired; reason, policy and upstream distinctions preserved."
+      )),
+      parent: in_project(project: "compiler-guarantee", contribution: "The cardinality program is a recovery under the compiler-guarantee ladder."),
+    ),
+    roadmap_node(
+      identity: "rn_44E8L35PWJQQR8833G5F8ARNXQ",
+      id: "cardinality-absence-conformance",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "Cardinality / absence is an enrolled conformance domain with its rulings",
+        boundary: "Add the row to gunbc.design_argument conformance_domains, record the six 2026-10-13 rulings in gunbc.design_ruling, file the failure-mode rows, and exercise the derived reviewer and DESIGN projection. No new conformance engine and no general absence classifier.",
+        displaced_cost: "Cardinality forks go unreviewed against any home.",
+        first_slice: "One derived criterion conformance-cardinality-absence under the three-valued algebra.",
+        red_control: "A missing-home or disconnected-row mutation that does not fail its control keeps this red.",
+        out_of_scope: "Rung claims: enrollment and projection only.",
+        handback: "One derived criterion, resolved homes, matching document and brief populations, and discriminating enrollment controls."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "Enrollment is documentation and review; the engineering repair does not wait for it."),
+    ),
+    roadmap_node(
+      identity: "rn_X9MHZ7FXWXKKS32YBXJASTZJM5",
+      id: "cardinality-optional-declaration",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "T? and explicit Optional name the same declaration",
+        boundary: "Make sugar and explicitly authored Optional applications resolve to std.optional.Optional with its acquisition dependency, through v2.compiler.module_acquisition, lowering, resolution and inference, preserving aliases, type arguments, constructor parents and nested layers. Remove the synthetic kernel-mint authority at each complete replacement boundary.",
+        displaced_cost: "A kernel mint beside the declaration is a second authority and its homonyms bind the wrong type.",
+        first_slice: "A production-source control showing T? and explicit Optional reach one declaration.",
+        red_control: "A local homonym redirecting T?, or a missing Optional declaration not refusing, keeps this red.",
+        out_of_scope: "Retiring every seed occurrence is not a gate on a native consumer already using the correct authority.",
+        handback: "Controls for same-declaration, homonym, missing authority and nested layers, and exactly which mint route was deleted."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "Gates the typed native closure where the closure uses these forms."),
+    ),
+    roadmap_node(
+      identity: "rn_8RSG8MNVXVE4QKRZHKJ7AN8WJT",
+      id: "cardinality-native-closure-cutover",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "A named native cohort moves from none to declared absence, completely",
+        boundary: "Complete the migration of a precisely named native cohort: none to declared Absent, explicit Present branches, correct constructor dependencies, coherent typing and the production execution and realization path, with no new legacy-null use. A complete consumer cut, not 'rewrite source now, repair the evaluator later'.",
+        displaced_cost: "A half-migrated cohort keeps two absence semantics alive.",
+        first_slice: "Name the cohort by identity and migrate it end to end.",
+        red_control: "Any fallback into legacy none semantics in the migrated cohort keeps this red.",
+        out_of_scope: "The whole historical module population is not the acceptance condition.",
+        handback: "Cohort identities, migrated occurrences, the actual native invocation and outcome, positive and negative controls for joins and nested Optional, and remaining unrelated refusals stated."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "Gates the typed native closure for affected sites in that cohort."),
+    ),
+    roadmap_node(
+      identity: "rn_H4C2NSEPA3NKL7SY387ZP8VVQ2",
+      id: "cardinality-carrier-consolidation",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "Redundant presence and nonempty carriers are deleted by complete cohort",
+        boundary: "Consolidate std.constructors Cardinality, v2.std.node_query DeclaredField, v2.std.algebra head and tail results, v2.std.diagnostic and gunbc.design_argument nonempty carriers (including ConformanceHomes and ConformanceHomeGroups where their contracts are only nonempty sequences) into Optional, FreeMonoid and FreeSemigroup. Keep independent cause, progress, policy and foreign-state information; preserve ordering and specialized equality deliberately.",
+        displaced_cost: "Each rival carrier is a meaning fork.",
+        first_slice: "The first cohort, including the registry's own hand-written nonempty records.",
+        red_control: "A new domain-specific NonEmpty record replacing another keeps this red.",
+        out_of_scope: "Broad classification of every absence-named variant.",
+        handback: "Each removed carrier names its canonical replacement and migrated consumers with executing controls; each retained one names its independent distinction."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "Gates the typed native closure only for portions that are actual closure blockers."),
+    ),
+    roadmap_node(
+      identity: "rn_CMUYU95KGPZWV6WDZ7XGZ7W5A9",
+      id: "cardinality-realization-conformance",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "Runtime, target and foreign paths preserve the same distinctions",
+        boundary: "Constructor, pattern, indexing, equality and encoding behavior over the admitted representation, RuntimeValue operations, the target model and existing language realization rows, and foreign decoders. The subject population is derived from the compiler's retained supported paths. Controlled specimens: Absent; Present(Absent); Present(Present(value)); absent collection; present empty collection; present collection containing absent entries; foreign member missing; present with null; present with an invalid value.",
+        displaced_cost: "A target can erase a nested layer or conflate absent with empty after typing was right.",
+        first_slice: "One retained path end to end with the nine specimens.",
+        red_control: "Any in-scope path that neither executes the specimens nor refuses explicitly keeps this red.",
+        out_of_scope: "Unrelated target completion.",
+        handback: "Executed results or explicit realization refusals for each in-scope path."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "No blanket gate; what the current native cohort needs belongs in that cohort."),
+    ),
+    roadmap_node(
+      identity: "rn_37DWVWGXSEPGF8WZ7HT6TNAXZB",
+      id: "cardinality-absence-retirement",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "The obsolete absence authorities and the migration allowance are deleted",
+        boundary: "Finish the remainder and delete legacy keyword, mint and runtime routes, spelling fallbacks, compatibility machinery and the migration allowance. Shared foreign-null machinery survives only where an independently retained upstream contract requires it. The remainder is explicit, identity-based and shrink-only; counts are observations, not oracles.",
+        displaced_cost: "Rival authorities left in place keep shaping decisions.",
+        first_slice: "The census of remaining consumers by identity.",
+        red_control: "A retained DAG consumer on the retired semantics, or a fallback reintroducing them, keeps this red.",
+        out_of_scope: "The persistent conformance domain and its regression evidence.",
+        handback: "No retained consumer uses the retired semantics, no production fallback, every formerly permitted subject restored or retired, the allowance deleted."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "No gate on native progress."),
+    ),
+    roadmap_node(
       identity: "rn_LOVW74OSEOKAJHINOV2BVHPNCE",
       id: "cardinality-vertical-slice",
       owner: "compiler-guarantee",
@@ -5952,7 +6170,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The lattice fragment landed, the seam judgment site, both probe receipts."
       ), on: "2026-09-24", note: "Moved from the brief at the 100-word re-cut (context, not an obligation): (v2.std.refinement refined_vacuous_stub_pack, the forged Rejected-arm mint this candidate used to reference, is deleted outright — not merely fixed — as of the delete-first replacement in gunbc.std.refinement; the wall question below is unaffected and still open)"), on: "2026-09-30", note: "Not yet centered: vertical slice across infer; lane judgment.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "compiler-guarantee", contribution: "A 0..n producer cannot feed a 1..n consumer."),
+      parent: in_project(project: "cardinality-absence", contribution: "A 0..n producer cannot feed a 1..n consumer: the program's missing bound model, delivered with its consumer."),
     ),
     roadmap_node(
       identity: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ",
@@ -6105,7 +6323,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The admission receipt and the flip's green whole-tree run.",
       ), on: "2026-09-30", note: "Not yet centered: far downstream.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "compiler-guarantee", contribution: "The first extended class admitted once the floor closes: a possibly-empty collection cannot reach a nonempty consumer through the accepted door."),
+      parent: in_project(project: "cardinality-absence", contribution: "Activation of the completed cardinality judgment as a Required acceptance obligation."),
     ),
     roadmap_node(
       identity: "rn_W2KPJ5VLF3RMNDELVJXP6EKL5A",

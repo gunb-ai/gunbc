@@ -7,7 +7,7 @@ use self::AnnotationScope::*;
 pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_occurrence_identity::OccurrenceId;
 pub use crate::std_optional::Optional;
-pub use crate::std_types::{Bool, List, SourceSpan};
+pub use crate::std_types::{Bool, List, Map, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -33,7 +33,7 @@ pub struct UnboundAnnotationCapture {
     pub preceded_by_annotation_line: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum AnnotationScope {
     FileScope,
@@ -196,25 +196,9 @@ pub fn region_contains(extent: Rc<SourceSpan>, origin: Rc<SourceSpan>) -> bool {
     ((extent.start.clone() <= origin.start.clone()) && (origin.end.clone() <= extent.end.clone()))
 }
 
-pub fn annotation_scope_key(scope: Rc<AnnotationScope>) -> String {
-    match (*scope.clone()).clone() {
-        AnnotationScope::FileScope => "file".to_string(),
-        AnnotationScope::OccurrenceScope { occurrence: o, .. } => {
-            v1_rt::concat("o".to_string(), (o.value.clone()).to_string())
-        }
-        AnnotationScope::ErasedSourceRegion { extent: e, .. } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat("e".to_string(), (e.start.clone()).to_string()),
-                "-".to_string(),
-            ),
-            (e.end.clone()).to_string(),
-        ),
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationRegionIndex {
-    pub children: Rc<HashMap<String, Rc<Vec<Rc<AnnotationRegion>>>>>,
+    pub children: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
 }
 
 pub fn annotation_region_index(
@@ -222,10 +206,10 @@ pub fn annotation_region_index(
 ) -> Rc<AnnotationRegionIndex> {
     {
         let grouped = regions.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<AnnotationRegion>>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<Rc<AnnotationRegion>>>>>,
+            v1_rt::rc_empty_map::<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>(),
+            |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
              region: Rc<AnnotationRegion>| {
-                let key = annotation_scope_key(region.parent.clone());
+                let key = region.parent.clone();
                 match v1_rt::map_get(&acc, key.clone()) {
                     Some(siblings) => v1_rt::rc_map_insert(
                         acc.clone(),
@@ -242,34 +226,34 @@ pub fn annotation_region_index(
         );
         Rc::new(AnnotationRegionIndex {
             children: Rc::new(v1_rt::map_keys(&grouped)).iter().cloned().fold(
-                v1_rt::rc_empty_map::<String, Rc<Vec<Rc<AnnotationRegion>>>>(),
-                |acc: Rc<HashMap<String, Rc<Vec<Rc<AnnotationRegion>>>>>, key: String| {
-                    match v1_rt::map_get(&grouped, key.clone()) {
-                        Some(siblings) => v1_rt::rc_map_insert(
-                            acc.clone(),
-                            key.clone(),
-                            Rc::new({
-                                let mut __sorted: Vec<_> = siblings.iter().cloned().collect();
-                                __sorted.sort_by(
-                                    |a: &Rc<AnnotationRegion>, b: &Rc<AnnotationRegion>| {
-                                        let __ka = (|r: Rc<AnnotationRegion>| {
-                                            r.extent.clone().start.clone()
-                                        })(
-                                            a.clone()
+                v1_rt::rc_empty_map::<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>(),
+                |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
+                 key: Rc<AnnotationScope>| match v1_rt::map_get(
+                    &grouped,
+                    key.clone(),
+                ) {
+                    Some(siblings) => v1_rt::rc_map_insert(
+                        acc.clone(),
+                        key.clone(),
+                        Rc::new({
+                            let mut __sorted: Vec<_> = siblings.iter().cloned().collect();
+                            __sorted.sort_by(
+                                |a: &Rc<AnnotationRegion>, b: &Rc<AnnotationRegion>| {
+                                    let __ka =
+                                        (|r: Rc<AnnotationRegion>| r.extent.clone().start.clone())(
+                                            a.clone(),
                                         );
-                                        let __kb = (|r: Rc<AnnotationRegion>| {
-                                            r.extent.clone().start.clone()
-                                        })(
-                                            b.clone()
+                                    let __kb =
+                                        (|r: Rc<AnnotationRegion>| r.extent.clone().start.clone())(
+                                            b.clone(),
                                         );
-                                        v1_rt::canonical_key_cmp(&__ka, &__kb)
-                                    },
-                                );
-                                __sorted
-                            }),
-                        ),
-                        std::option::Option::None => acc.clone(),
-                    }
+                                    v1_rt::canonical_key_cmp(&__ka, &__kb)
+                                },
+                            );
+                            __sorted
+                        }),
+                    ),
+                    std::option::Option::None => acc.clone(),
                 },
             ),
         })
@@ -280,7 +264,7 @@ pub fn annotation_children(
     index: Rc<AnnotationRegionIndex>,
     scope: Rc<AnnotationScope>,
 ) -> Rc<Vec<Rc<AnnotationRegion>>> {
-    match v1_rt::map_get(&index.children.clone(), annotation_scope_key(scope.clone())) {
+    match v1_rt::map_get(&index.children.clone(), scope.clone()) {
         Some(siblings) => siblings.clone(),
         std::option::Option::None => Rc::new(vec![]),
     }

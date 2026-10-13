@@ -164,6 +164,7 @@
 // src/v1_tests_claim_parse_source_extent_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
+// src/v1_tests_claim_shared_type_leaf_collision_census.rs
 // src/v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness.rs
 // src/v1_tests_claim_transport_roster_closure_witness_test.rs
 // src/v1_tests_claim_type_declaration_occurrence_control_test.rs

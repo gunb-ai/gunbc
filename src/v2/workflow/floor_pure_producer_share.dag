@@ -818,7 +818,7 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // one-module fixture runs under the per-claim budget (gunbc.recurring_failure_mode
 // shared_precondition_re_derived_once_per_claim_frame).
 //
-// THE xl2 MEMBERS (test.claim.namespace_xl2_rehearsal_census) were the bundle `xl2_control_runs`,
+// THE xl2 MEMBERS (v2.test.claim.namespace_xl2_rehearsal_census) were the bundle `xl2_control_runs`,
 // declined as BundleOfDisjointProjections on floor run 37194676016: each reads its own rehearsal
 // run, a front end plus resolves that exceeds a new-witness budget, and the rehearsal itself is the
 // claims' subject, so supplying its output would leave them asserting nothing. Un-bundled into one
@@ -912,7 +912,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "test.claim.namespace_xl2_rehearsal_census",
+    module: "v2.test.claim.namespace_xl2_rehearsal_census",
     claims: [
       SingleClaimFillDebtClaim { claim: "xl2_residual_control_resolves_before_the_cut_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
@@ -1447,7 +1447,11 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.normalize.service_realization_lowering",
     claims: [
-      SingleClaimFillDebtClaim { claim: "a_config_only_realization_is_held_off_the_full_route_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_config_only_realization_lowers_on_the_full_route_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_declared_input_hole_lowers_on_argv_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_declared_input_hole_lowers_on_a_transport_list_field_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_undeclared_argv_hole_refuses_located_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_undeclared_hole_in_a_transport_list_field_refuses_located_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_unrealizable_realization_refuses_located_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "the_realization_facts_lower_into_the_sibling_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "the_siblings_of_a_shared_prefix_merge_holds", standing: ActiveFillDebt }

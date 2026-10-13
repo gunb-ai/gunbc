@@ -2,7 +2,7 @@ module test.claim.error_primitives_bottom_seam
 
 import std.types { Bool, Int, String }
 import std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float, pure_dag_seam_unreachable_string }
-import std.algebra { trim }
+import std.algebra { string_contains, trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -21,4 +21,12 @@ test fn bottom_seam_projections_resolve_from_error_primitives() -> Bool {
 // std.algebra trim routes to free_call.trim; its body is the named seam, so trim is real on a value.
 test fn trim_still_routes_to_the_host_realization() -> Bool {
   trim(s: "  a ") == "a"
+}
+
+// Discriminator vs FreeMonoid element `contains`: pattern `"stack"` is not a Char of `"haystack"`.
+// Kernel host String both sides; no unfold. Empty-pattern containment is host `str::contains`.
+test fn string_contains_is_substring_search_on_kernel_text() -> Bool {
+  string_contains(s: "haystack", pattern: "stack")
+    && !string_contains(s: "haystack", pattern: "foo")
+    && string_contains(s: "haystack", pattern: "")
 }

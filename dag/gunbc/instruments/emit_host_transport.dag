@@ -45,7 +45,7 @@ import gunbc.instruments.emit_host_fixtures {
   ts_signed_i32_le_byte_count
 }
 import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
-import v2.std.orchestration { EnvSet }
+import std.env_binding { EnvSet }
 import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.http.client
