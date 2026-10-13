@@ -3597,15 +3597,72 @@ fn resolve_construct_tag_reference(ctx: ResolveContext, reference: Node, path: Q
         )
       )
     Cons { head: _, tail: Cons { head: _, tail: _ } } =>
-      match symbol_index_lexical_eligible_declared_payload(
-        index: ctx.namespace.symbol_index,
-        candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
-      ) {
-        Empty => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
-        Cons { head: candidate, tail: rest } =>
-          resolve_declared_path_candidates(ctx: ctx, n: reference, candidate: candidate, rest: rest, pending: None)
+      match qualified_head_scope_binding(ctx: ctx, path: path) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: head_binding, diagnostics: chain_pending } =>
+          resolve_construct_tag_dotted_reading(
+            ctx: ctx,
+            reference: reference,
+            path: path,
+            head_binding: head_binding,
+            pending: chain_pending
+          )
       }
     Empty => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
+  }
+}
+
+// THE HEAD-BINDING/PROJECTION DECISION IS THE SAME AS try_resolve_qualified_name_node's.
+// Declared-payload eligibility runs only on the declaration-path arm. A frame-bound or
+// root-value head stays a projection (resolve_bound_head_projection); absolute_candidates
+// must not select a global record m.R over that binder.
+fn resolve_construct_tag_dotted_reading(
+  ctx: ResolveContext,
+  reference: Node,
+  path: QualifiedName,
+  head_binding: ScopeBinding,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match head_binding {
+    BoundInFrame { canonical: _, kind: _ } =>
+      resolve_construct_tag_projection(ctx: ctx, reference: reference, pending: pending)
+    BoundAtRoot { canonical: canonical } =>
+      if root_binding_names_value(namespace: ctx.namespace, canonical: canonical) {
+        resolve_construct_tag_projection(ctx: ctx, reference: reference, pending: pending)
+      } else {
+        resolve_construct_tag_declared_payload_path(ctx: ctx, reference: reference, path: path, pending: pending)
+      }
+    ScopeUnbound =>
+      resolve_construct_tag_declared_payload_path(ctx: ctx, reference: reference, path: path, pending: pending)
+  }
+}
+
+fn resolve_construct_tag_projection(ctx: ResolveContext, reference: Node, pending: Diagnostics) -> Outcome<Node> {
+  match resolve_bound_head_projection(ctx: ctx, n: reference, pending: pending) {
+    Accepted { value: atom, diagnostics: d } => Accepted { value: atom.node, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn resolve_construct_tag_declared_payload_path(
+  ctx: ResolveContext,
+  reference: Node,
+  path: QualifiedName,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match symbol_index_lexical_eligible_declared_payload(
+    index: ctx.namespace.symbol_index,
+    candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
+  ) {
+    Empty =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference))
+        )
+      }
+    Cons { head: candidate, tail: rest } =>
+      resolve_declared_path_candidates(ctx: ctx, n: reference, candidate: candidate, rest: rest, pending: pending)
   }
 }
 
