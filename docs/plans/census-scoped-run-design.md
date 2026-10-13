@@ -1,172 +1,166 @@
 # Scoped census run — design
 
-Status: proposal. Owner: census lane (mandate: keep the v2 roadmap grounded in measured evidence).
-First delivery of that lane is census improvements #1 (scoped run), #2 (source locations),
-#3 (run record + diff). This note covers #1 and the run record #3 reads. Deletes itself when
-#1–#3 land.
+Status: accepted (side-chat design review 5499015152; reviews 79199, 79204). Owner: census lane
+(mandate: keep the v2 roadmap grounded in measured evidence). The lane's first delivery is census
+improvements #1 (scoped run), #2 (source locations) and #3 (run record + diff). This note covers #1
+and the run record #3 reads. It deletes itself when #1–#3 land.
 
 ## Why the census reads a population today
 
-`native_lane_census_read` (src/v2/compiler/compile.dag) states the rule: a census reports what is
-wrong with every member, so it cannot be driven by the acquirer, whose first unparseable member
-refuses the whole acquisition (`acquisition_loop` → `AcquisitionRefused`). The subject closure
-(`native_census_subject_closure`) is therefore computed *after* the whole-corpus ingest, from the
-import edges of accepted trees, and only annotates roots. A whole run costs ~2 h over ~8.4k modules
-to answer a question about ~135.
+`native_lane_census_read` (`v2.compiler.compile`) states the rule: a census reports what is wrong
+with every member, so it cannot be driven by the acquirer, whose first refusal refuses the whole
+acquisition (`acquisition_loop` → `AcquisitionRefused`). The subject closure
+(`native_census_subject_closure`) is therefore computed after the whole-corpus ingest, from the
+import edges of accepted trees, and only annotates roots. Every census question about native-seven's
+closure pays for the whole corpus.
 
-The rule is right about the failure it prevents (a truncated population reported as complete).
-It is wrong that the only way to prevent it is to read everything.
+The rule is right about the failure it prevents: a truncated population reported as complete. It is
+wrong that reading everything is the only way to prevent it.
 
-## The change: acquisition that records a blocked member instead of stopping
+## Acquisition that records a block instead of stopping
 
 One acquisition authority (`v2.compiler.module_acquisition`), a second loop over the same
-`acquisition_step`:
+`acquisition_lookup` and `acquisition_verdict_step`:
 
-- `acquisition_loop` (unchanged) — the compiler's door; any refusal refuses.
-- `acquisition_census_loop` — a member-local refusal (`AcquisitionMemberRefused`,
-  `AcquisitionMemberSitesUnreadable`) or an edge-local one (`AcquisitionUnknownModule`,
-  `AcquisitionLookupRefused`, `AcquisitionTreeUnbound`) is *recorded* and the loop continues with
-  the rest of the frontier. Whole-run refusals (grammar unprepared, entry underivable) still refuse.
-
-Result:
+- `acquisition_loop` (unchanged): the compiler's door. Any refusal refuses.
+- `acquire_census_closure_of`: a refusal local to one member or one edge is recorded and the loop
+  continues with the rest of the frontier. A refusal local to neither (grammar unprepared, entry
+  underivable) still refuses.
 
 ```
 type CensusAcquisition
-  = CensusAcquisitionClosed  { entries, modules, reads }                 // every edge followed
-  | CensusAcquisitionBlocked { entries, modules, blocked: NonEmpty<AcquisitionRefusal>, reads }
+  = CensusAcquisitionClosed  { entries, modules, reads }                // every request followed
+  | CensusAcquisitionBlocked { entries, modules, blocked: non-empty CensusBlock list, reads }
   | CensusAcquisitionRefused { refusal }
+
+type CensusBlock
+  = CensusMemberBlock { module, refusal, content, host_directory, requesters }
+  | CensusEdgeBlock   { refusal }
 ```
 
-`Blocked` is the honest statement "acquisition blocked at these members/edges; whatever lies
-behind them is unknown". A blocked member that has a file is still a census member (its file
-refusal is a row); its outgoing edges are unknown, and the run record says so.
+**A blocked member is observed once, with every requester.** The census loop keeps, per attempted
+member, its terminal refusal, the bytes the lookup's read returned, and every request that reached it.
+A diamond onto one malformed member yields one block with two requesters: not two reads, not two
+rows. The member is then marked known, so later requests reach it through the lookup's known-member
+shortcut. That shortcut runs after the lookup's cross-tree check, so sharing the observation never
+shares an edge's permission. A requester whose tree may not import the member is still denied after
+another requester reached it legally, and the other way round.
 
-The scoped population is then fed to the **existing** census pipeline through the same
-`read_population` door the whole-corpus run uses — resolve, infer, cause grouping, fan-out are
-untouched. Only the population differs.
-
-## Closure membership has one authority
-
-In a scoped run, "in the subject closure" *is* the acquired set; `native_census_subject_closure`'s
-import-only walk is not consulted (it misses qualified-reference edges the acquirer follows —
-two closure definitions would be a §3 fork). The whole-corpus run keeps its annotation until it
-can be re-derived from the same acquisition (follow-on, not in this delivery).
-
-Fan-out in a scoped run is fan-out *within the scope*, and is labelled so; it is not comparable to
-whole-corpus fan-out.
-
-## Subject and entry point
-
-- Subject is a target label, parsed by the one target-pattern authority, as `native_census_subject_label`
-  does today. First subject: native-seven. Later subjects: compiler entry closures.
-- New driver verb, not a flag on an existing one (the verbs are the census's modes; cf.
-  `census-infer`): `census-scoped <label> <source-root>...`.
-- Instrument target: `//gunbc/instruments:v2-native-census-scoped` (subject bound in the target,
-  not on a CLI, matching the "label is the instrument's own fact" rule).
-
-## Run record (the part of #5 that #3 needs)
-
-One JSON object written to a named output file (not interleaved in the log), read by the summary
-and the diff:
-
-- `subject` (label), `scope` (`whole-corpus` | `scoped`), revision (full sha), producer identity
-  (emitted-compiler closure digest, already printed by the native route);
-- `population`: member list + digest; `acquisition`: `closed` | `blocked` with the blocked list;
-- per module × stage outcome: passed / refused (reason, location once #2 lands) / unobserved
-  (behind an earlier stage) / unobserved (behind blocked acquisition);
-- `completeness`: the existing `NativeCensusCompleteness` facts (infer stops at first fatal, etc.);
-- `completion`: finished | stopped (a run that dies leaves a record marked stopped, not absent).
-
-## Diff semantics (#3)
-
-Comparisons are refused across different `scope`/`subject`. Within one subject:
-
-| before → after | reported as |
-|---|---|
-| resolve refused → resolve passed, infer refused | cleared + newly exposed |
-| infer refused → resolve refused | infer now unobserved behind resolve (not "cleared") |
-| member left the population | scope changed, member named |
-| member unobserved (blocked/stopped) | incomplete evidence |
-| only location / occurrence id moved | location update, not churn |
-
-## Controls
-
-Scope exclusion (a module outside the closure never ingested); blocked acquisition (planted
-unparseable member → `Blocked`, remainder reported unknown, never a smaller complete population);
-location movement; earlier-stage masking; stopped run.
-
-## Acceptance
-
-One real repair measured before/after through the normal entry point, producing a located
-comparison naming the cleared blocker and the next observation; plus the roadmap revisions it
-justifies. Also measure whole-command wall time including compiler preparation, since emission
-(~18 min observed) may dominate a ~135-module census.
-
-## Revisions after review (side-chat review of d0645bd364; review 79199)
-
-These supersede the sections above where they conflict.
-
-**R1. Census input is the acquired bytes, not a re-read.** The scoped population joins the census as
-`acquisition_ingest` over the captured `AcquiredModule` contents, never through `read_population`
-(which probes the filesystem again, so a file edited between acquisition and census would make the
-membership and the stage results describe different bytes). Whole-corpus keeps its `read_population`
-door. Blocked members join as their own retained observation (R2), not as a manufactured
-`AcquiredModule` with empty requests.
-
-**R2. A blocked member is retained once, with its requesters.** The census loop keeps, per attempted
-member, the terminal refusal, the file it read, and every request that reached it. A diamond that
-reaches one malformed member yields one blocked member with two requesters, not two reads and two
-rows. Reuse of the observation never shares an edge's permission verdict: the cross-tree check runs
-in the lookup before the known-member shortcut, so a requester whose tree may not import the target
-is still denied even after another requester reached it legally.
-
-**R3. The refusal arms keep their own meanings; the census adds no second classification.** The
-original `AcquisitionRefusal` (and nested `ReferenceLookup` cause) is carried whole:
+**The refusal is carried whole. Its arm is its meaning, and the census adds no second classification.**
 
 | arm | what it establishes |
 |---|---|
-| `AcquisitionMemberRefused` | member's front end refused; its outgoing demands are not obtained |
-| `AcquisitionMemberSitesUnreadable` | front end may have passed; reference discovery incomplete (not a frontend-stage refusal) |
-| `AcquisitionUnknownModule` (import/member/entry) | a stated requirement names no module; no target or descendants are invented |
-| `AcquisitionLookupRefused` (e.g. cross-tree denial) | this edge is forbidden; not probed through, not routed around, target not marked bad |
+| `AcquisitionMemberRefused` | the member's front end refused; its outgoing requests are unobserved |
+| `AcquisitionMemberSitesUnreadable` | the front end may have passed; reference discovery is incomplete. Not a front-end-stage refusal |
+| `AcquisitionUnknownModule` (import / member / entry) | a stated requirement names no module; no target or descendants are invented |
+| `AcquisitionLookupRefused` with `ReferenceCrossTreeDenied` | this edge is forbidden: not probed through, not routed around, target not marked bad |
+| `AcquisitionLookupRefused` with another `ReferenceLookup` cause | that cause's own meaning (unreadable file, module line missing or disagreeing) |
 | `AcquisitionTreeUnbound` | the invocation lacks a root binding; not evidence about repository source |
 
-A qualified reference naming no module still requests nothing (`acquisition_unknown_step`); the
-continuing loop must not turn it into a missing-import block.
+A qualified reference that names no module still requests nothing (`acquisition_unknown_step`). The
+continuing loop does not turn it into a missing-import block.
 
-**R4. Disappearance is lost visibility unless exclusion is established.** Corrects the diff table:
-a member present before and absent after is reported "scope changed" only when the after-run's
-acquisition is Closed (or otherwise establishes exclusion); behind a block it is "unobserved". The
-converse: a refusal in a member that just became visible is "newly observed", not a regression.
+Behind a member block, whatever that member would have requested is **unobserved**, not absent. Only
+the Blocked arm can say so, and a blocked population is never reported as a closed one.
 
-**R5. Fan-out is labelled with the relation it measured.** First delivery keeps
-`native_census_closure_index` and reports it as *import-edge reachability over the observed
-population*, coverage stated incomplete; it is not demand fan-out and not evidence two repairs are
-independent. Follow-on (preferred): feed the reachability fold the acquisition's observed
-request→selected-target relation. The whole-corpus annotation stays labelled import-only until then.
+## The census reads acquisition's bytes
 
-**R6. Run record identity and publication.**
-- Map to `gunbc.repository_census_observation` (population / subject revision / method run) rather
-  than a new census-observation type.
-- Identity is the inputs actually read (captured content digests; revision recorded as claimed) and
-  the executed compiler artifact (verified preparation receipt), not only a source-closure digest.
-- Comparison grain for the first delivery is module × stage obligation, keeping both runs'
-  diagnostics; root-level continuity is claimed only where an identity relation supports it,
-  ambiguous matches stay unmatched. Different revisions are recorded, not refused — comparing them is
-  the point. Different *subjects* are refused.
-- Publication: an incomplete run-identified record is written before preparation, the completed one
-  replaces it atomically; without an observed terminal event the run reads incomplete/unobserved, never
-  a fabricated cause; an output failure cannot leave an older file readable as this run.
+The scoped population joins the census as `census_acquisition_ingest`: the admitted members'
+witnesses (`acquisition_ingest`), then each blocked member's own read, once. Both are built by one
+witness shape, `acquisition_read_witness`. It is never fed through `read_population`, which probes
+the filesystem again. A file edited between acquisition and census would then make the membership
+and the stage results describe different bytes. An edge block read nothing and enters nothing; it is
+reported from the acquisition. The whole-corpus run keeps its `read_population` door.
 
-**R7. Verb and target.** `census-scoped <label>` is the transport of the instrument's bound subject;
-the record names the subject observed and the consumer checks it against the binding. Lives in the
-existing `V2NativeCensusProducer` family; later subjects are further bindings, not a changed meaning
-of this target. Preparation consumes the existing verified native-product reuse route; cold and warm
-whole-command times are reported separately.
+Downstream of the ingest, the census pipeline is unchanged: resolve, infer, cause grouping. Only the
+population differs.
 
-**R8. Controls added:** diamond onto one malformed member; qualified-reference-only reachability;
-denied edge alongside a permitted use of the same target; descendant hidden behind an earlier
-failure; interruption before terminal publication.
+## Closure membership has one authority
 
-**Measured figures** (~2 h, ~8.4k modules, ~18 min preparation) are motivation only; the carrier that
-lands must name the instrument producing them rather than restate them (review 79199).
+In a scoped run, "in the subject closure" is the acquired set. `native_census_subject_closure`'s
+import-only walk is not consulted: it misses the qualified-reference edges the acquirer follows, so
+two closure definitions would be a §3 fork. The whole-corpus annotation keeps its import-only walk,
+labelled as such, until it can be re-derived from the same acquisition (follow-on).
+
+The subject module is derived from the label by one function, `native_census_subject_module`. It uses
+the target-pattern authority, and the native lane's module ↔ package correspondence read backwards.
+The whole-corpus annotation uses the same function. Only a package label names one module; a single
+target or a subtree names none, and the census says so.
+
+## Fan-out is labelled with the relation it measured
+
+`native_census_closure_index` builds both graph directions from `normalized_tree_import_bindings`.
+When A reaches B only through a qualified reference, the scoped population includes B, but the
+reverse graph can still omit A from B's fan-out. The first delivery therefore reports fan-out as
+**import-edge reachability over the observed population, coverage incomplete**. It is not demand
+fan-out, and not evidence that two repairs are independent. Follow-on (preferred): feed the
+reachability fold the acquisition's observed request → selected-target relation.
+
+## Subject and entry point
+
+- The subject is a target label bound by the instrument. The first subject is native-seven; later
+  subjects are compiler entry closures, each as a further binding, never a changed meaning of an
+  existing target.
+- New driver verb, because it is a distinct acquisition request: `census-scoped <label>
+  <source-root>...`. The label operand is the transport of the instrument's bound subject. The run
+  record names the subject observed, and the consumer checks it against the binding.
+- The instrument target is `//gunbc/instruments:v2-native-census-scoped`, in the existing
+  `V2NativeCensusProducer` family; it is not a parallel producer.
+- Preparation consumes the existing verified native-product reuse route; there is no census-specific
+  cache. Cold and eligible-warm whole-command costs are reported separately. A compiler-source repair
+  legitimately changes the product identity, so warm reuse cannot promise to skip preparation.
+
+## Run record (the part of #5 that #3 needs)
+
+- Maps to `gunbc.repository_census_observation` (population / subject revision / method run). It is
+  not a new census-observation type.
+- Identity is the inputs actually read (captured content digests, with the revision recorded as
+  claimed) and the executed compiler artifact (its verified preparation receipt), not only a
+  source-closure digest.
+- Contents: the subject; the scope (whole-corpus or scoped); the population and its digest; the
+  acquisition status (closed or blocked, with the blocks); per module × stage the outcome: passed,
+  refused (reason, and location once #2 lands), unobserved behind an earlier stage, or unobserved
+  behind a block; the existing `NativeCensusCompleteness` facts; completion.
+- Publication: an incomplete, run-identified record is written before preparation, and the completed
+  one replaces it atomically. Without an observed terminal event the run reads incomplete, never a
+  fabricated cause. An output failure cannot leave an older file readable as this run.
+
+## Diff semantics (#3)
+
+The comparison grain for the first delivery is the module × stage obligation, keeping both runs'
+diagnostics. Root-level continuity is claimed only where an identity relation supports it; ambiguous
+matches stay unmatched. Different revisions are recorded, not refused, since comparing them is the
+point. Different subjects are refused.
+
+| before → after | reported as |
+|---|---|
+| resolve refused → resolve passed, infer refused | cleared, and newly exposed |
+| infer refused → resolve refused | infer now unobserved behind resolve (not "cleared") |
+| member present → absent, after-run Closed (exclusion established) | scope changed, member named |
+| member present → absent, after-run Blocked | unobserved, not "scope changed" |
+| member newly visible after a repair, and refusing | newly observed, not a regression |
+| member unobserved (blocked or stopped run) | incomplete evidence |
+| only location or occurrence id moved | location update, not churn |
+
+When the closure digest changes, the diff names the added and removed members and compares the
+common population.
+
+## Controls
+
+- Planted closure outside every corpus root (`fixtures/census_scoped_acquisition`): acquisition around
+  a member block and an edge block, every block named, nothing behind a block or outside the closure
+  acquired, a closed case, and a diamond onto one malformed member (one block, two requesters,
+  sibling observed). The compiler's door still refuses the same closure.
+- A denied edge beside a permitted use of the same target, in both orders.
+- The census ingest holds the acquired and blocked reads, each once, and nothing behind a block.
+- The subject module is derived from the label; single-target and subtree labels name none.
+- Still to add with the route: qualified-reference-only reachability, location movement,
+  earlier-stage masking, and interruption before terminal publication.
+
+## Acceptance
+
+One real repair measured before and after through the normal entry point, producing a located
+comparison that names the cleared blocker and the next observation, plus the roadmap revisions it
+justifies. Wall-time and peak figures are motivation only. The carrier that lands names the
+instrument producing them, `//gunbc/instruments:v2-native-census` and its scoped sibling, rather than
+restating them (review 79199).
