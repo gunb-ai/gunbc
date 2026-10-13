@@ -11,11 +11,10 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, contains, list_map, list_append }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NodeLocus, NonEmptyDiagnostics, None, Outcome, Rejected, Some, node_locus }
-import v2.std.algebra { contains, list_map }
 import v2.std.node {
   Atom,
   ComputationNode,
@@ -50,7 +49,6 @@ import v2.compiler.infer {
   inferred_facts_not_derived
 }
 import v2.compiler.inferred_tree { InferredFacts, InferredFactsEntry, ObligatedInferredTree }
-import v2.std.algebra { list_append }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { List }
 import v2.std.collection { empty_map }

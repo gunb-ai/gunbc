@@ -15,8 +15,7 @@ import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.fabric.provider_route { ProviderRoute }
 import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, String, GitRef }
-import std.algebra { trim }
-import v2.std.algebra { HeadAbsent, HeadFound, list_head, list_tail }
+import std.algebra { trim, HeadAbsent, HeadFound, list_head, list_tail }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.currency.currency { Usd }
 import std.measure {

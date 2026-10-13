@@ -2,7 +2,7 @@ module gunbc.instruments.frontier_ingestion_probe
 
 import v2.std.text { String }
 import v2.std.integer { Int }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.node { Symbol }
 import std.content_hash { ContentHash, content_hash_atom, content_hash_combine_structural, as_content_hash_structural }
 import std.types { NonEmptyStr, List }
@@ -321,7 +321,6 @@ data frontier_roster: List<FrontierMember> = [
   FrontierMember { label: ^node, path: "src/v2/std/node.dag" },
   FrontierMember { label: ^content_hash, path: "dag/std/content_hash.dag" },
   FrontierMember { label: ^dag_algebra, path: "dag/std/algebra.dag" },
-  FrontierMember { label: ^v2_algebra, path: "src/v2/std/algebra.dag" },
   FrontierMember { label: ^logic, path: "src/v2/std/logic.dag" },
   FrontierMember { label: ^optional, path: "src/v2/std/optional.dag" },
   FrontierMember { label: ^diagnostic, path: "src/v2/std/diagnostic.dag" },

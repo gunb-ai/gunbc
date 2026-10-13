@@ -155,9 +155,7 @@ import std.optional {
 }
 import std.algebra {
   Empty,
-  list_snoc_item
-}
-import v2.std.algebra {
+  list_snoc_item,
   TailAbsent,
   TailFound,
   fold_list,

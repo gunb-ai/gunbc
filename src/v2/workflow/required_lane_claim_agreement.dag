@@ -1,7 +1,7 @@
 module v2.workflow.required_lane_claim_agreement
 
 import std.types { Bool, List, String }
-import v2.std.algebra { Cons, Empty, length, list_reverse }
+import std.algebra { Cons, Empty, length, list_reverse }
 
 // THE CLAIM A PROJECTED LEDGER MAY NOT MAKE ABOUT A LANE THAT GATES.
 //

@@ -17,7 +17,7 @@ import gunbc.seed_growth_admission {
 }
 import std.decl_ref { DeclarationRef }
 import std.types { List, String }
-import v2.std.algebra { Cons, Empty, fold_list, fold_list_right, length, list_map }
+import std.algebra { Cons, Empty, fold_list, fold_list_right, length, list_map }
 
 // THE CompilerDiagnostic SEED PROJECTION, STATED IN THE VOCABULARY THE CORPUS ALREADY OWNS.
 //
@@ -141,7 +141,7 @@ fn disposition_item_key(d: SeedGrowthChangeDisposition) -> DispositionItemKey {
 }
 
 // ONE PASS, AND THE DROP IS A MATCH ARM RATHER THAN A PREDICATE OVER SPELLINGS. This is the
-// filter-map v2.std.algebra has no named surface for; `filter` itself is this fold, so the shape is
+// filter-map std.algebra has no named surface for; `filter` itself is this fold, so the shape is
 // the canonical one rather than a hand-rolled duplicate, and it is linear rather than the copied
 // accumulator section 6 forbids.
 fn projected_item_keys(rows: List<SeedGrowthChangeDisposition>) -> List<String> {

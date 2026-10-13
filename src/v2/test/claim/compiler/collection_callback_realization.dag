@@ -238,7 +238,7 @@ test fn ccr_declared_any_refuses_rather_than_binding_silently() -> Bool {
   ccr_declared_any_refuses()
 }
 
-// (3c) FILTER AND ANY ARE THE ROSTER'S, and the declarations that stood for them in v2.std.algebra are gone:
+// (3c) FILTER AND ANY ARE THE ROSTER'S, and the declarations that stood for them in std.algebra are gone:
 // the head binds the row, with the callback written under the name every caller used (`predicate`). A named
 // function in the predicate slot is a refusal, never a silent lowering: the callback form lowers a function VALUE.
 test fn ccr_filter_head_binds_its_row() -> Bool {

@@ -1,8 +1,7 @@
 module v2.test.claim.dag_acceptance
 
 import std.types { List }
-import std.algebra { FreeSemigroup }
-import v2.std.algebra { length }
+import std.algebra { FreeSemigroup, length }
 import std.content_hash { content_hash_atom }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { millisecond }

@@ -1,6 +1,6 @@
 module gunbc.stage0.stage0_rust_host_observation
 
-import std.algebra { trim, list_snoc_item }
+import std.algebra { trim, list_snoc_item, fold_list, length, list_map }
 
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
@@ -24,7 +24,6 @@ import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { CommitSha, GitRef, String, List }
-import v2.std.algebra { fold_list, length, list_map }
 
 data stage0_rust_observation_repository_path: String = "."
 

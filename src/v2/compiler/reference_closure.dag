@@ -1,7 +1,6 @@
 module v2.compiler.reference_closure
 
-import std.algebra { FreeMonoid }
-import v2.std.algebra { fold_list }
+import std.algebra { FreeMonoid, fold_list }
 import v2.compiler.source_authority { reference_prefixes, text_set_has }
 import v2.std.collection { Map }
 import v2.std.node { Node }

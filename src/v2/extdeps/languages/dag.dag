@@ -204,8 +204,7 @@ import v2.std.compilers.target_model {
   TargetRecordConstructShape
 }
 import v2.std.logic { bool_node }
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
-import v2.std.algebra { fold_list, for_all, is_empty, length, list_init, list_map, skip }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_init, list_map, skip }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -223,7 +222,6 @@ import v2.std.diagnostic {
   diagnostics_merge,
   outcome_with_diagnostics
 }
-import std.algebra { Empty, list_append, list_snoc_item }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, retires_dissolution }
 import v2.std.integer { decimal_digits_to_magnitude, integer_decimal_magnitude_node, integer_decimal_magnitude_node_to_int, integer_int_type_node, integer_string_to_decimal_digits_optional, DecimalMagnitude, DecimalNonZero, DecimalNonZeroMagnitude, Int, NonZeroD1, NonZeroD2 }

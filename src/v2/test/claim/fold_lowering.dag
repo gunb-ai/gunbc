@@ -333,7 +333,7 @@ fn fabricates_no_loop(source_text: String, file: Symbol) -> Bool {
 }
 
 // (b) THE TWO NOT-APPLICABLE SHAPES, ASSERTED BY DISPOSITION NAME.
-// Both are real corpus shapes, not constructed curiosities: v2.std.algebra
+// Both are real corpus shapes, not constructed curiosities: std.algebra
 // passes a step by name, v2.std.node calls fold_node with an algebra record
 // that is never a step fn at all. Neither is malformed and this stage cannot
 // establish that either way, because that read is the callee's declaration.
