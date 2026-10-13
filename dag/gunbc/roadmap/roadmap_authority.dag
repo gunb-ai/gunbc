@@ -3221,15 +3221,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "demand-d13-dependency-demand",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
           headline: "Dependencies derived from bodies, bound at the composition root",
-          boundary: "D13: DependencyDemand lives in v2.compiler.dependency_demand, produced once over resolved references keyed by resource declaration identity (native_demand_census_report). Cut (c) landed (#11993, #12125). This slice deletes a uses row only on per-resource Equal at the executing census head, and only when derived demand names that resource (Network: std.resources.Network). UsesClauseCarrier refusal stays. Composition-root binding and production-resolve attachment are the next slice.",
+          boundary: "D13: DependencyDemand lives in v2.compiler.dependency_demand, produced once over resolved references keyed by resource declaration identity (native_demand_census_report). Cut (c) landed (#11993, #12125). This slice owns that producer and the census route. A UNIQUE uses alias may be rewritten only inside that route so demand can be observed; that rewrite is not production resolve and does not license corpus deletions. UsesClauseCarrier refusal stays. Composition-root binding and production-resolve attachment are the next slice.",
           displaced_cost: "Authored uses rows restate dependencies the bodies already declare.",
-          first_slice: "Own the existing producer; run the census at this head; delete only Equal in-vocabulary rows (vacuous while the audited vocabulary is empty because requiring operations sit in unresolved modules); keep the clause refusal.",
+          first_slice: "Own the existing producer; run the census at this head; do not delete corpus uses rows; keep the clause refusal.",
           red_control: "A service call declared requires none does not derive Network; a uses clause still refuses at lowering; a Network row whose derived demand does not name Network is not deleted.",
-          out_of_scope: "Scheduling. Production resolve attachment. Composition-root provider binding.",
+          out_of_scope: "Scheduling. Production resolve attachment. Composition-root provider binding. Operator admission of the census-only uses-alias rewrite (DESIGN section 5).",
           handback: "Whole-tree census refused; no held observation and no corpus deletions"
-        ), on: "2026-09-30", note: "Not yet centered: carrier design."), on: "2026-10-13", note: "The type exists on main as v2.compiler.dependency_demand; the 2026-09-30 boundary was stale.")),
+        ), on: "2026-09-30", note: "Not yet centered: carrier design."), on: "2026-10-13", note: "The type exists on main as v2.compiler.dependency_demand; the 2026-09-30 boundary was stale."), on: "2026-10-13", note: "Do not report deletion or a held observation; the census-only alias rewrite is unadmitted.")),
       parent: in_project(project: "demand-engine", contribution: "D13 derives dependencies from bodies and binds them at the composition root, which native admission needs."),
     ),
     roadmap_node(
