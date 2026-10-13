@@ -99,6 +99,9 @@ fn flex_vram_class_eq(left: FlexVramClass, right: FlexVramClass) -> Bool {
 
 type FlexOwnerLabel = NonEmptyStr where brand("FlexOwnerLabel")
 
+// Policy data, not an account nickname: ctrl reserves ctrl-bidder and ctrl-pool on the
+// same Vast account (ctrl PR 2342). Exact match only; the label remains if we later
+// get a separate account.
 data flex_owner_label_gunbc_flex: FlexOwnerLabel = "gunbc-flex"
 
 type FlexWireOwner
@@ -491,9 +494,9 @@ fn flex_release_admit(
   }
 }
 
-fn flex_cleanup_dead(cards: List<FlexOwnedCard>) -> List<FlexCleanupAction> {
+fn flex_cleanup_dead(cards: List<FlexOwnedCard>, ours: FlexOwnerLabel) -> List<FlexCleanupAction> {
   map(
-    filter(cards, c => flex_ours_only(owner: FlexOurs { owner: c.owner }) && flex_card_dead(card: c)),
+    filter(cards, c => c.owner == ours && flex_card_dead(card: c)),
     c => FlexDestroy {
       id: c.id,
       why: if c.outbid { FlexCleanupOutbid } else { FlexCleanupStaleLoading },

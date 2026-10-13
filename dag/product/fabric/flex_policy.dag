@@ -25,7 +25,7 @@ import product.fabric.budget {
   MoneyRefusal, reserve_money,
 }
 import product.fabric.flex_market {
-  FlexMarketQuote,
+  FlexMarketQuote, FlexOwnerLabel,
   FlexQuotedBid, FlexBidPriced, FlexBidMarketUnobserved, FlexBidQuoteCurrencyMismatch,
   flex_quoted_bid,
 }
@@ -62,15 +62,15 @@ fn flex_machine_key_eq(left: FlexMachineKey, right: FlexMachineKey) -> Bool {
   left.provider == right.provider && left.account == right.account && left.machine == right.machine
 }
 
-// Standing rates that count against fleet_rate_cap. The cap is an aggregate: every
-// Active, Pending, AutoResumable and UnknownOutcome rate plus the proposed bid.
-// A machine-keyed retained ceiling is deleted: it made a previously owned card
-// special and paid more for an equivalent replacement.
+// Standing rates that count against fleet_rate_cap. The cap is an aggregate of
+// our label only (FlexPolicy.owner, policy data gunbc-flex): Active, Pending,
+// AutoResumable and UnknownOutcome plus the proposed bid. ctrl-bidder and
+// ctrl-pool on the same account are never summed and never touched.
 type FlexAcquisitionStanding
-  = AcquisitionActive { rate: MoneyPerHour }
-  | AcquisitionPending { rate: MoneyPerHour }
-  | AcquisitionAutoResumable { rate: MoneyPerHour }
-  | AcquisitionUnknownOutcome { rate: MoneyPerHour }
+  = AcquisitionActive { owner: FlexOwnerLabel, rate: MoneyPerHour }
+  | AcquisitionPending { owner: FlexOwnerLabel, rate: MoneyPerHour }
+  | AcquisitionAutoResumable { owner: FlexOwnerLabel, rate: MoneyPerHour }
+  | AcquisitionUnknownOutcome { owner: FlexOwnerLabel, rate: MoneyPerHour }
 
 type FlexFleetOccupancy {
   standing: List<FlexAcquisitionStanding>
@@ -88,6 +88,8 @@ type FlexPolicy {
   // Hard ceiling, not a bid formula.
   on_demand_fraction: NonzeroNatFraction
   acquisition_horizon: Second
+  // Defence in depth if the Vast account is later split; still required.
+  owner: FlexOwnerLabel
 }
 
 type FlexAcquisitionWindow {
@@ -199,10 +201,19 @@ fn flex_buffered_min(min_bid: MoneyPerHour, buffer: NonzeroNatFraction) -> Money
 
 fn standing_rate(row: FlexAcquisitionStanding) -> MoneyPerHour {
   match row {
-    AcquisitionActive { rate: r } => r
-    AcquisitionPending { rate: r } => r
-    AcquisitionAutoResumable { rate: r } => r
-    AcquisitionUnknownOutcome { rate: r } => r
+    AcquisitionActive { owner: _, rate: r } => r
+    AcquisitionPending { owner: _, rate: r } => r
+    AcquisitionAutoResumable { owner: _, rate: r } => r
+    AcquisitionUnknownOutcome { owner: _, rate: r } => r
+  }
+}
+
+fn standing_owner(row: FlexAcquisitionStanding) -> FlexOwnerLabel {
+  match row {
+    AcquisitionActive { owner: o, rate: _ } => o
+    AcquisitionPending { owner: o, rate: _ } => o
+    AcquisitionAutoResumable { owner: o, rate: _ } => o
+    AcquisitionUnknownOutcome { owner: o, rate: _ } => o
   }
 }
 
@@ -210,7 +221,7 @@ type FlexOccupancySum
   = FlexOccupancySummed { rate: MoneyPerHour }
   | FlexOccupancyCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
 
-fn occupancy_sum(occupancy: FlexFleetOccupancy, currency: CurrencyCode) -> FlexOccupancySum {
+fn occupancy_sum(occupancy: FlexFleetOccupancy, currency: CurrencyCode, ours: FlexOwnerLabel) -> FlexOccupancySum {
   fold(
     occupancy.standing,
     init: FlexOccupancySummed {
@@ -220,26 +231,29 @@ fn occupancy_sum(occupancy: FlexFleetOccupancy, currency: CurrencyCode) -> FlexO
       match acc {
         FlexOccupancyCurrencyMismatch { left: l, right: r } =>
           FlexOccupancyCurrencyMismatch { left: l, right: r }
-        FlexOccupancySummed { rate: summed } => {
-          let rate = standing_rate(row: row)
-          if rate.currency != summed.currency {
-            FlexOccupancyCurrencyMismatch { left: summed.currency, right: rate.currency }
+        FlexOccupancySummed { rate: summed } =>
+          if standing_owner(row: row) != ours {
+            FlexOccupancySummed { rate: summed }
           } else {
-            FlexOccupancySummed {
-              rate: MoneyPerHour {
-                amount: measure_add(a: summed.amount, b: rate.amount),
-                currency: summed.currency,
-              },
+            let rate = standing_rate(row: row)
+            if rate.currency != summed.currency {
+              FlexOccupancyCurrencyMismatch { left: summed.currency, right: rate.currency }
+            } else {
+              FlexOccupancySummed {
+                rate: MoneyPerHour {
+                  amount: measure_add(a: summed.amount, b: rate.amount),
+                  currency: summed.currency,
+                },
+              }
             }
           }
-        }
       },
   )
 }
 
-fn occupy_pending(occupancy: FlexFleetOccupancy, bid: MoneyPerHour) -> FlexFleetOccupancy {
+fn occupy_pending(occupancy: FlexFleetOccupancy, bid: MoneyPerHour, owner: FlexOwnerLabel) -> FlexFleetOccupancy {
   FlexFleetOccupancy {
-    standing: concat([AcquisitionPending { rate: bid }], occupancy.standing),
+    standing: concat([AcquisitionPending { owner: owner, rate: bid }], occupancy.standing),
   }
 }
 
@@ -515,7 +529,7 @@ fn flex_existing_unchanged(
           cause: FlexRateCapBelowMin { cap: policy.fleet_rate_cap, min_bid: current },
         }
       } else {
-        match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency) {
+        match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency, ours: policy.owner) {
           FlexOccupancyCurrencyMismatch { left: occupied_left, right: occupied_right } =>
             refuse_currency(left: occupied_left, right: occupied_right)
           FlexOccupancySummed { rate: occupied } =>
@@ -550,7 +564,7 @@ fn flex_admit_new(
   bid: MoneyPerHour,
   joined: List<CandidateOffer<NonEmptyStr>>,
 ) -> FlexBidAdmission {
-  match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency) {
+  match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency, ours: policy.owner) {
     FlexOccupancyCurrencyMismatch { left: l, right: r } => refuse_currency(left: l, right: r)
     FlexOccupancySummed { rate: occupied } => {
       if bid.currency != occupied.currency {
@@ -741,7 +755,7 @@ fn flex_admit_revocable_target(
                                   selection: selection,
                                   account: next,
                                   occupancy: if append_standing {
-                                    occupy_pending(occupancy: occupancy, bid: bid)
+                                    occupy_pending(occupancy: occupancy, bid: bid, owner: policy.owner)
                                   } else {
                                     occupancy
                                   },
