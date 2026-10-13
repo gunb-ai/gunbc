@@ -6,6 +6,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.measure {
   money_amount_micro, money_amount_micro_count, money_per_hour_micros, second, MoneyPerHour,
+  ByteSize, gibibyte, gibibyte_to_byte_size, byte_size_count,
 }
 import extdeps.currency.currency { Usd }
 import std.pareto { LowerIsBetter }
@@ -65,6 +66,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn usd_hour(n: Nat) -> MoneyPerHour {
   MoneyPerHour { amount: money_amount_micro(count: n), currency: Usd }
+}
+
+fn gib(n: Nat) -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: n))
 }
 
 test fn an_empty_class_has_no_market_median() -> Bool {
@@ -185,14 +190,14 @@ test fn every_fifth_rental_explores_another_level() -> Bool {
 }
 
 test fn ninety_six_gb_is_the_eighty_and_up_class() -> Bool {
-  match flex_vram_class(gpu_ram_gb: 80) {
-    FlexVramClass96 => match flex_vram_class(gpu_ram_gb: 48) {
+  match flex_vram_class(vram: gib(n: 80)) {
+    FlexVramClass96 => match flex_vram_class(vram: gib(n: 48)) {
       FlexVramClass48 => true
       FlexVramClass96 => false
-      FlexVramClassOther { gb: _ } => false
+      FlexVramClassOther { vram: _ } => false
     }
     FlexVramClass48 => false
-    FlexVramClassOther { gb: _ } => false
+    FlexVramClassOther { vram: _ } => false
   }
 }
 
@@ -210,7 +215,7 @@ test fn unlabelled_and_foreign_cards_are_not_ours() -> Bool {
 
 fn owned(
   id: NonEmptyStr,
-  gb: Nat,
+  vram: ByteSize,
   rate: Nat,
   held: Bool,
   running: Bool,
@@ -221,7 +226,7 @@ fn owned(
   FlexOwnedCard {
     owner: flex_owner_label_gunbc_flex,
     id: id,
-    gpu_ram_gb: gb,
+    vram: vram,
     rate: usd_hour(n: rate),
     held: held,
     running: running,
@@ -232,17 +237,17 @@ fn owned(
 }
 
 test fn outbid_and_ten_minute_loading_are_dead() -> Bool {
-  flex_card_dead(card: owned(id: "a", gb: 48, rate: 600000, held: true, running: false, loading: false, outbid: true, age: 0))
-    && flex_card_dead(card: owned(id: "b", gb: 48, rate: 600000, held: true, running: false, loading: true, outbid: false, age: 600))
-    && !flex_card_dead(card: owned(id: "c", gb: 48, rate: 600000, held: true, running: false, loading: true, outbid: false, age: 599))
-    && !flex_card_dead(card: owned(id: "d", gb: 48, rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0))
+  flex_card_dead(card: owned(id: "a", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: false, outbid: true, age: 0))
+    && flex_card_dead(card: owned(id: "b", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: true, outbid: false, age: 600))
+    && !flex_card_dead(card: owned(id: "c", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: true, outbid: false, age: 599))
+    && !flex_card_dead(card: owned(id: "d", vram: gib(n: 48), rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0))
 }
 
 test fn cleanup_destroys_only_dead_owned_cards() -> Bool {
   let foreign_dead = FlexOwnedCard {
     owner: "ctrl-bidder" as FlexOwnerLabel,
     id: "ctrl",
-    gpu_ram_gb: 48,
+    vram: gib(n: 48),
     rate: usd_hour(n: 600000),
     held: true,
     running: false,
@@ -252,8 +257,8 @@ test fn cleanup_destroys_only_dead_owned_cards() -> Bool {
   }
   let actions = flex_cleanup_dead(
     cards: [
-      owned(id: "live", gb: 48, rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0),
-      owned(id: "dead", gb: 48, rate: 600000, held: true, running: false, loading: false, outbid: true, age: 0),
+      owned(id: "live", vram: gib(n: 48), rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0),
+      owned(id: "dead", vram: gib(n: 48), rate: 600000, held: true, running: false, loading: false, outbid: true, age: 0),
       foreign_dead,
     ],
     ours: flex_owner_label_gunbc_flex,
@@ -299,7 +304,7 @@ test fn a_value_release_waits_for_a_serving_replacement_unless_the_cap_requires_
 test fn a_held_card_is_ranked_at_the_switch_premium() -> Bool {
   let raw = usd_hour(n: 1250000)
   let effective = flex_held_effective_rate(rate: raw, held: true)
-  (flex_dollars_per_vram_micro(rate: effective, gpu_ram_gb: 48) < flex_dollars_per_vram_micro(rate: raw, gpu_ram_gb: 48))
+  (flex_dollars_per_vram_micro(rate: effective, vram: gib(n: 48)) < flex_dollars_per_vram_micro(rate: raw, vram: gib(n: 48)))
     && (money_per_hour_micros(q: effective) == 1000000)
 }
 
@@ -380,8 +385,8 @@ fn closed_assessment() -> DecisionAssessment {
 }
 
 test fn ranking_selects_the_held_card_when_the_premium_covers_a_small_price_gap() -> Bool {
-  let offer = owned(id: "offer", gb: 48, rate: 1100000, held: false, running: false, loading: false, outbid: false, age: 0)
-  let held = owned(id: "held", gb: 48, rate: 1250000, held: true, running: true, loading: false, outbid: false, age: 0)
+  let offer = owned(id: "offer", vram: gib(n: 48), rate: 1100000, held: false, running: false, loading: false, outbid: false, age: 0)
+  let held = owned(id: "held", vram: gib(n: 48), rate: 1250000, held: true, running: true, loading: false, outbid: false, age: 0)
   match select_realization(
     assessment: closed_assessment(),
     candidate_field_identity: id_field,

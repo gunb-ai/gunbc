@@ -51,7 +51,7 @@ import product.fabric.flex_policy {
   FlexOnDemandReferenceMissing,
   FlexHorizonPriced, FlexHorizonUnobserved, FlexHorizonRefused,
   FlexMarketPriceUnobserved, FlexMarketQuoteCurrencyMismatch,
-  flex_floor_buffer, flex_bid_admission, flex_price_offer,
+  flex_bid_admission, flex_price_offer,
 }
 import product.fabric.flex_market {
   FlexMarketQuote, FlexMarketQuoted, FlexMarketUnobserved, FlexBidLevelMarket,
@@ -165,7 +165,6 @@ fn t_machine(id: NonEmptyStr) -> FlexMachineKey {
 fn t_policy(cap: MoneyPerHour) -> FlexPolicy {
   FlexPolicy {
     fleet_rate_cap: cap,
-    floor_buffer: flex_floor_buffer,
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
@@ -179,7 +178,6 @@ fn eur_hour(amount: MoneyAmountMicro) -> MoneyPerHour {
 fn t_policy_eur(cap: MoneyPerHour) -> FlexPolicy {
   FlexPolicy {
     fleet_rate_cap: cap,
-    floor_buffer: flex_floor_buffer,
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,

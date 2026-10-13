@@ -40,13 +40,11 @@ import product.fabric.selection {
 
 // Fleet interruptible-bid policy. The bid is product.fabric.flex_market flex_quoted_bid
 // (class median × level, never below the machine floor). On-demand_fraction remains a hard
-// horizon ceiling, not a second bid formula. floor_buffer is residual and is not consulted.
-// DECLARED FRONTIER (DESIGN §3c): the production consumer is the fold that maps a Vast
-// SearchOffers row through vast_ai_min_bid_money_per_hour and a market quote into FlexBidAttempt
-// and calls flex_bid_admission. TRIGGER: that adapter exists as a production module (not a test)
-// and deleting the witness still leaves an execution of the real path.
-
-data flex_floor_buffer: NonzeroNatFraction = NonzeroNatFraction { num: 1, denom_predecessor: 9 }
+// horizon ceiling, not a second bid formula. DECLARED FRONTIER (DESIGN §3c): the production
+// consumer is the fold that maps a Vast SearchOffers row through vast_ai_min_bid_money_per_hour
+// and a market quote into FlexBidAttempt and calls flex_bid_admission. TRIGGER: that adapter
+// exists as a production module (not a test) and deleting the witness still leaves an execution
+// of the real path.
 
 type PhysicalMachineObservationIdentity = NonEmptyStr where brand("PhysicalMachineObservationIdentity")
 
@@ -82,10 +80,8 @@ type FlexBidSubject
 
 type FlexPolicy {
   fleet_rate_cap: MoneyPerHour
-  // Residual of M0 floor×11/10. Admission bids from FlexBidAttempt.market, never this.
-  floor_buffer: NonzeroNatFraction
   // Fraction of comparable on-demand horizon cost (setup and transfer included).
-  // Hard ceiling, not a bid formula.
+  // Hard ceiling, not a second bid formula.
   on_demand_fraction: NonzeroNatFraction
   acquisition_horizon: Second
   // Defence in depth if the Vast account is later split; still required.
@@ -128,7 +124,6 @@ type FlexBidAttempt<P> {
   delay_valuation: MoneyPerSecond
   tie: EqualCostOfferTieBreak
   affinity: PlacementAffinityKey
-  // Market level quote is the bid. floor_buffer is not a second pricing path.
   market: FlexMarketQuote
 }
 
@@ -187,18 +182,6 @@ fn flex_horizon_duration(policy: FlexPolicy) -> GrantDuration {
   ExactGrantDuration { seconds: policy.acquisition_horizon }
 }
 
-fn flex_buffered_min(min_bid: MoneyPerHour, buffer: NonzeroNatFraction) -> MoneyPerHour {
-  let frac = nonzero_nat_fraction_field(r: buffer)
-  MoneyPerHour {
-    amount: measure_scale_fraction_ceil(
-      m: min_bid.amount,
-      num: frac.denom + frac.num,
-      den: frac.denom,
-    ),
-    currency: min_bid.currency,
-  }
-}
-
 fn standing_rate(row: FlexAcquisitionStanding) -> MoneyPerHour {
   match row {
     AcquisitionActive { owner: _, rate: r } => r
@@ -254,22 +237,6 @@ fn occupancy_sum(occupancy: FlexFleetOccupancy, currency: CurrencyCode, ours: Fl
 fn occupy_pending(occupancy: FlexFleetOccupancy, bid: MoneyPerHour, owner: FlexOwnerLabel) -> FlexFleetOccupancy {
   FlexFleetOccupancy {
     standing: concat([AcquisitionPending { owner: owner, rate: bid }], occupancy.standing),
-  }
-}
-
-type FlexReservationCeiling
-  = FlexReservationCeilingChosen { rate: MoneyPerHour }
-  | FlexReservationCeilingCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
-
-fn policy_reservation_ceiling(policy: FlexPolicy, min_bid: MoneyPerHour) -> FlexReservationCeiling {
-  let buffered = flex_buffered_min(min_bid: min_bid, buffer: policy.floor_buffer)
-  match money_per_hour_compare(left: buffered, right: policy.fleet_rate_cap) {
-    MoneyPerHourCurrencyMismatch { left: cap_left, right: cap_right } =>
-      FlexReservationCeilingCurrencyMismatch { left: cap_left, right: cap_right }
-    MoneyPerHourCompared { left_le_right: buffered_under_cap } =>
-      FlexReservationCeilingChosen {
-        rate: if buffered_under_cap { buffered } else { policy.fleet_rate_cap },
-      }
   }
 }
 

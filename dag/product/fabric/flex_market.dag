@@ -5,11 +5,11 @@ import std.nat { Nat }
 import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
 import std.decl_ref { DeclarationRef }
 import std.measure {
-  MoneyAmountMicro, MoneyPerHour, Second,
+  MoneyAmountMicro, MoneyPerHour, Second, ByteSize,
   money_amount_micro, money_amount_micro_count, money_per_hour_micros,
   measure_add, measure_le, measure_scale_fraction_ceil, measure_sub,
   MeasureDifference, MeasureSubtrahendExceedsMinuend,
-  second, second_count,
+  second, second_count, byte_size_count, gibibyte, gibibyte_to_byte_size,
 }
 import extdeps.currency.currency { CurrencyCode }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -81,24 +81,27 @@ data flex_switch_premium: NonzeroNatFraction = NonzeroNatFraction { num: 5, deno
 type FlexVramClass
   = FlexVramClass96
   | FlexVramClass48
-  | FlexVramClassOther { gb: Nat }
+  | FlexVramClassOther { vram: ByteSize }
 
-fn flex_vram_class(gpu_ram_gb: Nat) -> FlexVramClass {
-  if gpu_ram_gb >= 80 {
+fn flex_vram_class(vram: ByteSize) -> FlexVramClass {
+  let n = byte_size_count(b: vram)
+  let class96 = byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 80)))
+  let class48 = byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 40)))
+  if n >= class96 {
     FlexVramClass96
   } else {
-    if gpu_ram_gb >= 40 { FlexVramClass48 } else { FlexVramClassOther { gb: gpu_ram_gb } }
+    if n >= class48 { FlexVramClass48 } else { FlexVramClassOther { vram: vram } }
   }
 }
 
 fn flex_vram_class_eq(left: FlexVramClass, right: FlexVramClass) -> Bool {
   match left {
-    FlexVramClass96 => match right { FlexVramClass96 => true FlexVramClass48 => false FlexVramClassOther { gb: _ } => false }
-    FlexVramClass48 => match right { FlexVramClass96 => false FlexVramClass48 => true FlexVramClassOther { gb: _ } => false }
-    FlexVramClassOther { gb: a } => match right {
+    FlexVramClass96 => match right { FlexVramClass96 => true FlexVramClass48 => false FlexVramClassOther { vram: _ } => false }
+    FlexVramClass48 => match right { FlexVramClass96 => false FlexVramClass48 => true FlexVramClassOther { vram: _ } => false }
+    FlexVramClassOther { vram: a } => match right {
       FlexVramClass96 => false
       FlexVramClass48 => false
-      FlexVramClassOther { gb: b } => a == b
+      FlexVramClassOther { vram: b } => byte_size_count(b: a) == byte_size_count(b: b)
     }
   }
 }
@@ -138,7 +141,7 @@ fn flex_ours_only(owner: FlexOwnership) -> Bool {
 type FlexOwnedCard {
   owner: FlexOwnerLabel
   id: NonEmptyStr
-  gpu_ram_gb: Nat
+  vram: ByteSize
   rate: MoneyPerHour
   held: Bool
   running: Bool
@@ -428,11 +431,12 @@ fn flex_held_effective_rate(rate: MoneyPerHour, held: Bool) -> MoneyPerHour {
   }
 }
 
-fn flex_dollars_per_vram_micro(rate: MoneyPerHour, gpu_ram_gb: Nat) -> Nat {
-  if gpu_ram_gb == 0 {
+fn flex_dollars_per_vram_micro(rate: MoneyPerHour, vram: ByteSize) -> Nat {
+  let n = byte_size_count(b: vram)
+  if n == 0 {
     money_per_hour_micros(q: rate)
   } else {
-    money_per_hour_micros(q: rate) / gpu_ram_gb
+    money_per_hour_micros(q: rate) / n
   }
 }
 
@@ -445,7 +449,7 @@ fn flex_rank_entry(id: DeclarationRef, label: NonEmptyStr, card: FlexOwnedCard) 
       AxisReading { axis: term_money.identity, interval_micro: degenerate_interval(point: money_per_hour_micros(q: effective) as Int) },
       AxisReading { axis: term_delay.identity, interval_micro: degenerate_interval(point: 0) },
       AxisReading { axis: term_interruption.identity, interval_micro: degenerate_interval(point: 0) },
-      AxisReading { axis: term_accepted_work.identity, interval_micro: degenerate_interval(point: card.gpu_ram_gb as Int) },
+      AxisReading { axis: term_accepted_work.identity, interval_micro: degenerate_interval(point: byte_size_count(b: card.vram) as Int) },
     ],
     missing_inputs: [],
   }
