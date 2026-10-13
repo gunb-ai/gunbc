@@ -47,13 +47,19 @@ import product.fabric.flex_vast_shadow {
   flex_gpu_class_rtx_5000_48gb, flex_gpu_class_72gb, flex_gpu_class_rtx_pro_6000_96gb,
   flex_gpu_class_matches, flex_offer_supported, flex_offer_in_shadow_field,
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
+  flex_bind_attempt_to_offer, flex_vast_offer_key, flex_keyset_page_limit,
+  flex_instances_page, flex_fold_instance_pages, flex_cap_from_roster,
+  flex_charges_page, FlexChargesExhausted, FlexChargesPartial, FlexChargesUnreadable,
   flex_vast_api_read_grant, flex_host_driver_unread_frontier, flex_delay_unvalued,
   FlexCreateLost, FlexCreateRefused, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
+  FlexReconcileNeedsExhaustedRoster,
   flex_reconcile_acquisition,
   flex_qwen_serving_image, flex_qwen_published_tcp_port, flex_qwen_disk, flex_qwen_model_id,
   flex_qwen_reasoning_parser, flex_qwen_tool_call_parser, FlexQwenProbeConfirmed, FlexQwenProbeUnconfirmed,
   flex_rented_card_fungible, flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable,
-  FlexWriteBlockedOverCap, FlexWriteWetUnwired, FlexInstanceListRead, FlexInstanceListUnreadable,
+  FlexWriteBlockedOverCap, FlexWriteBlockedPartialRoster, FlexWriteWetUnwired,
+  FlexInstancesStanding, FlexInstancesExhausted, FlexInstancesPartial, FlexInstancesUnreadable,
+  FlexCapUnder, FlexCapOver, FlexCapAtLimit, FlexCapNeedsExhaustedRoster, FlexCapUnreadable,
   flex_rental_readback, FlexRentalHeld, FlexRentalPending, FlexRentalUnknown, FlexRentalGone,
   flex_search_offers_inhabitance_frontier, flex_m3_rent_cooldown_starts_at_ask,
   flex_m3_pass_stops_at_first_failure, flex_qwen_probe_harness_placement_frontier,
@@ -64,7 +70,8 @@ import product.fabric.flex_vast_shadow {
 import std.rational { NonzeroNatFraction }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
-  VastAiOffer, VastAiInstance, vast_ai_search_type_bid, vast_ai_quote_currency,
+  VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges,
+  vast_ai_search_type_bid, vast_ai_quote_currency, vast_ai_keyset_page_limit,
 }
 import std.decision { CostPerAcceptedUnit, NetValue }
 import test.claim.fabric.provider_use_fixture {
@@ -226,6 +233,10 @@ fn wire_offer(name: String, ram: Int, bid: Bool, rentable: Bool) -> VastAiOffer 
 }
 
 fn inst(id: Int, machine_id: Int) -> VastAiInstance {
+  inst_labelled(id: id, machine_id: machine_id, label: none, dollars: 1)
+}
+
+fn inst_labelled(id: Int, machine_id: Int, label: String?, dollars: Int) -> VastAiInstance {
   VastAiInstance {
     id: id,
     machine_id: machine_id,
@@ -235,10 +246,14 @@ fn inst(id: Int, machine_id: Int) -> VastAiInstance {
     num_gpus: 1,
     image_uuid: flex_qwen_serving_image as String,
     is_bid: Present { value: true },
-    min_bid: ExactDecimal { units: 1, fraction_digits: 0 },
-    dph_total: ExactDecimal { units: 1, fraction_digits: 0 },
-    label: none,
+    min_bid: ExactDecimal { units: dollars, fraction_digits: 0 },
+    dph_total: ExactDecimal { units: dollars, fraction_digits: 0 },
+    label: label,
   }
+}
+
+fn exhausted(rows: List<VastAiInstance>) -> FlexInstancesStanding {
+  FlexInstancesExhausted { instances: rows, total: 0 }
 }
 
 test fn operator_template_and_policy_are_named_facts() -> Bool {
@@ -297,44 +312,52 @@ fn live_policy() -> FlexPolicy {
 }
 
 fn write_gate_conjunction() -> Bool {
-  match flex_write_decision(
-    policy: flex_trial_policy,
-    instances: FlexInstanceListRead { instances: [] },
-    over_cap: false,
-  ) {
+  match flex_write_decision(policy: flex_trial_policy, roster: exhausted(rows: [])) {
     FlexWriteHeldDry =>
-      match flex_write_decision(
-        policy: live_policy(),
-        instances: FlexInstanceListUnreadable,
-        over_cap: false,
-      ) {
+      match flex_write_decision(policy: live_policy(), roster: FlexInstancesUnreadable) {
         FlexWriteBlockedUnreadable =>
           match flex_write_decision(
             policy: live_policy(),
-            instances: FlexInstanceListRead { instances: [] },
-            over_cap: true,
+            roster: FlexInstancesPartial { next_token: "n", observed: [], total: 1 },
           ) {
-            FlexWriteBlockedOverCap =>
+            FlexWriteBlockedPartialRoster =>
               match flex_write_decision(
                 policy: live_policy(),
-                instances: FlexInstanceListRead { instances: [] },
-                over_cap: false,
+                roster: exhausted(rows: [
+                  inst_labelled(
+                    id: 1,
+                    machine_id: 1,
+                    label: Present { value: flex_owner_label_gunbc_flex as String },
+                    dollars: 2,
+                  ),
+                ]),
               ) {
-                FlexWriteWetUnwired => true
+                FlexWriteBlockedOverCap =>
+                  match flex_write_decision(policy: live_policy(), roster: exhausted(rows: [])) {
+                    FlexWriteWetUnwired => true
+                    FlexWriteHeldDry => false
+                    FlexWriteBlockedUnreadable => false
+                    FlexWriteBlockedOverCap => false
+                    FlexWriteBlockedPartialRoster => false
+                  }
                 FlexWriteHeldDry => false
                 FlexWriteBlockedUnreadable => false
-                FlexWriteBlockedOverCap => false
+                FlexWriteBlockedPartialRoster => false
+                FlexWriteWetUnwired => false
               }
             FlexWriteHeldDry => false
             FlexWriteBlockedUnreadable => false
+            FlexWriteBlockedOverCap => false
             FlexWriteWetUnwired => false
           }
         FlexWriteHeldDry => false
         FlexWriteBlockedOverCap => false
+        FlexWriteBlockedPartialRoster => false
         FlexWriteWetUnwired => false
       }
     FlexWriteBlockedUnreadable => false
     FlexWriteBlockedOverCap => false
+    FlexWriteBlockedPartialRoster => false
     FlexWriteWetUnwired => false
   }
 }
@@ -412,23 +435,29 @@ test fn supported_gpu_classes_screen_offers() -> Bool {
 }
 
 test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
-  let observed = [inst(id: 99, machine_id: 42)]
+  let observed = exhausted(rows: [inst(id: 99, machine_id: 42)])
+  let empty = exhausted(rows: [])
   let lost = flex_reconcile_acquisition(
     standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
-    instances: observed,
+    roster: observed,
   )
   let refused_empty = flex_reconcile_acquisition(
     standing: FlexCreateRefused { ask_id: 7, machine_id: 42 },
-    instances: [],
+    roster: empty,
   )
   let lost_unseen = flex_reconcile_acquisition(
     standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
-    instances: [],
+    roster: empty,
+  )
+  let partial = flex_reconcile_acquisition(
+    standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
+    roster: FlexInstancesPartial { next_token: "n", observed: [inst(id: 99, machine_id: 42)], total: 2 },
   )
   (match lost {
     FlexAlreadyHeld { instance: i } => i.id == 99
     FlexAcquisitionUnknown => false
     FlexMayAcquire => false
+    FlexReconcileNeedsExhaustedRoster => false
   })
     && (match refused_empty {
       FlexMayAcquire => true
@@ -438,9 +467,13 @@ test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
       FlexAcquisitionUnknown => true
       _ => false
     })
+    && (match partial {
+      FlexReconcileNeedsExhaustedRoster => true
+      _ => false
+    })
     && (match flex_rental_readback(
       standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
-      instances: observed,
+      roster: observed,
       bound_expired: false,
     ) {
       FlexRentalHeld { instance: i } => i.id == 99
@@ -448,7 +481,7 @@ test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
     })
     && (match flex_rental_readback(
       standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
-      instances: [],
+      roster: empty,
       bound_expired: true,
     ) {
       FlexRentalUnknown => true
@@ -462,10 +495,10 @@ test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
 }
 
 fn release_counts_only_when_confirmed_gone() -> Bool {
-  let held = [inst(id: 99, machine_id: 42)]
+  let held = exhausted(rows: [inst(id: 99, machine_id: 42)])
   (match flex_release_readback(
     standing: FlexReleaseRequested { instance_id: 99 },
-    instances: FlexInstanceListRead { instances: held },
+    roster: held,
   ) {
     FlexReleasePending { instance_id: i } => i == 99
     FlexReleaseConfirmedGone => false
@@ -473,7 +506,7 @@ fn release_counts_only_when_confirmed_gone() -> Bool {
   })
     && (match flex_release_readback(
       standing: FlexReleaseLost { instance_id: 99 },
-      instances: FlexInstanceListRead { instances: [] },
+      roster: exhausted(rows: []),
     ) {
       FlexReleaseConfirmedGone => true
       FlexReleasePending { instance_id: _ } => false
@@ -481,7 +514,15 @@ fn release_counts_only_when_confirmed_gone() -> Bool {
     })
     && (match flex_release_readback(
       standing: FlexReleaseLost { instance_id: 99 },
-      instances: FlexInstanceListUnreadable,
+      roster: FlexInstancesUnreadable,
+    ) {
+      FlexReleaseUnknown => true
+      FlexReleasePending { instance_id: _ } => false
+      FlexReleaseConfirmedGone => false
+    })
+    && (match flex_release_readback(
+      standing: FlexReleaseLost { instance_id: 99 },
+      roster: FlexInstancesPartial { next_token: "n", observed: [], total: 1 },
     ) {
       FlexReleaseUnknown => true
       FlexReleasePending { instance_id: _ } => false
@@ -497,19 +538,20 @@ fn excess_demand_uses_operator_share() -> Bool {
 fn dry_pass_records_unreadable_list() -> Bool {
   let pass = flex_record_pass(
     policy: flex_trial_policy,
-    instances: FlexInstanceListUnreadable,
+    roster: FlexInstancesUnreadable,
     receipts: [],
-    over_cap: false,
   )
-  match pass.instances {
-    FlexInstanceListUnreadable =>
+  match pass.roster {
+    FlexInstancesUnreadable =>
       match pass.write {
         FlexWriteHeldDry => true
         FlexWriteBlockedUnreadable => false
         FlexWriteBlockedOverCap => false
+        FlexWriteBlockedPartialRoster => false
         FlexWriteWetUnwired => false
       }
-    FlexInstanceListRead { instances: _ } => false
+    FlexInstancesExhausted { instances: _, total: _ } => false
+    FlexInstancesPartial { next_token: _, observed: _, total: _ } => false
   }
 }
 
@@ -529,14 +571,117 @@ test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
     ),
   )
   receipt.offer_id == 7
+    && (receipt.offer_key == flex_vast_offer_key(offer: offer))
     && flex_machine_key_eq(left: receipt.machine, right: flex_machine_key_for_offer(account: "vast-account-1", offer: offer))
     && match receipt.actuation {
       FlexActuationDry => true
       FlexActuationWet => false
     }
     && match receipt.admission {
-      FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => true
+      FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => false
       FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => false
-      FlexBidRefused { cause: _ } => false
+      FlexBidRefused { cause: _ } => true
     }
+}
+
+test fn a_foreign_candidate_identity_does_not_ride_the_vast_offer() -> Bool {
+  let offer = wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true)
+  let a = t_attempt(
+    machine: t_machine(id: "9"),
+    min_bid: ExactDecimal { units: 9, fraction_digits: 0 },
+    quote: usd_hour(amount: money_amount_micro(count: 1100000)),
+    key: "offer-42",
+  )
+  let b = t_attempt(
+    machine: t_machine(id: "9"),
+    min_bid: ExactDecimal { units: 9, fraction_digits: 0 },
+    quote: usd_hour(amount: money_amount_micro(count: 1100000)),
+    key: "offer-99",
+  )
+  let bound_a = flex_bind_attempt_to_offer(offer: offer, attempt: a)
+  let bound_b = flex_bind_attempt_to_offer(offer: offer, attempt: b)
+  let ra = flex_shadow_bid(
+    policy: flex_trial_policy,
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(),
+    offer: offer,
+    attempt: a,
+  )
+  let rb = flex_shadow_bid(
+    policy: flex_trial_policy,
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(),
+    offer: offer,
+    attempt: b,
+  )
+  (ra.offer_key == rb.offer_key)
+    && (ra.offer_key == flex_vast_offer_key(offer: offer))
+    && (ra.offer_key != ("offer-42" as OfferKey))
+    && (bound_a.candidates |> length) == 0
+    && (bound_b.candidates |> length) == 0
+}
+
+test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
+  let first = VastAiInstances {
+    success: true,
+    instances_found: 1,
+    total_instances: 2,
+    next_token: Present { value: "tok" },
+    instances: [inst(id: 1, machine_id: 1)],
+  }
+  let last = VastAiInstances {
+    success: true,
+    instances_found: 1,
+    total_instances: 2,
+    next_token: none,
+    instances: [inst(id: 2, machine_id: 2)],
+  }
+  let charges_open = VastAiCharges {
+    success: true,
+    count: 0,
+    total: 1,
+    next_token: Present { value: "c" },
+    results: [],
+  }
+  (flex_keyset_page_limit == vast_ai_keyset_page_limit)
+    && (match flex_instances_page(page: first) {
+      FlexInstancesPartial { next_token: t, observed: rows, total: n } =>
+        (t == "tok") && ((rows |> length) == 1) && (n == 2)
+      _ => false
+    })
+    && (match flex_fold_instance_pages(pages: [first, last]) {
+      FlexInstancesExhausted { instances: rows, total: n } => ((rows |> length) == 2) && (n == 2)
+      _ => false
+    })
+    && (match flex_charges_page(page: charges_open) {
+      FlexChargesPartial { next_token: t, observed: _, total: _ } => t == "c"
+      FlexChargesExhausted { results: _, total: _ } => false
+      FlexChargesUnreadable => false
+    })
+    && (match flex_cap_from_roster(
+      policy: flex_trial_policy,
+      roster: FlexInstancesPartial { next_token: "tok", observed: [], total: 1 },
+    ) {
+      FlexCapNeedsExhaustedRoster => true
+      _ => false
+    })
+    && (match flex_cap_from_roster(
+      policy: flex_trial_policy,
+      roster: exhausted(rows: [
+        inst_labelled(
+          id: 1,
+          machine_id: 1,
+          label: Present { value: flex_owner_label_gunbc_flex as String },
+          dollars: 2,
+        ),
+        inst_labelled(id: 2, machine_id: 2, label: Present { value: "ctrl-bidder" }, dollars: 9),
+      ]),
+    ) {
+      FlexCapOver { occupied: o, cap: c } =>
+        (money_amount_micro_count(m: o.amount) == 2000000)
+          && (money_amount_micro_count(m: c.amount) == 1340000)
+      _ => false
+    })
 }

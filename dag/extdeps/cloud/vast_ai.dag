@@ -191,6 +191,10 @@ type VastAiInstance {
   label: String?
 }
 
+fn vast_ai_instance_dph_total_money_per_hour(instance: VastAiInstance) -> DecimalMoneyPerHourConversion {
+  exact_decimal_to_money_per_hour_ceil(d: instance.dph_total, currency: vast_ai_quote_currency)
+}
+
 type VastAiInstances {
   success: Bool
   instances_found: Int
@@ -198,6 +202,8 @@ type VastAiInstances {
   next_token: String?
   instances: List<VastAiInstance>
 }
+
+data vast_ai_keyset_page_limit: Int = 25
 
 service vast_ai.Instances {
   config {
@@ -212,6 +218,7 @@ service vast_ai.Instances {
       api_key: Secret
       select_filters: String
       limit: Int
+      after_token: String?
     }
     output {
       instances: List<VastAiInstance> from "instances"
@@ -222,7 +229,7 @@ service vast_ai.Instances {
     transport rest {
       method: GET,
       path: "/instances",
-      query: { select_filters: select_filters, limit: limit }
+      query: { select_filters: select_filters, limit: limit, after_token: after_token }
     }
     response {
       200 => VastAiInstances
@@ -274,6 +281,7 @@ service vast_ai.Charges {
       api_key: Secret
       select_filters: String
       limit: Int
+      after_token: String?
     }
     output {
       results: List<VastAiCharge> from "results"
@@ -284,7 +292,7 @@ service vast_ai.Charges {
     transport rest {
       method: GET,
       path: "/charges",
-      query: { select_filters: select_filters, limit: limit }
+      query: { select_filters: select_filters, limit: limit, after_token: after_token }
     }
     response {
       200 => VastAiCharges
