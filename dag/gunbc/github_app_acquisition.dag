@@ -1580,7 +1580,7 @@ type CensusAppInstallationReading
 // unreadable into EMPTY, and that stays two arms: "the JWT was stale" and "the App has no
 // installation" prescribe opposite acts.
 fn read_census_app_installations() -> CensusAppInstallationReading uses net: Network {
-  match github.AppInstallations.ListInstallations(auth_token: "" as Secret) {
+  match github.AppInstallations.ListInstallations() {
     RestAnswered { answer } => decode_installation_records(records: answer.result)
     RestRefused { refusal } =>
       match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
