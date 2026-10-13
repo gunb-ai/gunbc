@@ -45,12 +45,12 @@ type LogicalWorkId = NonEmptyStr where brand("LogicalWorkId")
 // minted subject (harness_turn_subject) is not a key because a restarted process mints a new one.
 // The id is derived from the typed key by a JSON array encoding, which is injective over
 // (string, int), so no two distinct keys share an id and no delimiter can be forged inside a part.
-type WorkKey {
+type DispatchTurnKey {
   dispatch_node: NonEmptyStr
   ordinal: Nat
 }
 
-fn logical_work_id_of(key: WorkKey) -> LogicalWorkId {
+fn logical_work_id_of(key: DispatchTurnKey) -> LogicalWorkId {
   serialize_json(v: json_array(elements: [json_string(s: key.dispatch_node as String), json_int(n: key.ordinal as Int)])) as LogicalWorkId
 }
 
