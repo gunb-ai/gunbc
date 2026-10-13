@@ -681,13 +681,20 @@ test fn the_cursor_secret_joins_the_grant_set_secrets_and_the_others_are_unchang
     }
 }
 
-// ON THE CURSOR SECRET iam-converge GRANTS AND NEVER READS: the secret carries only the secretPolicy
-// role's binding, whose permissions hold no payload read and no create, and the bootstrap readback
-// expects the payload permissions denied on it.
+// ON THE CURSOR SECRET iam-converge GRANTS AND NEVER READS: every iam-converge binding on the secret
+// (and at least one) is the secretPolicy role's, whose permissions hold no payload read and no create,
+// and the bootstrap readback expects the payload permissions denied on it.
 test fn iam_converge_holds_no_payload_read_on_the_cursor_secret() -> Bool {
   let res = gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: "cursor-api-key-harness" as NonEmptyStr)
   let probes = iam_converge_bootstrap_readback()
-  any(iam_converge_bindings(), b => b.resource == res && match b.role { ConvergeSecretPolicyRole => true  _ => false })
+  let on_secret = filter(iam_converge_bindings(), b => b.resource == res)
+  on_secret.length() > 0
+    && all(on_secret, b => match b.role {
+      ConvergeSecretPolicyRole => true
+      ConvergeCreateRole => false
+      ConvergeProviderRole => false
+      ConvergeAccountPolicyRole => false
+    })
     && all(grant_set_payload_permissions, p => any(probes, q => match q {
       ExpectDenied { resource: r, permission: pp } => r == res && pp == p
       ExpectAdmitted { resource: _, permission: _ } => false
