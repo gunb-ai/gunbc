@@ -60,12 +60,10 @@ import product.fabric.flex_vast_shadow {
   FlexWriteBlockedOverCap, FlexWriteBlockedPartialRoster, FlexWriteWetUnwired,
   FlexInstancesStanding, FlexInstancesExhausted, FlexInstancesPartial, FlexInstancesUnreadable,
   FlexCapUnder, FlexCapOver, FlexCapAtLimit, FlexCapNeedsExhaustedRoster, FlexCapUnreadable,
-  flex_rental_readback, FlexRentalHeld, FlexRentalPending, FlexRentalUnknown, FlexRentalGone,
   flex_search_offers_inhabitance_frontier, flex_m3_rent_cooldown_starts_at_ask,
   flex_m3_pass_stops_at_first_failure,
-  flex_wet_create_release_consumer_frontier,
-  flex_release_readback, FlexReleaseRequested, FlexReleaseLost, FlexReleasePending,
-  FlexReleaseConfirmedGone, FlexReleaseUnknown, flex_record_pass,
+  flex_wet_create_release_consumer_frontier, flex_rented_serving_allocation_join,
+  flex_record_pass,
 }
 import std.rational { NonzeroNatFraction }
 import std.dissolution { UnboundDissolution, BoundDissolution }
@@ -386,6 +384,10 @@ fn frontiers_are_unbound() -> Bool {
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
     }
+    && match flex_rented_serving_allocation_join {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
 }
 
 fn objective_is_cost_per_accepted_unit() -> Bool {
@@ -495,63 +497,8 @@ test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
       FlexReconcileNeedsExhaustedRoster => true
       _ => false
     })
-    && (match flex_rental_readback(
-      standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
-      roster: observed,
-      bound_expired: false,
-    ) {
-      FlexRentalHeld { instance: i } => i.id == 99
-      _ => false
-    })
-    && (match flex_rental_readback(
-      standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
-      roster: empty,
-      bound_expired: true,
-    ) {
-      FlexRentalUnknown => true
-      FlexRentalPending { ask_id: _, machine_id: _ } => false
-      FlexRentalHeld { instance: _ } => false
-      FlexRentalGone => false
-    })
-    && release_counts_only_when_confirmed_gone()
     && excess_demand_uses_operator_share()
     && dry_pass_records_unreadable_list()
-}
-
-fn release_counts_only_when_confirmed_gone() -> Bool {
-  let held = exhausted(rows: [inst(id: 99, machine_id: 42)])
-  (match flex_release_readback(
-    standing: FlexReleaseRequested { instance_id: 99 },
-    roster: held,
-  ) {
-    FlexReleasePending { instance_id: i } => i == 99
-    FlexReleaseConfirmedGone => false
-    FlexReleaseUnknown => false
-  })
-    && (match flex_release_readback(
-      standing: FlexReleaseLost { instance_id: 99 },
-      roster: exhausted(rows: []),
-    ) {
-      FlexReleaseConfirmedGone => true
-      FlexReleasePending { instance_id: _ } => false
-      FlexReleaseUnknown => false
-    })
-    && (match flex_release_readback(
-      standing: FlexReleaseLost { instance_id: 99 },
-      roster: FlexInstancesUnreadable,
-    ) {
-      FlexReleaseUnknown => true
-      FlexReleasePending { instance_id: _ } => false
-      FlexReleaseConfirmedGone => false
-    })
-    && (match flex_release_readback(
-      standing: FlexReleaseLost { instance_id: 99 },
-      roster: FlexInstancesPartial { next_token: "n", observed: [], total: 1 },
-    ) {
-      FlexReleaseUnknown => true
-      FlexReleasePending { instance_id: _ } => false
-      FlexReleaseConfirmedGone => false
-    })
 }
 
 fn excess_demand_uses_operator_share() -> Bool {

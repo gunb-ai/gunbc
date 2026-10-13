@@ -48,7 +48,9 @@ data flex_m3_rent_cooldown_starts_at_ask: DissolutionCondition = unbound_dissolu
 
 data flex_m3_pass_stops_at_first_failure: DissolutionCondition = unbound_dissolution(description: "M3: stop the observation/plan pass at the first failure so the next pass plans from what really happened. TRIGGER: the wet loop refuses to continue after the first typed failure. SUFFICIENT FOR deleting this row.")
 
-data flex_wet_create_release_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create/destroy loop consumes FlexCreateStanding, flex_reconcile_acquisition, FlexReleaseStanding, flex_release_readback, flex_trial_total (reservation ceiling), flex_objective, and flex_delay_unvalued. TRIGGER: that loop is the remaining executing route if test.claim.fabric.flex_vast_shadow_witness is deleted. SUFFICIENT FOR deleting this row.")
+data flex_wet_create_release_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create/destroy loop consumes FlexCreateStanding, flex_reconcile_acquisition, flex_trial_total (reservation ceiling), flex_objective, and flex_delay_unvalued. TRIGGER: that loop is the remaining executing route if test.claim.fabric.flex_vast_shadow_witness is deleted. SUFFICIENT FOR deleting this row.")
+
+data flex_rented_serving_allocation_join: DissolutionCondition = unbound_dissolution(description: "Enrollment, use, release and settlement of one rented card inhabit RentedServingAllocation (owned by deep-bear-539). Flex produces that carrier at acquisition and does not mint a parallel rental lifecycle. TRIGGER: the carrier is on main and the wet loop's remaining executing route for hold/release/settlement is that type's symbols. SUFFICIENT FOR deleting this row. NOT satisfied by FlexCreateStanding or flex_reconcile_acquisition, which stay as acquisition-side decision facts.")
 
 type FlexWriteDecision
   = FlexWriteHeldDry
@@ -522,41 +524,6 @@ fn flex_reconcile_acquisition(
   }
 }
 
-type FlexRentalReadback
-  = FlexRentalPending { ask_id: Int, machine_id: Int }
-  | FlexRentalHeld { instance: VastAiInstance }
-  | FlexRentalGone
-  | FlexRentalUnknown
-
-type FlexReleaseStanding
-  = FlexReleaseRequested { instance_id: Int }
-  | FlexReleaseLost { instance_id: Int }
-
-type FlexReleaseReadback
-  = FlexReleasePending { instance_id: Int }
-  | FlexReleaseConfirmedGone
-  | FlexReleaseUnknown
-
-fn flex_release_readback(
-  standing: FlexReleaseStanding,
-  roster: FlexInstancesStanding,
-) -> FlexReleaseReadback {
-  match roster {
-    FlexInstancesUnreadable => FlexReleaseUnknown
-    FlexInstancesPartial { next_token: _, observed: _, total: _ } => FlexReleaseUnknown
-    FlexInstancesExhausted { instances: rows, total: _ } => {
-      let id = match standing {
-        FlexReleaseRequested { instance_id: i } => i
-        FlexReleaseLost { instance_id: i } => i
-      }
-      match flex_find_instance(instances: rows, lookup: FlexLookupContractId { id: id }) {
-        Present { value: _ } => FlexReleasePending { instance_id: id }
-        Absent => FlexReleaseConfirmedGone
-      }
-    }
-  }
-}
-
 type FlexPassRecord {
   roster: FlexInstancesStanding
   receipts: List<FlexShadowBidReceipt>
@@ -577,25 +544,3 @@ fn flex_record_pass(
   }
 }
 
-fn flex_rental_readback(
-  standing: FlexCreateStanding,
-  roster: FlexInstancesStanding,
-  bound_expired: Bool,
-) -> FlexRentalReadback {
-  match flex_reconcile_acquisition(standing: standing, roster: roster) {
-    FlexReconcileNeedsExhaustedRoster => FlexRentalUnknown
-    FlexAlreadyHeld { instance: inst } => FlexRentalHeld { instance: inst }
-    FlexMayAcquire => FlexRentalGone
-    FlexAcquisitionUnknown =>
-      if bound_expired {
-        FlexRentalUnknown
-      } else {
-        match standing {
-          FlexCreateLost { ask_id: a, machine_id: m } => FlexRentalPending { ask_id: a, machine_id: m }
-          FlexCreateAnswered { instance_id: _, machine_id: m, ask_id: a } =>
-            FlexRentalPending { ask_id: a, machine_id: m }
-          FlexCreateRefused { ask_id: _, machine_id: _ } => FlexRentalGone
-        }
-      }
-  }
-}
