@@ -1,4 +1,4 @@
-module gunbc.machine_intake_kernel_module_decompression_observation
+module gunbc.machine_intake.kernel_module_decompression_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }

@@ -5,7 +5,7 @@
 //! the v1 compiler-test harness because Class B trim discrimination needs
 //! primary-precedence pool overlays (`fixtures/class_b_trim/narrow_pool/`) and
 //! `compile_declared_import_closure_only_with_pool` receipts that cannot be enrolled
-//! as discovered `dag/test/claim/*_test.dag` rows while the Class B gate observes only
+//! as discovered test-marked `dag/test/claim` rows while the Class B gate observes only
 //! `item_registry` symbols (`run_class_b_import_closure_gate` / `rust_selection_policy_node`)
 //! and `trim` has no such registry row. Lane: import-strip witness-discovery cascade
 //! (#6985 Class B pool-membership coincidence).

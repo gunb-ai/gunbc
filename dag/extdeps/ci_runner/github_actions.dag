@@ -105,7 +105,7 @@ data github_actions_runner_catalog: RunnerCatalogAvailability = RunnerShapesCite
 // extdeps.github.hosted_runners already owns them, keyed by extdeps.github.actions RunnerLabel
 // with the visibility axis this module's RunnerShapeRow lacks, and it says in its own words that
 // the label vocabulary is spelled once and "never a free string beside it". Enrolling that
-// catalog is gunbc.runner_provider_survey's job, because joining two upstream authorities is
+// catalog is gunbc.runner.runner_provider_survey's job, because joining two upstream authorities is
 // consumer-layer work and not something either upstream module may do to the other.
 data github_actions_catalog_snapshot: CatalogSnapshot = CatalogSnapshot {
   fetched_at: "2026-08-18T00:00:00Z",

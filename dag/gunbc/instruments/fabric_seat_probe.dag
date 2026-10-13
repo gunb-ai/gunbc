@@ -22,8 +22,8 @@ import gunbc.harness.harness_seat { harness_turn_request,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, serving_co_tenancy_class_wire }
 import gunbc.harness.harness_cli { harness_seat_policy }
-import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageServed }
-import gunbc.fabric_event_log {
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageServed }
+import gunbc.fabric.fabric_event_log {
   SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire, seat_acquisition_wire,
   PartitionReadOk, PartitionReadRefused, event_log_read_partition, EventAppended, EventAppendStale, EventAppendRefused,
   event_log_append, event_log_refusal_wire,

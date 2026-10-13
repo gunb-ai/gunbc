@@ -157,7 +157,7 @@ data v1_seed_emit_rust_qualified_module: String = "v1.compiler.emit_rust"
 data v2_emit_interpreted_qualified_module: String = "v2.compiler.emit"
 
 // Structural authority for the cssl seed-linked behavioral harness
-// (tools.self_host_curated_seed_linked_harness): gunbc compile routes through v1.compile ->
+// (gunbc.instruments.self_host_curated_seed_linked_harness): gunbc compile routes through v1.compile ->
 // v1.compiler.emit_rust. Any receipt minted from this closure MUST be V1SeedEmitter — V2Emitter* is
 // unwritable by construction.
 

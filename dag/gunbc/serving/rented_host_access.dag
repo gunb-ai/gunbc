@@ -2,18 +2,18 @@ module gunbc.serving.rented_host_access
 
 import std.types { String, NonEmptyStr }
 import product.host_identity { HostIdentity }
-import extdeps.ssh { SshPublicKey }
-import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, host_key_provenance_label }
-import gunbc.fleet_known_hosts_anchor { SshTarget }
-import gunbc.fleet_ssh_locus {
+import extdeps.ssh.keys { SshPublicKey }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, host_key_provenance_label }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_ssh_locus {
   prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused,
 }
-import gunbc.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 
 // HOW THE OPERATOR HANDS A RENTED NODE OVER, and everything it contains is public. The node's address
 // and login principal, the host key its provider reports, and the PUBLIC half of the key the operator
 // authorized on the rental. The private half is never a value here: it stays in the operator's
-// ssh-agent, and gunbc.fleet_ssh_locus verifies that the agent holds the declared fingerprint before
+// ssh-agent, and gunbc.fleet.fleet_ssh_locus verifies that the agent holds the declared fingerprint before
 // any leg runs, so a rental whose key is not loaded refuses instead of falling back to ambient
 // credentials. Nothing secret enters the repository because nothing secret is an input.
 //

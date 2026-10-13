@@ -1,9 +1,9 @@
-module gunbc.fleet_capacity_control
+module gunbc.fleet.fleet_capacity_control
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import product.host_identity { HostIdentity }
 import extdeps.llm.cli_lifecycle { ProviderKind, ClaudeCliProvider, CodexCliProvider, CursorCliProvider, provider_kind_label }
-import gunbc.fleet_enrollment { InteractiveSessionParticipation, hosts_enrolled_for }
+import gunbc.fleet.fleet_enrollment { InteractiveSessionParticipation, hosts_enrolled_for }
 
 // THE OPERATOR'S CONTROL OVER ACTIVE FLEET CAPACITY, ON TWO AXES THAT ARE NOT THE SAME FACT.
 //

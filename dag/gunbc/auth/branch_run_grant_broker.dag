@@ -17,7 +17,7 @@ import gunbc.auth.branch_dispatch_federation {
 // A fleet-converge run whose mode needs a run-scoped account (gunbc.auth.branch_dispatch_federation)
 // cannot ask for it itself: asking means dispatching a run, and a token that may dispatch runs may
 // dispatch any workflow of the repository, which branch code must not hold. So this broker asks on
-// its behalf. It is a job of its own workflow (gunbc.branch_run_grant_broker_workflow), triggered by
+// its behalf. It is a job of its own workflow (gunbc.fleet.branch_run_grant_broker_workflow), triggered by
 // GitHub's workflow_run event when a fleet-converge run is requested; GitHub runs a workflow_run
 // workflow from the default branch only, so this code is main's whatever branch the run is on, and
 // the run id and attempt it forwards are the event's, not anything the branch's run reports.

@@ -1,6 +1,6 @@
 module gunbc.site.document
 import extdeps.auth.oidc { OidcLoginPromptSelectAccount, oidc_login_prompt_label }
-import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
+import gunbc.roadmap.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
 import gunbc.site.brand { site_brand_link, site_favicon_nodes }
 import gunbc.site.layout { site_layout_rules }
 

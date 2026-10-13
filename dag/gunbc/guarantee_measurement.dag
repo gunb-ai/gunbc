@@ -165,7 +165,7 @@ data receipt_identity_note: String = "Every field is REQUIRED - no Optional arms
 // The registry MECHANISM without a registry POPULATION: uniqueness and exactly-one resolution are
 // folds over caller-supplied rows, witnessed here against synthetic rows only. The real class and
 // path populations arrive with the carrier and probe stages; this module supplying them would be
-// Stage 0 claiming compiler coverage it does not have. Resolution mirrors gunbc.roadmap_identity:
+// Stage 0 claiming compiler coverage it does not have. Resolution mirrors gunbc.roadmap.roadmap_identity:
 // exactly-one, never first-pick - a duplicate registry answered with a plausible first row is the
 // fabricated-output arm, and it fails at exactly the moment the registry is corrupt. The lookup key
 // is the branded GuaranteePathId end-to-end, through the refusal variants, and join_receipt_to_path

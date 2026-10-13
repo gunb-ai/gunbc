@@ -35,7 +35,7 @@ import v1.gunbc.occurrence_binding_parser_walk {
 //
 // WHY EVERY EXISTING FIXTURE STAYED GREEN THROUGH THAT, which is the reason this file is a
 // PRODUCTION-FED control and not another fixture.
-// test.claim.type_reference_containment_binding_witness_test hand-builds its declarations with
+// test.claim.type_reference_containment_binding_witness hand-builds its declarations with
 // `category: TypeOccurrence` -- exactly the shape production never emitted -- so the suite supplied
 // the missing side of the join itself. Those fixtures are correct about the authority's LOGIC and
 // nothing here weakens them; they were never SUFFICIENT, and nothing in the tree said so. DESIGN

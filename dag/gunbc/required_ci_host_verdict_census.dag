@@ -107,7 +107,7 @@ data required_ci_host_verdict_rows: List<RequiredCiHostVerdictRow> = [
     host_site: "v1_compiler.emitted_closure_compile_host run_required_emit_compile plus claim_executor RequiredCiPhase::EmitCompile",
     relation: CarrierAbsent {
       missing_fact: "one terminal substrate outcome joining baseline compile, mutation-established red, byte-exact restore, and restored green; ci_layer_roots owns the subjects but does not decide that conjunction",
-      nearest_model: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "required_emit_compile_entries"),
+      nearest_model: decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "required_emit_compile_entries"),
       model_before_cut: unbound_dissolution(description: "dissolve-on: a terminal emitted-closure compile evidence carrier owns the four-part baseline/mutation/restore/restored judgment before the host implementation is reduced to transport")
     }
   },

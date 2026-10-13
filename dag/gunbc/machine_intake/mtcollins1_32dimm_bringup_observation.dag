@@ -1,7 +1,7 @@
-module gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
+module gunbc.machine_intake.mtcollins1_32dimm_bringup_observation
 
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
-import gunbc.mtcollins_memory_change { mtcollins_training_capture_path, mtcollins_training_capture_sha256 }
+import gunbc.host.mtcollins_memory_change { mtcollins_training_capture_path, mtcollins_training_capture_sha256 }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
@@ -15,8 +15,8 @@ import extdeps.bmc.ipmi_sel {
   OemSelPayload,
   SystemRestart,
 }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_firmware }
-import gunbc.machine_intake_pre_os_observation_capabilities {
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_firmware }
+import gunbc.machine_intake.pre_os_observation_capabilities {
   AggregateMemoryPowerExposed,
   HostCallbackIntendedNotDemonstrated,
   NoManagedAcActuator,
@@ -29,7 +29,7 @@ import gunbc.machine_intake_pre_os_observation_capabilities {
   SolPresentEmitting,
   PerSlotLocalizationExposed,
 }
-import gunbc.machine_intake_pre_os_bringup_attempt {
+import gunbc.machine_intake.pre_os_bringup_attempt {
   AcPowerCycle,
   ActuatorRequest,
   ChassisPowerCycle,
@@ -53,7 +53,7 @@ import gunbc.machine_intake_pre_os_bringup_attempt {
   power_actuation_request,
   power_actuation_request_readiness,
 }
-import gunbc.machine_intake_pre_os_bringup_verdict {
+import gunbc.machine_intake.pre_os_bringup_verdict {
   BringupUndetermined,
   NothingObservedBeyondActivation,
   FirmwareProgressObserved,
@@ -85,7 +85,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
 // (`~/mtc1-32dimm`), committed under artifacts/bmc/mtcollins1-32dimm/, and is bound to those bytes
 // by digest. The machine was not touched by this change; it is under operator hands.
 //
-// EVIDENCE BINDS PER SECTION, NOT PER MODULE, the rule gunbc.machine_intake_mtcollins1_memory_census_observation
+// EVIDENCE BINDS PER SECTION, NOT PER MODULE, the rule gunbc.machine_intake.mtcollins1_memory_census_observation
 // already states: each observation names the artifact it came from.
 //
 // THIS MODULE IS THE FIRST CONSUMER OF THE THREE MODEL MODULES, and its probe at the bottom runs
@@ -398,16 +398,16 @@ data mtcollins1_pre_os_capabilities: PreOsObservationCapabilities = PreOsObserva
   baseboard: mt_collins_board_authority,
   controller_firmware: mtcollins1_firmware,
   console: SolPresentEmitting {
-    established_by: DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_dram_training_capture", field: WholeDeclaration },
+    established_by: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_dram_training_capture", field: WholeDeclaration },
   },
   sel: SelStandardDecoded,
   oem_sel_decode: oem_sel_decode_capability_of_web_log(observation: mtcollins1_web_event_log_decode),
   dimm_localization: PerSlotLocalizationExposed {
-    source: DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_dram_training_capture", field: WholeDeclaration },
+    source: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_dram_training_capture", field: WholeDeclaration },
   },
   memory_power: AggregateMemoryPowerExposed {
     sensor_names: mtcollins1_sdr_capture.memory_power_sensor_names,
-    established_by: DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_sdr_capture", field: WholeDeclaration },
+    established_by: DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_32dimm_bringup_observation", decl_name: "mtcollins1_sdr_capture", field: WholeDeclaration },
   },
   managed_ac: NoManagedAcActuator,
   host_callback: HostCallbackIntendedNotDemonstrated,

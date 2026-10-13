@@ -1,6 +1,6 @@
-module gunbc.fleet_converge_receipt
+module gunbc.fleet.fleet_converge_receipt
 
-import gunbc.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_wire, fleet_converge_apply_terminal_of_wire }
+import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_wire, fleet_converge_apply_terminal_of_wire }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
@@ -21,11 +21,11 @@ import gunbc.actions_run_binding {
   actions_run_binding_identity_text,
 }
 
-// THE TYPED PLAN AND APPLY RECEIPTS THE FLEET TRANSACTION LACKED. gunbc.fleet_converge_plan_cli
+// THE TYPED PLAN AND APPLY RECEIPTS THE FLEET TRANSACTION LACKED. gunbc.fleet.fleet_converge_plan_cli
 // flattened both wet entries to ProcessExit: the plan artifact on disk carried the subject,
 // baseline, generation and bundle hash, and apply re-verified every one of them, but nothing
 // durable said WHICH RUN, at WHICH REVISION, on WHICH OBSERVED HOST minted the plan or performed
-// the apply. gunbc.fleet_converge_cli ConvergeCliReceipt is not that receipt: it belongs to the
+// the apply. gunbc.fleet.fleet_converge_cli ConvergeCliReceipt is not that receipt: it belongs to the
 // periodic `gunbc converge` path and binds no plan hash, subject, lease generation or run. The
 // RLM-2 ruling (docs/plans/roadmap-launch-mvp-plan.md, RLM-2 section 2) requires one receipt per
 // phase, produced INSIDE the typed composition before the CLI projection to ProcessExit, so the

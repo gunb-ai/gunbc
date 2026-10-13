@@ -89,7 +89,7 @@ type JobserverCitation
 // installed jobserver, not about the GNU make jobserver protocol this module cites, so a stricter
 // section 3 reading puts the row in a gunbc module and leaves the protocol shape here. It stays put
 // because every consumer already reads it here and moving it is a rename across a live seam — the
-// same class of migration whose hazards are recorded in gunbc.host_converge. Dissolve-on: the row
+// same class of migration whose hazards are recorded in gunbc.host.host_converge. Dissolve-on: the row
 // moves when a gunbc-owned jobserver replaces ctrl-jobserver and the citation follows it.
 
 data jobserver_config: JobserverCitation = JobserverCited {

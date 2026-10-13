@@ -25,7 +25,7 @@ import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerificat
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
-import gunbc.fleet_posix_accounts { fleet_operator_email }
+import gunbc.fleet.fleet_posix_accounts { fleet_operator_email }
 import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly,
   admit_cas_attempt_for_derived_payload,
@@ -142,7 +142,7 @@ data approval_capability_expectation: CapabilityExpectation = CapabilityExpectat
 }
 
 // THE OPERATOR IS ONE TAILNET LOGIN, and it is the row the fleet already owns:
-// gunbc.fleet_posix_accounts fleet_operator_email, which the tailscale ACL consumes too. The
+// gunbc.fleet.fleet_posix_accounts fleet_operator_email, which the tailscale ACL consumes too. The
 // live tailnet (`tailscale status` on srv1, 2026-09-16) reports the same login. A second literal
 // here would be a second authority on who a tap may be (review 66990).
 data approval_operator_login: NonEmptyStr = fleet_operator_email
@@ -661,7 +661,7 @@ fn redeem_trusted_over_store(
 // match; otherwise the decision is somebody else's and the grant is refused. A pending or absent
 // slot yields the request's own AuthorizationPending, so a workflow polling the store sees the
 // same value it would have declared by hand, and the srv3 source-declared grant
-// (gunbc.srv3_os_install_actuate_workflow srv3_boot_once_cd_source_declared_grant_dissolve_on)
+// (gunbc.srv3.srv3_os_install_actuate_workflow srv3_boot_once_cd_source_declared_grant_dissolve_on)
 // dissolves into this fold.
 type GrantDerivation<Subject>
   = GrantDerived { authorization: ScopedAuthorization<Subject> }

@@ -1,4 +1,4 @@
-module gunbc.roadmap_allocation_style
+module gunbc.roadmap.roadmap_allocation_style
 
 import std.types { String, List }
 import gunbc.design.material { BuildRule, StaticRule, serialize_rules, decl }

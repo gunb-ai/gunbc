@@ -22,7 +22,7 @@ import extdeps.languages.json.parse {
 import extdeps.uri { Uri, Https, Http, uri_wire }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import gunbc.auth.session { AuthenticatedSession }
 

@@ -1,4 +1,4 @@
-module gunbc.witness_floor_lanes
+module gunbc.witness.witness_floor_lanes
 
 import std.types { String, List }
 import v2.std.algebra { FreeSemigroup, list_map, non_empty_to_list }
@@ -8,7 +8,7 @@ import v2.std.algebra { FreeSemigroup, list_map, non_empty_to_list }
 // This axis was a HARDCODED PAIR -- `build_var` beside `floor_var`, threaded through four
 // functions and spelled 28 times -- which is one concept given one name per instance, the fork
 // DESIGN section 2 horizontal exists to delete. The tell was mechanical: promoting a third job
-// into the aggregate was described by `gunbc.witness_floor_workflow` as a one-row edit, and was
+// into the aggregate was described by `gunbc.witness.witness_floor_workflow` as a one-row edit, and was
 // in fact a signature change in four places plus a step-name rewrite, because the gate could not
 // say "a lane" at all -- only "the build one" and "the floor one".
 //
@@ -60,7 +60,7 @@ type RequiredLane {
 //
 // WHY A UNIQUE NAME IS NEEDED AT ALL. A GitHub required status check names a CONTEXT, and a
 // context is the job's name -- which workflow published it is not part of the name. So `build` is
-// not a name this repository owns: `gunbc.fleet_converge_workflow` declares a job whose id is also
+// not a name this repository owns: `gunbc.fleet.fleet_converge_workflow` declares a job whose id is also
 // exactly `build`, and a rule naming `build` names two jobs in two workflows, answered by
 // whichever green arrives. Enforcement cannot move onto a lane job until that lane's context is
 // unique across every workflow emitted here.
@@ -69,7 +69,7 @@ type RequiredLane {
 // preference. `build_lane_job_id` was DEFINED AS `required_ci_lane_build`, which read as single
 // authority because the two strings coincided. They are two facts with different authorities and
 // consumers: the LANE WORD is a CLI argument this workflow passes to `claim_executor
-// --required-lane`, owned by `gunbc.fabric_witness_run` and consumed by an exhaustive
+// --required-lane`, owned by `gunbc.fabric.fabric_witness_run` and consumed by an exhaustive
 // `RequiredCiPhase::lane` match inside the binary; the JOB ID is a GitHub required-context name,
 // owned here and consumed by a repository ruleset that is not a `.dag` fact at all. Their
 // coincidence was the accident, not the authority. Deriving the job id from the lane word --
@@ -110,7 +110,7 @@ data required_lanes_gate_floor_class_var: String = "FLOOR_CLASS"
 // from this row makes the second state unwritable and leaves only the `needs` edge to keep in
 // step, which is the one edge GitHub owns rather than us.
 //
-// NON-EMPTY BY CONSTRUCTION -- see `gunbc.witness_floor_lanes` `RequiredLane` for why an empty
+// NON-EMPTY BY CONSTRUCTION -- see `gunbc.witness.witness_floor_lanes` `RequiredLane` for why an empty
 // roster is a fail-open rather than a degenerate case.
 fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
   FreeSemigroup {
@@ -159,12 +159,12 @@ fn required_lanes_roster() -> FreeSemigroup<RequiredLane> {
 // This file's build lane -- the stage0 mirrors' generated-artifact and regen-fixed-point phases (the
 // latter deleted by operator ruling 2026-10-04: one generation, no determinism re-emit),
 // which no job had run since #11742 -- returns as ONE merge_group-only STEP on the emitted floor
-// job (gunbc.compiler_gate_workflow compiler_gate_stage0_regen_step), not as a job: that job
+// job (gunbc.witness.compiler_gate_workflow compiler_gate_stage0_regen_step), not as a job: that job
 // already checks out and builds claim_executor, and the lane measured 22.5 min on the fleet (run
 // 35890770775), fitting after the floor process exits. The sign-off covers exactly that step on
 // that event; it admits no per-PR run and no new job. SUPERSEDED TWICE since: operator ruling
 // 2026-09-27 moved the step onto its own `generated` job beside the floor, and operator ruling
-// 2026-09-28 runs it on every event, pull requests included (gunbc.compiler_gate_workflow
+// 2026-09-28 runs it on every event, pull requests included (gunbc.witness.compiler_gate_workflow
 // compiler_gate_stage0_regen_condition), because a pull request that failed it still entered the
 // queue and failed every group stacked on it.
 //
