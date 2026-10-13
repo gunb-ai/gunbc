@@ -792,7 +792,8 @@ fn acquire_closure(layout: SourceStorageLayout, bindings: List<SourceRootBinding
 // and the SAME verdict step and, where the step refuses at one member or one edge, records the
 // refusal and continues with the rest of the frontier. What a blocked member would have requested is
 // unobserved, and the result says so: CensusAcquisitionBlocked is "acquired this far; behind these,
-// unobserved", never a smaller population presented as closed (docs/plans/census-scoped-run-design.md).
+// unobserved", never a smaller population presented as closed (gunbc.plans.census_scoped_run).
+// CONSUMER: v2.compiler.compile native_lane_census_scoped_ingest, in this change (gunbc.plans.census_scoped_run section 3).
 // The refusal is carried WHOLE -- its arm is its meaning (R3); this door adds no classification of
 // its own beyond whether a refusal is local to one member, local to one edge, or ends the run.
 type CensusBlock
@@ -1012,12 +1013,19 @@ fn acquisition_module_path(module: AcquiredModule) -> String {
 }
 
 fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
-  let path = acquisition_module_path(module: module)
+  acquisition_read_witness(file: module.file, host_directory: module.host_directory, content: module.content)
+}
+
+// ONE WITNESS SHAPE FOR EVERY READ THE ACQUIRER MADE, admitted or blocked: the path is the host path
+// the bytes came from, and the bytes are the ones read, so a census reporting a blocked member reports
+// it from acquisition's read and never from a second one.
+fn acquisition_read_witness(file: ModuleFileRef, host_directory: String, content: String) -> DagSourceReadWitness {
+  let path = source_root_child_path(directory: host_directory, name: file.relative_path)
   DagSourceReadWitness {
-    source: Medium { carried: module.content, fidelity: Lossless },
+    source: Medium { carried: content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
     compilation_unit: symbol_intern_lexeme(lexeme: path),
-    source_root: module.file.tree
+    source_root: file.tree
   }
 }
 
@@ -1035,6 +1043,36 @@ fn acquisition_ingest_go(pending: List<AcquiredModule>, acc: SourceRootIngest) -
 // carrying the bytes the acquirer read.
 fn acquisition_ingest(modules: List<AcquiredModule>) -> SourceRootIngest {
   acquisition_ingest_go(pending: list_reverse(xs: modules), acc: Empty)
+}
+
+// THE CENSUS INGEST: the admitted members, then every blocked member's own read, each exactly once.
+// A blocked member enters the census so its front-end refusal is reported as a row; an edge block
+// read nothing and enters nothing -- it is reported from the acquisition, not from the ingest.
+fn census_block_witness(block: CensusBlock) -> Optional<DagSourceReadWitness> {
+  match block {
+    CensusEdgeBlock { refusal: _ } => optional_absent()
+    CensusMemberBlock { module: _, refusal: refusal, content: content, host_directory: directory, requesters: _ } =>
+      match refusal {
+        AcquisitionMemberRefused { module: _, file: file, diagnostics: _ } =>
+          optional_present(value: acquisition_read_witness(file: file, host_directory: directory, content: content))
+        AcquisitionMemberSitesUnreadable { module: _, file: file } =>
+          optional_present(value: acquisition_read_witness(file: file, host_directory: directory, content: content))
+        _ => optional_absent()
+      }
+  }
+}
+
+fn census_acquisition_ingest(modules: List<AcquiredModule>, blocks: List<CensusBlock>) -> SourceRootIngest {
+  fold_list(
+    xs: blocks,
+    empty: acquisition_ingest(modules: modules),
+    cons: fn(acc, block) {
+      match census_block_witness(block: block) {
+        Absent => acc
+        Present { value: w } => list_snoc_item(xs: acc, item: w)
+      }
+    }
+  )
 }
 
 // ---- the read set is the requested closure, exactly (R9) ---------------------------------------------

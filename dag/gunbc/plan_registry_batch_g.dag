@@ -20,6 +20,7 @@ import gunbc.plans.harness_session_lifecycle { harness_session_lifecycle_plan }
 import gunbc.plans.v2_compiler_architecture { v2_compiler_architecture_plan }
 import gunbc.plans.v2_closed_pr_recovery { v2_closed_pr_recovery_plan }
 import gunbc.plans.source_layout_authority { source_layout_authority_plan }
+import gunbc.plans.census_scoped_run { census_scoped_run_plan }
 
 data batch_g_plans: List<Plan> = [
   resolver_type_name_collision_wall_plan,
@@ -40,5 +41,6 @@ data batch_g_plans: List<Plan> = [
   harness_session_lifecycle_plan,
   v2_compiler_architecture_plan,
   v2_closed_pr_recovery_plan,
-  source_layout_authority_plan
+  source_layout_authority_plan,
+  census_scoped_run_plan
 ]

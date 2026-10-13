@@ -136,8 +136,18 @@ import v2.compiler.module_acquisition {
   PopulationReadRefused,
   SourceRootBinding,
   VerifiedAcquisition,
+  CensusAcquisition,
+  CensusAcquisitionBlocked,
+  CensusAcquisitionClosed,
+  CensusAcquisitionRefused,
+  CensusBlock,
+  CensusEdgeBlock,
+  CensusMemberBlock,
+  acquire_census_closure_of,
   acquire_verified,
   acquisition_ingest,
+  acquisition_refusal_text,
+  census_acquisition_ingest,
   acquisition_module_path,
   enumerate_bound_modules,
   enumerate_namespace_modules,
@@ -4324,15 +4334,10 @@ fn native_census_subject_closure(
   modules: List<NativeCensusModule>,
   label: String
 ) -> NativeCensusSubjectClosure {
-  match parse_target_pattern(text: label) {
-    TargetPatternRefused { cause: _ } =>
-      NativeCensusSubjectClosureUnavailable { reason: ^native_census_subject_label_refused }
-    TargetPatternParsed { pattern: pattern } =>
-      match pattern {
-        SingleTarget { label: _ } => NativeCensusSubjectClosureUnavailable { reason: ^native_census_subject_label_names_no_module }
-        SubtreeTargets { package: _ } => NativeCensusSubjectClosureUnavailable { reason: ^native_census_subject_label_names_no_module }
-        PackageTargets { package: package } =>
-          match list_find_first(xs: modules, predicate: fn(m) { native_route_module_package_text(module_qn: m.module) == render_package(p: package) }) {
+  match native_census_subject_module(label: label) {
+    NativeCensusSubjectModuleUnavailable { reason: r } => NativeCensusSubjectClosureUnavailable { reason: r }
+    NativeCensusSubjectModuleNamed { module: named } =>
+          match list_find_first(xs: modules, predicate: fn(m) { m.module == named }) {
             Absent => NativeCensusSubjectClosureUnavailable { reason: ^native_census_subject_module_not_censused }
             Present { value: subject } =>
               match index {
@@ -4355,7 +4360,126 @@ fn native_census_subject_closure(
                   }
               }
           }
+  }
+}
+
+// THE SUBJECT MODULE A LABEL NAMES, by the one target-pattern authority and the native lane's module ↔
+// package correspondence (gunbc.witness.v2_native_route native_route_module_package_text, read
+// backwards: a package's segments are the module's). Only a package label names one module; a single
+// target or a subtree does not, and says so.
+type NativeCensusSubjectModule
+  = NativeCensusSubjectModuleNamed { module: String }
+  | NativeCensusSubjectModuleUnavailable { reason: Symbol }
+
+fn native_census_subject_module(label: String) -> NativeCensusSubjectModule {
+  match parse_target_pattern(text: label) {
+    TargetPatternRefused { cause: _ } =>
+      NativeCensusSubjectModuleUnavailable { reason: ^native_census_subject_label_refused }
+    TargetPatternParsed { pattern: pattern } =>
+      match pattern {
+        SingleTarget { label: _ } => NativeCensusSubjectModuleUnavailable { reason: ^native_census_subject_label_names_no_module }
+        SubtreeTargets { package: _ } => NativeCensusSubjectModuleUnavailable { reason: ^native_census_subject_label_names_no_module }
+        PackageTargets { package: package } =>
+          NativeCensusSubjectModuleNamed {
+            module: fold_list(
+              xs: split(s: render_package(p: package), delimiter: "/"),
+              empty: "",
+              cons: fn(acc, segment) { if acc == "" { segment } else { concat(acc, ".", segment) } }
+            )
+          }
       }
+  }
+}
+
+// ── the scoped census: the subject's closure, acquired around its blocks ─────────────────────
+//
+// THE POPULATION IS THE SUBJECT'S ACQUIRED CLOSURE, NOT THE TREE (gunbc.plans.census_scoped_run).
+// The census acquisition (v2.compiler.module_acquisition acquire_census_closure_of) walks the same
+// requests the compiler's door walks and records, rather than stops at, a member or edge it cannot
+// pass. The ingest is acquisition's own reads (R1), so membership and every stage result describe the
+// same bytes; the acquisition is carried beside it so the run states whether its population is
+// closed or blocked, and where (R3) -- a blocked population is never reported as a closed one.
+type NativeCensusScoped {
+  subject: String
+  ingest: SourceRootIngest
+  acquisition: CensusAcquisition
+}
+
+fn native_census_scoped_from(subject: String, acquisition: CensusAcquisition) -> Outcome<NativeCensusScoped> {
+  match acquisition {
+    CensusAcquisitionRefused { refusal: refusal } =>
+      native_lane_refused(reason: ^native_census_scoped_acquisition_refused, detail: acquisition_refusal_text(refusal: refusal))
+    CensusAcquisitionClosed { entries: _, modules: modules, reads: _ } =>
+      outcome_accepted(value: NativeCensusScoped {
+        subject: subject,
+        ingest: census_acquisition_ingest(modules: modules, blocks: []),
+        acquisition: acquisition
+      })
+    CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: first, blocked_rest: rest, reads: _ } =>
+      outcome_accepted(value: NativeCensusScoped {
+        subject: subject,
+        ingest: census_acquisition_ingest(modules: modules, blocks: Cons { head: first, tail: rest }),
+        acquisition: acquisition
+      })
+  }
+}
+
+// CONSUMER, A DECLARED FRONTIER (DESIGN 3c): the emitted driver's census-scoped verb, run by
+// //gunbc/instruments:v2-native-census-scoped (gunbc.plans.census_scoped_run section 5). Trigger: that verb
+// lands; until then this route is exercised only through its parts (acquire_census_closure_of,
+// census_acquisition_ingest, native_census_subject_module), each pinned by v2.test.claim.census_scoped_*.
+fn native_lane_census_scoped_ingest(label: String, source_roots: FreeMonoid<String>) -> Outcome<NativeCensusScoped> {
+  match native_census_subject_module(label: label) {
+    NativeCensusSubjectModuleUnavailable { reason: reason } => native_lane_refused(reason: reason, detail: label)
+    NativeCensusSubjectModuleNamed { module: subject } =>
+      let resolved = source_root_bindings(roots: source_roots)
+      match resolved {
+        SourceRootsBound { bindings: bindings } =>
+          native_census_scoped_from(
+            subject: subject,
+            acquisition: acquire_census_closure_of(layout: repository_storage_layout(), bindings: bindings, entries: [subject])
+          )
+        SourceRootsUnrecognized { argument: _ } => native_lane_roots_refusal(bindings: resolved)
+        SourceRootsDuplicated { argument: _ } => native_lane_roots_refusal(bindings: resolved)
+      }
+  }
+}
+
+// ONE ROW PER BLOCK, for the run's output: the census reports where its population stopped as plainly
+// as what it found. `module` is the blocked member, or "" for an edge block (which names its request
+// inside `refusal`); `requesters` are the modules whose requests reached the block.
+type NativeCensusScopedBlockRow {
+  kind: String
+  module: String
+  refusal: String
+  requesters: List<String>
+}
+
+fn native_census_scoped_block_row(block: CensusBlock) -> NativeCensusScopedBlockRow {
+  match block {
+    CensusMemberBlock { module: m, refusal: r, content: _, host_directory: _, requesters: rs } =>
+      NativeCensusScopedBlockRow { kind: "member", module: m, refusal: acquisition_refusal_text(refusal: r), requesters: list_map(xs: rs, f: fn(q) { q.from_module }) }
+    CensusEdgeBlock { refusal: r } =>
+      NativeCensusScopedBlockRow { kind: "edge", module: "", refusal: acquisition_refusal_text(refusal: r), requesters: [] }
+  }
+}
+
+fn native_census_scoped_block_rows(scoped: NativeCensusScoped) -> List<NativeCensusScopedBlockRow> {
+  match scoped.acquisition {
+    CensusAcquisitionBlocked { entries: _, modules: _, blocked_first: first, blocked_rest: rest, reads: _ } =>
+      list_map(xs: Cons { head: first, tail: rest }, f: fn(b) { native_census_scoped_block_row(block: b) })
+    CensusAcquisitionClosed { entries: _, modules: _, reads: _ } => []
+    CensusAcquisitionRefused { refusal: _ } => []
+  }
+}
+
+// "closed" or "blocked": whether every request was followed. A blocked run's totals are over what it
+// could reach, and its terminal says so rather than leaving the reader to compare counts.
+fn native_census_scoped_acquisition_status(scoped: NativeCensusScoped) -> String {
+  match scoped.acquisition {
+    CensusAcquisitionClosed { entries: _, modules: _, reads: _ } => "closed"
+    CensusAcquisitionBlocked { entries: _, modules: _, blocked_first: _, blocked_rest: _, reads: _ } => "blocked"
+    CensusAcquisitionRefused { refusal: _ } => "refused"
   }
 }
 

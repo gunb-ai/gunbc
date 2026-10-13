@@ -7,6 +7,7 @@ import v2.compiler.module_acquisition {
   AcquiredModule,
   AcquisitionMemberRefused,
   AcquisitionRefusal,
+  AcquisitionLookupRefused,
   AcquisitionUnknownModule,
   CensusAcquisition,
   CensusBlock,
@@ -16,17 +17,20 @@ import v2.compiler.module_acquisition {
   CensusAcquisitionClosed,
   CensusAcquisitionRefused,
   SourceRootBinding,
-  acquire_census_closure_of
+  AcquisitionRefused,
+  acquire_census_closure_of,
+  acquire_closure_of,
+  census_acquisition_ingest
 }
 import v2.cli.repository_layout { repository_storage_layout }
-import v2.compiler.source_authority { DagTree, V2Tree }
+import v2.compiler.source_authority { DagTree, ReferenceCrossTreeDenied, V2Tree }
 
 // THE CENSUS DOOR OVER A PLANTED CLOSURE (fixtures/census_scoped_acquisition, outside every corpus
 // root so its broken member reds nothing else). entry imports ok, broken and a module that does not
 // exist; behind is reachable only through broken; outside is imported by nothing. The compiler's door
 // refuses this closure at its first refusal; the census door must acquire around both blocks, name
 // them, and never report behind or outside -- behind is UNKNOWN, not absent, and only the Blocked arm
-// can say so (docs/plans/census-scoped-run-design.md).
+// can say so (gunbc.plans.census_scoped_run).
 
 fn planted_bindings() -> List<SourceRootBinding> {
   [
@@ -149,4 +153,96 @@ test fn a_member_reached_twice_is_one_block_with_both_requesters() -> Bool {
         && block_requester_count(block: first) == 2
     _ => false
   }
+}
+
+fn planted_path(name: String) -> String {
+  concat("fixtures/census_scoped_acquisition/v2/cs/", name, ".dag")
+}
+
+fn ingest_paths(acq: CensusAcquisition) -> List<String> {
+  match acq {
+    CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: first, blocked_rest: rest, reads: _ } =>
+      list_map(xs: census_acquisition_ingest(modules: modules, blocks: Cons { head: first, tail: rest }), f: fn(w) { w.artifact.file_path })
+    CensusAcquisitionClosed { entries: _, modules: modules, reads: _ } =>
+      list_map(xs: census_acquisition_ingest(modules: modules, blocks: []), f: fn(w) { w.artifact.file_path })
+    CensusAcquisitionRefused { refusal: _ } => []
+  }
+}
+
+// R1: the census ingest is acquisition's own reads. The blocked member enters (its front-end refusal
+// is a census row) from the bytes acquisition read; the missing edge read nothing and enters nothing;
+// what sits behind the block never enters.
+test fn the_census_ingest_holds_the_acquired_and_blocked_reads_and_nothing_behind() -> Bool {
+  let paths = ingest_paths(acq: planted_acquisition())
+  names_contain(names: paths, name: planted_path(name: "entry"))
+    && names_contain(names: paths, name: planted_path(name: "ok"))
+    && names_contain(names: paths, name: planted_path(name: "broken"))
+    && !names_contain(names: paths, name: planted_path(name: "behind"))
+    && !names_contain(names: paths, name: planted_path(name: "outside"))
+}
+
+// The diamond's blocked member enters once, though two requesters reached it.
+test fn a_member_blocked_twice_enters_the_census_ingest_once() -> Bool {
+  let paths = ingest_paths(acq: acquire_census_closure_of(layout: repository_storage_layout(), bindings: planted_bindings(), entries: ["v2.cs.diamond"]))
+  fold_list(xs: paths, empty: 0, cons: fn(n, p) { if p == planted_path(name: "broken") { n + 1 } else { n } }) == 1
+}
+
+// THE COMPILER'S DOOR IS UNCHANGED. Over the same planted closure the census acquires around, the
+// compiler's acquisition still refuses: the census loop is a second reader of the step, not a
+// relaxation of the door every compile walks.
+test fn the_compilers_door_still_refuses_the_closure_the_census_acquires_around() -> Bool {
+  match acquire_closure_of(layout: repository_storage_layout(), bindings: planted_bindings(), entries: ["v2.cs.entry"]) {
+    AcquisitionRefused { refusal: _, reads: _ } => true
+    _ => false
+  }
+}
+
+// ---- sharing an observation never shares a permission (R2) ----
+//
+// fixtures/census_scoped_acquisition/cross: v2.cx.shared is requested by a v2 module (permitted) and
+// by cx.fromdag, a dag-tree module the dag tree may not import v2 from (denied). The cross-tree check
+// runs in the lookup BEFORE the known-member shortcut, so whichever request comes first, the shared
+// module is acquired once AND the dag requester's edge is a denial -- never a free ride on the
+// permitted read.
+
+fn cross_bindings() -> List<SourceRootBinding> {
+  [
+    SourceRootBinding { tree: V2Tree, host_directory: "fixtures/census_scoped_acquisition/cross/v2" },
+    SourceRootBinding { tree: DagTree, host_directory: "fixtures/census_scoped_acquisition/cross/dag" }
+  ]
+}
+
+fn is_denied_edge_from(block: CensusBlock, requester: String) -> Bool {
+  match block {
+    CensusEdgeBlock { refusal: r } =>
+      match r {
+        AcquisitionLookupRefused { request: q, lookup: l } =>
+          q.from_module == requester && match l {
+            ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    CensusMemberBlock { module: _, refusal: _, content: _, host_directory: _, requesters: _ } => false
+  }
+}
+
+fn shared_acquired_and_dag_edge_denied(acq: CensusAcquisition) -> Bool {
+  match acq {
+    CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: first, blocked_rest: rest, reads: _ } =>
+      names_contain(names: acquired_names(modules: modules), name: "v2.cx.shared")
+        && names_contain(names: acquired_names(modules: modules), name: "cx.fromdag")
+        && fold_list(xs: Cons { head: first, tail: rest }, empty: 0, cons: fn(n, b) {
+             if is_denied_edge_from(block: b, requester: "cx.fromdag") { n + 1 } else { n }
+           }) == 1
+    _ => false
+  }
+}
+
+test fn a_permitted_read_does_not_admit_a_later_denied_request() -> Bool {
+  shared_acquired_and_dag_edge_denied(acq: acquire_census_closure_of(layout: repository_storage_layout(), bindings: cross_bindings(), entries: ["v2.cx.entry"]))
+}
+
+test fn a_denied_request_does_not_block_a_later_permitted_read() -> Bool {
+  shared_acquired_and_dag_edge_denied(acq: acquire_census_closure_of(layout: repository_storage_layout(), bindings: cross_bindings(), entries: ["v2.cx.entry_denied_first"]))
 }
