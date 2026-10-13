@@ -2,9 +2,9 @@ module v2.compiler.service_realization
 
 import std.fidelity { TransportClass, LocalDirect, ShellLocal, FileBoundary, RestNetwork, InterfaceStub, Unknown }
 import extdeps.ietf.http_semantics { HttpStatusClass, Informational, Successful, Redirection, ClientError, ServerError, http_status_class_digit }
-import extdeps.transports.shell_declared { ShellArgv, ShellStdin, ShellExitCode, ShellExitNonzero, ShellExitPattern, shell_binding_field_key, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
-import extdeps.transports.rest_declared { RestAuthBasic, RestBody, RestHeaders, RestMethod, RestPath, RestQuery, RestResponseFormat, RestResponseStatus, RestStatusClass, RestStatusCode, RestTls, rest_binding_field_of_key }
-import extdeps.transports.file_declared { FileBindingPath, FileBindingVerb, file_binding_field_of_key, file_output_channel_of_key }
+import extdeps.transports.shell_declared { ShellArgvContract, ShellExitCode, ShellExitNonzero, ShellExitPattern, ShellStringTemplateContract, shell_binding_field_contract, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
+import extdeps.transports.rest_declared { RestOtherContract, RestResponseStatus, RestStatusClass, RestStatusCode, RestStringTemplateContract, rest_binding_field_contract, rest_binding_field_of_key }
+import extdeps.transports.file_declared { FileOtherContract, FileStringTemplateContract, file_binding_field_contract, file_binding_field_of_key, file_output_channel_of_key }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
 import std.types { http_status_of }
 import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
@@ -124,14 +124,6 @@ fn declared_transport_of_keyword(label: Symbol) -> Optional<DeclaredTransport> {
   else if transport_class_keyword_is(class: RestNetwork, label: label) { optional_present(value: DeclaredRest) }
   else if transport_class_keyword_is(class: FileBoundary, label: label) { optional_present(value: DeclaredFile) }
   else { optional_absent() }
-}
-
-fn declared_transport_admits_field(kind: DeclaredTransport, key: String) -> Bool {
-  match kind {
-    DeclaredShell => match shell_binding_field_of_key(key: key) { Present { value: _ } => true  Absent => false }
-    DeclaredRest => match rest_binding_field_of_key(key: key) { Present { value: _ } => true  Absent => false }
-    DeclaredFile => match file_binding_field_of_key(key: key) { Present { value: _ } => true  Absent => false }
-  }
 }
 
 // A `from "key"` on rest names a member of the decoded body (RFC 8259 member names are open); on shell
@@ -518,60 +510,41 @@ fn realization_binding_field_refusal(kind: DeclaredTransport, op: Node, field: E
   match named_label(e: field) {
     Present { value: n } =>
       if n == realization_transport_kind_label() { optional_absent() }
-      else if !declared_transport_admits_field(kind: kind, key: symbol_lexeme(sym: n)) { realization_refusal(reason: ^service_realization_binding_field_unknown, at: field.target) }
-      else if declared_field_is_shell_argv(kind: kind, n: n) { shell_argv_refusal(op: op, argv: field.target) }
-      else if declared_field_carries_string_template(kind: kind, n: n) { transport_string_field_refusal(op: op, value: field.target) }
-      else { optional_absent() }
+      else { realization_declared_field_refusal(kind: kind, op: op, key: symbol_lexeme(sym: n), value: field.target) }
     Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: field.target)
   }
 }
 
-fn declared_field_is_shell_argv(kind: DeclaredTransport, n: Symbol) -> Bool {
-  match kind {
-    DeclaredShell => symbol_lexeme(sym: n) == shell_binding_field_key(field: ShellArgv)
-    DeclaredRest => false
-    DeclaredFile => false
-  }
-}
-
-// String-shaped binding fields are Template<OperationInputName> (or a list of those). Method,
-// verb, body, query, headers and the rest are other contracts in the declared vocabularies; the
-// template wall must not read them as holes or refuse them as argv expressions.
-fn declared_field_carries_string_template(kind: DeclaredTransport, n: Symbol) -> Bool {
-  let key = symbol_lexeme(sym: n)
+// The field's value contract lives on the declared vocabulary. This wall reads that fold; it does
+// not restate which variants are templates.
+fn realization_declared_field_refusal(kind: DeclaredTransport, op: Node, key: String, value: Node) -> Optional<RealizationRefusal> {
   match kind {
     DeclaredShell =>
       match shell_binding_field_of_key(key: key) {
         Present { value: field } =>
-          match field {
-            ShellArgv => false
-            ShellStdin => true
+          match shell_binding_field_contract(field: field) {
+            ShellArgvContract => shell_argv_refusal(op: op, argv: value)
+            ShellStringTemplateContract => transport_string_field_refusal(op: op, value: value)
           }
-        Absent => false
+        Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: value)
       }
     DeclaredRest =>
       match rest_binding_field_of_key(key: key) {
         Present { value: field } =>
-          match field {
-            RestPath => true
-            RestMethod => false
-            RestQuery => false
-            RestHeaders => false
-            RestBody => false
-            RestTls => false
-            RestAuthBasic => false
-            RestResponseFormat => false
+          match rest_binding_field_contract(field: field) {
+            RestStringTemplateContract => transport_string_field_refusal(op: op, value: value)
+            RestOtherContract => optional_absent()
           }
-        Absent => false
+        Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: value)
       }
     DeclaredFile =>
       match file_binding_field_of_key(key: key) {
         Present { value: field } =>
-          match field {
-            FileBindingPath => true
-            FileBindingVerb => false
+          match file_binding_field_contract(field: field) {
+            FileStringTemplateContract => transport_string_field_refusal(op: op, value: value)
+            FileOtherContract => optional_absent()
           }
-        Absent => false
+        Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: value)
       }
   }
 }
