@@ -1,6 +1,6 @@
 module test.claim.home_serving_extdeps_facts_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import std.optional { Present, Absent }
 import std.measure {
