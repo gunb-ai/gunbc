@@ -4,7 +4,7 @@ import std.optional { Absent, Optional, Present }
 
 import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe, brand }
 import std.measure { Second, second }
-import std.algebra { trim, Cons, Empty }
+import std.algebra { trim, list_head, skip }
 import std.content_hash {
   ContentHash,
   content_hash_of_value,
@@ -647,9 +647,9 @@ fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
   })
   match admitted {
     Absent => none
-    Present { value: ws } => match ws {
-      Empty => none
-      Cons { head: h, tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
+    Present { value: ws } => match list_head(xs: ws) {
+      Absent => none
+      Present { value: h } => Present { value: PortableRemoteWords { first: h, more: skip(xs: ws, n: 1) } }
     }
   }
 }
