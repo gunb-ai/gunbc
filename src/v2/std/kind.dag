@@ -1,4 +1,4 @@
-module std.kind
+module v2.std.kind
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { fold_list, list_flat_map }
