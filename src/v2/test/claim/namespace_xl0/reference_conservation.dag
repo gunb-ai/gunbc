@@ -516,7 +516,8 @@ test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool
 // where, so a reader of its lines could tell THAT a module refused and never WHY. Three claims over
 // reports this module already computes (no new shared producer):
 //   the typed carrier holds the fixture's own fatal reason, located in the module's TEXT (a node
-//     locus resolved through the span index, not left as a node);
+//     locus resolved through the span index, not left as a node -- the empty argv's `[` at
+//     bytes 111..112 of this fixture);
 //   the summary line prints that reason and that locus;
 //   the accepted control prints `refusal=none`, so the field is read beside a module that has none.
 // MUTATION: dropping the report_with_normalize_refusal call in conservation_against_refusal reds the
@@ -533,12 +534,14 @@ test fn a_refused_normalization_carries_its_fatal_reason_located_in_text_holds()
     Absent => false
     Present { value: refusal } =>
       refusal.fatal.reason == ^service_realization_argv_refused
+        && string_contains(s: refusal.located, pattern: " bytes 111..112")
   }
 }
 
 test fn a_refused_normalization_prints_its_reason_and_locus_on_the_summary_line_holds() -> Bool {
   let line = conservation_summary_line(report: refused_normalization_report())
   string_contains(s: line, pattern: " refusal=normalize:service_realization_argv_refused @ ")
+    && string_contains(s: line, pattern: " bytes 111..112")
 }
 
 test fn an_accepted_module_prints_no_refusal_on_the_summary_line_holds() -> Bool {
