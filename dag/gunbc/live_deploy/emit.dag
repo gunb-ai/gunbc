@@ -4412,6 +4412,28 @@ fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: Re
 // the broker yet (gunbc.auth.approval_broker_cutover approval_route_ownership) and the broker does
 // not hold the store (gunbc.auth.approval_writer_authority), so a loopback client that finds the
 // port is REFUSED rather than merely unlikely to look.
+// STORE, THEN THIS RELEASE'S GRANT, THEN THE BROKER UNIT. Grant mutate precedes the unit write
+// so a helpers-stretch failure exits before daemon-reload and cannot leave NeedDaemonReload=yes
+// with a new unit already on disk (the 2026-10-12 run-1 hole).
+fn approval_broker_dark_install_body_fragments(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+) -> List<HostScriptFragment> {
+  concat(
+    approval_device_store_fragments(),
+    concat(
+      approval_broker_helper_grant_fragments(revision: revision),
+      [Mutate {
+        member: "dark-install" as NonEmptyStr,
+        steps: concat(
+          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
+          concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
+        ),
+      }],
+    ),
+  )
+}
+
 fn approval_broker_dark_install_intent(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
@@ -4421,19 +4443,7 @@ fn approval_broker_dark_install_intent(
       Decide { member: "frame" as NonEmptyStr, standing: HostScriptProceed, steps: [deploy_raw(command: deploy_shell_strict_options_command)] },
       Mutate { member: "frame" as NonEmptyStr, steps: [deploy_stage_directory_let_step()] },
     ],
-    concat(
-      concat(
-        approval_device_store_fragments(),
-        approval_broker_helper_grant_fragments(revision: revision),
-      ),
-      [Mutate {
-        member: "dark-install" as NonEmptyStr,
-        steps: concat(
-          apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
-          concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
-        ),
-      }],
-    ),
+    approval_broker_dark_install_body_fragments(spec: spec, revision: revision),
   ))
 }
 
