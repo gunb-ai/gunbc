@@ -199,23 +199,24 @@ fn posix_sh_export_from_file_then_exec_command(
   }
 }
 
-// SAME OPEN OBJECT FOR METADATA AND BYTES. The wrapper opens `$0` onto stdin; the body stats
-// `/dev/stdin` (that descriptor, GNU `-L`) and cats it. The path is an argv word, never spliced
-// into the program text. Residual after the caller has authenticated the directory: only the
-// publisher can swap the path between an lstat and this open.
+// SAME OPEN OBJECT FOR METADATA AND BYTES. Stats `/dev/stdin` (the wrapper's descriptor, GNU `-L`)
+// and cats it. Built once; the wrapper prepends `exec < "$0"`, and the replacement / character-device
+// REDs emit this body alone so `$0` is the held path.
+fn posix_sh_receipt_object_body_stmt() -> Node {
+  bash_build_and_then(
+    left: bash_build_command_with_words(words: [
+      bash_build_word_lit(text: stat_program().invocation as String),
+      bash_build_word_lit(text: "-L"),
+      bash_build_word_lit(text: "-c"),
+      bash_build_word_lit(text: "%F|%U|%a"),
+      bash_build_word_lit(text: "/dev/stdin"),
+    ]),
+    right: bash_build_command_from_lits(lits: ["cat"]),
+  )
+}
+
 fn posix_sh_receipt_object_body_program() -> Outcome<String> {
-  bash_emit_stmts(statements: [
-    bash_build_and_then(
-      left: bash_build_command_with_words(words: [
-        bash_build_word_lit(text: stat_program().invocation as String),
-        bash_build_word_lit(text: "-L"),
-        bash_build_word_lit(text: "-c"),
-        bash_build_word_lit(text: "%F|%U|%a"),
-        bash_build_word_lit(text: "/dev/stdin"),
-      ]),
-      right: bash_build_command_from_lits(lits: ["cat"]),
-    ),
-  ], set_e: false)
+  bash_emit_stmts(statements: [posix_sh_receipt_object_body_stmt()], set_e: false)
 }
 
 // THE WRAPPER IS A GRAMMAR ROW, NOT A DATA SPLICE. `bash_build_with_redir_from_file` emits
@@ -228,16 +229,7 @@ fn posix_sh_receipt_object_program() -> Outcome<String> {
       inner: bash_build_command_from_lits(lits: ["exec"]),
       path: bash_build_word_var(name: "0"),
     ),
-    bash_build_and_then(
-      left: bash_build_command_with_words(words: [
-        bash_build_word_lit(text: stat_program().invocation as String),
-        bash_build_word_lit(text: "-L"),
-        bash_build_word_lit(text: "-c"),
-        bash_build_word_lit(text: "%F|%U|%a"),
-        bash_build_word_lit(text: "/dev/stdin"),
-      ]),
-      right: bash_build_command_from_lits(lits: ["cat"]),
-    ),
+    posix_sh_receipt_object_body_stmt(),
   ], set_e: false)
 }
 
