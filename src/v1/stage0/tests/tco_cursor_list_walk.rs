@@ -7,8 +7,8 @@
 //! Run with cargo test -p v1-compiler --test tco_cursor_list_walk. Required CI does not execute
 //! Rust integration tests (gunbc.rung_drop v2_native_route_off_the_merge_path); the required
 //! `witnesses` steps emit, build and start two binaries and run no test, so this is on-demand
-//! evidence, not merge-path coverage. The decision it pins is owed to v2 by
-//! gunbc.emit_copy_qualification cursor_list_param_obligation.
+//! evidence, not merge-path coverage. The decision it pins is the seed emitter's
+//! `v1.compiler.emit_rust` `tco_cursor_plan`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
