@@ -14,6 +14,7 @@ import gunbc.live_deploy.emit {
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.spec {
   DeploymentSpec, DeploymentStep, ArtifactStep, Dependency, TailnetDoorServeUnit, TailscaleServeMapping,
+  ComposeOwned, UpsertOwned,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_path, deployment_tailnet_door_steps,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_tailnet_door_socket }
@@ -81,7 +82,7 @@ test fn the_door_unit_differs_from_the_loopback_unit_only_in_entry_and_listener(
 
 fn step_is(step: DeploymentStep, door: Bool) -> Bool {
   match step {
-    ArtifactStep { step: art } => if door { art.kind == TailnetDoorServeUnit } else { art.kind == TailscaleServeMapping }
+    ArtifactStep { step: art } => if door { art.kind == ComposeOwned { kind: TailnetDoorServeUnit } } else { art.kind == UpsertOwned { kind: TailscaleServeMapping } }
     Dependency { step: _ } => false
   }
 }

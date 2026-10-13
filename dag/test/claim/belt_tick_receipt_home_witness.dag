@@ -21,8 +21,7 @@ import gunbc.live_deploy.release_locus {
 }
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep,
-  LegacyUpsertArtifact,
-  LegacyBeltEventPathUnit,
+  UpsertArtifactKind,
   gunbc_service_user,
   BeltEventPathUnit,
   deployment_belt_exit_path_unit_path,
@@ -128,15 +127,12 @@ fn has_command(cmds: List<String>, want: String) -> Bool {
 
 fn belt_upsert_commands() -> List<String> {
   let spec = deployment_spec_srv1()
-  let art = LegacyUpsertArtifact {
-    kind: LegacyBeltEventPathUnit,
+  step_commands(steps: composed_artifact_upsert(
+    principal: fleet_posix_ci_runner_principal(),
+    kind: BeltEventPathUnit,
     path: deployment_belt_exit_path_unit_path(
       names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
     ) as String as NonEmptyStr,
-  }
-  step_commands(steps: composed_artifact_upsert(
-    principal: fleet_posix_ci_runner_principal(),
-    art: art,
     spec: spec,
     revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha },
     oidc_now: Absent,

@@ -49,8 +49,7 @@ import gunbc.live_deploy.spec {
   gunbc_roadmap_unit_name,
   ServeBinary,
   OwnedArtifactKind,
-  LegacyUpsertArtifact,
-  LegacyTailscaleServeMapping,
+  UpsertOwned, ComposeOwned,
   GunbcSourceTree,
   SystemdUnit,
   FleetConvergeTimerUnit,
@@ -1067,11 +1066,11 @@ fn serve_binary_parent_install_command(instance: HostDashboardInstance) -> Strin
 data teardown_disposition_after_the_mapping_started_acting_note: String = "THIS CLAIM ASSERTED THE WRONG ANSWER CONFIDENTLY, and it is worth keeping the record of how. review 45217 correctly found that the emitter was hand-walking three coproducts to decide teardown, and the repair lifted the fact to the model and gave the refusal a CAUSE — so the claim then pinned TailscaleServeMapping to TeardownWouldExceedOwnership and treated that as the discriminating half.\\n\\nThe discrimination was real and the cause was fiction. The mapping refused because the model asserted, with no citation, that the CLI's only removal verb is node-global; the upstream documents scoped removal. So a well-formed claim, over a well-modeled fact, faithfully pinned a false premise — and every conjunct here would have stayed green for as long as the premise went unchecked. A cause is only as good as its grounding, and nothing in a claim can supply that.\\n\\nWHAT SURVIVES is the shape rather than the cause list: every OWNED artifact acts, and the one surviving refusal is about ownership rather than tooling. TeardownWouldExceedOwnership is deleted with its premise, so the cause coproduct has one variant and this claim can no longer discriminate between two — it discriminates between the two LAYERS instead, which is the distinction that was always load-bearing.\\n\\nThe acting arms are the ratchet: if a future change made refusal the default for an owned artifact — the safe-looking direction — this reds instead of silently converting the retract into a no-op that still prints its convergence receipt."
 
 test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
-  let mapping = match owned_artifact_teardown_disposition(kind: TailscaleServeMapping) {
+  let mapping = match owned_artifact_teardown_disposition(kind: UpsertOwned { kind: TailscaleServeMapping }) {
     TeardownActs => true
     TeardownRefuses { cause: _ } => false
   }
-  let binary = match owned_artifact_teardown_disposition(kind: ServeBinary) {
+  let binary = match owned_artifact_teardown_disposition(kind: UpsertOwned { kind: ServeBinary }) {
     TeardownActs => true
     TeardownRefuses { cause: _ } => false
   }
@@ -1105,10 +1104,8 @@ test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
   let spec = deployment_spec_srv1()
   let own = pipeline_steps_text(steps: composed_artifact_upsert(
     principal: fleet_posix_ci_runner_principal(),
-    art: LegacyUpsertArtifact {
-      kind: LegacyTailscaleServeMapping,
-      path: tailscale_serve_route_member_path(endpoint: spec.names.tailscale_serve_endpoint),
-    },
+    kind: TailscaleServeMapping,
+    path: tailscale_serve_route_member_path(endpoint: spec.names.tailscale_serve_endpoint),
     spec: spec,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
     oidc_now: Absent,
@@ -1202,7 +1199,7 @@ test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
   let live = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
   !any(
     deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons),
-    s => match s.kind { FleetConvergeTimerUnit => true  _ => false }
+    s => match s.kind { ComposeOwned { kind: FleetConvergeTimerUnit } => true  _ => false }
   )
     && !string_contains(s: live, pattern: "OnCalendar=*:0/15")
     && !string_contains(s: live, pattern: "ctrl-fleet-converge.timer")
@@ -1419,8 +1416,8 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
   let verify_dest = join(["echo '5555555555555555555555555555555555555555555555555555555555555555  ", spec.service.serve_binary as String, "' | sha256sum -c -"], "")
   let steps = spec.steps
   three_markers_in_order(text: executable, first: verify_source, second: "target/release/gunbc' '", third: verify_dest)
-    && owned_step_index(steps: steps, kind: ServeBinary) < owned_step_index(steps: steps, kind: GunbcSourceTree)
-    && owned_step_index(steps: steps, kind: GunbcSourceTree) < owned_step_index(steps: steps, kind: SystemdUnit)
+    && owned_step_index(steps: steps, kind: UpsertOwned { kind: ServeBinary }) < owned_step_index(steps: steps, kind: UpsertOwned { kind: GunbcSourceTree })
+    && owned_step_index(steps: steps, kind: UpsertOwned { kind: GunbcSourceTree }) < owned_step_index(steps: steps, kind: ComposeOwned { kind: SystemdUnit })
     && member_fragment_text(member: ServiceProcess, plan: full) == ""
 }
 

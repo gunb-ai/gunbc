@@ -49,7 +49,7 @@ import gunbc.live_deploy.emit {
 }
 import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
-import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact }
+import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact, ComposeOwned }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects, claim_oidc_now }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
@@ -276,7 +276,7 @@ test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
   let effects = apply_empty_host_effects(spec: spec)
   match filter(spec.steps, st => match st {
     ArtifactStep { step: art } => match art.kind {
-      OidcConfigArtifact => true
+      ComposeOwned { kind: OidcConfigArtifact } => true
       _ => false
     }
     Dependency { step: _ } => false
@@ -342,7 +342,7 @@ test fn lab_oidc_unit_env_refuses_when_console_readback_expired() -> Bool {
 test fn production_spec_has_no_oidc_config_artifact() -> Bool {
   !any(selected_deployment_spec(row: srv1_production_desired_deployment()).steps, st => match st {
     ArtifactStep { step: art } => match art.kind {
-      OidcConfigArtifact => true
+      ComposeOwned { kind: OidcConfigArtifact } => true
       _ => false
     }
     Dependency { step: _ } => false

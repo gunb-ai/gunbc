@@ -170,9 +170,9 @@ import gunbc.live_deploy.spec {
   deployment_directory_demands,
   DeploymentArtifactStep,
   OwnedArtifactKind,
-  LegacyUpsertKind,
-  LegacyUpsertArtifact,
-  LegacyServeBinary, LegacyGunbcSourceTree, LegacyBeltEventPathUnit, LegacyTailscaleServeMapping, LegacyDeployedTreeRemoteUnit, LegacyPublicationHelperPathUnit, LegacyApprovalBrokerFrontDoor,
+  ComposeOwnedArtifactKind,
+  UpsertArtifactKind,
+  ComposeOwned, UpsertOwned,
   ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
@@ -1364,19 +1364,23 @@ fn deployment_step_ownership_opt(step: DeploymentStep) -> Ownership? {
 fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
   match step {
     ArtifactStep { step: art } => match art.kind {
-      GunbcSourceTree => Present { value: TreePublication }
-      ServeBinary => Present { value: Executable }
-      SystemdUnit => Present { value: UnitFile }
-      BeltEventPathUnit => none
-      FleetConvergeTimerUnit => none
-      TailscaleServeMapping => none
-      DeployedTreeRemoteUnit => none
-      PublicationHelperPathUnit => none
-      FabricStorageServeUnit => none
-      FabricStorageServeMapping => none
-      ApprovalBrokerFrontDoor => none
-      TailnetDoorServeUnit => none
-      OidcConfigArtifact => Present { value: OidcConfigFile }
+      UpsertOwned { kind: uk } => match uk {
+        GunbcSourceTree => Present { value: TreePublication }
+        ServeBinary => Present { value: Executable }
+        BeltEventPathUnit => none
+        TailscaleServeMapping => none
+        DeployedTreeRemoteUnit => none
+        PublicationHelperPathUnit => none
+        ApprovalBrokerFrontDoor => none
+      }
+      ComposeOwned { kind: ck } => match ck {
+        SystemdUnit => Present { value: UnitFile }
+        OidcConfigArtifact => Present { value: OidcConfigFile }
+        FleetConvergeTimerUnit => none
+        FabricStorageServeUnit => none
+        FabricStorageServeMapping => none
+        TailnetDoorServeUnit => none
+      }
     }
     Dependency { step: _ } => none
   }
@@ -2091,7 +2095,8 @@ fn compose_host_script(fragments: List<HostScriptFragment>) -> Pipeline {
 }
 
 fn composed_artifact_upsert(
-  art: LegacyUpsertArtifact,
+  kind: UpsertArtifactKind,
+  path: NonEmptyStr,
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
   oidc_now: Second?,
@@ -2099,7 +2104,7 @@ fn composed_artifact_upsert(
 ) -> Pipeline {
   compose_host_script(fragments: host_script_member_proceed(
     member: "artifact" as NonEmptyStr,
-    mutate_steps: emit_artifact_upsert(art: art, spec: spec, revision: revision, oidc_now: oidc_now, principal: principal),
+    mutate_steps: emit_artifact_upsert(kind: kind, path: path, spec: spec, revision: revision, oidc_now: oidc_now, principal: principal),
   ))
 }
 
@@ -3305,11 +3310,11 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
 // line above and the planned identity name one file.
 data release_executable_install_source: String = "target/release/gunbc"
 
-fn emit_artifact_upsert(art: LegacyUpsertArtifact, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
-  match art.kind {
-    LegacyGunbcSourceTree => [
+fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
+  match kind {
+    GunbcSourceTree => [
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
-      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: path as String)),
       deploy_raw(command: deploy_stage_write_expansion_command(
         stage_name: "gunbc-tree-sync.env",
         format: "GUNBC_TREE_SRC=%s\n",
@@ -3331,10 +3336,10 @@ fn emit_artifact_upsert(art: LegacyUpsertArtifact, spec: DeploymentSpec, revisio
       )),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
     ]
-    LegacyServeBinary => concat([
+    ServeBinary => concat([
       deploy_raw(command: install_directory_command(
         mode: install_d_shared_mode,
-        path: path_parent_dir(path: art.path as String),
+        path: path_parent_dir(path: path as String),
         privileged: true,
       )),
       deploy_raw(command: install_file_owned_command(
@@ -3342,7 +3347,7 @@ fn emit_artifact_upsert(art: LegacyUpsertArtifact, spec: DeploymentSpec, revisio
         owner: spec.service.service_user,
         group: spec.service.service_user,
         source: "target/release/gunbc",
-        dest: art.path as String,
+        dest: path as String,
       )),
       deploy_raw(command: install_d_owned_command(
         spec: spec,
@@ -3359,7 +3364,7 @@ fn emit_artifact_upsert(art: LegacyUpsertArtifact, spec: DeploymentSpec, revisio
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
     ]))
-    LegacyPublicationHelperPathUnit => concat(
+    PublicationHelperPathUnit => concat(
       concat(
         apply_publication_spool_steps(spec: spec),
         [
@@ -3373,7 +3378,7 @@ fn emit_artifact_upsert(art: LegacyUpsertArtifact, spec: DeploymentSpec, revisio
           deploy_raw(command: deploy_stage_install_command(
             stage_name: deployment_publication_path_unit_name(names: spec.names) as String,
             mode: install_file_shared_mode,
-            dest: art.path as String,
+            dest: path as String,
           )),
         ]
       ),
@@ -3388,7 +3393,7 @@ fn emit_artifact_upsert(art: LegacyUpsertArtifact, spec: DeploymentSpec, revisio
         ]
       )
     )
-    LegacyBeltEventPathUnit => concat(
+    BeltEventPathUnit => concat(
       [
         deploy_raw(command: install_d_owned_command(
           spec: spec,
@@ -3413,7 +3418,7 @@ fn emit_artifact_upsert(art: LegacyUpsertArtifact, spec: DeploymentSpec, revisio
         apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), dest: deployment_belt_exit_drain_service_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), dest: deployment_belt_discovery_service_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
-        apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: art.path),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: path),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
         deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_drain_service_unit_name(names: spec.names))),
         deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
@@ -3426,17 +3431,17 @@ fn emit_artifact_upsert(art: LegacyUpsertArtifact, spec: DeploymentSpec, revisio
         path: deployment_retired_belt_timer_unit_path(names: spec.names),
       )
     )
-    LegacyTailscaleServeMapping => tailscale_serve_mapping_apply_steps(spec: spec)
-    LegacyApprovalBrokerFrontDoor => map(
+    TailscaleServeMapping => tailscale_serve_mapping_apply_steps(spec: spec)
+    ApprovalBrokerFrontDoor => map(
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e)))),
     )
-    LegacyDeployedTreeRemoteUnit => [
+    DeployedTreeRemoteUnit => [
       apply_tree_remote_unit_write_step(spec: spec),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: deployment_tree_remote_unit_name(names: spec.names) as String,
         mode: install_file_shared_mode,
-        dest: art.path as String,
+        dest: path as String,
       )),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_restart_effect(unit: deployment_tree_remote_unit_name(names: spec.names))),
@@ -3471,10 +3476,10 @@ fn emit_artifact_upsert(art: LegacyUpsertArtifact, spec: DeploymentSpec, revisio
 
 fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
   match art.kind {
-    TailscaleServeMapping => [
+    UpsertOwned { kind: TailscaleServeMapping } => [
       tailscale_serve_teardown_step(spec: spec),
     ]
-    FabricStorageServeMapping => match deployment_fabric_storage_door_socket(spec: spec) {
+    ComposeOwned { kind: FabricStorageServeMapping } => match deployment_fabric_storage_door_socket(spec: spec) {
       Absent => [
         deploy_raw(command: join([
           fabric_storage_door_unknown_instance_poison,
@@ -3488,32 +3493,32 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         )),
       ]
     }
-    ApprovalBrokerFrontDoor => map(
+    UpsertOwned { kind: ApprovalBrokerFrontDoor } => map(
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))),
     )
-    TailnetDoorServeUnit => concat(
+    ComposeOwned { kind: TailnetDoorServeUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_tailnet_door_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    FabricStorageServeUnit => concat(
+    ComposeOwned { kind: FabricStorageServeUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    SystemdUnit => concat(
+    ComposeOwned { kind: SystemdUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: spec.service.unit_name, privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    BeltEventPathUnit => concat(
+    UpsertOwned { kind: BeltEventPathUnit } => concat(
       concat(
         concat(
           systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
@@ -3535,7 +3540,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    FleetConvergeTimerUnit => concat(
+    ComposeOwned { kind: FleetConvergeTimerUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
@@ -3545,7 +3550,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    PublicationHelperPathUnit => concat(
+    UpsertOwned { kind: PublicationHelperPathUnit } => concat(
       concat(
         systemctl_disable_now_if_present_steps(unit: deployment_publication_path_unit_name(names: spec.names), privileged: true),
         leftover_systemd_timer_retire_steps(
@@ -3561,20 +3566,20 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    DeployedTreeRemoteUnit => concat(
+    UpsertOwned { kind: DeployedTreeRemoteUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    ServeBinary => [
+    UpsertOwned { kind: ServeBinary } => [
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
     ]
-    OidcConfigArtifact => [
+    ComposeOwned { kind: OidcConfigArtifact } => [
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
     ]
-    GunbcSourceTree => concat(
+    UpsertOwned { kind: GunbcSourceTree } => concat(
       map(dispatch_root_refusal_paths(spec: spec), p => deploy_raw(command: rm_empty_directory_command(path: p))),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
@@ -3912,7 +3917,7 @@ fn serve_unit_write_fragments(
   oidc_now: Second?,
   principal: GroundedPosixPrincipal,
 ) -> List<HostScriptFragment> {
-  if !(spec_has_artifact_kind(spec: spec, kind: SystemdUnit)) {
+  if !(spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: SystemdUnit })) {
     []
   } else {
   let member = "serve-unit" as NonEmptyStr
@@ -3958,7 +3963,7 @@ fn tailnet_door_admitted_mutate_steps(
 }
 
 fn tailnet_door_fragments(spec: DeploymentSpec, oidc_now: Second?, revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
-  if !(spec_has_artifact_kind(spec: spec, kind: TailnetDoorServeUnit)) {
+  if !(spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: TailnetDoorServeUnit })) {
     []
   } else {
     match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
@@ -4001,8 +4006,8 @@ fn fabric_storage_admitted_mutate_steps(
 }
 
 fn fabric_storage_fragments(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
-  if !(spec_has_artifact_kind(spec: spec, kind: FabricStorageServeUnit)
-    || spec_has_artifact_kind(spec: spec, kind: FabricStorageServeMapping)) {
+  if !(spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeUnit })
+    || spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeMapping })) {
     []
   } else {
     match deployment_fabric_storage_door_socket(spec: spec) {
@@ -4024,7 +4029,7 @@ fn fabric_storage_fragments(spec: DeploymentSpec, revision: ReleaseRevisionBindi
 data fleet_converge_timer_retired_poison: String = "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"
 
 fn fleet_converge_timer_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
-  if spec_has_artifact_kind(spec: spec, kind: FleetConvergeTimerUnit) {
+  if spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FleetConvergeTimerUnit }) {
     host_script_member_refused(
       member: "fleet-converge-timer" as NonEmptyStr,
       cause: "FleetConvergeTimerUnit retired",
@@ -4045,27 +4050,29 @@ fn artifact_apply_fragments(
 ) -> List<HostScriptFragment> {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match art.kind {
-    OidcConfigArtifact =>
-      apply_oidc_fragments_over(
-        spec: spec,
-        oidc_now: oidc_now,
-        should_write: plan_writes_oidc_config(plan: plan),
-      )
-    SystemdUnit =>
-      serve_unit_write_fragments(spec: spec, plan: plan, oidc_now: oidc_now, principal: principal)
-    FabricStorageServeUnit =>
-      fabric_storage_fragments(spec: spec, revision: revision)
-    FabricStorageServeMapping =>
-      if spec_has_artifact_kind(spec: spec, kind: FabricStorageServeUnit) {
-        []
-      } else {
+    ComposeOwned { kind: ck } => match ck {
+      OidcConfigArtifact =>
+        apply_oidc_fragments_over(
+          spec: spec,
+          oidc_now: oidc_now,
+          should_write: plan_writes_oidc_config(plan: plan),
+        )
+      SystemdUnit =>
+        serve_unit_write_fragments(spec: spec, plan: plan, oidc_now: oidc_now, principal: principal)
+      FabricStorageServeUnit =>
         fabric_storage_fragments(spec: spec, revision: revision)
-      }
-    TailnetDoorServeUnit =>
-      tailnet_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
-    FleetConvergeTimerUnit =>
-      fleet_converge_timer_fragments(spec: spec)
-    _ =>
+      FabricStorageServeMapping =>
+        if spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeUnit }) {
+          []
+        } else {
+          fabric_storage_fragments(spec: spec, revision: revision)
+        }
+      TailnetDoorServeUnit =>
+        tailnet_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
+      FleetConvergeTimerUnit =>
+        fleet_converge_timer_fragments(spec: spec)
+    }
+    UpsertOwned { kind: _ } =>
       host_script_member_proceed(
         member: "spec-step" as NonEmptyStr,
         mutate_steps: apply_step_effects(
@@ -4211,7 +4218,7 @@ fn deploy_retract_frame_comments(spec: DeploymentSpec) -> List<PipelineStep> {
 }
 fn artifact_retract_fragments(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<HostScriptFragment> {
   match art.kind {
-    FabricStorageServeMapping => match deployment_fabric_storage_door_socket(spec: spec) {
+    ComposeOwned { kind: FabricStorageServeMapping } => match deployment_fabric_storage_door_socket(spec: spec) {
       Absent =>
         host_script_member_refused(
           member: "fabric-storage" as NonEmptyStr,
@@ -4247,78 +4254,31 @@ fn retract_or_apply_effect_fragments(
           mutate_steps: ensure_dependency_steps(dep: dep, privileged: true),
         )
       ArtifactStep { step: art } => match art.kind {
-        OidcConfigArtifact => apply_oidc_fragments(spec: spec, oidc_now: oidc_now)
-        SystemdUnit => match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
-          LiveDeployOidcEnvRefused { cause } =>
-            host_script_member_refused(
-              member: "serve-unit" as NonEmptyStr,
-              cause: cause as String,
-              command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
-            )
-          LiveDeployOidcEnvAdmitted { directives: _ } =>
-            host_script_member_proceed(
-              member: "serve-unit" as NonEmptyStr,
-              mutate_steps: [],
-            )
+        ComposeOwned { kind: ck } => match ck {
+          OidcConfigArtifact => apply_oidc_fragments(spec: spec, oidc_now: oidc_now)
+          SystemdUnit => match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
+            LiveDeployOidcEnvRefused { cause } =>
+              host_script_member_refused(
+                member: "serve-unit" as NonEmptyStr,
+                cause: cause as String,
+                command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""),
+              )
+            LiveDeployOidcEnvAdmitted { directives: _ } =>
+              host_script_member_proceed(
+                member: "serve-unit" as NonEmptyStr,
+                mutate_steps: [],
+              )
+          }
+          FabricStorageServeUnit => fabric_storage_fragments(spec: spec, revision: revision)
+          FabricStorageServeMapping => fabric_storage_fragments(spec: spec, revision: revision)
+          TailnetDoorServeUnit => tailnet_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
+          FleetConvergeTimerUnit => fleet_converge_timer_fragments(spec: spec)
         }
-        FabricStorageServeUnit => fabric_storage_fragments(spec: spec, revision: revision)
-        FabricStorageServeMapping => fabric_storage_fragments(spec: spec, revision: revision)
-        TailnetDoorServeUnit => tailnet_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
-        FleetConvergeTimerUnit => fleet_converge_timer_fragments(spec: spec)
-        ServeBinary =>
+        UpsertOwned { kind: uk } =>
           host_script_member_proceed(
             member: "spec-step" as NonEmptyStr,
             mutate_steps: emit_artifact_upsert(
-              art: LegacyUpsertArtifact { kind: LegacyServeBinary, path: art.path },
-              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
-            ),
-          )
-        GunbcSourceTree =>
-          host_script_member_proceed(
-            member: "spec-step" as NonEmptyStr,
-            mutate_steps: emit_artifact_upsert(
-              art: LegacyUpsertArtifact { kind: LegacyGunbcSourceTree, path: art.path },
-              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
-            ),
-          )
-        BeltEventPathUnit =>
-          host_script_member_proceed(
-            member: "spec-step" as NonEmptyStr,
-            mutate_steps: emit_artifact_upsert(
-              art: LegacyUpsertArtifact { kind: LegacyBeltEventPathUnit, path: art.path },
-              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
-            ),
-          )
-        TailscaleServeMapping =>
-          host_script_member_proceed(
-            member: "spec-step" as NonEmptyStr,
-            mutate_steps: emit_artifact_upsert(
-              art: LegacyUpsertArtifact { kind: LegacyTailscaleServeMapping, path: art.path },
-              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
-            ),
-          )
-        DeployedTreeRemoteUnit =>
-          host_script_member_proceed(
-            member: "spec-step" as NonEmptyStr,
-            mutate_steps: emit_artifact_upsert(
-              art: LegacyUpsertArtifact { kind: LegacyDeployedTreeRemoteUnit, path: art.path },
-              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
-            ),
-          )
-        PublicationHelperPathUnit =>
-          host_script_member_proceed(
-            member: "spec-step" as NonEmptyStr,
-            mutate_steps: emit_artifact_upsert(
-              art: LegacyUpsertArtifact { kind: LegacyPublicationHelperPathUnit, path: art.path },
-              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
-            ),
-          )
-        ApprovalBrokerFrontDoor =>
-          host_script_member_proceed(
-            member: "spec-step" as NonEmptyStr,
-            mutate_steps: emit_artifact_upsert(
-              art: LegacyUpsertArtifact { kind: LegacyApprovalBrokerFrontDoor, path: art.path },
-              spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
+              kind: uk, path: art.path, spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
             ),
           )
       }
