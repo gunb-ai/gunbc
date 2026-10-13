@@ -1,4 +1,4 @@
-module v2.test.diagnostic_correction.show_correct_code
+module v2.test.claim.diagnostic_correction.show_correct_code
 
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],

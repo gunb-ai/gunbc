@@ -1,4 +1,4 @@
-module gunbc.host_identity_observation
+module gunbc.host.host_identity_observation
 
 import std.disposition { Disposition }
 import std.algebra { trim }
@@ -15,7 +15,7 @@ type HostIdentityObservation {
 }
 
 data gunbc_host_identity_observation_scope_disposition: Disposition = std.disposition.Terminal {
-  reason: "Slice-1 typed fixture/read carrier: hostname -s over host_effect transport -> HostIdentityObservation. Does NOT subsume gunbc.ci_deploy_target_host.deploy_target_host_observed_hostname (direct shell.Exec) — that path dissolves when live deploy routes target-host proof through this carrier."
+  reason: "Slice-1 typed fixture/read carrier: hostname -s over host_effect transport -> HostIdentityObservation. Does NOT subsume gunbc.ci.ci_deploy_target_host.deploy_target_host_observed_hostname (direct shell.Exec) — that path dissolves when live deploy routes target-host proof through this carrier."
 }
 
 data gunbc_srv1_host_identity_observation_fixture_row: HostIdentityObservationRow = HostIdentityObservationRow {

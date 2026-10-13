@@ -1,4 +1,4 @@
-module gunbc.bmc_intent
+module gunbc.bmc.bmc_intent
 
 import extdeps.bmc.capability {
   BmcFirmwareIntent,

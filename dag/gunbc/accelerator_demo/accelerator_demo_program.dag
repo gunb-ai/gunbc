@@ -1,4 +1,4 @@
-module gunbc.accelerator_demo_program
+module gunbc.accelerator_demo.accelerator_demo_program
 
 import extdeps.languages.simd.kernel {
   relu_mul_add_wire_op_codes,

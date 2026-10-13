@@ -17,10 +17,10 @@ import gunbc.auth.approval_decision_store {
 import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id, sign_submission,
 }
-import gunbc.fleet_posix_accounts { fleet_operator_email }
+import gunbc.fleet.fleet_posix_accounts { fleet_operator_email }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
-import gunbc.host_effect { LocalShell }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.host.host_effect { LocalShell }
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal,
   prod_role_realization, prod_role_realization_refusal_detail,
 }
@@ -43,7 +43,7 @@ data approval_request_submit_path: NonEmptyStr = approval_broker_submit_path
 // AND THE WRITER LIVES ON THE PROD-ROLE HOLDER'S DEPLOYMENT (gunbc.deployment_risk
 // prod_role_selection). Whichever process the authority row names, it is served by the holder's
 // instance -- the roadmap at that instance's listen bind, the broker on that host's loopback -- so both
-// arms resolve through gunbc.roadmap_dashboard_instance prod_role_realization. Under NoProdRole neither
+// arms resolve through gunbc.roadmap.roadmap_dashboard_instance prod_role_realization. Under NoProdRole neither
 // is installed anywhere and the origin REFUSES with the realization's typed cause; it never falls back
 // to srv1.
 // THE ORIGIN CARRIES ITS HOST. A loopback origin means something only on the host it is loopback ON,

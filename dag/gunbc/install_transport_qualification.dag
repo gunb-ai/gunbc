@@ -2,7 +2,7 @@ module gunbc.install_transport_qualification
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, list_length }
 import product.host_identity { HostIdentity }
-import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
+import gunbc.machine_intake.access { BootDeliveryTarget, same_boot_delivery_target }
 
 // WHY THIS MODULE EXISTS, in one sentence: an omitted capability was being read
 // as an observed absence, and the two are different facts with different

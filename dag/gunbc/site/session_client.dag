@@ -16,7 +16,7 @@ import extdeps.languages.typescript.program {
 // account area leaves Sign in, the assignment surfaces disable with the session-unavailable
 // title. THE CSRF TOKEN IS NOT HERE: the session wire carries viewer + principal + expiry and
 // no csrf (roadmap_serve's auth_session_body); the assignment POST's csrf stays single-sourced
-// from the /assignment context response (gunbc.roadmap_inline_assignment), and the account area
+// from the /assignment context response (gunbc.roadmap.roadmap_inline_assignment), and the account area
 // adds no write surface at all — sign out is the target's native form POST, safe by the session
 // cookie's SameSite=Lax seam (the logout handler needs no csrf proof).
 fn session_read_bind_statements() -> List<TsStmt> {

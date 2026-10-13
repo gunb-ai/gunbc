@@ -1,11 +1,11 @@
-module gunbc.repo_ruleset
+module gunbc.repo.repo_ruleset
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { HttpStatus, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.repository { gunbc_repository }
-import gunbc.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
-import gunbc.witness_floor_lanes { required_lanes_roster }
+import gunbc.witness.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
+import gunbc.witness.witness_floor_lanes { required_lanes_roster }
 import std.measure { Minute, minute, minute_count, measure_add, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import gunbc.ensure {
   EnsurePolicy,
@@ -115,7 +115,7 @@ import std.goal_assessment {
 // required status check -- `witnesses`. Until this module, that sentence was the ONLY place the
 // fact lived on our side of the boundary. The setting itself was a hand-maintained web form: no
 // authority declared it, nothing read it back, and nothing in the tree went red if it changed. The
-// aggregation job in gunbc.witness_floor_workflow exists precisely because a required context is
+// aggregation job in gunbc.witness.witness_floor_workflow exists precisely because a required context is
 // produced by a JOB and a second job's check is not required -- which means the safety of that
 // whole design rests on a value nobody in this repository could observe.
 //
@@ -140,13 +140,13 @@ import std.goal_assessment {
 // trigger. #10204 merging is not the trigger.
 //
 // THE ONE FACT THAT STOPS BEING A NICKNAME. The required context's name is imported from
-// gunbc.witness_floor_workflow witness_floor_workflow_job_id -- the same row the emitted workflow
+// gunbc.witness.witness_floor_workflow witness_floor_workflow_job_id -- the same row the emitted workflow
 // names its aggregation job with. Before this module those were two strings that happened to agree;
 // now they are one fact read in two directions, so renaming the job cannot leave the ruleset naming
 // a context nothing publishes (DESIGN section 3). That failure mode is specifically quiet: a
 // required context that no job publishes leaves the check permanently pending rather than red.
 // See the module-leading annotation. This row exists because the module's subject is a fact about
-// the world rather than about the tree, and a reader arriving from gunbc.witness_floor_workflow
+// the world rather than about the tree, and a reader arriving from gunbc.witness.witness_floor_workflow
 // needs the pointer.
 
 // WHY THE RULESET IS ADDRESSED BY ID RATHER THAN BY NAME. GitHub's update endpoint is
@@ -313,7 +313,7 @@ type BypassRosterDesire
 // already documents.
 //
 // check_response_timeout IS DERIVED FROM THE FLOOR'S OWN ENVELOPE AND IS NOT A CONSTANT HERE. It
-// reads gunbc.witness_floor_workflow witness_floor_lane_timeout and adds a declared margin, both as Minute.
+// reads gunbc.witness.witness_floor_workflow witness_floor_lane_timeout and adds a declared margin, both as Minute.
 // A queue whose response timeout is BELOW the repository's execution envelope manufactures queue
 // failures out of runs that were going to pass: it dequeues green work for being slow, and the
 // author of the next timeout bump would have no way to know a second number tracked the first.

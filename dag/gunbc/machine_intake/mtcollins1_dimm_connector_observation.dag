@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_dimm_connector_observation
+module gunbc.machine_intake.mtcollins1_dimm_connector_observation
 
 import std.types { NonEmptyStr, List, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
@@ -25,7 +25,7 @@ import gunbc.mt_collins_dimm_physical_identity {
 // no colour mapping. Trigger: the rack UI renders this scoped report and its
 // divergence alongside the documentary join, preserving the upstream gaps.
 data observed_unit: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.machine_intake_mtcollins1_access_observation",
+  module_path: "gunbc.machine_intake.mtcollins1_access_observation",
   decl_name: "mtcollins1_access_observation",
   field: WholeDeclaration,
 }

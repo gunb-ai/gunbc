@@ -1,4 +1,4 @@
-module v2.test.rung_3_4_common
+module v2.test.fixture.rung_3_4_common
 
 import v2.std.node { Authored }
 

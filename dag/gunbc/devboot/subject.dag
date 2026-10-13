@@ -58,7 +58,7 @@ import extdeps.toolchain.types {
   Eabihf,
 }
 import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved, platform_c_library_identity_tag, render_platform_c_library }
-import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
+import extdeps.rust.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
 
 // WHAT A BUILD IS OF, carried so that two requests naming the same thing are the same request and two requests naming different things never collide. Every field is a fact about the COMPUTATION; nothing here can be a fact about the requester.
 //

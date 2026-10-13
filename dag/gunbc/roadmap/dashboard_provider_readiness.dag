@@ -1,4 +1,4 @@
-module gunbc.dashboard_provider_readiness
+module gunbc.roadmap.dashboard_provider_readiness
 
 import std.algebra { trim }
 import std.types { String, NonEmptyStr, FilePath }
@@ -15,14 +15,14 @@ import extdeps.llm.cli {
   shape_codex_version_env_args_for_program,
 }
 import gunbc.readiness { Readiness, Ready, Pending, Refused }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instance_provider_executable_refusal_detail,
   dashboard_environment_binding_executable,
 }
-import gunbc.roadmap_dashboard_instance_observe {
+import gunbc.roadmap.roadmap_dashboard_instance_observe {
   DashboardExecResult,
   DashboardPathObservation,
   PathObservedPresent,
@@ -36,7 +36,7 @@ import gunbc.roadmap_dashboard_instance_observe {
 
 // Provider readiness for the served dashboard. One attempt. Maps onto
 // gunbc.readiness Readiness so the result cannot inhabit Reconciliation.
-// CONSUMER: gunbc.roadmap_serve ProviderReadinessHandler via
+// CONSUMER: gunbc.roadmap.roadmap_serve ProviderReadinessHandler via
 // dashboard_provider_readiness_json.
 
 type ProviderReadyEvidence {

@@ -51,7 +51,7 @@ import std.optional { Absent, Present }
 // The decisions over RestResults are separated from the effects so each arm is reachable from a
 // supplied value (DESIGN §3: a witness discriminates at one interface).
 //
-// CONSUMER (DESIGN §3c): gunbc.runner_microvm_slot_controller observe_app_control_plane calls this
+// CONSUMER (DESIGN §3c): gunbc.runner.runner_microvm_slot_controller observe_app_control_plane calls this
 // under the controller's own App key (gunbc.github_effect_perform lifecycle_controller_app and
 // lifecycle_controller_app_key) with gunbai_ci_declared_installation_id and
 // gunbai_ci_registration_goal's required_permissions, once per attempt, before the JIT mint.

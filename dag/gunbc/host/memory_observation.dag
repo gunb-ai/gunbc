@@ -1,4 +1,4 @@
-module gunbc.memory_observation
+module gunbc.host.memory_observation
 
 import std.types { Bool, Seconds, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -10,8 +10,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum
 import extdeps.crypto.hash { sha256sum_line_digest }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.memory_configuration { MemoryConfiguration, MemoryPosition }
-import gunbc.host_memory_qualification { HostMemoryStanding, PlatformTrainingFailure }
+import gunbc.host.memory_configuration { MemoryConfiguration, MemoryPosition }
+import gunbc.host.host_memory_qualification { HostMemoryStanding, PlatformTrainingFailure }
 
 // An identity binding for a token actually printed by this captured firmware.
 // An observed unsuffixed identity is not an exact manufacturer-catalog join.

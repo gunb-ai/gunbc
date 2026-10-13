@@ -33,10 +33,10 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
 }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
-import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
-import gunbc.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVolumeLabel, BootMediumNoTerminal, bmc_boot_image_export }
-import gunbc.managed_host_boot { AdmittedBootSubject, boot_subject_machine }
-import gunbc.machine_intake_host_capture_envelope {
+import gunbc.provisioning.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
+import gunbc.host.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVolumeLabel, BootMediumNoTerminal, bmc_boot_image_export }
+import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_machine }
+import gunbc.machine_intake.host_capture_envelope {
   HostCaptureStage, HostCaptureRunIdentity, BoundHostCaptureEnvelope,
   HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound,
   HostCaptureSectionReading, SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
@@ -55,7 +55,7 @@ import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
 // and waits there: nothing on this medium writes a disk, and the host stays up in RAM for the slot.
 //
 // THE RUNNER TARBALL RIDES ON THE MEDIUM, SO THE BOOT OPENS NO NETWORK (the route's boot stage has
-// no egress, gunbc.runner_throughput_qualification_route stage_egress). It is a seed ARTIFACT
+// no egress, gunbc.runner.runner_throughput_qualification_route stage_egress). It is a seed ARTIFACT
 // (extdeps.provisioning.ubuntu_seeded_install_media NoCloudSeedArtifact): the build fetches it from
 // the upstream release URL and refuses unless its sha256 is the release's cited arm64 digest, and
 // that digest is in the build key. The live program reads the tarball's sha256 back off the medium
@@ -64,7 +64,7 @@ import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
 // refusal depends on the shell stopping.
 //
 // THE HOST PARAMETERS ARE THE CALLER'S. Which machine name the envelope carries (it must equal the
-// boot subject's machine, gunbc.managed_host_boot boot_subject_machine) and which serial console the
+// boot subject's machine, gunbc.host.managed_host_boot boot_subject_machine) and which serial console the
 // kernel and program write to are facts about the host, so this module takes them as a value and
 // names no host.
 type RunnerHostMediumHost {
@@ -202,7 +202,7 @@ fn runner_host_medium_image(host: RunnerHostMediumHost) -> RunnerHostMediumImage
 }
 
 // THE MEDIUM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST of the built image -- its content digest,
-// which the export's readback must equal (gunbc.boot_medium boot_medium_readback). Name and terminal
+// which the export's readback must equal (gunbc.host.boot_medium boot_medium_readback). Name and terminal
 // derive from rows above, so a runner medium naming another artifact has no spelling. No data row
 // applies this yet: no build of the runner image has run, and authoring a digest no build produced
 // would fabricate it. The row lands with the publish receipt.
@@ -218,7 +218,7 @@ fn runner_host_boot_medium(output_digest: NonEmptyStr) -> BootMedium {
 // ── THE ACCEPTANCE PREDICATE ─────────────────────────────────────────────────────────────────
 
 // WHAT "RUNNER HOST UP" IS, READ BACK: the route's GuestIdleMeminfoAndNproc instrument
-// (gunbc.runner_throughput_qualification_route) at idle, before any job, plus the runner installed.
+// (gunbc.runner.runner_throughput_qualification_route) at idle, before any job, plus the runner installed.
 type RunnerHostUp {
   run: HostCaptureRunIdentity
   mem_total: Kibibyte

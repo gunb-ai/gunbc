@@ -1,4 +1,4 @@
-module gunbc.fleet_main_revision
+module gunbc.fleet.fleet_main_revision
 
 import std.types { String, Bool, Int }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_from_untagged_hex, git_object_id_wire_hex }

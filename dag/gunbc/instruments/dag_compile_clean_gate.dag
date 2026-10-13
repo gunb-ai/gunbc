@@ -1,8 +1,8 @@
-module tools.dag_compile_clean_gate
+module gunbc.instruments.dag_compile_clean_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.ci_gate { gate_receipt_exit, gate_receipt_failure_detail }
-import tools.dag_compile_clean_transport { run_clean_tree_compile }
+import gunbc.ci.ci_gate { gate_receipt_exit, gate_receipt_failure_detail }
+import gunbc.instruments.dag_compile_clean_transport { run_clean_tree_compile }
 
 // The loudness half: the floor witness collapses this gate's ProcessExit to Bool via
 // std.process.exit_ok, so compile-clean reds reported only returned Bool(false). The gate
@@ -12,7 +12,7 @@ import tools.dag_compile_clean_transport { run_clean_tree_compile }
 // the fixed string 'dag compile-clean gate failed: clean-tree compile over witness layer roots' --
 // while the companion read the located detail from a SECOND builtin over the same process global:
 // the exit reason was a constant that could not distinguish a failed compile from a gate that never
-// ran. Now the receipt carries verdict and detail together and gunbc.ci_gate projects both.
+// ran. Now the receipt carries verdict and detail together and gunbc.ci.ci_gate projects both.
 
 fn dag_compile_clean_failure_reason(exit: ProcessExit) -> String {
   match exit {

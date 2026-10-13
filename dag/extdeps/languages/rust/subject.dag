@@ -36,7 +36,7 @@ data rust_language_further_authority_1: ExternalAuthority = ExternalAuthority {
 // runtime_checker_subject_note, and this carrier should never have carried a second, contradicting
 // copy of it — the note reversed the reasoning in the same change that landed the join, and this
 // sentence was left describing the world before it. Binding a surface to a target does not merge
-// their identities; the module path is extdeps.cargo, not extdeps.rust.cargo, which was a file path
+// their identities; the module path is extdeps.rust.cargo, not extdeps.rust.cargo, which was a file path
 // transcribed as a module path and is corrected in the registry's census_path_resolution_note.
 
 type Rust

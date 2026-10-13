@@ -1,4 +1,4 @@
-module gunbc.stage0_emitted_population_manifest
+module gunbc.stage0.stage0_emitted_population_manifest
 
 import std.types { String }
 
@@ -6,7 +6,7 @@ import std.types { String }
 //
 // This module exists to hold ONE string, and that is the point rather than an accident of
 // factoring. The manifest has two ends -- `v1.compiler.emit_rust` writes it and
-// `gunbc.stage0_rust_host_observation` reads it -- and if each spelled the basename itself,
+// `gunbc.stage0.stage0_rust_host_observation` reads it -- and if each spelled the basename itself,
 // the artifact would have two names for one file, which is the nicknaming failure DESIGN 3
 // names and the exact class the manifest exists to end. A shared leaf module is the smallest
 // carrier that lets both ends resolve the same symbol without the reader importing the whole

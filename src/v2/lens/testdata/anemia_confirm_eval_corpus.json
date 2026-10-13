@@ -231,7 +231,7 @@
   {
     "id": "neg-pipeline-subject-source",
     "field": "source",
-    "located": "v2.test.round_trip.source_authority_contract.source_authority_contract_source",
+    "located": "v2.test.claim.round_trip.source_authority_contract.source_authority_contract_source",
     "declared_type": "String",
     "grounded_now": null,
     "signal": "C",

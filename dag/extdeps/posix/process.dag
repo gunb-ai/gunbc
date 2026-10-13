@@ -35,7 +35,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [extdeps_external_authority_anchor_wait]
 }
 
-// PROCESS LIFECYCLE, typed at the spawn boundary. `tools.emit_host_transport` (the node-http
+// PROCESS LIFECYCLE, typed at the spawn boundary. `gunbc.instruments.emit_host_transport` (the node-http
 // serve smoke) ran a server through a retained_foreign bash heredoc whose `&` / `$!` / `trap`
 // plumbing was the LAST untyped process lifecycle in the gunbc substrate; this service replaces
 // that plumbing with modeled operations whose upstream is the POSIX spawn family:

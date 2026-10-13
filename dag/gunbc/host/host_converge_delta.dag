@@ -1,10 +1,10 @@
-module gunbc.host_converge_delta
+module gunbc.host.host_converge_delta
 
 
 data gunbc_converge_target_byte_normalization_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_converge_delta",
+    module_path: "gunbc.host.host_converge_delta",
     decl_name: "converge_knob_values_equal",
     field: WholeDeclaration,
   }

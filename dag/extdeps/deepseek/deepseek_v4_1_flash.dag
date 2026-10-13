@@ -192,7 +192,7 @@ fn deepseek_v4_1_flash_yarn_scaled_positions() -> TokenCount {
 // that sum. This is an upstream-reported payload size until someone reads the bytes on the fleet
 // (ArtifactFootprint FootprintReportedExternally). Live consumers of these bytes are
 // gunbc.fabric.engram_materialization and
-// test.claim.spark.engram_materialization_witness_test / test.claim.deepseek.deepseek_v4_1_flash_authority_witness_test.
+// test.claim.spark.engram_materialization_witness / test.claim.deepseek.deepseek_v4_1_flash_authority_witness_test.
 // ===========================================================================================
 
 data deepseek_v4_1_flash_safetensors_shard_count: Nat = 48

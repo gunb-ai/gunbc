@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_census_qemu_host_observe
+module gunbc.machine_intake.mtcollins1_census_qemu_host_observe
 
 import std.types { NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -7,17 +7,17 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import gunbc.command_runner { run_shell_commands, LocalExec }
 import gunbc.hostname_read { hostname_short_read }
-import gunbc.host_effect { LocalShell }
-import gunbc.runner_microvm_host_ready { executor_home_wet }
-import gunbc.runner_qemu_toolchain { qemu_toolchain_location }
-import gunbc.runner_qemu_host_standing { QemuHostStanding, observe_qemu_host_standing_wet, qemu_host_standing_text, qemu_host_ready }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.runner.runner_microvm_host_ready { executor_home_wet }
+import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_location }
+import gunbc.runner.runner_qemu_host_standing { QemuHostStanding, observe_qemu_host_standing_wet, qemu_host_standing_text, qemu_host_ready }
 
 // THE mtcollins1 CENSUS BINDING OF THE EXECUTOR-HOST QEMU READING (the MtCollins1CensusQemuHostObserve
-// mode of gunbc.fleet_converge_workflow). The census boot on mtcollins1 refused in-kernel module
+// mode of gunbc.fleet.fleet_converge_workflow). The census boot on mtcollins1 refused in-kernel module
 // decompression on one attempt and not on another with identical media
-// (gunbc.machine_intake_mtcollins1_census_refusal_hypotheses); a QEMU boot of the same ISO under KVM
+// (gunbc.machine_intake.mtcollins1_census_refusal_hypotheses); a QEMU boot of the same ISO under KVM
 // on a fleet executor asks whether a HOST factor is needed for the refusal. What the executor carries
-// for that boot is gunbc.runner_qemu_host_standing's reading, keyed by the executor; this module
+// for that boot is gunbc.runner.runner_qemu_host_standing's reading, keyed by the executor; this module
 // carries only what is the census's: the entry roots ci_spec names, the install directory the census
 // tree was first placed under, and the receipt path the workflow uploads (managed-host cut 4b: the
 // entry roots and the constants ci_spec imports stay here as thin bindings; renaming them is cut 7's).

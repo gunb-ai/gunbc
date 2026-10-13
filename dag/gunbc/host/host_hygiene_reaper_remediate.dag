@@ -1,10 +1,10 @@
-module gunbc.host_hygiene_reaper_remediate
+module gunbc.host.host_hygiene_reaper_remediate
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import std.disposition { Disposition, Terminal }
 import extdeps.shell
 import extdeps.posix.signal
-import gunbc.host_hygiene_reaper {
+import gunbc.host.host_hygiene_reaper {
   ResidualSlotObservation,
   ReapRefusalCause,
   ResidualReapAction,
@@ -14,7 +14,7 @@ import gunbc.host_hygiene_reaper {
   ReapRefused,
   residual_reap_action,
 }
-import gunbc.host_hygiene_reaper_observe {
+import gunbc.host.host_hygiene_reaper_observe {
   ResidualSlotObserveOutcome,
   ResidualSlotObserved,
   ResidualSlotObserveRefused,
@@ -22,7 +22,7 @@ import gunbc.host_hygiene_reaper_observe {
 }
 
 data gunbc_host_hygiene_reaper_remediate_scope_disposition: Disposition = Terminal {
-  reason: "The MUTATE half of the reaper vertical (brief: split observe from mutate — a reaper that mutates on a misread IS the harm). The BOUND is structural, not a literal check in a script body: every effect this module can describe carries a `unit: NonEmptyStr` it did not choose — residual_reap_effect_for takes a ResidualSlotObservation the OBSERVE vertical already vetted (host_hygiene_reaper_observe.observe_residual_slot), and the override directory an effect touches is producible only through host_hygiene_reaper_observe.host_hygiene_override_dir_for_unit, a pure function of that same vetted unit. This module recomputes residual_reap_action(obs) INTERNALLY from gunbc.host_hygiene_reaper's single decision authority rather than accepting a caller-supplied ResidualReapAction — the only path to a KillOccupantAndRemoveOverride or RemoveOverrideDirEffect is through that one vetted function, never through gunbc.host_hygiene_reaper's permanent RED-control residual_reap_action_absorbing_fallback_widen_sketch fixture, which this module never imports."
+  reason: "The MUTATE half of the reaper vertical (brief: split observe from mutate — a reaper that mutates on a misread IS the harm). The BOUND is structural, not a literal check in a script body: every effect this module can describe carries a `unit: NonEmptyStr` it did not choose — residual_reap_effect_for takes a ResidualSlotObservation the OBSERVE vertical already vetted (host_hygiene_reaper_observe.observe_residual_slot), and the override directory an effect touches is producible only through host_hygiene_reaper_observe.host_hygiene_override_dir_for_unit, a pure function of that same vetted unit. This module recomputes residual_reap_action(obs) INTERNALLY from gunbc.host.host_hygiene_reaper's single decision authority rather than accepting a caller-supplied ResidualReapAction — the only path to a KillOccupantAndRemoveOverride or RemoveOverrideDirEffect is through that one vetted function, never through gunbc.host.host_hygiene_reaper's permanent RED-control residual_reap_action_absorbing_fallback_widen_sketch fixture, which this module never imports."
 }
 
 type ResidualReapEffect
