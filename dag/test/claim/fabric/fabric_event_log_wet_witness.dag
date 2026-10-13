@@ -1,11 +1,9 @@
 module test.claim.fabric.fabric_event_log_wet_witness
-import std.optional { Absent, Optional, Present }
-
 
 import extdeps.shell
 import std.types { Bool, NonEmptyStr, String, List, EpochSecs }
 import std.fabric_storage { fabric_object_ref_of_wire, FabricObjectFetched, FabricObjectGetRefused }
-import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, Absent, HeadAt, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
+import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, pool_event_wire_text }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_ensure, fabric_storage_file_get }
@@ -30,7 +28,7 @@ fn fresh_files() -> FabricStorageFileRoot {
 fn event(parent: HeadExpectation, at: EpochSecs, payload: PoolEvent) -> ChainEvent<PoolEvent> {
   ChainEvent {
     partition: witness_partition(),
-    parent: match parent { Absent => none  HeadAt { id: h } => Present { value: h } },
+    parent: match parent { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
     recorded_at: at,
     actor: "witness" as NonEmptyStr,
     payload: payload,
@@ -53,7 +51,7 @@ fn append_id(store: FabricStorageBinding, parent: HeadExpectation, at: EpochSecs
 // first, with ids equal to what each append was answered.
 test fn three_chained_appends_read_back_whole_oldest_first_by_real_execution() -> Bool {
   let store = FabricStorageLocalFiles { root: fresh_files() }
-  match append_id(store: store, parent: Absent, at: 1000, payload: acquired(reference: "a")) {
+  match append_id(store: store, parent: HeadAbsent, at: 1000, payload: acquired(reference: "a")) {
     Absent => false
     Present { value: a } =>
       match append_id(store: store, parent: HeadAt { id: a }, at: 1001, payload: acquired(reference: "b")) {
@@ -80,11 +78,11 @@ test fn three_chained_appends_read_back_whole_oldest_first_by_real_execution() -
 // answered with the first writer's event as the observed head.
 test fn a_second_append_against_an_absent_head_is_stale_naming_the_first_by_real_execution() -> Bool {
   let store = FabricStorageLocalFiles { root: fresh_files() }
-  match append_id(store: store, parent: Absent, at: 1000, payload: acquired(reference: "first")) {
+  match append_id(store: store, parent: HeadAbsent, at: 1000, payload: acquired(reference: "first")) {
     Absent => false
     Present { value: first } =>
-      match event_log_append(store: store, partition: witness_partition(), event: event(parent: Absent, at: 1001, payload: acquired(reference: "racer")), expected: Absent) {
-        EventAppendStale { expected: _, observed: o } => match o { HeadAt { id: h } => (h as String) == (first as String)  Absent => false }
+      match event_log_append(store: store, partition: witness_partition(), event: event(parent: HeadAbsent, at: 1001, payload: acquired(reference: "racer")), expected: HeadAbsent) {
+        EventAppendStale { expected: _, observed: o } => match o { HeadAt { id: h } => (h as String) == (first as String)  HeadAbsent => false }
         EventAppended { id: _ } => false
         EventAppendRefused { cause: _ } => false
       }
@@ -96,8 +94,8 @@ test fn a_second_append_against_an_absent_head_is_stale_naming_the_first_by_real
 // the object is built from the event value, and this reads it back from the file the store wrote.
 test fn an_admitted_event_is_stored_as_exactly_its_wire_text_by_real_execution() -> Bool {
   let files = fresh_files()
-  let e = event(parent: Absent, at: 1000, payload: acquired(reference: "exact"))
-  match event_log_append(store: FabricStorageLocalFiles { root: files }, partition: witness_partition(), event: e, expected: Absent) {
+  let e = event(parent: HeadAbsent, at: 1000, payload: acquired(reference: "exact"))
+  match event_log_append(store: FabricStorageLocalFiles { root: files }, partition: witness_partition(), event: e, expected: HeadAbsent) {
     EventAppended { id: i } =>
       match fabric_object_ref_of_wire(wire: i as String) {
         Absent => false

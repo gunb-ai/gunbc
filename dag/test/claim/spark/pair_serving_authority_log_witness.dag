@@ -3,13 +3,13 @@ module test.claim.spark.pair_serving_authority_log_witness
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.process { ExitSuccess, ExitFailure }
-import std.optional { Present, Absent, Optional }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts, FabricGroup, FabricGroupB, parse_fabric_group }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_equal }
 import product.capacity.lease { LeaseGrant }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseInaccessible }
-import product.capacity.event_chain { ChainEvent, ChainEnvelope, EventId, EventDecoded, EventUndecodable, Absent, HeadAt, HeadExpectation }
+import product.capacity.event_chain { ChainEvent, ChainEnvelope, EventId, EventDecoded, EventUndecodable, HeadAbsent, HeadAt, HeadExpectation }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import std.measure { second, second_count, byte_size }
 import extdeps.docker.cli { DockerPsByName, DockerPsByAncestor, DockerPsByLabel, DockerLabel, docker_run_ephemeral_command }
@@ -186,7 +186,7 @@ test fn a_foreign_or_incoherent_document_does_not_decode() -> Bool {
 // enters, under its operation, with an id unique to that write (a preparation is consumed once).
 // The intent of a write the witness authors at `parent`, as an append claim carries it.
 fn alw_intent(parent: EventId?, previous: PairServingGroupAuthority?, next: PairServingGroupAuthority, operation: String, lifecycle: ContentHash?, grant: LeaseGrant?, entry_state: ContentHash?) -> AuthorityWriteIntent {
-  authority_write_intent(group: FabricGroupB {}, head: match parent { Absent => Absent  Present { value: h } => HeadAt { id: h } }, actor: "witness" as NonEmptyStr, previous: previous, next: next, operation: operation as NonEmptyStr, lifecycle: lifecycle, grant: grant, entry_state: entry_state)
+  authority_write_intent(group: FabricGroupB {}, head: match parent { Absent => HeadAbsent  Present { value: h } => HeadAt { id: h } }, actor: "witness" as NonEmptyStr, previous: previous, next: next, operation: operation as NonEmptyStr, lifecycle: lifecycle, grant: grant, entry_state: entry_state)
 }
 
 // The intent a witness-shaped transition event proves: group A, operation tx-op, no lifecycle,
@@ -377,13 +377,13 @@ fn alw_finalize(parent: EventId?, preparation: String, at: Int) -> ChainEvent<Pa
 // `actor` at an absent group head, entering a fenced state over srv5 (the one arm that commits
 // exactly the hosts it names).
 fn alw_srv5_intent(actor: String) -> AuthorityWriteIntent {
-  authority_write_intent(group: FabricGroupB {}, head: Absent, actor: actor as NonEmptyStr, previous: none, next: alw_fenced_over(hs: [alw_host(s: "srv5")]), operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none)
+  authority_write_intent(group: FabricGroupB {}, head: HeadAbsent, actor: actor as NonEmptyStr, previous: none, next: alw_fenced_over(hs: [alw_host(s: "srv5")]), operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none)
 }
 
 // The claim for a release preparation ([srv5] -> [], tx-op): the intent leaves the fenced state
 // over srv5 for a state that commits no host.
 fn alw_release_claim(parent: EventId?, preparation: String, at: Int) -> ChainEvent<PairAuthorityEvent> {
-  ChainEvent { partition: host_placement_partition, parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: PlacementAppendClaimed { preparation: (preparation as NonEmptyStr) as EventId, intent: authority_write_intent(group: FabricGroupB {}, head: Absent, actor: "witness" as NonEmptyStr, previous: Present { value: alw_fenced_over(hs: [alw_host(s: "srv5")]) }, next: alw_fenced_over(hs: [] as List<HostIdentity>), operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none) } }
+  ChainEvent { partition: host_placement_partition, parent: parent, recorded_at: at, actor: "witness" as NonEmptyStr, payload: PlacementAppendClaimed { preparation: (preparation as NonEmptyStr) as EventId, intent: authority_write_intent(group: FabricGroupB {}, head: HeadAbsent, actor: "witness" as NonEmptyStr, previous: Present { value: alw_fenced_over(hs: [alw_host(s: "srv5")]) }, next: alw_fenced_over(hs: [] as List<HostIdentity>), operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none) } }
 }
 
 // The writer's append claim (actor witness) and its own abort.
@@ -716,8 +716,8 @@ test fn an_append_claim_is_written_by_its_claimant_and_is_the_write_its_preparat
   let prep = alw_env(id: "e3", e: alw_prepare(parent: none, group: FabricGroupB {}, previous: [] as List<HostIdentity>, next: [srv5], at: 1000))
   (match placement_fold(oldest_first: [prep, alw_env(id: "e3c", e: alw_claim_written_by(parent: Present { value: "e3" as EventId }, preparation: "e3", actor: "executor-2", claimant: "executor-1", at: 1001))]) { PlacementFoldRefused { at_event: e, reason: r } => (e as String) == "e3c" && r.contains("written by its claimant")  _ => false })
     && (match placement_fold(oldest_first: [prep, alw_env(id: "e3c", e: alw_claim_written_by(parent: Present { value: "e3" as EventId }, preparation: "e3", actor: "executor-1", claimant: "executor-1", at: 1001))]) { PlacementFolded { effects: _, preparations: ps } => any(ps, r => (r.id as String) == "e3" && (match r.state { AppendClaimed { claimant: c, expected_head: _, intent: _ } => (c as String) == "executor-1"  _ => false }))  _ => false })
-    && (match placement_fold(oldest_first: [prep, alw_env(id: "e3c", e: alw_claim_for(parent: Present { value: "e3" as EventId }, preparation: "e3", intent: authority_write_intent(group: FabricGroupB {}, head: Absent, actor: "witness" as NonEmptyStr, previous: none, next: alw_fenced_over(hs: [alw_host(s: "srv6")]), operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none), at: 1001))]) { PlacementFoldRefused { at_event: e, reason: r } => (e as String) == "e3c" && r.contains("not the next state's")  _ => false })
-    && (match placement_fold(oldest_first: [prep, alw_env(id: "e3c", e: alw_claim_for(parent: Present { value: "e3" as EventId }, preparation: "e3", intent: authority_write_intent(group: FabricGroupB {}, head: Absent, actor: "witness" as NonEmptyStr, previous: none, next: alw_fenced_over(hs: [srv5]), operation: "tx-other" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none), at: 1001))]) { PlacementFoldRefused { at_event: e, reason: r } => (e as String) == "e3c" && r.contains("not this event's")  _ => false })
+    && (match placement_fold(oldest_first: [prep, alw_env(id: "e3c", e: alw_claim_for(parent: Present { value: "e3" as EventId }, preparation: "e3", intent: authority_write_intent(group: FabricGroupB {}, head: HeadAbsent, actor: "witness" as NonEmptyStr, previous: none, next: alw_fenced_over(hs: [alw_host(s: "srv6")]), operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none), at: 1001))]) { PlacementFoldRefused { at_event: e, reason: r } => (e as String) == "e3c" && r.contains("not the next state's")  _ => false })
+    && (match placement_fold(oldest_first: [prep, alw_env(id: "e3c", e: alw_claim_for(parent: Present { value: "e3" as EventId }, preparation: "e3", intent: authority_write_intent(group: FabricGroupB {}, head: HeadAbsent, actor: "witness" as NonEmptyStr, previous: none, next: alw_fenced_over(hs: [srv5]), operation: "tx-other" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none), at: 1001))]) { PlacementFoldRefused { at_event: e, reason: r } => (e as String) == "e3c" && r.contains("not this event's")  _ => false })
 }
 
 // On the group partition, a cancellation of a preparation an accepted authority event already
@@ -733,7 +733,7 @@ test fn a_consumed_preparation_cannot_be_cancelled_and_a_cancelled_one_cannot_be
     (match authority_fold(oldest_first: [est, tx, alw_env(id: "e2", e: alw_cancel(parent: Present { value: "e1" as EventId }, preparation: pid, at: 1001))]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e2" && r.contains("already consumed")  _ => false })
       && (match authority_fold(oldest_first: [est, tx]) { AuthorityFolded { generation: g } => g == 1  _ => false })
       && (match authority_fold(oldest_first: [est, alw_env(id: "e2", e: alw_cancel(parent: Present { value: "e0" as EventId }, preparation: pid, at: 1001)), alw_env(id: "e3", e: ChainEvent { partition: pair_authority_partition(group: FabricGroupB {}), parent: Present { value: "e2" as EventId }, recorded_at: 1002, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: resting, next: released, transaction: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, placement: alw_ref(previous: resting, next: released, operation: "tx-op") } })]) { AuthorityFoldRefused { at_event: e, reason: r } => (e as String) == "e3" && r.contains("cancelled")  _ => false })
-      && (match authority_fold(oldest_first: [est, alw_env(id: "e2", e: alw_cancel(parent: Present { value: "e0" as EventId }, preparation: pid, at: 1001))]) { AuthorityFolded { generation: g, cancelled: xs } => g == 0 && length(xs) == 1 && any(xs, c => (c.preparation as String) == pid && (match c.at_head { HeadAt { id: hd } => (hd as String) == "e0"  Absent => false }))  _ => false })
+      && (match authority_fold(oldest_first: [est, alw_env(id: "e2", e: alw_cancel(parent: Present { value: "e0" as EventId }, preparation: pid, at: 1001))]) { AuthorityFolded { generation: g, cancelled: xs } => g == 0 && length(xs) == 1 && any(xs, c => (c.preparation as String) == pid && (match c.at_head { HeadAt { id: hd } => (hd as String) == "e0"  HeadAbsent => false }))  _ => false })
   })
 }
 
@@ -763,14 +763,14 @@ test fn the_write_intent_is_compared_field_for_field_and_round_trips() -> Bool {
     let full = authority_write_intent(group: FabricGroupB {}, head: HeadAt { id: "e0" as EventId }, actor: "witness" as NonEmptyStr, previous: Present { value: resting }, next: pending, operation: "tx-1" as NonEmptyStr, lifecycle: Present { value: h }, grant: none, entry_state: Present { value: h })
     let claim = ChainEvent { partition: host_placement_partition, parent: none, recorded_at: 1001, actor: "witness" as NonEmptyStr, payload: PlacementAppendClaimed { preparation: "p1" as EventId, intent: full } }
     write_intent_eq(a: base, b: base)
-      && !write_intent_eq(a: base, b: authority_write_intent(group: FabricGroupB {}, head: Absent, actor: "witness" as NonEmptyStr, previous: Present { value: resting }, next: released, operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none))
+      && !write_intent_eq(a: base, b: authority_write_intent(group: FabricGroupB {}, head: HeadAbsent, actor: "witness" as NonEmptyStr, previous: Present { value: resting }, next: released, operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none))
       && !write_intent_eq(a: base, b: authority_write_intent(group: FabricGroupB {}, head: HeadAt { id: "e0" as EventId }, actor: "someone-else" as NonEmptyStr, previous: Present { value: resting }, next: released, operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none))
       && !write_intent_eq(a: base, b: authority_write_intent(group: FabricGroupB {}, head: HeadAt { id: "e0" as EventId }, actor: "witness" as NonEmptyStr, previous: none, next: released, operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none))
       && !write_intent_eq(a: base, b: authority_write_intent(group: FabricGroupB {}, head: HeadAt { id: "e0" as EventId }, actor: "witness" as NonEmptyStr, previous: Present { value: resting }, next: pending, operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none))
       && !write_intent_eq(a: base, b: authority_write_intent(group: FabricGroupB {}, head: HeadAt { id: "e0" as EventId }, actor: "witness" as NonEmptyStr, previous: Present { value: resting }, next: released, operation: "tx-other" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none))
       && !write_intent_eq(a: base, b: authority_write_intent(group: FabricGroupB {}, head: HeadAt { id: "e0" as EventId }, actor: "witness" as NonEmptyStr, previous: Present { value: resting }, next: released, operation: "tx-op" as NonEmptyStr, lifecycle: Present { value: h }, grant: none, entry_state: none))
       && !write_intent_eq(a: base, b: authority_write_intent(group: FabricGroupB {}, head: HeadAt { id: "e0" as EventId }, actor: "witness" as NonEmptyStr, previous: Present { value: resting }, next: released, operation: "tx-op" as NonEmptyStr, lifecycle: none, grant: none, entry_state: Present { value: h }))
-      && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: claim)) { EventDecoded { event: back } => match back.payload { PlacementAppendClaimed { preparation: _, intent: i } => write_intent_eq(a: i, b: full) && (match i.expected_head { HeadAt { id: hd } => (hd as String) == "e0"  Absent => false })  _ => false }  EventUndecodable { reason: _ } => false })
+      && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: claim)) { EventDecoded { event: back } => match back.payload { PlacementAppendClaimed { preparation: _, intent: i } => write_intent_eq(a: i, b: full) && (match i.expected_head { HeadAt { id: hd } => (hd as String) == "e0"  HeadAbsent => false })  _ => false }  EventUndecodable { reason: _ } => false })
       && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: claim).replace(from: "\"intent_prev_state\"", to: "\"intent_prev_stale\"")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
   })
 }
@@ -870,7 +870,7 @@ fn alw_through_codec(id: String, e: ChainEvent<PairAuthorityEvent>) -> ChainEnve
 
 fn alw_retired_intent() -> AuthorityWriteIntent {
   AuthorityWriteIntent {
-    group: RecordedRetiredGroupA, expected_head: Absent, actor: "witness" as NonEmptyStr,
+    group: RecordedRetiredGroupA, expected_head: HeadAbsent, actor: "witness" as NonEmptyStr,
     previous: none, next: RecordedRetiredGroupAAuthority { state: "released-to-fleet" as NonEmptyStr },
     operation: "d0-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none,
   }

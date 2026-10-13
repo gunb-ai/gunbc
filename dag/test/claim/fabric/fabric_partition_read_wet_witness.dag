@@ -1,10 +1,8 @@
 module test.claim.fabric.fabric_partition_read_wet_witness
-import std.optional { Absent, Optional, Present }
-
 
 import extdeps.shell
 import std.types { Bool, NonEmptyStr, String, EpochSecs }
-import product.capacity.event_chain { PartitionId, ChainEvent, HeadExpectation, Absent, HeadAt }
+import product.capacity.event_chain { PartitionId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt }
 import product.capacity.pool_events { PoolEvent, PoolAcquired }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_ensure }
@@ -28,7 +26,7 @@ fn fresh_store() -> FabricStorageFileRoot {
 fn event(parent: HeadExpectation, at: EpochSecs, reference: String) -> ChainEvent<PoolEvent> {
   ChainEvent {
     partition: witness_partition(),
-    parent: match parent { Absent => none  HeadAt { id: h } => Present { value: h } },
+    parent: match parent { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
     recorded_at: at,
     actor: "readout-witness" as NonEmptyStr,
     payload: PoolAcquired { reference: reference as NonEmptyStr, amount: 1, term_seconds: 300 },
@@ -55,7 +53,7 @@ test fn an_empty_partition_reports_an_absent_head_and_no_events_by_real_executio
 // the id the append was answered with, carrying their own wire text.
 test fn a_two_event_partition_reports_both_events_oldest_first_by_real_execution() -> Bool {
   let store = FabricStorageLocalFiles { root: fresh_store() }
-  match appended(store: store, parent: Absent, at: 1000, reference: "first") {
+  match appended(store: store, parent: HeadAbsent, at: 1000, reference: "first") {
     Absent => false
     Present { value: h1 } =>
       match appended(store: store, parent: h1, at: 1001, reference: "second") {
@@ -65,8 +63,8 @@ test fn a_two_event_partition_reports_both_events_oldest_first_by_real_execution
             PartitionReadUnreported { detail: _ } => false
             PartitionReadReported { text: t } =>
               t.contains("events 2")
-                && t.contains(match h1 { HeadAt { id: i } => i as String  Absent => "" })
-                && t.contains(match h2 { HeadAt { id: i } => i as String  Absent => "" })
+                && t.contains(match h1 { HeadAt { id: i } => i as String  HeadAbsent => "" })
+                && t.contains(match h2 { HeadAt { id: i } => i as String  HeadAbsent => "" })
                 && t.contains("first") && t.contains("second")
           }
       }
@@ -78,7 +76,7 @@ test fn a_two_event_partition_reports_both_events_oldest_first_by_real_execution
 // partition holds.
 test fn a_chain_longer_than_the_budget_refuses_rather_than_reporting_a_prefix_by_real_execution() -> Bool {
   let store = FabricStorageLocalFiles { root: fresh_store() }
-  match appended(store: store, parent: Absent, at: 1000, reference: "first") {
+  match appended(store: store, parent: HeadAbsent, at: 1000, reference: "first") {
     Absent => false
     Present { value: h1 } =>
       match appended(store: store, parent: h1, at: 1001, reference: "second") {

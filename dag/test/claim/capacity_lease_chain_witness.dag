@@ -1,13 +1,11 @@
 module test.claim.capacity_lease_chain_witness
-import std.optional { Absent, Optional, Present }
-
 
 import std.types { Bool, Int, NonEmptyStr, List, String, EpochSecs }
 import std.nat { Nat }
 import std.measure { Measure, Count, One }
 import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_reading_at, PoolReading, PoolRead, PoolReadingRefused, pool_acquire, PoolOutcome, PoolAdvanced, PoolRefused }
 import product.capacity.event_chain {
-  PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, Absent, HeadAt,
+  PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
   AppendDecision, AppendAdmitted, AppendStale, decide_append, chain_from_head, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
   EventDecoded, EventUndecodable,
 }
@@ -104,7 +102,7 @@ test fn two_writers_from_one_head_produce_one_admission_one_stale_and_then_a_ful
                   let a_admitted = decide_append(expected: xa, observed: head, new_head: w_id(s: "e2"), generation_before: g)
                   let b_after_a = decide_append(expected: xb, observed: HeadAt { id: w_id(s: "e2") }, new_head: w_id(s: "e3"), generation_before: g + 1)
                   (match a_admitted { AppendAdmitted { new_head: h, generation: gen } => (h as String) == "e2" && gen == 2  AppendStale { expected: _, observed: _ } => false })
-                    && (match b_after_a { AppendStale { expected: _, observed: o } => (match o { HeadAt { id: i } => (i as String) == "e2"  Absent => false })  AppendAdmitted { new_head: _, generation: _ } => false })
+                    && (match b_after_a { AppendStale { expected: _, observed: o } => (match o { HeadAt { id: i } => (i as String) == "e2"  HeadAbsent => false })  AppendAdmitted { new_head: _, generation: _ } => false })
                     && (match chain_from_head(envs: [e1, ChainEnvelope { id: w_id(s: "e2"), event: ea }], head: HeadAt { id: w_id(s: "e2") }, budget: 10) {
                          ChainWalked { oldest_first: ys } =>
                            match pool_fold(root: w_root(), oldest_first: ys) {
@@ -154,7 +152,7 @@ test fn a_grant_carries_the_admitted_event_as_its_fence_and_the_declared_deadlin
     Absent => false
     Present { value: g } =>
       (g.fence.grant as String) == "e2" && g.fence.generation == 2 && g.granted_at == 1100 && g.expires_at == 1400
-        && (match grant_from_admission(request: req, admission: AppendStale { expected: Absent, observed: Absent }, policy: w_policy()) { Absent => true  Present { value: _ } => false })
+        && (match grant_from_admission(request: req, admission: AppendStale { expected: HeadAbsent, observed: HeadAbsent }, policy: w_policy()) { Absent => true  Present { value: _ } => false })
   }
 }
 

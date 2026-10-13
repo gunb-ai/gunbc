@@ -1,6 +1,6 @@
 module test.claim.serving.serving_front_door_witness
 
-import std.optional { Present, Absent, Optional }
+import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List, EpochSecs, Secret }
 import std.nat { Nat }
@@ -16,7 +16,7 @@ import gunbc.harness.harness_seat {
 }
 import product.capacity.lease { LeaseGrant, GrantIdentity, LeasePolicy, QuiescenceRequired, Quiescent, QuiescenceUnobserved, lease_grant, lease_fence_of }
 import product.capacity.event_chain {
-  PartitionId, EventId, ChainEnvelope, ChainEvent, ChainWalk, ChainWalked, HeadExpectation, Absent, HeadAt,
+  PartitionId, EventId, ChainEnvelope, ChainEvent, ChainWalk, ChainWalked, HeadExpectation, HeadAbsent, HeadAt,
   AppendAdmitted, AppendStale, decide_append,
 }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, PoolFolded, PoolFoldRefused, pool_fold }
@@ -176,7 +176,7 @@ data redeemed_once: ChainWalk<RedemptionEvent> = ChainWalked { oldest_first: [
 // the state, and -- for a chain read at its head -- the append is admitted.
 fn redeem_against(redemptions: ChainWalk<RedemptionEvent>) -> fn(HarnessSeatPoolIdentity, NonEmptyStr, NonEmptyStr) -> FrontDoorRedemption {
   fn(pool, reference, request) {
-    match propose_redemption(state: redemption_state_of(walk: redemptions, reference: reference), head: Absent, partition: redemption_partition_of(pool_partition: pool.partition), at: 1050, actor: proxy, reference: reference, request: request, holder: proxy) {
+    match propose_redemption(state: redemption_state_of(walk: redemptions, reference: reference), head: HeadAbsent, partition: redemption_partition_of(pool_partition: pool.partition), at: 1050, actor: proxy, reference: reference, request: request, holder: proxy) {
       RedemptionProposed { event: _, expected: _ } => DoorRedeemed
       RedemptionRefused { cause: c } => DoorRedemptionRefused { cause: c }
     }
@@ -444,12 +444,12 @@ test fn a_permit_claiming_another_fence_generation_is_refused() -> Bool {
 test fn two_concurrent_admissions_of_one_permit_forward_exactly_one() -> Bool {
   let partition = redemption_partition_of(pool_partition: witness_partition)
   let state0 = redemption_state_of(walk: no_redemptions, reference: witness_reference)
-  let a = propose_redemption(state: state0, head: Absent, partition: partition, at: 1050, actor: proxy, reference: witness_reference, request: request_one, holder: proxy)
-  let b = propose_redemption(state: state0, head: Absent, partition: partition, at: 1050, actor: proxy, reference: witness_reference, request: request_two, holder: proxy)
+  let a = propose_redemption(state: state0, head: HeadAbsent, partition: partition, at: 1050, actor: proxy, reference: witness_reference, request: request_one, holder: proxy)
+  let b = propose_redemption(state: state0, head: HeadAbsent, partition: partition, at: 1050, actor: proxy, reference: witness_reference, request: request_two, holder: proxy)
   match a {
     RedemptionRefused { cause: _ } => false
     RedemptionProposed { event: ea, expected: xa } =>
-      match decide_append(expected: xa, observed: Absent, new_head: "ev-redeem-a" as EventId, generation_before: 0) {
+      match decide_append(expected: xa, observed: HeadAbsent, new_head: "ev-redeem-a" as EventId, generation_before: 0) {
         AppendStale { expected: _, observed: _ } => false
         AppendAdmitted { new_head: winner, generation: _ } => {
           let chain1 = ChainWalked { oldest_first: [ChainEnvelope { id: winner, event: ea }] }
