@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
-import std.algebra { FreeMonoid, freemonoid_empty, list_head, skip }
+import std.algebra { Cons, Empty, FreeMonoid }
 import gunbc.host.host_effect {
   HostEffect,
   HostEffectIntent,
@@ -81,12 +81,12 @@ fn host_effect_plan_apply_rest(
   if !reconciliation_converged(r: head_result) {
     head_result
   } else {
-    match list_head(xs: rest) {
-      Absent => head_result
-      Present { value: next } =>
+    match rest {
+      Empty => head_result
+      Cons { head: next, tail: t } =>
         host_effect_plan_apply_rest(
           head_result: host_effect_plan_apply_step(step: next, ctx: ctx),
-          rest: skip(xs: rest, n: 1),
+          rest: t,
           ctx: ctx,
         )
     }
@@ -97,16 +97,16 @@ fn host_effect_plan_apply(
   plan: HostEffectPlan,
   ctx: HostEffectPlanContext,
 ) -> Reconciliation<HostEffectIntent?, HostEffectEvidence> {
-  match list_head(xs: plan.steps) {
-    Absent =>
+  match plan.steps {
+    Empty =>
       NotConverged {
         reason: "host_effect_plan_apply: empty plan has no effect to apply",
         applied: Absent,
       }
-    Present { value: first } =>
+    Cons { head: first, tail: rest } =>
       host_effect_plan_apply_rest(
         head_result: host_effect_plan_apply_step(step: first, ctx: ctx),
-        rest: skip(xs: plan.steps, n: 1),
+        rest: rest,
         ctx: ctx,
       )
   }
