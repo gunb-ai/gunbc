@@ -381,6 +381,8 @@ import v2.compiler.inferred_tree {
 import v2.std.node_query {
   find_arrow_body_child,
   find_named_child,
+}
+import v2.std.grammar {
   node_atom_identity_optional,
 }
 import std.optional {
