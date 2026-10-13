@@ -182,12 +182,8 @@ import gunbc.live_deploy.release_locus {
   approval_broker_release_binary_path,
   RevisionBoundAtEmission,
 }
-import gunbc.ci.ci_deploy_access {
-  DeployAccessJobPrincipalRefusal,
-  deploy_access_job_principal_refused_emit_poison,
-  ci_deploy_srv1_access,
-}
-import gunbc.fleet.fleet_posix_accounts { DeployRunnerPrincipal, ci_runner_sudo_binary_path, SudoVisudo, fleet_posix_ci_runner_principal }
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
+import gunbc.fleet.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoVisudo, fleet_posix_ci_runner_principal }
 import gunbc.host.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_shadow_revert_script,
@@ -1879,6 +1875,7 @@ test fn a_refused_serve_unit_is_not_reloaded_enabled_or_restarted() -> Bool {
   let retract_frags = retract_intent_fragments_for(spec: spec, access: a)
   let retract_pipe = compose_host_script(fragments: retract_frags)
   let upsert = pipeline_steps_text(steps: emit_artifact_upsert(
+    principal: fleet_posix_ci_runner_principal(),
     art: DeploymentArtifactStep { kind: SystemdUnit, path: spec.service.unit_name },
     spec: spec,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
