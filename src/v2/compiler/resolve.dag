@@ -180,7 +180,7 @@ import v2.std.symbol_index {
   TypeDeclChildrenInherited,
   TypeDeclChildrenTypeOccurrence,
   TypeDeclChildWalk,
-  symbol_index_is_module_root_at
+  symbol_index_owning_module_of
 }
 import v2.std.node {
   BinderTypeEdge,
@@ -331,28 +331,15 @@ type ClosureProviderRefusal {
 }
 
 // THE ONE READ every closure-index miss consults: the refused provider whose module IS the
-// declaration's owning module, if any. A proper-prefix join would attribute v2.p.child.R to
-// refused parent v2.p (roster order could change which). Join exact-module against the
-// longest prefix of the path that is a marked module root. A miss with no refused owning
-// module stays the bare miss.
-fn declaration_owning_module(index: SymbolIndex, path: QualifiedName) -> Optional<QualifiedName> {
-  match path {
-    Empty => optional_absent()
-    Cons { head: _, tail: _ } =>
-      if symbol_index_is_module_root_at(index: index, qualified_path: path) {
-        optional_present(value: path)
-      } else {
-        declaration_owning_module(index: index, path: qualified_name_init(qn: path))
-      }
-  }
-}
-
+// declaration's fill-time owning module (`v2.std.symbol_index` `symbol_index_owning_module_of`),
+// if any. A proper-prefix join would attribute v2.p.child.R to refused parent v2.p. A miss
+// with no refused owning module stays the bare miss.
 fn unavailable_provider_for_path(
   index: SymbolIndex,
   providers: List<ClosureProviderRefusal>,
   path: QualifiedName
 ) -> Optional<ClosureProviderRefusal> {
-  match declaration_owning_module(index: index, path: path) {
+  match symbol_index_owning_module_of(index: index, path: path) {
     Present { value: module } => unavailable_provider_for_module(providers: providers, module: module)
     Absent => optional_absent()
   }
