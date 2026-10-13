@@ -1,10 +1,10 @@
-module gunbc.fleet_asset_identity
+module gunbc.fleet.fleet_asset_identity
 
 import product.placement_supply { PhysicalAssetIdentity }
 
 // EVERY PHYSICAL ASSET IDENTITY THE OPERATOR FLOOR HOLDS, IN ONE MODULE UPSTREAM OF BOTH ITS USERS.
 //
-// These constants lived in gunbc.fleet_physical_inventory, which imports gunbc.fleet_intent_network
+// These constants lived in gunbc.fleet.fleet_physical_inventory, which imports gunbc.fleet.fleet_intent_network
 // for the host identities. That was fine while only the inventory named an asset. It stopped being
 // fine when review 59815 required the printer's network endpoint to bind to printer_01
 // structurally: the endpoint lives in fleet_intent_network, so that binding would have made the two

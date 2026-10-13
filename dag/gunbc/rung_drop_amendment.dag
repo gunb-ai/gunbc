@@ -36,7 +36,7 @@ import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded }
 // UPDATE 2026-10-06: the first real supersession arrived (gunbc.rung_drop
 // rust_unit_tests_over_their_cap), and it ENDED a drop rather than replacing its trigger, so it is
 // the RungDropStanding arm Superseded { ruling, decision_record, loss_holder } and the closing
-// sentence branches on it; test.claim.rung_drop_superseded_standing_witness_test is its red. A
+// sentence branches on it; test.claim.rung_drop_superseded_standing_witness is its red. A
 // ruling that REPLACES a standing row's trigger is still unmodelled, for the reason below.
 //
 // It was left unmodelled rather than built because NOTHING IN THE CORPUS SUPERSEDED A TRIGGER THEN,
@@ -61,7 +61,7 @@ import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded }
 // DESIGN section 4b(3) makes for keeping the drop roster and the failure-mode ledger apart.
 //
 // THE JOIN IS THE RESIDUAL RISK AND IT IS WALLED. A row keyed by `drop_identity` can name a drop
-// that does not exist, or one that was renamed. test.claim.rung_drop_amendment_witness_test joins
+// that does not exist, or one that was renamed. test.claim.rung_drop_amendment_witness joins
 // every amendment against gunbc.rung_drop.roster at identity grain and refuses a dangling key, with
 // a control amendment naming no drop to keep the assertion discriminating.
 

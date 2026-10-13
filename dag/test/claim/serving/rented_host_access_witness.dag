@@ -1,0 +1,46 @@
+module test.claim.serving.rented_host_access_witness
+
+import std.types { String, Bool, NonEmptyStr }
+import product.host_identity { HostIdentity }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, IndependentlyAnchored }
+import gunbc.serving.rented_host_access {
+  RentedHostAccessDeclaration, RentedHostAccess, RentedHostAccessReady, RentedHostAccessRefused, rented_host_access,
+}
+
+data w_row: KnownHostKeyRow = KnownHostKeyRow {
+  host: "rental-1" as HostIdentity,
+  endpoint: "203.0.113.7",
+  key_type: "ssh-ed25519",
+  public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFixtureFixtureFixtureFixtureFixtureFixture",
+  sha256_fingerprint: "SHA256:fixture",
+  provenance: IndependentlyAnchored { authority: "synthetic fixture standing for the provider console fingerprint" as NonEmptyStr },
+}
+
+fn w_declaration(endpoint: String) -> RentedHostAccessDeclaration {
+  RentedHostAccessDeclaration {
+    node: "rental-1" as NonEmptyStr,
+    endpoint: endpoint as NonEmptyStr,
+    principal: "root" as NonEmptyStr,
+    host_key: w_row,
+    operator_key: SshPublicKey { algorithm: Ed25519, material: "AAAAC3NzaC1lZDI1NTE5AAAAIOperatorOperatorOperatorOperatorOperatorOp" as NonEmptyStr, comment: "operator-rental" },
+    operator_key_fingerprint: "SHA256:operator" as NonEmptyStr,
+  }
+}
+
+// A HOST KEY ROW FOR ANOTHER ENDPOINT MUST NOT ANCHOR THIS NODE: the row is the whole trust anchor of a
+// rental, so accepting a mismatch would pin the declared address to a key observed elsewhere.
+test fn a_host_key_row_for_another_endpoint_is_refused_and_names_both() -> Bool {
+  match rented_host_access(declaration: w_declaration(endpoint: "203.0.113.8"), attempt_raw: "w-attempt") {
+    RentedHostAccessRefused { node: _, cause: c } =>
+      string_contains(c, "203.0.113.7") && string_contains(c, "203.0.113.8")
+    RentedHostAccessReady { node: _, transport: _, receipt: _ } => false
+  }
+}
+
+test fn an_unsafe_attempt_identity_refuses_before_any_leg() -> Bool {
+  match rented_host_access(declaration: w_declaration(endpoint: "203.0.113.7"), attempt_raw: "../escape") {
+    RentedHostAccessRefused { node: _, cause: c } => string_contains(c, "attempt identity")
+    RentedHostAccessReady { node: _, transport: _, receipt: _ } => false
+  }
+}

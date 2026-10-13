@@ -333,7 +333,7 @@ fn gunbc_cli_version_text(identity: CliVersionIdentity) -> String {
 // The policy and formatting are modeled above; `build.rs` remains the host observation that asks
 // Git for HEAD and observes whether the Rust inputs are dirty, then binds GUNBC_BUILD_IDENTITY for
 // the Rust realization. This is counted interim HAND-Rust growth, not a census shrink.
-data gunbc_cli_build_identity_seed_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the GUNBC_BUILD_IDENTITY observation block in src/v1/stage0/build.rs — exactly one removable seed unit. DISSOLVES WHEN the v1-zero-hand-maintained-rust ROADMAP lane (gunbc.roadmap_authority roadmap_nodes) emits the build-time Git observation from gunbc.cli_dispatch_surface, at which point git_output and the identity block delete together rather than leaving a second producer. Checkable until deletion: GUNBC_BUILD_IDENTITY has exactly one cargo:rustc-env producer in src/v1/stage0/build.rs, gunbc_cli_version_text is its sole formatting authority, and the rerun watch set that keeps the identity fresh is read from the one projection src/v1/stage0/linked_partition_crates.generated.txt (Stage0LinkedPartitionCratesArtifact, rendered by gunbc.stage0_executable_assembly_emit from the partition authority) -- build.rs names no crate itself and refuses the build when that projection is unreadable, names a crate without a manifest, or is empty.")
+data gunbc_cli_build_identity_seed_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the GUNBC_BUILD_IDENTITY observation block in src/v1/stage0/build.rs — exactly one removable seed unit. DISSOLVES WHEN the v1-zero-hand-maintained-rust ROADMAP lane (gunbc.roadmap.roadmap_authority roadmap_nodes) emits the build-time Git observation from gunbc.cli_dispatch_surface, at which point git_output and the identity block delete together rather than leaving a second producer. Checkable until deletion: GUNBC_BUILD_IDENTITY has exactly one cargo:rustc-env producer in src/v1/stage0/build.rs, gunbc_cli_version_text is its sole formatting authority, and the rerun watch set that keeps the identity fresh is read from the one projection src/v1/stage0/linked_partition_crates.generated.txt (Stage0LinkedPartitionCratesArtifact, rendered by gunbc.stage0.stage0_executable_assembly_emit from the partition authority) -- build.rs names no crate itself and refuses the build when that projection is unreadable, names a crate without a manifest, or is empty.")
 
 // WHAT IS DELIBERATELY NOT HERE: `--dry-run`.
 //
@@ -356,11 +356,11 @@ fn gunbc_build_operation_ref() -> DeclarationRef {
 // successor naming the knob-grain spine behind a timer retired 2026-08-13, while the live spine
 // -- plan, hashed bundle, lease, apply, receipts -- was reachable only inside a GitHub Actions run.
 // Wiring it the way `build` is wired puts the verb on the generated dispatch with no new Rust body:
-// the operation is gunbc.fleet_converge_plan_cli fleet_converge_operator_cli_entry, which mints an
+// the operation is gunbc.fleet.fleet_converge_plan_cli fleet_converge_operator_cli_entry, which mints an
 // operator-local run binding and hands it to the same bound entries the workflow runs.
 fn gunbc_fleet_converge_operation_ref() -> DeclarationRef {
   DeclarationRef {
-    module_path: "gunbc.fleet_converge_plan_cli",
+    module_path: "gunbc.fleet.fleet_converge_plan_cli",
     decl_name: "fleet_converge_operator_cli_entry",
     field: WholeDeclaration,
   }

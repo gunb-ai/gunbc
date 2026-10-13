@@ -16,8 +16,8 @@ import extdeps.procps.pgrep {
   PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome,
 }
 import extdeps.prometheus.client { SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading }
-import gunbc.host_effect { HostEffectTransport, FleetSsh }
-import gunbc.host_operation_exec {
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host.host_operation_exec {
   HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
   ProcfsReadStat, ProcfsReadPidStat, GetconfClockTicksPerSecond, Sha256SumFile,
 }

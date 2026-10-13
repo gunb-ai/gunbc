@@ -1,6 +1,6 @@
 module gunbc.fleet.printer_project_delivery
 
-import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential,session_resolved_version}
+import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential,session_resolved_version}
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import std.nat { Nat }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
@@ -42,8 +42,8 @@ import product.network_topology {
   NetworkAttachmentRole, FabricationAppliance,
   NetworkLocality, Lan,
 }
-import gunbc.fleet_intent_network { fleet_intent_network_topology }
-import gunbc.fleet_printer_access {
+import gunbc.fleet.fleet_intent_network { fleet_intent_network_topology }
+import gunbc.fleet.fleet_printer_access {
   PrinterCredentialResolution, PrinterCredentialProvisioned,
   PrinterCredentialProvisionRequired, PrinterCredentialProvisionAmbiguous,
   PrinterCredentialObservationRefused, PrinterCredentialVersionUnrecorded,
@@ -437,7 +437,7 @@ fn project_upload_command<PeerClass>(
 // would fetch printer-01's access code and deliberately send it to a caller-chosen peer -- with peer
 // verification disabled, so nothing would object. Two facts that must agree were free to disagree.
 //
-// I ALSO WROTE A SECOND ENDPOINT AUTHORITY BEFORE FINDING THIS ONE. gunbc.fleet_intent_network
+// I ALSO WROTE A SECOND ENDPOINT AUTHORITY BEFORE FINDING THIS ONE. gunbc.fleet.fleet_intent_network
 // already carries printer_01_lan_endpoint and printer_02_lan_endpoint, transcribed from the
 // operator's reservation table, because my branch base predates them and I searched my own branch
 // rather than the authority surface. That duplicate is deleted; this consumes the existing rows.
@@ -454,7 +454,7 @@ type PrinterAddressLookup
 // IDENTITIES COMPARE AS IDENTITIES. This coerced both sides to String and compared the renderings,
 // which is an equality on the PROJECTION rather than on the subject: it holds for any two assets that
 // happen to render alike, and it silently survives a change to how an identity prints. The carrier
-// compares directly -- the same equality gunbc.fleet_printer_access already uses on this type when
+// compares directly -- the same equality gunbc.fleet.fleet_printer_access already uses on this type when
 // matching a locus row to its printer.
 fn endpoint_names_printer(e: NetworkEndpoint, printer: PhysicalAssetIdentity) -> Bool {
   match e.subject {
@@ -647,7 +647,7 @@ fn deliver_project_to_printer(
   match printer_endpoint_address(printer: printer) {
     PrinterAddressUnknown { printer: p } =>
       refuse_and_drop(printer: p, payload: payload,
-        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet_intent_network")
+        cause: "no LAN endpoint is recorded for this printer in gunbc.fleet.fleet_intent_network")
     PrinterAddressAmbiguous { printer: p } =>
       refuse_and_drop(printer: p, payload: payload,
         cause: "more than one LAN fabrication endpoint matches this printer; the roster is ambiguous and delivery refuses rather than picking one by list order")
@@ -660,7 +660,7 @@ fn deliver_project_to_printer(
       refuse_and_drop(printer: p, payload: payload, cause: cause)
     PrinterCredentialLocusUndeclared { printer: p } =>
       refuse_and_drop(printer: p, payload: payload,
-        cause: "this printer has no access-code locus declared in gunbc.fleet_printer_access, so there is no secret to observe: delivery refuses rather than spelling a plausible secret name by convention and asking Secret Manager about a row nobody wrote")
+        cause: "this printer has no access-code locus declared in gunbc.fleet.fleet_printer_access, so there is no secret to observe: delivery refuses rather than spelling a plausible secret name by convention and asking Secret Manager about a row nobody wrote")
     PrinterCredentialLocusConflicted { printer: p, matches: _ } =>
       refuse_and_drop(printer: p, payload: payload,
         cause: "more than one access-code locus is declared for this printer, so which secret holds its code is ambiguous and delivery refuses rather than taking one by list order")

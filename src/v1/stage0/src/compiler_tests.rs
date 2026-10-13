@@ -1299,7 +1299,7 @@ mod compiler_tests {
     /// compiles two emitted crates. It is RUNNABLE ON DEMAND -- `cargo test --release -p
     /// v1-compiler --lib native_bool_variant_fixture_closure_discrimination -- --ignored`. No CI
     /// path invokes it (gunbc.rung_drop rust_unit_tests_off_the_merge_path); the emitted-bytes
-    /// half that does run on the floor is test.claim.native_variant_realization_witness_test.
+    /// half that does run on the floor is test.claim.native_variant_realization_witness.
     #[test]
     #[ignore]
     fn native_bool_variant_fixture_closure_discrimination() {
@@ -5053,13 +5053,13 @@ mod compiler_tests {
         };
 
         // (1) THE RED: a field-position reference with no resolution, sitting outside its declaring module.
-        let unresolved = node("String", "src/v2/compiler/01_tokenize.dag", Ref, None);
+        let unresolved = node("String", "src/v2/compiler/tokenize.dag", Ref, None);
         assert!(
             matches!(identity(unresolved.clone()), Id::ReferenceIdentityUnavailable { cause } if matches!(cause, Cause::NoResolutionBoundAtReference)),
             "an unresolved reference must refuse, never key on the file it sits in"
         );
         assert!(
-            matches!(legacy(unresolved), Prov::CorpusDeclared { decl_file } if decl_file == "src/v2/compiler/01_tokenize.dag"),
+            matches!(legacy(unresolved), Prov::CorpusDeclared { decl_file } if decl_file == "src/v2/compiler/tokenize.dag"),
             "the legacy read keys that same reference on its own location -- the answer the split refuses"
         );
 

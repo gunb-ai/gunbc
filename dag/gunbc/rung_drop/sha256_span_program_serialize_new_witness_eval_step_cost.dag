@@ -35,7 +35,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_span_pr
 // in `v2.workflow.bash_command_fold_serialize` is NOT established by this row and is not this lane's
 // to assert -- it is a hypothesis, and the restoration trigger below is written so that either
 // outcome retires the drop honestly. Re-derive the figure with the instrument, never from this
-// prose: `tools.floor_cost_distribution_instrument` over a live floor's
+// prose: `gunbc.instruments.floor_cost_distribution_instrument` over a live floor's
 // `required_floor_claim_cost.tsv`.
 data sha256_span_program_serialize_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_span_program_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_span_program_rows; measured by "), m.measured_by))
 

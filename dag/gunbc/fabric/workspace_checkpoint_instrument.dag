@@ -63,13 +63,13 @@ import gunbc.fabric.fabric_object_r2 {
   FabricObjectR2PutVerdict, FabricObjectR2Stored, FabricObjectR2PresentVerified, FabricObjectR2OccupiedByOther, FabricObjectR2Refused, FabricObjectR2OutcomeUnknown,
 }
 import gunbc.fabric.workspace_source { fabric_workspace_source_key, workspace_put_words, workspace_put_landed, workspace_transcript_caveat }
-import gunbc.fabric_storage_r2_head {
+import gunbc.fabric.fabric_storage_r2_head {
   R2HeadBinding, R2HeadCredential, r2_head_binding, r2_head_read, r2_head_advance, r2_head_fabric_advance,
   R2HeadAdvanceResult, R2HeadAdvanceKnown, R2HeadAdvanceOutcomeUnknown, R2HeadStagingCustody, r2_head_staging_of,
   R2HeadCasAdmission, R2HeadCasAdmittedArm, R2HeadCasNotGrounded, R2HeadCasAdmitted, r2_head_cas_admission, r2_head_cas_ground,
 }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
-import gunbc.host_effect { LocalShell }
+import gunbc.host.host_effect { LocalShell }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 
 // THE RECOVERABLE-WORKSPACE STAGE 0/1 INSTRUMENT: WHAT A CHECKPOINT OF THE OPERATOR'S REAL WORKSPACE
@@ -95,7 +95,7 @@ import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent
 //   std.checkpointed_workspace's header names.
 //
 // THE COMMIT IS GATED ON THE HEAD'S CAS GROUND, AND REFUSES WHILE IT IS A BET. The head realization
-// is gunbc.fabric_storage_r2_head, whose If-Match linearizability is not yet cited; its projection
+// is gunbc.fabric.fabric_storage_r2_head, whose If-Match linearizability is not yet cited; its projection
 // to std.fabric_storage (r2_head_fabric_advance) demands the sealed admission, and
 // workspace_commit_classify is the only producer of a committed receipt. So the commit asks
 // r2_head_cas_admission first and, while it is not grounded, refuses with the read obligation it

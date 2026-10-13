@@ -1,4 +1,4 @@
-module tools.merge_admission_walk
+module gunbc.instruments.merge_admission_walk
 
 import std.types { FilePath, GitRef, Int, Seconds, String }
 import extdeps.git { git_remote_ref_parts }
@@ -37,10 +37,10 @@ import gunbc.merge_admission_produce {
   parse_receipt_wire_v2,
   render_receipt_wire_v2,
 }
-import gunbc.ci_failure_class { merge_freshness_verdict_is_consumed_to_block }
+import gunbc.ci.ci_failure_class { merge_freshness_verdict_is_consumed_to_block }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import tools.merge_admission_capture { capture_walk_attempt_id }
+import gunbc.instruments.merge_admission_capture { capture_walk_attempt_id }
 
 // The live merge-admission path is a typed pre-walk capture subprocess followed by
 // stamp_tested_floor and refresh_current_target_and_gate as two singleton success stages in ONE
@@ -259,7 +259,7 @@ data merge_admission_refresh_refusal_wire_relpath: String = "target/merge-admiss
 //
 // THE DISCARDED OUTCOMES IN refresh_current_target_and_gate ARE THE REQUIRED CLASS of the
 // discarded-effect census #10574 opened over its own out-of-scope remainder -- the pre-clear sweep
-// and the refusal write here, plus the pre-clear in tools.merge_admission_capture, which are its
+// and the refusal write here, plus the pre-clear in gunbc.instruments.merge_admission_capture, which are its
 // only members. No census total is transcribed (DESIGN §6); the instrument is the selector
 // `let _ = shell.<Op>` OR `let _ = Filesystem.<Op>`, and it is the wider reading precisely because
 // the narrow shell-only one drops the Filesystem.Write below. The pre-clear sweep and the refusal
@@ -267,7 +267,7 @@ data merge_admission_refresh_refusal_wire_relpath: String = "target/merge-admiss
 // "the clear failed and a prior attempt's cause survived", and "the cause was recorded" identically
 // to "the write refused and the cause was lost" -- the two distinctions the wire exists to create,
 // undone at the binding. The remedy and its trigger are stated once, at the sibling occurrence in
-// tools.merge_admission_capture: the wire must carry the walk attempt identity so a reader decides
+// gunbc.instruments.merge_admission_capture: the wire must carry the walk attempt identity so a reader decides
 // staleness from content rather than from a sweep having succeeded, which lands with the reader
 // that parses it. Not repaired here, because with no producer and no consumer the fix would be a
 // format change to a channel with no ends.
@@ -284,13 +284,13 @@ fn refresh_wire_path() -> FilePath {
 // the verdict is still computed and the RefreshVerdictDenied arm stays type-live, but stage 2
 // cannot deny on staleness; this is a visible, bounded widening, not a silent fail-open.
 // Dissolution trigger: the merge_freshness_verdict_is_consumed_to_block flip in
-// gunbc.ci_failure_class — the same commit that turns the flag on deletes this else arm (verdict
+// gunbc.ci.ci_failure_class — the same commit that turns the flag on deletes this else arm (verdict
 // match becomes unconditional) and this row with it.
 
 data merge_admission_refresh_ratchet_off_widening_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.ci_failure_class",
+    module_path: "gunbc.ci.ci_failure_class",
     decl_name: "merge_freshness_verdict_is_consumed_to_block",
     field: WholeDeclaration
   }

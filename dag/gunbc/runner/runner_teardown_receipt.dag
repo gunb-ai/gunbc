@@ -4,7 +4,7 @@ import std.optional { Optional, Present, Absent }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { ObservationInstant }
 import std.decl_ref { declaration_ref_eq }
-import gunbc.build_cache_instance { ProcessIdentity, process_identity_eq }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity, process_identity_eq }
 import gunbc.runner.runner_job_initiator { RunnerEvidenceSource }
 import gunbc.runner.runner_usage_receipt {
   RunnerAttemptSubject, runner_attempt_subject_eq, RunnerInstantPair, RunnerInstantOrderRefusal, runner_instant_order_refusal,

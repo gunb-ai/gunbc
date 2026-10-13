@@ -567,11 +567,17 @@ pub(crate) fn run_claim_evaluation(
     .map_err(|payload| panic_payload_text(&payload))
 }
 
-/// Why the discovery authority's per-file fold produced no roster. Two causes, two repairs: the
-/// authority could not be EVALUATED (a frame or interpreter defect, located at the source when one
-/// was being folded), or it evaluated and REFUSED the corpus (a placement or sidecar violation,
-/// carried as the producer's own reason).
+/// Why the discovery authority's per-file fold produced no roster. Three causes, three repairs: a
+/// source's test-marked declarations could not be READ (it does not parse, so which of its
+/// declarations are tests is undeterminable), the authority could not be EVALUATED (a frame or
+/// interpreter defect, located at the source when one was being folded), or it evaluated and
+/// REFUSED the corpus (a placement or live_tree_disposition violation, carried as the producer's
+/// own reason).
 pub(crate) enum FloorDiscoveryFoldRefusal {
+    Unparseable {
+        source: String,
+        cause: String,
+    },
     Unevaluable {
         source: Option<String>,
         function: &'static str,
@@ -585,6 +591,9 @@ pub(crate) enum FloorDiscoveryFoldRefusal {
 impl FloorDiscoveryFoldRefusal {
     pub(crate) fn rendered(&self) -> String {
         match self {
+            FloorDiscoveryFoldRefusal::Unparseable { source, cause } => {
+                format!("cause=FloorDiscoveryTestMarkersUnreadable source={source} — {cause}")
+            }
             FloorDiscoveryFoldRefusal::Unevaluable {
                 source: Some(source),
                 function,
@@ -612,6 +621,12 @@ impl FloorDiscoveryFoldRefusal {
 /// `gunbc test`'s claim route folds it over the modules its operand names. Same authority, same
 /// calls, narrower subject: the subject narrows, the decision does not move (review 44641's rule).
 /// `frame` must have that module in scope by its qualified name.
+///
+/// THE MARKER FACT IS SUPPLIED, NOT SCANNED FOR. The authority neither parses nor resolves the
+/// files it enumerates, so each source's `marked` argument is the names of the declarations
+/// carrying the authored `test` marker, read once by `test_marker::test_marked_decl_names` (the
+/// seed's single consumer of the grammar's mark). A source that does not parse refuses here
+/// (`Unparseable`); no text scan stands in for the missing fact.
 pub(crate) fn floor_discovery_rows_over_sources<'a>(
     frame: &v1_interpreter::InterpContext,
     sources: impl IntoIterator<Item = &'a v1_compiler_compile::SourceFile>,
@@ -619,8 +634,19 @@ pub(crate) fn floor_discovery_rows_over_sources<'a>(
     let mut outcomes: Vec<v1_interpreter::Value> = Vec::new();
     for source in sources {
         let repo_path = source.path.replace('\\', "/");
+        let marked =
+            test_marker::test_marked_decl_names(&source.content, &repo_path).map_err(|cause| {
+                FloorDiscoveryFoldRefusal::Unparseable {
+                    source: repo_path.clone(),
+                    cause,
+                }
+            })?;
         let args = [
             (Some("repo_path".to_string()), str_value(repo_path.clone())),
+            (
+                Some("marked".to_string()),
+                list_value_from_vec(marked.into_iter().map(str_value).collect()),
+            ),
             (
                 Some("content".to_string()),
                 str_value(source.content.clone()),
@@ -664,7 +690,7 @@ pub(crate) fn floor_discovery_rows_over_sources<'a>(
 pub(crate) fn floor_required_opaque_host_call_surface(
     ctx: &v1_interpreter::InterpContext,
 ) -> Result<Vec<String>, String> {
-    let qualified = "gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface";
+    let qualified = "gunbc.v1.v1_interpreter_opaque_host_call.opaque_host_call_surface";
     let value = v1_interpreter::run_in_context(ctx, qualified, false)
         .map_err(|e| format!("{qualified}: {e}"))?;
     let v1_interpreter::Value::Variant {
@@ -697,7 +723,7 @@ pub(crate) fn floor_required_opaque_host_call_surface(
              unpollable is unreadable and no claim's preemption reachability can be observed. \
              The floor refuses rather than arming an empty surface, which would report every \
              completed-over-ceiling crossing as an ordinary overshoot. Repair the join in \
-             gunbc.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?} \
+             gunbc.v1.v1_interpreter_opaque_host_call: unresolved={:?} not_free_call={:?} \
              wrong_dispatch_site={:?}",
             floor_value_shape(ctx.field(fields, "unresolved")),
             floor_value_shape(ctx.field(fields, "not_free_call")),
@@ -865,10 +891,6 @@ pub fn run_claim_measured(
         eval_steps,
     );
     (outcome, receipt)
-}
-
-pub fn floor_discovery_path_excluded(path: &str) -> bool {
-    matching_discovery_exclusion_substring(path).is_some()
 }
 
 pub(crate) fn floor_git_diff_range() -> Result<String, String> {
@@ -1569,18 +1591,18 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             m.insert(file_norm.clone(), nl.clone());
             m
         });
-        let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
+        // A test is a declaration carrying the authored `test` marker, read off the item the
+        // parse above already produced: no second reading of the file, and no line scan.
+        let mut test_fn_names: HashSet<String> = HashSet::new();
         let mut decls: Vec<(i64, String, bool)> = Vec::new();
         for item in crate::v1_std_core::module_items(module_node.clone()).iter() {
             let line = byte_to_line_col(nl.clone(), item.span.start).line;
             let name = authored_name_at(single_si.clone(), item.clone());
             let is_data = item_kind(item.clone()) == ItemKind::DataItem;
-            decls.push((line, name, is_data));
-        }
-        for (name, line) in scan_test_decl_lines(&content) {
-            if !decls.iter().any(|(_, n, _)| n == &name) {
-                decls.push((line, name, false));
+            if item.declaration_marker == crate::v1_std_core::DeclarationMarker::TestMarked {
+                test_fn_names.insert(name.clone());
             }
+            decls.push((line, name, is_data));
         }
         if decls.is_empty() {
             // A declaration-less module (a lone `module` line — e.g. the
@@ -1941,16 +1963,6 @@ fn changed_and_enrolled_witness_identities_with_index(
     }
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let rename_from = parse_unified_diff_rename_sources(&diff_text);
-    // THE SAME DIFF every projection below reads, so the rule and the planned subject cannot
-    // describe different changes.
-    unimported_bare_provider_gate(
-        base_tree,
-        index,
-        source_roots,
-        &changed_paths,
-        &departed_paths,
-        &added_paths,
-    )?;
     let mut dag_paths: std::collections::HashSet<String> = line_ranges_by_file
         .keys()
         .filter(|p| p.ends_with(".dag"))
@@ -2028,7 +2040,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // resolved comparison, never a second baseline authority -- and the same Strict preparation
     // downstream, so a planned consumer is a prepared consumer and `check_match` runs on it.
     // A NEW token for a wider phase, not the old one renamed: `arm-set-planning` stays its own
-    // arm (gunbc.floor_demand `SeamArmSetPlanning`) for every beat recorded before gunbc#12130,
+    // arm (gunbc.floor.floor_demand `SeamArmSetPlanning`) for every beat recorded before gunbc#12130,
     // and this one reads as `SeamInterfaceConsumerPlanning` (`floor_seam_tokens`).
     floor_seam("interface-consumer-planning");
     let touched_declarations =
@@ -3382,495 +3394,6 @@ pub(crate) fn cost_debt_verdict_refusals(
     Ok(refused)
 }
 
-/// `v2.workflow.floor_unimported_bare_provider_debt_roster`: the debt the rule inherited.
-const UNIMPORTED_BARE_PROVIDER_ROSTER: &str =
-    "src/v2/workflow/floor_unimported_bare_provider_debt_roster.dag";
-/// `v2.workflow.floor_unimported_bare_provider_debt`: every decision about that roster.
-const UNIMPORTED_BARE_PROVIDER_VERDICT: &str =
-    "src/v2/workflow/floor_unimported_bare_provider_debt.dag";
-
-/// A workspace-relative authority path, anchored at the workspace root so resolution does not
-/// depend on the process's working directory.
-fn unimported_bare_provider_authority(rel: &str) -> String {
-    process_workspace_root()
-        .join(rel)
-        .to_string_lossy()
-        .to_string()
-}
-
-/// One roster row as the host reads it -- only the fields it needs to gather FACTS (which file a
-/// row names, and whether it is a retirement whose file must be re-derived). Every
-/// decision about the rows is the `.dag`'s; the host passes the rows back to it as values.
-struct RosterRow {
-    file: String,
-    /// A retirement the host re-derives on every run to hold it true, read from the row view's
-    /// `rechecked` field, which the `.dag` derives from the row's standing.
-    rechecked: bool,
-}
-
-/// The roster as one evaluation reads it: the rows as a `.dag` value (passed back unchanged to the
-/// judgments, which may run in another frame -- `Symbol` is process-canonical for exactly this) and
-/// the host's decoded view of them. An unreadable row refuses; nothing defaults.
-struct UnimportedBareProviderRosterReading {
-    ctx: v1_interpreter::InterpContext,
-    rows_value: v1_interpreter::Value,
-    rows: Vec<RosterRow>,
-}
-
-impl UnimportedBareProviderRosterReading {
-    /// `function` is `unimported_bare_provider_head_rows` in the verdict module (the head) or
-    /// `unimported_bare_provider_roster_rows` in a lone base roster.
-    ///
-    /// Only the HEAD's rows are decoded by the host: the standing judgment reads them to choose
-    /// which files to re-derive. A BASE roster is read for its `.dag` value alone, which the edit
-    /// judgment compares in `.dag`, so the host never spells a base row's fields -- a base written
-    /// before a view field existed (`rechecked`, gunbc#13116) is still a readable base.
-    fn read(
-        index: &MultiEntryIndex,
-        entry: &str,
-        function: &str,
-        decode_host_rows: bool,
-    ) -> Result<Self, String> {
-        // THE CALLER SUPPLIES THE INDEX: the head reads the floor tree's shared index, and the
-        // base reads its one-file scratch pool through an index of its own. Resolving the base
-        // through `resolve_entry_graph_shared` put that pool in the thread's shared slot,
-        // evicting the head tree's index, which the floor then rebuilt from scratch
-        // (neat-boar-16, #12761 subject: gen1 evicted at the base read, rebuilt as gen5).
-        let (graph, indices) = resolve_entry_with_index(index, entry)
-            .map_err(|e| format!("unimported-bare-provider roster resolve ({entry}): {e}"))?;
-        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-        let rows_value = Self::call(&ctx, function, &[])?;
-        let mut rows = Vec::new();
-        let items =
-            floor_decode_list(&ctx, Some(&rows_value)).map_err(|e| format!("{function}: {e}"))?;
-        for item in items.into_iter().filter(|_| decode_host_rows) {
-            let v1_interpreter::Value::Record { fields, .. } = item else {
-                return Err(format!(
-                    "{function}: expected UnimportedBareProviderRowView, got {}",
-                    floor_value_shape(Some(item))
-                ));
-            };
-            let file = match ctx.field(fields, "file") {
-                Some(v1_interpreter::Value::Str(s)) => s.to_string(),
-                other => {
-                    return Err(format!(
-                        "{function}: row `file` is not a String ({})",
-                        floor_value_shape(other)
-                    ))
-                }
-            };
-            let rechecked = match ctx.field(fields, "rechecked") {
-                Some(v1_interpreter::Value::Bool(b)) => *b,
-                other => {
-                    return Err(format!(
-                        "{function}: row `rechecked` is not a Bool ({})",
-                        floor_value_shape(other)
-                    ))
-                }
-            };
-            rows.push(RosterRow { file, rechecked });
-        }
-        Ok(Self {
-            ctx,
-            rows_value,
-            rows,
-        })
-    }
-
-    fn head(source_roots: &[String]) -> Result<Self, String> {
-        let index: Rc<MultiEntryIndex> = try_process_shared_index(source_roots)?;
-        Self::read(
-            &index,
-            &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
-            "unimported_bare_provider_head_rows",
-            true,
-        )
-    }
-
-    fn call(
-        ctx: &v1_interpreter::InterpContext,
-        function: &str,
-        args: &[(Option<String>, v1_interpreter::Value)],
-    ) -> Result<v1_interpreter::Value, String> {
-        v1_interpreter::run_in_context_with_args(ctx, function, args, false)
-            .map_err(|e| format!("{function}: {e}"))
-    }
-
-    /// A judgment's refusals, decoded verbatim: the `.dag` owns the wording.
-    fn refusals(
-        &self,
-        function: &str,
-        args: &[(Option<String>, v1_interpreter::Value)],
-    ) -> Result<Vec<String>, String> {
-        let value = Self::call(&self.ctx, function, args)?;
-        floor_decode_list(&self.ctx, Some(&value))
-            .map_err(|e| format!("{function}: {e}"))?
-            .into_iter()
-            .map(|item| match item {
-                v1_interpreter::Value::Str(s) => Ok(s.to_string()),
-                other => Err(format!(
-                    "{function}: expected a String, got {}",
-                    floor_value_shape(Some(other))
-                )),
-            })
-            .collect()
-    }
-
-    fn identity(&self, file: &str, name: &str) -> Result<String, String> {
-        let args = [
-            (Some("file".to_string()), str_value(file)),
-            (Some("name".to_string()), str_value(name)),
-        ];
-        match Self::call(&self.ctx, "unimported_bare_provider_identity", &args)? {
-            v1_interpreter::Value::Str(ref s) => Ok(s.to_string()),
-            other => Err(format!(
-                "unimported_bare_provider_identity: expected a String, got {}",
-                floor_value_shape(Some(&other))
-            )),
-        }
-    }
-
-    fn coherence(&self) -> Result<Vec<String>, String> {
-        self.refusals(
-            "unimported_bare_provider_roster_coherence",
-            &[(Some("rows".to_string()), self.rows_value.clone())],
-        )
-    }
-
-    /// The edit judgment over `base` -> `head`, run in THIS reading's frame, which must hold the
-    /// verdict module (a lone base roster's frame does not). The rows cross frames as values.
-    fn judge_edit(&self, base: &Self, head: &Self) -> Result<Vec<String>, String> {
-        self.refusals(
-            "unimported_bare_provider_roster_edit",
-            &[
-                (Some("base".to_string()), base.rows_value.clone()),
-                (Some("head".to_string()), head.rows_value.clone()),
-            ],
-        )
-    }
-}
-
-/// THE FACTS AND THE ONE STANDING JUDGMENT, shared by both routes so they cannot answer differently
-/// about a file. The host derives what only it can: which roster files exist, the pairs each checked
-/// file carries (through the loader's own `unimported_bare_providers`). The `.dag`
-/// (`unimported_bare_provider_roster_standing`) decides everything: delete-without-retire, each
-/// cause's truth, staleness, and whether a carried pair is active debt. `checked` is the route's own
-/// files (the whole pool on the floor, the entry files on the entry route) plus every ImportsFixed
-/// row's file, so a retirement is re-derived on every run rather than trusted once.
-fn unimported_bare_provider_standing_refusals(
-    route: &str,
-    index: &MultiEntryIndex,
-    head: &UnimportedBareProviderRosterReading,
-    route_files: &[String],
-) -> Result<Vec<String>, String> {
-    let lookup = path_to_source_lookup(&index.source_files);
-    let mut present: BTreeSet<String> = BTreeSet::new();
-    let route_set: BTreeSet<String> = route_files
-        .iter()
-        .filter(|p| p.ends_with(".dag") && lookup.contains_key(p.as_str()))
-        .cloned()
-        .collect();
-    let mut checked: BTreeSet<String> = route_set.clone();
-    for row in &head.rows {
-        if lookup.contains_key(row.file.as_str()) {
-            present.insert(row.file.clone());
-            if row.rechecked {
-                checked.insert(row.file.clone());
-            }
-        }
-    }
-    let mut carried: Vec<String> = Vec::new();
-    let mut route_carried: Vec<String> = Vec::new();
-    let mut hints: HashMap<String, String> = HashMap::new();
-    let (mut suppressed_builtin, mut suppressed_kernel_method_only) = (0usize, 0usize);
-    for path in &checked {
-        let sf = &lookup[path.as_str()];
-        let judgment = unimported_bare_provider_judgment(sf, index)?;
-        suppressed_builtin += judgment.suppressed_builtin;
-        suppressed_kernel_method_only += judgment.suppressed_kernel_method_only;
-        for v in judgment.rows {
-            let id = head.identity(&v.file, &v.name)?;
-            hints.insert(
-                id.clone(),
-                format!(
-                    "file={} name={} provider={} -- this file declares imports, so its bare channel is off \
-                     and '{}' is never pulled for it; add `import {} {{ {} }}`",
-                    v.file, v.name, v.provider, v.name, v.provider_module, v.name
-                ),
-            );
-            if route_set.contains(path) {
-                route_carried.push(id.clone());
-            }
-            carried.push(id);
-        }
-    }
-    // THE DECLARED COVERAGE FRONTIER (`gunbc.rung_drop`
-    // `unimported_bare_provider_gate_admits_kernel_method_names_untyped`): counted on every run over
-    // the files this run judged, so growth in the kernel-method-only population is visible.
-    eprintln!(
-        "[floor-phase] phase=unimported-bare-provider-frontier judged_files={} \
-         suppressed_builtin={suppressed_builtin} \
-         suppressed_kernel_method_only={suppressed_kernel_method_only}",
-        checked.len()
-    );
-    let strings = |xs: Vec<String>| list_value_from_vec(xs.iter().map(str_value).collect());
-    let verdict = head.refusals(
-        "unimported_bare_provider_roster_standing",
-        &[
-            (Some("head".to_string()), head.rows_value.clone()),
-            (
-                Some("present_files".to_string()),
-                strings(present.into_iter().collect()),
-            ),
-            (
-                Some("checked_files".to_string()),
-                strings(checked.iter().cloned().collect()),
-            ),
-            (Some("carried".to_string()), strings(carried)),
-            (Some("route_carried".to_string()), strings(route_carried)),
-        ],
-    )?;
-    Ok(verdict
-        .into_iter()
-        .map(|r| {
-            let hint = r
-                .strip_prefix("Unrostered ")
-                .and_then(|id| hints.get(id))
-                .map(|h| format!(" {h}"))
-                .unwrap_or_default();
-            format!("{route} cause=UnimportedBareProvider {r}{hint}")
-        })
-        .collect())
-}
-
-/// THE RULE ON THE REQUIRED FLOOR. Coherence runs on every diff and standing over every pool file;
-/// the edit judgment runs when the roster itself changed,
-/// against the roster evaluated at the diff base. The change that ADDS the roster has no base, and
-/// that is decided from the diff's own added paths, never from a failed base read. Every refusal is
-/// reported before the line stops.
-pub(crate) fn unimported_bare_provider_gate(
-    base_tree: &FloorBaseTree,
-    index: &MultiEntryIndex,
-    source_roots: &[String],
-    changed_paths: &[String],
-    departed_paths: &HashSet<String>,
-    added_paths: &HashSet<String>,
-) -> Result<(), String> {
-    const ROUTE: &str = "REQUIRED-FLOOR REFUSAL";
-    if departed_paths.contains(UNIMPORTED_BARE_PROVIDER_ROSTER) {
-        return Err(format!(
-            "{ROUTE} cause=UnimportedBareProviderRosterDeparted path={UNIMPORTED_BARE_PROVIDER_ROSTER} \
-             -- the roster is a monotone debt contract; deleting it would admit every pair it carries"
-        ));
-    }
-    let head = UnimportedBareProviderRosterReading::head(source_roots)?;
-    let mut refusals: Vec<String> = head
-        .coherence()?
-        .into_iter()
-        .map(|r| format!("{ROUTE} cause=UnimportedBareProvider {r}"))
-        .collect();
-    if changed_paths
-        .iter()
-        .any(|p| p == UNIMPORTED_BARE_PROVIDER_ROSTER)
-    {
-        if added_paths.contains(UNIMPORTED_BARE_PROVIDER_ROSTER) {
-            eprintln!(
-                "[floor-phase] phase=unimported-bare-provider-roster state=seeded rows={} \
-                 -- the change that lands the roster has no base to compare against",
-                head.rows.len()
-            );
-        } else {
-            let located = base_tree.located()?;
-            for r in unimported_bare_provider_edit_refusals(base_tree, &head, &head, |base| {
-                unimported_bare_provider_roster_source_at_base(source_roots, base)
-            })? {
-                refusals.push(format!(
-                    "{ROUTE} cause=UnimportedBareProvider {r} {located}"
-                ));
-            }
-        }
-    }
-    // THE STANDING JUDGMENT RUNS OVER THE WHOLE POOL, NOT THE DIFF. Scoped to touched files, a
-    // pair born in an UNTOUCHED file -- by a resolver change elsewhere, as #12540 made every bare
-    // kernel-type spelling resolve by its declaration -- never refused here, while the entry route
-    // (`unimported_bare_provider_entry_refusals`) refused the same file the first time anyone ran it:
-    // two harnesses disagreeing about admission of one file. The roster is a monotone debt contract,
-    // which DESIGN 5 admits only over a closed subject universe checked at identity grain, and a
-    // diff is not that universe. It reads the floor's warm index and never resolves; its cost and
-    // population are re-derived on every run by the `unimported-bare-provider-gate` phase line
-    // below (`judged_files=`, `standing_ms=`).
-    let standing_started = std::time::Instant::now();
-    let pool_files: Vec<String> = index
-        .source_files
-        .values()
-        .map(|sf| workspace_relative_repo_path(&sf.path))
-        .collect();
-    refusals.extend(unimported_bare_provider_standing_refusals(
-        ROUTE,
-        index,
-        &head,
-        &pool_files,
-    )?);
-    eprintln!(
-        "[floor-phase] phase=unimported-bare-provider-gate touched_paths={} judged_files={} standing_ms={} refusals={}",
-        changed_paths.len(),
-        pool_files.len(),
-        standing_started.elapsed().as_millis(),
-        refusals.len()
-    );
-    if refusals.is_empty() {
-        return Ok(());
-    }
-    for r in &refusals {
-        eprintln!("{r}");
-    }
-    Err(refusals.join("\n"))
-}
-
-/// The entry route's half of the rule: the same coherence and standing judgments the floor applies,
-/// over the files a `claim_batch --entry` run was asked to execute, against the committed roster. A
-/// refusal here is the located form of what would otherwise surface later as
-/// `effect summary incomplete ... names no registry row` at every call site.
-pub fn unimported_bare_provider_entry_refusals(
-    index: &MultiEntryIndex,
-    source_roots: &[String],
-    entry_paths: &[String],
-) -> Result<Vec<String>, String> {
-    const ROUTE: &str = "ENTRY REFUSAL";
-    let head = UnimportedBareProviderRosterReading::head(source_roots)?;
-    let files: Vec<String> = entry_paths
-        .iter()
-        .map(|p| workspace_relative_repo_path(p))
-        .collect();
-    let mut refusals: Vec<String> = head
-        .coherence()?
-        .into_iter()
-        .map(|r| format!("{ROUTE} cause=UnimportedBareProvider {r}"))
-        .collect();
-    refusals.extend(unimported_bare_provider_standing_refusals(
-        ROUTE, index, &head, &files,
-    )?);
-    Ok(refusals)
-}
-
-/// The roster's bytes at the diff base, read through the `.dag` (`unimported_bare_provider_roster_at_base`),
-/// whose unreadable arm refuses here rather than reading as an empty roster.
-/// THE ROSTER EDIT JUDGMENT AT THE RUN'S BASE TREE: the base side is read at `base_tree.commit()`
-/// and nowhere else, then evaluated for coherence and judged against the head. The reader is the
-/// one seam: the gate supplies the `.dag` read (`unimported_bare_provider_roster_source_at_base`),
-/// and it can only be handed a `BaseTreeCommit`, so a tip ref does not type-check here.
-fn unimported_bare_provider_edit_refusals(
-    base_tree: &FloorBaseTree,
-    judge: &UnimportedBareProviderRosterReading,
-    head: &UnimportedBareProviderRosterReading,
-    read_base: impl FnOnce(&comparison_window::BaseTreeCommit) -> Result<String, String>,
-) -> Result<Vec<String>, String> {
-    let base_source = read_base(base_tree.commit()?)?;
-    let base_reading = unimported_bare_provider_base_reading(&base_source)?;
-    let mut refusals = judge.refusals(
-        "unimported_bare_provider_roster_coherence",
-        &[(Some("rows".to_string()), base_reading.rows_value.clone())],
-    )?;
-    refusals.extend(judge.judge_edit(&base_reading, head)?);
-    Ok(refusals)
-}
-
-fn unimported_bare_provider_roster_source_at_base(
-    source_roots: &[String],
-    base_tree: &comparison_window::BaseTreeCommit,
-) -> Result<String, String> {
-    let base = base_tree.as_str();
-    let (graph, indices) = resolve_entry_graph_shared(
-        source_roots,
-        &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
-    )
-    .map_err(|e| format!("floor_unimported_bare_provider_debt resolve: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let args = [
-        (Some("base".to_string()), str_value(base)),
-        (
-            Some("path".to_string()),
-            str_value(UNIMPORTED_BARE_PROVIDER_ROSTER),
-        ),
-    ];
-    let shown = UnimportedBareProviderRosterReading::call(
-        &ctx,
-        "unimported_bare_provider_roster_at_base",
-        &args,
-    )?;
-    unimported_bare_provider_base_roster_decoded(&ctx, &shown, base)
-}
-
-/// UnimportedBareProviderBaseRoster is a closed coproduct (`BaseRosterShown { source }` |
-/// `BaseRosterUnreadable { stderr }`), so the reading is its variant: each arm is matched by name and
-/// read from its own declared field, and any other shape refuses. (gunbc#12205 destructured it as a
-/// Record, so every change that edits the roster refused at the base read.)
-fn unimported_bare_provider_base_roster_decoded(
-    ctx: &v1_interpreter::InterpContext,
-    shown: &v1_interpreter::Value,
-    base: &str,
-) -> Result<String, String> {
-    let v1_interpreter::Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = shown
-    else {
-        return Err(format!(
-            "unimported_bare_provider_roster_at_base returned {}, expected an UnimportedBareProviderBaseRoster variant",
-            floor_value_shape(Some(shown))
-        ));
-    };
-    match (
-        ctx.resolve(*variant_name).as_str(),
-        ctx.field(fields, "source"),
-        ctx.field(fields, "stderr"),
-    ) {
-        ("BaseRosterShown", Some(v1_interpreter::Value::Str(src)), _) => Ok(src.to_string()),
-        ("BaseRosterUnreadable", _, Some(v1_interpreter::Value::Str(err))) => Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderBaseRosterUnreadable base={base} \
-             path={UNIMPORTED_BARE_PROVIDER_ROSTER} stderr={err} -- the roster is not added by this change, \
-             so it must exist at the base"
-        )),
-        (other, _, _) => Err(format!(
-            "unimported_bare_provider_roster_at_base returned variant {other} without its declared field"
-        )),
-    }
-}
-
-/// Evaluate the base roster ALONE, in a scratch source root under the ignored build tree: it
-/// shares a module path with the head roster, so the two cannot resolve in one pool. The roster
-/// module imports nothing for exactly this reason.
-///
-/// EVERY READ GETS ITS OWN DIRECTORY. `resolve_entry_graph_shared` memoizes by (roots, entry path)
-/// for the life of the process, so a second read at a reused path returns the FIRST read's graph
-/// whatever the new bytes say -- measured: a grown roster read second compared equal to the base.
-fn unimported_bare_provider_base_reading(
-    base_source: &str,
-) -> Result<UnimportedBareProviderRosterReading, String> {
-    static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let dir = process_workspace_root().join(format!(
-        "target/floor-unimported-bare-provider-base-{}-{}",
-        std::process::id(),
-        READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("base roster scratch dir {}: {e}", dir.display()))?;
-    let entry = dir.join("floor_unimported_bare_provider_debt_roster.dag");
-    std::fs::write(&entry, base_source)
-        .map_err(|e| format!("base roster write {}: {e}", entry.display()))?;
-    let root = dir.to_string_lossy().to_string();
-    // A scratch pool is its own demand: its index lives for this read and drops with it.
-    let reading = UnimportedBareProviderRosterReading::read(
-        &build_multi_entry_index(&[root]),
-        &entry.to_string_lossy(),
-        "unimported_bare_provider_roster_rows",
-        false,
-    );
-    std::fs::remove_dir_all(&dir).ok();
-    reading
-}
-
 /// ONE FULL PARSE PER (INDEX, FILE) and ONE INDEX PER MODULE-NAME SET, asserted at `at`. Called
 /// before the subject's strict compile, so a subject that refuses there has still been checked,
 /// and again after the whole-pool warms, which read every pool file. Each named root set's
@@ -4414,7 +3937,7 @@ fn path_under_floor_roots(rel_path: &str, roots: &[String]) -> bool {
 
 /// Is this identity's declared home under a root the tree declares NON-EXECUTING?
 ///
-/// The authority is `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes`, read through the same
+/// The authority is `gunbc.ci.ci_layer_roots` `non_executing_witness_module_prefixes`, read through the same
 /// front-end projection as `witness_layer_roots`. Membership is the grant; everything else blocks.
 /// The roster is grained in the MODULE NAMESPACE because this population is undiscovered by
 /// definition -- no file was enumerated, so no path exists here to compare against a directory.
@@ -4584,7 +4107,7 @@ pub(crate) fn changed_witness_projection_rows(
             // Blocking every decline is right for the silence the 2026-08-30 ruling closes: a PR
             // adds witnesses, they never run, the floor greens. `DeclinedOutsideGateClosure` is
             // that case. A root the fold structurally CANNOT reach is a different subject --
-            // `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes` declares it, and
+            // `gunbc.ci.ci_layer_roots` `non_executing_witness_module_prefixes` declares it, and
             // `non_executing_witness_module_prefixes_restoration` carries its 4b(2) trigger (bare references
             // binding by containment; vehicle, the namespace cut). Blocking there surfaces no new
             // silence: it forbids TOUCHING debt the tree has already declared, including by the
@@ -4682,12 +4205,13 @@ pub(crate) struct LocalRepoWetScheduledRow {
     pub function: String,
     /// THE DECLARED HOST PREMISE, if any, by its `v2.workflow.wet_evidence` `WetHostPremise` arm
     /// name, joined from `local_repo_wet_premise_roster`. The executor reads it BEFORE invoking
-    /// the claim; the readback and its verdict are `.dag` (`gunbc.wet_host_premise_readback`).
+    /// the claim; the readback and its verdict are `.dag` (`gunbc.runner.wet_host_premise_readback`).
     pub premise: Option<String>,
 }
 
 /// The module whose `local_repo_wet_premise_readings_wet` answers every declared premise once.
-pub(crate) const LOCAL_REPO_WET_PREMISE_READBACK_MODULE: &str = "gunbc.wet_host_premise_readback";
+pub(crate) const LOCAL_REPO_WET_PREMISE_READBACK_MODULE: &str =
+    "gunbc.runner.wet_host_premise_readback";
 
 /// WHAT ONE MEMBER ACTUALLY REACHED, at the width of the `.dag` authority's observed side.
 ///
@@ -5287,7 +4811,7 @@ fn local_repo_wet_join_premises(
     Ok(())
 }
 
-/// READ EVERY DECLARED PREMISE ONCE, wet, through `gunbc.wet_host_premise_readback`. Returns the
+/// READ EVERY DECLARED PREMISE ONCE, wet, through `gunbc.runner.wet_host_premise_readback`. Returns the
 /// readings by premise arm name: `None` met, `Some(words)` unmet. The seed decides nothing here:
 /// readiness and its words are the toolchain authority's.
 fn local_repo_wet_premise_readings(
@@ -5734,7 +5258,7 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // subject prepared it and it refused. Its designed refusal is asserted by class and subject
         // in test.claim.fleet.health_read_only_fixture_refusal_witness.
         "test/fixture/health_read_only/".to_string(),
-        "test/manual/ownership_movable_test.dag".to_string(),
+        "test/manual/ownership_movable.dag".to_string(),
         // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
         // as an enrollment. case4_expansion_carrier_splices dispatches a real jq through
         // jq.Process.RunWithStdin, which carries no mock_response, so the hermetic floor refuses
@@ -5742,7 +5266,7 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // to prove that a REAL jq exits 0 only on two argv words rather than one concatenated
         // one, and a mocked dispatch passes it without any process running.
         //
-        // The first attempt at this fix added rows to gunbc.ci_layer_roots
+        // The first attempt at this fix added rows to gunbc.ci.ci_layer_roots
         // (witness_exclusion_frontier + bin_witness_wet_entries) and asserted they would take
         // effect. They did not: run_required_floor consults THIS list and nothing else, the CI
         // receipt was an unchanged modules_excluded=2, and the wet batches those rosters feed
@@ -5753,14 +5277,14 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // sits at UNEXECUTED-IN-CI with a local recipe recorded in the design note (§15), and
         // re-enrolls when a wet lane exists again — which required_floor.dag deliberately defers
         // until it can be "asked against a live consumer".
-        "test/manual/process_argv_expansion_receipt_test.dag".to_string(),
+        "test/manual/process_argv_expansion_receipt.dag".to_string(),
         // Wet receipt for command_runner's transport-agnostic run site (the LocalExec/SshExec
         // match collapsed onto command_over_transport). Excluded for the same reason as the line
         // above and not a new class: hermetic evaluation replays an operation's declared
         // mock_response and never constructs an argv, so "the words reached the process unsplit"
         // is not observable hermetically. Enrolling it would assert the mock rather than the
         // behaviour -- specification without execution.
-        "test/manual/command_runner_local_argv_receipt_test.dag".to_string(),
+        "test/manual/command_runner_local_argv_receipt.dag".to_string(),
         // A ROW HERE MAY NOT NAME A MODULE ANYTHING IMPORTS. An exclusion is not "skip this
         // witness": prepare_repository_closure drops the path from the prepared graph, so an
         // importer cannot resolve and the whole subject refuses. That constraint is enforced --
@@ -6029,7 +5553,7 @@ pub fn floor_seam(name: &str) {
     // EVERY SEAM IS A PHASE BOUNDARY, SO EVERY SEAM CARRIES A BEAT. The sixty-second watchdog
     // names the minute a phase was in, never where it began or ended, so a phase shorter than a
     // beat is invisible and a longer one is bounded only to the minute. A reading taken AT the
-    // boundary is what lets gunbc.floor_demand attribute a held-set delta to the phase between two
+    // boundary is what lets gunbc.floor.floor_demand attribute a held-set delta to the phase between two
     // seams rather than to whichever phase the next tick happened to land in.
     floor_cgroup_stat_beat(&format!("seam-{name}"), None);
     floor_heap_beat(name);
@@ -6108,10 +5632,10 @@ fn floor_heap_beat(seam: &str) {
 /// Why the callers differ, and why this must not decide for them: the heartbeat's seam crosses
 /// into `gunbc.observation_seed_render` `seed_heartbeat_subject`, which branches on `seam == ""`
 /// to decide whether a beat carries a `PhaseSegment` at all — the empty string IS that model's
-/// representation of "no phase", pinned by `test.claim.observation_seed_heartbeat_witness_test`.
+/// representation of "no phase", pinned by `test.claim.observation_seed_heartbeat_witness`.
 /// Handing it the beat line's `none` would mint `PhaseSegment { name: "none" }`, fabricating a
 /// phase named after the absence of one. The stat beat, whose line is transcribed into a typed
-/// `gunbc.floor_demand` `FloorSeam`, wants a single non-empty token it can map to
+/// `gunbc.floor.floor_demand` `FloorSeam`, wants a single non-empty token it can map to
 /// `SeamNotYetEntered`. Same fact, two boundaries, one read.
 pub(crate) fn floor_seam_current() -> Option<String> {
     FLOOR_SEAM.lock().ok().map(|g| g.clone())
@@ -8092,7 +7616,7 @@ pub(crate) fn floor_decode_module_prefix_roster(
 /// THE ENVELOPE THE PROCESS ACTUALLY HAS, read from the kernel, at every visible level.
 ///
 /// Every envelope figure this lane has reasoned with — 13.00 GiB high, 14.00 GiB max — came
-/// from the DECLARED rows in `gunbc.runner_slot_allocation`: a nominal limit, read before the
+/// from the DECLARED rows in `gunbc.runner.runner_slot_allocation`: a nominal limit, read before the
 /// run, describing what was requested rather than what binds. Two measurements say that is not
 /// good enough.
 ///
@@ -8185,7 +7709,7 @@ pub(crate) fn floor_cgroup_envelope(when: &str) {
 /// KERNEL REPORTS THEM: one flat list, no grouping, no sum. `memory.stat` is not a partition --
 /// `file` includes shmem, and `unevictable` is an LRU-list state over pages `anon` and `file`
 /// already count -- so any grouping here would already be a derivation, and the derivation has
-/// one home: `gunbc.floor_demand` `beat_held_set`, which folds disjoint terms into a resident
+/// one home: `gunbc.floor.floor_demand` `beat_held_set`, which folds disjoint terms into a resident
 /// held-set lower bound. `memory.current` is printed beside the counters so a derivation can be
 /// checked against the charge it is drawn from.
 ///
@@ -8264,7 +7788,7 @@ pub(crate) fn floor_cgroup_stat_beat(
     };
     // THE STALL CLAUSE ON THE BEAT'S OWN LINE, for the same reason as the seam. It is the
     // heartbeat's quantity and used to be readable only from the heartbeat line printed BESIDE
-    // this one, so `gunbc.floor_demand` `FloorMemoryStatBeat.stall` was transcribed by adjacency
+    // this one, so `gunbc.floor.floor_demand` `FloorMemoryStatBeat.stall` was transcribed by adjacency
     // -- and `receipt_last_unstalled_beat` derives the guest's cache allowance from that field,
     // so a mis-joined stall mis-sizes a guest. `na` where the window could not be read, never a
     // zero: a zero stall is the healthiest reading this line can carry, so fabricating one would
@@ -9017,7 +8541,7 @@ pub fn run_required_floor(
     // misses over two source roots against ONE index address, `edge_index_construction {
     // builds: 1 }` — so the work is already done exactly once per process. It was simply BILLED
     // to whichever claim resolved an entry first:
-    // `test.claim.qualified_spelling_identity_witness_test.qualified_spelling_takes_the_shared_layer`
+    // `test.claim.qualified_spelling_identity_witness.qualified_spelling_takes_the_shared_layer`
     // at 57193ms CPU against a 5000ms per-claim limit, while its sibling reaching the identical
     // computation milliseconds later measured 5ms.
     //
@@ -9109,7 +8633,7 @@ pub fn run_required_floor(
     // billed to a first toucher. `languages_decl_records_cached` is a process-wide `OnceLock`
     // over a token scan of every `.dag` and `.rs` file in the tree, built once; on main runs
     // 33251451113 and 33246969960 (`required_floor_claim_cost.tsv`) the whole build landed on
-    // `v2.test.languages_consumer_census.corpus.rust_language_external_consumer
+    // `v2.test.claim.languages_consumer_census.corpus.rust_language_external_consumer
     // corpus_rust_language_has_external_consumer` at 412ms against the 500ms CPU safety deadline
     // standing at the time — red on any runner a fifth slower, which is the
     // class `gunbc.rung_drop floor_cost_claim_qualification_unavailable` now carries with its measurements and
@@ -9536,7 +9060,7 @@ pub fn run_required_floor(
     // ARM THE OPAQUE-HOST-CALL SURFACE FROM ITS ONE AUTHORITY, AND REFUSE IF IT IS UNGROUNDED.
     //
     // The roster is NOT restated in Rust: it is read out of
-    // `gunbc.v1_interpreter_opaque_host_call.opaque_host_call_surface()`, the same module the
+    // `gunbc.v1.v1_interpreter_opaque_host_call.opaque_host_call_surface()`, the same module the
     // §4b drop's bounded population is derived from, so the seed and the model cannot drift into
     // two answers about which arms are unpollable.
     //
@@ -9547,7 +9071,7 @@ pub fn run_required_floor(
     // moment the join broke. So a broken join stops the line here, typed and located, and the
     // remedy is named rather than left to the reader.
     let opaque_surface_frame =
-        floor_authority_frame(&prepared, "gunbc.v1_interpreter_opaque_host_call")?;
+        floor_authority_frame(&prepared, "gunbc.v1.v1_interpreter_opaque_host_call")?;
     let opaque_surface = floor_required_opaque_host_call_surface(&opaque_surface_frame)?;
     v1_interpreter::set_opaque_host_call_surface(Some(opaque_surface));
     let long_home_prefixes = floor_decode_module_prefix_roster(
@@ -9593,22 +9117,18 @@ pub fn run_required_floor(
     }
     // ── the witness roster, as the `.dag` discovery authority answers it ──────────────────
     //
-    // ONE AUTHORITY FOR "WHAT DOES THE FLOOR DISCOVER". The roster used to be projected by a
-    // Rust text scan that was filename-blind, while
-    // `v2.workflow.floor_discovery_producer` -- reached only by claim_batch -- refused a
-    // `test`-marked decl outside a `*_test.dag` sidecar. Two answers to one question (DESIGN
-    // section 3), measured on main 2026-08-29: five files, 39 test fns, refused on one path and
-    // executed on the other. The floor now folds the producer's own per-file authority over the
-    // full module index and takes that fold's rows as the declared roster; Rust threads values and
-    // decides nothing. Every refusal the producer carries -- misplaced test decl, barren sidecar,
-    // misplaced wire contract, malformed live_tree_disposition row -- therefore stops THIS line,
-    // with the producer's own reason text.
+    // ONE AUTHORITY FOR "WHAT DOES THE FLOOR DISCOVER". A test is a declaration carrying the
+    // authored `test` marker and nothing else: the floor folds the `.dag` authority's per-file
+    // decision over the full module index and takes that fold's rows as the declared roster; Rust
+    // threads values and decides nothing. The one fact the authority cannot derive from bytes
+    // alone, which declarations carry the marker, is supplied per source by
+    // `floor_discovery_rows_over_sources` from the grammar's own mark. Every refusal the authority
+    // carries -- misplaced wire contract, malformed live_tree_disposition row -- and every source
+    // whose markers cannot be read therefore stops THIS line, with its own reason text.
     //
     // The subject is preparation's full index, not a filesystem walk or a Rust declaration scan.
-    // The prepared closure and exclusion map then classify producer-returned identities without
-    // rebuilding the population. Row admission (`witness_row_excluded_from_discovery`)
-    // is the discovery-corpus mode's policy and is deliberately NOT applied here -- see
-    // `floor_discovery_row_admission_policy_note` in the producer.
+    // The prepared closure and exclusion map then classify the returned identities without
+    // rebuilding the population.
     floor_seam("discovery-authority");
     let discovery_started = std::time::Instant::now();
     let producer_frame = floor_authority_frame(&prepared, FLOOR_DISCOVERY_AUTHORITY_MODULE)?;
@@ -12503,7 +12023,7 @@ pub fn run_required_floor(
         // §4b(4) is the rule that says to delete it rather than keep it as a belt: a climb deletes
         // the redundant lower-rung PRODUCTION machinery it obsoletes, while the class's
         // discriminating RED and positive control REMAIN ENROLLED. The evidence is separate and
-        // stays -- `dag/test/claim/bare_name_ambiguity_wall_witness_test.dag` holds the eight rows,
+        // stays -- `dag/test/claim/bare_name_ambiguity_wall_witness.dag` holds the eight rows,
         // including the subject that must refuse and the field-label and local-parameter controls
         // that must not.
         //
@@ -13983,51 +13503,6 @@ pub(crate) fn required_floor_disposition_matched_prefix(
 mod pure_producer_share_tests {
     use super::*;
     use std::rc::Rc;
-
-    /// THE BASE-ROSTER READ DECODES THE COPRODUCT THE `.dag` DECLARES (gunbc#12205 read it as a
-    /// Record, so every roster-editing change refused). Values come from a fixture module that
-    /// declares UnimportedBareProviderBaseRoster exactly as v2.workflow.floor_unimported_bare_provider_debt
-    /// does: the shown arm yields its source, the unreadable arm refuses naming its stderr, and a
-    /// value of any other shape refuses.
-    #[test]
-    fn the_base_roster_read_decodes_both_arms_and_refuses_any_other_shape() {
-        let fixture = prepared_from(&[(
-            "dag/fixture/base_roster.dag",
-            "module fixture.base_roster\n\
-             type UnimportedBareProviderBaseRoster =\n\
-                 BaseRosterShown { source: String }\n\
-               | BaseRosterUnreadable { stderr: String }\n\
-             type NotARoster { source: String }\n\
-             fn shown() -> UnimportedBareProviderBaseRoster { BaseRosterShown { source: \"roster-bytes\" } }\n\
-             fn unreadable() -> UnimportedBareProviderBaseRoster { BaseRosterUnreadable { stderr: \"fatal: bad object\" } }\n\
-             fn other() -> NotARoster { NotARoster { source: \"roster-bytes\" } }\n",
-        )]);
-        let ctx = make_eval_context(
-            &fixture.graph,
-            fixture.source_indices.clone(),
-            v1_interpreter::ExecutionMode::Hermetic,
-        );
-        let value = |f: &str| {
-            v1_interpreter::run_in_context(&ctx, &format!("fixture.base_roster.{f}"), false)
-                .expect(f)
-        };
-        assert_eq!(
-            unimported_bare_provider_base_roster_decoded(&ctx, &value("shown"), "abc123"),
-            Ok("roster-bytes".to_string())
-        );
-        let refused =
-            unimported_bare_provider_base_roster_decoded(&ctx, &value("unreadable"), "abc123")
-                .expect_err("an unreadable base roster refuses");
-        assert!(
-            refused.contains("UnimportedBareProviderBaseRosterUnreadable")
-                && refused.contains("base=abc123")
-                && refused.contains("stderr=fatal: bad object"),
-            "{refused}"
-        );
-        assert!(
-            unimported_bare_provider_base_roster_decoded(&ctx, &value("other"), "abc123").is_err()
-        );
-    }
 
     /// A minimal PreparedRepository over in-memory sources — the same graph shape the floor
     /// prepares, without the corpus. Only the fields `install_pure_producer_share` reaches
@@ -15604,7 +15079,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert_eq!(consumers_of(&selection), vec!["armset.y"]);
     }
 
-    /// The #11751 shape (gunbc.runner_microvm_network `HelperStanding`, 99c2d33263): a product field
+    /// The #11751 shape (gunbc.runner.runner_microvm_network `HelperStanding`, 99c2d33263): a product field
     /// retyped from `Int` to a new product, read by an untouched constructor.
     const IFACE_H_BASE: &str = "module iface.h\n\ntype Standing {\n  surface: Int\n}\n";
     const IFACE_H_HEAD: &str = "module iface.h\n\ntype Reading {\n  value: Int\n}\n\n\
@@ -16494,7 +15969,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     }
 
     /// EVERY `floor_seam` LITERAL THE INSTRUMENT CAN PRINT HAS A TYPED ARM: each token passed to
-    /// `floor_seam` in the floor's two hand-Rust sources is a row of gunbc.floor_demand
+    /// `floor_seam` in the floor's two hand-Rust sources is a row of gunbc.floor.floor_demand
     /// `floor_seam_tokens`, so a new or renamed seam cannot print a token the vocabulary cannot
     /// ingest. A join by spelling across the language boundary, because the producer is Rust.
     #[test]
@@ -16575,7 +16050,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         std::fs::create_dir_all(&dir).expect("fixture dir");
         std::fs::write(
             dir.join("probe_test.dag"),
-            "module v2.test.long.quarantine_selection_fixture
+            "module v2.test.claim.long.quarantine_selection_fixture
 
              test fn admitted_reds() -> Bool { false }
              test fn unadmitted_reds() -> Bool { false }
@@ -16595,7 +16070,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     /// (a) A LONG-HOME WITNESS WITH NO ADMISSION IS STILL SELECTED. This is the discriminating
     /// RED for the whole change: an exclusion keyed on the lane rather than on the admission
     /// would drop this row too, and the floor would stop noticing a failing witness the PR
-    /// touched. Sitting in `v2.test.long.` earns nothing by itself.
+    /// touched. Sitting in `v2.test.claim.long.` earns nothing by itself.
     #[test]
     fn an_unadmitted_long_home_witness_is_still_selected_as_a_changed_witness() {
         let dir = quarantine_selection_fixture("unadmitted");
@@ -16611,7 +16086,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         .expect("identities");
         assert_eq!(
             identities,
-            vec!["v2.test.long.quarantine_selection_fixture.unadmitted_reds".to_string()],
+            vec!["v2.test.claim.long.quarantine_selection_fixture.unadmitted_reds".to_string()],
             "a long-home witness with no quarantine admission must still be planned"
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -16679,7 +16154,7 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             crate::cli_run::quarantine_probe_admission_pairs()
                 .into_iter()
                 .collect();
-        let entry = "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag";
+        let entry = "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag";
         for f in [
             "witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
             "witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
@@ -18120,7 +17595,7 @@ mod route_gap_admission_partition_tests {
             assert_eq!(
                 rows.iter()
                     .filter(|(i, g, refused)| !refused
-                        && i == "test.claim.parse_test.parse_witness_floor_holds"
+                        && i == "test.claim.parse.parse_witness_floor_holds"
                         && g == "WithheldCostDebt")
                     .count(),
                 1,
@@ -18366,14 +17841,17 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["v2.extdeps.languages.rust.rust_target_model_staging"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.rust_target_model",
-                &["v2.test.emit.produced_decl_two_target"],
+                &["v2.test.claim.emit.produced_decl_two_target"],
             )],
         );
         // THE LEDGER OBSERVES A FILL UNDER THE REFUSED PRODUCER'S OWN KEY. That is the
         // withdrawn computation recurring, not a neighbour sharing a module, and it is the only
         // thing this wall is entitled to charge. The admitted spelling is reached from the
         // roster rather than named by it, which is why the static fold cannot see it.
-        fill_from("v2.test.emit.produced_decl_two_target", "rust_target_model");
+        fill_from(
+            "v2.test.claim.emit.produced_decl_two_target",
+            "rust_target_model",
+        );
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("a refused producer's own key recurring over its carriers must refuse");
         // The three things the diagnostic owes: the admitted subject, the row it inherited the
@@ -18395,7 +17873,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             "{why}"
         );
         assert!(
-            why.contains("shared_carrier_modules=v2.test.emit.produced_decl_two_target"),
+            why.contains("shared_carrier_modules=v2.test.claim.emit.produced_decl_two_target"),
             "{why}"
         );
     }
@@ -18408,7 +17886,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["v2.extdeps.languages.rust.rust_target_model_staging"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.rust_target_model",
-                &["v2.test.emit.produced_decl_two_target"],
+                &["v2.test.claim.emit.produced_decl_two_target"],
             )],
         );
         fill_from(
@@ -18427,7 +17905,7 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["v2.extdeps.languages.rust.rust_target_model_staging"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.rust_target_model",
-                &["v2.test.emit.produced_decl_two_target"],
+                &["v2.test.claim.emit.produced_decl_two_target"],
             )],
         );
         shared_fill::set_current_claim(None);
@@ -18453,13 +17931,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "NoMeasuredEffectOverItsConsumers".to_string(),
-                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate".to_string()]
                     .into_iter()
                     .collect(),
             }],
         );
         fill_from(
-            "v2.test.manual.rust_add_emit_translate",
+            "v2.test.claim.manual.rust_add_emit_translate",
             "grammar_relation_row_for_emitted",
         );
         assert!(refuse_pure_producer_share_refused_carrier_overlap().is_ok());
@@ -18475,13 +17953,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),
-                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate".to_string()]
                     .into_iter()
                     .collect(),
             }],
         );
         fill_from(
-            "v2.test.manual.rust_add_emit_translate",
+            "v2.test.claim.manual.rust_add_emit_translate",
             "rust_target_model_core_edges",
         );
         let why = refuse_pure_producer_share_refused_carrier_overlap()
@@ -18507,13 +17985,13 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             vec![RefusedShareRow {
                 producer: "v2.extdeps.languages.rust.rust_target_model_core_edges".to_string(),
                 verdict: "MeasuredServeAboveRecompute".to_string(),
-                carrier_modules: ["v2.test.manual.rust_add_emit_translate".to_string()]
+                carrier_modules: ["v2.test.claim.manual.rust_add_emit_translate".to_string()]
                     .into_iter()
                     .collect(),
             }],
         );
         fill_from(
-            "v2.test.manual.rust_add_emit_translate",
+            "v2.test.claim.manual.rust_add_emit_translate",
             "grammar_relation_row_for_emitted",
         );
         assert!(
@@ -18532,13 +18010,16 @@ mod pure_producer_share_refused_carrier_overlap_tests {
             &["a.module.shared_spelling", "b.module.shared_spelling"],
             vec![refused_row(
                 "v2.extdeps.languages.rust.shared_spelling",
-                &["v2.test.emit.produced_decl_two_target"],
+                &["v2.test.claim.emit.produced_decl_two_target"],
             )],
         );
         // The refused producer's own key recurs over its own carriers, so the identity trigger
         // fires — and then the bare key is claimed by two admitted spellings, so naming either
         // one would be a fabricated subject.
-        fill_from("v2.test.emit.produced_decl_two_target", "shared_spelling");
+        fill_from(
+            "v2.test.claim.emit.produced_decl_two_target",
+            "shared_spelling",
+        );
         let why = refuse_pure_producer_share_refused_carrier_overlap()
             .expect_err("an unattributable overlap must refuse");
         assert!(

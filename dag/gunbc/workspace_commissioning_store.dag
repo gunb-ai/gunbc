@@ -10,15 +10,15 @@ import std.types { String, NonEmptyStr, Bool }
 import std.measure { byte_size_count, hardware_thread_count_value, byte_size, hardware_thread_count }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_nat, json_field_bool, json_field_value }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_bool, serialize_json }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.workspace_commissioning_transaction {
   WorkspaceCommissioningProvenance, WorkspaceCommissioningRecord,
   WorkspaceCommissioningPrepared, WorkspaceCommissioningCommitted,
   workspace_commissioning_next, WorkspaceCommissioningPrepare, WorkspaceCommissioningCommit, WorkspaceCommissioningAlreadyCommitted, WorkspaceCommissioningTransitionRefused,
   WorkspaceCommissioningRecordReading, WorkspaceCommissioningRecordAbsent, WorkspaceCommissioningRecordRead, WorkspaceCommissioningRecordUnreadable, WorkspaceCommissioningWriteReadiness,
 }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, read_cell_readiness_store, OwnershipUnread }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, read_cell_readiness_store, OwnershipUnread }
 import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasObservedReadable, CasReadableAbsent, CasReadablePresent,

@@ -4,9 +4,9 @@ import std.types { List }
 import v2.compiler.parse { ParseTree }
 import v2.extdeps.languages.dag {
   dag_binding_branded_atom_identity,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional
+  parse_production_captured_child_optional
 }
+import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.collection { Absent, Present, Optional }
 import std.algebra { list_snoc_item }
 import v2.std.declaration_marker { TestMarkedDeclaration, TestMarkerChannel }
@@ -21,7 +21,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Edge, Node, Symbol }
+import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 
 // The capture half of the `test` marker channel (v2.std.declaration_marker, shaped like the DESIGN
@@ -45,41 +45,82 @@ import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissi
 // carry a span index the capture does not use.
 fn test_marker_capture(tree: ParseTree) -> Outcome<TestMarkerChannel> {
   let no_rows: List<TestMarkedDeclaration> = []
-  match test_marker_capture_walk(n: tree, acc: outcome_accepted(value: no_rows)) {
+  match fold(test_marker_shells(tree: tree), init: outcome_accepted(value: no_rows), f: fn(acc, shell) { test_marker_snoc_declaration(acc: acc, shell: shell) }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: rows, diagnostics: d } =>
       Accepted { value: TestMarkerChannel { marked: rows }, diagnostics: d }
   }
 }
 
-fn test_marker_capture_walk(
-  n: Node,
-  acc: Outcome<List<TestMarkedDeclaration>>
+// THE MARKED DECLARATIONS WITH WHAT THEY SAY. A test is identified by its marker alone, and a witness-set
+// comparison that pairs two marked declarations by name pairs the name, not the claim: a body edited under
+// the same name keeps its identity and changes what is asserted. So each marked declaration is read once
+// more as its authored content, the substrate's own structural identity of the declaration's parse tree
+// (v2.std.node content_hash): independent of position, whitespace and annotations, and of nothing that is
+// not the declaration. It is the same shell the channel is read from, so the name and the content are
+// facts of one declaration and are never joined by position.
+type TestMarkedContent {
+  name: Symbol
+  content: String
+}
+
+fn test_marker_content(tree: ParseTree) -> Outcome<List<TestMarkedContent>> {
+  let no_rows: List<TestMarkedContent> = []
+  fold(test_marker_shells(tree: tree), init: outcome_accepted(value: no_rows), f: fn(acc, shell) { test_marker_snoc_content(acc: acc, shell: shell) })
+}
+
+fn test_marker_snoc_declaration(
+  acc: Outcome<List<TestMarkedDeclaration>>,
+  shell: Node
 ) -> Outcome<List<TestMarkedDeclaration>> {
   match acc {
     Rejected { diagnostics: _ } => acc
     Accepted { value: rows, diagnostics: d } =>
-      match parse_production_emitted_identity_optional(node: n) {
-        Present { value: emitted } =>
-          if emitted == ^dag_surface_test_fn_decl {
-            match test_marked_declaration(shell: n) {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              Accepted { value: row, diagnostics: _ } =>
-                Accepted { value: list_snoc_item(xs: rows, item: row), diagnostics: d }
-            }
-          } else {
-            test_marker_capture_children(n: n, acc: acc)
-          }
-        Absent => test_marker_capture_children(n: n, acc: acc)
+      match test_marked_declaration(shell: shell) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: row, diagnostics: _ } =>
+          Accepted { value: list_snoc_item(xs: rows, item: row), diagnostics: d }
       }
   }
 }
 
-fn test_marker_capture_children(
-  n: Node,
-  acc: Outcome<List<TestMarkedDeclaration>>
-) -> Outcome<List<TestMarkedDeclaration>> {
-  fold(n.children, init: acc, f: fn(a, e) { test_marker_capture_walk(n: e.target, acc: a) })
+fn test_marker_snoc_content(
+  acc: Outcome<List<TestMarkedContent>>,
+  shell: Node
+) -> Outcome<List<TestMarkedContent>> {
+  match acc {
+    Rejected { diagnostics: _ } => acc
+    Accepted { value: rows, diagnostics: d } =>
+      match test_marked_declaration(shell: shell) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: row, diagnostics: _ } =>
+          Accepted {
+            value: list_snoc_item(xs: rows, item: TestMarkedContent { name: row.name, content: content_hash(n: shell).digest as String }),
+            diagnostics: d
+          }
+      }
+  }
+}
+
+// EVERY `test` SHELL OF A PARSE TREE, IN SOURCE ORDER: the one walk both readings above are made from.
+fn test_marker_shells(tree: ParseTree) -> List<Node> {
+  test_marker_shells_walk(n: tree, acc: [])
+}
+
+fn test_marker_shells_walk(n: Node, acc: List<Node>) -> List<Node> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_test_fn_decl {
+        list_snoc_item(xs: acc, item: n)
+      } else {
+        test_marker_shells_children(n: n, acc: acc)
+      }
+    Absent => test_marker_shells_children(n: n, acc: acc)
+  }
+}
+
+fn test_marker_shells_children(n: Node, acc: List<Node>) -> List<Node> {
+  fold(n.children, init: acc, f: fn(a, e) { test_marker_shells_walk(n: e.target, acc: a) })
 }
 
 fn test_marker_diagnostic(reason: Symbol, n: Node) -> Diagnostic {

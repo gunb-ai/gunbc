@@ -3,7 +3,7 @@ module test.fixture.v1_consumer_census.specimens
 import std.types { List, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.replacement_cut { BoundaryConsumer, ConsumerDisposition, RetainSameContract, ReplacedByY, Retire, Covered, CoverageOpen, Undecided }
-import gunbc.v1_consumer_census {
+import gunbc.v1.v1_consumer_census {
   V1ConsumerRow, V1UncitableConsumer, ConsumerPopulation, DiscoveryProducer, discovery_producer_unobserved,
   PopulationMeasuredComplete, PopulationMeasuredLowerBound, PopulationUnmeasured,
   WorkflowArgv, RustSourceReference, V1HostedCiBinary, V1RuntimeBridge, V1CompilerCrate
@@ -146,7 +146,7 @@ data planted_same_size_discovered: List<String> = [
 ]
 
 // PLANT EIGHT -- an UNDECIDED relation beside a discharged one and a retained-open one. This is the
-// shape tools.v1_consumer_discovery produces: discovery establishes that a relation exists and says
+// shape gunbc.instruments.v1_consumer_discovery produces: discovery establishes that a relation exists and says
 // nothing about what should happen to it, so a newly found consumer lands here and stays until an
 // author judges it. The population carries one row of each of the three worklist classes precisely
 // so the ordering assertion has something to order and the count assertion has a permutation to

@@ -19,8 +19,8 @@ import v2.lens.common.source_analysis_standing {
 import std.types { List }
 
 // The fast inline-source controls are required-floor witnesses at
-// src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag. The five file_gate corpus
-// sweeps are isolated at src/v2/test/claim/identity_captured_navigation/long/roster_gate_test.dag
+// src/v2/test/claim/identity_captured_navigation/roster_gate.dag. The five file_gate corpus
+// sweeps are isolated at src/v2/test/claim/identity_captured_navigation/long/roster_gate.dag
 // with ReadsLiveTree standing because filesystem_read makes their input the live production tree. A
 // manual claim_batch recipe is diagnostic only and is not coverage; scheduling that live sweep is a
 // separate consumer lane conditional on the real analyzer-to-dependency-fidelity consumer retaining

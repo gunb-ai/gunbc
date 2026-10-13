@@ -2,7 +2,7 @@ module gunbc.runner.runner_host_filtered_egress
 
 import std.types { Int, List, NonEmptyStr, String }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   RunnerSlotNetwork, runner_slot_host_cidr,
   runner_microvm_network_supernet,
   GuestEgressPolicy, runner_microvm_guest_egress_policy,
@@ -78,7 +78,7 @@ data runner_host_uplink: HostUplinkConfiguration = StaticFromObservedOfferCandid
 // the BMC, the rest of the LAN, and any other attempt's tap.
 
 // THE GUEST-FACING GRANTS AND DENIALS ARE CONSUMED, NOT RESTATED. They are
-// gunbc.runner_microvm_network runner_microvm_guest_egress_policy, the same rows the shared hosts'
+// gunbc.runner.runner_microvm_network runner_microvm_guest_egress_policy, the same rows the shared hosts'
 // ruleset is folded from; an earlier revision listed them here as prose and the two drifted (review
 // 68173: a "selected resolver" here against any-host port 53 there). What this host adds is its OWN
 // chain stances: it owns the whole forwarding policy, so its forward chain default-drops at host
@@ -88,10 +88,10 @@ data runner_host_uplink: HostUplinkConfiguration = StaticFromObservedOfferCandid
 //
 // This host is NOT a fleet-converge target of the srvN microVM program: its grain has no installer in
 // this tree, and the one that would install it is its host image (runner_attempt_launch
-// host_boot_cutover_frontier), not the srvN network apply (gunbc.runner_microvm_network_apply).
+// host_boot_cutover_frontier), not the srvN network apply (gunbc.runner.runner_microvm_network_apply).
 // THE DENIALS ARE NOT LISTED HERE BECAUSE THEY ARE ALREADY RULES. The BMC and management LAN fall in
 // the guest policy's private-range rows (the BMC measured on the filtered-egress run is 192.168.1.228),
-// and tap to tap is the forward chain's first rule in gunbc.runner_microvm_network; a prose list here
+// and tap to tap is the forward chain's first rule in gunbc.runner.runner_microvm_network; a prose list here
 // would be a third spelling of both (review 68294).
 type EgressPolicyShape {
   host: HostEgressGrain
@@ -196,7 +196,7 @@ fn runner_host_tap_cidr(net: RunnerSlotNetwork) -> String {
   runner_slot_host_cidr(net: net)
 }
 
-// THE GUEST'S BOOT ARGUMENTS ARE gunbc.runner_microvm_network runner_slot_guest_network_boot_args ON
+// THE GUEST'S BOOT ARGUMENTS ARE gunbc.runner.runner_microvm_network runner_slot_guest_network_boot_args ON
 // EVERY HOST. A wrapper here returned only the ip= directive, a second spelling that omitted the v6
 // refusal on the one host with no v6 ruleset behind it (review 68590); it had no caller and is gone.
 

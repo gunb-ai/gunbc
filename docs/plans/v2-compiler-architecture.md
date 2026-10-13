@@ -4,6 +4,7 @@
 
 - [demand-engine-program](demand-engine-program.md) -- compiler-stage authority: demand minimization and the demand engine; materialization, realization and placement
 - [ensure-closure-design](ensure-closure-design.md) -- compiler-stage specialization: completion, residual and closure -- environmental completion at a concrete placement
+- [source-layout-authority](source-layout-authority.md) -- compiler-stage authority: source acquisition: layout authority, storage rule and the name-only compile boundary
 - [convergence-coverage-program](convergence-coverage-program.md) -- compiler-stage implementation program: completion, residual and closure -- covering production convergence paths to the execution boundary
 
 > **Status: the top-down design authority for the v2 compiler, one level below DESIGN.md; established 2026-10-01 (operator direction, session wonderful-feynman, on the second review of #12872 finding that the compiler's defining law was housed inside a program-runtime provisioning design). No implementation lands from this document.** It owns the universal law its children specialize, the pipeline those children sit in, the role of lenses, and the plan document graph that joins them. DESIGN.md stays the axioms and their consequences; this document is where 'what it means to author a v2 program' is stated once. The children it governs are listed under the derived heading above; the relation is authored once in `gunbc.plan_governance` and nowhere else.

@@ -1,4 +1,4 @@
-module v2.test.manual.v2_evaluator_runtime_anchor
+module v2.test.claim.manual.v4_evaluator_runtime_anchor
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }

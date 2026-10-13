@@ -7,7 +7,7 @@ import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { apt_bin_dir, package_google_cloud_cli }
+import extdeps.package_managers.apt { apt_bin_dir, package_google_cloud_cli }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

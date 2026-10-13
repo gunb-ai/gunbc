@@ -44,7 +44,7 @@ import gunbc.actions_run_binding {
 // 
 // THE CANDIDATE TREE OID IS `git rev-parse HEAD:` -- the colon form names the root tree of HEAD,
 // and it is the one spelling of that object the fleet portability wall admits
-// (gunbc.fleet_known_hosts_anchor portable_remote_word_char_allowed admits ':' and refuses '^', '{'
+// (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed admits ':' and refuses '^', '{'
 // and '}'), so the candidate side and the deployed side
 // (gunbc.live_deploy.deployed_tree_observation deployed_tree_root_tree_argv) read the same object
 // the same way.
@@ -133,7 +133,7 @@ fn live_deploy_apply_receipt_artifact_path_for(instance_id: String) -> String {
 
 // THE PATH IS RELATIVE TO THE DEPLOYING CHECKOUT. A CI transaction writes it in the workflow
 // runner's workspace and the fleet-converge job uploads that directory as a GitHub Actions
-// artifact (gunbc.ci_spec gunbc_live_deploy_receipt_artifact_dir). An operator-local apply writes
+// artifact (gunbc.ci.ci_spec gunbc_live_deploy_receipt_artifact_dir). An operator-local apply writes
 // the same relative path on the operator's machine — the record of the LATEST local apply for that
 // instance_id (Filesystem.Write overwrites). Those are different filesystems: a local apply cannot
 // overwrite the uploaded CI artifact.

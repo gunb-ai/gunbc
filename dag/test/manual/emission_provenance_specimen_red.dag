@@ -7,7 +7,7 @@ module test.manual.emission_provenance_specimen_red
 // file is an unmarked `fn`. That spelling is not an escape hatch around a compile red
 // on the claim path: discovery classifies decls; unmarked fns are not enrolled claims
 // and are not the floor's executing population. Empirically, after the marker was
-// removed the floor red was `test.claim.emission_provenance_test`, not this body.
+// removed the floor red was `test.claim.emission_provenance`, not this body.
 // `witness_discovery_scan_dirs` / `WitnessExclusionRow { pattern: "test/manual/" }`
 // do not govern the floor; they are a different instrument. This body remains a
 // compile-RED specimen for gunbc.recurring_failure_mode.match_bound_element_type_mask

@@ -284,7 +284,7 @@ data claude_enrollment_writer_reader_deployment_model_gap_reason: NonEmptyStr = 
 data claude_enrollment_host_effect_realization_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }
@@ -293,7 +293,7 @@ data claude_enrollment_host_effect_realization_scaffold: Disposition = Scaffold 
 data claude_enrollment_spawn_cli_private_pty_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }
@@ -302,7 +302,7 @@ data claude_enrollment_spawn_cli_private_pty_scaffold: Disposition = Scaffold {
 data claude_enrollment_observe_browser_challenge_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }
@@ -311,7 +311,7 @@ data claude_enrollment_observe_browser_challenge_scaffold: Disposition = Scaffol
 data claude_enrollment_capture_setup_token_private_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }
@@ -347,7 +347,7 @@ data claude_enrollment_clean_context_materialization_scaffold: Disposition = Sca
 data claude_enrollment_managed_paired_probe_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }

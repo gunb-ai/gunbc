@@ -124,7 +124,7 @@ pub(crate) fn checker_input_paths(prerequisites: &[String], workspace_root: &Pat
 /// THE SIDECAR OF A RESTORED PAIR: `<exe dir>/<exe stem>_checker_inputs`, one workspace-relative
 /// path per line. It is written by `write_checker_inputs_record` in the job that BUILT the pair, from
 /// that build's own cargo dep-info, and travels as a verified member of the release-bins pack
-/// (`gunbc.fleet_release_bins_key` `compiler_pair_release_product` `sidecars`), so a consumer that
+/// (`gunbc.fleet.fleet_release_bins_key` `compiler_pair_release_product` `sidecars`), so a consumer that
 /// restores the pair has it only after the pack's source closure was verified equal to its own tree.
 /// It is a second FORM of the same fact the dep-info records, never a rebased copy of it.
 pub(crate) fn restored_checker_inputs_path(exe: &Path) -> PathBuf {

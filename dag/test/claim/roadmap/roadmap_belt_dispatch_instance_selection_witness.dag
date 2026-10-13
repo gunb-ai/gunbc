@@ -1,0 +1,47 @@
+module test.claim.roadmap.roadmap_belt_dispatch_instance_selection_witness
+
+// The belt entries' instance selection has no default (DESIGN 5): an unset or blank
+// GUNBC_BELT_INSTANCE_ID used to mean srv1-live. The environment read is supplied as a value; the
+// route through shell.Env.Get is the one-line belt_dispatch_instance_cli.
+
+import std.types { Bool, String }
+import gunbc.roadmap.roadmap_belt_actuate { belt_dispatch_instance_selected }
+
+test fn an_unset_selection_refuses_instead_of_defaulting_to_srv1_live() -> Bool {
+  match belt_dispatch_instance_selected(raw: none) {
+    Absent => true
+    Present { value } => false
+  }
+}
+
+test fn a_blank_selection_refuses_instead_of_defaulting_to_srv1_live() -> Bool {
+  match belt_dispatch_instance_selected(raw: Present { value: "  " }) {
+    Absent => true
+    Present { value } => false
+  }
+}
+
+test fn an_unadmitted_spelling_refuses() -> Bool {
+  match belt_dispatch_instance_selected(raw: Present { value: "srv9-live" }) {
+    Absent => true
+    Present { value } => false
+  }
+}
+
+test fn the_named_admitted_instances_still_resolve() -> Bool {
+  match belt_dispatch_instance_selected(raw: Present { value: "srv1-live" }) {
+    Absent => false
+    Present { value: a } =>
+      match belt_dispatch_instance_selected(raw: Present { value: " srv2-deploy " }) {
+        Absent => false
+        Present { value: b } => a.instance_id != b.instance_id
+      }
+  }
+}
+
+test fn a_roster_instance_outside_belt_admission_still_refuses() -> Bool {
+  match belt_dispatch_instance_selected(raw: Present { value: "srv1-lab-codex-feedback-v0" }) {
+    Absent => true
+    Present { value } => false
+  }
+}

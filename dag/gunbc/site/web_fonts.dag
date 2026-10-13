@@ -29,7 +29,7 @@ import extdeps.languages.css.font_face {
 // second artifact whose content could drift from its row; the stylesheet and its content-addressed
 // path are pure functions of these rows, so every page head can derive the link without a file
 // read, and the route has no read-refusal arm to model. The base64 is RFC 4648 standard alphabet
-// with padding, and test.claim.web_fonts_witness_test decodes it through std.encoding and checks
+// with padding, and test.claim.web_fonts_witness decodes it through std.encoding and checks
 // the recorded size and SHA-256.
 
 type FontAxisPin {

@@ -1,4 +1,4 @@
-module gunbc.memory_change_report
+module gunbc.host.memory_change_report
 
 import std.types { String, NonEmptyStr, List, Int }
 import std.integer { UInt8 }
@@ -9,13 +9,13 @@ import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 {
   SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT, spd4_primary_package_type,
   spd4_primary_die_count_encoding, spd4_primary_signal_loading,
 }
-import gunbc.memory_configuration {
+import gunbc.host.memory_configuration {
   CatalogMemoryModule, ObservedMemoryModule, MemoryCatalogBinding, memory_module_label, memory_module_capacity,
   PositionedMemoryModule, MemoryOperatingObligation, MemoryPlacement, MemorySocketCapacity, MemoryFirmwareScopeCoverage, MemoryPackageMixture, MemoryClassSupport,
   MemorySpecificPartQualification, MemoryTraining, MemoryBoot, MemoryTrainingFailureScreen,
   AdditionalMemoryRequirement,
 }
-import gunbc.memory_configuration_evaluation {
+import gunbc.host.memory_configuration_evaluation {
   MemoryMixtureEvidenceRead, MemoryObligationResult, MemoryCounterexample, MemoryPackageConflict, MemoryCapturedMixtureConflict, MemoryStandingConflict,
   MemoryTrainingScreenConflict, MemoryPositionConflict, MemorySocketCapacityConflict, MemoryUnknownFact,
   MemoryPackageMissing, MemoryVariantsMissing, MemoryProcurementCondition,
@@ -23,7 +23,7 @@ import gunbc.memory_configuration_evaluation {
   MemoryStandingMissing, MemoryStandingEvidenceUnobserved, MemoryTrainingScreenUnresolved,
   MemoryModelMissing, MemoryCollectorUnavailable, MemoryPopulationRoleUnresolved, MemoryCatalogBindingUnresolved, MemoryCapacityMissing,
 }
-import gunbc.memory_change_evaluation { MemoryChangeAssessment }
+import gunbc.host.memory_change_evaluation { MemoryChangeAssessment }
 
 fn memory_obligation_label(obligation: MemoryOperatingObligation) -> NonEmptyStr {
   match obligation {

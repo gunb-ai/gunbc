@@ -1,13 +1,13 @@
-module gunbc.runner_capacity_operator_access
+module gunbc.runner.runner_capacity_operator_access
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
-import gunbc.runner_host_deploy {
+import gunbc.runner.runner_host_deploy {
   srv3_runner_host_spec,
   srv4_runner_host_spec,
   runner_host_spec_for,
@@ -45,7 +45,7 @@ data runner_capacity_operator_access_authority_disposition: ConstructionMechanis
 // (rewritten at start). Never refuse or re-extract complete dormant trees.
 
 // AUTHORITATIVE: vivid-eagle-131 read-only in-band observation 2026-08-07
-// (srv2->ubuntu@192.168.1.221). Mapped in gunbc.runner_incarnation
+// (srv2->ubuntu@192.168.1.221). Mapped in gunbc.runner.runner_incarnation
 // vivid_eagle_srv3_slot_installation_observation. 01..05 active; 06/07/08 materialized-not-active.
 // No further probe needed.
 

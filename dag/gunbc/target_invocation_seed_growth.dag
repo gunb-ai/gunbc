@@ -2,7 +2,7 @@ module gunbc.target_invocation_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
 // Seed-growth obligation for the `gunbc test <label>` target dispatch seam. Homed here, beside the
@@ -48,9 +48,9 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // that reads as coverage (DESIGN section 4b). If the host ever takes its two populations
 // separately, the arm returns with the state that makes it reachable.
 //
-// ADMITTED AGAINST THE v1 FREEZE BY PURPOSE, on the test gunbc.v1_maintenance_standing
+// ADMITTED AGAINST THE v1 FREEZE BY PURPOSE, on the test gunbc.v1.v1_maintenance_standing
 // v1_seed_standing states: does the change serve the v2 self-host program. It does, and by the same
-// route gunbc.parse_refusal_location_seed_growth and gunbc.floor_non_verdict_enrollment were
+// route gunbc.parse_refusal_location_seed_growth and gunbc.floor.floor_non_verdict_enrollment were
 // admitted -- it makes the INSTRUMENTS that measure that program invocable by name. Classified
 // against all five refused classes: NewLanguageBehavior -- no, the compile pipeline is
 // byte-untouched. NewCompatibilityObligation -- no, and the direction is the opposite: the
