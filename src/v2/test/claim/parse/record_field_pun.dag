@@ -139,7 +139,7 @@ fn refused_at_parse(tag: String, body: String) -> Bool {
 }
 
 test fn a_keyword_pun_refuses_holds() -> Bool { refused_or_not_a_record(tag: "kw", body: "X { true }") }
-test fn a_keyword_pun_before_a_name_without_a_comma_refuses_holds() -> Bool { refused_or_not_a_record(tag: "kw2", body: "X { true s }") }
+test fn a_keyword_pun_before_a_name_without_a_comma_refuses_holds() -> Bool { refused_at_parse(tag: "kw2", body: "X { true s }") }
 test fn a_literal_pun_refuses_holds() -> Bool { refused_or_not_a_record(tag: "lit", body: "X { 1 }") }
 test fn a_dotted_pun_refuses_holds() -> Bool { refused_or_not_a_record(tag: "dot", body: "X { s.t }") }
 test fn an_unclosed_pun_record_refuses_holds() -> Bool { refused_at_parse(tag: "open", body: "X { s") }
