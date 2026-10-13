@@ -1,4 +1,4 @@
-module v2.test.generated.refinement_preservation
+module v2.test.claim.generated.refinement_preservation
 
 import std.types { List }
 import v2.lens.testgen {
@@ -25,7 +25,7 @@ import v2.std.verification {
   TestClaim,
   ManualRefinementNonEmptyListBase
 }
-import v2.test.manual.connective_anchors {
+import v2.test.claim.manual.connective_anchors {
   stub_empty_conj
 }
 

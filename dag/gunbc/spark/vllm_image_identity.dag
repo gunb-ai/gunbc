@@ -11,7 +11,7 @@ import extdeps.flashinfer.flashinfer { flashinfer_0_7_0_dev20260910_wheels }
 // ── WHICH IMAGE A RECIPE NAMES, AS PURE FUNCTIONS OF THE RECIPE ───────────────────────────────
 //
 // THESE ARE SEPARATE FROM THE BUILD LANE BECAUSE THE SERVING ARM MUST READ THEM. The build lane
-// (gunbc.spark.vllm_runtime_image_build) realizes an image and imports the arm's ranked hosts to
+// (retired gunbc.spark.vllm_runtime_image_build (deleted #13779)) realizes an image and imports the arm's ranked hosts to
 // place the build; the serving arm (gunbc.spark.serving_arm) pins the image the arm runs. With the
 // derivations inside the build lane, the arm could not import them without a cycle, so it carried the
 // derived tag as a copied literal -- a transcribed output of these functions that would silently

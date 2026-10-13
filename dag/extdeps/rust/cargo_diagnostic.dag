@@ -1,10 +1,10 @@
-module extdeps.cargo_diagnostic
+module extdeps.rust.cargo_diagnostic
 
 import std.types { Bool, Int, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.cargo_message { cargo_message_lines }
+import extdeps.rust.cargo_message { cargo_message_lines }
 import extdeps.languages.json.emit {
   JsonValue,
   JsonNull,
@@ -35,16 +35,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
-      module_path: "extdeps.cargo_diagnostic",
+      module_path: "extdeps.rust.cargo_diagnostic",
       decl_name: "cargo_compiler_message_reason",
       field: WholeDeclaration
     }
   },
-  first_citation: extdeps.cargo_diagnostic.extdeps_external_authority_anchor,
-  further_citations: [extdeps.cargo_message.extdeps_external_authority_anchor]
+  first_citation: extdeps.rust.cargo_diagnostic.extdeps_external_authority_anchor,
+  further_citations: [extdeps.rust.cargo_message.extdeps_external_authority_anchor]
 }
 
-// WHY THIS MODULE IS A SIBLING OF extdeps.cargo_message RATHER THAN A WIDENING OF IT.
+// WHY THIS MODULE IS A SIBLING OF extdeps.rust.cargo_message RATHER THAN A WIDENING OF IT.
 // That module's own boundary note declares its scope deliberately narrow -- it decodes exactly
 // which executable a named target produced, and it says in as many words that a consumer needing
 // compiler-message diagnostics "should model them under its own subject instead of widening this

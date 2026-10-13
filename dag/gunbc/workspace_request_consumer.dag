@@ -2,7 +2,7 @@ module gunbc.workspace_request_consumer
 
 import std.types { String, NonEmptyStr, Timestamp, List }
 import gunbc.principal_projection { PrincipalRef }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation_store {
   WorkspaceAllocation, WorkspaceStoreRead, WorkspaceStoreReadOk, WorkspaceStoreUnreadable,
   WorkspaceRetired, WorkspaceReleased, workspace_read_owner,

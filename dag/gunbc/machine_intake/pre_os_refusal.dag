@@ -1,10 +1,10 @@
-module gunbc.machine_intake_pre_os_refusal
+module gunbc.machine_intake.pre_os_refusal
 
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.types { List, NonEmptyStr }
-import gunbc.fleet_observation_collector_ownership { EndpointOwnership }
-import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SubjectAgreement, SourceByteFact }
-import gunbc.fleet_observation_capture_chunk { CommitBinding, ContinuityCoverage, PositionOrder }
+import gunbc.fleet_observation.collector_ownership { EndpointOwnership }
+import gunbc.fleet_observation.observation_envelope { ObservationEnvelope, SubjectAgreement, SourceByteFact }
+import gunbc.fleet_observation.capture_chunk { CommitBinding, ContinuityCoverage, PositionOrder }
 
 // Domain causes inside std.goal_assessment, not a second assessment algebra.
 // Text remains only where the input authority already supplies a textual cause.

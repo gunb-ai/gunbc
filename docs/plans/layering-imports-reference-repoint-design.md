@@ -128,7 +128,7 @@ These call `layer_import_facts_live` / `layer_import_facts` and inherit the repo
 | --- | --- |
 | `src/v2/test/claim/layering_imports/clean_tree_test.dag` | stays — still calls `layer_import_facts_live`; greens when producer is correct |
 | Scanner fixtures (`layering_scan/*/plant.dag`) | **Phase 2:** add **import-less** sibling fixtures per scenario (`import` line deleted; violation expressed as `container.member` reference). Keep import-syntax fixtures until terminal step (transitional producer must still detect them) |
-| `coverage_domain_equivalence_test.dag` | extend rows for reference-sourced perturb receipts |
+| `coverage_domain_equivalence_holds.dag` | extend rows for reference-sourced perturb receipts |
 | `lens_unit/*_fixture.dag` | **unchanged** — synthetic `LayerImportFact` rows test verdict logic directly (class-a); independent of producer |
 
 **Discriminating witness (required in Phase 1):** extend `cli_run.rs` `reference_only_edge_divergence_test` pattern — a fixture `std` module with **no** `import` line and a qualified `v2.compiler.*` reference must yield `layering_imports_violation_count == 1` through `layer_import_facts_live`. Proves the gate survives import deletion.
@@ -157,7 +157,7 @@ These call `layer_import_facts_live` / `layer_import_facts` and inherit the repo
 ### Phase 2 — reference-native perturb fixtures
 
 1. For each of the five scanner scenarios, add an import-less `plant_ref.dag` twin.
-2. Extend `coverage_domain_equivalence_test.dag` rows.
+2. Extend `coverage_domain_equivalence_holds.dag` rows.
 3. Scanner claims run both arms during transition; import-syntax arm deletes at terminal step.
 
 *Receipt:* scanner detects violation on import-less fixture alone.

@@ -1,4 +1,4 @@
-module gunbc.ci_compile_measurement
+module gunbc.ci.ci_compile_measurement
 
 import std.measure { ByteSize, byte_size }
 import std.types { Int }

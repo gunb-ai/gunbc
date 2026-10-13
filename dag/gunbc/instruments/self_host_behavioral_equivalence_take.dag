@@ -1,4 +1,4 @@
-module tools.self_host_behavioral_equivalence_take
+module gunbc.instruments.self_host_behavioral_equivalence_take
 
 import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
 import std.process { ExitSuccess, ExitFailure }
@@ -15,7 +15,7 @@ import extdeps.bazel.label { render_label }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.instrument_targets { self_host_behavioral_equivalence_label }
-import tools.self_host_module_behavioral_transport_roster {
+import gunbc.instruments.self_host_module_behavioral_transport_roster {
   ModuleBehavioralTransportConfig,
   compiler_module_behavioral_transport_roster,
   compiler_module_behavioral_receipt_evidence,

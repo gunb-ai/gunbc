@@ -1,4 +1,4 @@
-module gunbc.machine_intake_ampere_dram_console_observation
+module gunbc.machine_intake.ampere_dram_console_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }

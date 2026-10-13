@@ -91,6 +91,17 @@ fn push_trigger_yaml(branches: List<String>, paths: List<String>) -> YamlKeyValu
   kv(key: "push", value: yaml_mapping(entries: entries))
 }
 
+// AN EMPTY PATH LIST IS NO FILTER, NOT A FILTER MATCHING NOTHING: GitHub runs a pull_request workflow
+// on every change when `paths` is absent, and rejects an empty `paths` sequence, so the empty list
+// projects to the absent key (the same rule push_trigger_yaml keeps).
+fn pull_request_trigger_entries(branches: List<String>, types: List<PullRequestActivity>, paths: List<String>) -> List<YamlKeyValue> {
+  let base = [
+    kv(key: "branches", value: string_list_flow(items: branches)),
+    kv(key: "types", value: pr_activities_flow(types: types))
+  ]
+  if paths.length() == 0 { base } else { concat(base, [kv(key: "paths", value: string_list_flow(items: paths))]) }
+}
+
 fn dispatch_input_type_label(t: DispatchInputType) -> String {
   match t {
     InputString => "string"
@@ -163,11 +174,8 @@ fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
       kv(key: "workflow_dispatch", value: workflow_dispatch_yaml(inputs: inputs))
     Push { branches: bs, paths: ps } =>
       push_trigger_yaml(branches: bs, paths: ps)
-    PullRequest { branches: bs, types: ts } =>
-      kv(key: "pull_request", value: yaml_mapping(entries: [
-        kv(key: "branches", value: string_list_flow(items: bs)),
-        kv(key: "types", value: pr_activities_flow(types: ts))
-      ]))
+    PullRequest { branches: bs, types: ts, paths: ps } =>
+      kv(key: "pull_request", value: yaml_mapping(entries: pull_request_trigger_entries(branches: bs, types: ts, paths: ps)))
     Schedule { cron: c } =>
       kv(key: "schedule", value: yaml_sequence(elements: [
         yaml_mapping(entries: [kv(key: "cron", value: yaml_string(s: render_cron_schedule(s: c)))])

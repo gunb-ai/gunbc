@@ -17,7 +17,7 @@ import std.types { NonEmptyStr, List }
 // IS the retirement — as `configfs_op_line` was, until the shell-typed-invocation slice
 // deleted it and its trigger went with the declaration. With only the forward shape
 // available, an author had exactly two moves: bind forward to a symbol nobody has
-// declared, which `gunbc.runner_spec_from_offer` refuses by name as the DESIGN §3
+// declared, which `gunbc.runner.runner_spec_from_offer` refuses by name as the DESIGN §3
 // fabricated-citation class, or write the condition into a description string. The
 // second move won overwhelmingly, and a description is unreadable to
 // `dissolution_status` by construction — so the debt's retirement condition became

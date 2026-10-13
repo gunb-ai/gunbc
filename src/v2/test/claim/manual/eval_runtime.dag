@@ -1,4 +1,4 @@
-module v2.test.manual.eval_runtime
+module v2.test.claim.manual.eval_runtime
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }

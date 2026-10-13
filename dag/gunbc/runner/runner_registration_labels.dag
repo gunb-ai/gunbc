@@ -1,21 +1,21 @@
-module gunbc.runner_registration_labels
+module gunbc.runner.runner_registration_labels
 
 import std.types { String, NonEmptyStr, List }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions { SelfHosted, HostedRunner, RunsOnExpression }
-import gunbc.ci_fleet { fleet_compute_offer_for }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union, runner_label_sets_equal }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.ci.ci_fleet { fleet_compute_offer_for }
+import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.runner.runner_slot_allocation { runner_host_label, runner_label_set_union, runner_label_sets_equal }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
 // ONE COMPOSITION, EVERY PRODUCER. A registration's labels are made of three facts, each read from
 // the one place that owns it:
-//   platform  self-hosted / os / arch   gunbc.runner_spec_from_offer, from the host's ComputeOffer
-//   class     gunbc-heavy                gunbc.runner_slot_desired gunbc_runner_slot_desired
-//   host      the host it executes on    gunbc.runner_slot_allocation runner_host_label
+//   platform  self-hosted / os / arch   gunbc.runner.runner_spec_from_offer, from the host's ComputeOffer
+//   class     gunbc-heavy                gunbc.runner.runner_slot_desired gunbc_runner_slot_desired
+//   host      the host it executes on    gunbc.runner.runner_slot_allocation runner_host_label
 // Unit-file registration, JIT mint, the replace postcondition and the org-roster readback all read
-// their labels here. The host-pinned selector (gunbc.ci_deploy_target_host host_pinned_runner_spec)
+// their labels here. The host-pinned selector (gunbc.ci.ci_deploy_target_host host_pinned_runner_spec)
 // reads its platform labels from the same runner_spec_from_offer and its host label from the same
 // runner_host_label, so any label it names is one a registration carries.
 //
@@ -52,7 +52,7 @@ fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsRes
 //
 // The floor runs real-Chromium wet claims inside its claim_executor run, so a runner on a host whose
 // browser toolchain was never converged refuses them (a wet claim on srv1 at the missing toolchain tree). The
-// host's readiness is therefore a LABEL: gunbc.runner_browser_toolchain
+// host's readiness is therefore a LABEL: gunbc.runner.runner_browser_toolchain
 // browser_ready_labels_converge_wet writes it as a template drop-in when that converge's readback
 // holds and removes it when it does not, and once every host in the floor's pool reads ready the
 // floor's runs-on names it -- so an unconverged runner cannot take the floor at all.

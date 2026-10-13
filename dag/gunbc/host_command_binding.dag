@@ -8,7 +8,7 @@ import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.command_runner { run_shell_command_observe_outcome }
-import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_remote_file_write {
@@ -31,7 +31,7 @@ type CommandHost
 
 // ONE LEG AS THE TRANSPORT ANSWERED IT. NotDispatched means no process was started for it: the local
 // runner could not spawn it, or the typed-argv transport refused it before sending
-// (gunbc.fleet_bootstrap_principal_session FleetPrincipalLegRefused: the invocation was never made).
+// (gunbc.fleet.fleet_bootstrap_principal_session FleetPrincipalLegRefused: the invocation was never made).
 type HostLeg
   = LegNotDispatched { reason: String }
   | LegAnswered { exit_code: Int, stdout: String, stderr: String }
@@ -92,7 +92,7 @@ fn host_leg_reply_lost(kind: HostTransportKind, leg: HostLeg) -> Bool {
 }
 
 // WHAT ONE EFFECT ESTABLISHED, for callers that need the three-way reading rather than a Bool.
-// NOT gunbc.host_effect HostEffect: that type is an INTENT -- which privileged effect to perform.
+// NOT gunbc.host.host_effect HostEffect: that type is an INTENT -- which privileged effect to perform.
 // This is the OBSERVED OUTCOME of one command leg that was issued; the two are different facts and
 // carry different names (DESIGN §3: one name, one meaning).
 type HostCommandOutcome

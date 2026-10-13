@@ -1,4 +1,4 @@
-module gunbc.fleet_converge_terminal
+module gunbc.fleet.fleet_converge_terminal
 
 import std.types { String, Int }
 

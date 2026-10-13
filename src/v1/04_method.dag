@@ -214,7 +214,7 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
 // Refused arm, and a real failed compile) while folding the scope disposition's Skipped into true.
 // The String companions were second builtins over the SAME process global, so a caller
 // reconstructed one fact from two correlated reads, and the generated-artifact one fabricated prose
-// for the state the Bool had already erased. gunbc.ci_gate GateReceipt is the single carrier:
+// for the state the Bool had already erased. gunbc.ci.ci_gate GateReceipt is the single carrier:
 // GateObserved holds the verdict WITH its located detail, GateNotApplicable is the scope
 // disposition answering, GateNotRun is could-not-measure. Registered as a type variable rather than
 // a kernel record for the reason its two siblings are -- the result is a coproduct, so

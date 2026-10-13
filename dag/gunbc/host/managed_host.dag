@@ -1,4 +1,4 @@
-module gunbc.managed_host
+module gunbc.host.managed_host
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -6,29 +6,29 @@ import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
-import gunbc.machine_intake_bmc_secure { BmcSecureRefusalCause, BmcSecureRefused, BmcSecureStanding, BmcSecured }
-import gunbc.machine_intake_subject {
+import gunbc.machine_intake.bmc_secure { BmcSecureRefusalCause, BmcSecureRefused, BmcSecureStanding, BmcSecured }
+import gunbc.machine_intake.subject {
   IntakeAttemptId,
   MachineIntakeSubject,
   SubjectCurrent,
   SubjectStale,
   compare_qualification_subject,
 }
-import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations, allocated_canonical_hostname }
 import gunbc.rung_drop { RungDrop, Standing, Retired }
 import gunbc.rung_drop.standing { standing_rung_drops }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_access_standing, mtcollins1_capability_row }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing, mtcollins1_intake_subject }
-import gunbc.machine_intake_mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
-import gunbc.machine_intake_ampere_smpro_observation {
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_standing, mtcollins1_capability_row }
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing, mtcollins1_intake_subject }
+import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
+import gunbc.machine_intake.ampere_smpro_observation {
   SmproSiteStanding, SmproSiteAdmitted, SmproSiteRefused, SmproPassSubjectStanding, smpro_pass_subject,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 
 // A HOST THIS FLEET DRIVES THROUGH ITS BASEBOARD CONTROLLER, and the one record a host-generic
 // procedure takes instead of a unit's constants (docs/plans/managed-host-untangle.md, cut 0). It is
-// not an executor fleet host: gunbc.fleet_runner_connectivity fleet_hosts() means "commits runner
+// not an executor fleet host: gunbc.fleet.fleet_runner_connectivity fleet_hosts() means "commits runner
 // slots", and a managed host commits none. Every value in a row is imported from the unit's own
 // layer-1 modules, never re-spelled. ManagedHost is sole_constructor: the host identity is joined to
 // its secure standing (and so to the intake subject that standing sealed) only here, so no other
@@ -36,9 +36,9 @@ import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site
 // subject is not a field: secure.subject is the one
 // home of it, and a second copy could disagree with the standing it was derived beside.
 //
-// access and capability_row are the pair gunbc.machine_intake_oob_boot_handoff
+// access and capability_row are the pair gunbc.machine_intake.oob_boot_handoff
 // oob_boot_handoff_admission consumes today. DECLARED FRONTIER: they become one
-// gunbc.machine_intake_access BoundBmcAccessContextStanding, whose context carries the capability row
+// gunbc.machine_intake.access BoundBmcAccessContextStanding, whose context carries the capability row
 // through the profile it bound, and the trigger is the first production producer of that standing.
 // No such producer exists yet (bind_bmc_access_context has no production caller and there is no
 // profile catalog), so a bound context cannot be executed for any host and is not hand-built here.
@@ -54,7 +54,7 @@ type ManagedHost sole_constructor {
 // WHETHER DRIVING THIS HOST MUST TAKE ITS MAINTENANCE HOLD FIRST, and on which host the hold store
 // lives. Mt. Collins unit 1 is serviced by hand, so a power cycle of it is gated by the same slot the
 // boot takes; a write may only run where that store is, or it would acquire a hold in an empty store
-// the operator never sees. This decision is the row's; gunbc.managed_host_unit_hold admits a host to
+// the operator never sees. This decision is the row's; gunbc.host.managed_host_unit_hold admits a host to
 // the hold procedure from it and is the only reader that turns it into a slot.
 type ResetUnitHold
   = ResetUnitHoldRequired { key: NonEmptyStr, store_host: NonEmptyStr }
@@ -117,14 +117,14 @@ type ManagedHostAdmissionReceipt sole_constructor {
 
 fn managed_host_admission_receipt(host: HostIdentity, access_host: NonEmptyStr, secure_attempt: IntakeAttemptId) -> ManagedHostAdmissionReceipt
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host", decl_name: "mtcollins1_managed_host_admission"),
-    decl_ref(module_path: "gunbc.managed_host", decl_name: "managed_host_admission"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_a_record_whose_subject_is_current_is_an_ordinary_member"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_a_superseded_subject_with_no_declared_drop_is_absent"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_a_missing_hold_decision_is_absent"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_a_missing_host_allocation_is_absent"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_a_receipt_for_another_host_is_absent"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties"),
+    decl_ref(module_path: "gunbc.host.managed_host", decl_name: "mtcollins1_managed_host_admission"),
+    decl_ref(module_path: "gunbc.host.managed_host", decl_name: "managed_host_admission"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_record_whose_subject_is_current_is_an_ordinary_member"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_superseded_subject_with_no_declared_drop_is_absent"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_hold_decision_is_absent"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_host_allocation_is_absent"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_receipt_for_another_host_is_absent"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties"),
   ]
 {
   ManagedHostAdmissionReceipt { host: host, access_host: access_host, secure_attempt: secure_attempt }
@@ -160,13 +160,13 @@ fn managed_host_admission(
   covering_drop: DeclarationRef?,
 ) -> ManagedHostAdmission
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host", decl_name: "mtcollins1_managed_host_admission"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_a_record_whose_subject_is_current_is_an_ordinary_member"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_a_superseded_subject_with_no_declared_drop_is_absent"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_a_missing_hold_decision_is_absent"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_a_missing_host_allocation_is_absent"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_a_receipt_for_another_host_is_absent"),
-    decl_ref(module_path: "test.claim.managed_host_admission_witness", decl_name: "w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties"),
+    decl_ref(module_path: "gunbc.host.managed_host", decl_name: "mtcollins1_managed_host_admission"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_record_whose_subject_is_current_is_an_ordinary_member"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_superseded_subject_with_no_declared_drop_is_absent"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_hold_decision_is_absent"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_host_allocation_is_absent"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_receipt_for_another_host_is_absent"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties"),
   ]
 {
   ManagedHostAdmission {
@@ -299,7 +299,7 @@ fn row_from_admission(record: ManagedHostAdmission, hold: ResetUnitHold) -> Mana
 
 fn ordinary_member(host: ManagedHost) -> ManagedHostMembership
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host", decl_name: "project_managed_host_admission"),
+    decl_ref(module_path: "gunbc.host.managed_host", decl_name: "project_managed_host_admission"),
   ]
 {
   OrdinaryMember { host: host }
@@ -312,7 +312,7 @@ fn member_under_declared_drop(
   host: ManagedHost,
 ) -> ManagedHostMembership
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host", decl_name: "project_managed_host_admission"),
+    decl_ref(module_path: "gunbc.host.managed_host", decl_name: "project_managed_host_admission"),
   ]
 {
   MemberUnderDeclaredDrop {
@@ -547,7 +547,7 @@ fn managed_host_account_driving(lookup: ManagedHostLookup, endpoint: BmcControll
 }
 
 // THE ONE OTHER WAY TO MINT A ROW, ADMITTED ONLY TO THE WITNESSES THAT NEED A CROSS-WIRED ONE. The
-// reds in test.claim.managed_host_witness (and test.claim.megarac_managed_host_witness, test.claim.machine_intake.dimm_physical_orientation_witness) re-point a real row's access at another controller or
+// reds in test.claim.host.managed_host_witness (and test.claim.host.megarac_managed_host_witness, test.claim.machine_intake.dimm_physical_orientation_witness) re-point a real row's access at another controller or
 // another reported baseboard, or rename a real row to a host with no reset selection, boot selection or boot policy, to show the binding and the
 // admissions refuse them; they cannot do that without a constructor, and admit_callers keeps every other caller out.
 fn managed_host_fixture(
@@ -559,33 +559,33 @@ fn managed_host_fixture(
   smpro: SmproSiteStanding,
 ) -> ManagedHost
   admit_callers: [
-    decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_not_bound_or_rostered"),
-    decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster"),
-    decl_ref(module_path: "test.claim.managed_host_unit_hold_witness", decl_name: "w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store"),
-    decl_ref(module_path: "test.claim.managed_host_unit_hold_witness", decl_name: "w_a_held_host_with_no_reason_variable_is_refused_for_maintenance"),
-    decl_ref(module_path: "test.claim.managed_host_unit_hold_witness", decl_name: "w_a_store_host_with_no_allocated_hostname_refuses_the_executor"),
-    decl_ref(module_path: "test.claim.managed_host_boot_federation_witness", decl_name: "w_a_bound_host_with_no_boot_policy_is_unprovisioned"),
-    decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_row_whose_smpro_site_names_another_controller_mints_no_subject"),
-    decl_ref(module_path: "test.claim.managed_host_boot_witness", decl_name: "w_a_boot_of_an_unbound_host_is_refused"),
-    decl_ref(module_path: "test.claim.managed_host_boot_witness", decl_name: "w_a_bound_host_with_no_boot_selection_is_refused"),
-    decl_ref(module_path: "test.claim.managed_host_boot_witness", decl_name: "w_the_handoff_admission_discriminates_on_every_managed_hosts_rows"),
-    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_controller_observed_as_openbmc_is_refused_for_every_megarac_operation"),
-    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_controller_whose_family_is_unobserved_is_refused_for_every_megarac_operation"),
-    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_megarac_build_no_operation_was_executed_on_is_refused_for_every_operation"),
-    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_admitted_for_no_operation"),
-    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_another_baseboard_at_the_same_megarac_build_is_refused_for_every_operation"),
-    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_an_account_is_released_only_with_the_controller_it_was_bound_to"),
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_not_bound_or_rostered"),
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster"),
+    decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store"),
+    decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_held_host_with_no_reason_variable_is_refused_for_maintenance"),
+    decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_store_host_with_no_allocated_hostname_refuses_the_executor"),
+    decl_ref(module_path: "test.claim.auth.managed_host_boot_federation_witness", decl_name: "w_a_bound_host_with_no_boot_policy_is_unprovisioned"),
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_row_whose_smpro_site_names_another_controller_mints_no_subject"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_boot_of_an_unbound_host_is_refused"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_bound_host_with_no_boot_selection_is_refused"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_handoff_admission_discriminates_on_every_managed_hosts_rows"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_controller_observed_as_openbmc_is_refused_for_every_megarac_operation"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_controller_whose_family_is_unobserved_is_refused_for_every_megarac_operation"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_megarac_build_no_operation_was_executed_on_is_refused_for_every_operation"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_admitted_for_no_operation"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_another_baseboard_at_the_same_megarac_build_is_refused_for_every_operation"),
+    decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_an_account_is_released_only_with_the_controller_it_was_bound_to"),
     decl_ref(module_path: "test.claim.machine_intake.dimm_physical_orientation_witness", decl_name: "w_the_same_anchors_on_another_reported_board_are_refused_unmodeled"),
     decl_ref(module_path: "test.claim.machine_intake.dimm_physical_orientation_witness", decl_name: "w_an_unobserved_controller_is_refused_at_the_binding_not_as_an_unmodeled_board"),
-    decl_ref(module_path: "test.claim.machine_intake.fan_observe_witness_test", decl_name: "an_openbmc_bound_row_is_read_against_the_phosphor_policy"),
-    decl_ref(module_path: "test.claim.machine_intake.fan_observe_witness_test", decl_name: "a_row_whose_family_is_unobserved_refuses_naming_the_missing_observation"),
+    decl_ref(module_path: "test.claim.machine_intake.fan_observe_witness", decl_name: "an_openbmc_bound_row_is_read_against_the_phosphor_policy"),
+    decl_ref(module_path: "test.claim.machine_intake.fan_observe_witness", decl_name: "a_row_whose_family_is_unobserved_refuses_naming_the_missing_observation"),
   ]
 {
   ManagedHost { host: host, access: access, capability_row: capability_row, secure: secure, unit_hold: unit_hold, smpro: smpro }
 }
 
 // THE SILICON STANDING OF A BOUND HOST: its SMpro site joined to the controller the binding read,
-// minted by gunbc.machine_intake_ampere_smpro_observation smpro_pass_subject, which refuses a site
+// minted by gunbc.machine_intake.ampere_smpro_observation smpro_pass_subject, which refuses a site
 // that names another controller. Every Ampere SMpro pass reads through the subject this returns, so
 // a pass cannot pair one host's controller with another board's site. DECLARED FRONTIER: smpro is a
 // SmproSiteStanding on every row because every managed host today is an Altra board; the first

@@ -12,7 +12,7 @@ import std.allocation_roster {
 import std.disposition { Disposition, Terminal }
 import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
-import gunbc.fleet_host_identity {
+import gunbc.fleet.fleet_host_identity {
   operator_host_srv1,
   operator_host_srv2,
   operator_host_srv3,
@@ -25,7 +25,7 @@ import gunbc.fleet_host_identity {
   operator_host_183527,
   operator_host_3dde7f,
 }
-import gunbc.host_names_gen_z { host_name_first_parts, gen_z_last_parts }
+import gunbc.host_names.gen_z { host_name_first_parts, gen_z_last_parts }
 
 // A HUMAN NAME HAS THREE SHAPES AND NO OTHER: a middle part exists only beside a last part, so
 // that invalid state has no constructor rather than a validator. Each part is one DNS label, and the
@@ -145,7 +145,7 @@ fn hostname_allocation_admission(
 // one. So this row is an authored allocation that happens to coincide with the identity's spelling,
 // which is a different fact from being derived from it.
 //
-// WHY IT WAS NOT AUTHORED BY THE LANE THAT NEEDED IT. gunbc.host_reset_return_run compares an
+// WHY IT WAS NOT AUTHORED BY THE LANE THAT NEEDED IT. gunbc.host.host_reset_return_run compares an
 // observer's own hostname against the subject's allocated one, and with no row here that check
 // refused as unreadable. Guessing a hostname to clear that refusal would have been a fabricated
 // observation standing exactly where the check that catches fabrication runs -- the guess would
@@ -153,8 +153,8 @@ fn hostname_allocation_admission(
 // and consumed there, which is the only ordering in which the check keeps its meaning.
 //
 // THE TWO DRAWN ROWS (2026-10-07) are the Hetzner Cloud CAX41 guests. Their stable identities are
-// opaque (gunbc.fleet_host_identity), so nothing about provider, architecture or role is read off a
-// spelling; their names were DRAWN by draw_human_name over the Gen Z naming scheme (gunbc.host_names_gen_z), with the entropy
+// opaque (gunbc.fleet.fleet_host_identity), so nothing about provider, architecture or role is read off a
+// spelling; their names were DRAWN by draw_human_name over the Gen Z naming scheme (gunbc.host_names.gen_z), with the entropy
 // recorded as the receipt of the draw.
 data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {

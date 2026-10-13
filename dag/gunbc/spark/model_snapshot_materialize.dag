@@ -7,7 +7,7 @@ import std.content_hash { content_hash_atom, content_hash_of_value, serialize_co
 import product.host_identity { HostIdentity }
 import std.algebra { trim }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
-import gunbc.fleet_bootstrap_principal_session {
+import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
   FleetPrincipalLegRan,
@@ -16,12 +16,12 @@ import gunbc.fleet_bootstrap_principal_session {
 import extdeps.exec.command { shell_quote }
 import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began, remote_stdout_as_one_word }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, SshTarget, portable_remote_words,
 }
-import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_reach_path_wire }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name }
+import gunbc.spark.retired_serving_container_names { spark_pair_container_name }
 import gunbc.artifact_acquisition {
   AcquisitionSubject, AcquisitionSource, AcquisitionHandler,
   AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified,
@@ -130,16 +130,15 @@ fn spark_remote_run_of_session(endpoint: String, exit_code: Int, stdout: String,
 // EVERY LEG IS PRIVILEGED, BECAUSE THE DAEMON IT MUST REACH IS. Acquisition drives docker on the
 // target, and docker's socket is root-owned on these hosts -- an unprivileged run answers
 // `permission denied while trying to connect to the docker API`, which is what the first real
-// acquisition hit. The privilege comes from the shape gunbc.spark.pair_serving_apply already uses for
-// the same hosts -- `sudo -S` with the credential on stdin ahead of the command -- rather than a
-// second mechanism invented here. `sudo -n` was tried first and is wrong: it requires passwordless
-// sudo, which this fleet does not grant.
+// acquisition hit. The privilege is the same `sudo -S` shape gunbc.spark.host_privileged_apply uses
+// -- credential on stdin ahead of the command -- rather than a second mechanism. `sudo -n` was tried
+// first and is wrong: it requires passwordless sudo, which this fleet does not grant.
 //
 // ONE REMOTE EXECUTION, AND THE TWO FAILURES IT KEEPS APART. "the ssh leg never landed" and "the
 // command ran and exited non-zero" are different facts with different remedies, and collapsing them
 // is what would make an unreachable host read as a corrupt download.
 // THE SESSION IS DERIVED, NOT NAMED HERE. This leg was already a password leg and stays one;
-// what changed is that gunbc.fleet_bootstrap_principal_session derives that from the principal,
+// what changed is that gunbc.fleet.fleet_bootstrap_principal_session derives that from the principal,
 // so this module and the grant installer can no longer disagree about how briansrls is reached.
 fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRemoteRun {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {

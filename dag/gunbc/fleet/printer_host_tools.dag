@@ -4,8 +4,8 @@ import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_cli_tool }
 import extdeps.tools { apt_package_of }
-import gunbc.host_effect { LocalShell }
-import gunbc.host_effect_realize { srv3_ensure_apt_tool, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateUnobserved }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.host.host_effect_realize { srv3_ensure_apt_tool, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateUnobserved }
 
 // Administrator host preparation, separate from the unprivileged print worker.
 // The package and version constraint come from the same tool row used at print admission.

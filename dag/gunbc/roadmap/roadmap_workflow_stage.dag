@@ -1,4 +1,4 @@
-module gunbc.roadmap_workflow_stage
+module gunbc.roadmap.roadmap_workflow_stage
 
 import std.types { String, List, Bool }
 import std.algebra { trim }

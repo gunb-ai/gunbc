@@ -1,4 +1,4 @@
-module gunbc.machine_intake_ampere_socket_console_observation
+module gunbc.machine_intake.ampere_socket_console_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
@@ -8,7 +8,7 @@ import extdeps.ampere.ras_error_section {
   AmpereRasSectionHeader, AmpereRasErrorTypeReading, AmpereRasTypeDefined, AmpereRasTypeUndefined,
   ampere_ras_section_guid, ampere_ras_section_header_of, ampere_ras_error_type_code, ampere_ras_error_type_reading_text,
 }
-import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_line, text_after }
+import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_console_line, text_after }
 
 // WHAT ONE BOOT'S CONSOLE SAYS ABOUT EACH SOCKET, from two independent printers, as an observation
 // receipt of this repository.

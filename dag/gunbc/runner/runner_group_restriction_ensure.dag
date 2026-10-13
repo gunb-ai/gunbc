@@ -1,11 +1,11 @@
-module gunbc.runner_group_restriction_ensure
+module gunbc.runner.runner_group_restriction_ensure
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import extdeps.github.org_actions { RunnerGroupVisibility, SelectedRepositories, runner_group_visibility_wire }
 import gunbc.repository { gunbc_repository_numeric_identity }
 import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 import gunbc.fleet.org_actions_inspection { org_actions_organization, RunnerGroupListDecode }
-import gunbc.runner_group_restriction_observation {
+import gunbc.runner.runner_group_restriction_observation {
   RestrictedRunnerGroup, MicrovmRunnerGroupStanding,
   RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,
   RunnerGroupAbsent, observe_runner_group_restriction, microvm_shakedown_runner_group_name,
@@ -14,7 +14,7 @@ import gunbc.runner_group_restriction_observation {
 
 // THE MICROVM RUNNER GROUP, ENSURED: read first, create only when absent, read back after.
 //
-// The group gunbc.runner_jit_mint plan_jit_mint requires is one the organization does not have
+// The group gunbc.runner.runner_jit_mint plan_jit_mint requires is one the organization does not have
 // until it is created, and creating it is an org-admin effect. This module owns the PLAN -- what
 // the group must be, and which of three things a read of the organization's groups says to do --
 // so the effect is never performed on a guess: a group already restricted to exactly its
@@ -22,7 +22,7 @@ import gunbc.runner_group_restriction_observation {
 // a group holding the name with any other restriction is REFUSED rather than edited, because the
 // update is a different effect that nobody has modeled or approved. After a create, the
 // organization is read again and the same sealed observer
-// (gunbc.runner_group_restriction_observation) must hold, or the create is refused: a 201 is
+// (gunbc.runner.runner_group_restriction_observation) must hold, or the create is refused: a 201 is
 // GitHub saying it accepted the request, and only the readback says the group is what the mint
 // needs.
 

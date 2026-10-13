@@ -50,17 +50,6 @@ fn serving_replica_route(replica: RentedReplicaIdentity, address: NonEmptyStr, p
   ServingRouteResolved { endpoint: ServingRouteEndpoint { replica: replica, address: address, port: port }, ceiling: ceiling }
 }
 
-// NO ROUTE IS ENROLLED IN PRODUCTION UNTIL A REPLICA IS LAUNCHED. Every procured DGX Spark is sold
-// (operator-ruled 2026-10-10), so the previous fleet-cage roster is gone rather than emptied. The
-// roster is a parameter of the bind fold (gunbc.harness.harness_seat harness_bind_seat), so a rented
-// cohort supplies the routes of the replicas it launched and a witness supplies a fixture population.
-// The operator-run ninfer route (gunbc.harness.harness_operator_route) is not enrolled here.
-data serving_enrolled_routes_roster: List<ServingRoute> = []
-
-fn serving_enrolled_routes() -> List<ServingRoute> {
-  serving_enrolled_routes_roster
-}
-
 fn serving_route_endpoint_wire(e: ServingRouteEndpoint) -> NonEmptyStr {
   join([e.address as String, ":", to_string(e.port)], "") as NonEmptyStr
 }

@@ -9,7 +9,7 @@ import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_
 import extdeps.languages.rust.compiler_phases {
   rustc_phase_classification_policy_digest
 }
-import tools.emission_entry_instrument { RustfmtParseObservation }
+import gunbc.instruments.emission_entry_instrument { RustfmtParseObservation }
 import gunbc.self_host_compile_phase_frontier {
   CompilePhaseFrontierReceipt,
   CompilePhaseReceiptSubject,

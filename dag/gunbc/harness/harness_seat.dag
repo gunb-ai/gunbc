@@ -10,13 +10,14 @@ import extdeps.accounting.encumbrance { Held, Expended, Released }
 import extdeps.api_rate_limit { upstream_rate_limit_key }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
-  ServingRouteTurnCeiling, serving_enrolled_routes, serving_route_turn_ceiling_count,
+  ServingRouteTurnCeiling, serving_route_turn_ceiling_count,
 }
+import gunbc.serving.rented_enrollment { rented_cohort_index, rented_enrolled_routes, rented_incarnation_standing }
 import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch, replica_endpoint_launch_key, replica_incarnation_unverified_obligation }
 import gunbc.serving.replica_incarnation { ReplicaIncarnationStanding, ReplicaIncarnationBound, ReplicaIncarnationUnread }
 import std.optional { Present, Absent }
 import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
-import gunbc.fabric_event_log_host {
+import gunbc.fabric.fabric_event_log_host {
   HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds,
 }
 import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_release, pool_refusal_wire, PoolAdvanced, PoolRefused }
@@ -27,8 +28,8 @@ import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved, SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity, QuiescenceRequired }
-import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.fabric_event_log {
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_event_log {
   HeadExpectation, event_log_refusal_wire, SeatStoreRefused, SeatStandingStoreRefused, HeadObserved, HeadObservationRefused, event_log_observe_head, EventAppended,
   EventAppendStale, EventAppendRefused, event_log_append, SeatGranted, SeatFull, SeatContended,
   SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved,
@@ -77,6 +78,9 @@ import gunbc.serving.turn_admission {
   serving_unread_when_owner_unprobed,
   serving_admission_detail, serving_isolation_profile,
   serving_delay_valuation, serving_dispatch_inputs,
+}
+import gunbc.serving.rented_offer_admission {
+  RentedAdmissionSources, rented_production_sources, admit_rented_offer, RentedCandidateAdmitted, RentedAdmissionRefused,
 }
 import gunbc.serving.turn_demand { serving_token_capability, serving_replica_trust_domain, serving_unstated_shape, ServingModelRequirementRef, serving_turn_requirements, serving_turn_work, ServingTurnRequest }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
@@ -218,7 +222,7 @@ fn harness_seat_pool_root(partition: PartitionId, ceiling: Nat) -> Pool<Count, O
 }
 
 // AN UNRESOLVED ROUTE HAS NO CEILING, which is the one way this can fail to establish one. The
-// engine-kind check that used to stand here read gunbc.spark.pair_serving_desired's DESIRED unit and
+// engine-kind check that used to stand here read retired gunbc.spark.pair_serving_desired (deleted #13779)'s DESIRED unit and
 // refused a group served by a runtime whose KV admission is not modelled -- a correct wall over the
 // wrong subject once a second route exists, because that row describes a launch this repository
 // would perform and not the process answering on either front door. Which runtimes may be enrolled
@@ -617,7 +621,7 @@ fn harness_add_candidate(acc: HarnessCandidates, session: ServingSessionRecord, 
             WithholdRouteNotProgressing { note: why } =>
               harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: why), retryable: true)
             ProgressDoesNotWithhold =>
-              harness_candidate_from_standing(acc: acc, session: session, endpoint: endpoint, route: route, class: class, requirement: requirement, standing: standing, launch: launch, engine: engine, incarnation: harness_observe_incarnation(endpoint: endpoint, launch: launch), route_ceiling: route_ceiling, store: store, now: now)
+              harness_candidate_from_standing(acc: acc, session: session, endpoint: endpoint, route: route, class: class, requirement: requirement, standing: standing, launch: launch, engine: engine, incarnation: harness_observe_incarnation(endpoint: endpoint, launch: launch, attempt: subject.demand.key as String), route_ceiling: route_ceiling, subject: subject, store: store, now: now)
           }
       }
     }
@@ -640,6 +644,7 @@ fn harness_candidate_from_standing(
   engine: HarnessEngineReading,
   incarnation: ReplicaIncarnationStanding,
   route_ceiling: ServingRouteTurnCeiling,
+  subject: HarnessTurnSubject,
   store: FabricStorageBinding,
   now: EpochSecs,
 ) -> HarnessCandidates {
@@ -658,6 +663,8 @@ fn harness_candidate_from_standing(
           seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
           seats_held: harness_seat_standing(route: route, store: store, now: now),
           session: session,
+          sources: rented_production_sources(replica: replica),
+          subject: subject, model: observed_model, unit: observed_unit, now: now,
         )
       }
     HarnessBackendModelNotAdmitted { advertised: _ } =>
@@ -669,21 +676,11 @@ fn harness_candidate_from_standing(
   }
 }
 
-// THE ADMISSION SEAM, AND WHAT STANDS AT IT. Everything above this point is hardware-neutral and
-// executes for a rented replica: the engine reading, the availability and continuity verdict, the
-// progress gate, the model screen and the co-tenancy admission. What follows admission is the rented
-// supplier offer and its provider-use admission, and NEITHER EXISTS YET: the offer constructor and the
-// first-party admission this seam used to call were Spark-pair provenance (the Spark site allocation
-// route, the compliance posture and the usage-stats telemetry of the answering launch), and the cohort
-// has no equivalent authority. So an admitted replica ends in a typed, located refusal naming that
-// frontier, never in a fabricated offer. The old chain refused at the same point in production.
-//
-// DECLARED FRONTIER (DESIGN.md 3c): the rented offer binding and provider-use admission, built from
-// the PR #13718 supplier rows, land with the warm-trace producer (the next vertical), which is the
-// consumer that drives this seam. The replica incarnation check lands with it, BEFORE any warm-trace
-// qualification run: recovery and restart cases depend on detecting a replaced launch, and until it
-// lands every launch reading here is the endpoint's own process-start field, not a verified identity.
-data harness_rented_offer_unlanded: NonEmptyStr = "the replica is admissible on its engine reading, but no rented supplier offer or provider-use admission exists yet to bind it (declared frontier of the warm-trace vertical), so the replica cannot be offered" as NonEmptyStr
+// THE ADMISSION SEAM. Everything above admission is hardware-neutral and executes for a rented
+// replica: the engine reading, the availability and continuity verdict, the progress gate, the model
+// screen and the co-tenancy admission. What follows is gunbc.serving.rented_offer_admission: the
+// replica's rental record, the operator's posture attestation and the fabric capacity admission. Each
+// unread fact ends in a typed, located refusal, never a fabricated offer.
 
 fn harness_add_serving_candidate(
   acc_in: HarnessCandidates,
@@ -695,6 +692,11 @@ fn harness_add_serving_candidate(
   seats_held: ServingSeatStanding,
   session: ServingSessionRecord,
   incarnation: ReplicaIncarnationStanding,
+  sources: RentedAdmissionSources,
+  subject: HarnessTurnSubject,
+  model: NonEmptyStr,
+  unit: HarnessServingUnit,
+  now: EpochSecs,
 ) -> HarnessCandidates {
   let replica = endpoint.replica
   let acc = harness_note_owner_standing(acc: acc_in, session: session, launch: launch, engine: engine, incarnation: incarnation)
@@ -708,7 +710,24 @@ fn harness_add_serving_candidate(
   )
   match admission {
     AdmissibleForClass { class: _, receipt: _ } =>
-      harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: harness_rented_offer_unlanded as String), retryable: false)
+      match admit_rented_offer(replica: replica, sources: sources, at: now, requirements: subject.work.requirements, demand: subject.demand, work: subject.work.id) {
+        RentedCandidateAdmitted { candidate: c } =>
+          if any(acc.candidates, e => (e.key as String) == (c.offer.id.key as String)) {
+            harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: join(["offer ", c.offer.id.key as String, " already names another candidate; two replicas may not share one offer identity"], "")), retryable: false)
+          } else {
+          HarnessCandidates {
+            candidates: concat(acc.candidates, [HarnessCandidate {
+              key: c.offer.id.key, replica: replica, endpoint: endpoint, launch: launch,
+              model: model, unit: unit, ceiling: seats, offer: c,
+            }]),
+            notes: acc.notes,
+            retryable: acc.retryable,
+            owner_standing: acc.owner_standing,
+          }
+          }
+        RentedAdmissionRefused { detail: why } =>
+          harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: why), retryable: false)
+      }
     InadmissibleQualityTurnInFlight { held: _, basis: _ } =>
       harness_no_candidate(acc: acc, note: serving_admission_detail(replica: replica, admission: admission), retryable: true)
     InadmissibleGroupNotIdle { occupied_by: _, basis: _ } =>
@@ -818,16 +837,16 @@ fn harness_owner_residency(session: ServingSessionRecord, key: NonEmptyStr, inca
   }
 }
 
-// THE INCARNATION IS OBSERVED ON THE REPLICA'S HOST OVER ITS ENROLLED ACCESS. No route yet carries that
-// access, so the reading is unread with the unverified obligation: the owner stays pinned and nothing is
-// fabricated. DECLARED FRONTIER (DESIGN 3c): route enrollment supplies the rented host's transport and
-// engine pattern and this calls gunbc.serving.replica_incarnation observe_replica_incarnation.
-fn harness_observe_incarnation(endpoint: ServingRouteEndpoint, launch: ReplicaEndpointLaunch) -> ReplicaIncarnationStanding {
-  ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation }
+// THE INCARNATION IS OBSERVED ON THE REPLICA'S HOST OVER ITS ENROLLED ACCESS: the replica's own
+// enrollment row (gunbc.serving.rented_enrollment) names the host, and a replica with no row, a refused
+// access or an unreadable fact is Unread, which pins the owner and is never warm.
+fn harness_observe_incarnation(endpoint: ServingRouteEndpoint, launch: ReplicaEndpointLaunch, attempt: String) -> ReplicaIncarnationStanding {
+  rented_incarnation_standing(index: rented_cohort_index, endpoint: endpoint, launch: launch, attempt_raw: attempt)
 }
 
 fn harness_candidate_for_key(candidates: List<HarnessCandidate>, key: NonEmptyStr) -> HarnessCandidate? {
-  first(filter(candidates, c => (c.key as String) == (key as String)))
+  let named = filter(candidates, c => (c.key as String) == (key as String))
+  if count(named) > 1 { none } else { first(named) }
 }
 
 // THE ACQUISITION REFERENCE MUST BE UNIQUE FOR THE LIFE OF THE PARTITION, not merely unlikely to
@@ -1174,7 +1193,7 @@ fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass,
       match now_epoch_seconds() {
         Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } => {
-          let routes = serving_enrolled_routes()
+          let routes = rented_enrolled_routes(index: rented_cohort_index)
           let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false }, f: (acc, round) =>
             harness_placement_round(acc: acc, session: serving_session_record_for_request(entry: session, next_inputs: inputs), class: class, requirement: requirement, subject: subject, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, routes: routes))
           match placed.done {

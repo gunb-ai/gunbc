@@ -17,9 +17,9 @@ import v2.compiler.ingested_fixture_arrows {
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_language_model,
-  parse_production_emitted_identity_optional
+  dag_language_model
 }
+import v2.std.grammar { parse_production_emitted_identity_optional }
 import std.optional {
   Absent,
   Optional,
@@ -36,15 +36,15 @@ import v2.std.node {
   node_synthetic
 }
 import v2.std.node_query { find_arrow_body_child }
-import v2.test.parse.parse_binding_fidelity_support {
+import v2.test.claim.parse.parse_binding_fidelity_support {
   pbf_parse_preserves_param_x_binding,
   pbf_parse_preserves_param_y_binding
 }
 
 // Shared helpers for fn_body seam witnesses (decoupled from #6775 integer closure). Execution
 // proofs exceed per-PR 5s fast-lane budget — enrolled in
-// long/wave1_gate1_a1_fn_body_seam_witness_test.dag. Fast RED (invalid shell wrapper-retained)
-// lives in self_host/wave1_gate1_a1_fn_body_seam_witness_test.dag.
+// long/wave1_gate1_a1_fn_body_seam_witness.dag. Fast RED (invalid shell wrapper-retained)
+// lives in self_host/wave1_gate1_a1_fn_body_seam_witness.dag.
 
 fn fn_body_seam_parsed_add_module() -> Optional<Node> {
   let lm = dag_language_model()

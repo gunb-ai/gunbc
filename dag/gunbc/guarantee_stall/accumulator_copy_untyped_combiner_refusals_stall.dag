@@ -28,7 +28,9 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // six-file import closure, and the v2 native CLI over a copy of those same six files. Both refused at
 // RESOLVE, so infer did not run on them: std.change at its free kernel call concat
 // (resolve_reason_unbound_symbol), std.types at map_get (declared in v2.std.collection, which that file
-// does not import), std.algebra at Map (resolve_unbound_name_is_declared_elsewhere std.types.Map). On the
+// does not import), std.algebra at Map (then reported with a resolve_unbound_name_is_declared_elsewhere
+// advisory naming std.types.Map; compilation no longer looks a name up in other modules, so the refusal is
+// the unbound symbol alone). On the
 // native CLI, small modules containing a fold also refused at resolve, anchored at a projected node of
 // the fold; that matches the class gunbc.recurring_failure_mode
 // .fold_cons_handler_binder_unbound_on_the_native_resolver, which was measured there on fold_list cons
@@ -51,7 +53,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // not types. Modeling that in .dag is a separate model change and must become the single authority; until
 // it lands no std.change body that calls reverse (or any non-roster primitive) reaches an inferred tree.
 // KERNEL TYPES ARE NOT COVERED by that tier, deliberately: it binds call heads to a contract row, and std.primitives
-// declares no type rows. std.algebra's Map (resolve_unbound_name_is_declared_elsewhere std.types.Map) stays refused
+// declares no type rows. std.algebra's Map (std.types.Map, resolve_reason_unbound_symbol) stays refused
 // because the only declaring module, std.types, imports std.algebra, so importing it back is a cycle; its resolution
 // belongs to the type's own authority, not to the call-head tier. Measured after the tier: std.types stops at the
 // free name none and std.change at none, both declared in no authority.

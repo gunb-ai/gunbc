@@ -1,4 +1,4 @@
-module gunbc.fabric_storage_r2_head
+module gunbc.fabric.fabric_storage_r2_head
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.optional { Present, Absent }
@@ -31,11 +31,11 @@ import gunbc.cloudflare.r2_staged_transfer {
   WriteCredentialCustody, WriteCredentialShredded,
   r2_put_staged_file, r2_fetch_into_staging,
 }
-import gunbc.fabric_storage_wire { reading_words, decode_reading }
+import gunbc.fabric.fabric_storage_wire { reading_words, decode_reading }
 
 // A std.fabric_storage HEAD WHOSE STORE IS ONE R2 OBJECT (docs/plans/fabric-storage.md step 4B). One head
 // is one R2 object; its body is the head reading in the fabric wire's own words
-// (gunbc.fabric_storage_wire reading_words), so the R2 head and the served file store spell a head one
+// (gunbc.fabric.fabric_storage_wire reading_words), so the R2 head and the served file store spell a head one
 // way. The compare-and-set is R2's conditional PutObject (extdeps.cloudflare.r2
 // r2_put_object_conditional_standing): a writer reads the head and its entity tag, compares the object
 // it built on (fabric_head_admits), and puts the successor generation with If-Match on that tag -- or

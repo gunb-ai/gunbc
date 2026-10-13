@@ -57,7 +57,7 @@ import gunbc.host_convergence_census {
 // admit_live_deploy_member_basis as plan-side consumers; apply stays C4.
 // Readiness is NOT a field on this projection. C5 landed gunbc.readiness
 // Readiness = Ready | Pending | Refused, independent of Reconciliation.
-// Provider readiness is consumed by gunbc.roadmap_serve, not by a fourth
+// Provider readiness is consumed by gunbc.roadmap.roadmap_serve, not by a fourth
 // field here: a Reconciliation-typed readiness field remains the control-8
 // hazard and is not restored.
 // C0 left ensure_decide and observe_executable as inline cites; those two
@@ -344,8 +344,8 @@ data host_effect_decide_plan_frontier: ProtocolDeclaredFrontier = ProtocolDeclar
 }
 
 // C4. THE APPLY ROW AWAITS A CONSUMER THAT DOES NOT EXIST. The declaration is
-// HostEffectDomainProjection's decide on the apply side. gunbc.fleet_converge_apply
-// converge_apply_for_host does NOT call it: it calls gunbc.host_effect_realize
+// HostEffectDomainProjection's decide on the apply side. gunbc.fleet.fleet_converge_apply
+// converge_apply_for_host does NOT call it: it calls gunbc.host.host_effect_realize
 // host_effect_apply directly, so naming it the consumer would be a citation that lies.
 // The row used to carry fleet_apply() as both consumer and trigger, which
 // frontier_trigger_is_not_the_consumer refuses, so the protocol could never bind.
@@ -364,7 +364,7 @@ data host_effect_decide_apply_frontier: ProtocolFrontierRow = FrontierConsumerAw
     decl_name: "HostEffectDomainProjection",
   ),
   discharge: unbound_dissolution(
-    description: "C8: a fleet apply entry that routes the apply-side UpsertDecision through HostEffectDomainProjection.decide and then reconciles through gunbc.host_effect_realize host_effect_apply with independent readback. gunbc.fleet_converge_apply converge_apply_for_host calls host_effect_apply directly today and is not this consumer.",
+    description: "C8: a fleet apply entry that routes the apply-side UpsertDecision through HostEffectDomainProjection.decide and then reconciles through gunbc.host.host_effect_realize host_effect_apply with independent readback. gunbc.fleet.fleet_converge_apply converge_apply_for_host calls host_effect_apply directly today and is not this consumer.",
   ),
 }
 
@@ -530,7 +530,7 @@ fn bind_canonical_protocol() -> CanonicalProtocolStanding {
   }
 }
 
-// THE PRODUCTION GATE. gunbc.fleet_converge_plan_cli refuses to plan unless this admits.
+// THE PRODUCTION GATE. gunbc.fleet.fleet_converge_plan_cli refuses to plan unless this admits.
 // It STOPS: a malformed census, a missing or duplicated canonical layer, any frontier row
 // naming itself (the three ProtocolDeclaredFrontier defect arms), a discharge that fired
 // without the row being discharged, and a bound discharge with no observed population.
