@@ -28,8 +28,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE NINE CONTROLLED SPECIMENS of roadmap node cardinality-realization-conformance, each reduced
 // to ONE Int tag by an elimination that keeps every distinction the specimen exists to test, so two
 // specimens that a realization conflates read as one tag and the pairwise claim reds. This module
-// is the in-corpus (evaluator) path; the Rust emit path and the native v2 route are executed
-// outside this file and their results are recorded in the PR that landed it.
+// covers the EVALUATOR PATH ONLY. The Rust emit path and the native v2 route are an OPEN FRONTIER
+// of roadmap node cardinality-realization-conformance, not covered here: no `gunbc test <label>`
+// re-derives them yet, and their one-off observations are PR evidence, not an instrument. Trigger:
+// a TargetModel realization-support row keyed by (target, shape), whose consumer executes these
+// nine specimens on each path or refuses explicitly. Until then the rung is the minimum across paths.
 //   1 Absent                      2 Present(Absent)              3 Present(Present(7))
 //   4 absent collection           5 present empty collection     6 present collection of absent entries
 //   7 foreign member missing      8 foreign member present with null   9 foreign member present, invalid value
