@@ -293,13 +293,14 @@ fn flex_price_offer(
   policy: FlexPolicy,
   attempt: FlexBidAttempt<NonEmptyStr>,
   budget_currency: CurrencyCode,
+  maximum_buy_order: MoneyAmountMicro,
 ) -> FlexPricedHorizon {
   match price_over_horizon(
     offer: offer,
     inputs: inputs,
     requirements: attempt.requirements,
     duration: flex_horizon_duration(policy: policy),
-    maximum_buy_order: money_amount_micro(count: 1000000000000),
+    maximum_buy_order: maximum_buy_order,
     budget_currency: budget_currency,
     delay_valuation: attempt.delay_valuation,
   ) {
@@ -321,6 +322,7 @@ fn flex_on_demand_reference_cost(
   policy: FlexPolicy,
   attempt: FlexBidAttempt<NonEmptyStr>,
   budget_currency: CurrencyCode,
+  maximum_buy_order: MoneyAmountMicro,
 ) -> FlexPricedHorizon {
   match attempt.on_demand_reference {
     FlexOnDemandReferenceMissing => FlexHorizonUnobserved
@@ -336,6 +338,7 @@ fn flex_on_demand_reference_cost(
             policy: policy,
             attempt: attempt,
             budget_currency: budget_currency,
+            maximum_buy_order: maximum_buy_order,
           )
       }
   }
@@ -659,6 +662,10 @@ fn flex_admit_revocable_target(
                     policy: policy,
                     attempt: attempt,
                     budget_currency: bid.currency,
+                    maximum_buy_order: flex_liability_for_horizon(
+                      rate: policy.fleet_rate_cap,
+                      horizon: policy.acquisition_horizon,
+                    ),
                   ) {
                     FlexHorizonUnobserved =>
                       FlexBidRefused { cause: FlexOnDemandReferenceUnobserved }
@@ -670,6 +677,7 @@ fn flex_admit_revocable_target(
                         policy: policy,
                         attempt: attempt,
                         budget_currency: bid.currency,
+                        maximum_buy_order: liability,
                       ) {
                         FlexHorizonUnobserved =>
                           FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
