@@ -1,7 +1,7 @@
 module gunbc.instruments.native_process_memory_reading
 
 import std.types { String, Bool, Int }
-import std.measure { ByteSize, byte_size, measure_count }
+import std.measure { ByteSize, byte_size, measure_count, Nanosecond, nanosecond_count }
 import std.process { ExitSuccess, ExitFailure }
 import std.realization_measurement { ResidencyObservation, ResidencyObserved, ResidencyUnobservable }
 import extdeps.posix.rusage { RusageMaxrssObservation, RusageChildren, rusage_maxrss_bytes, rusage_maxrss_is_positive }
@@ -99,7 +99,7 @@ fn native_stage_reached_label(s: NativeStageReached) -> String {
 // when the child exited, else the terminating signal (then `exit_code` is meaningless).
 type NativeChildReading {
   maxrss_kib: Int
-  elapsed_ns: Int
+  elapsed: Nanosecond
   exit_code: Int
   signal: Int
   terminal: String
@@ -139,7 +139,7 @@ fn native_child_receipt_line(role: String, r: NativeChildReading) -> String {
     + " peak_bytes=" + residency_render(o: native_child_peak(r: r))
     + " current_bytes=" + residency_render(o: native_child_current())
     + " allocator_bytes=" + residency_render(o: native_child_allocator())
-    + " elapsed_ns=" + to_string(r.elapsed_ns)
+    + " elapsed_ns=" + to_string(nanosecond_count(n: r.elapsed))
     + " exit=" + to_string(r.exit_code)
     + " signal=" + to_string(r.signal)
     + " stage=" + native_stage_reached_label(s: native_stage_reached(terminal: r.terminal))

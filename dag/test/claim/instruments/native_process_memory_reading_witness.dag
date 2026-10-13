@@ -1,6 +1,7 @@
 module test.claim.instruments.native_process_memory_reading_witness
 
 import std.types { Bool, Int, String }
+import std.measure { nanosecond }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.instruments.native_process_memory_reading {
@@ -15,7 +16,7 @@ import gunbc.instruments.native_process_memory_reading {
 // The kibibyte figures below are fixture inputs chosen for their order, not measurements.
 
 fn reading(kib: Int, signal: Int) -> NativeChildReading {
-  NativeChildReading { maxrss_kib: kib, elapsed_ns: 1, exit_code: 0, signal: signal, terminal: "{\"_terminal\":\"complete\"}" }
+  NativeChildReading { maxrss_kib: kib, elapsed: nanosecond(count: 1), exit_code: 0, signal: signal, terminal: "{\"_terminal\":\"complete\"}" }
 }
 
 fn exit_code_of(r: CliWireResponse) -> Int {

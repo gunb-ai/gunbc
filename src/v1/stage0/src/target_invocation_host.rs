@@ -1579,7 +1579,16 @@ fn run_native_process_memory(
             type_name: ctx.sym("NativeChildReading"),
             fields: std::rc::Rc::new(vec![
                 (ctx.sym("maxrss_kib"), Value::Int(r.maxrss_kib)),
-                (ctx.sym("elapsed_ns"), Value::Int(r.elapsed_ns)),
+                (
+                    ctx.sym("elapsed"),
+                    Value::Record {
+                        type_name: ctx.sym("Measure"),
+                        fields: std::rc::Rc::new(vec![(
+                            ctx.sym("count"),
+                            Value::Int(r.elapsed_ns),
+                        )]),
+                    },
+                ),
                 (ctx.sym("exit_code"), Value::Int(i64::from(r.exit_code))),
                 (ctx.sym("signal"), Value::Int(i64::from(r.signal))),
                 (ctx.sym("terminal"), str_value(terminal)),
