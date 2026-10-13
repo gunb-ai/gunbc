@@ -735,39 +735,28 @@ fn git_author_wire_line(role: String, author: GitAuthor) -> String {
   )
 }
 
-fn git_tree_canonical_payload_step(
-  state: GitCanonicalHashInputOutcome,
-  entry: TreeEntry,
-) -> GitCanonicalHashInputOutcome {
-  match state {
-    GitCanonicalHashInputRefused { cause } =>
-      GitCanonicalHashInputRefused { cause: cause }
-    GitCanonicalHashInputReady { bytes } =>
-      let parts = git_tree_entry_canonical_parts(entry: entry)
-      match git_object_id_raw_octets(oid: parts.oid) {
-        Absent => GitCanonicalHashInputRefused {
-          cause: GitCanonicalHashInputInvalidObjectId { oid: parts.oid }
-        }
-        Present { value: raw_oid } =>
-          GitCanonicalHashInputReady {
-            bytes: octets_bytes(
-              o: append(
-                bytes_octets(b: bytes),
-                items: append(
-                  bytes_octets(
-                    b: utf8_encode_bytes(
-                      s: concat(parts.mode as String, " "),
-                    ),
-                  ),
-                  items: append(
-                    git_tree_entry_name_octets(name: parts.name),
-                    items: append([0], items: raw_oid),
-                  ),
-                ),
-              ),
-            )
-          }
-      }
+// ONE LINEAR PASS (DESIGN section 6, bare minimum cost): each entry yields its own wire chunk and
+// the chunks are flattened once, where the earlier per-entry fold copied the accumulated payload
+// for every entry. The first entry whose object id has no raw octets refuses the whole tree.
+fn git_tree_entry_wire_chunk(entry: TreeEntry) -> List<UInt8> {
+  let parts = git_tree_entry_canonical_parts(entry: entry)
+  match git_object_id_raw_octets(oid: parts.oid) {
+    Absent => []
+    Present { value: raw_oid } =>
+      append(
+        bytes_octets(b: utf8_encode_bytes(s: concat(parts.mode as String, " "))),
+        items: append(
+          git_tree_entry_name_octets(name: parts.name),
+          items: append([0], items: raw_oid),
+        ),
+      )
+  }
+}
+
+fn git_tree_entry_has_raw_oid(entry: TreeEntry) -> Bool {
+  match git_object_id_raw_octets(oid: git_tree_entry_canonical_parts(entry: entry).oid) {
+    Absent => false
+    Present { value: _ } => true
   }
 }
 
@@ -807,13 +796,18 @@ fn git_blob_canonical_payload(
 fn git_tree_canonical_payload(
   tree: Tree,
 ) -> GitCanonicalHashInputOutcome {
-  fold(
-    tree.entries,
-    init: GitCanonicalHashInputReady {
-      bytes: octets_bytes(o: []),
-    },
-    f: git_tree_canonical_payload_step,
-  )
+  match (tree.entries |> filter(entry => git_tree_entry_has_raw_oid(entry: entry) == false)).first() {
+    Absent => GitCanonicalHashInputReady {
+      bytes: octets_bytes(
+        o: flat_map(tree.entries, entry => git_tree_entry_wire_chunk(entry: entry)),
+      ),
+    }
+    Present { value: bad } => GitCanonicalHashInputRefused {
+      cause: GitCanonicalHashInputInvalidObjectId {
+        oid: git_tree_entry_canonical_parts(entry: bad).oid
+      }
+    }
+  }
 }
 
 fn git_commit_canonical_payload(
