@@ -87,44 +87,6 @@ data probe_ci_unbounded_budget: CostBudget = CostBudget { max_cost: 1000000 }
 data host_health_hypothesis_reachability: HostHealthHypothesis = HostHealthHypothesisReachability
 data host_health_hypothesis_standoff_cap_vddq: HostHealthHypothesis = HostHealthHypothesisStandoffCapVddq
 
-fn diagnostic_interface_kind_eq(
-  left: DiagnosticInterfaceKind,
-  right: DiagnosticInterfaceKind
-) -> Bool {
-  match left {
-    DiagnosticSsh =>
-      match right {
-        DiagnosticSsh => true
-        _ => false
-      }
-    DiagnosticIpmi =>
-      match right {
-        DiagnosticIpmi => true
-        _ => false
-      }
-    DiagnosticRedfish =>
-      match right {
-        DiagnosticRedfish => true
-        _ => false
-      }
-    DiagnosticEdac =>
-      match right {
-        DiagnosticEdac => true
-        _ => false
-      }
-    DiagnosticDockerReachability =>
-      match right {
-        DiagnosticDockerReachability => true
-        _ => false
-      }
-    DiagnosticBmcSensors =>
-      match right {
-        DiagnosticBmcSensors => true
-        _ => false
-      }
-  }
-}
-
 fn diagnostic_capability_contains(
   available: DiagnosticCapabilityFacts,
   required: DiagnosticInterfaceKind
@@ -132,7 +94,7 @@ fn diagnostic_capability_contains(
   contains(
     xs: available.interfaces,
     item: required,
-    eq: diagnostic_interface_kind_eq
+    eq: fn(a, b) { a == b }
   )
 }
 

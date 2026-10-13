@@ -78,7 +78,6 @@ import std.content_hash {
   compare_content_hash,
   content_hash_atom,
   content_hash_combine_structural,
-  content_hash_eq_structural,
   content_hash_of_value,
   serialize_content_hash,
   Fnv1a64
@@ -148,29 +147,6 @@ type FrontierProbeDiscoveredClosure {
 // Closed probe-side closure carrier (operator ruling 2026-08-04): refs, population_digest, and
 // entry are one subject. population_digest is always derived from refs at seal time — never a
 // separate caller input.
-
-fn discovered_source_refs_digest_eq(
-  left: DiscoveredSourceRefsDigest,
-  right: DiscoveredSourceRefsDigest
-) -> Bool {
-  match left {
-    DiscoveredSourceRefsDigestFromList { digest: left_digest } =>
-      match right {
-        DiscoveredSourceRefsDigestFromList { digest: right_digest } =>
-          content_hash_eq_structural(left: left_digest, right: right_digest)
-        _ => false
-      }
-    DiscoveredSourceRefsDigestUnavailable {
-      cause: DiscoveredSourceRefsDigestNoRefList { reason: left_reason }
-    } =>
-      match right {
-        DiscoveredSourceRefsDigestUnavailable {
-          cause: DiscoveredSourceRefsDigestNoRefList { reason: right_reason }
-        } => left_reason == right_reason
-        _ => false
-      }
-  }
-}
 
 fn frontier_probe_discovered_closure_seal(
   refs: List<SourceRef>,

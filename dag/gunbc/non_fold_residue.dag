@@ -40,8 +40,6 @@ data nfr_reason_legacy_slice1_bridge: String = "projection over the legacy HostC
 
 data nfr_dissolve_legacy_slice1: DissolutionCondition = unbound_dissolution(description: "the legacy slice-1 result carrier is deleted in favor of the per-unit outcome model and the rows delete")
 
-data nfr_reason_reaper_oracle: String = "two-axis discriminating predicate (occupant by action) with off-variant wildcard arms returning false — the reaper witnesses' oracle, same shape as the structural-equality rows; landed with #7026, surfaced by the scheduled cold falsifier (alert #7032)"
-
 data nfr_reason_namespace_tree_eq: String = "NamespaceTree structural equality residue (nested off-variant wildcard arm returning false), landed unrostered with effect_grant.dag in #6817 and surfaced when a later branch brought the file into the affected set"
 
 data nfr_reason_structural_eq_mint: String = "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor"
@@ -202,11 +200,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_local_tidy,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/compiler/source_authority.dag::discovered_source_refs_digest_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/source_authority.dag::source_ref_content_hash_structural" },
     reason: nfr_reason_content_hash_structural_refusal,
     dissolution: nfr_dissolve_content_hash_structural_refusal,
@@ -282,11 +275,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_owning_fold,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/host/host_hygiene_reaper.dag::action_kills_build_cache_server" },
-    reason: nfr_reason_reaper_oracle,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/std/effect_grant.dag::namespace_tree_eq" },
     reason: nfr_reason_namespace_tree_eq,
     dissolution: nfr_dissolve_derived_equality,
@@ -323,21 +311,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/lens/registry.dag::lens_id_v0_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/unused_parameters.dag::use_relation_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/std/node_minimal.dag::node_superset_field_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq" },
     reason: nfr_reason_structural_eq_mint,
     dissolution: nfr_dissolve_derived_equality,
   },
