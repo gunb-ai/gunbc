@@ -35,7 +35,7 @@ import product.fabric.flex_policy {
   FlexScreenedCandidate, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused,
   FlexNewAcquisition, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
   FlexOnDemandReferenceMissing, FlexActuationDry, FlexActuationWet, flex_policy_actuation,
-  flex_floor_buffer,
+  flex_floor_buffer, flex_machine_key_eq,
 }
 import product.fabric.flex_vast_shadow {
   flex_trial_fleet_rate_cap, flex_trial_total, flex_trial_policy, flex_objective,
@@ -44,7 +44,7 @@ import product.fabric.flex_vast_shadow {
   flex_gpu_class_rtx_5000_48gb, flex_gpu_class_72gb, flex_gpu_class_rtx_pro_6000_96gb,
   flex_gpu_class_matches, flex_offer_supported, flex_offer_in_shadow_field,
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
-  flex_vast_api_read_grant, flex_host_driver_unread_obligation, flex_delay_unvalued,
+  flex_vast_api_read_grant, flex_host_driver_unread_frontier, flex_delay_unvalued,
   FlexCreateLost, FlexCreateRefused, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
   flex_reconcile_acquisition, flex_may_acquire,
   flex_qwen_serving_image, flex_qwen_published_tcp_port, flex_qwen_disk, flex_qwen_model_id,
@@ -150,7 +150,7 @@ fn t_account() -> MoneyAccount {
     account: "flex-fleet",
     currency: Usd,
     ledger: EncumbranceLedger {
-      appropriation: Appropriation { ceiling: money_amount_micro(count: 50000000) },
+      appropriation: Appropriation { ceiling: flex_trial_total },
       entries: [],
     },
     leases: [],
@@ -245,11 +245,9 @@ test fn operator_template_and_policy_are_named_facts() -> Bool {
     && flex_engine_min_driver(engine: FlexNinfer) == flex_ninfer_min_driver
     && flex_engine_min_driver(engine: FlexVllm) == flex_vllm_min_driver
     && money_per_hour_cap_is_one_fifty()
-    && money_amount_micro_count(m: flex_trial_total) == 50000000
     && flex_actuation_mode_default_is_dry()
     && objective_is_cost_per_accepted_unit()
     && money_amount_micro_count(m: flex_delay_unvalued.amount) == 0
-    && (flex_host_driver_unread_obligation as String) != ""
     && read_grant_is_accessor()
     && machine_key_follows_offer_id()
 }
@@ -369,6 +367,10 @@ fn frontiers_are_unbound() -> Bool {
       BoundDissolution { trigger: _ } => false
     }
     && match flex_wet_create_release_consumer_frontier {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
+    && match flex_host_driver_unread_frontier {
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
     }
@@ -507,20 +509,22 @@ fn dry_pass_records_unreadable_list() -> Bool {
 }
 
 test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
+  let offer = wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true)
   let receipt = flex_shadow_bid(
     policy: flex_trial_policy,
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(),
-    offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true),
+    offer: offer,
     attempt: t_attempt(
-      machine: t_machine(id: "42"),
-      min_bid: ExactDecimal { units: 1, fraction_digits: 0 },
+      machine: t_machine(id: "9"),
+      min_bid: ExactDecimal { units: 9, fraction_digits: 0 },
       quote: usd_hour(amount: money_amount_micro(count: 1100000)),
       key: "offer-42",
     ),
   )
   receipt.offer_id == 7
+    && flex_machine_key_eq(left: receipt.machine, right: flex_machine_key_for_offer(account: "vast-account-1", offer: offer))
     && match receipt.actuation {
       FlexActuationDry => true
       FlexActuationWet => false

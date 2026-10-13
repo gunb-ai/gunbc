@@ -15,7 +15,7 @@ import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
 import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey,
-  FlexBidAttempt, FlexBidAdmission, FlexBidRefused,
+  FlexBidAttempt, FlexBidAdmission, FlexBidRefused, FlexScreenedCandidate,
   FlexDecimalConversionRefused,
   FlexActuationMode, FlexActuationDry, FlexActuationWet, flex_policy_actuation,
   flex_floor_buffer, flex_bid_admission,
@@ -26,7 +26,7 @@ import product.fabric.demand { debt_payoff_objective, DemandObjective }
 import product.fabric.budget { MoneyAccount }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiInstance, vast_ai_search_type_bid, vast_ai_search_limit_default,
-  vast_ai_min_bid_money_per_hour,
+  vast_ai_min_bid_money_per_hour, vast_ai_quote_currency,
 }
 import std.rational { NonzeroNatFraction }
 
@@ -143,7 +143,7 @@ fn flex_engine_min_driver(engine: FlexEngineRuntime) -> Int {
   }
 }
 
-data flex_host_driver_unread_obligation: NonEmptyStr = "Vast search-offers as modeled carries no host driver version, so ninfer >= 580 and vLLM >= 590 cannot be decided from an offer. Read the host driver before a wet create."
+data flex_host_driver_unread_frontier: DissolutionCondition = unbound_dissolution(description: "Vast search-offers as modeled carries no host driver version, so ninfer >= 580 and vLLM >= 590 cannot be decided from an offer. TRIGGER: the offer or instance wire carries a host driver version and flex_engine_min_driver screens it. SUFFICIENT FOR deleting this row.")
 
 type FlexGpuClass {
   identity: NonEmptyStr
@@ -246,6 +246,31 @@ type FlexShadowBidReceipt {
   actuation: FlexActuationMode
 }
 
+fn flex_bind_attempt_to_offer(
+  offer: VastAiOffer,
+  attempt: FlexBidAttempt<NonEmptyStr>,
+) -> FlexBidAttempt<NonEmptyStr> {
+  let machine = flex_machine_key_for_offer(account: attempt.machine.account, offer: offer)
+  FlexBidAttempt {
+    machine: machine,
+    min_bid: offer.min_bid,
+    quote_currency: vast_ai_quote_currency,
+    candidates: fold(
+      attempt.candidates,
+      init: [],
+      f: (acc, row) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: row.candidate }]),
+    ),
+    subject: attempt.subject,
+    on_demand_reference: attempt.on_demand_reference,
+    requirements: attempt.requirements,
+    reservation: attempt.reservation,
+    generation: attempt.generation,
+    delay_valuation: attempt.delay_valuation,
+    tie: attempt.tie,
+    affinity: attempt.affinity,
+  }
+}
+
 fn flex_shadow_bid(
   policy: FlexPolicy,
   occupancy: FlexFleetOccupancy,
@@ -254,24 +279,25 @@ fn flex_shadow_bid(
   offer: VastAiOffer,
   attempt: FlexBidAttempt<NonEmptyStr>,
 ) -> FlexShadowBidReceipt {
+  let bound = flex_bind_attempt_to_offer(offer: offer, attempt: attempt)
   match vast_ai_min_bid_money_per_hour(offer: offer) {
     DecimalMoneyPerHourRefused { conversion: c } =>
       FlexShadowBidReceipt {
         offer_id: offer.id,
-        machine: attempt.machine,
+        machine: bound.machine,
         admission: FlexBidRefused { cause: FlexDecimalConversionRefused { conversion: c } },
         actuation: flex_policy_actuation(policy: policy),
       }
     DecimalMoneyPerHourConverted { rate: _ } =>
       FlexShadowBidReceipt {
         offer_id: offer.id,
-        machine: attempt.machine,
+        machine: bound.machine,
         admission: flex_bid_admission(
           policy: policy,
           occupancy: occupancy,
           window: window,
           account: account,
-          attempt: attempt,
+          attempt: bound,
         ),
         actuation: flex_policy_actuation(policy: policy),
       }
@@ -305,14 +331,14 @@ fn flex_reconcile_acquisition(
   instances: List<VastAiInstance>,
 ) -> FlexReconcileVerdict {
   match standing {
-    FlexCreateAnswered { instance_id: id, machine_id: mid, ask_id: _ } =>
+    FlexCreateAnswered { instance_id: id, machine_id: _, ask_id: _ } =>
       match fold(
         instances,
         init: none,
         f: (acc, row) =>
           match acc {
             Present { value: found } => Present { value: found }
-            Absent => if row.id == id || row.machine_id == mid { Present { value: row } } else { none }
+            Absent => if row.id == id { Present { value: row } } else { none }
           },
       ) {
         Present { value: inst } => FlexAlreadyHeld { instance: inst }
