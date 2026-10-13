@@ -88,6 +88,9 @@ fn vacuity_consumer_witness_live_shadows() -> List<VacuitySiteKey> {
     xs: vacuity_consumer_witness_classified_sites(),
     empty: std.algebra.Empty,
     cons: fn(acc, site) {
+      // compare against the binder, not a bare `== ProvenDuplicate {`: in an if-condition the bare
+      // variant name glues to the block's '{', which the DAG parser reads as a record-literal
+      // constructor and the seed-emit parse then fails (expected RParen, found Colon, run 38317946528)
       let wanted = ProvenDuplicate
       if vacuity_consumer_witness_evidence_for_site(site: site) == wanted {
         list_append(left: acc, right: [site])
