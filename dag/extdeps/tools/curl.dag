@@ -3,10 +3,9 @@ module extdeps.tools.curl
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of, Unit }
-import std.algebra { trim }
+import std.algebra { trim, Less, Equal, Greater }
 import std.resources { Network }
 import std.measure { Second, second, second_count, Microsecond, microsecond, microsecond_count }
-import std.algebra { Less, Equal, Greater }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_core_of_dotted, semver_minimum_of_constraint }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.version { VersionConstraint }
