@@ -1,7 +1,7 @@
 module v2.test.std_text.carrier_claims
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
-import v2.std.algebra { HeadAbsent, HeadFound, length, list_head, skip }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, skip }
+import v2.std.algebra { HeadAbsent, HeadFound, length, list_head }
 import v2.std.text {
   Char,
   CharAbsent,

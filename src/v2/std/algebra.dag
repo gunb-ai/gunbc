@@ -100,16 +100,6 @@ fn list_head<T>(xs: FreeMonoid<T>) -> ListHeadResult<T> {
   }
 }
 
-fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
-  if n <= 0 {
-    xs
-  } else {
-    match xs {
-      Empty => Empty
-      Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
-    }
-  }
-}
 fn fold_list_node<T>(
   xs: FreeMonoid<T>,
   item_node: fn(T) -> Node
