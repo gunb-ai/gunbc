@@ -4198,45 +4198,8 @@ fn run_relaying_as_it_runs(mut command: Command) -> std::io::Result<std::process
 /// printed `accepted_file_advisories` rows do not match refuses, so a receipt saved from this
 /// stdout cannot claim an advisory population it does not carry.
 fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<NativeCensusRun, String> {
-    let terminal = stdout
-        .lines()
-        .rev()
-        .find_map(|line| {
-            serde_json::from_str::<serde_json::Value>(line)
-                .ok()
-                .filter(|v| v.get("_terminal").is_some())
-        })
-        .ok_or_else(|| {
-            format!(
-                "V2-NATIVE-CENSUS REFUSAL cause=NoTerminalMarker — the census run (exit {exit:?}) printed no terminal marker"
-            )
-        })?;
-    if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
-        || terminal.get("mode").and_then(|m| m.as_str()) != Some("census-infer")
-    {
-        return Err(format!(
-            "V2-NATIVE-CENSUS REFUSAL cause=TerminalNotComplete — {terminal}"
-        ));
-    }
-    let need_u64 = |key: &str| -> Result<u64, String> {
-        terminal.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
-            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
-        })
-    };
-    let advised_files = need_u64("advised_files")?;
-    let mut advisory_rows = Vec::new();
-    for line in stdout.lines() {
-        if let Some(advised) = serde_json::from_str::<serde_json::Value>(line)
-            .ok()
-            .and_then(|v| v.get("accepted_file_advisories").cloned())
-        {
-            advisory_rows.push(decode_file_advisories_row(&advised, line).map_err(|c| {
-                format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowMalformed — {c}")
-            })?);
-        }
-    }
-    advised_files_agree(advised_files, &advisory_rows)
-        .map_err(|c| format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — {c}"))?;
+    let terminal = decode_census_terminal(stdout, exit, "census-infer")?;
+    let need_u64 = |key: &str| census_terminal_u64(&terminal, key);
     let type_census = terminal
         .get("type_census")
         .and_then(|v| v.as_str())
@@ -4256,10 +4219,159 @@ fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<Native
         file_refusals: need_u64("file_refusals")?,
         residual_rows: need_u64("residual_rows")?,
         modules: need_u64("modules")?,
-        advised_files,
+        advised_files: need_u64("advised_files")?,
         inferred: need_u64("inferred")?,
         infer_refused: need_u64("infer_refused")?,
         type_census,
+    })
+}
+
+fn census_terminal_u64(terminal: &serde_json::Value, key: &str) -> Result<u64, String> {
+    terminal.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
+        format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
+    })
+}
+
+/// THE TERMINAL BOTH CENSUS-INFER WALKS PRINT, decoded once: the last terminal line, required
+/// complete and of the verb that was spawned, with its `advised_files` count checked against the
+/// printed `accepted_file_advisories` rows. A terminal of the other verb refuses, so a scoped run's
+/// stdout can never be read as a whole-corpus receipt or the other way round.
+fn decode_census_terminal(
+    stdout: &str,
+    exit: Option<i32>,
+    mode: &str,
+) -> Result<serde_json::Value, String> {
+    let terminal = stdout
+        .lines()
+        .rev()
+        .find_map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .filter(|v| v.get("_terminal").is_some())
+        })
+        .ok_or_else(|| {
+            format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=NoTerminalMarker — the census run (exit {exit:?}) printed no terminal marker"
+            )
+        })?;
+    if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
+        || terminal.get("mode").and_then(|m| m.as_str()) != Some(mode)
+    {
+        return Err(format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=TerminalNotComplete — {terminal}"
+        ));
+    }
+    let advised_files = census_terminal_u64(&terminal, "advised_files")?;
+    let mut advisory_rows = Vec::new();
+    for line in stdout.lines() {
+        if let Some(advised) = serde_json::from_str::<serde_json::Value>(line)
+            .ok()
+            .and_then(|v| v.get("accepted_file_advisories").cloned())
+        {
+            advisory_rows.push(decode_file_advisories_row(&advised, line).map_err(|c| {
+                format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowMalformed — {c}")
+            })?);
+        }
+    }
+    advised_files_agree(advised_files, &advisory_rows)
+        .map_err(|c| format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — {c}"))?;
+    Ok(terminal)
+}
+
+/// WHETHER THE SCOPED RUN'S POPULATION IS THE SUBJECT'S WHOLE CLOSURE, as the terminal states it:
+/// `v2.compiler.compile` `NativeCensusScope`'s two arms, and nothing else. A blocked population is
+/// carried with its block count, never reported as closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeCensusScopeWord {
+    Closed,
+    Blocked { blocks: u64 },
+}
+
+/// One `census-scoped` run's terminal, decoded: the subject it acquired, whether that closure is
+/// closed or blocked, and the census counts over the acquired population.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeCensusScopedRun {
+    pub subject: String,
+    pub scope: NativeCensusScopeWord,
+    pub cause_groups: u64,
+    pub roots: u64,
+    pub file_refusals: u64,
+    pub residual_rows: u64,
+    pub modules: u64,
+    pub advised_files: u64,
+    pub inferred: u64,
+    pub infer_refused: u64,
+}
+
+/// `gunbc test //gunbc/instruments:v2-native-census-scoped`: the emitted compiler's `census-scoped`
+/// verb over the bound subject's acquired closure (gunbc.plans.census_scoped_run). The rows are
+/// relayed whole, as `run_v2_native_census` relays them; the terminal is decoded and its
+/// `subject_label` must be the label this instrument bound, so a run is never reported as another
+/// subject's.
+pub fn run_v2_native_census_scoped(
+    subject_label: &str,
+    source_roots: &[String],
+) -> Result<NativeCensusScopedRun, String> {
+    eprintln!(
+        "{}",
+        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution())
+    );
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let mut args = vec!["census-scoped".to_string(), subject_label.to_string()];
+    args.extend(source_roots.iter().cloned());
+    let mut command = Command::new(&preparation.binary_path);
+    command.args(&args);
+    let output = run_relaying_as_it_runs(command).map_err(|e| {
+        format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+            preparation.binary_path.display()
+        )
+    })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
+    })?;
+    decode_native_census_scoped_output(&stdout, output.status.code(), subject_label)
+}
+
+fn decode_native_census_scoped_output(
+    stdout: &str,
+    exit: Option<i32>,
+    subject_label: &str,
+) -> Result<NativeCensusScopedRun, String> {
+    let terminal = decode_census_terminal(stdout, exit, "census-scoped")?;
+    let need_u64 = |key: &str| census_terminal_u64(&terminal, key);
+    let need_str =
+        |key: &str| -> Result<String, String> {
+            terminal.get(key).and_then(|v| v.as_str()).map(str::to_string).ok_or_else(|| {
+            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
+        })
+        };
+    let observed_label = need_str("subject_label")?;
+    if observed_label != subject_label {
+        return Err(format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=SubjectDisagrees — bound {subject_label:?}, observed {observed_label:?}: {terminal}"
+        ));
+    }
+    let scope = match (need_str("acquisition")?.as_str(), need_u64("blocks")?) {
+        ("closed", 0) => NativeCensusScopeWord::Closed,
+        ("blocked", blocks) if blocks > 0 => NativeCensusScopeWord::Blocked { blocks },
+        (word, blocks) => {
+            return Err(format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=ScopeWordUnknown — acquisition {word:?} with {blocks} blocks is neither closed with none nor blocked with some: {terminal}"
+            ))
+        }
+    };
+    Ok(NativeCensusScopedRun {
+        subject: need_str("subject")?,
+        scope,
+        cause_groups: need_u64("cause_groups")?,
+        roots: need_u64("roots")?,
+        file_refusals: need_u64("file_refusals")?,
+        residual_rows: need_u64("residual_rows")?,
+        modules: need_u64("modules")?,
+        advised_files: need_u64("advised_files")?,
+        inferred: need_u64("inferred")?,
+        infer_refused: need_u64("infer_refused")?,
     })
 }
 
@@ -5379,6 +5491,42 @@ mod tests {
             summary.contains("advised a.dag reasons=r,s"),
             "got: {summary}"
         );
+    }
+
+    const SCOPED_TERMINAL: &str = "{\"_terminal\":\"complete\",\"mode\":\"census-scoped\",\
+        \"subject_label\":\"//v2/a:all\",\"subject\":\"v2.a\",\"acquisition\":\"blocked\",\"blocks\":2,\
+        \"modules\":3,\"file_refusals\":1,\"advised_files\":0,\"residual_rows\":0,\"cause_groups\":1,\
+        \"roots\":1,\"inferred\":2,\"infer_refused\":0}\n";
+
+    #[test]
+    fn a_scoped_terminal_decodes_its_subject_and_its_blocked_scope() {
+        let run = decode_native_census_scoped_output(SCOPED_TERMINAL, Some(0), "//v2/a:all")
+            .expect("a complete scoped terminal of the bound subject decodes");
+        assert_eq!(run.subject, "v2.a");
+        assert_eq!(run.scope, NativeCensusScopeWord::Blocked { blocks: 2 });
+        assert_eq!(run.modules, 3);
+    }
+
+    // DISCRIMINATING: the same terminal read for another bound subject refuses, so a run is never
+    // reported as the subject it was not.
+    #[test]
+    fn a_scoped_terminal_of_another_subject_refuses() {
+        let cause = decode_native_census_scoped_output(SCOPED_TERMINAL, Some(0), "//v2/b:all")
+            .expect_err("a different bound subject refuses");
+        assert!(cause.contains("SubjectDisagrees"), "got: {cause}");
+    }
+
+    // DISCRIMINATING: each verb's decode refuses the other verb's terminal, and a scope word whose
+    // block count contradicts it refuses rather than being read as either arm.
+    #[test]
+    fn the_scoped_and_whole_corpus_terminals_are_not_interchangeable() {
+        assert!(decode_native_census_output(SCOPED_TERMINAL, Some(0)).is_err());
+        let infer = SCOPED_TERMINAL.replace("census-scoped", "census-infer");
+        assert!(decode_native_census_scoped_output(&infer, Some(0), "//v2/a:all").is_err());
+        let closed_with_blocks = SCOPED_TERMINAL.replace("\"blocked\"", "\"closed\"");
+        let cause = decode_native_census_scoped_output(&closed_with_blocks, Some(0), "//v2/a:all")
+            .expect_err("closed with blocks refuses");
+        assert!(cause.contains("ScopeWordUnknown"), "got: {cause}");
     }
 
     #[test]

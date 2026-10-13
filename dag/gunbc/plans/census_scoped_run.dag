@@ -71,10 +71,10 @@ fn section_5_entry() -> List<MarkdownBlock> {
   [
     h2(text: "5. Subject and entry point"),
     ul(items: [
-      li(text: "The subject is a target label bound by the instrument. The first subject is native-seven (`native_census_subject_label`). Later subjects are compiler entry closures, each as a further binding, never a changed meaning of an existing target."),
-      li(text: "Not yet built: a new driver verb, because it is a distinct acquisition request: `census-scoped <label> <source-root>...`. The label operand is the transport of the instrument's bound subject. The run record names the subject observed, and the consumer checks it against the binding."),
-      li(text: "Not yet built: the route lands as the instrument target `//gunbc/instruments:v2-native-census-scoped`, in the existing `V2NativeCensusProducer` family (`gunbc.target_binding`); it is not a parallel producer."),
-      li(text: "Preparation consumes the existing verified native-product reuse route; there is no census-specific cache. Cold and eligible-warm whole-command costs are reported separately. A compiler-source repair legitimately changes the product identity, so warm reuse cannot promise to skip preparation.")
+      li(text: "The subject is a target label bound by the instrument. The first subject is native-seven, bound by `gunbc.instrument_targets` `v2_native_census_scoped_subject`. Later subjects are compiler entry closures, each as a further binding, never a changed meaning of an existing target."),
+      li(text: "A driver verb of its own, because it is a distinct acquisition request: `census-scoped <label> <source-root>...` (`v2.compiler.compile` `NativeDriverCensusScoped`). The label operand is the transport of the instrument's bound subject; the plan refuses a label that names no module. The terminal names the label and the subject module observed, and the host checks the label against the binding."),
+      li(text: "The route is the instrument target `//gunbc/instruments:v2-native-census-scoped`, in the existing `V2NativeCensusProducer` family (`gunbc.target_binding`); it is not a parallel producer. Its reading is `ScopedRefusalCensusReading`."),
+      li(text: "Preparation consumes the existing verified native-product reuse route; there is no census-specific cache. Not yet built: cold and eligible-warm whole-command costs are reported separately. A compiler-source repair legitimately changes the product identity, so warm reuse cannot promise to skip preparation.")
     ]),
   ]
 }

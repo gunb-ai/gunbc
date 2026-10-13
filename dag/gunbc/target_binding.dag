@@ -110,6 +110,9 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
 // further census over the same walk is a variant here and a row there, never another producer.
 //   RefusalCensusReading: `census-infer`, the front-end/resolve/infer refusal report (gunbc#13026,
 //     census part 2). Its exit status is the type census's and is not read as this report's standing.
+//   ScopedRefusalCensusReading: `census-scoped`, the same refusal report over ONE SUBJECT'S ACQUIRED
+//     CLOSURE (gunbc.plans.census_scoped_run). `subject` is the package label the row binds; the verb
+//     receives it as its operand and the terminal must name it back.
 //   TypeDeclarationUseReading: `census-infer` with the type-declaration census's fixture and
 //     unindexed controls (the nominal-type plan's M0), read by
 //     gunbc.instruments.type_declaration_use_census_reading.
@@ -118,6 +121,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
 //     not; read by gunbc.instruments.native_process_memory_reading.
 type V2NativeCensusReading
   = RefusalCensusReading
+  | ScopedRefusalCensusReading { subject: String }
   | TypeDeclarationUseReading
   | NativeProcessMemoryReading { workload: NativeMeasuredWorkload }
 
