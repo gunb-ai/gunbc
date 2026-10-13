@@ -464,6 +464,9 @@ data window_swept_texts: List<String> = [
   "module a.b // c\n",
   "module a.b.\n",
   "module a.b\nfn f() -> Bool { true }\n",
+  "module a.b\nfn f() -> Int { 1 }\n",
+  "module a.b\ndata s: String = \"abc def\"\n",
+  "modulex a.b\n",
   "no header\n",
   "// only\n",
   ""
@@ -550,4 +553,36 @@ test fn a_header_past_the_first_window_is_found_by_growing_it() -> Bool {
   header_of(content: far) == "declared:a.b"
     && header_of(content: concat(far, concat(trivia_lines(remaining: 40), "`bad\n"))) == "declared:a.b"
     && whole_header_of(content: concat(far, concat(trivia_lines(remaining: 40), "`bad\n"))) == "refused"
+}
+
+// A STRING LITERAL THE WINDOW'S EDGE FALLS INSIDE IS UNDECIDED, NOT REFUSED. The cause of the 14 modules
+// that refused when a cut was taken at the scalar 4096 of a file and the cut text was lexed whole: every
+// one of them had the cut inside an open string literal, where the delimited rule found no close and the
+// opening quote matched no rule at all (tokenize_lex_e1_unrecognized_char). The text here puts a string
+// of 300 scalars immediately after the header, so the first window of 256 ends inside it. The windowed
+// reading sees the edge as the third state, grows the window until the literal closes and reads the
+// header the whole file declares; the same text cut at 256 scalars and lexed as if it were the file is
+// refused with that cause, which is what makes the control discriminate: a reader that cut the file
+// and lexed the cut would refuse a header the grammar accepts.
+fn ten_scalars(remaining: Int) -> String {
+  if remaining <= 0 {
+    ""
+  } else {
+    concat("xxxxxxxxxx", ten_scalars(remaining: remaining - 1))
+  }
+}
+
+fn header_then_a_string_across_the_first_window() -> String {
+  concat("module a.b \"", concat(ten_scalars(remaining: 30), "\"\n"))
+}
+
+test fn a_string_literal_the_first_windows_edge_falls_inside_does_not_refuse_the_header() -> Bool {
+  let text = header_then_a_string_across_the_first_window()
+  string_length(s: text) > 256
+    && header_of(content: text) == "declared:a.b"
+    && whole_header_of(content: text) == "declared:a.b"
+    && whole_lex_cause(content: text) == ""
+    && whole_lex_cause(content: substring(s: text, start: 0, end: 256)) == symbol_lexeme(sym: ^tokenize_lex_e1_unrecognized_char)
+    && header_from(reader: reader(), content: text, window: 256) == "declared:a.b"
+    && header_from(reader: reader(), content: text, window: 1) == "declared:a.b"
 }
