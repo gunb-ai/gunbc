@@ -15,7 +15,7 @@ import gunbc.stage0.stage0_rust_product_reachability {
   product_reachability_witness_observation,
   stage0_rust_product_reachability_note
 }
-import v2.std.algebra { length }
+import std.algebra { length }
 
 test fn product_reachability_note_forbids_tracking_as_proof() -> Bool {
   string_contains(s: stage0_rust_product_reachability_note, pattern: "NOT proof")

@@ -1,8 +1,7 @@
 module v2.std.layer
 
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { HeadAbsent, HeadFound, list_head }
+import std.algebra { Cons, Empty, HeadAbsent, HeadFound, list_head }
 import v2.std.text { String }
 
 type LayerPrefix

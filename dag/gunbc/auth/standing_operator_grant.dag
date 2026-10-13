@@ -1,7 +1,7 @@
 module gunbc.auth.standing_operator_grant
 
 import std.types { String, Bool, List, NonEmptyStr, Timestamp }
-import v2.std.algebra { length }
+import std.algebra { length }
 import product.host_identity { HostIdentity, host_identity_eq }
 import std.optional { Present }
 import std.list { list_member }

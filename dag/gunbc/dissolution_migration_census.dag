@@ -66,7 +66,6 @@ fn historical_receipt_rows() -> List<LifecycleResidueRow> {
     residue_row(module_path: "v2.test.claim.execution.loop_round_trip", decl_name: "loop_descent_fabrication_dissolved_note", class: HistoricalReceipt, rationale: "records the deleted hand-fabricated TerminationProof and the body-lowering path that replaced it"),
     residue_row(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lowering_interim_scaffold_dissolved_note", class: HistoricalReceipt, rationale: "records the interim hand-walker scaffolds already folded into body_producer_forward"),
     residue_row(module_path: "v2.std.witness_execution_routing", decl_name: "witness_execution_disposition_predicate_dissolution_note", class: HistoricalReceipt, rationale: "records three predicates dissolved per review 41625"),
-    residue_row(module_path: "v2.std.algebra", decl_name: "copied_port_fact_registry_dissolution_note", class: HistoricalReceipt, rationale: "records the deleted hand-stamped copied_port_fact rows and the derivation that replaced them"),
     residue_row(module_path: "test.claim.roadmap_belt_actuate", decl_name: "codex_preflight_ok_dissolution_note", class: HistoricalReceipt, rationale: "records the codex_preflight_ok helper's removal per review 44110"),
     residue_row(module_path: "test.claim.peak_resident_measured", decl_name: "peak_resident_platform_precondition_retired_note", class: HistoricalReceipt, rationale: "records a precondition retired by its own trigger after one commit"),
   ]

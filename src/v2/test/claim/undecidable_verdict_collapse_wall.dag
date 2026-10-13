@@ -14,8 +14,7 @@ import v2.extdeps.languages.dag {
   dag_named_edge,
   dag_type_atom_node
 }
-import std.algebra { Empty }
-import v2.std.algebra { length }
+import std.algebra { Empty, length }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }

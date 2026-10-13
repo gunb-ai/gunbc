@@ -21,7 +21,7 @@ module std.judgment_contract
 // dependency is the whole point: meaning does not import storage.
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import v2.std.algebra { skip }
+import std.algebra { skip }
 import std.materialization_ladder { DemandNature }
 import std.cache_identity { ArtifactKindId }
 import std.content_hash {
@@ -29,6 +29,7 @@ import std.content_hash {
   content_hash_family, as_content_hash_structural, serialize_content_hash, parse_content_hash,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
 
 
 // PROGRESS ON THE CARVE-OUT ABOVE, stated narrowly so it is not read as the dissolution: the
@@ -221,9 +222,6 @@ type DecodedDeclaredInputs {
 }
 
 
-fn string_from_code_points(cs: List<Int>) -> String {
-  join(cs |> map(c => from_code_point(cp: c)), "")
-}
 
 
 fn length_prefixed_encode(s: String) -> String {
@@ -232,7 +230,7 @@ fn length_prefixed_encode(s: String) -> String {
 
 
 fn length_prefixed_decode(s: String) -> LengthPrefixedField? {
-  let cs = chars(s: s)
+  let cs = unicode_scalar_unfold(s: s)
   let scan = cs |> fold(
     init: LengthPrefixedScan { i: 0, hit: none },
     f: (st, c) =>
@@ -249,22 +247,22 @@ fn length_prefixed_decode(s: String) -> LengthPrefixedField? {
   match scan.hit {
     Absent => none
     Present { value: hash_at } => {
-      let len_text = string_from_code_points(cs: cs |> take(n: hash_at))
-      let after = string_from_code_points(cs: cs |> skip(n: hash_at + 1))
+      let len_text = unicode_scalar_fold(xs: cs |> take(n: hash_at))
+      let after = unicode_scalar_fold(xs: cs |> skip(n: hash_at + 1))
       match parse_int(s: len_text) {
         Absent => none
         Present { value: n } =>
           if n < 0 {
             none
           } else {
-            let after_cs = chars(s: after)
+            let after_cs = unicode_scalar_unfold(s: after)
             if (after_cs |> count()) < n {
               none
             } else {
               Present {
                 value: LengthPrefixedField {
-                  value: string_from_code_points(cs: after_cs |> take(n: n)),
-                  rest: string_from_code_points(cs: after_cs |> skip(n: n))
+                  value: unicode_scalar_fold(xs: after_cs |> take(n: n)),
+                  rest: unicode_scalar_fold(xs: after_cs |> skip(n: n))
                 }
               }
             }

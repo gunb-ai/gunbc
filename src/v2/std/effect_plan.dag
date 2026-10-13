@@ -4,7 +4,7 @@ import std.types { List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.std.text { String }
-import v2.std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid }
 import std.optional {
   Optional
 }

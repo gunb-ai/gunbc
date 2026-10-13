@@ -1,7 +1,6 @@
 module gunbc.witness.v2_native_route
 
-import v2.std.algebra { count_where, fold_list, is_empty, length, list_find_first }
-import std.algebra { list_append, list_snoc_item }
+import std.algebra { list_append, list_snoc_item, count_where, fold_list, is_empty, length, list_find_first }
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present }

@@ -1,7 +1,7 @@
 module gunbc.fleet.convergence_fold
 
 import std.types { Bool, Int, List, NonEmptyStr, String, brand }
-import v2.std.algebra { length }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.decl_ref { decl_ref }
 import std.measure { PositiveMillisecond, positive_millisecond_count }

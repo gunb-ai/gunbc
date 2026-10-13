@@ -14,8 +14,7 @@ import v2.lens.module_graph {
   ModuleDependencyEdge,
   reference_derived_edges_from_located_roots,
 }
-import v2.std.algebra { length }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, length }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

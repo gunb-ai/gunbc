@@ -10,7 +10,7 @@ import std.interval { degenerate_interval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
   ChoiceDomain, ConstraintSatisfied, CausalModelEstablished, DecisionAssessment, DecisionConstraint,
-  DecisionRegion, DecisionSubject, DecisionVariable, ContextParameter, HardConstraint, ObjectiveMeasure,
+  DecisionRegion, DecisionSubject, DecisionVariable, ContextParameter, HardConstraint, NonMoneyConstraint, ObjectiveMeasure,
   ObjectiveTerm, ParameterBound, PhysicalModelEstablished, RealizationSelectionResult, MonotoneIncreasing,
   UniqueSurvivorRequired, VariesAlong, VendorDocumentedCoupling, select_realization,
   SelectedWithin, CandidateFieldUnestablished, NoFeasibleRealization, SelectionNeedsEvidence,
@@ -150,7 +150,7 @@ data harness_hosted_level_axes: List<SelectionAxis> = [
 data hosted_level_admitted_constraint: DeclarationRef = hosted_ref(name: "hosted_level_admitted_constraint")
 
 data harness_hosted_level_constraints: List<HardConstraint> = [
-  HardConstraint { identity: hosted_level_admitted_constraint, axis: ax_hosted_level_admitted, bound_micro: 1000000 },
+  HardConstraint { identity: hosted_level_admitted_constraint, axis: ax_hosted_level_admitted, bound_micro: 1000000, denomination: NonMoneyConstraint },
 ]
 
 fn hosted_level_identity(level: HarnessReasoningLevel) -> DeclarationRef {

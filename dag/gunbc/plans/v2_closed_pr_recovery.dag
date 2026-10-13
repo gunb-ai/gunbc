@@ -159,7 +159,7 @@ data closed_pr_recovery_rows: List<ClosedPrRecoveryRow> = [
   },
   ClosedPrRecoveryRow {
     pr_numbers: [13541],
-    subject: "Retire v2.std.algebra filter/any" as NonEmptyStr,
+    subject: "Retire std.algebra filter/any" as NonEmptyStr,
     why_closed: "The diff now comes back empty" as NonEmptyStr,
     standing: LiveWork { area: SharedStdOrV1Written, disposition: ReDeriveInV2 {
       what_carries_over: "The retirement intent, not the closed patch." as NonEmptyStr,

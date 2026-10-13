@@ -11,7 +11,7 @@ import v2.extdeps.languages.dag {
   dag_match_body_from_arms,
   dag_type_atom_node
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,

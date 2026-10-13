@@ -16,7 +16,7 @@ import v2.compiler.source_authority {
   SourceRootManifestElided,
   SourceRootRowsMissing
 }
-import std.algebra { FreeMonoid }
+import std.algebra { FreeMonoid, fold_list }
 import std.content_hash {
   ContentHash,
   ContentHashComparison,
@@ -31,7 +31,6 @@ import std.content_hash {
   content_hash_validate_lower_hex_length
 }
 import std.types { CommitSha, GitRef, List }
-import v2.std.algebra { fold_list }
 import v2.std.integer { Int }
 import v2.std.diagnostic { DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual }
 import v2.std.node { Symbol, symbol_lexeme }
@@ -387,7 +386,12 @@ fn frontier_probe_located_stage_for_emit_outcome(
   match blocker {
     UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: _ } =>
       ProbeStageSemanticDerivation
-    _ => ProbeStageEmit
+    SelfEmitReady => ProbeStageEmit
+    NameResolutionGap => ProbeStageEmit
+    EmitSurfaceGap => ProbeStageEmit
+    RealizationGap => ProbeStageEmit
+    FixtureCemented => ProbeStageEmit
+    UnknownProbeCause { reason: _ } => ProbeStageEmit
   }
 }
 
@@ -621,55 +625,6 @@ fn frontier_probe_blocker_rank(blocker: FrontierBlockerClass) -> Int {
   }
 }
 
-fn frontier_blocker_class_matches(
-  blocker: FrontierBlockerClass,
-  target: FrontierBlockerClass
-) -> Bool {
-  match blocker {
-    SelfEmitReady =>
-      match target {
-        SelfEmitReady => true
-        _ => false
-      }
-    NameResolutionGap =>
-      match target {
-        NameResolutionGap => true
-        _ => false
-      }
-    EmitSurfaceGap =>
-      match target {
-        EmitSurfaceGap => true
-        _ => false
-      }
-    RealizationGap =>
-      match target {
-        RealizationGap => true
-        _ => false
-      }
-    FixtureCemented =>
-      match target {
-        FixtureCemented => true
-        _ => false
-      }
-    UpstreamSemanticRefusal { diagnostic_class: lc, diagnostic_name: ln } =>
-      match target {
-        UpstreamSemanticRefusal { diagnostic_class: rc, diagnostic_name: rn } =>
-          (lc == rc) && (ln == rn)
-        _ => false
-      }
-    UnknownProbeCause { reason: _ } => false
-  }
-}
-
 fn frontier_located_reason_is_stale_knowledge_attributed(symbol: Symbol) -> Bool {
   symbol == gate_a_flip_probe_witness_std_dup_reason
-}
-
-fn frontier_upstream_semantic_refusal_located_reason(
-  refusal: FrontierBlockerClass
-) -> Symbol {
-  match refusal {
-    UpstreamSemanticRefusal { diagnostic_class: _, diagnostic_name: name } => name
-    _ => ^frontier_upstream_semantic_refusal_located_reason_mismatch_red_control
-  }
 }

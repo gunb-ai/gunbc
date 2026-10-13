@@ -3,7 +3,7 @@ module v2.test.claim.long.dag_import_block_lexeme_stamp
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data dag_lex_stamp_source: String = "module v2.test.lexeme_probe\nimport v2.std.algebra { Cons, Empty }\n"
+data dag_lex_stamp_source: String = "module v2.test.lexeme_probe\nimport std.algebra { Cons, Empty }\n"
 
 fn dag_lex_stamp_parse_tree() -> Outcome<Node> {
   let lm = dag_language_model()

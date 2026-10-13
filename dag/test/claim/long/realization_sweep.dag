@@ -12,8 +12,7 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.name_resolve { Admission, ResolutionSubject, Import, ImportVisible }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, length }
+import std.algebra { Cons, Empty, fold_list, length }
 import std.types { Int, List, String }
 
 // CI2-0 Commit B sweep laws (roster authority per operator verdict msg_6305b900): identities come

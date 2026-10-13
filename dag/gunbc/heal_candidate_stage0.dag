@@ -3,7 +3,7 @@ module gunbc.heal_candidate_stage0
 import std.types { List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.algebra { list_map }
+import std.algebra { list_map }
 import gunbc.generated_artifact { artifact_path }
 import gunbc.seed_build_artifact_emit { seed_build_artifacts }
 import gunbc.heal_publication_boundary { heal_stage0_mirror_directory, path_is_stage0_mirror }

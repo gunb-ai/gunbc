@@ -14,7 +14,7 @@ import gunbc.instruments.dag_compile_clean_shard_roster {
 }
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool }
-import v2.std.algebra { length }
+import std.algebra { length }
 
 // HAND-RUST receipt for src/v1/stage0/src/cli_run.rs
 // compile_clean_shard_entry_paths_from_decl_facts / compile_clean_shard_entry_paths_fast (review
