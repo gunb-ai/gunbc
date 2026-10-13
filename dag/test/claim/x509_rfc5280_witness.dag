@@ -17,7 +17,7 @@ import extdeps.standards.x690_der {
 }
 import extdeps.standards.rfc_5280 {
   X509Certificate, X509Decoded, X509Refused, decode_certificate, X509Refusal, X509DerRefused, X509SignatureAlgorithmMismatch, X509ExtensionDefaultEncoded,
-  X509Time, UtcTime, GeneralizedTime,
+  X509Time, UtcTime, GeneralizedTime, read_time, X509TimeOk, X509TimeRefused, X509TimeNotAscii,
   x509_extension, X509ExtensionFound, X509ExtensionAbsent, X509ExtensionDuplicated,
   ecdsa_sig_value, EcdsaSigValueRead, EcdsaSigValueRefused, EcdsaSigValueTooWide,
   oid_ecdsa_with_sha256, oid_ecdsa_with_sha384, oid_id_ec_public_key, oid_prime256v1, oid_secp384r1,
@@ -444,4 +444,31 @@ test fn pem_refuses_anything_but_exactly_one_block() -> Bool {
       }
     _ => false
   }
+}
+
+// THE TIME CROSSES TO TEXT ONLY AS ASCII (X.680 sections 46-47: UTCTime/GeneralizedTime are
+// VisibleString). Supplied DER at the read_time interface, one element each: a UTCTime whose
+// second value octet is 0xB2 (Latin-1 superscript two, not a digit and not ASCII) REFUSES naming
+// offset 1 and the octet; the same element with ASCII '2' (0x32) reads its text. The real-path
+// inhabitance is the_sample_leaf_reads_as_openssl_reads_it, whose validity goes through read_time.
+test fn a_non_ascii_time_octet_refuses_and_an_ascii_time_reads() -> Bool {
+  let red = [23, 3, 50, 178, 90]
+  let green = [23, 3, 50, 50, 90]
+  let refused = match der_read_element(octets: red, at: 0) {
+    DerElementRead { element } =>
+      match read_time(octets: red, e: element) {
+        X509TimeRefused { cause: X509TimeNotAscii { at: 1, octet: 178 } } => true
+        _ => false
+      }
+    DerRefused { cause: _ } => false
+  }
+  let read = match der_read_element(octets: green, at: 0) {
+    DerElementRead { element } =>
+      match read_time(octets: green, e: element) {
+        X509TimeOk { time: UtcTime { text } } => text == "22Z"
+        _ => false
+      }
+    DerRefused { cause: _ } => false
+  }
+  refused && read
 }

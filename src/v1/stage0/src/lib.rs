@@ -367,6 +367,17 @@ pub mod std_serialization;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod std_unicode_scalar;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod std_workspace_artifact;
 #[allow(
     unused_imports,
@@ -731,6 +742,17 @@ pub mod v1_tests_claim_carrier_realization_census;
     clippy::all
 )]
 pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod v1_tests_claim_escape_json_string_differential;
 #[allow(
     unused_imports,
     unused_variables,

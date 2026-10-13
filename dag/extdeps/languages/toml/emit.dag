@@ -39,7 +39,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // does not always own, so refusing at construction would move the failure to every call site
 // rather than removing it.
 fn toml_escape_basic_string(s: String) -> String {
-  chars(s: toml_escape_short_forms(s: s)) |> map(toml_escape_remaining_control) |> join(separator: "")
+  toml_escape_controls_except(s: toml_escape_short_forms(s: s), kept: -1)
 }
 
 fn toml_escape_short_forms(s: String) -> String {
@@ -72,13 +72,54 @@ fn toml_hex_nibble(n: Int) -> String {
 
 // A C0 control with no short form is `\u00XX`. The two nibbles are read off the code point rather
 // than formatted, because there is no hex formatter in the substrate and inventing one here would
-// be a second numeric authority for four bits.
-fn toml_escape_remaining_control(point: Int) -> String {
-  if (point < 32) || (point == 127) {
-    concat("\\u00", concat(toml_hex_nibble(n: point / 16), toml_hex_nibble(n: point - ((point / 16) * 16))))
-  } else {
-    from_code_point(point)
-  }
+// be a second numeric authority for four bits. Each control spells ITSELF as a text literal,
+// so the escaper is a string rewrite over these rows and never asks an Int computed at
+// run time to be a Char (gunbc.recurring_failure_mode char_brand_admits_any_int).
+type TomlControlRow { point: Int, spelled: String }
+
+data toml_control_rows: List<TomlControlRow> = [
+  TomlControlRow { point: 0, spelled: "\u{0}" },
+  TomlControlRow { point: 1, spelled: "\u{1}" },
+  TomlControlRow { point: 2, spelled: "\u{2}" },
+  TomlControlRow { point: 3, spelled: "\u{3}" },
+  TomlControlRow { point: 4, spelled: "\u{4}" },
+  TomlControlRow { point: 5, spelled: "\u{5}" },
+  TomlControlRow { point: 6, spelled: "\u{6}" },
+  TomlControlRow { point: 7, spelled: "\u{7}" },
+  TomlControlRow { point: 8, spelled: "\u{8}" },
+  TomlControlRow { point: 9, spelled: "\u{9}" },
+  TomlControlRow { point: 10, spelled: "\u{a}" },
+  TomlControlRow { point: 11, spelled: "\u{b}" },
+  TomlControlRow { point: 12, spelled: "\u{c}" },
+  TomlControlRow { point: 13, spelled: "\u{d}" },
+  TomlControlRow { point: 14, spelled: "\u{e}" },
+  TomlControlRow { point: 15, spelled: "\u{f}" },
+  TomlControlRow { point: 16, spelled: "\u{10}" },
+  TomlControlRow { point: 17, spelled: "\u{11}" },
+  TomlControlRow { point: 18, spelled: "\u{12}" },
+  TomlControlRow { point: 19, spelled: "\u{13}" },
+  TomlControlRow { point: 20, spelled: "\u{14}" },
+  TomlControlRow { point: 21, spelled: "\u{15}" },
+  TomlControlRow { point: 22, spelled: "\u{16}" },
+  TomlControlRow { point: 23, spelled: "\u{17}" },
+  TomlControlRow { point: 24, spelled: "\u{18}" },
+  TomlControlRow { point: 25, spelled: "\u{19}" },
+  TomlControlRow { point: 26, spelled: "\u{1a}" },
+  TomlControlRow { point: 27, spelled: "\u{1b}" },
+  TomlControlRow { point: 28, spelled: "\u{1c}" },
+  TomlControlRow { point: 29, spelled: "\u{1d}" },
+  TomlControlRow { point: 30, spelled: "\u{1e}" },
+  TomlControlRow { point: 31, spelled: "\u{1f}" },
+  TomlControlRow { point: 127, spelled: "\u{7f}" },
+]
+
+fn toml_escape_controls_except(s: String, kept: Int) -> String {
+  fold(toml_control_rows, init: s, f: (acc, row) =>
+    if row.point == kept {
+      acc
+    } else {
+      replace(s: acc, from: row.spelled, to: concat("\\u00", concat(toml_hex_nibble(n: row.point / 16), toml_hex_nibble(n: row.point - ((row.point / 16) * 16)))))
+    })
 }
 
 // A KEY IS RENDERED BARE ONLY WHEN THE SPEC ADMITS IT BARE. TOML restricts bare keys to ASCII
@@ -141,21 +182,7 @@ fn toml_render_pair(kv: TomlKeyValue) -> String {
 // lines, `one\rtwo` becomes one line carrying literal `\u000D`.
 fn toml_comment_lines(text: String) -> List<String> {
   split(s: replace(s: text, from: "\r\n", to: "\n"), delimiter: "\n")
-    |> map(line => chars(s: line) |> map(toml_comment_char) |> join(separator: ""))
-}
-
-// TAB IS THE ONE CONTROL A COMMENT ADMITS; everything else defers to the escaper above rather than
-// restating which code points lack a literal form and how one renders as `\u00XX`. An earlier
-// revision spelled that body a second time here, so a correction to the predicate or the nibble
-// encoding would have left this copy on the old rule -- with each of the two witnesses staying
-// green against its own copy, which is the failure mode that makes duplicated logic dangerous
-// rather than merely verbose.
-fn toml_comment_char(point: Int) -> String {
-  if point == 9 {
-    from_code_point(point)
-  } else {
-    toml_escape_remaining_control(point: point)
-  }
+    |> map(line => toml_escape_controls_except(s: line, kept: 9))
 }
 
 fn toml_render_comment(text: String) -> String {

@@ -17,6 +17,7 @@ import v2.compiler.parse {
 }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import std.coercion { unicode_scalar_unfold }
+import std.unicode.scalar { ascii_lowercase }
 import v2.compiler.tokenize { char_in_class, tokenize }
 import v2.extdeps.languages.dag {
   dag_language_model,
@@ -1599,11 +1600,10 @@ fn ascii_case_fold_from(s: String, at: Int, acc: List<String>) -> List<String> {
     acc
   } else {
     let ch = substring(s: s, start: at, end: at + 1)
-    let cp = code_point(ch)
     ascii_case_fold_from(
       s: s,
       at: at + 1,
-      acc: list_snoc_item(xs: acc, item: if cp >= 65 && cp <= 90 { from_code_point(cp + 32) } else { ch })
+      acc: list_snoc_item(xs: acc, item: ascii_lowercase(s: ch))
     )
   }
 }

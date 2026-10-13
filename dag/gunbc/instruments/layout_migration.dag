@@ -375,7 +375,7 @@ type TrackedRead
   | TrackedRefused { cause: String }
 
 fn nul() -> String {
-  from_code_point(0)
+  "\u{0}"
 }
 
 // One `git ls-files -z --stage` record: `<mode> <object> <stage>\t<path>`.

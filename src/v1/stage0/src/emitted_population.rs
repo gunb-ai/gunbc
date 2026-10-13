@@ -99,6 +99,7 @@
 // src/std_termination.rs
 // src/std_trait_derive_shape.rs
 // src/std_types.rs
+// src/std_unicode_scalar.rs
 // src/std_unicode_types.rs
 // src/std_witness_admission.rs
 // src/std_workspace_artifact.rs
@@ -160,6 +161,7 @@
 // src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
+// src/v1_tests_claim_escape_json_string_differential.rs
 // src/v1_tests_claim_generic_identity_census.rs
 // src/v1_tests_claim_interpolation_hole_census.rs
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
