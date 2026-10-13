@@ -3,7 +3,11 @@ module product.fabric.demand
 import std.types { NonEmptyStr, Timestamp, Bool, List, Int, brand }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, money_amount_micro, money_amount_micro_count, signed_money_amount_micro }
+import std.measure {
+  MoneyAmountMicro, MoneyPerSecond, MoneyRate, MoneyAmountPerSecond,
+  money_amount_micro, money_amount_micro_count, money_amount_per_second,
+  money_amount_per_second_count, signed_money_amount_micro,
+}
 import extdeps.currency.currency { CurrencyCode }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
 import std.algebra { Cons, Empty }
@@ -78,7 +82,7 @@ type BudgetAccountId = NonEmptyStr where brand("BudgetAccountId")
 // liability - a refusal boundary, never a degradation: an ask above it refuses
 // rather than selecting something cheaper and unsuitable.
 // Delay valuation does not live on BuyTerms. It is
-// AdmissionTerms.objective.valuations.delay, a MoneyAmountMicro per second in
+// AdmissionTerms.objective.valuations.delay, a MoneyAmountPerSecond in
 // buy.currency (stamped when demand_delay_valuation mints MoneyPerSecond).
 // Budget caps stay on this record; consumers project them into std.decision
 // HardConstraint rows (admission_hard_constraints) and must not duplicate
@@ -170,12 +174,12 @@ fn fabric_demand_required_term_ids() -> List<DeclarationRef> {
 }
 
 // Fabric's four buyer-policy units. Missing, repeated and foreign terms are unwritable here;
-// std.decision scores the projection, not this record. delay is micros per second in the
-// same denomination as money/interruption/accepted_work; CurrencyCode lives on BuyTerms
-// and is stamped onto MoneyPerSecond only at demand_delay_valuation.
+// std.decision scores the projection, not this record. delay is MoneyAmountPerSecond so a
+// per-hour amount is unwritable; CurrencyCode lives on BuyTerms and is stamped onto
+// MoneyPerSecond only at demand_delay_valuation.
 type TermValuations {
   money: MoneyAmountMicro
-  delay: MoneyAmountMicro
+  delay: MoneyAmountPerSecond
   interruption: MoneyAmountMicro
   accepted_work: MoneyAmountMicro
 }
@@ -192,7 +196,7 @@ type DemandObjective {
 type InterpretedDemandObjective {
   profile: DeclarationRef
   valuations: List<TermValuation>
-  delay: MoneyAmountMicro
+  delay: MoneyAmountPerSecond
   measure: ValuedObjectiveMeasure
   currency: CurrencyCode
 }
@@ -201,10 +205,10 @@ fn interpret_demand_objective(objective: DemandObjective, currency: CurrencyCode
   InterpretedDemandObjective {
     profile: objective.profile,
     valuations: [
-      TermValuation { term: term_money.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.money) as Int), goal: LowerIsBetter, currency: currency },
-      TermValuation { term: term_delay.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.delay) as Int), goal: LowerIsBetter, currency: currency },
-      TermValuation { term: term_interruption.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.interruption) as Int), goal: LowerIsBetter, currency: currency },
-      TermValuation { term: term_accepted_work.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.accepted_work) as Int), goal: HigherIsBetter, currency: currency },
+      TermValuation { term: term_money.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.money) as Int), goal: LowerIsBetter },
+      TermValuation { term: term_delay.identity, scale_micro: signed_money_amount_micro(count: money_amount_per_second_count(q: objective.valuations.delay) as Int), goal: LowerIsBetter },
+      TermValuation { term: term_interruption.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.interruption) as Int), goal: LowerIsBetter },
+      TermValuation { term: term_accepted_work.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.accepted_work) as Int), goal: HigherIsBetter },
     ],
     delay: objective.valuations.delay,
     measure: objective.measure,
@@ -225,7 +229,7 @@ fn valued_objective_policy(objective: DemandObjective, currency: CurrencyCode) -
 fn closed_valuations(money: Nat, delay: Nat, interruption: Nat, accepted_work: Nat) -> TermValuations {
   TermValuations {
     money: money_amount_micro(count: money),
-    delay: money_amount_micro(count: delay),
+    delay: money_amount_per_second(count: delay),
     interruption: money_amount_micro(count: interruption),
     accepted_work: money_amount_micro(count: accepted_work),
   }
@@ -254,7 +258,7 @@ data latency_sensitive_objective: DemandObjective = DemandObjective {
 
 fn demand_delay_valuation(objective: DemandObjective, currency: CurrencyCode) -> MoneyPerSecond {
   MoneyRate {
-    amount: interpret_demand_objective(objective: objective, currency: currency).delay,
+    amount: interpret_demand_objective(objective: objective, currency: currency).delay.amount,
     currency: currency,
   }
 }

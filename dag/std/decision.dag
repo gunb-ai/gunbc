@@ -749,7 +749,6 @@ type TermValuation {
   term: DeclarationRef
   scale_micro: SignedMoneyAmountMicro
   goal: AxisGoal
-  currency: CurrencyCode
 }
 
 // NetValue is the signed sum (LowerIsBetter adds, HigherIsBetter subtracts).
@@ -1572,16 +1571,6 @@ fn money_constraint_defects(constraints: List<HardConstraint>, policy_currency: 
   )
 }
 
-fn contribution_currency_defects(valuations: List<TermValuation>, policy_currency: CurrencyCode) -> List<NonEmptyStr> {
-  fold(valuations, init: [], f: (acc, tv) =>
-    if currency_code_eq(a: tv.currency, b: policy_currency) {
-      acc
-    } else {
-      concat(acc, ["valued-objective contribution is not money in the policy currency" as NonEmptyStr])
-    }
-  )
-}
-
 fn admit_term_valuations(valuations: List<TermValuation>, terms: List<ObjectiveTerm>, pareto_axes: List<SelectionAxis>, measure: ValuedObjectiveMeasure, policy_currency: CurrencyCode, constraints: List<HardConstraint>) -> List<NonEmptyStr> {
   let ids = map(valuations, v => v.term)
   let join = observation_completeness(
@@ -1605,7 +1594,7 @@ fn admit_term_valuations(valuations: List<TermValuation>, terms: List<ObjectiveT
   }
   concat(
     concat(concat(concat(completeness_defects(join: join), orientations), scales), unit_defects),
-    concat(contribution_currency_defects(valuations: valuations, policy_currency: policy_currency), money_constraint_defects(constraints: constraints, policy_currency: policy_currency)),
+    money_constraint_defects(constraints: constraints, policy_currency: policy_currency),
   )
 }
 

@@ -345,7 +345,7 @@ test fn serving_reads_the_demand_delay_valuation() -> Bool {
 fn delay_bound_to_money_valuations(objective: DemandObjective) -> List<TermValuation> {
   map(interpret_demand_objective(objective: objective, currency: Usd).valuations, v =>
     if declaration_ref_eq(a: v.term, b: term_delay.identity) {
-      TermValuation { term: term_money.identity, scale_micro: v.scale_micro, goal: v.goal, currency: v.currency }
+      TermValuation { term: term_money.identity, scale_micro: v.scale_micro, goal: v.goal }
     } else {
       v
     }
@@ -355,7 +355,7 @@ fn delay_bound_to_money_valuations(objective: DemandObjective) -> List<TermValua
 fn with_delay_scale(objective: DemandObjective, scale: Int) -> List<TermValuation> {
   map(interpret_demand_objective(objective: objective, currency: Usd).valuations, v =>
     if declaration_ref_eq(a: v.term, b: term_delay.identity) {
-      TermValuation { term: v.term, scale_micro: signed_money_amount_micro(count: scale), goal: v.goal, currency: v.currency }
+      TermValuation { term: v.term, scale_micro: signed_money_amount_micro(count: scale), goal: v.goal }
     } else {
       v
     }
