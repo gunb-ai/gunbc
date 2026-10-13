@@ -230,12 +230,95 @@ test fn cwc_cwc_module_resolve_accepts() -> Bool {
 // ---- normalize, over a supplied parse tree ----------------------------------------------------
 
 // A coproduct arm with no constructor name cannot be built or matched, so normalize owes a refusal.
-// RED today: normalize accepts it (gunbc.recurring_failure_mode
-// a_coproduct_arm_without_a_constructor_name_is_accepted; enrolled in v2.workflow.floor_expected_red).
+// This was the expecting-red probe for gunbc.recurring_failure_mode
+// a_coproduct_arm_without_a_constructor_name_is_accepted; the refusal wall has landed, so per
+// DESIGN §4b it is now the permanent regression control for that class.
 test fn cwc_malformed_nary_coproduct_normalize_rejects() -> Bool {
   match normalize(parse_tree: cwc_pt_malformed()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
+  }
+}
+
+// POSITIVE CONTROL for the nameless-arm refusal, paired with the malformed negative control above
+// and run the same real path (tokenize -> parse -> normalize over the real parser's tree, not a
+// hand-built one). The refusal is read from the arm's TYPE BODY (the leading type_expr) being a
+// field_decl_block / fn_type production, never from the name's spelling -- so a coproduct whose
+// constructor is NAMED dag_token_lbrace (a spelling that is also a lex token class) is a legitimate
+// arm and must normalize. The former spelling-based gate refused this arm, which is what the
+// production-identity check exists to rule out.
+data cwc_src_named_lbrace_coproduct: String = "module probe\ntype T = dag_token_lbrace | B\n"
+
+test fn cwc_named_lbrace_coproduct_normalize_accepts() -> Bool {
+  match cwc_parse_of(src: cwc_src_named_lbrace_coproduct) {
+    Accepted { value: p, diagnostics: _ } =>
+      match normalize(parse_tree: p) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// WHERE-SUFFIX CONTROL, the same refusal through the real path (tokenize -> parse -> normalize over
+// the real parser's tree). A where refinement does not carry a constructor name, so a coproduct arm
+// whose type body is a field_decl_block and which is refined by a where clause --
+// `type T = { x: Int } where brand("X") | B` -- is still a nameless arm and must be refused, exactly
+// as the bare `type T = { x: Int } | B` form above. The where branch of body lowering rebuilds the
+// arm into a synthetic conj carrying the lowered head under ^dag_surface_type_expr (the
+// seq(type_expr, suffix) parse shape is gone by the time the sugar fold runs), so the refusal reads
+// the carried head's kind instead of the raw production identity; a named head refined by the same
+// where clause (`A where brand("X") | B`) still lowers to a named kind and normalizes, which is why
+// this control is paired with the named-where positive case it must not break.
+data cwc_src_nameless_where_coproduct: String = "module probe\ntype T = { x: Int } where brand(\"X\") | B\n"
+
+test fn cwc_nameless_where_coproduct_normalize_rejects() -> Bool {
+  match cwc_parse_of(src: cwc_src_nameless_where_coproduct) {
+    Accepted { value: p, diagnostics: _ } =>
+      match normalize(parse_tree: p) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// PAIRED POSITIVE for the where-suffix control: the same where clause on a NAMED head still
+// normalizes. The where-rebuilt arm carries a lowered head whose kind is the lowered image of the
+// arm's production identity, so the refusal is keyed to the head being a nameless type body (field
+// block / fn type), never to the presence of a where clause. This pins the over-refusal the
+// carried-head read exists to avoid.
+data cwc_src_named_where_coproduct: String = "module probe\ntype T = A where brand(\"X\") | B\n"
+
+test fn cwc_named_where_coproduct_normalize_accepts() -> Bool {
+  match cwc_parse_of(src: cwc_src_named_where_coproduct) {
+    Accepted { value: p, diagnostics: _ } =>
+      match normalize(parse_tree: p) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// SPINE-LABEL BYPASS CONTROL. The where-rebuilt arm's head is a record whose FIELD NAMES are spelled
+// like the qualified-name spine labels (`fold_list_node_head` / `fold_list_node_tail` -- the two
+// labels fold_list_node uses for a dotted name's head/tail edges). A label-only shape check would
+// read that record as a dotted name and the arm would normalize (its atom fallback naming the arm
+// `Int`). The refusal therefore reads the head through the full qualified-name reader
+// (qualified_name_from_node), whose fold validates the spine's TARGETS -- the head edge must target
+// an atom and the tail edge a spine conj -- which a record payload fails. A successful read of an
+// empty name, and a rejected read, both count as nameless. This source must be refused.
+data cwc_src_spine_named_fields_where_coproduct: String = "module probe\ntype T = {\n  fold_list_node_head: Int,\n  fold_list_node_tail: Int\n} where brand(\"X\") | B\n"
+
+test fn cwc_spine_named_fields_where_coproduct_normalize_rejects() -> Bool {
+  match cwc_parse_of(src: cwc_src_spine_named_fields_where_coproduct) {
+    Accepted { value: p, diagnostics: _ } =>
+      match normalize(parse_tree: p) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
 

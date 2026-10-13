@@ -1506,6 +1506,19 @@ test fn the_default_pattern_requests_every_module_of_the_population() -> Bool {
   ) == concat("|", native_route_live_control_module, "|v2.test.alpha|v2.test.beta.deep|v2.test.gamma")
 }
 
+// A name whose dummy label cannot be formed is not an entry, so its bytes are not acquired.
+// That filter is not the counted refusal: native_lane_population_unformable_identity still
+// refuses `native_lane_identity_label_refused` naming the module and the LabelRefusal cause
+// (test.claim.native_lane_universe_selection `an_unformable_population_name_refuses_typed`).
+test fn a_label_that_cannot_be_formed_is_not_an_entry() -> Bool {
+  entries_text(
+    entries: native_lane_candidate_entries(
+      pattern: native_route_default_pattern(),
+      population: ["v2.test.alpha", "v2.test.foo..bar"]
+    )
+  ) == concat("|", native_route_live_control_module, "|v2.test.alpha")
+}
+
 fn an_acquired(name: String, path: String, markers: List<String>, content: String) -> AcquiredModule {
   AcquiredModule {
     name: name,

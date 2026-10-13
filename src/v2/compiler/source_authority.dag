@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 
 import v2.std.language_model { LanguageModel }
 
+import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderRead, ModuleHeaderReader, ModuleHeaderRefused, module_header_read }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse {
@@ -1692,26 +1693,13 @@ fn reference_next_read(
   }
 }
 
-// The module a source file declares: the first line that begins `module `. Read off the header
-// text rather than the parse, so a file whose front end refuses still has a declared name to
-// compare with the request.
-fn module_header_declared_name(content: String) -> Optional<String> {
-  match list_find_first(
-    xs: split(s: content, delimiter: "\n"),
-    predicate: fn(line) { starts_with(s: trim(line), prefix: "module ") }
-  ) {
-    Absent => optional_absent()
-    Present { value: line } =>
-      optional_present(value: trim(substring(s: trim(line), start: 7, end: string_length(s: trim(line)))))
-  }
-}
-
 type ReferenceLookup
   = ReferenceResolved { module: String, member: String, file: ModuleFileRef, content: String }
   | ReferenceUnknownModule { reference: String }
   | ReferenceRefused { module: String, file: ModuleFileRef, cause: String }
   | ReferenceModuleLineMissing { module: String, file: ModuleFileRef }
   | ReferenceModuleLineDisagrees { module: String, declared: String, file: ModuleFileRef }
+  | ReferenceModuleHeaderRefused { module: String, file: ModuleFileRef, cause: String }
   | ReferenceCrossTreeDenied { module: String, file: ModuleFileRef, reason: CrossTreeDenialReason }
 
 type ReferenceAdvance
@@ -1724,10 +1712,11 @@ fn reference_member(reference: String, module: String) -> String {
   join(skip(xs: split(s: reference, delimiter: "."), n: consumed), ".")
 }
 
-fn reference_present(reference: String, module: String, file: ModuleFileRef, content: String) -> ReferenceLookup {
-  match module_header_declared_name(content: content) {
-    Absent => ReferenceModuleLineMissing { module: module, file: file }
-    Present { value: declared } =>
+fn reference_present(reader: ModuleHeaderReader, reference: String, module: String, file: ModuleFileRef, content: String) -> ReferenceLookup {
+  match module_header_read(reader: reader, file: module_file_key(file: file), content: content) {
+    ModuleHeaderAbsent => ReferenceModuleLineMissing { module: module, file: file }
+    ModuleHeaderRefused { cause: cause } => ReferenceModuleHeaderRefused { module: module, file: file, cause: cause }
+    ModuleHeaderDeclared { module: declared } =>
       if declared == module {
         ReferenceResolved { module: module, member: reference_member(reference: reference, module: module), file: file, content: content }
       } else {
@@ -1737,6 +1726,7 @@ fn reference_present(reference: String, module: String, file: ModuleFileRef, con
 }
 
 fn reference_after_probe(
+  reader: ModuleHeaderReader,
   reference: String,
   module: String,
   rest: List<String>,
@@ -1744,7 +1734,7 @@ fn reference_after_probe(
 ) -> ReferenceAdvance {
   match probe {
     ModuleFilePresent { file: file, content: content } =>
-      ReferenceDecided { lookup: reference_present(reference: reference, module: module, file: file, content: content) }
+      ReferenceDecided { lookup: reference_present(reader: reader, reference: reference, module: module, file: file, content: content) }
     ModuleFileAbsent { file: _ } => ReferenceContinue { rest: rest }
     ModuleFileRefused { file: file, cause: cause } =>
       ReferenceDecided { lookup: ReferenceRefused { module: module, file: file, cause: cause } }
@@ -1773,6 +1763,7 @@ fn observed_probe_of(observed: List<ModuleFileProbe>, file: ModuleFileRef) -> Mo
 }
 
 fn resolve_reference_from(
+  reader: ModuleHeaderReader,
   layout: SourceStorageLayout,
   from_tree: SourceRootRef,
   from_module: String,
@@ -1785,16 +1776,17 @@ fn resolve_reference_from(
     ReferenceNextReadDenied { module: module, file: file, reason: reason } =>
       ReferenceCrossTreeDenied { module: module, file: file, reason: reason }
     ReferenceNextReadFile { module: module, file: file, rest: rest } =>
-      match reference_after_probe(reference: reference, module: module, rest: rest, probe: observed_probe_of(observed: observed, file: file)) {
+      match reference_after_probe(reader: reader, reference: reference, module: module, rest: rest, probe: observed_probe_of(observed: observed, file: file)) {
         ReferenceDecided { lookup: lookup } => lookup
         ReferenceContinue { rest: remaining } =>
-          resolve_reference_from(layout: layout, from_tree: from_tree, from_module: from_module, reference: reference, candidates: remaining, observed: observed)
+          resolve_reference_from(reader: reader, layout: layout, from_tree: from_tree, from_module: from_module, reference: reference, candidates: remaining, observed: observed)
       }
   }
 }
 
 // The lookup run over a supplied observation: the decision procedure, without the reads.
 fn resolve_reference_over(
+  reader: ModuleHeaderReader,
   layout: SourceStorageLayout,
   from_tree: SourceRootRef,
   from_module: String,
@@ -1802,6 +1794,7 @@ fn resolve_reference_over(
   observed: List<ModuleFileProbe>
 ) -> ReferenceLookup {
   resolve_reference_from(
+    reader: reader,
     layout: layout,
     from_tree: from_tree,
     from_module: from_module,
@@ -1832,7 +1825,7 @@ fn resolve_reference_over(
 // hosts and plans the registry enumerates.
 type LayoutFileHeader {
   file: ModuleFileRef
-  declared_module: Optional<String>
+  declared: ModuleHeaderRead
 }
 
 type LayoutRefusal
@@ -1842,6 +1835,7 @@ type LayoutRefusal
   | DeclaredModuleUnderivable { file: ModuleFileRef, declared: String, cause: String }
   | FileNotNamed { file: ModuleFileRef, cause: String }
   | ModuleLineMissing { file: ModuleFileRef }
+  | ModuleHeaderUnreadable { file: ModuleFileRef, cause: String }
   | DuplicateModule { module: String, files: List<ModuleFileRef> }
 
 type LayoutVerdict
@@ -1907,9 +1901,10 @@ fn header_namespace_refusals(namespaces: Map<String, Bool>, header: LayoutFileHe
 }
 
 fn header_declaration_refusals(layout: SourceStorageLayout, header: LayoutFileHeader, positional: String) -> List<LayoutRefusal> {
-  match header.declared_module {
-    Absent => [ModuleLineMissing { file: header.file }]
-    Present { value: declared } =>
+  match header.declared {
+    ModuleHeaderAbsent => [ModuleLineMissing { file: header.file }]
+    ModuleHeaderRefused { cause: cause } => [ModuleHeaderUnreadable { file: header.file, cause: cause }]
+    ModuleHeaderDeclared { module: declared } =>
       match module_file(layout: layout, name: declared) {
         ModuleNameUnderivable { name: _, cause: cause } =>
           [DeclaredModuleUnderivable { file: header.file, declared: declared, cause: cause }]
@@ -1948,9 +1943,10 @@ type DeclaredGroups {
 }
 
 fn declared_group_add(groups: DeclaredGroups, header: LayoutFileHeader) -> DeclaredGroups {
-  match header.declared_module {
-    Absent => groups
-    Present { value: declared } => declared_group_insert(groups: groups, key: ascii_case_fold(s: declared), header: header)
+  match header.declared {
+    ModuleHeaderAbsent => groups
+    ModuleHeaderRefused { cause: _ } => groups
+    ModuleHeaderDeclared { module: declared } => declared_group_insert(groups: groups, key: ascii_case_fold(s: declared), header: header)
   }
 }
 
@@ -2062,6 +2058,7 @@ fn layout_refusal_text(refusal: LayoutRefusal) -> String {
     FileNotNamed { file: file, cause: cause } =>
       concat(module_file_key(file: file), ": the file's position names no module: ", cause)
     ModuleLineMissing { file: file } => concat(module_file_key(file: file), ": no module line")
+    ModuleHeaderUnreadable { file: file, cause: cause } => concat(module_file_key(file: file), ": the module header does not parse: ", cause)
     DuplicateModule { module: module, files: files } =>
       concat("module ", module, " is declared by ", join(list_map(xs: files, f: fn(file) { module_file_key(file: file) }), ", "))
   }

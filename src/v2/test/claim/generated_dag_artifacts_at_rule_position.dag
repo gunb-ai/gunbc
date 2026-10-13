@@ -10,9 +10,10 @@ import v2.compiler.source_authority {
   LayoutHolds,
   LayoutRefused,
   layout_check,
-  module_header_declared_name,
   module_namespace
 }
+import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderRead, ModuleHeaderRefused, module_header_read }
+import v2.test.claim.source_layout_lookup { header_reader }
 import v2.cli.repository_layout { repository_module_file_of_path, repository_storage_layout }
 import gunbc.generated_artifact { GeneratedArtifact, Stage0CrateLayoutGeneratedDagArtifact, artifact_path }
 import gunbc.generated_artifact_registry { generated_artifact_registry }
@@ -57,10 +58,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // The one namespace row the single header occupies, so the layout check's row join judges the
 // position and nothing else.
-fn registered_namespace_rows(declared: Optional<String>) -> List<String> {
+fn registered_namespace_rows(declared: ModuleHeaderRead) -> List<String> {
   match declared {
-    Absent => []
-    Present { value: name } => [module_namespace(name: name)]
+    ModuleHeaderDeclared { module: name } => [module_namespace(name: name)]
+    ModuleHeaderAbsent => []
+    ModuleHeaderRefused { cause: _ } => []
   }
 }
 
@@ -69,11 +71,11 @@ fn registered_position_cause(path: String, content: String) -> String {
   match repository_module_file_of_path(path: path) {
     Absent => concat(path, ": the registered path lies under no governed tree")
     Present { value: file } => {
-      let declared = module_header_declared_name(content: content)
+      let declared = module_header_read(reader: header_reader(), file: path, content: content)
       match layout_check(
         layout: repository_storage_layout(),
         namespaces: registered_namespace_rows(declared: declared),
-        headers: [LayoutFileHeader { file: file, declared_module: declared }]
+        headers: [LayoutFileHeader { file: file, declared: declared }]
       ) {
         LayoutHolds => ""
         LayoutRefused { refusals: _ } =>
