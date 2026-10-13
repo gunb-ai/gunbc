@@ -58,6 +58,7 @@ type TargetProducer
   | DependencyDemandCensusProducer
   | GenericIdentityCensusProducer
   | InterpolationHoleCensusProducer
+  | SharedTypeLeafCollisionCensusProducer
   | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
   | NativeServeProgramProducer { entry: String }
@@ -98,6 +99,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     DependencyDemandCensusProducer {} => optional_absent()
     GenericIdentityCensusProducer {} => optional_absent()
     InterpolationHoleCensusProducer {} => optional_absent()
+    SharedTypeLeafCollisionCensusProducer {} => optional_absent()
     RegenRoundCostProducer {} => optional_absent()
     NativeServeProgramProducer { entry: _ } => optional_absent()
   }

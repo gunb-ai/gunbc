@@ -7,7 +7,7 @@ import extdeps.tools.mosquitto_sub { mosquitto_sub_options_file_name }
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.orchestration { EnvBinding, EnvSet }
+import std.env_binding { EnvBinding, EnvSet }
 import extdeps.tools.mosquitto_pub {
   mosquitto_pub_options_file_name, mosquitto_pub_options_dir_env,
 }

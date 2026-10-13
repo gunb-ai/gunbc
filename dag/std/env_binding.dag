@@ -1,0 +1,13 @@
+module std.env_binding
+
+import std.types { String }
+
+// One environment entry a process is run with: set a variable to a value, or unset it. An
+// environment variable realizes as an OS env entry, so its name and value are HOST text (kernel
+// String), not code-point sequences; a consumer that needs the structural form takes the declared
+// unfold at its own consumption site (std.coercion unicode_scalar_unfold). This is the one
+// authority: it moved here from v2.std.orchestration so that dag modules may own and construct
+// environments without a dag->v2 edge, and v2 emitters import it (v2 may import dag).
+type EnvBinding
+  = EnvSet { name: String, value: String }
+  | EnvUnset { name: String }

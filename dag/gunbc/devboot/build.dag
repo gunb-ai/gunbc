@@ -30,7 +30,7 @@ import extdeps.rust.cargo {
 }
 import extdeps.rust.rustup { rustup_home_env_name }
 import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
-import v2.std.orchestration { EnvBinding, EnvSet }
+import std.env_binding { EnvBinding, EnvSet }
 import extdeps.git.object_store { GitObjectId, GitRefName, git_object_id_from_untagged_hex }
 import extdeps.git.plumbing {
   GitRepositoryAddress,

@@ -3,7 +3,7 @@ module v2.test.claim.lexical_scope
 import std.types { Bool, List }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.lexical_scope { ModuleRootBinding, declaration_names_value, module_root_bindings }
-import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_front_end }
+import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_env_over, acquisition_front_end }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
 import v2.compiler.reference_site_collector {
   HeadBindingUndecided,
@@ -52,12 +52,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `Box.tree` below is `unbound` and not `root`). The frames themselves are one producer both read.
 
 fn scope_env(prepared: PreparedGrammar) -> AcquisitionEnv {
-  AcquisitionEnv {
+  acquisition_env_over(
     layout: repository_storage_layout(),
     bindings: [],
     lex: prepare_lex_rules(rules: dag_language_model().lex),
     grammar: prepared
-  }
+  )
 }
 
 fn head_text(head: SiteHeadBinding) -> String {

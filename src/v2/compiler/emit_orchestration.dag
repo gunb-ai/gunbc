@@ -108,8 +108,8 @@ import v2.std.orchestration {
   CmdSubst,
   Comment,
   Exit,
-  EnvBinding
 }
+import std.env_binding { EnvBinding }
 import std.algebra { FreeMonoid, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty, length }
 import extdeps.posix.shell_command_language { posix_name_ok }
 import std.types { List }

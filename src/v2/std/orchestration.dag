@@ -4,16 +4,13 @@ import std.types { List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.std.text { String }
+import std.env_binding { EnvBinding }
 import std.algebra { FreeMonoid }
 import std.optional {
   Optional
 }
 import v2.std.diagnostic { EmitDirective }
 import v2.std.node { Symbol }
-
-type EnvBinding
-  = EnvSet { name: String, value: String }
-  | EnvUnset { name: String }
 
 type RedirectSpec
   = StdoutAndStderr
