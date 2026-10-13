@@ -7,7 +7,8 @@ import gunbc.roadmap.roadmap_publish_actuate {
 }
 import extdeps.git {
   git_dir_fetch_source_grant, git_non_bare_git_dir, git_local_fetch_source_grant,
-  git_isolated_home_env_argv, git_push_ref_in_repo_argv,
+  git_isolated_home_env_argv, git_push_ref_in_repo_argv, git_isolated_home_netrc_path,
+  git_config_global_null_env, git_config_nosystem_env, git_terminal_prompt_disabled_env,
 }
 
 test fn a_created_pull_request_binds_the_receipt() -> Bool {
@@ -29,8 +30,17 @@ test fn the_push_environment_names_a_private_home_and_not_a_token() -> Bool {
     refspec: "dispatch/n1-aabc:refs/heads/dispatch/n1-aabc",
     home: "/tmp/publication-home" as FilePath,
   )
-  prefix == ["env", "HOME=/tmp/publication-home", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"]
+  prefix == ["env", "HOME=/tmp/publication-home", git_config_global_null_env, git_config_nosystem_env, git_terminal_prompt_disabled_env]
     && argv == concat(prefix, ["git", "-C", "/tmp/mirror.git", "push", "--quiet", "https://github.com/gunb-ai/gunbc.git", "dispatch/n1-aabc:refs/heads/dispatch/n1-aabc"])
+}
+
+test fn the_isolated_home_holds_netrc_and_not_a_gitconfig() -> Bool {
+  let home = "/tmp/publication-home" as FilePath
+  let netrc = git_isolated_home_netrc_path(home: home)
+  (netrc as String) == "/tmp/publication-home/.netrc"
+    && !string_contains(s: netrc as String, pattern: ".gitconfig")
+    && git_config_nosystem_env == "GIT_CONFIG_NOSYSTEM=1"
+    && git_config_global_null_env == "GIT_CONFIG_GLOBAL=/dev/null"
 }
 
 test fn a_resolved_git_dir_grant_does_not_append_dot_git() -> Bool {

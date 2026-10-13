@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_publish_actuate
 import std.types { String, Int, Bool, NonEmptyStr, FilePath, CommitSha, Secret }
 import std.algebra { trim }
 import extdeps.git
-import extdeps.git { git_dir_fetch_source_grant, git_local_fetch_upload_pack_command }
+import extdeps.git { git_dir_fetch_source_grant, git_local_fetch_upload_pack_command, git_isolated_home_netrc_path }
 import extdeps.git.plumbing { GitWorktreeAt, GitDirectoryAt }
 import extdeps.github.pulls
 import extdeps.github.github { github_https_host, github_installation_token_git_login }
@@ -85,7 +85,7 @@ fn push_captured_sha_from_bare_mirror(
     CapturedShaPushRefused { exit_code: 1, stderr: "no private HOME could be created for the publication netrc" }
   } else {
     match place_netrc_binding(
-      path: join([home.path as String, "/.netrc"], "") as FilePath,
+      path: git_isolated_home_netrc_path(home: home.path),
       machine: github_https_host,
       login: github_installation_token_git_login,
       password: token,

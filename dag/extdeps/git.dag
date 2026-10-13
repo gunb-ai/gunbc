@@ -12,8 +12,22 @@ import std.resources { Network }
 
 // HOME AND GIT CONFIG ARE ARGV `env` WORDS, not a Map the seed spawn never applies (review 79196).
 // The token stays out of argv: only the private HOME path is named, and netrc lives under that HOME.
+//
+// THE PUSH CONTRACT, measured on srv1 git 2.43 (parent, 2026-10-13): that git DOES read $HOME/.netrc
+// for an https push. GIT_CONFIG_NOSYSTEM=1 and a HOME that holds no .gitconfig are therefore part of
+// the operation, so host and worker config never reach the publication principal.
+// GIT_CONFIG_GLOBAL=/dev/null is git's override of ~/.gitconfig and $XDG_CONFIG_HOME/git/config.
+// GIT_TERMINAL_PROMPT=0 refuses a prompt if the netrc is missing instead of hanging.
+data git_config_global_null_env: String = "GIT_CONFIG_GLOBAL=/dev/null"
+data git_config_nosystem_env: String = "GIT_CONFIG_NOSYSTEM=1"
+data git_terminal_prompt_disabled_env: String = "GIT_TERMINAL_PROMPT=0"
+
+fn git_isolated_home_netrc_path(home: FilePath) -> FilePath {
+  concat(home as String, "/.netrc") as FilePath
+}
+
 fn git_isolated_home_env_argv(home: FilePath) -> List<String> {
-  ["env", concat("HOME=", home as String), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"]
+  ["env", concat("HOME=", home as String), git_config_global_null_env, git_config_nosystem_env, git_terminal_prompt_disabled_env]
 }
 
 fn git_push_ref_in_repo_argv(repo: FilePath, remote: String, refspec: String, home: FilePath) -> List<String> {
