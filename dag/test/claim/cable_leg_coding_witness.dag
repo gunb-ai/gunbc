@@ -32,7 +32,7 @@ import product.cable_leg_observation {
   PrimaryComplianceField, EncodingField, NominalRateField,
   cable_leg_declared_nominal_rate,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE CABLE-CODING SUBJECT, and the reason it exists rather than being
 // implied by a typecheck: DESIGN section 5 says a typecheck is not a consumer. Without this module

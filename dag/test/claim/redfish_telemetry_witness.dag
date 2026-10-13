@@ -16,7 +16,7 @@ import extdeps.bmc.redfish_telemetry {
   redfish_thermal_points,
 }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

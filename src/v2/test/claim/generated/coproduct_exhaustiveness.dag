@@ -8,8 +8,7 @@ import v2.lens.testgen {
   testgen_emit_coproduct_exhaustiveness_claim,
   testgen_scheduled_coproduct_exhaustiveness_generators
 }
-import v2.std.algebra { length }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, length }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.node { Node, Symbol }
 import v2.std.node_reflection { coproduct_arm_keys }

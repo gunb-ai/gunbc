@@ -11,7 +11,7 @@ import std.effect_grant {
 import std.access { AccessDecision, Permit, Deny }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import v2.compiler.build_workspace_grant { build_workspace_grant_envelope }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

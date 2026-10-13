@@ -4,16 +4,15 @@ import v2.compiler.body_lowering_fold { body_lower_match_arms_optional, body_low
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Authored, Node, Symbol, CoreEdgeLabel, MatchArmPatternEdge, edge_is_core }
 import v2.std.node_query { construct_tag_optional, is_wildcard_pattern, pattern_wildcard_name }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, FreeMonoid, list_append }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

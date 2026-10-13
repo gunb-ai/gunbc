@@ -11,7 +11,7 @@ import v2.lens.testgen {
   testgen_emit_refinement_preservation_claim,
   testgen_scheduled_refinement_preservation_generators
 }
-import v2.std.algebra { length }
+import std.algebra { length }
 import v2.std.diagnostic {
   Accepted,
   None,

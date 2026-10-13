@@ -12,7 +12,7 @@ import v2.std.host_transport {
   TargetEmitHostRuntimeRow,
   emitted_family_runtime_row_gated
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
 import v2.lens.common.construction_justification { WallNow, WallAfterGrounding, OutsideModeledGuarantee }
 import std.decl_ref { WholeDeclaration, NamedField, TypeParameter }

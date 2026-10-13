@@ -10,8 +10,8 @@ import gunbc.witness.v2_native_route {
   native_route_admission_with, NativeRouteLivePairStanding, LivePairRequired, LivePairExpectedRed,
   NativeRouteTestIdentity, native_route_identity_qualified, native_route_identities_unique,
   native_route_identity_member,
-  native_route_universe_member,
-  native_route_identity_label, native_route_default_pattern,
+  native_route_module_in_boundary, native_route_identity_in_boundary,
+  native_route_identity_label, native_route_default_pattern, native_route_module_probe_declaration,
   NativeRouteReference, FloorExpectedPass, FloorExpectedRed, FloorRouteGapRefusal,
   native_route_reference_for,
   NativeRouteMemberRow,
@@ -70,8 +70,7 @@ import std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
-import std.algebra { Cons, FreeSemigroup }
-import v2.std.algebra { fold_list, length }
+import std.algebra { Cons, FreeSemigroup, fold_list, length }
 import v2.std.node { Symbol }
 import v2.std.integer { Int }
 
@@ -234,14 +233,26 @@ fn green_receipt() -> NativeRouteReceipt {
   )
 }
 
-// ── the universe is a prefix ───────────────────────────────────────────────────────────────
+// ── the route boundary is the default pattern ────────────────────────────────────────────
 
-test fn the_universe_is_the_prefix_and_nothing_else() -> Bool {
-  native_route_universe_member(module_qn: "v2.test.v2_native_route")
-  && native_route_universe_member(module_qn: "v2.test.")
-  && !native_route_universe_member(module_qn: "v2.compiler.compile")
-  && !native_route_universe_member(module_qn: "v2.test")
-  && !native_route_universe_member(module_qn: "test.claim")
+// WHICH OPERANDS THE ROUTE OWNS is the default pattern's, decided by the one matcher at a segment edge.
+// It is not what makes a declaration a test: a marked declaration in any module of the boundary is
+// in, and the boundary says nothing about a module that holds no marker.
+test fn the_route_boundary_is_the_v2_tree_and_nothing_else() -> Bool {
+  native_route_module_in_boundary(module_qn: "v2.test.v2_native_route")
+  && native_route_module_in_boundary(module_qn: "v2.compiler.compile")
+  && native_route_module_in_boundary(module_qn: "v2.testing.y")
+  && native_route_module_in_boundary(module_qn: "v2")
+  && !native_route_module_in_boundary(module_qn: "v22.x")
+  && !native_route_module_in_boundary(module_qn: "test.claim.native_route_seed_boundary_witness")
+  && !native_route_module_in_boundary(module_qn: "gunbc.witness.v2_native_route")
+}
+
+// A module name whose label cannot be formed is outside the boundary: the boundary is claimed of a
+// label or not at all, so an unformable name never reads as inside.
+test fn a_module_name_that_forms_no_label_is_outside_the_boundary() -> Bool {
+  !native_route_module_in_boundary(module_qn: "v2..x")
+  && !native_route_identity_in_boundary(identity: test_identity(module: "v2.compiler", declaration: ""))
 }
 
 // ── a target pattern selects through the cited matcher ──
@@ -261,13 +272,12 @@ fn pattern_admits(text: String, module_qn: String, declaration: String) -> Bool 
   }
 }
 
-// THE LAW THAT KEEPS THE DEFAULT HONEST: it narrows nothing. Every universe member's label is
-// admitted by the default pattern, so the lane at its default runs the floor's whole population.
-// The last conjunct is the one real difference, pinned so it stays deliberate: the subtree form
-// includes the `v2.test` package module the gate prefix excludes, and the producer's conjunction
-// with universe membership is what keeps that difference from reaching the lane.
+// THE LAW THAT KEEPS THE DEFAULT HONEST: it narrows nothing. Every module the route owns -- under
+// `v2.test` or beside it -- has its label admitted by the default pattern, so the lane at its default
+// runs every marked declaration of the tree. A default that stopped at `v2.test` would be the
+// location predicate again, dropping marked tests that live elsewhere in `v2`.
 fn default_admits(module_qn: String) -> Bool {
-  match native_route_identity_label(module_qn: module_qn, declaration: "any_declaration") {
+  match native_route_identity_label(module_qn: module_qn, declaration: native_route_module_probe_declaration) {
     LabelRefused { cause: _ } => false
     LabelParsed { label: label } =>
       target_pattern_matches(pattern: native_route_default_pattern(), target: label)
@@ -277,9 +287,11 @@ fn default_admits(module_qn: String) -> Bool {
 test fn the_default_pattern_admits_every_universe_member() -> Bool {
   default_admits(module_qn: "v2.test.v2_native_route")
   && default_admits(module_qn: "v2.test.claim.parse.alias_decl_parse")
-  && !default_admits(module_qn: "v2.compiler.compile")
-  && !default_admits(module_qn: "v2.testing.y")
-  && (default_admits(module_qn: "v2.test") && !native_route_universe_member(module_qn: "v2.test"))
+  && default_admits(module_qn: "v2.compiler.compile")
+  && default_admits(module_qn: "v2.testing.y")
+  && default_admits(module_qn: "v2.test")
+  && !default_admits(module_qn: "v22.x")
+  && !default_admits(module_qn: "test.claim.y")
 }
 
 // THE CORRESPONDENCE IS THE ONE FACT THIS MODULE OWNS: namespace segments are package segments and
@@ -737,15 +749,30 @@ test fn a_duplicated_universe_is_refused() -> Bool {
   )
 }
 
-test fn a_foreign_universe_member_is_refused() -> Bool {
+// ONE SHAPE, TWO MODULES: the same marked declaration, differing only in whether its module lies
+// inside the route boundary. The first is a selection that escaped the boundary operand routing
+// enforces and refuses by name; the second is a marked declaration in a `v2` module that is not under
+// `v2.test`, which the boundary admits because a test is identified by its marker.
+fn boundary_admission_over(module: String) -> NativeRouteAdmission {
+  native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
+    universe: [test_identity(module: module, declaration: "marked_probe")],
+    module_source_index: [],
+    population: [passed_row(module: module, declaration: "marked_probe")],
+    file_refusals: []
+  ))
+}
+
+test fn a_universe_member_outside_the_route_boundary_is_refused() -> Bool {
   native_route_admission_refused_with(
-    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
-      universe: [test_identity(module: "v2.compiler.compile", declaration: "not_a_test")],
-      module_source_index: [],
-      population: [passed_row(module: "v2.compiler.compile", declaration: "not_a_test")],
-      file_refusals: []
-    )),
-    cause_name: "universe_prefix_violations_present"
+    admission: boundary_admission_over(module: "test.claim.marked_probe_module"),
+    cause_name: "universe_boundary_violations_present"
+  )
+}
+
+test fn a_marked_universe_member_outside_v2_test_but_inside_the_boundary_is_not_a_violation() -> Bool {
+  !native_route_admission_refused_with(
+    admission: boundary_admission_over(module: "v2.compiler.marked_probe_module"),
+    cause_name: "universe_boundary_violations_present"
   )
 }
 
@@ -1482,29 +1509,60 @@ fn entries_under(text: String, population: List<String>) -> String {
   }
 }
 
-fn namespace_population() -> List<String> {
-  ["v2.test.alpha", "v2.test.beta.deep", "v2.test.gamma"]
+// The bound population, as the bound trees' module NAMES: v2 modules of several namespaces, and names
+// of the `dag` tree the default pattern's boundary does not reach.
+fn bound_population() -> List<String> {
+  ["v2.test.alpha", "v2.test.beta.deep", "v2.test.gamma", "v2.workflow.delta", "gunbc.elsewhere", "test.manual.recipe"]
 }
 
 test fn the_entries_are_the_control_and_the_modules_the_pattern_admits() -> Bool {
-  entries_under(text: "//v2/test/alpha:all", population: namespace_population())
+  entries_under(text: "//v2/test/alpha:all", population: bound_population())
     == concat("|", native_route_live_control_module, "|v2.test.alpha")
 }
 
 test fn a_subtree_pattern_requests_its_subtree_and_not_the_modules_beside_it() -> Bool {
-  entries_under(text: "//v2/test/beta/...", population: namespace_population())
+  entries_under(text: "//v2/test/beta/...", population: bound_population())
     == concat("|", native_route_live_control_module, "|v2.test.beta.deep")
 }
 
 test fn a_single_target_requests_the_module_of_its_package_and_no_other() -> Bool {
-  entries_under(text: "//v2/test/gamma:a_claim", population: namespace_population())
+  entries_under(text: "//v2/test/gamma:a_claim", population: bound_population())
     == concat("|", native_route_live_control_module, "|v2.test.gamma")
 }
 
-test fn the_default_pattern_requests_every_module_of_the_population() -> Bool {
+// THE DEFAULT PATTERN IS THE ROUTE BOUNDARY, NOT A NAMESPACE OF TESTS: every `v2` module of the
+// population is an entry, whatever namespace it lives in, and the `dag`-tree names are not. A request
+// set that kept the retired `v2.test` predicate drops `v2.workflow.delta`; one that admitted the whole
+// population gains `gunbc.elsewhere` and `test.manual.recipe`.
+test fn the_default_pattern_requests_every_v2_module_of_the_population() -> Bool {
   entries_text(
-    entries: native_lane_candidate_entries(pattern: native_route_default_pattern(), population: namespace_population())
-  ) == concat("|", native_route_live_control_module, "|v2.test.alpha|v2.test.beta.deep|v2.test.gamma")
+    entries: native_lane_candidate_entries(pattern: native_route_default_pattern(), population: bound_population())
+  ) == concat("|", native_route_live_control_module, "|v2.test.alpha|v2.test.beta.deep|v2.test.gamma|v2.workflow.delta")
+}
+
+// The live-control module is a `v2` module, so the default pattern admits it as a population member
+// too: it is requested once, as the head, never twice. A repeated entry would be read twice and its
+// markers captured twice.
+test fn the_control_module_is_requested_once_under_the_default_pattern() -> Bool {
+  entries_text(
+    entries: native_lane_candidate_entries(
+      pattern: native_route_default_pattern(),
+      population: [native_route_live_control_module, "v2.test.alpha"]
+    )
+  ) == concat("|", native_route_live_control_module, "|v2.test.alpha")
+}
+
+// A name whose dummy label cannot be formed is not an entry, so its bytes are not acquired.
+// That filter is not the counted refusal: native_lane_population_unformable_identity still
+// refuses `native_lane_identity_label_refused` naming the module and the LabelRefusal cause
+// (v2.test.claim.native_lane_universe_selection `an_unformable_population_name_refuses_typed`).
+test fn a_label_that_cannot_be_formed_is_not_an_entry() -> Bool {
+  entries_text(
+    entries: native_lane_candidate_entries(
+      pattern: native_route_default_pattern(),
+      population: ["v2.test.alpha", "v2.test.foo..bar"]
+    )
+  ) == concat("|", native_route_live_control_module, "|v2.test.alpha")
 }
 
 fn an_acquired(name: String, path: String, markers: List<String>, content: String) -> AcquiredModule {
@@ -1529,17 +1587,39 @@ fn subject_acquired() -> AcquiredModule {
   )
 }
 
-// Marked, but outside the `v2.test` namespace: a module the route acquires for its bytes (the control,
-// a dependency) enrols nothing.
-fn dependency_acquired() -> AcquiredModule {
-  an_acquired(name: "v2.std.logic", path: "std/logic.dag", markers: ["not_a_universe_claim"], content: "module v2.std.logic\n")
+// Marked, inside the route boundary and OUTSIDE `v2.test`: a test, because the marker is what makes
+// one.
+fn marked_elsewhere_acquired() -> AcquiredModule {
+  an_acquired(
+    name: "v2.workflow.delta",
+    path: "workflow/delta.dag",
+    markers: ["a_workflow_claim"],
+    content: "module v2.workflow.delta\n\ntest fn a_workflow_claim() -> Bool { true }\n"
+  )
 }
 
+// A dependency the route acquires for its bytes: it carries no marker, so it enrols nothing.
+fn dependency_acquired() -> AcquiredModule {
+  an_acquired(name: "v2.std.logic", path: "std/logic.dag", markers: [], content: "module v2.std.logic\n")
+}
+
+// Marked, and OUTSIDE the route boundary (a `dag`-tree module): a test the default pattern does not
+// select. Its absence from the universe is the boundary, and the lane still accepts the acquisition.
+fn marked_outside_boundary_acquired() -> AcquiredModule {
+  an_acquired(
+    name: "test.manual.recipe",
+    path: "test/manual/recipe.dag",
+    markers: ["a_manual_claim"],
+    content: "module test.manual.recipe\n\ntest fn a_manual_claim() -> Bool { true }\n"
+  )
+}
+
+// The live-control module as the repository declares it: plain functions, no marker.
 fn control_acquired() -> AcquiredModule {
   an_acquired(
     name: native_route_live_control_module,
     path: "native_lane_fixture/control.dag",
-    markers: ["the_control_claim"],
+    markers: [],
     content: "module v2.native_lane_fixture.control\n"
   )
 }
@@ -1559,37 +1639,49 @@ fn acquired_default(modules: List<AcquiredModule>, population: List<String>) -> 
   acquired_over(modules: modules, population: population, pattern: native_route_default_pattern())
 }
 
-fn identities_text(identities: List<NativeRouteTestIdentity>) -> String {
+fn identity_in(identities: List<NativeRouteTestIdentity>, qualified: String) -> Bool {
   fold_list(
     xs: identities,
-    empty: "",
-    cons: fn(acc, identity) { concat(acc, "|", native_route_identity_qualified(identity: identity)) }
+    empty: false,
+    cons: fn(held, identity) { held || native_route_identity_qualified(identity: identity) == qualified }
   )
 }
 
-test fn the_universe_is_the_marked_declarations_of_the_namespace_modules_acquired() -> Bool {
-  match acquired_default(
-    modules: [control_acquired(), subject_acquired(), dependency_acquired()],
-    population: ["v2.test.subject"]
-  ) {
+fn everything_acquired() -> List<AcquiredModule> {
+  [
+    control_acquired(),
+    subject_acquired(),
+    marked_elsewhere_acquired(),
+    dependency_acquired(),
+    marked_outside_boundary_acquired()
+  ]
+}
+
+// THE UNIVERSE IS THE MARKED DECLARATIONS OF THE ACQUIRED MODULES THE ROUTE BOUNDARY REACHES: the
+// marked declaration of `v2.test` and the marked one of `v2.workflow` are both members, and the unmarked
+// `test fn` in the subject's text, the unmarked control and dependency and the marked declaration
+// outside the boundary are not. Exactly two members, so a universe that kept the retired namespace
+// predicate loses the workflow member, and one that took the control or the dependency as members, or
+// ignored the boundary, gains one.
+test fn the_universe_is_the_marked_declarations_of_the_modules_acquired() -> Bool {
+  match acquired_default(modules: everything_acquired(), population: ["v2.test.subject"]) {
     Rejected { diagnostics: _ } => false
     Accepted { value: acquired, diagnostics: _ } =>
-      identities_text(identities: acquired.universe.identities) == "|v2.test.subject.a_claim"
+      identity_in(identities: acquired.universe.identities, qualified: "v2.test.subject.a_claim")
+        && identity_in(identities: acquired.universe.identities, qualified: "v2.workflow.delta.a_workflow_claim")
+        && (length(xs: acquired.universe.identities) == 2)
   }
 }
 
 test fn the_ingest_is_exactly_the_acquired_modules() -> Bool {
-  match acquired_default(
-    modules: [control_acquired(), subject_acquired(), dependency_acquired()],
-    population: ["v2.test.subject"]
-  ) {
+  match acquired_default(modules: everything_acquired(), population: ["v2.test.subject"]) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: acquired, diagnostics: _ } => length(xs: acquired.ingest) == 3
+    Accepted { value: acquired, diagnostics: _ } => length(xs: acquired.ingest) == 5
   }
 }
 
-// The population is counted from the names the namespace listing returned, not from what was read: a
-// namespace of three modules acquired as one is still a population of three.
+// The population is counted from the names the bound trees listed, not from what was read: a population
+// of three modules acquired as two is still a population of three.
 test fn the_population_is_the_names_listed_and_not_the_modules_read() -> Bool {
   match acquired_default(
     modules: [control_acquired(), subject_acquired()],

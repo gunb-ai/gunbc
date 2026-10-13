@@ -10,8 +10,7 @@ import v2.lens.no_dual_representation_test.scan {
   argument_value_read,
   first_call_arg_read
 }
-import v2.std.algebra { contains, fold_list, length }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, contains, fold_list, length }
 import v2.std.compilers.body_lowering {
   Application,
   ApplicationRefused,
@@ -26,7 +25,7 @@ import v2.std.compilers.body_lowering {
 }
 import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.std.fn_index { FnArrowDecl, callees_from_decl, fn_arrow_decl_facts_live }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.integer { Int }
 import v2.std.node {
   Atom,

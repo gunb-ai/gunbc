@@ -16,7 +16,7 @@ import gunbc.roadmap.roadmap_model {
   node_status_drift,
 }
 import gunbc.roadmap.roadmap_status { Signoff, Unsigned }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

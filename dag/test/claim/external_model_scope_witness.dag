@@ -30,7 +30,7 @@ import std.process { ProcessExit, ExitSuccess }
 import extdeps.vendor.microsoft
 import extdeps.vendor.atlassian
 import std.types { String, Bool, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

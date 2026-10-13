@@ -13,7 +13,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { Bool, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

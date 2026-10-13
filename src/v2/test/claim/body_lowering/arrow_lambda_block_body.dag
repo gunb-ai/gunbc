@@ -20,7 +20,7 @@ import v2.extdeps.languages.dag {
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.language_model { LanguageModel }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, symbol_lexeme }
 import v2.std.text { String }
 

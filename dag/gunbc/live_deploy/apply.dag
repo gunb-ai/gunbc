@@ -101,7 +101,7 @@ import gunbc.host.host_effect {
   LiveDeployServeRoute,
   DeployAccessPreflight,
 }
-import gunbc.host.host_effect_realize { host_effect_apply_gated }
+import gunbc.host.host_effect_realize { host_effect_apply_gated, live_deploy_pre_mutation_access }
 import extdeps.tailscale.serve { TailscaleServeEndpoint }
 import gunbc.live_deploy.tailnet_door_cutover {
   ServeCutoverEffects, ServeCutoverOutcome, CapturedServeBackend, CapturedRestorableBackend, CapturedNoRoute,
@@ -184,55 +184,6 @@ import gunbc.live_deploy.apply_receipt {
 import gunbc.roadmap.roadmap_site_surface_types { HealthzBodyRead, HealthzProbeRefused }
 import gunbc.running_release_identity {
   observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified,
-}
-
-// WHAT A DEPLOY EFFECT MAY DEMAND BEFORE IT RUNS. Apply and retract both open with
-// gunbc.live_deploy.emit deploy_apply_preamble_steps, whose first step installs the deploy principal's
-// sudoers drop-in and then probes the whole roster against it, refusing on a miss before any other
-// mutation (gunbc.ci.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell). So before them
-// the gate demands only what that install spends; demanding the rest would require the grant the
-// gated step exists to install. Every other effect installs nothing and is gated on the full roster.
-fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> DeployAccess {
-  match effect {
-    LiveDeployApply { warrant: _ } => deploy_access_sudoers_install_scope(access: access)
-    LiveDeployRetract { spec: _ } => deploy_access_sudoers_install_scope(access: access)
-    RedfishAction { action: _ } => access
-    ConvergePlan { policy: _ } => access
-    OsInstallActuatorToolchainEnsure {} => access
-    EnsureBuildCacheInstance { desired: _ } => access
-    ProvisionCodexRuntime {} => access
-    EnsureCompilePoolSlice {} => access
-    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => access
-    ReadEffectivePosixPrincipal { read: _ } => access
-    SudoNopasswdExecuteProbe { probe: _ } => access
-    SudoNopasswdGrantListProbe { probe: _ } => access
-    Srv3InstallMediaFetch => access
-    Srv3SeededInstallMediaRemaster => access
-    Srv3SeededInstallMediaToolchainEnsure => access
-    Srv3BmcwebSessionLogin => access
-    Srv3BmcwebTokenExtract => access
-    Srv3NbdProxyServe { intent: _, lease_key: _ } => access
-    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
-    Srv3BootOnceReadBackSleep => access
-    Srv3ReceiptEmit { lines: _ } => access
-    HostIdentityShortHostnameRead => access
-    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => access
-    LiveDeployMicrovmControllerInstall { candidate: _ } => access
-    LiveDeployEnsureDependency { dep: _ } => access
-    LiveDeployDigestReadback { port: _ } => access
-    LiveDeployServeRoute { endpoint: _, enabled: _ } => access
-    DeployAccessPreflight {} => access
-    EnsureActionsRunnerRelease { runner_release: _ } => access
-    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => access
-    EnsureRunnerJitWrapper { host_label: _ } => access
-    EnsureRunnerSystemdTemplate { host_label: _ } => access
-    EnsureRunnerMemoryCaps { slot: _ } => access
-    ActivateRunnerSlot { slot: _ } => access
-    ReplaceRunnerIncarnation { from: _, cause: _ } => access
-    ObserveRunnerLocalState { slot: _ } => access
-    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => access
-    ProbeToolchainHomeInterference {} => access
-  }
 }
 
 fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
@@ -357,7 +308,7 @@ fn live_deploy_fold(
       )
     Permit =>
       host_effect_apply_gated(
-        access: gate_access,
+        access: access,
         target: target,
         effect: effect,
         evidence: host_effect_identity_evidence,

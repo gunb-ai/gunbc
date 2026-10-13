@@ -1,7 +1,7 @@
 module test.claim.observation_lockstep_witness
 
 import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { String, Bool, List }
 import std.observation { ObservationLaw, observation_laws, observation_heartbeat_period }
 import std.measure { millisecond_count }

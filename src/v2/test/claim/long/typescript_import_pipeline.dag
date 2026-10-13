@@ -3,7 +3,7 @@ module v2.test.claim.long.typescript_import_pipeline
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data ts_import_pipeline_source: String = "module v2.test.import_pipeline\nimport v2.std.algebra { Cons, Empty }\n"
+data ts_import_pipeline_source: String = "module v2.test.import_pipeline\nimport std.algebra { Cons, Empty }\n"
 data ts_import_pipeline_canonical_text: String = "import { Cons, Empty } from \"v2/std/algebra\";"
 
 data ts_import_pipeline_other_source: String = "module v2.test.import_pipeline_b\nimport v2.std.collection { Cons, Empty }\n"

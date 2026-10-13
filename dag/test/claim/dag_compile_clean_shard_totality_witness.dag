@@ -1,7 +1,7 @@
 module test.claim.dag_compile_clean_shard_totality_witness
 
 import gunbc.instruments.dag_compile_clean_shard_totality { witness_totality_holds_on_live_tree }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // THIS FILE IS NOW SINGLE-GRAIN: ONE TEST FN, AND IT GENUINELY READS THE TREE.
 //

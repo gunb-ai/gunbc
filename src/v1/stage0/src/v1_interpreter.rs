@@ -23578,15 +23578,24 @@ macro_rules! v1_builtin_arms {
                     .max(0)
                     .min(len)
                     .max(start);
-                let s: String = cps
-                    .skip(start as usize)
-                    .take((end - start) as usize)
-                    .iter()
-                    .filter_map(|v| match v {
-                        Value::Int(cp) => char::from_u32(*cp as u32),
-                        _ => None,
-                    })
-                    .collect();
+                let mut s = String::new();
+                for v in cps.skip(start as usize).take((end - start) as usize).iter() {
+                    match v {
+                        Value::Int(cp) => match u32::try_from(*cp).ok().and_then(char::from_u32) {
+                            Some(ch) => s.push(ch),
+                            None => {
+                                return Err(InterpError::TypeError {
+                                    msg: format!("chars_to_string: {cp} is not a Unicode scalar value: runtime representation-invariant violation; refusing to drop or substitute it"),
+                                });
+                            }
+                        },
+                        _ => {
+                            return Err(InterpError::TypeError {
+                                msg: "chars_to_string: element is not an Int code point".to_string(),
+                            });
+                        }
+                    }
+                }
                 Ok(Some(str_value(s)))
             },
 
@@ -23860,12 +23869,6 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Int(cp)))
             },
 
-            arm "free_call.from_code_point" { "from_code_point" } => {
-                let cp = expect_int($positional.first().copied(), "from_code_point")?;
-                let c = char::from_u32(cp as u32).unwrap_or('\0');
-                Ok(Some(str_value(c.to_string())))
-            },
-
             arm "free_call.is_xid_start" { "is_xid_start" } => {
                 let cp = expect_int($positional.first().copied(), "is_xid_start")?;
                 Ok(Some(Value::Bool(v1_rt::is_xid_start(cp))))
@@ -24049,7 +24052,7 @@ macro_rules! v1_builtin_arms {
             // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
             arm "free_call.observed_peak_resident_bytes" { "observed_peak_resident_bytes" } => match $positional.as_slice() {
                 [] => {
-                    // Routed through the single portable reader. This arm previously carried
+                    // Routed through the single peak reader (VmHWM on Linux, getrusage on macOS; see its docblock). This arm previously carried
                     // its OWN /proc/self/status VmHWM read — a second implementation of one
                     // observation (section 3), and the copy executing for witnesses, so fixing
                     // only cli_run's would have left this Linux-only. Authority for the
@@ -24059,7 +24062,7 @@ macro_rules! v1_builtin_arms {
                     match bytes {
                         Some(b) => Ok(Some(Value::Int(b))),
                         None => Err(InterpError::TypeError {
-                            msg: "observed_peak_resident_bytes: getrusage(RUSAGE_SELF).ru_maxrss unavailable on this host (refusing to fabricate a Measured space fact)"
+                            msg: "observed_peak_resident_bytes: no own-process peak reader for this host (Linux VmHWM or macOS getrusage); refusing to fabricate a Measured space fact"
                                 .to_string(),
                         }),
                     }
@@ -26271,7 +26274,7 @@ fn free_monoid_ctx_syms(ctx: &InterpContext) -> Option<(Symbol, Symbol, Symbol, 
 }
 
 /// The elements of a list value in either representation -- a kernel `List` or the structural
-/// `FreeMonoid` (`Cons`/`Empty`) that `v2.std.algebra` folds return -- read in `ctx`.
+/// `FreeMonoid` (`Cons`/`Empty`) that `std.algebra` folds return -- read in `ctx`.
 pub fn list_value_items(ctx: &InterpContext, val: &Value) -> Option<Vec<Value>> {
     with_active_ctx(ctx, || free_monoid_to_vec(val))
 }

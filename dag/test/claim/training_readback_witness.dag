@@ -23,17 +23,17 @@ import product.training.resolution {
   TrainingRunDesired, TrainingRunDesiredAdmitted, TrainingRunDesiredRefused,
   resolve_training, training_work_for, admit_training_run_desired, resolved_training_manifest,
 }
-import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity }
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity , WarmResidencyRequired }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.envelope { ResourceEnvelope }
-import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, admission_terms, debt_payoff_objective }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
 import extdeps.currency.currency { Usd }
 import std.measure { money_amount_micro, hardware_thread_count }
 import std.nat { Nat }
 import std.types { NonEmptyStr, Bool, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -61,6 +61,7 @@ data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
   isolation: shared_kernel_sandbox_profile(),
+  revocation: WarmResidencyRequired,
 }
 
 fn fixture_observations(d: DropoutPermille) -> TrainingResolutionObservations {
@@ -101,15 +102,16 @@ fn demand_keyed(demand_key: NonEmptyStr, work_key: NonEmptyStr) -> Demand<NonEmp
     work: FabricIdentity { principal: "gunbai", key: work_key },
     origin: "gunbc.observation.training-readback",
     submitted_at: "2026-08-28T00:00:00Z",
-    admission: AdmissionTerms {
-      deadline: none,
+    admission: admission_terms(
       buy: BuyTerms {
         budget_account: "training",
         currency: Usd,
         reservation_price: money_amount_micro(count: 1),
         maximum_buy_order: money_amount_micro(count: 1000),
       },
-    },
+      deadline: none,
+      objective: debt_payoff_objective,
+    ),
     satisfaction: SatisfactionRequirement {
       terminal_receipt_may_satisfy: true,
       new_attempt_required: false,

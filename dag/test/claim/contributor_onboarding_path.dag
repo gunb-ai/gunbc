@@ -54,7 +54,7 @@ import gunbc.instruments.docs_projection_gate {
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.optional { Absent }
 import std.types { String, List, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -293,16 +293,17 @@ test fn a_non_docs_artifact_is_not_in_the_docs_population() -> Bool {
 }
 
 // THE NEW PROJECTION IS ACTUALLY ENROLLED, BY THE DERIVATION AND NOT BY A LITERAL. It is
-// docs-located, committed, has a producer, and therefore appears in the population main compares.
-// This is the arm that would have gone red on the state the failure-mode row predicted: an
-// artifact that compiles, ships, and is compared by nothing.
-test fn the_onboarding_projection_is_in_the_compared_population() -> Bool {
+// docs-located, NotCommitted, has a producer, and therefore appears in the population regen
+// writes. main does not agree it: agreeing a NotCommitted projection would be permanently green.
+test fn the_onboarding_projection_is_written_and_not_compared() -> Bool {
   let a = ContributorOnboardingArtifact
+  let written = docs_located_artifacts()
   let committed = committed_docs_located_artifacts()
   artifact_is_docs_located(a: a)
-    && artifact_is_committed(a: a)
+    && !artifact_is_committed(a: a)
     && artifact_has_docs_producer(a: a)
-    && fold(committed, init: false, f: fn(acc, c) { acc || artifact_path(a: c) == artifact_path(a: a) })
+    && fold(written, init: false, f: fn(acc, c) { acc || artifact_path(a: c) == artifact_path(a: a) })
+    && !fold(committed, init: false, f: fn(acc, c) { acc || artifact_path(a: c) == artifact_path(a: a) })
 }
 
 // THE COMPARED POPULATION IS NARROWER THAN THE WRITTEN ONE, AND THAT ASYMMETRY IS DELIBERATE.

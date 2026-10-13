@@ -29,7 +29,7 @@ import v2.lens.cost.valuation {
   UnmodeledEffectCost,
   evaluate_cost_expr
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat, Succ, Zero }
 import v2.std.node {
   Atom,

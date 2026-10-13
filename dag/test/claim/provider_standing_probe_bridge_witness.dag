@@ -1,7 +1,7 @@
 module test.claim.provider_standing_probe_bridge_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
-import v2.std.algebra { list_head, HeadFound, HeadAbsent }
+import std.algebra { list_head, HeadFound, HeadAbsent }
 import extdeps.llm.cli_lifecycle {
   CodexCliProvider,
   ProviderInstance,

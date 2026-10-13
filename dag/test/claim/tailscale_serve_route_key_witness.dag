@@ -46,7 +46,7 @@ import gunbc.membership_reconcile {
   membership_removal_count,
 }
 import gunbc.ownership { Ownership, Owned }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 type RetiredFlattenedServeFlagsKeyRelation
 type TailscaleEnableArgvIdentityKeyRelation

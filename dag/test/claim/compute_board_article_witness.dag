@@ -77,7 +77,7 @@ import product.compute_board.verilog_projection {
   project_article_to_verilog,
   power_interlock_verilog_bindings,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

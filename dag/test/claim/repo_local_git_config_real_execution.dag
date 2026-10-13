@@ -13,7 +13,7 @@ import gunbc.repo.repo_local_git_config {
   core_hooks_path_value,
 }
 import std.realization_reconcile { Converged, NotConverged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

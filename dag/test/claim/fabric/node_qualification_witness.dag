@@ -72,7 +72,7 @@ import gunbc.spark.group_b_node_qualification {
   group_b_group_admission, group_b_host_admission, group_b_group_measured,
   group_b_delivery_claim,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

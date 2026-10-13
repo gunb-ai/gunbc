@@ -29,7 +29,7 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason
 }
 import v2.std.inhabitance { TypeVariableInstance }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Arrow,
   Atom,
@@ -45,8 +45,7 @@ import v2.std.node {
   node_synthetic
 }
 import std.optional { Absent, Optional, Present }
-import v2.std.algebra { length, list_map }
-import std.algebra { Cons, list_snoc_item }
+import std.algebra { Cons, list_snoc_item, length, list_map }
 import std.types { List, String }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_mark_declared_type_params }
 import v2.std.type_binder { type_binder_set_children, type_params_edge }

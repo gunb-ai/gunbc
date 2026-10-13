@@ -11,7 +11,7 @@ import std.realization_schedule {
   schedule_eq,
   runnable_eq,
 }
-import v2.std.algebra { bag_eq }
+import std.algebra { bag_eq }
 import v2.std.diagnostic {
   CorrectionNotModeled,
   Diagnostic,

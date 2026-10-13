@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.absence_carried_by_a_second_representation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data absence_carried_by_a_second_representation: RecurringFailureMode = RecurringFailureMode {
+  identity: "absence_carried_by_a_second_representation" as NonEmptyStr,
+
+  receipts: [
+    "**absence carried by a second representation of presence** (invalid state: one fact, 'a value is present or not', has more than one authority -- a `none`/`null` sentinel typed by its own rule, an Absent/Missing/Unset carrier whose whole contract is zero-or-one value, an implicit Present wrap or payload extraction inserted differently by the checker and by realization, an Option type or constructor selected by leaf spelling instead of resolved declaration identity, or a cardinality flag restating structure the type already carries. Harm: DESIGN section 3's nicknaming fork at the meaning layer. Consumers disagree about the same value, nested layers (Present(Absent) against Absent) collapse silently, and each fork is later consolidated at a cost its author deferred).",
+
+    "DISTINGUISHING FACTS, and the reason this is classified by contract rather than by spelling: a reason-bearing MissingPermission, a progress or policy state, and a faithful foreign JSON null are NOT this class; a carrier with exactly a zero-or-one-value contract and no independent cause, progress, policy or upstream meaning IS, whatever it is called. The tell is the contract, never a variant-name suffix.",
+
+    "RECOGNITION RULE: IF A TYPE'S ONLY INFORMATION IS 'ONE VALUE OR NONE', IT IS std.optional.Optional OR IT NAMES THE INDEPENDENT DISTINCTION THAT JUSTIFIES ITS EXISTENCE.",
+
+    "Rung found at: mitigatable (mitigated by review under the Cardinality / absence conformance domain, `gunbc.design_argument` `conformance_domains`). Ceiling: structurally guaranteed for DAG absence once the sentinel typing and mint routes are deleted by complete consumer cohorts; the foreign-null and reason-bearing meanings remain declared boundaries. Next trigger, at capability grain: a resolved declaration identity for the Optional constructor and type sugar carried through typing, evaluation and every retained realization (roadmap nodes `cardinality-optional-declaration`, `cardinality-native-closure-cutover`, `cardinality-realization-conformance`), with `cardinality-absence-retirement` deleting the rival routes.",
+  ],
+
+  evidence: [],
+}

@@ -2,7 +2,7 @@ module test.claim.fleet_observation_seal
 
 import gunbc.compile_census_probe { blocking_subject_count_for }
 import std.types { String, Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

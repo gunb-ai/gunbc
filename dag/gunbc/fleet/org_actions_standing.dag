@@ -1,8 +1,7 @@
 module gunbc.fleet.org_actions_standing
 
-import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.types { NonEmptyStr, String, Bool, Int, List, Never }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.cardinality { Never }
 import std.goal_assessment { GoalAssessment, assess_by_deviations }
 
 // ORG ACTIONS SETTINGS AS AN ASSESSED SURFACE (operator direction 2026-08-30: "we need

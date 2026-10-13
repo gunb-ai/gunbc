@@ -72,7 +72,7 @@ import gunbc.live_deploy.repository_convergence_placement {
 }
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, systemd_time_span_of_seconds }
 import extdeps.http.server { HttpServerListenConfig }
-import v2.std.algebra { for_all }
+import std.algebra { for_all }
 import extdeps.systemd.unit_file {
   systemd_unit_file_lines,
   SystemdUnitFile,
@@ -935,7 +935,7 @@ test fn belt_service_working_directory_goes_red_under_different_root() -> Bool {
 // HELPER FUNCTIONS
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 
-// `any` IS IMPORTED, NOT DEFINED. v2.std.algebra already carries it, and a second definition here
+// `any` IS IMPORTED, NOT DEFINED. std.algebra already carries it, and a second definition here
 // would be the re-invention DESIGN section 2 forbids -- net concepts must not grow. The first cut
 // of this file hand-rolled both `any` and `all` over a `[first, ..rest]` match arm, which this
 // parser does not admit (src/v2/lens/fn_index_depth_agreement records the same refusal) and which

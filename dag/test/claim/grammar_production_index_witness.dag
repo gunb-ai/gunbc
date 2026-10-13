@@ -2,7 +2,7 @@ module test.claim.grammar_production_index_witness
 
 import std.types { Bool, Int, List, String }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { list_snoc_item, list_append, length }
+import std.algebra { list_snoc_item, list_append, length }
 import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode }
 import v2.std.witness { Holds, Violates }
 import v2.std.grammar {

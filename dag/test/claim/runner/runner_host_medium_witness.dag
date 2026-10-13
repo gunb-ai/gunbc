@@ -9,7 +9,7 @@ import extdeps.linux.proc_uptime { UptimeRefused }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
 import gunbc.host.host_boot_attempt_admission { attempt_configuration_not_recorded }
 import std.optional { Present }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { seed_artifact_readback_holds }
 import extdeps.provisioning.ubuntu_seeded_install_media {
