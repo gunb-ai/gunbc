@@ -17,7 +17,7 @@ import product.fabric.identity { fabric_identity_eq }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply {
   EqualCostOfferTieBreak, PlacementAffinityKey, GrantDuration, ExactGrantDuration,
-  seconds_per_hour,
+  seconds_per_hour, SupplierOffer, QuotedPerHour,
 }
 import product.fabric.execution { ReservationRef }
 import product.fabric.budget {
@@ -25,7 +25,7 @@ import product.fabric.budget {
   MoneyRefusal, reserve_money,
 }
 import product.fabric.selection {
-  CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
+  CandidateOffer, DispatchInputs, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   AvailabilityObservation, AvailableRevocable, AvailableForInterval, AvailableIndefinitely,
   AvailabilityUnobserved, SelectedOffer, select_supply, price_over_horizon,
   OfferPriced, OfferNotPriceable, OfferNotFungible, OfferUnavailableForGrant,
@@ -124,6 +124,8 @@ type FlexBidAttempt<P> {
 type FlexBidRefusal
   = FlexNoAcquisitionRemaining
   | FlexOnDemandReferenceUnobserved
+  | FlexTargetNotRevocable
+  | FlexTargetAvailabilityUnobserved
   | FlexOnDemandRelativeCeilingExceeded { ceiling: MoneyAmountMicro, projected: MoneyAmountMicro }
   | FlexCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
   | FlexDecimalConversionRefused { conversion: DecimalMoneyConversion }
@@ -142,6 +144,12 @@ type FlexBidAdmission
   = FlexBidAdmitted {
       bid: MoneyPerHour
       selection: SupplySelection<NonEmptyStr>
+      account: MoneyAccount
+      occupancy: FlexFleetOccupancy
+      window: FlexAcquisitionWindow
+    }
+  | FlexBidUnchanged {
+      bid: MoneyPerHour
       account: MoneyAccount
       occupancy: FlexFleetOccupancy
       window: FlexAcquisitionWindow
@@ -262,15 +270,33 @@ type FlexPricedHorizon
   = FlexHorizonPriced { cost: MoneyAmountMicro }
   | FlexHorizonUnobserved
 
-fn flex_price_candidate(
-  candidate: CandidateOffer<NonEmptyStr>,
+fn offer_quoted_at(offer: SupplierOffer<NonEmptyStr>, rate: MoneyPerHour) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: offer.id,
+    executor: offer.executor,
+    route: offer.route,
+    shape: offer.shape,
+    capabilities: offer.capabilities,
+    trust_domain: offer.trust_domain,
+    isolation: offer.isolation,
+    quantity_bound: offer.quantity_bound,
+    ready_at: offer.ready_at,
+    quote: QuotedPerHour(rate),
+    billing_quantum: offer.billing_quantum,
+    evidence: offer.evidence,
+  }
+}
+
+fn flex_price_offer(
+  offer: SupplierOffer<NonEmptyStr>,
+  inputs: DispatchInputs<NonEmptyStr>,
   policy: FlexPolicy,
   attempt: FlexBidAttempt<NonEmptyStr>,
   budget_currency: CurrencyCode,
 ) -> FlexPricedHorizon {
   match price_over_horizon(
-    offer: candidate.offer,
-    inputs: candidate.dispatch,
+    offer: offer,
+    inputs: inputs,
     requirements: attempt.requirements,
     duration: flex_horizon_duration(policy: policy),
     maximum_buy_order: money_amount_micro(count: 1000000000000),
@@ -304,8 +330,9 @@ fn flex_on_demand_reference_cost(
         FlexAvailabilityUnobserved => FlexHorizonUnobserved
         FlexAvailabilityRevocable => FlexHorizonUnobserved
         FlexAvailabilityOnDemand =>
-          flex_price_candidate(
-            candidate: c,
+          flex_price_offer(
+            offer: c.offer,
+            inputs: c.dispatch,
             policy: policy,
             attempt: attempt,
             budget_currency: budget_currency,
@@ -413,16 +440,12 @@ fn flex_bid_after_min(
                         cause: FlexExistingBidWouldRise { current: current, min_bid: min_rate },
                       }
                     } else {
-                      flex_admit_at(
+                      flex_existing_unchanged(
                         policy: policy,
                         occupancy: occupancy,
                         window: window,
                         account: account,
-                        attempt: attempt,
-                        min_rate: min_rate,
-                        bid: current,
-                        append_standing: false,
-                        joined: joined,
+                        current: current,
                       )
                     }
                 }
@@ -437,6 +460,50 @@ fn flex_bid_after_min(
                   bid: ceiling,
                   joined: joined,
                 )
+            }
+        }
+      }
+  }
+}
+
+fn flex_existing_unchanged(
+  policy: FlexPolicy,
+  occupancy: FlexFleetOccupancy,
+  window: FlexAcquisitionWindow,
+  account: MoneyAccount,
+  current: MoneyPerHour,
+) -> FlexBidAdmission {
+  match money_per_hour_compare(left: current, right: policy.fleet_rate_cap) {
+    MoneyPerHourCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
+      refuse_currency(left: mismatch_left, right: mismatch_right)
+    MoneyPerHourCompared { left_le_right: current_under_cap } =>
+      if !current_under_cap {
+        FlexBidRefused {
+          cause: FlexRateCapBelowMin { cap: policy.fleet_rate_cap, min_bid: current },
+        }
+      } else {
+        match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency) {
+          FlexOccupancyCurrencyMismatch { left: occupied_left, right: occupied_right } =>
+            refuse_currency(left: occupied_left, right: occupied_right)
+          FlexOccupancySummed { micros: occupied, currency: occupied_currency } =>
+            if !(occupied <= money_per_hour_micros(q: policy.fleet_rate_cap)) {
+              FlexBidRefused {
+                cause: FlexRateCapOccupied {
+                  cap: policy.fleet_rate_cap,
+                  occupied: MoneyPerHour {
+                    amount: money_amount_micro(count: occupied),
+                    currency: occupied_currency,
+                  },
+                  proposed: current,
+                },
+              }
+            } else {
+              FlexBidUnchanged {
+                bid: current,
+                account: account,
+                occupancy: occupancy,
+                window: window,
+              }
             }
         }
       }
@@ -486,6 +553,30 @@ fn flex_admit_new(
   }
 }
 
+type FlexTargetJoin
+  = FlexTargetRevocable
+  | FlexTargetHasOnDemand
+  | FlexTargetHasUnobserved
+
+fn flex_joined_target_standing(joined: List<CandidateOffer<NonEmptyStr>>) -> FlexTargetJoin {
+  fold(joined, init: FlexTargetRevocable, f: (acc, row) =>
+    match acc {
+      FlexTargetHasUnobserved => FlexTargetHasUnobserved
+      FlexTargetHasOnDemand =>
+        match flex_availability_standing(a: row.dispatch.availability) {
+          FlexAvailabilityUnobserved => FlexTargetHasUnobserved
+          FlexAvailabilityOnDemand => FlexTargetHasOnDemand
+          FlexAvailabilityRevocable => FlexTargetHasOnDemand
+        }
+      FlexTargetRevocable =>
+        match flex_availability_standing(a: row.dispatch.availability) {
+          FlexAvailabilityUnobserved => FlexTargetHasUnobserved
+          FlexAvailabilityOnDemand => FlexTargetHasOnDemand
+          FlexAvailabilityRevocable => FlexTargetRevocable
+        }
+    })
+}
+
 fn flex_admit_at(
   policy: FlexPolicy,
   occupancy: FlexFleetOccupancy,
@@ -505,8 +596,41 @@ fn flex_admit_at(
           cause: FlexRateCapBelowMin { cap: bid, min_bid: min_rate },
         }
       } else {
-        let liability = flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon)
-        let selection = select_supply(
+        match flex_joined_target_standing(joined: joined) {
+          FlexTargetHasUnobserved =>
+            FlexBidRefused { cause: FlexTargetAvailabilityUnobserved }
+          FlexTargetHasOnDemand =>
+            FlexBidRefused { cause: FlexTargetNotRevocable }
+          FlexTargetRevocable =>
+            flex_admit_revocable_target(
+              policy: policy,
+              occupancy: occupancy,
+              window: window,
+              account: account,
+              attempt: attempt,
+              min_rate: min_rate,
+              bid: bid,
+              append_standing: append_standing,
+              joined: joined,
+            )
+        }
+      }
+  }
+}
+
+fn flex_admit_revocable_target(
+  policy: FlexPolicy,
+  occupancy: FlexFleetOccupancy,
+  window: FlexAcquisitionWindow,
+  account: MoneyAccount,
+  attempt: FlexBidAttempt<NonEmptyStr>,
+  min_rate: MoneyPerHour,
+  bid: MoneyPerHour,
+  append_standing: Bool,
+  joined: List<CandidateOffer<NonEmptyStr>>,
+) -> FlexBidAdmission {
+  let liability = flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon)
+  let selection = select_supply(
           requirements: attempt.requirements,
           candidates: joined,
           duration: flex_horizon_duration(policy: policy),
@@ -521,57 +645,72 @@ fn flex_admit_at(
             FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
           EqualCostTieUnresolved { digest: _, cause: _, considered: _ } =>
             FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
-          OfferSelected { candidate: selected, cost: selected_cost, basis: _, horizon: _, considered: _, tie_policy: _ } => {
+          OfferSelected { candidate: selected, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => {
             if !selection_names_joined_offer(selected: selected, joined: joined) {
               FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
             } else {
-              match flex_on_demand_reference_cost(
-                policy: policy,
-                attempt: attempt,
-                budget_currency: bid.currency,
-              ) {
-                FlexHorizonUnobserved =>
-                  FlexBidRefused { cause: FlexOnDemandReferenceUnobserved }
-                FlexHorizonPriced { cost: on_demand_cost } => {
-                  let ceiling = flex_relative_ceiling(policy: policy, on_demand_cost: on_demand_cost)
-                  let projected = selection_liability(c: selected_cost)
-                  if money_amount_micro_count(m: projected) > money_amount_micro_count(m: ceiling) {
-                    FlexBidRefused {
-                      cause: FlexOnDemandRelativeCeilingExceeded {
-                        ceiling: ceiling,
-                        projected: projected,
-                      },
-                    }
-                  } else {
-                    match reserve_money(
-                      a: account,
-                      request: MoneyReservationRequest {
-                        reference: attempt.reservation,
-                        generation: attempt.generation,
-                        maximum_liability: liability,
-                        currency: bid.currency,
-                      },
-                    ) {
-                      MoneyRefused { refusal: r } => FlexBidRefused { cause: FlexMoneyRefused { refusal: r } }
-                      AccountAdvanced { account: next } =>
-                        FlexBidAdmitted {
-                          bid: bid,
-                          selection: selection,
-                          account: next,
-                          occupancy: if append_standing {
-                            occupy_pending(occupancy: occupancy, bid: bid)
+              match flex_availability_standing(a: selected.candidate.dispatch.availability) {
+                FlexAvailabilityOnDemand =>
+                  FlexBidRefused { cause: FlexTargetNotRevocable }
+                FlexAvailabilityUnobserved =>
+                  FlexBidRefused { cause: FlexTargetAvailabilityUnobserved }
+                FlexAvailabilityRevocable =>
+                  match flex_on_demand_reference_cost(
+                    policy: policy,
+                    attempt: attempt,
+                    budget_currency: bid.currency,
+                  ) {
+                    FlexHorizonUnobserved =>
+                      FlexBidRefused { cause: FlexOnDemandReferenceUnobserved }
+                    FlexHorizonPriced { cost: on_demand_cost } => {
+                      let ceiling = flex_relative_ceiling(policy: policy, on_demand_cost: on_demand_cost)
+                      match flex_price_offer(
+                        offer: offer_quoted_at(offer: selected.candidate.offer, rate: bid),
+                        inputs: selected.candidate.dispatch,
+                        policy: policy,
+                        attempt: attempt,
+                        budget_currency: bid.currency,
+                      ) {
+                        FlexHorizonUnobserved =>
+                          FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
+                        FlexHorizonPriced { cost: projected } =>
+                          if money_amount_micro_count(m: projected) > money_amount_micro_count(m: ceiling) {
+                            FlexBidRefused {
+                              cause: FlexOnDemandRelativeCeilingExceeded {
+                                ceiling: ceiling,
+                                projected: projected,
+                              },
+                            }
                           } else {
-                            occupancy
-                          },
-                          window: advance_window(window: window),
-                        }
+                            match reserve_money(
+                              a: account,
+                              request: MoneyReservationRequest {
+                                reference: attempt.reservation,
+                                generation: attempt.generation,
+                                maximum_liability: liability,
+                                currency: bid.currency,
+                              },
+                            ) {
+                              MoneyRefused { refusal: r } => FlexBidRefused { cause: FlexMoneyRefused { refusal: r } }
+                              AccountAdvanced { account: next } =>
+                                FlexBidAdmitted {
+                                  bid: bid,
+                                  selection: selection,
+                                  account: next,
+                                  occupancy: if append_standing {
+                                    occupy_pending(occupancy: occupancy, bid: bid)
+                                  } else {
+                                    occupancy
+                                  },
+                                  window: advance_window(window: window),
+                                }
+                            }
+                          }
+                      }
                     }
                   }
-                }
               }
             }
           }
         }
-      }
-  }
 }

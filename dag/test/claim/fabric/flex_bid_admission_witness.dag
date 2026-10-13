@@ -36,9 +36,10 @@ import product.fabric.budget { MoneyAccount }
 import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
 import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
-  FlexScreenedCandidate, FlexBidAdmission, FlexBidAdmitted, FlexBidRefused, FlexNoAcquisitionRemaining,
+  FlexScreenedCandidate, FlexBidAdmission, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused, FlexNoAcquisitionRemaining,
   FlexRateCapBelowMin, FlexRateCapOccupied, FlexExistingBidWouldRise, FlexMoneyRefused,
-  FlexSupplyNotSelected, FlexOnDemandReferenceUnobserved, FlexOnDemandRelativeCeilingExceeded,
+  FlexSupplyNotSelected, FlexOnDemandReferenceUnobserved, FlexTargetNotRevocable,
+  FlexTargetAvailabilityUnobserved, FlexOnDemandRelativeCeilingExceeded,
   FlexCurrencyMismatch, FlexDecimalConversionRefused, FlexCandidateMachineMismatch,
   FlexNewAcquisition, FlexExistingAcquisition, AcquisitionActive,
   FlexOnDemandReference, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
@@ -260,6 +261,7 @@ fn empty_occupancy() -> FlexFleetOccupancy {
 fn admitted_bid(o: FlexBidAdmission) -> Nat {
   match o {
     FlexBidAdmitted { bid: b, selection: _, account: _, occupancy: _, window: _ } => money_per_hour_micros(q: b)
+    FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => 0
     FlexBidRefused { cause: _ } => 0
   }
 }
@@ -267,6 +269,7 @@ fn admitted_bid(o: FlexBidAdmission) -> Nat {
 fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
   match o {
     FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => "admitted"
+    FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => "unchanged"
     FlexBidRefused { cause: c } =>
       match c {
         FlexNoAcquisitionRemaining => "no-remaining"
@@ -276,6 +279,8 @@ fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
         FlexRateCapOccupied { cap: _, occupied: _, proposed: _ } => "rate-cap-occupied"
         FlexExistingBidWouldRise { current: _, min_bid: _ } => "existing-would-rise"
         FlexOnDemandReferenceUnobserved => "on-demand-unobserved"
+        FlexTargetNotRevocable => "target-not-revocable"
+        FlexTargetAvailabilityUnobserved => "target-unobserved"
         FlexOnDemandRelativeCeilingExceeded { ceiling: _, projected: _ } => "on-demand-ceiling"
         FlexSupplyNotSelected { selection: _ } => "supply"
         FlexCandidateMachineMismatch { named: _, observed: _ } => "machine-mismatch"
@@ -346,6 +351,7 @@ test fn two_acquisitions_race_one_allowance_and_the_second_is_refused() -> Bool 
   )
   match first {
     FlexBidRefused { cause: _ } => false
+    FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => false
     FlexBidAdmitted { bid: _, selection: _, account: next_account, occupancy: next_occupancy, window: next_window } =>
       refusal_label(o: flex_bid_admission(
         policy: policy,
@@ -416,6 +422,7 @@ test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent()
   )
   match first {
     FlexBidRefused { cause: _ } => false
+    FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => false
     FlexBidAdmitted { bid: first_bid, selection: _, account: _, occupancy: _, window: _ } =>
       (money_per_hour_micros(q: first_bid) == 1100000)
         && (refusal_label(o: rediscovered) == "admitted")
@@ -821,6 +828,169 @@ test fn rediscovery_never_lifts_the_on_demand_relative_ceiling() -> Bool {
     && (refusal_label(o: lifted) == "on-demand-ceiling")
 }
 
+test fn a_quote_at_the_floor_cannot_admit_a_buffered_bid_over_the_ceiling() -> Bool {
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt_ref(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar_wire(),
+      quote: one_dollar(),
+      key: "offer-quote-floor",
+      reservation: "res-quote-floor",
+      revocation: RevocationAccepted,
+      revocable: true,
+      reference: t_on_demand_ref(rate: usd_hour(micros: 1050000), key: "od-105"),
+    ),
+  )) == "on-demand-ceiling"
+}
+
+test fn an_on_demand_target_is_refused() -> Bool {
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar_wire(),
+      quote: one_ten(),
+      key: "offer-od-target",
+      reservation: "res-od-target",
+      revocation: RevocationAccepted,
+      revocable: false,
+    ),
+  )) == "target-not-revocable"
+}
+
+test fn an_unobserved_target_is_refused() -> Bool {
+  let machine = t_machine(id: "machine-a")
+  let bound = t_bound_avail(
+    offer: t_offer(key: "offer-unobs-target", rate: one_ten()),
+    availability: AvailabilityUnobserved { obligation: "vendor console did not answer" },
+  )
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: FlexBidAttempt {
+      machine: machine,
+      min_bid: one_dollar_wire(),
+      quote_currency: vast_ai_quote_currency,
+      candidates: fold(
+        bound,
+        init: [],
+        f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
+      ),
+      subject: FlexNewAcquisition,
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-unobs-target"),
+      requirements: t_reqs(revocation: RevocationAccepted),
+      reservation: "res-unobs-target",
+      generation: 1,
+      delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      tie: StableRosterOrder,
+      affinity: "test.flex" as PlacementAffinityKey,
+    },
+  )) == "target-unobserved"
+}
+
+test fn an_existing_current_bid_over_the_cap_is_refused() -> Bool {
+  let machine = t_machine(id: "machine-a")
+  let bound = t_bound(offer: t_offer(key: "offer-over-cap", rate: one_dollar()), revocable: true)
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap_micros: 1500000),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: FlexBidAttempt {
+      machine: machine,
+      min_bid: one_dollar_wire(),
+      quote_currency: vast_ai_quote_currency,
+      candidates: fold(
+        bound,
+        init: [],
+        f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
+      ),
+      subject: FlexExistingAcquisition { current_bid: usd_hour(micros: 2000000) },
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-exist-cap"),
+      requirements: t_reqs(revocation: RevocationAccepted),
+      reservation: "res-exist-cap",
+      generation: 1,
+      delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      tie: StableRosterOrder,
+      affinity: "test.flex" as PlacementAffinityKey,
+    },
+  )) == "rate-cap"
+}
+
+test fn an_existing_acquisition_does_not_admit_when_aggregate_is_over_cap() -> Bool {
+  let machine = t_machine(id: "machine-a")
+  let bound = t_bound(offer: t_offer(key: "offer-exist-agg", rate: one_dollar()), revocable: true)
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap_micros: 1500000),
+    occupancy: FlexFleetOccupancy {
+      standing: [AcquisitionActive { rate: usd_hour(micros: 2000000) }],
+    },
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: FlexBidAttempt {
+      machine: machine,
+      min_bid: one_dollar_wire(),
+      quote_currency: vast_ai_quote_currency,
+      candidates: fold(
+        bound,
+        init: [],
+        f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
+      ),
+      subject: FlexExistingAcquisition { current_bid: usd_hour(micros: 1100000) },
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-exist-agg"),
+      requirements: t_reqs(revocation: RevocationAccepted),
+      reservation: "res-exist-agg",
+      generation: 1,
+      delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      tie: StableRosterOrder,
+      affinity: "test.flex" as PlacementAffinityKey,
+    },
+  )) == "rate-cap-occupied"
+}
+
+test fn an_unchanged_existing_acquisition_does_not_consume_the_window() -> Bool {
+  let machine = t_machine(id: "machine-a")
+  let bound = t_bound(offer: t_offer(key: "offer-exist-ok", rate: one_dollar()), revocable: true)
+  match flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: FlexBidAttempt {
+      machine: machine,
+      min_bid: one_dollar_wire(),
+      quote_currency: vast_ai_quote_currency,
+      candidates: fold(
+        bound,
+        init: [],
+        f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
+      ),
+      subject: FlexExistingAcquisition { current_bid: usd_hour(micros: 1100000) },
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(micros: 2000000), key: "od-exist-ok"),
+      requirements: t_reqs(revocation: RevocationAccepted),
+      reservation: "res-exist-ok",
+      generation: 1,
+      delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      tie: StableRosterOrder,
+      affinity: "test.flex" as PlacementAffinityKey,
+    },
+  ) {
+    FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => false
+    FlexBidRefused { cause: _ } => false
+    FlexBidUnchanged { bid: b, account: _, occupancy: _, window: w } =>
+      (money_per_hour_micros(q: b) == 1100000) && (w.remaining == 1)
+  }
+}
+
 test fn admission_converts_the_vast_wire_min_bid() -> Bool {
   let offer = vast_min_sample()
   match vast_ai_min_bid_money_per_hour(offer: offer) {
@@ -843,6 +1013,7 @@ test fn admission_converts_the_vast_wire_min_bid() -> Bool {
         ),
       ) {
         FlexBidRefused { cause: _ } => false
+        FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => false
         FlexBidAdmitted { bid: b, selection: _, account: _, occupancy: _, window: _ } =>
           money_per_hour_micros(q: b) == money_per_hour_micros(q: buffered)
       }
