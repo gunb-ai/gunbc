@@ -129,7 +129,7 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   },
   WitnessDeleted {
     identity: "v2.test.v2_native_route.an_unattributed_head_advisory_is_refused" as NonEmptyStr,
-    deleted_in: "advisories steps 3+4: HeadGrain deleted; the head-advisory clause (gunbc.witness.v2_native_route native_route_head_advisories_attributed) and its test go with it. Advisories are counted by the accepted-file advisory instrument, not owned" as NonEmptyStr,
+    deleted_in: "advisories steps 3+4: HeadGrain deleted; the head-advisory clause (v2.workflow.v2_native_route native_route_head_advisories_attributed) and its test go with it. Advisories are counted by the accepted-file advisory instrument, not owned" as NonEmptyStr,
   },
   WitnessDeleted {
     identity: "v2.test.claim.emit.trait_derive_seed_emit_binding.bool_supplemental_impl_present" as NonEmptyStr,

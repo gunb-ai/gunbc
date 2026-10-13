@@ -32,7 +32,7 @@ import extdeps.bazel.target_pattern {
 //
 // THERE ARE TWO EXECUTORS AND THE OPERAND SAYS WHICH, BY CONTAINMENT RATHER THAN BY SPELLING.
 // The native test route owns one universe, and that universe is itself a target pattern
-// (`gunbc.witness.v2_native_route` `native_route_default_pattern`, `//v2/test/...`). So "does this
+// (`v2.workflow.v2_native_route` `native_route_default_pattern`, `//v2/test/...`). So "does this
 // operand belong to the native route" is the cited authority's own containment question, asked
 // once, here: `extdeps.bazel.target_pattern` `target_pattern_within`. An operand inside it --
 // single target or set form alike -- is `TestOperandNativeRoute` and enters the native

@@ -1,4 +1,4 @@
-//! The v2-native ROUTE's host harness (route authority: `gunbc.witness.v2_native_route`),
+//! The v2-native ROUTE's host harness (route authority: `v2.workflow.v2_native_route`),
 //! reached as `claim_executor --v2-native-route`.
 //!
 //! IT IS NOT A REQUIRED LANE, and the prefixes below say so. The required-v2-native CI job was
@@ -246,7 +246,7 @@ struct EmittedPreparation {
 }
 
 /// The emitted compiler's build as the receipt records it — mirror of
-/// `gunbc.witness.v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
+/// `v2.workflow.v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
 /// spawn that ran or the toolchain that answered, never composed from what was intended.
 struct EmittedBuildObserved {
     cargo_argv: Vec<String>,
@@ -1101,7 +1101,7 @@ struct NativeTerminalMarker {
     advised_files: u64,
     admitted: bool,
     summary: String,
-    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
+    /// `v2.workflow.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
     /// census marker, which carries no population to judge; nothing reads it there.
     frontier: String,
 }
@@ -1670,7 +1670,7 @@ fn write_host_facts(
         ),
     ];
     // THE EMITTED BUILD CROSSES AS ROWS TOO: the six facts of NativeRouteEmittedBuild
-    // (gunbc.witness.v2_native_route) are the host's own spawn observations, so they are host
+    // (v2.workflow.v2_native_route) are the host's own spawn observations, so they are host
     // facts by the same rule as the identities above. The argv is one row per word under a
     // length row, because a word is opaque bytes and the TSV grammar has one value per key --
     // no separator is smuggled into a value.
@@ -3960,7 +3960,7 @@ fn native_serve_start(
 /// of a decision this function already holds, free to disagree with it.
 ///
 /// THE ARMS ARE NAMED FOR WHAT THE BIT ACTUALLY DECIDES, AND THE NAMING IS THE WHOLE POINT. It is
-/// `gunbc.witness.v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
+/// `v2.workflow.v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
 /// -- a conjunction over roughly twenty clauses including `JobNameMismatch`,
 /// `PreparationSeedUnrecorded`, `EmittedBuildNotClean`, `MalformedControlAcceptedByRoute`,
 /// `PositivePopulationEmpty` and `RequiredNativePassRegressed`. It is NOT "the targets the operator
@@ -4011,7 +4011,7 @@ pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeR
     }
 }
 
-/// THE FRONTIER RATCHET'S ANSWER FOR ONE WHOLE-UNIVERSE RUN, as `gunbc.native_frontier_ratchet`
+/// THE FRONTIER RATCHET'S ANSWER FOR ONE WHOLE-UNIVERSE RUN, as `v2.workflow.native_frontier_ratchet`
 /// `native_frontier_verdict_word` rendered it inside the emitted binary. The host decides nothing
 /// here: it carries the word, and the lane's own qualification summary beside it for the reader.
 /// Which words pass is the instrument's single match, `target_invocation_host`
@@ -4599,7 +4599,7 @@ fn run_required_v2_native_inner(
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     // THE TESTED TREE IS OBSERVED OR THE RUN REFUSES (review 64210). This defaulted to the literal
-    // "local", and `tested_tree` is not telemetry: `gunbc.witness.v2_native_route`
+    // "local", and `tested_tree` is not telemetry: `v2.workflow.v2_native_route`
     // `native_route_tested_tree_recorded` admits on `tested_tree != ""`, so the default SATISFIED
     // its own admission clause and the receipt then asserted it described a tree named `local`.
     // That is the defect the rendered main fixes for its sibling field in this same change, and
@@ -4683,7 +4683,7 @@ fn run_required_v2_native_inner(
     // derives the universe, executes it, mints the receipt and judges it.
     eprintln!("v2-native-route: adjudicating through the emitted compiler");
     // THE PATTERN IS THE CALLER'S, AND THAT IS WHAT MAKES A FOCUSED RUN POSSIBLE. The lane passes
-    // `gunbc.witness.v2_native_route` `native_route_default_pattern` (`//v2/test/...`, which
+    // `v2.workflow.v2_native_route` `native_route_default_pattern` (`//v2/test/...`, which
     // narrows nothing within the floor's universe); `gunbc test <operand>` passes the operand's own
     // pattern, already admitted by `extdeps.bazel.target_pattern` and rendered by its own renderer.
     // This runner does not parse it, default it, or widen it: a pattern that reached here was
@@ -5491,7 +5491,7 @@ mod tests {
     }
 
     /// AN ADJUDICATE MARKER WITHOUT THE FRONTIER WORD REFUSES. The emitted main always prints
-    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word` on it, so its absence means
+    /// `v2.workflow.native_frontier_ratchet` `native_frontier_verdict_word` on it, so its absence means
     /// the binary is not the one this host was built against; defaulting it would be the
     /// absorbing arm.
     #[test]

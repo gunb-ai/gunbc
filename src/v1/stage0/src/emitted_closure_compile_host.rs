@@ -51,7 +51,7 @@
 //! none, so the emitted compiler crate compiled clean locally and refused with status 101 in
 //! CI — and the required v2-native lane's receipt could not say which environment its
 //! "compiled" was true of. The lane now records the flags, the argv and rustc's identity on its
-//! receipt (`gunbc.witness.v2_native_route` `NativeRouteEmittedBuild`) and admission compares
+//! receipt (`v2.workflow.v2_native_route` `NativeRouteEmittedBuild`) and admission compares
 //! the flags against that same row.
 
 // CLIPPY ROSTER -- 7 finding(s) this module trips today, listed one lint per line with
