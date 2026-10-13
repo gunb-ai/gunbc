@@ -140,9 +140,6 @@ import v2.compiler.module_acquisition {
   CensusAcquisitionBlocked,
   CensusAcquisitionClosed,
   CensusAcquisitionRefused,
-  CensusBlock,
-  CensusEdgeBlock,
-  CensusMemberBlock,
   acquire_census_closure_of,
   acquire_verified,
   acquisition_ingest,
@@ -4442,44 +4439,6 @@ fn native_lane_census_scoped_ingest(label: String, source_roots: FreeMonoid<Stri
         SourceRootsUnrecognized { argument: _ } => native_lane_roots_refusal(bindings: resolved)
         SourceRootsDuplicated { argument: _ } => native_lane_roots_refusal(bindings: resolved)
       }
-  }
-}
-
-// ONE ROW PER BLOCK, for the run's output: the census reports where its population stopped as plainly
-// as what it found. `module` is the blocked member, or "" for an edge block (which names its request
-// inside `refusal`); `requesters` are the modules whose requests reached the block.
-type NativeCensusScopedBlockRow {
-  kind: String
-  module: String
-  refusal: String
-  requesters: List<String>
-}
-
-fn native_census_scoped_block_row(block: CensusBlock) -> NativeCensusScopedBlockRow {
-  match block {
-    CensusMemberBlock { module: m, refusal: r, content: _, host_directory: _, requesters: rs } =>
-      NativeCensusScopedBlockRow { kind: "member", module: m, refusal: acquisition_refusal_text(refusal: r), requesters: list_map(xs: rs, f: fn(q) { q.from_module }) }
-    CensusEdgeBlock { refusal: r } =>
-      NativeCensusScopedBlockRow { kind: "edge", module: "", refusal: acquisition_refusal_text(refusal: r), requesters: [] }
-  }
-}
-
-fn native_census_scoped_block_rows(scoped: NativeCensusScoped) -> List<NativeCensusScopedBlockRow> {
-  match scoped.acquisition {
-    CensusAcquisitionBlocked { entries: _, modules: _, blocked_first: first, blocked_rest: rest, reads: _ } =>
-      list_map(xs: Cons { head: first, tail: rest }, f: fn(b) { native_census_scoped_block_row(block: b) })
-    CensusAcquisitionClosed { entries: _, modules: _, reads: _ } => []
-    CensusAcquisitionRefused { refusal: _ } => []
-  }
-}
-
-// "closed" or "blocked": whether every request was followed. A blocked run's totals are over what it
-// could reach, and its terminal says so rather than leaving the reader to compare counts.
-fn native_census_scoped_acquisition_status(scoped: NativeCensusScoped) -> String {
-  match scoped.acquisition {
-    CensusAcquisitionClosed { entries: _, modules: _, reads: _ } => "closed"
-    CensusAcquisitionBlocked { entries: _, modules: _, blocked_first: _, blocked_rest: _, reads: _ } => "blocked"
-    CensusAcquisitionRefused { refusal: _ } => "refused"
   }
 }
 
