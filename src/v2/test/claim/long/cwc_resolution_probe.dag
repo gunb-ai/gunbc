@@ -301,6 +301,27 @@ test fn cwc_named_where_coproduct_normalize_accepts() -> Bool {
   }
 }
 
+// SPINE-LABEL BYPASS CONTROL. The where-rebuilt arm's head is a record whose FIELD NAMES are spelled
+// like the qualified-name spine labels (`fold_list_node_head` / `fold_list_node_tail` -- the two
+// labels fold_list_node uses for a dotted name's head/tail edges). A label-only shape check would
+// read that record as a dotted name and the arm would normalize (its atom fallback naming the arm
+// `Int`). The refusal therefore reads the head through the full qualified-name reader
+// (qualified_name_from_node), whose fold validates the spine's TARGETS -- the head edge must target
+// an atom and the tail edge a spine conj -- which a record payload fails. A successful read of an
+// empty name, and a rejected read, both count as nameless. This source must be refused.
+data cwc_src_spine_named_fields_where_coproduct: String = "module probe\ntype T = {\n  fold_list_node_head: Int,\n  fold_list_node_tail: Int\n} where brand(\"X\") | B\n"
+
+test fn cwc_spine_named_fields_where_coproduct_normalize_rejects() -> Bool {
+  match cwc_parse_of(src: cwc_src_spine_named_fields_where_coproduct) {
+    Accepted { value: p, diagnostics: _ } =>
+      match normalize(parse_tree: p) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // ---- resolve on the single-tree door, over supplied roots -------------------------------------
 
 // A variant in value position binds to the module's own declaration. Red before gunbc#13333, where

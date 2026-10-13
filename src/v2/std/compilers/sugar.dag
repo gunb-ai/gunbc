@@ -20,7 +20,7 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.node_query { find_named_child, variant_declaration_edge_optional }
-import v2.std.qualified_name { qualified_name_spine_shape_present }
+import v2.std.qualified_name { qualified_name_from_node }
 import v2.extdeps.languages.dag { parse_production_captured_child_optional }
 import v2.std.node {
   Arrow,
@@ -301,9 +301,13 @@ fn sugar_arm_type_body_is_nameless(variant: Node) -> Bool {
 // a field block, the lowered block under ^dag_surface_field_decl_block. True iff that carried head
 // is a nameless type body. The kind is the lowered image of the production identity the raw path
 // reads, so the decision stays spelling-agnostic (a named constructor spelled like a lex token
-// still lowers to an Atom and reads as named). A dotted qualified-name spine lowers to a two-child
-// head/tail Conj, which a record Conj would also be -- qualified_name_spine_shape_present (the
-// single authority for the spine's label set) is what tells them apart.
+// still lowers to an Atom and reads as named). A dotted qualified-name spine lowers to a head/tail
+// Conj, which a record Conj would also be -- and a record whose FIELD NAMES happen to be spelled
+// like the spine labels passes a label-only shape check. So the Conj head is named only when the
+// full qualified-name reader (qualified_name_from_node) reads it: its shape pre-gate is internal,
+// but the fold validates the targets (the head must be an atom, the tail a spine Conj), which a
+// record payload fails. A successful read of an EMPTY name (the reader's zero-field hole) and a
+// rejected read both count as nameless -- only a non-empty successful read is a name.
 fn sugar_where_carried_head_is_nameless(variant: Node) -> Bool {
   match sugar_named_child_optional(root: variant, name: ^dag_surface_type_expr) {
     // The where-rebuild always carries its head under this edge, so Absent is the one shape it
@@ -315,7 +319,11 @@ fn sugar_where_carried_head_is_nameless(variant: Node) -> Bool {
         TypeNode { connective: Atom { identity: _ } } => false
         TypeNode { connective: Instantiation } => false
         TypeNode { connective: Occupancy } => false
-        TypeNode { connective: Conj } => !qualified_name_spine_shape_present(root: head)
+        TypeNode { connective: Conj } =>
+          match qualified_name_from_node(root: head) {
+            Accepted { value: qn } => length(xs: qn) == 0
+            Rejected { diagnostics: _ } => true
+          }
         TypeNode { connective: Disj } => true
         TypeNode { connective: Arrow } => true
         ComputationNode { behavior: _ } => true
