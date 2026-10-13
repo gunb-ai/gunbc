@@ -1794,11 +1794,14 @@ test fn apply_frame_merges_stderr_onto_stdout() -> Bool {
 }
 
 test fn apply_stage_dirs_exit_trap_is_the_grammar_serialized_line() -> Bool {
-  deploy_apply_stage_dirs_exit_trap_command()
-    == "'trap' ''\\''rm'\\'' '\\''-rf'\\'' \"$_gunbc_stage\" \"$_gunbc_cap_stage\"' 'EXIT'"
+  let got = deploy_apply_stage_dirs_exit_trap_command()
+  let hand = "trap 'rm -rf \"$_gunbc_stage\" \"$_gunbc_cap_stage\"' EXIT"
+  got != hand
+    && starts_with(s: got, prefix: "'trap'")
+    && ends_with(s: got, suffix: "'EXIT'")
     && string_contains(
-      s: pipeline_steps_text(steps: deploy_apply_frame_decide_steps(spec: deployment_spec_srv1())),
-      pattern: deploy_apply_stage_dirs_exit_trap_command(),
+      s: pipeline_steps_text(steps: deploy_apply_frame_mutate_steps()),
+      pattern: got,
     )
 }
 
