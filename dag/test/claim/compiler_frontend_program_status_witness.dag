@@ -680,18 +680,24 @@ test fn xl2_is_not_derivable_while_the_rehearsal_residual_has_no_producer() -> B
 // each arm's standing, and this pins WHICH arms sit on each side, with the PR each delivery
 // cites -- so flipping an arm's standing, or re-attributing it, reddens a conjunct rather than
 // leaving a label check green. The roster is also checked exact: every arm, each once.
+fn xl2_occurs_once_in_roster(p: Xl2Prerequisite) -> Bool {
+  count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1
+}
+
 fn xl2_delivered_by(p: Xl2Prerequisite, pr: Int, merge_sha: String) -> Bool {
-  match xl2_prerequisite_standing(p: p) {
-    PrerequisiteDelivered { owner: _, evidence, qualification: _ } => evidence.pr == pr && evidence.merge_sha as String == merge_sha
-    PrerequisiteOutstanding { tracked_by: _, why: _ } => false
-  }
+  xl2_occurs_once_in_roster(p: p)
+    && match xl2_prerequisite_standing(p: p) {
+         PrerequisiteDelivered { owner: _, evidence, qualification: _ } => evidence.pr == pr && evidence.merge_sha as String == merge_sha
+         PrerequisiteOutstanding { tracked_by: _, why: _ } => false
+       }
 }
 
 fn xl2_outstanding_tracked_by(p: Xl2Prerequisite, decl_name: String) -> Bool {
-  match xl2_prerequisite_standing(p: p) {
-    PrerequisiteDelivered { owner: _, evidence: _, qualification: _ } => false
-    PrerequisiteOutstanding { tracked_by, why: _ } => tracked_by.decl_name as String == decl_name
-  }
+  xl2_occurs_once_in_roster(p: p)
+    && match xl2_prerequisite_standing(p: p) {
+         PrerequisiteDelivered { owner: _, evidence: _, qualification: _ } => false
+         PrerequisiteOutstanding { tracked_by, why: _ } => tracked_by.decl_name as String == decl_name
+       }
 }
 
 fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
@@ -699,8 +705,7 @@ fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
 }
 
 test fn xl2_prerequisites_partition_is_an_identity_join() -> Bool {
-  count(xl2_prerequisites) == 25
-    && count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) + count(xl2_prerequisites_outstanding()) == count(xl2_prerequisites)
+  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) + count(xl2_prerequisites_outstanding()) == count(xl2_prerequisites)
     && xl2_delivered_by(p: PlainCallArgumentReferenceVisibility, pr: 12108, merge_sha: "b0d307c31b")
     && xl2_delivered_by(p: BareFieldTypeVisibility, pr: 11574, merge_sha: "b705d17c45")
     && xl2_delivered_by(p: WholeTreeResolveCensus, pr: 11738, merge_sha: "c6b4e7ed2c")
