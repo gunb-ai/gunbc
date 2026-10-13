@@ -4,7 +4,6 @@ import std.logic { Bool }
 import std.types { String }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
 import gunbc.ci.ci_spec { generated_artifact_author_regen_command }
-import gunbc.generated_artifact_registry { heal_regenerated_after_provisional_merge_paths }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_emit_dissolution_trigger }
 import gunbc.local_tidy_spec { generated_artifact_merge_driver_emit_scaffold }
 import std.dissolution { dissolution_description }
@@ -36,8 +35,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emitted_driver_script() -> String {
   expected_generated_artifact_merge_driver_sh(
-    regen_command: generated_artifact_author_regen_command,
-    heal_regenerated_paths: heal_regenerated_after_provisional_merge_paths()
+    regen_command: generated_artifact_author_regen_command
   )
 }
 
@@ -55,33 +53,15 @@ test fn author_regeneration_recipe_passes_source_roots_to_every_claim_executor_c
     && string_contains(s: script, pattern: "--required-regen-fixed-point") == false
 }
 
-// The backtick must reach the reader as a backtick, which inside the emitted double quotes means
-// it must be escaped in the script bytes. Unescaped, bash consumes it before the author sees it.
-test fn heal_recipe_row_extractor_survives_the_drivers_own_quoting() -> Bool {
+// THE HEAL CASE ARM IS DELETED. Its quoting defects (the specimens of
+// printed_remedy_is_mangled_by_the_medium_that_prints_it) had no remaining subject once
+// DesignRungDrops left the committed roster. This file is hermetic discovery; the real-execution
+// module is excluded from that path, so the replacement control lives here and is executed.
+test fn emitted_driver_has_no_empty_heal_case_arm() -> Bool {
   let script = emitted_driver_script()
-  string_contains(s: script, pattern: "\\`\\\\([a-z0-9_]*\\\\)\\`")
-    && string_contains(s: script, pattern: "- `\\([a-z0-9_]*") == false
-}
-
-// The two heal-delegated projections carry different row identities: a failure mode is a slug
-// bullet, a rung drop is a heading. One extractor must name both, or the check reads zero rows on
-// the file it cannot parse and reports a pass it never measured.
-test fn heal_recipe_extracts_row_identity_from_both_delegated_projections() -> Bool {
-  let script = emitted_driver_script()
-  string_contains(s: script, pattern: "\\`\\\\([a-z0-9_]*\\\\)\\`")
-    && string_contains(s: script, pattern: "s/^### \\\\(.*\\\\) — .*/\\\\1/p")
-}
-
-// $ STAYS ACTIVE IN THE EMITTED ECHO, SO A RECIPE MAY NAME ONLY THE VARIABLE THE DRIVER DEFINES.
-// A `$1` written into a recipe line is git's %O, not the reader's argument: an extractor drafted as
-// a shell function taking $1 rendered as `git show "O:docs/design-rung-drops.md"`, with the driver's
-// own argv substituted into the instruction it was printing. Escaping does not save it -- the
-// escaper doubles backslashes before the reader sees them -- so the line pipes into a parameterless
-// function instead.
-test fn heal_recipe_names_only_the_variable_the_driver_defines() -> Bool {
-  let script = emitted_driver_script()
-  string_contains(s: script, pattern: "git show <base-ref>:$merged_path | rows")
-    && string_contains(s: script, pattern: "rows <base-ref>") == false
+  string_contains(s: script, pattern: "case \"$merged_path\" in") == false
+    && string_contains(s: script, pattern: generated_artifact_author_regen_command)
+    && string_contains(s: script, pattern: "exit 1")
 }
 
 // THE MEDIUM DISPOSITION IS A TYPED, BOUND ROW -- not a comment and not a String of prose. The
