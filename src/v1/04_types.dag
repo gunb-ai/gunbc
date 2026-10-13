@@ -968,6 +968,8 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
   else if text_crossing_in_judgment(left: left, right: right, text: text) { false }
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
+  else if left_opt && is_optional_coproduct_value(n: right, source_indices: source_indices) { true }
+  else if right_opt && is_optional_coproduct_value(n: left, source_indices: source_indices) { true }
   else if left.connective == Arrow && (right.connective == Arrow) {
     callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_compatible(left: a, right: b, source_indices: source_indices, text: text))
   }
@@ -1027,6 +1029,13 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
   }
 }
 
+// The empty arm `Absent` of a std.optional Optional, typed with no payload: it denotes the empty
+// case of ANY T?, so beside a `T?`-carrying sibling (e.g. `Present { value: x }`, typed as x's
+// optional cardinality) it agrees with that sibling's carrier.
+fn is_optional_coproduct_value(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.return_cardinality == Required && n.connective == Disj && authored_name_at(source_indices: source_indices, node: n) == "Optional"
+}
+
 fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
   let left_is_optional = left.return_cardinality == CardOptional
@@ -1052,6 +1061,7 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
     true
   } else { false }
   if same_kind && left_is_unit_inner { right }
+  else if right_is_optional && is_optional_coproduct_value(n: left, source_indices: source_indices) { right }
   else if is_fully_resolved(n: right, source_indices: source_indices) && !is_fully_resolved(n: left, source_indices: source_indices) { right }
   else if left.connective == NoConnective && left.children |> count == 0
     && (right.connective != NoConnective || right.children |> count > 0)
