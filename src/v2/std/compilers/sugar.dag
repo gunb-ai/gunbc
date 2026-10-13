@@ -18,21 +18,23 @@ import v2.std.diagnostic {
   outcome_accepted,
   Unavailable
 }
-import v2.std.grammar { node_atom_identity_optional }
+import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.node_query { find_named_child, variant_declaration_edge_optional }
-import v2.extdeps.languages.dag {
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional
-}
+import v2.std.qualified_name { qualified_name_spine_shape_present }
+import v2.extdeps.languages.dag { parse_production_captured_child_optional }
 import v2.std.node {
+  Arrow,
   Atom,
   Conj,
+  ComputationNode,
   Connective,
   Disj,
   Edge,
   LabeledEdges,
   Authored,
+  Instantiation,
   Node,
+  Occupancy,
   Symbol,
   TypeNode,
   edges_conform,
@@ -266,9 +268,21 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
 // child. A named arm's type body is a qualified_type (a seq / qualified_name), whose identity is
 // not a block production, so the check is spelling-agnostic: it cannot be fooled by a constructor
 // whose name is spelled like a lex token.
+//
+// The raw shape is not always what the fold sees. The where-suffix branch of body lowering
+// (v2.compiler.body_lowering_fold body_lower_type_variant) REBUILDS a where arm into a synthetic
+// Conj whose first child is the lowered head carried under ^dag_surface_type_expr -- the
+// seq(type_expr, suffix) parse shape is gone by the time the fold runs (children are lowered
+// before the type_alias_rhs sugar fold). So when the seq shape is Absent, constructor presence is
+// decided from the CARRIED HEAD instead, by the kind body lowering gave it: the qualified_type
+// branch lowers a named head to an Atom, a dotted qualified-name spine Conj, or an Instantiation /
+// Occupancy wrap of either; the field_decl_block branch lowers to a record Conj; the fn_type branch
+// lowers to an Arrow. The ^dag_surface_type_expr edge is written only by that rebuild, so a raw
+// arm (which keeps its parse shell) never reaches the carrier read. A head the rebuild hands over
+// that none of the named kinds can read is refused -- the where-rebuilt shape never fails open.
 fn sugar_arm_type_body_is_nameless(variant: Node) -> Bool {
   match sugar_sequence_pair_optional(node: variant) {
-    Absent => false
+    Absent => sugar_where_carried_head_is_nameless(variant)
     Present { value: pair } =>
       match parse_production_captured_child_optional(node: pair.left) {
         Absent => false
@@ -278,6 +292,30 @@ fn sugar_arm_type_body_is_nameless(variant: Node) -> Bool {
               (id == ^dag_surface_field_decl_block) || (id == ^dag_surface_fn_type)
             Absent => false
           }
+      }
+  }
+}
+
+// The where-rebuilt arm: the synthetic Conj body lowering hands the fold carries its head under
+// ^dag_surface_type_expr (body_lower_type_variant_children_with_where) and, when the arm also had
+// a field block, the lowered block under ^dag_surface_field_decl_block. True iff that carried head
+// is a nameless type body. The kind is the lowered image of the production identity the raw path
+// reads, so the decision stays spelling-agnostic (a named constructor spelled like a lex token
+// still lowers to an Atom and reads as named). A dotted qualified-name spine lowers to a two-child
+// head/tail Conj, which a record Conj would also be -- qualified_name_spine_shape_present (the
+// single authority for the spine's label set) is what tells them apart.
+fn sugar_where_carried_head_is_nameless(variant: Node) -> Bool {
+  match sugar_named_child_optional(root: variant, name: ^dag_surface_type_expr) {
+    Absent => false
+    Present { value: head } =>
+      match head.kind {
+        TypeNode { connective: Atom { identity: _ } } => false
+        TypeNode { connective: Instantiation } => false
+        TypeNode { connective: Occupancy } => false
+        TypeNode { connective: Conj } => !qualified_name_spine_shape_present(root: head)
+        TypeNode { connective: Disj } => true
+        TypeNode { connective: Arrow } => true
+        ComputationNode { behavior: _ } => true
       }
   }
 }
