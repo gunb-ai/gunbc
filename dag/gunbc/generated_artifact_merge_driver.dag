@@ -97,7 +97,7 @@ fn generated_artifact_merge_driver_config_value() -> String {
 }
 
 // THE REGENERATION COMMAND IS A PARAMETER, NOT AN IMPORT, AND THE REASON IS THE ACYCLICITY LAW
-// RATHER THAN TASTE. Its single authority is gunbc.ci_spec generated_artifact_author_regen_command, and
+// RATHER THAN TASTE. Its single authority is gunbc.ci.ci_spec generated_artifact_author_regen_command, and
 // importing it here would close a real cycle: gunbc.generated_artifact reads this module for the
 // artifact path, and ci_spec reaches gunbc.generated_artifact through the heal roster. So the
 // consumer that already sits downstream of both — gunbc.generated_artifact_emit — supplies it, and

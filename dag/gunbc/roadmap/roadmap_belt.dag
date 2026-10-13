@@ -1,10 +1,10 @@
-module gunbc.roadmap_belt
+module gunbc.roadmap.roadmap_belt
 
 import std.types { String, Int, List, Bool }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
-import gunbc.roadmap_document { RoadmapDocument }
-import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
-import gunbc.roadmap_authority {
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId }
+import gunbc.roadmap.roadmap_document { RoadmapDocument }
+import gunbc.roadmap.roadmap_spawner { SpawnFrontier, spawn_frontier }
+import gunbc.roadmap.roadmap_authority {
   roadmap_authority_projection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
   authored_merged_prs,
@@ -16,7 +16,7 @@ import gunbc.membership_reconcile {
   membership_plan_admitting_outcome,
 }
 import gunbc.ownership { Ownership, Owned }
-import gunbc.roadmap_dispatch_actuator { DispatchLiveSession, dispatch_session_is_owned }
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchLiveSession, dispatch_session_is_owned }
 import extdeps.languages.json.emit {
   JsonValue,
   serialize_json,
@@ -34,7 +34,7 @@ import extdeps.languages.json.emit {
 // start work and the reconciler emits nothing. ManualReady (PRODUCTION): the operator may start a
 // Ready node through the shared launch admission; the timer may not start new work, while its
 // reconciliation (teardown of departed members), verification, publication and cleanup continue --
-// so the reconciler still runs and only the launch admission (gunbc.roadmap_launch_admission
+// so the reconciler still runs and only the launch admission (gunbc.roadmap.roadmap_launch_admission
 // launch_gate_cause) withholds the timer's spawns. AutomaticReady: the timer starts Ready nodes up
 // to capacity, the retired default. The production value is roadmap_belt_production_spawn_mode.
 
@@ -219,11 +219,11 @@ type BeltReconcile {
 
 // EVERY upsert the membership plan produces is returned, in plan order; the reconcile does NOT
 // truncate to free capacity. Capacity is the launch admission's gate
-// (gunbc.roadmap_launch_admission launch_gate_capacity, with `reserved` counting the launches
+// (gunbc.roadmap.roadmap_launch_admission launch_gate_capacity, with `reserved` counting the launches
 // already admitted in the same fold), so the timer's excess rows receive a typed LaunchNoCapacity
 // from the one decision instead of vanishing into a count here -- review 5059520727 found `spawns =
 // ups.take(n: free)` standing as a second capacity authority in front of the admission. Any
-// deferred summary is DERIVED from those per-row outcomes (gunbc.roadmap_belt_actuate
+// deferred summary is DERIVED from those per-row outcomes (gunbc.roadmap.roadmap_belt_actuate
 // belt_tick_deferred_count), never computed beside them. The idempotence argument is unchanged: a
 // refused node stays desired-not-observed and is planned again next tick.
 
@@ -247,7 +247,7 @@ fn belt_reconcile(
 }
 
 // The membership plan runs in BOTH non-paused modes. In ManualReady the upserts it plans are still
-// handed to the tick, which folds each through gunbc.roadmap_launch_admission with cause Timer and
+// handed to the tick, which folds each through gunbc.roadmap.roadmap_launch_admission with cause Timer and
 // receives LaunchCauseNotPermitted -- so the receipt shows what the timer WOULD have started and
 // why it did not (the plan's exit: the timer returns a projection of the one decision), while the
 // teardowns of departed members proceed. Withholding the plan here instead would make ManualReady

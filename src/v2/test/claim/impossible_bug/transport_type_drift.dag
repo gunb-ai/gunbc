@@ -1,4 +1,4 @@
-module v2.test.impossible_bug.transport_type_drift
+module v2.test.claim.impossible_bug.transport_type_drift
 
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],

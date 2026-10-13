@@ -1,4 +1,4 @@
-module gunbc.fabric_store_operation_admission
+module gunbc.fabric.fabric_store_operation_admission
 
 import std.types { NonEmptyStr, String, Bool, Timestamp, List }
 import std.optional { Present, Absent }
@@ -13,7 +13,7 @@ import gunbc.spark.pair_serving_authority_log {
   pair_authority_event_decode, pair_authority_partition_prefix, host_placement_partition,
 }
 import gunbc.spark.host_effect_quiescence { ClaimantTerminal, RecoveryAuthorized }
-import gunbc.durable_cas_fabric_storage { cas_slot_head_prefix }
+import gunbc.fabric.durable_cas_fabric_storage { cas_slot_head_prefix }
 import gunbc.auth.approval_capability { ApprovalCapability, CapabilityRefusal }
 import gunbc.auth.approval_decision_store { ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused }
 import gunbc.auth.approval_store_receipt { verify_store_receipt, StoreReceiptAuthentic, StoreReceiptNotAuthentic, StoreReceiptTagUnreadable }
@@ -25,9 +25,9 @@ import gunbc.auth.approval_store_receipt { verify_store_receipt, StoreReceiptAut
 // credential the STORE verifies for that operation (operator ruling A, 2026-09-27). This module is
 // that decision, as one fold over supplied readings -- the head, the advanced-to object's text, what
 // the writer presented, the presenting principal's grants, the receipt key and the instant -- so the
-// door (gunbc.fabric_storage_serve's advance arm) performs the reads and this decides.
+// door (gunbc.fabric.fabric_storage_serve's advance arm) performs the reads and this decides.
 //
-// A DECLARED FRONTIER (DESIGN §3c): admit_store_operation's consumer is gunbc.fabric_storage_serve's
+// A DECLARED FRONTIER (DESIGN §3c): admit_store_operation's consumer is gunbc.fabric.fabric_storage_serve's
 // advance arm, which reads the advanced-to object, the presented credential, the presenting
 // principal's grants (a per-principal roster over jolly-owl-158's door principal, gunbc#12482) and
 // the receipt keyring, and calls this before fabric_storage_file_advance (d0_store_operation_wall

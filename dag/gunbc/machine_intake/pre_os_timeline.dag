@@ -1,23 +1,23 @@
-module gunbc.machine_intake_pre_os_timeline
+module gunbc.machine_intake.pre_os_timeline
 
-import gunbc.mtcollins_memory_change { mtcollins_dram_cycle_start }
+import gunbc.host.mtcollins_memory_change { mtcollins_dram_cycle_start }
 
-import gunbc.machine_intake_pre_os_refusal { PreOsSourceChanged, PreOsOccurrenceNotAdjacent, PreOsMachineDisagrees, PreOsOccurrenceConflict, PreOsRefusal, PreOsContinuityRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at, pre_os_assessment_refusal }
+import gunbc.machine_intake.pre_os_refusal { PreOsSourceChanged, PreOsOccurrenceNotAdjacent, PreOsMachineDisagrees, PreOsOccurrenceConflict, PreOsRefusal, PreOsContinuityRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at, pre_os_assessment_refusal }
 import std.types { Bool, List, Map, NonEmptyStr, String }
 import v2.std.collection { empty_map, map_insert, map_lookup }
 import gunbc.guarantee_rung { GuaranteeRung }
-import gunbc.memory_configuration { MemoryConfiguration }
+import gunbc.host.memory_configuration { MemoryConfiguration }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.measure { ByteSize, byte_size }
 import std.content_hash { Sha256Hash }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalAssessment, GoalAssessmentRefused, GoalIndeterminate }
 import std.algebra { FreeSemigroup, Empty }
-import gunbc.memory_observation { read_verified_memory_capture }
-import gunbc.machine_intake_pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation, pre_os_diagnostic_absence }
-import gunbc.fleet_observation_observation_envelope { ObservationEnvelope, SourceMachineBinding, RetentionExposure, retention_exposure, source_byte_fact }
-import gunbc.fleet_observation_capture_chunk { ChunkOccurrence, ContinuityNotEstablished, ContinuityShortOfRange, ContinuityPositionsIncomparable, ContinuityCoversRange, range_end, StreamPosition, compare_positions, PositionBefore, PositionSame, PositionAfter, PositionIncomparable, position_advanced_by }
-import gunbc.machine_intake_pre_os_replay { pre_os_committed_envelope, pre_os_same_source_generation, pre_os_bound_envelope, pre_os_chunk_continuity, PreOsEnvelopeKey, pre_os_envelope_key, pre_os_occurrence_index, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
-import gunbc.machine_intake_pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
+import gunbc.host.memory_observation { read_verified_memory_capture }
+import gunbc.machine_intake.pre_os_inventory_assessment { PreOsInventoryQuestion, pre_os_inventory_observation, pre_os_diagnostic_absence }
+import gunbc.fleet_observation.observation_envelope { ObservationEnvelope, SourceMachineBinding, RetentionExposure, retention_exposure, source_byte_fact }
+import gunbc.fleet_observation.capture_chunk { ChunkOccurrence, ContinuityNotEstablished, ContinuityShortOfRange, ContinuityPositionsIncomparable, ContinuityCoversRange, range_end, StreamPosition, compare_positions, PositionBefore, PositionSame, PositionAfter, PositionIncomparable, position_advanced_by }
+import gunbc.machine_intake.pre_os_replay { pre_os_committed_envelope, pre_os_same_source_generation, pre_os_bound_envelope, pre_os_chunk_continuity, PreOsEnvelopeKey, pre_os_envelope_key, pre_os_occurrence_index, PreOsSelCursor, PreOsSelIngestion, pre_os_ingest_sel }
+import gunbc.machine_intake.pre_os_observer { PreOsMilestones, pre_os_milestones, pre_os_host_userspace_boot, pre_os_firmware_boot_selection, pre_os_boot_assessment, pre_os_training_assessment }
 
 // Parser selection is an observation request, not a success goal. A platform
 // without SEL can supply only console observations. No reported-source list is

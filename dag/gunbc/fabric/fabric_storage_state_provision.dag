@@ -1,4 +1,4 @@
-module gunbc.fabric_storage_state_provision
+module gunbc.fabric.fabric_storage_state_provision
 
 import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -18,7 +18,7 @@ import gunbc.auth.approval_run_identity { run_attempt }
 import gunbc.auth.approval_mac_key_provision { provision_one, standing_ok, standing_line }
 import gunbc.auth.approved_secret_grants { secret_grants_via_approval }
 import gunbc.auth.fleet_secret_accessor_roster { fabric_state_key_accessor_row, fleet_accessor_grant }
-import gunbc.fabric_storage_state_policy { fabric_state_key_secret_ref }
+import gunbc.fabric.fabric_storage_state_policy { fabric_state_key_secret_ref }
 
 // The reviewed convergence workload supplies this credential only after its app approval gate.
 // No operator bearer-file fallback and no implied grant from a local host login.

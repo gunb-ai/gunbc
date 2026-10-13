@@ -1,4 +1,4 @@
-module gunbc.host_disk_reclaim_units
+module gunbc.host.host_disk_reclaim_units
 
 import std.types { String, NonEmptyStr, Int }
 import std.measure { Second, second, second_count }
@@ -11,11 +11,11 @@ import extdeps.systemd.unit_file {
   SystemdInstallSection, Installable, NotInstallable, WantedBy,
   serialize_systemd_unit_file,
 }
-import gunbc.host_disk_reclaim { reclaim_per_repo_timeout }
+import gunbc.host.host_disk_reclaim { reclaim_per_repo_timeout }
 
 // THE INSTALLATION AUTHORITY FOR THE FLEET'S STANDING DISK-RECLAIM MECHANISM.
 //
-// gunbc.host_disk_reclaim models what the reclaimer DECIDES -- which slots are eligible, which
+// gunbc.host.host_disk_reclaim models what the reclaimer DECIDES -- which slots are eligible, which
 // refusals are distinct, where the fragmentation gate sits. This module models how that mechanism
 // is INSTALLED: the oneshot service and the calendar timer that drives it. The two are separate
 // facts and neither implies the other, which is exactly the gap this module closes -- before it,
@@ -28,7 +28,7 @@ import gunbc.host_disk_reclaim { reclaim_per_repo_timeout }
 // SystemdServiceDirective and were added there, because a renderer that cannot express them still
 // produces a unit that runs and simply competes with live CI while doing so.
 // Service and timer for the fleet-wide runner disk reclaimer, rendered from
-// extdeps.systemd.unit_file. Cadence and refusal semantics are gunbc.host_disk_reclaim.
+// extdeps.systemd.unit_file. Cadence and refusal semantics are gunbc.host.host_disk_reclaim.
 
 // TWO DIRECTIVES ON THE INCUMBENT UNIT ARE DELIBERATELY NOT RENDERED, AND THE SECOND IS THE POINT.
 //
@@ -58,7 +58,7 @@ fn reclaim_timer_unit_name() -> NonEmptyStr {
 // EXECSTART NAMES THE INSTALLED SCRIPT, AND THAT BINDING IS THE ONE OPEN SEAM IN THIS MODULE.
 //
 // The terminal form is this repository's own binary running the decision that
-// gunbc.host_disk_reclaim already models, with no shell in the path. That subcommand does not
+// gunbc.host.host_disk_reclaim already models, with no shell in the path. That subcommand does not
 // exist yet, and a unit whose ExecStart named it would install a mechanism that cannot run --
 // strictly worse than the incumbent on a fleet whose disks fill without it.
 //
@@ -89,7 +89,7 @@ data reclaim_timer_randomized_delay: Second = second(count: 900)
 
 // A WEDGED REPACK MUST NOT HOLD THE TIMER FOREVER, AND THIS BOUND IS NOT THE PER-REPO ONE.
 //
-// gunbc.host_disk_reclaim reclaim_per_repo_timeout bounds ONE repository's repack; this bounds the
+// gunbc.host.host_disk_reclaim reclaim_per_repo_timeout bounds ONE repository's repack; this bounds the
 // whole pass across every slot on the host. They are different quantities and the unit bound is
 // derived from the inner one rather than restated, so a change to the per-repo budget cannot leave
 // the outer bound quietly contradicting it. Two hours of headroom over the derived floor covers

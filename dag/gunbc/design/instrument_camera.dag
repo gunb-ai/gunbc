@@ -2,7 +2,7 @@ module gunbc.design.instrument_camera
 
 import std.types { String, Bool, Int, List }
 import std.measure { Millisecond, millisecond, millisecond_count }
-import gunbc.v1_deletion_plan { V1FinishLine, v1_finish_line_key, v1_exit_finish_lines }
+import gunbc.v1.v1_deletion_plan { V1FinishLine, v1_finish_line_key, v1_exit_finish_lines }
 
 // FOUR OWNERS, AND THE SPLIT IS THE WHOLE POINT (instrument wave, operator directive 2026-08-04).
 // Before physical-device input can drive presentation, it has to be impossible for it to drive

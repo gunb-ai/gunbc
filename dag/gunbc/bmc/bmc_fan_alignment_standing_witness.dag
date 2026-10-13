@@ -1,8 +1,8 @@
-module gunbc.bmc_fan_alignment_standing_witness
+module gunbc.bmc.bmc_fan_alignment_standing_witness
 
 import std.types { Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.bmc_fan_alignment_standing {
+import gunbc.bmc.bmc_fan_alignment_standing {
   AlignmentAdmitsApplyEvaluation,
   AlignmentRefused,
   AlignmentStandingDuplicate,
@@ -24,16 +24,16 @@ import gunbc.bmc_fan_alignment_standing {
   fleet_bmc_fan_alignment_standings,
   host_alignment_admits_apply_evaluation,
 }
-import gunbc.bmc_fan_projection {
+import gunbc.bmc.bmc_fan_projection {
   BmcFanProjectionApplyRefused,
   BmcFanProjectionApplySuitable,
   BmcFanProjectionObservedProgramNotAdopted,
   BmcFanProjectionObservedProgramRepresentableNotAdopted,
   bmc_fan_policy_projection_apply_suitability,
 }
-import gunbc.fleet_bmc_state { srv4_bmc_fan_projection_capability }
-import gunbc.fleet_bmc_observation { srv4_bmc_fan_converged_policy_observation }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_bmc_state { srv4_bmc_fan_projection_capability }
+import gunbc.fleet.fleet_bmc_observation { srv4_bmc_fan_converged_policy_observation }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 
 // THE HOSTS I RECONFIGURED BY HAND MUST REFUSE ACTUATION. This is the conjunct that makes the
 // interlock real rather than declared: it fails the moment someone marks srv3 or srv4 adopted.

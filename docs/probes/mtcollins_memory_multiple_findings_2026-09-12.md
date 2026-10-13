@@ -26,11 +26,11 @@ gunbc run --source-root dag --source-root src/v2 \
 
 `assess_mtcollins_two_configurations` re-derives the hash-verified production-admission refusals, distinct observed byte pairs and sources, located mismatch, independent per-socket capacity conflict, and unresolved Samsung catalog binding. This is a read-only replay; it performs no hardware action.
 
-The controls live in `dag/test/claim/host/memory_multiple_findings_witness_test.dag`, with the original assessment, fulfillment and selection controls in their sibling witness modules. They cover both known pairs, an unobserved pair, order and duplicate findings, missing/failed observations, every-cycle inventory coverage, firmware and socket applicability, unbound identity, independent capacity, and the real production fulfillment refusal. For example, dispatch the identity-join and production-consumer controls through the existing instrument:
+The controls live in `dag/test/claim/host/memory_multiple_findings_witness.dag`, with the original assessment, fulfillment and selection controls in their sibling witness modules. They cover both known pairs, an unobserved pair, order and duplicate findings, missing/failed observations, every-cycle inventory coverage, firmware and socket applicability, unbound identity, independent capacity, and the real production fulfillment refusal. For example, dispatch the identity-join and production-consumer controls through the existing instrument:
 
 ```sh
 claim_batch --source-root dag --source-root src/v2 \
-  --entry dag/test/claim/host/memory_multiple_findings_witness_test.dag \
+  --entry dag/test/claim/host/memory_multiple_findings_witness.dag \
   --functions w_printed_token_standings_cannot_qualify_unbound_modules,w_second_configuration_withholds_actual_production_fulfillment
 ```
 

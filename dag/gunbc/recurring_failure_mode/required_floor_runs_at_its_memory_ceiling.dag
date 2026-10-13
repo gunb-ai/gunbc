@@ -22,6 +22,6 @@ data required_floor_runs_at_its_memory_ceiling: RecurringFailureMode = Recurring
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "witness_floor_run_script", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness.witness_floor_workflow", decl_name: "witness_floor_run_script", field: WholeDeclaration },
   ],
 }

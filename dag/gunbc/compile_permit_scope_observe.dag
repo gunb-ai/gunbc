@@ -6,9 +6,9 @@ import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import product.host_identity { HostIdentity }
 import extdeps.systemd { EnvironmentProperty, AfterProperty, WantsProperty, SystemdUnitProperty }
-import extdeps.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
+import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
 import extdeps.jobserver { jobserver_fifo_path_from_makeflags, jobserver_makeflags_env_name }
-import gunbc.host_effect { HostEffectTransport }
+import gunbc.host.host_effect { HostEffectTransport }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read,
   SystemdPropertyCaptured,
@@ -26,16 +26,16 @@ import gunbc.compile_permit_scope {
   FleetCompileCancellationStanding,
   fleet_cancellation_standing,
 }
-import gunbc.fleet_runner_connectivity { fleet_hosts }
-import gunbc.fleet_show_effective_read { fleet_host_ssh_transport }
-import gunbc.runner_unit { runner_slot_unit_name }
-import gunbc.host_converge { gunbc_runner_jobserver_service }
-import gunbc.runner_slot_allocation {
+import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
+import gunbc.fleet.fleet_show_effective_read { fleet_host_ssh_transport }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.host.host_converge { gunbc_runner_jobserver_service }
+import gunbc.runner.runner_slot_allocation {
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
-import gunbc.runner_unit_file { runner_unit_ctrl_jobserver_fifo_env_name }
+import gunbc.runner.runner_unit_file { runner_unit_ctrl_jobserver_fifo_env_name }
 
 data compile_permit_scope_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 

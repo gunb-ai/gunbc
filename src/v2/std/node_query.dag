@@ -175,7 +175,7 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 // `A(T)` declares the field list [0: T] and `A { v: T }` declares [v: T]. Nullary is the empty
 // payload Conj (arm_payload_from_target Nullary), not an absent one.
 // CONSUMERS (DESIGN 3c): the producers (v2.compiler.body_lowering_fold) build the field edges
-// directly; these READERS are consumed today by v2.test.parse.variant_field_lowering over real
+// directly; these READERS are consumed today by v2.test.claim.parse.variant_field_lowering over real
 // normalize output, and their production consumer is the declared frontier of the same lane:
 // field projection off a receiver -- `expr.field` names a DECLARED field of the receiver's type
 // or refuses, located -- and the construction/elimination typing that joins a positional operand

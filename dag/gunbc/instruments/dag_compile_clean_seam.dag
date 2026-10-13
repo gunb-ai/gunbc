@@ -1,10 +1,10 @@
-module tools.dag_compile_clean_seam
+module gunbc.instruments.dag_compile_clean_seam
 
-import tools.dag_compile_clean_partition {
+import gunbc.instruments.dag_compile_clean_partition {
   CompileCleanShardVerdict, ShardClean, ShardFailed,
   compose_compile_clean_shard_verdicts
 }
-import tools.dag_compile_clean_seam_transport {
+import gunbc.instruments.dag_compile_clean_seam_transport {
   CrossShardSeamProbeResult,
   run_cross_shard_seam_probe,
   cross_shard_seam_class_marker,

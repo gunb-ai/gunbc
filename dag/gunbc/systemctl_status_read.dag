@@ -3,9 +3,9 @@ module gunbc.systemctl_status_read
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, List }
-import gunbc.host_effect { HostEffectTransport }
+import gunbc.host.host_effect { HostEffectTransport }
 import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
-import gunbc.host_operation_exec {
+import gunbc.host.host_operation_exec {
   HostOperationObserved,
   HostOperationRefused,
   host_operation_exec,

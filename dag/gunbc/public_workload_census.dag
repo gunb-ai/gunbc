@@ -23,7 +23,7 @@ import extdeps.github.workflow_runs {
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import gunbc.runner_label_resolution {
+import gunbc.runner.runner_label_resolution {
   resolve_runner_label,
   arm_standing,
   ArmStanding,
@@ -45,7 +45,7 @@ import gunbc.runner_label_resolution {
 // DECLARED VERSUS OBSERVED ARE DIFFERENT FACTS. A workflow file declares a runs-on value; a job
 // resource may report the label that actually ran. Absence of a run is a recorded value
 // (NoRunObserved), never a blank. Architecture and provider are read from
-// gunbc.runner_label_resolution's vendor catalogs, never from a hyphen grammar: a label without a
+// gunbc.runner.runner_label_resolution's vendor catalogs, never from a hyphen grammar: a label without a
 // catalog row is ArmUndetermined, not x64.
 //
 // THIS MODULE IS A CENSUS AND A SELECTION. It does not port, benchmark, authorize a trial, or

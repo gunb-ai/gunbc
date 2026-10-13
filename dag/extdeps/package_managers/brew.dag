@@ -1,4 +1,4 @@
-module extdeps.brew
+module extdeps.package_managers.brew
 
 import std.types { NonEmptyStr, FilePath }
 

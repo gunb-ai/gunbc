@@ -1,4 +1,4 @@
-module tools.dag_compile_clean_cli_floor_agreement
+module gunbc.instruments.dag_compile_clean_cli_floor_agreement
 
 import gunbc.compile_clean_diagnostic_policy {
   compile_clean_unlisted_import_use_blocks,

@@ -15,7 +15,7 @@ data match_variant_lookup_does_not_peel_type_alias: RecurringFailureMode = Recur
 
     "NOT JOINED TO the Coproduct(FreeMonoid) method-lookup refusal on bold-swift at src/v2/extdeps/languages/c.dag:385 (method list_push not found). Shared carrier name and similar-shaped lookup failure is a topic match until a discriminator binds them.",
 
-    "RECOGNITION RULE: a match of Cons or Empty against a binder whose declared type is a container-typed generic use of an alias of FreeMonoid (type-argument children) refuses naming the alias. Nullary aliases of a coproduct already peel -- enrolled and passing: src/v2/test/claim/algebra/generic_alias_coproduct_instantiation_test.dag, type SymbolPath = FreeMonoid<Symbol>, matches Cons. Changing only an outer type spelling to the coproduct name, holding the pattern fixed, moves the same diagnostic onto the next List-typed field in the pattern.",
+    "RECOGNITION RULE: a match of Cons or Empty against a binder whose declared type is a container-typed generic use of an alias of FreeMonoid (type-argument children) refuses naming the alias. Nullary aliases of a coproduct already peel -- enrolled and passing: src/v2/test/claim/algebra/generic_alias_coproduct_instantiation.dag, type SymbolPath = FreeMonoid<Symbol>, matches Cons. Changing only an outer type spelling to the coproduct name, holding the pattern fixed, moves the same diagnostic onto the next List-typed field in the pattern.",
 
     "RUNG FOUND AT: mitigatable -- the refusal is loud. CEILING: structurally guaranteed when variant lookup peels aliases to the coproduct that declares the constructor, so the alias spelling and the coproduct spelling admit the same arms.",
 

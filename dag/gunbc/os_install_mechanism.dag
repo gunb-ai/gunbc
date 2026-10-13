@@ -15,7 +15,7 @@ import extdeps.bmc.capability {
   BmcFirmwareVersion,
 }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog }
-import gunbc.fleet_bmc_firmware_evidence {
+import gunbc.fleet.fleet_bmc_firmware_evidence {
   BmcFirmwareCapabilityEvidenceAbsent,
   BmcFirmwareCapabilityResolved,
   BmcFirmwareCapabilityVersionAmbiguous,
@@ -30,7 +30,7 @@ import gunbc.fleet_bmc_firmware_evidence {
   srv3_bmc_firmware_evidence,
   srv4_bmc_firmware_evidence,
 }
-import gunbc.machine_intake_access {
+import gunbc.machine_intake.access {
   AccessContextBound,
   AccessContextCatalogRefused,
   AccessContextControlRouteEvidenceMismatch,
@@ -74,8 +74,8 @@ import gunbc.boot_artifact_delivery {
 
 // THE LEGACY MECHANISM VOCABULARY. Three arms, each the name an existing
 // consumer (gunbc.os_install, gunbc.nbd_proxy_virtual_media_install,
-// gunbc.srv3_os_install_actuate_scope) matches on. FirmwareUpdateThenVirtualMedia
-// is gone: a firmware transition is not a delivery (gunbc.bmc_firmware_transition),
+// gunbc.srv3.srv3_os_install_actuate_scope) matches on. FirmwareUpdateThenVirtualMedia
+// is gone: a firmware transition is not a delivery (gunbc.bmc.bmc_firmware_transition),
 // and the arm that preselected "then virtual media" from "some catalog row is
 // VM-capable" was the second solver ruling 3 §3 deleted.
 type OsInstallMechanism
@@ -86,7 +86,7 @@ type OsInstallMechanism
 // FROZEN X UNDER A LIVE Y (DESIGN §3 replacement migration, machine-intake ruling 2026-08-29
 // §14, ruling 3 §3). gunbc.boot_artifact_delivery is the one delivery solver. This module is a
 // compatibility PROJECTION of its answer onto the three legacy mechanism names, kept only
-// because gunbc.srv3_os_install_actuate_scope and gunbc.nbd_proxy_virtual_media_install still
+// because gunbc.srv3.srv3_os_install_actuate_scope and gunbc.nbd_proxy_virtual_media_install still
 // read OsInstallMechanismSolution and fail closed on its refusals. It has no solver of its own
 // any more: the capability-only solve_install_mechanism (virtual media from a capability row
 // alone, PXE by absence in its else-arm) and the FirmwareUpdateThenVirtualMedia precursor were
@@ -240,7 +240,7 @@ fn install_boot_target_for(mechanism: OsInstallMechanism) -> RedfishBootSourceOv
 }
 
 // The boot target a host's install would use, carried as a standing so a host with no derived
-// mechanism has no boot target either. gunbc.bmc_onboarding previously handed srv3's
+// mechanism has no boot target either. gunbc.bmc.bmc_onboarding previously handed srv3's
 // board-default CD target to EVERY host including srv4, whose firmware justifies no delivery
 // mechanism at all — a live contradiction between the evidence model and the onboarding model.
 type InstallBootTargetStanding

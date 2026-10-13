@@ -1,4 +1,4 @@
-module v2.test.manual.s1_parse_harness
+module v2.test.claim.manual.s1_parse_harness
 
 
 fn s1_parse_ok(source: String, file: Symbol) -> Bool {

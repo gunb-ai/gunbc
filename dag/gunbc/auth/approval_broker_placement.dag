@@ -2,7 +2,7 @@ module gunbc.auth.approval_broker_placement
 
 import gunbc.live_deploy.desired { prod_role_actuated_realization }
 import std.types { NonEmptyStr }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   ProdRoleHolder,
   ProdRoleRealization,
   ProdRoleRealizedBy,
@@ -18,12 +18,12 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_public_host_on,
   approval_broker_base_url_on,
 }
-import gunbc.fleet_tailnet { fleet_tailnet_domain }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
 
 // WHERE THE APPROVAL BROKER IS INSTALLED, for readers OUTSIDE the broker process: the GCP IAM
-// converge job that must run beside it (gunbc.fleet_converge_workflow) and the approvals app's build
+// converge job that must run beside it (gunbc.fleet.fleet_converge_workflow) and the approvals app's build
 // config (gunbc.approve_ios_project). It is the host of the prod-role holder -- the same token
-// (gunbc.roadmap_dashboard_instance ProdRoleHolder) from which gunbc.live_deploy.spec builds the
+// (gunbc.roadmap.roadmap_dashboard_instance ProdRoleHolder) from which gunbc.live_deploy.spec builds the
 // broker's unit, so the job and the app name the host the unit is actually on. Under a refused
 // realization there is no such host and each reader refuses through its own arm.
 //

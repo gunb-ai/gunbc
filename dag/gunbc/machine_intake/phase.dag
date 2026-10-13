@@ -1,4 +1,4 @@
-module gunbc.machine_intake_phase
+module gunbc.machine_intake.phase
 
 import std.types { Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
@@ -15,7 +15,7 @@ import gunbc.deployment_risk { DeploymentRiskClass, ProdRisk, TestRisk }
 // qualification. The state between them is not Admitted. The phase vocabulary here is the
 // ruling's, one arm per required result; the required result itself is stated on the phase's
 // row in docs/plans/machine-intake-design.md and is what a receipt for that phase must carry.
-// gunbc.bmc_onboarding's single-lifecycle vocabulary (CredentialsRotated, OsInstalled,
+// gunbc.bmc.bmc_onboarding's single-lifecycle vocabulary (CredentialsRotated, OsInstalled,
 // FabricJoined) is what this splits apart; extracting its BMC-security, provisioning and
 // fabric-join standings into these three transactions is the follow-up the ruling's §14 names,
 // not a second lifecycle grown beside it.

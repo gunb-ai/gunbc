@@ -1,4 +1,4 @@
-module gunbc.durable_cas_fabric_storage
+module gunbc.fabric.durable_cas_fabric_storage
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.nat { Nat }
@@ -23,7 +23,7 @@ import std.fabric_storage {
   FabricObjectStored, FabricPutRefused, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
 }
-import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
 
 // ── A SECOND REALIZATION OF THE DURABLE COMPARE-AND-SET: ONE SLOT IS ONE FABRIC-DB HEAD ────────
 //
@@ -33,7 +33,7 @@ import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_put, f
 // across the FLEET -- an operator's consent to a destructive transaction, consumed once whichever
 // executor runs it -- cannot live there: two hosts have two roots, and each sees the other's slot
 // absent. The fabric DB (std.fabric_storage, one placed store every host reaches through
-// gunbc.fabric_storage_client) is exactly the fleet-wide linearization such a claim needs: a named head
+// gunbc.fabric.fabric_storage_client) is exactly the fleet-wide linearization such a claim needs: a named head
 // advanced by a compare-and-set on the expected object, whose generation the store itself keeps.
 // So this module binds the same CAS shape to a head. DESIGN §3: transport is a realization handler
 // bound to the shape, one of N, never a fact about the operation -- the attempt a caller builds is

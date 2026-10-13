@@ -60,7 +60,7 @@ fn form_label(form: CallForm) -> String {
 // delegate declaration that projects the primitive).
 fn egress_alias_rows() -> List<SpellingAliasRow> {
   [
-    spelling_alias(spelling: "count", canonical: "length", reason: "gunbc.v1_interpreter_primitive_surface method_call.length carries the spellings length, count and size on one arm; free_call.count and free_call.length both answer the element count of a free monoid (chars for String, items for List) -- one operation, three spellings"),
+    spelling_alias(spelling: "count", canonical: "length", reason: "gunbc.v1.v1_interpreter_primitive_surface method_call.length carries the spellings length, count and size on one arm; free_call.count and free_call.length both answer the element count of a free monoid (chars for String, items for List) -- one operation, three spellings"),
     spelling_alias(spelling: "size", canonical: "length", reason: "third spelling on the method_call.length arm; no other surface carries it"),
     spelling_alias(spelling: "len", canonical: "length", reason: "std.primitives len_contract is the cost contract of the same element-count operation; no registry row, arm or bridge spells len"),
     spelling_alias(spelling: "string_length", canonical: "length", reason: "v1_rt string_length is the String realization of free-monoid length (code-point count, measured on v1_rt::string_length and the free_call.length arm's Str case); its own contract, registry row and bridge are the bridge/runtime-name-differs-from-operation-name case"),
