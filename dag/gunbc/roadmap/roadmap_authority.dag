@@ -2885,9 +2885,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/compiler_frontend_program_status.dag"),
       line: ticket(t: updated(t: updated(t: fields(
           headline: "Every lowered node keeps its occurrence, and service modules lower",
-          boundary: "gunbc.compiler_frontend_program_status: ServiceModuleLowering is PrerequisiteDelivered (gunbc#13833; carriers landed, ServiceSetAside deleted). Still PrerequisiteOutstanding: LoweringOccurrenceProjection and UsesClauseCarrier.",
-          displaced_cost: "A rebuilt atom without its occurrence, or a fn with a uses clause, still refuses its module at lowering, so those references stay outside the XL-2 residual.",
-          first_slice: "Close LoweringOccurrenceProjection (gunbc#13828 in flight). UsesClauseCarrier stays outstanding.",
+          boundary: "gunbc.compiler_frontend_program_status: ServiceModuleLowering is PrerequisiteDelivered (gunbc#13833; carriers landed, ServiceSetAside deleted). LoweringOccurrenceProjection is Delivered (gunbc#13828, cdbaa92531d). Still PrerequisiteOutstanding: UsesClauseCarrier.",
+          displaced_cost: "A fn with a uses clause still refuses its module at lowering, so those references stay outside the XL-2 residual.",
+          first_slice: "UsesClauseCarrier stays outstanding.",
           red_control: "A rebuilt atom without its occurrence keeps LoweringOccurrenceProjection OUTSTANDING. A uses-clause fn refused at lowering keeps UsesClauseCarrier OUTSTANDING.",
           out_of_scope: "The rehearsal itself. Service-member carriers are delivered; do not redesign them.",
           handback: "The remaining outstanding arms PrerequisiteDelivered, with evidence rows."
