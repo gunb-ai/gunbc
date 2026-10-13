@@ -2,7 +2,7 @@ module test.claim.host_custody_export_receipt_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
-import std.dissolution { UnboundDissolution, BoundDissolution }
+import std.dissolution { UnboundDissolution, BoundDissolution, DeclarationAppears, DeclarationRetires }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
@@ -10,7 +10,17 @@ import gunbc.host_custody_export_receipt {
   host_custody_export_receipt_path,
   host_custody_export_receipt_suffix,
   host_custody_export_receipt_reader_frontier,
+  host_custody_export_receipt_wire,
+  host_custody_export_receipt_decode,
+  host_custody_export_generation_standing,
+  HostCustodyExportReceiptDecoded,
 }
+import gunbc.worker_turn_snapshot_custody {
+  snapshot_custody_declaration,
+  claude_worker_turn_snapshot_custody,
+  cursor_worker_turn_snapshot_custody,
+}
+import gunbc.dispatch_credential_snapshot { ClaudeFromSnapshot, CursorFromSnapshot }
 import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path }
 import gunbc.claude_code_credential { claude_code_oauth_harness_host_path }
 import gunbc.typed_remote_file_write { TypedRemoteFileConvergenceRefused }
@@ -24,8 +34,6 @@ import gunbc.fleet.host_credential_custody_converge {
   CustodyExportReceiptOwed,
   CustodyExportReceiptNotOwed,
   host_custody_export_receipt_from_row,
-  host_custody_export_receipt_wire,
-  host_custody_export_generation_standing,
   plan_host_custody_export,
   CustodyExportNotOwed,
   CustodyExportWithheld,
@@ -64,11 +72,52 @@ test fn the_export_receipt_path_is_the_placed_path_plus_the_one_suffix() -> Bool
 
 test fn the_receipt_path_names_its_later_consumer() -> Bool {
   match host_custody_export_receipt_reader_frontier {
-    UnboundDissolution { description: d } =>
-      string_contains(s: d as String, pattern: "dispatch_credential_snapshot_take")
-        && string_contains(s: d as String, pattern: "no receipt-free fallback")
-    BoundDissolution { trigger: _ } => false
+    UnboundDissolution { description: _ } => false
+    BoundDissolution { trigger: t } =>
+      match t {
+        DeclarationAppears { ref: r } =>
+          (r.module_path as String) == "gunbc.dispatch_credential_snapshot"
+            && (r.decl_name as String) == "dispatch_credential_snapshot_take"
+        DeclarationRetires { ref: _ } => false
+      }
   }
+}
+
+test fn decode_of_the_wire_is_the_receipt() -> Bool {
+  match host_custody_export_receipt_from_row(
+    row: cursor_row, host: "srv2" as HostIdentity, sm_version: supplied_version, placed_material: placed_material,
+  ) {
+    Absent => false
+    Present { value: rec } =>
+      match host_custody_export_receipt_decode(text: host_custody_export_receipt_wire(receipt: rec)) {
+        HostCustodyExportReceiptDecoded { receipt: back } =>
+          (back.sm_version as String) == (rec.sm_version as String)
+            && (back.host as String) == (rec.host as String)
+            && back.placement == rec.placement
+            && back.reader == rec.reader
+            && back.publisher == rec.publisher
+            && (back.content_sha256 as String) == (rec.content_sha256 as String)
+        _ => false
+      }
+  }
+}
+
+test fn the_composition_is_the_converge_rows() -> Bool {
+  let cursor_decl = snapshot_custody_declaration(executor: CursorFromSnapshot)
+  let claude_decl = snapshot_custody_declaration(executor: ClaudeFromSnapshot)
+  (cursor_decl.path as String) == (cursor_row.path as String)
+    && (cursor_decl.secret.secret as String) == (cursor_row.secret.secret as String)
+    && (cursor_decl.secret.version as String) == (cursor_row.secret.version as String)
+    && (cursor_decl.host as String) == "srv2"
+    && cursor_decl.reader == cursor_row.file_ownership.group
+    && cursor_decl.publisher == cursor_row.dir_ownership.user
+    && (cursor_decl.path as String) == (cursor_worker_turn_snapshot_custody.path as String)
+    && (claude_decl.path as String) == (claude_row.path as String)
+    && (claude_decl.secret.secret as String) == (claude_row.secret.secret as String)
+    && (claude_decl.host as String) == "srv1"
+    && claude_decl.reader == claude_row.file_ownership.group
+    && claude_decl.publisher == claude_row.dir_ownership.user
+    && (claude_decl.path as String) == (claude_worker_turn_snapshot_custody.path as String)
 }
 
 test fn only_cursor_and_claude_owe_an_export_receipt() -> Bool {

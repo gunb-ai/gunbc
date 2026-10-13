@@ -1,6 +1,7 @@
 module test.claim.host_custody_export_receipt_wet_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import std.algebra { trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -46,7 +47,8 @@ fn sealed_write(dest: String, root: String, body: String) -> TypedRemoteFileWrit
 }
 
 fn is_regular_file(path: String) -> Bool {
-  shell.Exec.RunArgv(program: "find", arguments: [path, "-maxdepth", "0", "-type", "f"]).exit_code == 0
+  let ran = shell.Exec.RunArgv(program: "find", arguments: [path, "-maxdepth", "0", "-type", "f"])
+  ran.exit_code == 0 && any(split(s: ran.stdout, delimiter: "\n"), l => trim(s: l) == path)
 }
 
 fn is_symlink(path: String) -> Bool {

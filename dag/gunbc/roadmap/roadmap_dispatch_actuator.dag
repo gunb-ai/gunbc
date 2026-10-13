@@ -221,7 +221,8 @@ import gunbc.roadmap.roadmap_provider_events {
 import gunbc.repo.repo_identity { gunbc_merge_target_ref }
 import gunbc.codex_harness_credential { codex_worker_turn_custody_host, codex_worker_turn_codex_home, codex_harness_turn_argv }
 import gunbc.worker_turn_standing { codex_observed_standing_for_instance, cursor_observed_standing_from_snapshot }
-import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path, cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
+import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
+import gunbc.worker_turn_snapshot_custody { snapshot_custody_declaration }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch {
   SnapshotFreeExecutor,
@@ -249,6 +250,7 @@ import gunbc.dispatch_credential_snapshot {
   CursorFromSnapshot,
   DispatchSnapshotTaken,
   DispatchSnapshotRefused,
+  dispatch_snapshot_refusal_text,
   dispatch_credential_snapshot_take,
   dispatch_credential_snapshot_discard,
   CredentialSnapshotRemoved,
@@ -736,14 +738,14 @@ fn dispatch_actuator_claude_selection_observed(
 ) -> DispatchAttemptSelection {
   match claude_credential_custody_source() {
     ClaudeCustodyUnbound { reason } => DispatchAttemptSelectionRefused { reason: reason }
-    ClaudeCustodyFile { path: custody } =>
+    ClaudeCustodyFile { path: _ } =>
       match dispatch_credential_snapshot_take(
         attempt: attempt,
         executor: ClaudeFromSnapshot,
-        source: custody,
+        custody: snapshot_custody_declaration(executor: ClaudeFromSnapshot),
         snapshot: dispatch_credential_snapshot_path_for_attempt(attempt: attempt, executor: ClaudeFromSnapshot),
       ) {
-        DispatchSnapshotRefused { reason } => DispatchAttemptSelectionRefused { reason: reason }
+        DispatchSnapshotRefused { reason } => DispatchAttemptSelectionRefused { reason: dispatch_snapshot_refusal_text(reason: reason) }
         DispatchSnapshotTaken { snapshot } => {
           let selected = attempt_selection_launching(
             requested: attempt,
@@ -843,10 +845,10 @@ fn cursor_selection_observed(attempt: DispatchAttempt, sizing_expectation: Sizin
     match dispatch_credential_snapshot_take(
       attempt: attempt,
       executor: CursorFromSnapshot,
-      source: cursor_worker_turn_api_key_host_path,
+      custody: snapshot_custody_declaration(executor: CursorFromSnapshot),
       snapshot: dispatch_credential_snapshot_path_for_attempt(attempt: attempt, executor: CursorFromSnapshot),
     ) {
-      DispatchSnapshotRefused { reason } => DispatchAttemptSelectionRefused { reason: reason }
+      DispatchSnapshotRefused { reason } => DispatchAttemptSelectionRefused { reason: dispatch_snapshot_refusal_text(reason: reason) }
       DispatchSnapshotTaken { snapshot } => {
         let selected = attempt_selection_launching(
           requested: attempt,
