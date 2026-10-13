@@ -10,6 +10,7 @@ import std.types { http_status_of }
 import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
 import v2.std.template { Template, TemplateHolePart, TemplateLiteralPart, TemplatePart, template_holes }
 import v2.std.list_introduction { list_introduction_elements_optional }
+import v2.std.node_query { binder_node_parts }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import v2.compiler.fold_lowering { collection_concat_shape_declaration_path }
 import std.algebra { Cons, Empty, list_append, list_snoc_item }
@@ -332,7 +333,11 @@ fn operation_input_names_of_domain(domain: Node) -> List<Symbol> {
         Empty =>
           if n == ^operation_input {
             match named_edge_target_lookup(children: domain.children, name: ^operation_input) {
-              Found { target: payload } => fold(payload.children, init: symbol_list_empty(), f: edge_name_step)
+              Found { target: binder } =>
+                match binder_node_parts(n: binder) {
+                  Present { value: parts } => fold(parts.type_node.children, init: symbol_list_empty(), f: edge_name_step)
+                  Absent => binders
+                }
               Ambiguous => binders
               Absent => binders
             }

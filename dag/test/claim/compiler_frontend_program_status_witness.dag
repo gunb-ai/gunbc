@@ -753,7 +753,7 @@ test fn xl2_prerequisites_partition_is_an_identity_join() -> Bool {
     && xl2_delivered_by(p: CaretSymbolOperandLowering, pr: 12420, merge_sha: "aa3b461215")
     && xl2_delivered_by(p: AsCastOperandLowering, pr: 12315, merge_sha: "696a77dee7")
     && xl2_delivered_by(p: ElseLessIfStatementLowering, pr: 12713, merge_sha: "2e95e66d25")
-    && xl2_outstanding_tracked_by(p: ServiceModuleLowering, decl_name: "service_interface_member_has_no_carrier")
+    && xl2_delivered_by(p: ServiceModuleLowering, pr: 13833, merge_sha: "0fb43ae20d")
     && xl2_delivered_by(p: WildcardMatchArmResolution, pr: 12297, merge_sha: "0579afae7f")
     && xl2_delivered_by(p: QualifiedFieldTypeVisibility, pr: 12033, merge_sha: "10e01b1169")
     && xl2_delivered_by(p: MatchEveryArmLowered, pr: 12383, merge_sha: "8ebd8b671d")
@@ -762,16 +762,14 @@ test fn xl2_prerequisites_partition_is_an_identity_join() -> Bool {
     && xl2_delivered_by(p: MatchArmStatementBodyLowering, pr: 12510, merge_sha: "b768b0f431")
     && xl2_outstanding_tracked_by(p: UsesClauseCarrier, decl_name: "uses_clause_has_no_carrier")
     && all(xl2_prerequisites_outstanding(),
-         p => xl2_label_is(p: p, want: ServiceModuleLowering)
-           || xl2_label_is(p: p, want: UsesClauseCarrier))
+         p => xl2_label_is(p: p, want: UsesClauseCarrier))
 }
 
 // THE INVARIANT THE PARTITION MUST NOT MOVE: prerequisites are necessary, not sufficient, so
 // XL-2 stays NotDerivable and the producer literal stays Unavailable while any or all of the
-// roster is delivered -- the producer is its own deliverable. The delivered count is derived
-// from the roster, not pinned (a sibling flip of another arm must not redden this conjunct).
+// roster is delivered -- the producer is its own deliverable. No delivered-count conjunct:
+// outstanding is the complement of delivered, so delivered+outstanding==roster is always true.
 test fn xl2_stays_not_derivable_with_its_prerequisites_mostly_delivered() -> Bool {
-  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) + count(xl2_prerequisites_outstanding()) == count(xl2_prerequisites)
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
     && match rehearsal_producer_standing() {
          RehearsalProducerUnavailable { why: _, cause: _ } => true
