@@ -5,7 +5,7 @@ import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire
 import gunbc.serving.session_store { ServingSessionEntry, serving_session_record_for_request }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
-import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count }
+import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count, MoneyPerSecond, MoneyAmountMicro }
 import extdeps.accounting.encumbrance { Held, Expended, Released }
 import extdeps.api_rate_limit { upstream_rate_limit_key }
 import gunbc.serving.serving_enrollment {
@@ -56,14 +56,17 @@ import gunbc.harness.harness_hosted_route {
   harness_hosted_release,
 }
 import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, Work, ServiceInterfaceRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, identity_frame }
-import product.fabric.supply { EstimatedGrantDuration, GrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey }
+import product.fabric.supply { EstimatedGrantDuration, GrantDuration, AffinityKeyedRendezvous, PlacementAffinityKey, EqualCostOfferTieBreak }
 import product.fabric.selection {
   CandidateOffer, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
   PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand, PayAsYouGo,
   OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply, affinity_collision_wire,
+  SupplySelection,
 }
-import product.fabric.demand { ObservationReceiptRef }
-import extdeps.currency.currency { Usd }
+import product.fabric.demand {
+  ObservationReceiptRef, AdmissionTerms, demand_delay_valuation,
+}
+import extdeps.currency.currency { CurrencyCode }
 import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import std.algebra { trim }
 import gunbc.serving.turn_admission {
@@ -77,7 +80,7 @@ import gunbc.serving.turn_admission {
   ServingSessionResidency, ResidencyUnread, SessionRecord, serving_session_standing, HostTierUnread, GpuPrefixUnread, ServingSessionPlacement, PlacementFree, OwnedByAnotherReplica,
   serving_unread_when_owner_unprobed,
   serving_admission_detail, serving_isolation_profile,
-  serving_delay_valuation, serving_dispatch_inputs,
+  serving_dispatch_inputs,
 }
 import gunbc.serving.rented_offer_admission {
   RentedAdmissionSources, rented_production_sources, admit_rented_offer, RentedCandidateAdmitted, RentedAdmissionRefused,
@@ -493,13 +496,53 @@ fn harness_execution_requirements() -> ExecutionRequirements {
 type HarnessTurnSubject {
   work: Work<NonEmptyStr>
   demand: FabricIdentity<NonEmptyStr, DemandKey>
+  admission: AdmissionTerms
 }
 
-fn harness_turn_subject(request: ServingTurnRequest, attempt: NonEmptyStr) -> HarnessTurnSubject {
+fn harness_turn_subject(request: ServingTurnRequest, attempt: NonEmptyStr, admission: AdmissionTerms) -> HarnessTurnSubject {
   HarnessTurnSubject {
     work: serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request, requirements: harness_execution_requirements()),
     demand: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: attempt as DemandKey },
+    admission: admission,
   }
+}
+
+// THE ONLY ROUTE FROM A DEMAND TO select_supply's delay and buy-order. CONSUMER:
+// harness_placement_round; test.claim.harness_turn_admission_witness (serving-path
+// profile switch). Delay is a required field of TermValuations; there is no profile default.
+type HarnessPricedSelectionInputs {
+  delay_valuation: MoneyPerSecond
+  maximum_buy_order: MoneyAmountMicro
+  budget_currency: CurrencyCode
+}
+
+fn harness_priced_selection_inputs(admission: AdmissionTerms) -> HarnessPricedSelectionInputs {
+  HarnessPricedSelectionInputs {
+    delay_valuation: demand_delay_valuation(terms: admission),
+    maximum_buy_order: admission.buy.maximum_buy_order,
+    budget_currency: admission.buy.currency,
+  }
+}
+
+fn harness_select_supply<P>(
+  admission: AdmissionTerms,
+  requirements: ExecutionRequirements,
+  candidates: List<CandidateOffer<P>>,
+  duration: GrantDuration,
+  tie: EqualCostOfferTieBreak,
+  affinity: PlacementAffinityKey,
+) -> SupplySelection<P> {
+  let priced = harness_priced_selection_inputs(admission: admission)
+  select_supply(
+    requirements: requirements,
+    candidates: candidates,
+    duration: duration,
+    maximum_buy_order: priced.maximum_buy_order,
+    budget_currency: priced.budget_currency,
+    delay_valuation: priced.delay_valuation,
+    tie: tie,
+    affinity: affinity,
+  )
 }
 
 // THE NORMALIZED REQUEST AN ENTRY POINT SUPPLIES. The interface is the wire shape the turn speaks.
@@ -1073,13 +1116,11 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
       let collected = harness_collect_candidates(session: session, routes: routes, class: class, requirement: requirement, subject: subject, store: store, now: now, excluded: acc.excluded)
       let notes = concat(acc.notes, collected.notes)
       let retryable = acc.retryable || collected.retryable
-      match select_supply(
+      match harness_select_supply(
+        admission: subject.admission,
         requirements: subject.work.requirements,
         candidates: map(collected.candidates, c => c.offer),
         duration: harness_placement_grant_duration(policy: policy),
-        maximum_buy_order: money_amount_micro(count: 0),
-        budget_currency: Usd,
-        delay_valuation: serving_delay_valuation,
         tie: AffinityKeyedRendezvous,
         affinity: actor as PlacementAffinityKey,
       ) {
@@ -1130,10 +1171,10 @@ data harness_placement_rounds: Nat = 3
 // the Work carries and the one the candidate screen applies are one value with one source. A caller
 // that constructed the request itself could hand in a request naming one requirement beside a
 // screen argument naming another.
-fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?) -> HarnessSeatBinding {
+fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms) -> HarnessSeatBinding {
   match harness_requirement_placement(requirement: requirement, class: class) {
     LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
-    PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session)
+    PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission)
     RunOnOperatorEndpoint => harness_bind_operator(class: class, shape: shape)
   }
 }
@@ -1197,8 +1238,8 @@ fn harness_bind_hosted(short_hostname: String, unit: HarnessServingUnit, actor: 
   }
 }
 
-fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?) -> HarnessSeatBinding {
-  let subject = harness_turn_subject(request: harness_turn_request(shape: shape, requirement: requirement, inputs: inputs), attempt: attempt)
+fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms) -> HarnessSeatBinding {
+  let subject = harness_turn_subject(request: harness_turn_request(shape: shape, requirement: requirement, inputs: inputs), attempt: attempt, admission: admission)
   match event_log_store_for_host(short_hostname: short_hostname) {
     HostStoreRefused { detail: d } => HarnessSeatRefused { detail: d }
     HostStoreResolved { store: store, executor: _ } =>
