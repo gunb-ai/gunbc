@@ -753,7 +753,7 @@ test fn xl2_prerequisites_partition_is_an_identity_join() -> Bool {
     && xl2_delivered_by(p: CaretSymbolOperandLowering, pr: 12420, merge_sha: "aa3b461215")
     && xl2_delivered_by(p: AsCastOperandLowering, pr: 12315, merge_sha: "696a77dee7")
     && xl2_delivered_by(p: ElseLessIfStatementLowering, pr: 12713, merge_sha: "2e95e66d25")
-    && xl2_delivered_by(p: ServiceModuleLowering, pr: 13833, merge_sha: "0fb43ae20d")
+    && xl2_delivered_by(p: ServiceModuleLowering, pr: 13833, merge_sha: "07c082253f")
     && xl2_delivered_by(p: WildcardMatchArmResolution, pr: 12297, merge_sha: "0579afae7f")
     && xl2_delivered_by(p: QualifiedFieldTypeVisibility, pr: 12033, merge_sha: "10e01b1169")
     && xl2_delivered_by(p: MatchEveryArmLowered, pr: 12383, merge_sha: "8ebd8b671d")
