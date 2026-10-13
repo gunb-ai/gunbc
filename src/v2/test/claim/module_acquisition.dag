@@ -600,6 +600,50 @@ test fn a_dag_member_whose_parameter_is_spelled_like_a_root_requests_nothing() -
   dag_request_verdict(content: "module test.subject\n\nfn subject(v2: Bool) -> Bool {\n  v2.member\n}\n", spelling: "v2.member") == "not-requested"
 }
 
+// ---- the names a match arm binds end at the rest of its let-match --------------------------------------------
+//
+// THE SUBJECT IS THE SAME COMPOSITION, over the form whose rest the pattern's names do not reach. `let x =
+// match o { P => v  Q => return .. }` lowers its rest UNDER the binding arm's `let` (v2.std.node
+// MatchArmScopeExitEdge), and resolution reads that rest in the scope enclosing the match. A head the pattern
+// MAY bind is therefore a candidate module reference there, and a walk that kept the arm's names for the rest
+// would request nothing for it: nothing would be acquired, and resolution would refuse a valid program naming
+// the module. Each claim states the boundary's two sides in one source, the in-arm projection (requested
+// nothing) and the rest of the function (requested, read or denied by the lookup).
+
+fn dag_let_match_subject(arm: String, tail: String) -> String {
+  concat("module test.subject\n\ntype Slot = SlotHeld { version: Bool } | SlotEmpty\n\nfn subject(o: Slot) -> Bool {\n  let x = match o {\n    ", arm, "\n    SlotEmpty => return false\n  }\n  ", tail, "\n}\n")
+}
+
+// The counterexample: `std` is the arm's atom, and the rest of the function names the module std.logic.and.
+test fn a_dag_member_naming_a_dag_module_in_the_rest_of_a_let_match_is_requested_and_read() -> Bool {
+  dag_request_verdict(content: dag_let_match_subject(arm: "SlotHeld { version: std } => std", tail: "std.logic.and(a: x, b: true)"), spelling: "std.logic.and") == "requested, reads std.logic.and"
+    && dag_denied_requests(content: dag_let_match_subject(arm: "SlotHeld { version: std } => std", tail: "std.logic.and(a: x, b: true)")) == ""
+}
+
+// The in-arm control the request above is attributed to: the same atom projected inside its own arm requests
+// nothing, in the very source whose rest requests std.logic.and.
+test fn a_dag_member_projecting_a_match_bound_name_in_a_returning_let_match_requests_nothing() -> Bool {
+  dag_request_verdict(content: dag_let_match_subject(arm: "SlotHeld { version: std } => std.y", tail: "std.logic.and(a: x, b: true)"), spelling: "std.y") == "not-requested"
+}
+
+// The cross-tree half: the rest names a v2-tree module from a dag-tree member, so the lookup denies it, where a
+// walk that hid it would have let the spelling through unread.
+test fn a_dag_member_naming_a_v2_module_in_the_rest_of_a_let_match_is_requested_and_denied() -> Bool {
+  dag_request_verdict(content: dag_let_match_subject(arm: "SlotHeld { version: v2 } => v2.member", tail: "v2.member"), spelling: "v2.member") == "requested, denied"
+}
+
+// The arm AROUND the match still encloses its rest: the outer atom `v2` may bind there, so `v2.member` requests
+// nothing, while the inner arm's `std` has ended and the rest's `std.logic.and` is requested and read.
+test fn a_dag_member_keeps_the_enclosing_arms_names_in_the_rest_of_a_nested_let_match() -> Bool {
+  dag_request_verdict(content: dag_nested_let_match_subject(), spelling: "v2.member") == "not-requested"
+    && dag_request_verdict(content: dag_nested_let_match_subject(), spelling: "std.logic.and") == "requested, reads std.logic.and"
+    && dag_denied_requests(content: dag_nested_let_match_subject()) == ""
+}
+
+fn dag_nested_let_match_subject() -> String {
+  "module test.subject\n\ntype Slot = SlotHeld { version: Bool } | SlotEmpty\n\nfn subject(o: Slot, p: Slot) -> Bool {\n  match o {\n    SlotHeld { version: v2 } => {\n      let x = match p {\n        SlotHeld { version: std } => std.y\n        SlotEmpty => return false\n      }\n      std.logic.and(a: x, b: v2.member)\n    }\n    SlotEmpty => false\n  }\n}\n"
+}
+
 // ---- the marker channel, read off the parse tree alone -----------------------------------------------------
 //
 // THE SUBJECT IS acquisition_test_markers: which declarations of one member carry the authored `test`

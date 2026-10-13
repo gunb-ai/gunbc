@@ -252,3 +252,18 @@ test fn witness_converge_plan_redrives_on_frontier() -> Bool {
     transport: LocalShell
   )))
 }
+
+// THE UNGATED DISPATCHER HAS NO DeployAccess, so a live-deploy retract it is handed refuses before
+// any shell runs instead of being emitted from a constant access. Not run against main: there this
+// arm executes the retract script on the claim host, which is the defect.
+test fn the_ungated_dispatcher_refuses_a_live_deploy_retract() -> Bool {
+  match host_effect_apply(
+    target: host_os_target(),
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+  ) {
+    NotConverged { reason: r, applied: _ } => r == ungated_live_deploy_emission_refusal
+    Converged { evidence: _, applied: _ } => false
+  }
+}

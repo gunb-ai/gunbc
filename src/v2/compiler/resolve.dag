@@ -38,6 +38,7 @@ import v2.compiler.lexical_scope {
   arrow_slot,
   arrow_slot_scope,
   bind_binder,
+  bind_carries_arm_scope_exit,
   bind_positional_slot,
   declaration_names_value,
   module_root_bindings,
@@ -3529,16 +3530,8 @@ fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node, fb: Fra
 // resolve in the scope enclosing the match, exactly the scopes the source wrote. Both admissions are
 // judged against those authored scopes: the pattern by resolve_match_arm_walk against the enclosing
 // scope as for every arm, and the let's binder here against that same enclosing scope. The marker
-// edge itself is a declaration about scope, not a value, and is carried unwalked.
-fn bind_carries_arm_scope_exit(n: Node) -> Bool {
-  match n.kind {
-    ComputationNode { behavior: Bind } =>
-      fold(n.children, init: false, f: fn(acc, e) { acc || edge_is_core(e: e, marker: MatchArmScopeExitEdge) })
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
-
+// edge itself is a declaration about scope, not a value, and is carried unwalked. Which Bind is such a let is
+// v2.compiler.lexical_scope bind_carries_arm_scope_exit, which the reference walk of module acquisition reads too.
 fn resolve_arm_scope_exit_bind(arm_ctx: ResolveContext, outer_ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   if positional_child_count(children: n.children) == 3 {
     match gate_value_binders(names: bind_binder_name_list(n: n), outer: outer_ctx.scope, at: n) {
