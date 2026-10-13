@@ -34,7 +34,7 @@ import gunbc.auth.mtjade1_arrival_federation_provision { mtjade1_arrival_dedicat
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for, provisioned_boot_federations }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
 import gunbc.cloudflare.r2_mint_secret_access { r2_mint_custody_grants }
-import gunbc.auth.fleet_secret_accessor_roster { openrouter_free_tier_key_accessor_row, oracle_oci_api_signing_key_accessor_row, fleet_accessor_grant }
+import gunbc.auth.fleet_secret_accessor_roster { openrouter_free_tier_key_accessor_row, oracle_oci_api_signing_key_accessor_row, cursor_api_key_harness_accessor_row, fleet_accessor_grant }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
 import gunbc.auth.gcp_iam_converge_federation {
@@ -307,7 +307,24 @@ type GrantSet {
 data gcp_iam_converge_grant_sets: List<GrantSet> = [
   GrantSet { label: "r2 mint custody cells", grants: r2_mint_custody_grants() },
   GrantSet { label: "fleet accessor cells applied by hand", grants: hand_applied_accessor_grants() },
+  GrantSet { label: "worker-turn custody accessor cells", grants: worker_turn_custody_accessor_grants() },
 ]
+
+// THE CURSOR WORKER-TURN KEY'S ACCESSOR CELL, NEVER APPLIED BY HAND: gunbc.fleet.host_credential_custody_converge
+// reads cursor-api-key-harness over WIF for srv2, and the cell that read needs is declared once by the
+// roster (cursor_api_key_harness_accessor_row). Its own set, not a third hand-picked entry in
+// hand_applied_accessor_grants, because that set's label and witness say its cells were applied by hand.
+// THE SET IS SELECTED, NOT YET DERIVED from the custody rows. Deriving it from every row of
+// host_custody_credential_roster would hand this converge the secrets of the controller GitHub App key
+// (gunbai_ci_app_pem_secret), the fabric state key, the claude token, the ntfy token and codex: the
+// bootstrap would create each bare and bind secretPolicy on it, widening what the estate's approval
+// covers well past the one grant asked for, and codex is host-authoritative with a separate
+// versionAdder cell, a different contract. Next step, trigger: when a second custody credential needs
+// a converge-owned accessor cell, derive the set from the custody rows named by an explicit
+// closed selection over host_credential_custody_row's `secret`, not before.
+fn worker_turn_custody_accessor_grants() -> List<SecretAccessGrant> {
+  map([cursor_api_key_harness_accessor_row], row => fleet_accessor_grant(row: row))
+}
 
 // THE TWO ACCESSOR CELLS THE OPERATOR APPLIED BY HAND, DERIVED FROM THE ROSTER: the cell is declared once,
 // by gunbc.auth.fleet_secret_accessor_roster (fleet_accessor_grant over its rows), and this set only
