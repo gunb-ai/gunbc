@@ -1,6 +1,7 @@
 module test.claim.serving_caller_backlog_witness
 
-import std.types { Bool, String, NonEmptyStr, Int, List }
+import std.types { Bool, String, NonEmptyStr, Int, List, EpochSecs }
+import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import std.nat { Nat }
 import std.algebra { length }
 import std.measure { money_amount_micro }
@@ -27,7 +28,7 @@ import gunbc.serving.caller_backlog {
   waiting_survives_ready_supply, apply_ready_supply, apply_ready_supply_law, offer_against_ready_supply,
   KeepWaitingAcrossZeroSupply, ExpireWaitingOnZeroSupply,
   SupplyReady, SupplyAbsentWaiting, SupplyUnknownWork, SupplyTerminal, SupplyDuplicate,
-  commit_attempt, snapshot_after_commit,
+  commit_attempt, snapshot_after_commit, ComputeCellFence, SeatLeaseFence, WorkKey, logical_work_id_of,
   cancel_work, snapshot_after_cancel, note_recovery, snapshot_after_recovery, caller_retry_disposition, lookup_record,
   persist_before_offer_basis, retriable_refusal_basis, stable_turn_identity_basis, idempotent_retry_basis,
   no_expiry_on_long_wait_basis, durable_cancellation_basis, no_double_execution_basis,
@@ -143,10 +144,10 @@ test fn w_waiting_survives_ready_supply_drop_and_controller_restart_without_nudg
 // The current generation completes once; a second commit does not execute again.
 test fn w_stale_replica_generation_cannot_commit_and_completion_is_not_rerun() -> Bool {
   let waiting = persisted_waiting()
-  let stale = commit_attempt(snapshot: waiting, account: fenced_account(generation: 2), work: work_a, presented: 1)
-  let live = commit_attempt(snapshot: waiting, account: fenced_account(generation: 2), work: work_a, presented: 2)
+  let stale = commit_attempt(snapshot: waiting, fence: ComputeCellFence { account: fenced_account(generation: 2) }, work: work_a, presented: 1)
+  let live = commit_attempt(snapshot: waiting, fence: ComputeCellFence { account: fenced_account(generation: 2) }, work: work_a, presented: 2)
   let completed = snapshot_after_commit(snapshot: waiting, standing: live)
-  let again = commit_attempt(snapshot: completed, account: fenced_account(generation: 2), work: work_a, presented: 2)
+  let again = commit_attempt(snapshot: completed, fence: ComputeCellFence { account: fenced_account(generation: 2) }, work: work_a, presented: 2)
   (match stale { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
     && (match live { AttemptCommitted { record: r } => match r.phase { WorkCompleted => true  WorkWaiting => false  WorkCancelled => false  WorkRecoveryBoundExceeded { deficit: _ } => false }  AttemptFenceRefused => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
     && (match again { AttemptNotWaiting { phase: p } => match p { WorkCompleted => true  WorkWaiting => false  WorkCancelled => false  WorkRecoveryBoundExceeded { deficit: _ } => false }  AttemptCommitted { record: _ } => false  AttemptFenceRefused => false  AttemptUnknownWork => false  AttemptDuplicate => false })
@@ -458,4 +459,34 @@ test fn w_typed_waiting_persist_is_the_admitted_publication_path() -> Bool {
       pool_roots: ["dag"],
       qualified_name: "gunbc.serving.caller_backlog.persist_record_cas",
     )) == 0
+}
+
+// A serving seat is fenced on its LeaseGrant generation, not a money account. Stale generation
+// refuses; the live one completes. Same fold as the compute-cell arm.
+data seat_grant_gen2: LeaseGrant = LeaseGrant {
+  reference: "grant-work-a" as NonEmptyStr,
+  fence: LeaseFence { grant: "evt-1" as GrantIdentity, generation: 2 as Nat },
+  granted_at: 0 as EpochSecs,
+  maximum_duration_seconds: 60 as Nat,
+  expires_at: 60 as EpochSecs,
+}
+
+test fn w_seat_lease_stale_generation_cannot_commit() -> Bool {
+  let waiting = persisted_waiting()
+  let stale = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2 }, work: work_a, presented: 1)
+  let live = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2 }, work: work_a, presented: 2)
+  (match stale { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
+    && (match live { AttemptCommitted { record: _ } => true  AttemptFenceRefused => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
+}
+
+// The same (dispatch node, ordinal) key from two process attempts is one id; a different ordinal
+// or dispatch node is a different id.
+test fn w_work_key_is_stable_across_process_attempts_and_ordinals_differ() -> Bool {
+  let k1 = WorkKey { dispatch_node: "node-7" as NonEmptyStr, ordinal: 1 as Nat }
+  let k1_again = WorkKey { dispatch_node: "node-7" as NonEmptyStr, ordinal: 1 as Nat }
+  let k2 = WorkKey { dispatch_node: "node-7" as NonEmptyStr, ordinal: 2 as Nat }
+  let other = WorkKey { dispatch_node: "node-8" as NonEmptyStr, ordinal: 1 as Nat }
+  (logical_work_id_of(key: k1) as String) == (logical_work_id_of(key: k1_again) as String)
+    && (logical_work_id_of(key: k1) as String) != (logical_work_id_of(key: k2) as String)
+    && (logical_work_id_of(key: k1) as String) != (logical_work_id_of(key: other) as String)
 }

@@ -14,6 +14,7 @@ import extdeps.languages.json.parse {
 }
 import product.fabric.execution { ReservationRef }
 import product.fabric.budget { MoneyAccount, fence_admits }
+import product.capacity.lease { LeaseGrant }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.durable_compare_and_set {
   ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
@@ -38,6 +39,20 @@ import gunbc.durable_cas_file_store {
 // (re-persist, re-offer) is not required for the same logical work to be waiting again.
 
 type LogicalWorkId = NonEmptyStr where brand("LogicalWorkId")
+
+// THE WORK KEY IS THE CALLER'S, SUPPLIED, AND SURVIVES A PROCESS RESTART. A harness turn is named
+// by the dispatch node that owns it and the turn's ordinal within that dispatch; a per-process
+// minted subject (harness_turn_subject) is not a key because a restarted process mints a new one.
+// The id is derived from the typed key by a JSON array encoding, which is injective over
+// (string, int), so no two distinct keys share an id and no delimiter can be forged inside a part.
+type WorkKey {
+  dispatch_node: NonEmptyStr
+  ordinal: Nat
+}
+
+fn logical_work_id_of(key: WorkKey) -> LogicalWorkId {
+  serialize_json(v: json_array(elements: [json_string(s: key.dispatch_node as String), json_int(n: key.ordinal as Int)])) as LogicalWorkId
+}
 
 type RecoveryBoundDeficit {
   probes_succeeded: Nat
@@ -736,13 +751,29 @@ type AttemptCommit
   | AttemptUnknownWork
   | AttemptDuplicate
 
-// Attempt fencing is product.fabric.budget fence_admits over the grant's reservation and the
+// THE FENCE IS A SUM OVER THE TWO SHAPES OF HOLDER, NOT TWO COMMIT FOLDS. A compute cell is fenced
+// by the money account's lease generation; a serving seat is not a money-settling cell
+// (docs/plans/serving-capacity-home-ruling.md) and is fenced by the generation of its
+// product.capacity.lease LeaseGrant, which must also be the grant of this work's reservation.
+type AttemptFence
+  = ComputeCellFence { account: MoneyAccount }
+  | SeatLeaseFence { grant: LeaseGrant }
+
+fn attempt_fence_admits(fence: AttemptFence, reservation: ReservationRef, presented: Int) -> Bool {
+  match fence {
+    ComputeCellFence { account: a } => fence_admits(a: a, reference: reservation, presented: presented)
+    SeatLeaseFence { grant: g } =>
+      (g.reference as String) == (reservation as String) && (g.fence.generation as Int) == presented
+  }
+}
+
+// Attempt fencing is attempt_fence_admits over the grant's reservation and the
 // generation the replica presents. A resumed old replica presenting a superseded generation
 // cannot commit. Completing through this fold is recovered completion: the same logical work,
 // the current generation, one terminal Completed phase — a second commit sees AttemptNotWaiting.
 fn commit_attempt(
   snapshot: CallerBacklogSnapshot,
-  account: MoneyAccount,
+  fence: AttemptFence,
   work: LogicalWorkId,
   presented: Int,
 ) -> AttemptCommit {
@@ -752,7 +783,7 @@ fn commit_attempt(
     CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting =>
-          if !fence_admits(a: account, reference: head.reservation, presented: presented) {
+          if !attempt_fence_admits(fence: fence, reservation: head.reservation, presented: presented) {
             AttemptFenceRefused
           } else {
             AttemptCommitted {
@@ -878,7 +909,7 @@ type DurableAttemptStanding
 fn commit_attempt_durable(
   root: NonEmptyStr,
   snapshot: CallerBacklogSnapshot,
-  account: MoneyAccount,
+  fence: AttemptFence,
   work: LogicalWorkId,
   presented: Int,
 ) -> DurableAttemptStanding {
@@ -895,7 +926,7 @@ fn commit_attempt_durable(
     DurableSlotPresent { record: held, generation: g } =>
       match commit_attempt(
         snapshot: singleton_snapshot(record: held),
-        account: account,
+        fence: fence,
         work: work,
         presented: presented,
       ) {
@@ -1054,7 +1085,7 @@ fn caller_retry_disposition(record: CallerWorkRecord) -> CallerRetryDisposition 
 
 data persist_before_offer_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable")
 data retriable_refusal_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "caller_retry_disposition")
-data stable_turn_identity_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "resume_waiting_durable")
+data stable_turn_identity_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "logical_work_id_of")
 data idempotent_retry_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable")
 data no_expiry_on_long_wait_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "apply_ready_supply_law")
 data durable_cancellation_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "cancel_work_durable")
