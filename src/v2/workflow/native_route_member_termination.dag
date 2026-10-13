@@ -1,7 +1,7 @@
 module v2.workflow.native_route_member_termination
 
 import std.types { List, Bool }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.integer { Int }
 import gunbc.target_invocation {
   InvocationTermination,
