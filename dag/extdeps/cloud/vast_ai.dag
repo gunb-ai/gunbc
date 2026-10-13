@@ -3,6 +3,12 @@ module extdeps.cloud.vast_ai
 import std.resources { Network }
 import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decimal { ExactDecimal }
+import std.measure {
+  DecimalMoneyPerHourConversion,
+  exact_decimal_to_money_per_hour_ceil,
+}
+import extdeps.currency.currency { CurrencyCode, Usd }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -25,11 +31,13 @@ import extdeps.uri { Uri, Https }
 // bid "may be interrupted if outbid", so an interruptible offer is a different availability fact from an
 // on-demand one. Absence is an unread fact.
 //
-// FLOAT WIRE FIELDS ARE NOT MODELED: dph_total (dollars per hour, a total per machine), gpu_ram, gpu_mem_bw
-// and the rest arrive as JSON numbers, and nothing reads them: the supplier receives the rate as an
-// explicit parameter. Dissolve-on: a declared lossy Float->MoneyPerHour / Float->HardwareThreadCount
-// conversion plan in std (DESIGN section 4: not a coercion); only then may a consumed float be added.
-// num_gpus is an Int and IS a request axis: an offer is a machine with that many GPUs, rented whole.
+// MONEY WIRE FIELDS ARE ExactDecimal, NEVER Float: search-offers min_bid, dph_total, storage_cost,
+// inet_up_cost and inet_down_cost arrive as JSON numbers. min_bid and dph_total convert with
+// std.measure exact_decimal_to_money_per_hour_ceil (round up). storage_cost ($/GB-month) and
+// inet_up_cost / inet_down_cost ($/GB) stay ExactDecimal: a MoneyAmountMicro wrapper would drop
+// the quantity axis. No M0 fold reads those tariffs; conversion waits on a per-quantity carrier
+// the reader names. gpu_ram / gpu_mem_bw remain unmodeled: nothing reads them. num_gpus is an Int
+// and IS a request axis: an offer is a machine with that many GPUs, rented whole.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/search/search-offers" }
 }
@@ -71,6 +79,27 @@ type VastAiOffer {
   rentable: Bool
   rented: Bool
   is_bid: Bool?
+  min_bid: ExactDecimal
+  dph_total: ExactDecimal
+  storage_cost: ExactDecimal
+  inet_up_cost: ExactDecimal
+  inet_down_cost: ExactDecimal
+}
+
+data vast_ai_quote_currency: CurrencyCode = Usd
+
+// DECLARED FRONTIER (DESIGN §3c): production consumer is the FlexBidAttempt adapter named on
+// product.fabric.flex_policy. Until that lands, the executing consumer is
+// test.claim.fabric.flex_bid_admission_witness.
+fn vast_ai_min_bid_money_per_hour(offer: VastAiOffer) -> DecimalMoneyPerHourConversion {
+  exact_decimal_to_money_per_hour_ceil(d: offer.min_bid, currency: vast_ai_quote_currency)
+}
+
+// DECLARED FRONTIER (DESIGN §3c): production consumer is the on-demand acquisition fold that
+// prices from dph_total rather than min_bid. TRIGGER: that fold calls this wrapper. Until then
+// the executing consumer is the inhabitance arm of vast_min_bid_rounds_up_a_seventh_fraction_digit.
+fn vast_ai_dph_total_money_per_hour(offer: VastAiOffer) -> DecimalMoneyPerHourConversion {
+  exact_decimal_to_money_per_hour_ceil(d: offer.dph_total, currency: vast_ai_quote_currency)
 }
 
 type VastAiOffers {

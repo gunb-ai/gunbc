@@ -2,7 +2,7 @@ module test.claim.repo_ruleset_witness
 
 import std.types { Bool, String, Int, NonEmptyStr }
 import std.dissolution { dissolution_description }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
 import gunbc.required_ci_contract_epoch { required_ci_context_name }
 import std.measure { minute, minute_count, merge_queue_entry_count, merge_queue_entry_count_value }

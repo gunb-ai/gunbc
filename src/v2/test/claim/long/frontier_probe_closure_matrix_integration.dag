@@ -22,7 +22,7 @@ import v2.compiler.source_authority_read {
   source_ref_for_observed_storage_path
 }
 import std.algebra { Cons, Empty }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

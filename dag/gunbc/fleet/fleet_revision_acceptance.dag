@@ -18,7 +18,7 @@ import gunbc.required_ci_contract_epoch {
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved, RequiredCiEpochUnobservable, RequiredCiEpochUnobserved, required_ci_epoch_unobserved_message }
 import gunbc.repository { gunbc_repository }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

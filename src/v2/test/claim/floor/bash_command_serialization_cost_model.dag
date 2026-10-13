@@ -5,7 +5,7 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 import v2.extdeps.languages.bash_build { bash_build_command_with_words, bash_build_word_lit }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmts_semi }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Reads no tree: every subject is constructed in this file from Int literals.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

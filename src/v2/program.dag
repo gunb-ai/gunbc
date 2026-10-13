@@ -44,8 +44,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   invariant_port_locus
 }
-import std.algebra { Empty }
-import v2.std.algebra { length }
+import std.algebra { Empty, length }
 import v2.std.dependency { DataDependsOn, DependencyView }
 import v2.std.machine { Byte }
 import v2.std.node {

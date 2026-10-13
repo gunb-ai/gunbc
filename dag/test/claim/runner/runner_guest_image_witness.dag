@@ -37,7 +37,7 @@ import gunbc.runner.runner_guest_image {
   runner_guest_tree_commands, runner_guest_resolver_link_command, runner_guest_tree_resolv_conf_path,
 }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

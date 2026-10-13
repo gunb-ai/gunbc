@@ -1,7 +1,7 @@
 module v2.workflow.floor_discovery_row
 
 import std.types { String, Bool, List }
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 
 // THE DISCOVERY ROW VOCABULARY AND THE WIRE-CONTRACT PLACEMENT VERDICT: what discovery enrols, and
 // where a wire-contract declaration is allowed to live.

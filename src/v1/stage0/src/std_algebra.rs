@@ -8,12 +8,15 @@ use self::CarrierRowMembership::*;
 use self::CollectionSizeEffect::*;
 use self::ContainerSource::*;
 use self::CostShape::*;
+use self::ListHeadResult::*;
+use self::ListTailResult::*;
 use self::Ordering::*;
 pub use crate::std_error_primitives::pure_dag_seam_unreachable_string;
 use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
 pub use crate::std_error_primitives::{DivError, Result};
 pub use crate::std_optional::Optional;
+pub use crate::std_optional::{optional_absent, optional_present};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -2320,6 +2323,603 @@ pub fn all_algebra_template_names() -> Rc<Vec<String>> {
 
 pub fn trim(s: String) -> String {
     v1_rt::trim(s)
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct FreeMonoidUniqueState<T> {
+    pub seen: Rc<FreeMonoid<T>>,
+    pub unique: bool,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for FreeMonoidUniqueState<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FreeMonoidUniqueState")
+            .field("seen", &self.seen)
+            .field("unique", &self.unique)
+            .finish()
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for FreeMonoidUniqueState<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.seen == other.seen && self.unique == other.unique
+    }
+}
+
+pub fn fold_list<T: Clone, A: Clone>(
+    mut __tco_loop_xs: Rc<FreeMonoid<T>>,
+    mut __tco_loop_empty: A,
+    mut __tco_loop_cons: impl Fn(A, T) -> A + Clone,
+) -> A {
+    loop {
+        #[allow(unused_mut)]
+        let mut xs = __tco_loop_xs;
+        #[allow(unused_mut)]
+        let mut empty = __tco_loop_empty;
+        #[allow(unused_mut)]
+        let mut cons = __tco_loop_cons;
+        {
+            let __fm = xs.clone();
+            if __fm.is_empty() {
+                break empty.clone();
+            } else {
+                let h = (*__fm)[0].clone();
+                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                {
+                    let __tco_0 = t.clone();
+                    let __tco_1 = cons(empty, h.clone());
+                    let __tco_2 = cons;
+                    __tco_loop_xs = __tco_0;
+                    __tco_loop_empty = __tco_1;
+                    __tco_loop_cons = __tco_2;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub fn fold_non_empty<T: Clone>(
+    head: T,
+    tail: Rc<FreeMonoid<T>>,
+    cons: impl Fn(T, T) -> T + Clone,
+) -> T {
+    fold_list(tail.clone(), head.clone(), cons.clone())
+}
+
+pub fn fold_list_right<T: Clone, A: Clone>(
+    xs: Rc<FreeMonoid<T>>,
+    empty: A,
+    snoc: impl Fn(A, T) -> A + Clone,
+) -> A {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let __fm = xs.clone();
+        if __fm.is_empty() {
+            empty.clone()
+        } else {
+            let h = (*__fm)[0].clone();
+            let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            snoc(
+                fold_list_right(t.clone(), empty.clone(), snoc.clone()),
+                h.clone(),
+            )
+        }
+    })
+}
+
+pub fn list_reverse<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
+    fold_list(xs.clone(), Rc::new(vec![]), |acc, item| {
+        Rc::new({
+            let mut __cons_v = (*acc.clone()).clone();
+            __cons_v.insert(0, item.clone());
+            __cons_v
+        })
+    })
+}
+
+pub fn list_map<T: Clone, U: Clone>(
+    xs: Rc<FreeMonoid<T>>,
+    f: impl Fn(T) -> U + Clone,
+) -> Rc<FreeMonoid<U>> {
+    fold_list_right(xs.clone(), Rc::new(vec![]), |acc, item| {
+        Rc::new({
+            let mut __cons_v = (*acc.clone()).clone();
+            __cons_v.insert(0, f(item.clone()));
+            __cons_v
+        })
+    })
+}
+
+pub fn list_flat_map<T: Clone, U: Clone>(
+    xs: Rc<FreeMonoid<T>>,
+    f: impl Fn(T) -> Rc<FreeMonoid<U>> + Clone,
+) -> Rc<FreeMonoid<U>> {
+    fold_list_right(xs.clone(), Rc::new(vec![]), |acc, item| {
+        fold_list_right(f(item.clone()), acc.clone(), |inner, produced| {
+            Rc::new({
+                let mut __cons_v = (*inner.clone()).clone();
+                __cons_v.insert(0, produced.clone());
+                __cons_v
+            })
+        })
+    })
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+#[serde(tag = "_variant")]
+pub enum ListTailResult<T> {
+    TailFound { tail: Rc<FreeMonoid<T>> },
+    TailAbsent,
+}
+impl<T: Clone> ListTailResult<T> {
+    pub fn tail(&self) -> Rc<FreeMonoid<T>> {
+        match self {
+            ListTailResult::TailFound { tail: __val, .. } => __val.clone(),
+            ListTailResult::TailAbsent => panic!("no tail on unit variant"),
+        }
+    }
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListTailResult<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TailFound { tail } => f.debug_struct("TailFound").field("tail", tail).finish(),
+            Self::TailAbsent => f.write_str("TailAbsent"),
+        }
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for ListTailResult<T> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::TailFound { tail: a_tail }, Self::TailFound { tail: b_tail }) => {
+                a_tail == b_tail
+            }
+            (Self::TailAbsent, Self::TailAbsent) => true,
+            _ => false,
+        }
+    }
+}
+
+pub fn list_tail<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<ListTailResult<T>> {
+    {
+        let __fm = xs.clone();
+        if __fm.is_empty() {
+            Rc::new(ListTailResult::TailAbsent)
+        } else {
+            let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            Rc::new(ListTailResult::TailFound { tail: t.clone() })
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ListHeadResult<T> {
+    HeadFound { value: T },
+    HeadAbsent,
+}
+impl<T: Clone> ListHeadResult<T> {
+    pub fn value(&self) -> T {
+        match self {
+            ListHeadResult::HeadFound { value: __val, .. } => __val.clone(),
+            ListHeadResult::HeadAbsent => panic!("no value on unit variant"),
+        }
+    }
+}
+
+pub fn list_head<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<ListHeadResult<T>> {
+    {
+        let __fm = xs.clone();
+        if __fm.is_empty() {
+            Rc::new(ListHeadResult::HeadAbsent)
+        } else {
+            let h = (*__fm)[0].clone();
+            Rc::new(ListHeadResult::HeadFound { value: h.clone() })
+        }
+    }
+}
+
+pub fn skip<T: Clone>(
+    mut __tco_loop_xs: Rc<FreeMonoid<T>>,
+    mut __tco_loop_n: i64,
+) -> Rc<FreeMonoid<T>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut xs = __tco_loop_xs;
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n;
+        if (n.clone() <= 0) {
+            break xs.clone();
+        } else {
+            {
+                let __fm = xs.clone();
+                if __fm.is_empty() {
+                    break Rc::new(vec![]);
+                } else {
+                    let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                    {
+                        let __tco_0 = t.clone();
+                        let __tco_1 = v1_rt::int_sub(n, 1);
+                        __tco_loop_xs = __tco_0;
+                        __tco_loop_n = __tco_1;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn is_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {
+    {
+        let __fm = xs.clone();
+        if __fm.is_empty() {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+pub fn non_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {
+    match is_empty(xs.clone()) {
+        true => false,
+        false => true,
+    }
+}
+
+pub fn length<T: Clone>(xs: Rc<FreeMonoid<T>>) -> i64 {
+    (xs.clone().len() as i64)
+}
+
+pub fn for_all<T: Clone>(xs: Rc<FreeMonoid<T>>, predicate: impl Fn(T) -> bool + Clone) -> bool {
+    fold_list(xs.clone(), true, |acc, item| match acc.clone() {
+        true => predicate(item.clone()),
+        false => false,
+    })
+}
+
+pub fn contains<T: Clone>(
+    xs: Rc<FreeMonoid<T>>,
+    item: T,
+    eq: impl Fn(T, T) -> bool + Clone,
+) -> bool {
+    {
+        let mut __found = false;
+        for candidate in xs.iter().cloned() {
+            if eq(candidate.clone(), item.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn count_where<T: Clone>(xs: Rc<FreeMonoid<T>>, predicate: impl Fn(T) -> bool + Clone) -> i64 {
+    fold_list(xs.clone(), 0, |count, item| match predicate(item.clone()) {
+        true => v1_rt::int_add(count.clone(), 1),
+        false => count.clone(),
+    })
+}
+
+pub fn count_equal<T: Clone>(
+    xs: Rc<FreeMonoid<T>>,
+    item: T,
+    eq: impl Fn(T, T) -> bool + Clone,
+) -> i64 {
+    count_where(xs.clone(), |candidate| eq(candidate.clone(), item.clone()))
+}
+
+pub fn unique<T: Clone>(xs: Rc<FreeMonoid<T>>, eq: impl Fn(T, T) -> bool + Clone) -> bool {
+    {
+        let state = fold_list(
+            xs.clone(),
+            Rc::new(FreeMonoidUniqueState {
+                seen: Rc::new(vec![]),
+                unique: true,
+                _phantom: std::marker::PhantomData,
+            }),
+            |acc, item| match acc.unique.clone() {
+                true => match count_equal(acc.seen.clone(), item.clone(), eq.clone()) {
+                    0 => Rc::new(FreeMonoidUniqueState {
+                        seen: Rc::new({
+                            let mut __cons_v = (*acc.seen.clone()).clone();
+                            __cons_v.insert(0, item.clone());
+                            __cons_v
+                        }),
+                        unique: true,
+                        _phantom: std::marker::PhantomData,
+                    }),
+                    _ => Rc::new(FreeMonoidUniqueState {
+                        seen: acc.seen.clone(),
+                        unique: false,
+                        _phantom: std::marker::PhantomData,
+                    }),
+                },
+                false => acc.clone(),
+            },
+        );
+        state.unique.clone()
+    }
+}
+
+pub fn list_find_first<T: Clone>(
+    mut __tco_loop_xs: Rc<FreeMonoid<T>>,
+    mut __tco_loop_predicate: impl Fn(T) -> bool + Clone,
+) -> Option<T> {
+    loop {
+        #[allow(unused_mut)]
+        let mut xs = __tco_loop_xs;
+        #[allow(unused_mut)]
+        let mut predicate = __tco_loop_predicate;
+        {
+            let __fm = xs.clone();
+            if __fm.is_empty() {
+                break crate::std_optional::optional_absent();
+            } else {
+                let h = (*__fm)[0].clone();
+                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                if predicate(h.clone()) {
+                    break crate::std_optional::optional_present(h.clone());
+                } else {
+                    {
+                        let __tco_0 = t.clone();
+                        let __tco_1 = predicate;
+                        __tco_loop_xs = __tco_0;
+                        __tco_loop_predicate = __tco_1;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct ListPrefixState<T> {
+    pub rest: Rc<FreeMonoid<T>>,
+    pub matched: bool,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListPrefixState<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ListPrefixState")
+            .field("rest", &self.rest)
+            .field("matched", &self.matched)
+            .finish()
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for ListPrefixState<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.rest == other.rest && self.matched == other.matched
+    }
+}
+
+pub fn list_starts_with<T: Clone>(
+    xs: Rc<FreeMonoid<T>>,
+    prefix: Rc<FreeMonoid<T>>,
+    eq: impl Fn(T, T) -> bool + Clone,
+) -> bool {
+    {
+        let state = fold_list(
+            prefix.clone(),
+            Rc::new(ListPrefixState {
+                rest: xs.clone(),
+                matched: true,
+                _phantom: std::marker::PhantomData,
+            }),
+            |acc, item| match acc.matched.clone() {
+                false => acc.clone(),
+                true => {
+                    let __fm = acc.rest.clone();
+                    if __fm.is_empty() {
+                        Rc::new(ListPrefixState {
+                            rest: Rc::new(vec![]),
+                            matched: false,
+                            _phantom: std::marker::PhantomData,
+                        })
+                    } else {
+                        let h = (*__fm)[0].clone();
+                        let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                        Rc::new(ListPrefixState {
+                            rest: t.clone(),
+                            matched: eq(h.clone(), item.clone()),
+                            _phantom: std::marker::PhantomData,
+                        })
+                    }
+                }
+            },
+        );
+        state.matched.clone()
+    }
+}
+
+pub fn non_empty_singleton<T: Clone>(item: T) -> Rc<FreeSemigroup<T>> {
+    Rc::new(FreeSemigroup {
+        head: item.clone(),
+        tail: Rc::new(vec![]),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn non_empty_append<T: Clone>(
+    left: Rc<FreeSemigroup<T>>,
+    right: Rc<FreeSemigroup<T>>,
+) -> Rc<FreeSemigroup<T>> {
+    Rc::new(FreeSemigroup {
+        head: left.head.clone(),
+        tail: list_append(
+            list_snoc_item(left.tail.clone(), right.head.clone()),
+            right.tail.clone(),
+        ),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn non_empty_to_list<T: Clone>(xs: Rc<FreeSemigroup<T>>) -> Rc<FreeMonoid<T>> {
+    Rc::new({
+        let mut __cons_v = (*xs.tail.clone()).clone();
+        __cons_v.insert(0, xs.head.clone());
+        __cons_v
+    })
+}
+
+pub fn list_init<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let __fm = xs.clone();
+        if __fm.is_empty() {
+            Rc::new(vec![])
+        } else if __fm.len() == 1 {
+            Rc::new(vec![])
+        } else {
+            let h = (*__fm)[0].clone();
+            let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            Rc::new({
+                let mut __cons_v = (*list_init(t.clone())).clone();
+                __cons_v.insert(0, h.clone());
+                __cons_v
+            })
+        }
+    })
+}
+
+pub fn bag_eq<T: Clone>(
+    xs: Rc<FreeMonoid<T>>,
+    ys: Rc<FreeMonoid<T>>,
+    eq: impl Fn(T, T) -> bool + Clone,
+) -> bool {
+    if (length(xs.clone()) != length(ys.clone())) {
+        false
+    } else {
+        for_all(xs.clone(), |item| {
+            (count_equal(xs.clone(), item.clone(), eq.clone())
+                == count_equal(ys.clone(), item.clone(), eq.clone()))
+        })
+    }
+}
+
+pub fn zip_eq<T: Clone>(
+    a: Rc<FreeMonoid<T>>,
+    b: Rc<FreeMonoid<T>>,
+    eq: impl Fn(T, T) -> bool + Clone,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let __fm = a.clone();
+        if __fm.is_empty() {
+            {
+                let __fm = b.clone();
+                if __fm.is_empty() {
+                    true
+                } else {
+                    false
+                }
+            }
+        } else {
+            let ha = (*__fm)[0].clone();
+            let ta: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            {
+                let __fm = b.clone();
+                if __fm.is_empty() {
+                    false
+                } else {
+                    let hb = (*__fm)[0].clone();
+                    let tb: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                    (eq(ha.clone(), hb.clone()) && zip_eq(ta.clone(), tb.clone(), eq.clone()))
+                }
+            }
+        }
+    })
+}
+
+pub fn zip_map<A: Clone, B: Clone, C: Clone>(
+    a: Rc<FreeMonoid<A>>,
+    b: Rc<FreeMonoid<B>>,
+    f: impl Fn(A, B) -> C + Clone,
+) -> Rc<FreeMonoid<C>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let __fm = a.clone();
+        if __fm.is_empty() {
+            Rc::new(vec![])
+        } else {
+            let ha = (*__fm)[0].clone();
+            let ta: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            {
+                let __fm = b.clone();
+                if __fm.is_empty() {
+                    Rc::new(vec![])
+                } else {
+                    let hb = (*__fm)[0].clone();
+                    let tb: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                    Rc::new({
+                        let mut __cons_v = (*zip_map(ta.clone(), tb.clone(), f.clone())).clone();
+                        __cons_v.insert(0, f(ha.clone(), hb.clone()));
+                        __cons_v
+                    })
+                }
+            }
+        }
+    })
+}
+
+pub fn reduce_or<T: Clone>(
+    xs: Rc<FreeMonoid<T>>,
+    fallback: T,
+    combine: impl Fn(T, T) -> T + Clone,
+) -> T {
+    {
+        let __fm = xs.clone();
+        if __fm.is_empty() {
+            fallback
+        } else {
+            let h = (*__fm)[0].clone();
+            let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            fold_non_empty(h.clone(), t.clone(), combine.clone())
+        }
+    }
+}
+
+pub fn is_prefix_of<T: Clone>(
+    prefix: Rc<FreeMonoid<T>>,
+    xs: Rc<FreeMonoid<T>>,
+    eq: impl Fn(T, T) -> bool + Clone,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let __fm = prefix.clone();
+        if __fm.is_empty() {
+            true
+        } else {
+            let h_prefix = (*__fm)[0].clone();
+            let t_prefix: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            {
+                let __fm = xs.clone();
+                if __fm.is_empty() {
+                    false
+                } else {
+                    let h_xs = (*__fm)[0].clone();
+                    let t_xs: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                    (eq(h_prefix.clone(), h_xs.clone())
+                        && is_prefix_of(t_prefix.clone(), t_xs.clone(), eq.clone()))
+                }
+            }
+        }
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -3,7 +3,7 @@ module v2.cli.compile_cli
 import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse }
 import v2.compiler.self_host.closure_emission {
   closure_emission_first_refusal,
   closure_emission_json,
@@ -45,7 +45,6 @@ import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.languages.swift { swift_target_model }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.algebra { fold_list, length, list_reverse }
 
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.lens_verdict {
@@ -57,6 +56,7 @@ import v2.std.qualified_name { qualified_name_from_dotted_string }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex }
 import v2.std.text { String }
+import std.types { List }
 
 // THE V2-NATIVE CLI. THIS IS THE COMPILER'S OWN FRONT DOOR, WRITTEN IN THE COMPILER'S OWN LANGUAGE.
 //

@@ -41,7 +41,7 @@ import std.content_hash {
   content_hash_eq_structural,
   Fnv1a64Structural,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.scm.object_store { empty_store }

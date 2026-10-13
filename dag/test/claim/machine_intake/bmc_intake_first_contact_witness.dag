@@ -1,7 +1,7 @@
 module test.claim.machine_intake.bmc_intake_first_contact_witness
 
 import std.types { Bool, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.machine_intake.bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
 import gunbc.machine_intake.mtjade1_access_observation {
   CaptureBoundToAnotherLink,

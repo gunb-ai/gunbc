@@ -44,7 +44,7 @@ import gunbc.arm_ci_seller_census {
   surveyed_arm_linux_offers,
   unread_standing_arm_linux_offers,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

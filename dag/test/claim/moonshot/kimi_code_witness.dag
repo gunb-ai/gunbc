@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr }
 import std.measure { token_count_value }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import std.roster_frontier { DeclSubject, PathSubject }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.moonshot.kimi_code {
   kimi_for_coding_wire_id,
   kimi_k28_preview_served_version_name,

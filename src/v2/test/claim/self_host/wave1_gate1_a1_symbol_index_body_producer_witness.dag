@@ -12,7 +12,7 @@ import v2.compiler.body_lowering_fold {
   BodyLoweringRejected,
   BodyLoweringWrapperRetained
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, TypeNode, node_synthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

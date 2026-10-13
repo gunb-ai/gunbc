@@ -11,7 +11,7 @@ module test.claim.roadmap.roadmap_belt_base_advance_witness
 // based on its root by position.
 
 import std.types { Bool, String, List, NonEmptyStr, Map }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
 import gunbc.scm.intake { IntakeRevision, GitIntakeRevision }

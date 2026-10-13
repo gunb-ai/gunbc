@@ -16,7 +16,7 @@ import v2.lens.testgen {
   lbe_subject_transform_dag_surface,
   testgen_scheduled_language_behavior_generators
 }
-import v2.std.algebra { for_all, length }
+import std.algebra { for_all, length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.verification {
   ManualLbeConjDagSurface,
@@ -31,7 +31,7 @@ import v2.test.claim.manual.connective_anchors {
   stub_empty_disj,
   stub_empty_transform
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

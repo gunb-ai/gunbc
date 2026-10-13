@@ -1,7 +1,7 @@
 module test.claim.self_host_artifact_materialization_real_execution_witness
 
 import std.types { Bool, FilePath, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.filesystem.filesystem_io
 import extdeps.shell
 import extdeps.rust.cargo_build
@@ -15,9 +15,8 @@ import v2.compiler.self_host.generation {
   generation_axis_symbol,
   generation_identity_mismatched_axes
 }
-import v2.std.algebra { for_all, length }
 import v2.std.node { symbol_identity_digest }
-import std.algebra { trim }
+import std.algebra { trim, for_all, length }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

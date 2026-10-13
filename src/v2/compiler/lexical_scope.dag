@@ -2,8 +2,7 @@ module v2.compiler.lexical_scope
 
 import std.types { List }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.algebra { list_snoc_item }
-import v2.std.algebra { list_map }
+import std.algebra { list_snoc_item, list_map }
 import v2.std.integer { Int }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {

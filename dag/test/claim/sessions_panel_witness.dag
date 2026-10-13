@@ -25,7 +25,7 @@ import gunbc.roadmap.roadmap_style { roadmap_rules }
 import gunbc.design.material { StaticRule }
 import extdeps.languages.css.selectors { ClassSelector }
 import std.upsert_decision { ObservationVerdict, Converged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

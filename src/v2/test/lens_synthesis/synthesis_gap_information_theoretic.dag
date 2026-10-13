@@ -10,7 +10,7 @@ import v2.lens.synthesis {
   assess_information_theoretic,
   synthesis_lens
 }
-import v2.std.algebra { non_empty }
+import std.algebra { non_empty }
 import v2.std.node {
   Atom,
   Occupancy,

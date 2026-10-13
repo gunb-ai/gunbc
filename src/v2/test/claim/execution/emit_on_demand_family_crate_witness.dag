@@ -51,8 +51,7 @@ import v2.test.claim.execution.emit_host_complement_equals_eval {
   emit_complement_eval_tree_for,
   emit_complement_eval_subject,
 }
-import v2.std.algebra { Cons, Empty, length }
-import std.algebra { Cons, Empty, list_append }
+import std.algebra { Cons, Empty, list_append, length }
 import std.optional {
   Optional,
   Present,
@@ -70,7 +69,7 @@ import v2.std.native_agreement {
 }
 import v2.std.node { Node }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

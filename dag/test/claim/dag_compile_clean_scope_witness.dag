@@ -17,7 +17,7 @@ import gunbc.instruments.dag_compile_clean_scope {
   witness_empty_touched_duplicate_roster_refuses_at_admission,
   compile_clean_docs_universe_path_grain_dissolve_trigger
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

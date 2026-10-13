@@ -10,7 +10,7 @@ import gunbc.fleet.fleet_bmc_observation {
   srv3_bmc_firmware_3_22_00_observation,
   srv3_bmc_firmware_observation, srv4_bmc_firmware_observation,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

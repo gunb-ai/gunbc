@@ -17,8 +17,8 @@ import gunbc.namespace_cut.namespace_reference_derived_residency_qualification {
   SyntaxNodePerKey,
 }
 import std.decl_ref { DeclarationRef }
-import v2.std.algebra { length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { length }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.extdeps.languages.dag { dag_node_is_module_member_surface }
 import v2.std.node_query { member_edge_type_node }

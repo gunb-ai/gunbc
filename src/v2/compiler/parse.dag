@@ -87,8 +87,7 @@ import std.optional {
   Optional,
   Present
 }
-import std.algebra { Cons, Empty, list_append, list_snoc_item }
-import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_head, list_reverse, list_tail, unique, zip_eq }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, HeadAbsent, HeadFound, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_head, list_reverse, list_tail, unique, zip_eq }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import v2.extdeps.languages.dag {
   dag_float_literal_node_from_lexeme,
@@ -3085,6 +3084,14 @@ fn lookahead_site_overlaps(
   }
 }
 
+// THE DEEPEST TOKEN PEEK A CHOICE PLAN MAKES BEFORE IT ATTEMPTS AN ALTERNATIVE. A token-prefix plan
+// selects its row by the classes of the next `need` tokens, and a stream with fewer than `need` left
+// rejects the choice outright, so how far past what a parse consumes it may examine is a fact of
+// this number. It is named here, once, so the reader that bounds a production's examination
+// (v2.compiler.grammar_reach) takes the plan's own depth and not a copy of it. The by-token and
+// by-word plans peek one token, a shared-prefix plan none beyond its prefix.
+fn grammar_choice_plan_peek_depth() -> Int { 2 }
+
 fn compile_choice_alts(
   alts: List<PreparedExprFold>,
   nullable_set: List<Symbol>,
@@ -3122,13 +3129,13 @@ fn compile_choice_alts(
                     )
                   }
                 Absent =>
-                  match choice_token_prefix_rows(alts: alts, need: 2) {
+                  match choice_token_prefix_rows(alts: alts, need: grammar_choice_plan_peek_depth()) {
                     Present { value: rows } => ChoiceTokenPrefix { rows: rows }
                     Absent => ordered_backtrack_emit(alts: alts)
                   }
               }
             Absent =>
-              match choice_token_prefix_rows(alts: alts, need: 2) {
+              match choice_token_prefix_rows(alts: alts, need: grammar_choice_plan_peek_depth()) {
                 Present { value: rows } => ChoiceTokenPrefix { rows: rows }
                 Absent => ordered_backtrack_emit(alts: alts)
               }
@@ -5023,12 +5030,18 @@ fn parse_production_prepared_seeded(
 // check, an unknown production, a refusal recorded anywhere in the run and a production that does not
 // match the stream's start all reject with the diagnostics the whole door gives. Only the leftover
 // tokens differ, so a stream the whole door accepts is accepted here with an artifact equal to its own.
+//
+// THE UNREAD COUNT IS THE DOOR'S, NOT THE CALLER'S. A caller handing this door a stream that is itself
+// a window of a longer one needs to know whether the parse read only inside the window, and what
+// the production left unread is the one fact that answers it. The caller could recompute it as the
+// stream length less a consumed count only by re-deriving where the production ended, which is the
+// second authority on a prefix's end this door exists to remove.
 fn parse_production_prefix_prepared(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
   analysis: GrammarFirstAnalysis,
   production_name: Symbol
-) -> Outcome<ParseArtifact> {
+) -> Outcome<ParsePrefix> {
   match parse_production_run(
     tokens: tokens,
     validated: validated,
@@ -5041,6 +5054,13 @@ fn parse_production_prefix_prepared(
     ProductionRunParsed { parsed: parsed, production: production, root: root } =>
       parse_production_prefix_unrefused(parsed: parsed, production: production, root: root)
   }
+}
+
+// WHAT THE PREFIX DOOR RETURNS: the artifact of the consumed tokens and the number of tokens of the
+// stream the production left unread.
+type ParsePrefix {
+  artifact: ParseArtifact
+  unread: Int
 }
 
 // A STREAM POSITION IS ITS TOKEN'S START, so the parse admits only a stream whose starts strictly
@@ -5170,11 +5190,14 @@ fn parse_production_prefix_unrefused(
   parsed: ParseExprResult,
   production: GrammarProduction,
   root: GrammarRoot
-) -> Outcome<ParseArtifact> {
+) -> Outcome<ParsePrefix> {
   match parsed {
-    ParseExprAccepted { remaining: _, captured: captured, diagnostics: diags, prov: inner_prov, table: _ } =>
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: _ } =>
       Accepted {
-        value: parse_production_artifact(production: production, captured: captured, prov: inner_prov),
+        value: ParsePrefix {
+          artifact: parse_production_artifact(production: production, captured: captured, prov: inner_prov),
+          unread: length(xs: remaining)
+        },
         diagnostics: parse_diags_to_diagnostics(diags: diags)
       }
     ParseExprRejected { diagnostics: diags, table: _ } =>

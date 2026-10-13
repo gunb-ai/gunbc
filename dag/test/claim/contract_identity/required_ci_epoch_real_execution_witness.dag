@@ -32,7 +32,7 @@ import gunbc.fleet.fleet_revision_acceptance {
   CiContractEpochMismatch,
   accept_required_ci_merge_group_runs,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

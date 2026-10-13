@@ -21,7 +21,7 @@ import gunbc.repository { gunbc_repository }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import gunbc.runner.runner_slot_allocation { runner_label_sets_equal }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner.runner_microvm_attempt {
   MicroVmCellBinding, VmUnboundCellNotOwned,
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
@@ -62,7 +62,7 @@ import gunbc.runner.runner_jit_perform {
 
 import extdeps.uri { Uri, uri_https }
 import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host.managed_host { ManagedHost, managed_hosts, managed_host_binding, ManagedHostAccessUnobserved }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.github.actions_runner { ActionsRunnerLinuxArm64 }

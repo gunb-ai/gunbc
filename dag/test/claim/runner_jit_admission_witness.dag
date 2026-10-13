@@ -1,7 +1,7 @@
 module test.claim.runner_jit_admission_witness
 
 import std.types { String, Bool, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, ReplayAxis, UnitBindingAxis, BootBindingAxis, AttemptBindingAxis,

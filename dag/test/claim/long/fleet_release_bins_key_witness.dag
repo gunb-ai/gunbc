@@ -5,7 +5,7 @@ import v2.std.node { Node }
 import std.optional { Present, Absent }
 import v2.std.diagnostic { Outcome }
 import extdeps.shell.exec { TransportScript }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.output_policy { ExpectFailure }
 import gunbc.ci.ci_release_bins { ci_floor_required_artifact_names }
 import gunbc.fleet.fleet_release_bins_key {

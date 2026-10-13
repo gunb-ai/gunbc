@@ -20,7 +20,7 @@ import std.observation {
   observation_subject_contains,
 }
 import std.measure { Nanosecond, ByteSize, nanosecond, nanosecond_count, byte_size, byte_size_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

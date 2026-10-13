@@ -1,7 +1,7 @@
 module test.claim.machine_intake.mtjade1_first_dpc_population_plan_witness
 
 import std.types { Bool, list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   DimmSlot0,
   OneDimmPerChannel,

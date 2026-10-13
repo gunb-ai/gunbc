@@ -7,6 +7,7 @@ import product.fabric.work {
   ControlPlaneCapacity, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef, OpaqueEffects,
   OutputArtifactObligation, TerminalResultObligation, Work, WorkContract, MaterializedProgram, OfferedService,
   work_for,
+ WarmResidencyRequired,
 }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }

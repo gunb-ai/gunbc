@@ -10,7 +10,7 @@ import extdeps.tools.env {
   env_prefixed_argv,
   env_prefixed_args,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

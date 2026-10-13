@@ -11,7 +11,7 @@ import gunbc.instruments.build_step { BuildArtifact, emit_verifications }
 import gunbc.ci.ci_spec { ci_floor_build_verify_script }
 import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.node_query { node_positional_child_targets }
 

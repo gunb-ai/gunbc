@@ -59,7 +59,7 @@ import extdeps.llm.anthropic_messages_api { MaxTokens, ToolUse, EndTurn }
 // carries NonEmptyStr fields and HarnessGroundedPremise requires one, so an ungrounded premise has
 // no constructor. Per DESIGN section 4b that check's RED is unauthorable, which makes it a
 // permanently-green decoration that would be cited as coverage. The carrier already holds it.
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 fn at(premise: HarnessPremise) -> HarnessGroundedPremise {
   grounded(premise: premise, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command")

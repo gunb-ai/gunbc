@@ -1,8 +1,7 @@
 module gunbc.emitted_subject_build_gate
 
 import std.types { Bool, String, List }
-import v2.std.algebra { list_map }
-import std.algebra { list_append }
+import std.algebra { list_append, list_map }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization_width { byte_size_saturating_sub }
 import extdeps.bazel.label { Label, render_label }

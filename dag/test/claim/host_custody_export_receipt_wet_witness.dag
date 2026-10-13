@@ -1,7 +1,7 @@
 module test.claim.host_custody_export_receipt_wet_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.file_access { FileTreeScope }
