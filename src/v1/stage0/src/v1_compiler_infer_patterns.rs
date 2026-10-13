@@ -66,8 +66,8 @@ pub fn generic_use_slot_bindings(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, pair: (i64, Rc<Node>)| {
                 let slot = crate::v1_std_core::generic_param_name_at(
                     pair.1.clone(),
                     env.source_indices.clone(),

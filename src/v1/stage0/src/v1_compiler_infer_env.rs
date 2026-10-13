@@ -117,40 +117,43 @@ pub fn binding_unit_variant_contributions(
     {
         let ty = variant_lookup_structural(binding.resolved.clone());
         match ty.connective.clone() {
-            Connective::Disj => ty.children.clone().iter().cloned().fold(
-                v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
-                |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, v: Rc<Node>| {
-                    if is_unit_variant_node(v.clone()) {
-                        {
-                            let vname = crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                v.clone(),
-                            );
-                            match v1_rt::map_get(&acc, vname.clone()) {
-                                Some(prev) => v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    vname.clone(),
-                                    Rc::new(UnitVariantContribution {
-                                        count: v1_rt::int_add(prev.count.clone(), 1),
-                                        variant: prev.variant.clone(),
-                                    }),
-                                ),
-                                std::option::Option::None => v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    vname.clone(),
-                                    Rc::new(UnitVariantContribution {
-                                        count: 1,
-                                        variant: v.clone(),
-                                    }),
-                                ),
+            Connective::Disj => {
+                let seed = v1_rt::rc_empty_map::<_, _>();
+                ty.children.clone().iter().cloned().fold(
+                    seed.clone(),
+                    |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, v: Rc<Node>| {
+                        if is_unit_variant_node(v.clone()) {
+                            {
+                                let vname = crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    v.clone(),
+                                );
+                                match v1_rt::map_get(&acc, vname.clone()) {
+                                    Some(prev) => v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        vname.clone(),
+                                        Rc::new(UnitVariantContribution {
+                                            count: v1_rt::int_add(prev.count.clone(), 1),
+                                            variant: prev.variant.clone(),
+                                        }),
+                                    ),
+                                    std::option::Option::None => v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        vname.clone(),
+                                        Rc::new(UnitVariantContribution {
+                                            count: 1,
+                                            variant: v.clone(),
+                                        }),
+                                    ),
+                                }
                             }
+                        } else {
+                            acc.clone()
                         }
-                    } else {
-                        acc.clone()
-                    }
-                },
-            ),
-            _ => v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
+                    },
+                )
+            }
+            _ => v1_rt::rc_empty_map::<_, _>(),
         }
     }
 }
@@ -160,8 +163,8 @@ pub fn contributions_without_key(
     key: String,
 ) -> Rc<HashMap<String, Rc<UnitVariantContribution>>> {
     Rc::new(v1_rt::map_keys(&contribs)).iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
-        |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, k: String| {
+        v1_rt::rc_empty_map::<_, _>(),
+        |acc: _, k: String| {
             if (k.clone() == key.clone()) {
                 acc.clone()
             } else {
@@ -218,9 +221,7 @@ pub fn unit_variant_index_add_binding(
                     Some(contribution) => {
                         let contribs = match v1_rt::map_get(&acc, vname.clone()) {
                             Some(existing) => existing.clone(),
-                            std::option::Option::None => {
-                                v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>()
-                            }
+                            std::option::Option::None => v1_rt::rc_empty_map::<_, _>(),
                         };
                         v1_rt::rc_map_insert(
                             acc.clone(),
@@ -290,9 +291,8 @@ pub fn build_unit_variant_index(
             },
         );
         Rc::new(v1_rt::map_values(&visible)).iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>(),
-            |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
-             binding: Rc<TypeBinding>| {
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, binding: Rc<TypeBinding>| {
                 unit_variant_index_add_binding(acc, binding.clone(), source_indices.clone())
             },
         )
@@ -363,35 +363,32 @@ pub struct Scope {
 
 pub fn empty_symbol_index() -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
-        entries: v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
-        services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
-        transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
-        type_head_exposures: v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
-        file_modules: v1_rt::rc_empty_map::<String, String>(),
-        module_named_imports: v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
+        entries: v1_rt::rc_empty_map::<_, _>(),
+        global_bare: v1_rt::rc_empty_map::<_, _>(),
+        services: v1_rt::rc_empty_map::<_, _>(),
+        transparent_alias_rep: v1_rt::rc_empty_map::<_, _>(),
+        type_head_exposures: v1_rt::rc_empty_map::<_, _>(),
+        file_modules: v1_rt::rc_empty_map::<_, _>(),
+        module_named_imports: v1_rt::rc_empty_map::<_, _>(),
     })
 }
 
 pub fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         module_path: "".to_string(),
-        bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-        str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        bindings: v1_rt::rc_empty_map::<_, _>(),
+        str_bindings: v1_rt::rc_empty_map::<_, _>(),
+        ancestry_str_bindings: v1_rt::rc_empty_map::<_, _>(),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
-        recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-        inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-        source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        recursive_type_set: v1_rt::rc_empty_map::<_, _>(),
+        inductive_fields: v1_rt::rc_empty_map::<_, _>(),
+        source_indices: v1_rt::rc_empty_map::<_, _>(),
         intern_table: crate::v1_std_core::empty_intern_table(),
-        source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
-        authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
+        source_visible_names: v1_rt::rc_empty_map::<_, _>(),
+        authored_import_names: v1_rt::rc_empty_map::<_, _>(),
         symbol_index: empty_symbol_index(),
-        unit_variant_index: v1_rt::rc_empty_map::<
-            String,
-            Rc<HashMap<String, Rc<UnitVariantContribution>>>,
-        >(),
+        unit_variant_index: v1_rt::rc_empty_map::<_, _>(),
         unit_variant_index_observed: false,
     })
 }
@@ -760,7 +757,7 @@ pub fn symbol_index_insert_service(
 
 pub fn empty_scope() -> Rc<Scope> {
     Rc::new(Scope {
-        locals: v1_rt::rc_empty_map::<String, Rc<ScopeBinding>>(),
+        locals: v1_rt::rc_empty_map::<_, _>(),
     })
 }
 
@@ -784,10 +781,10 @@ pub struct TypeEnvCache {
 
 pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
-        deps_map: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        cycle_set_str: v1_rt::rc_empty_map::<String, bool>(),
-        variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        deps_map: v1_rt::rc_empty_map::<_, _>(),
+        str_bindings: v1_rt::rc_empty_map::<_, _>(),
+        cycle_set_str: v1_rt::rc_empty_map::<_, _>(),
+        variant_locals: v1_rt::rc_empty_map::<_, _>(),
     })
 }
 
@@ -1246,8 +1243,8 @@ pub fn str_bindings_from_bindings(
     bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
     Rc::new(v1_rt::map_values(&bindings)).iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
+        v1_rt::rc_empty_map::<_, _>(),
+        |acc: _, binding: Rc<TypeBinding>| {
             v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
         },
     )
@@ -1621,9 +1618,10 @@ pub fn borrowed_generic_param_names(
     params: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, bool>> {
-    params.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+    params
+        .iter()
+        .cloned()
+        .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, p: Rc<Node>| {
             let pt = crate::v1_std_core::param_node_type_expr(p.clone());
             let pname = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
             let tname = crate::v1_std_core::authored_name_at(source_indices.clone(), pt.clone());
@@ -1636,8 +1634,7 @@ pub fn borrowed_generic_param_names(
             } else {
                 acc.clone()
             }
-        },
-    )
+        })
 }
 
 pub fn qualify_decl_reference_positions(
@@ -2448,20 +2445,23 @@ pub fn merge_inductive_fields(
 pub fn inductive_fields_list_to_map(
     fields: Rc<Vec<Rc<InductiveField>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    fields.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
-            let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
-                Some(fs) => fs.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
-            v1_rt::rc_map_insert(
-                acc.clone(),
-                field.type_name.clone(),
-                v1_rt::concat(existing.clone(), Rc::new(vec![field.clone()])),
-            )
-        },
-    )
+    {
+        let seed = v1_rt::rc_empty_map::<_, _>();
+        fields.iter().cloned().fold(
+            seed.clone(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
+                let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
+                    Some(fs) => fs.clone(),
+                    std::option::Option::None => Rc::new(vec![]),
+                };
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    field.type_name.clone(),
+                    v1_rt::concat(existing.clone(), Rc::new(vec![field.clone()])),
+                )
+            },
+        )
+    }
 }
 
 pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
@@ -2554,22 +2554,19 @@ pub fn census_declaration_type_env(
     {
         let base = Rc::new(TypeEnv {
             module_path: module_path.clone(),
-            bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            bindings: v1_rt::rc_empty_map::<_, _>(),
+            str_bindings: v1_rt::rc_empty_map::<_, _>(),
+            ancestry_str_bindings: v1_rt::rc_empty_map::<_, _>(),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
-            recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+            recursive_type_set: v1_rt::rc_empty_map::<_, _>(),
+            inductive_fields: v1_rt::rc_empty_map::<_, _>(),
             source_indices: source_indices.clone(),
             intern_table: crate::v1_std_core::empty_intern_table(),
-            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
-            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
+            source_visible_names: v1_rt::rc_empty_map::<_, _>(),
+            authored_import_names: v1_rt::rc_empty_map::<_, _>(),
             symbol_index: census.clone(),
-            unit_variant_index: v1_rt::rc_empty_map::<
-                String,
-                Rc<HashMap<String, Rc<UnitVariantContribution>>>,
-            >(),
+            unit_variant_index: v1_rt::rc_empty_map::<_, _>(),
             unit_variant_index_observed: false,
         });
         env_with_type_variable_bindings(base.clone(), tp_names.clone())

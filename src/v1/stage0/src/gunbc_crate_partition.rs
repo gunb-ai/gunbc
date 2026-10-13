@@ -256,10 +256,8 @@ pub fn reached_set(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |reached: Rc<HashMap<String, bool>>, member: String| {
-                v1_rt::rc_map_insert(reached, member.clone(), true)
-            },
+            v1_rt::rc_empty_map::<_, _>(),
+            |reached: _, member: String| v1_rt::rc_map_insert(reached, member.clone(), true),
         )
 }
 
@@ -289,23 +287,17 @@ pub fn emitted_target_reach(
             }),
         });
         emitted.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-            |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, edge: Rc<EmittedEdge>| {
-                match (*edge.to.clone()).clone() {
-                    EmittedEdgeTarget::EmittedCrateRootTarget => acc.clone(),
-                    EmittedEdgeTarget::EmittedModuleTarget { module: target, .. } => {
-                        match v1_rt::map_get(&acc, target.clone()) {
-                            Some(_) => acc.clone(),
-                            std::option::Option::None => v1_rt::rc_map_insert(
-                                acc.clone(),
-                                target.clone(),
-                                reached_set(
-                                    names.clone(),
-                                    forward_as_reverse.clone(),
-                                    target.clone(),
-                                ),
-                            ),
-                        }
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, edge: Rc<EmittedEdge>| match (*edge.to.clone()).clone() {
+                EmittedEdgeTarget::EmittedCrateRootTarget => acc.clone(),
+                EmittedEdgeTarget::EmittedModuleTarget { module: target, .. } => {
+                    match v1_rt::map_get(&acc, target.clone()) {
+                        Some(_) => acc.clone(),
+                        std::option::Option::None => v1_rt::rc_map_insert(
+                            acc.clone(),
+                            target.clone(),
+                            reached_set(names.clone(), forward_as_reverse.clone(), target.clone()),
+                        ),
                     }
                 }
             },
@@ -398,14 +390,12 @@ pub fn merge_emitted_edges(
 ) -> Rc<EmittedEdgesMerge> {
     {
         let module_set = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, module_id: NonEmptyStr| {
-                v1_rt::rc_map_insert(acc, module_id.clone(), true)
-            },
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, module_id: NonEmptyStr| v1_rt::rc_map_insert(acc, module_id.clone(), true),
         );
         let present = edges.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, edge: Rc<ModuleDagEdge>| {
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, edge: Rc<ModuleDagEdge>| {
                 v1_rt::rc_map_insert(
                     acc,
                     module_dag_edge_key(edge.from.clone(), edge.to.clone()),
@@ -548,7 +538,7 @@ pub fn policy_partition_assignment_over(
         );
         let filled = components.iter().cloned().fold(
             Rc::new(PolicyPartitionFill {
-                assignment: v1_rt::rc_empty_map::<NonEmptyStr, NonEmptyStr>(),
+                assignment: v1_rt::rc_empty_map::<_, _>(),
                 unit_index: 0,
                 filled: 0,
             }),
@@ -614,10 +604,8 @@ pub fn assignment_first_stranger(
 ) -> Option<NonEmptyStr> {
     {
         let known = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<NonEmptyStr, bool>(),
-            |acc: Rc<HashMap<NonEmptyStr, bool>>, module_id: NonEmptyStr| {
-                v1_rt::rc_map_insert(acc, module_id.clone(), true)
-            },
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, module_id: NonEmptyStr| v1_rt::rc_map_insert(acc, module_id.clone(), true),
         );
         Rc::new(v1_rt::sorted_map_keys(&assignment))
             .iter()

@@ -498,8 +498,8 @@ pub fn test_marked_declaration_keys(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, bool>> {
     typed.modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<_, _>(),
+        |acc: _, m: Rc<TypedModule>| {
             Rc::new({
                 let mut __result = Vec::new();
                 for item in m.items.clone().iter().cloned() {
@@ -511,7 +511,7 @@ pub fn test_marked_declaration_keys(
             })
             .iter()
             .cloned()
-            .fold(acc, |inner: Rc<HashMap<String, bool>>, item: Rc<Node>| {
+            .fold(acc, |inner: _, item: Rc<Node>| {
                 v1_rt::rc_map_insert(
                     inner,
                     v1_rt::concat(
@@ -570,9 +570,11 @@ pub fn module_declaration_keys(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, String>> {
-    m.items.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, item: Rc<Node>| {
+    m.items
+        .clone()
+        .iter()
+        .cloned()
+        .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, item: Rc<Node>| {
             v1_rt::rc_map_insert(
                 acc,
                 crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
@@ -581,8 +583,7 @@ pub fn module_declaration_keys(
                     crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
                 ),
             )
-        },
-    )
+        })
 }
 
 pub fn visible_declaration_keys(
@@ -607,8 +608,8 @@ pub fn visible_declaration_keys(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, imp: Rc<Node>| match v1_rt::map_get(
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, imp: Rc<Node>| match v1_rt::map_get(
                 &modules_by_name,
                 crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone()),
             ) {
@@ -637,30 +638,27 @@ pub fn visible_declaration_keys(
         })
         .iter()
         .cloned()
-        .fold(
-            wildcard.clone(),
-            |acc: Rc<HashMap<String, String>>, imp: Rc<Node>| {
-                crate::v1_std_core::import_specific_names_at(imp.clone(), source_indices.clone())
-                    .iter()
-                    .cloned()
-                    .fold(acc, |inner: Rc<HashMap<String, String>>, name: String| {
-                        v1_rt::rc_map_insert(
-                            inner,
-                            name.clone(),
+        .fold(wildcard.clone(), |acc: _, imp: Rc<Node>| {
+            crate::v1_std_core::import_specific_names_at(imp.clone(), source_indices.clone())
+                .iter()
+                .cloned()
+                .fold(acc, |inner: _, name: String| {
+                    v1_rt::rc_map_insert(
+                        inner,
+                        name.clone(),
+                        v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        imp.clone(),
-                                    ),
-                                    ".".to_string(),
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    imp.clone(),
                                 ),
-                                name.clone(),
+                                ".".to_string(),
                             ),
-                        )
-                    })
-            },
-        );
+                            name.clone(),
+                        ),
+                    )
+                })
+        });
         v1_rt::rc_map_merge(
             named.clone(),
             module_declaration_keys(m.clone(), module_name.clone(), source_indices.clone()),
@@ -1155,8 +1153,8 @@ pub fn test_reference_diagnostics(
     {
         let test_keys = test_marked_declaration_keys(typed.clone(), source_indices.clone());
         let modules_by_name = typed.modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, m: Rc<TypedModule>| {
                 v1_rt::rc_map_insert(
                     acc,
                     crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
@@ -1165,8 +1163,8 @@ pub fn test_reference_diagnostics(
             },
         );
         let compiled_modules = typed.modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
-            |acc: Rc<HashMap<String, Rc<SourceSpan>>>, m: Rc<TypedModule>| {
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, m: Rc<TypedModule>| {
                 v1_rt::rc_map_insert(
                     acc,
                     crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
@@ -1191,8 +1189,8 @@ pub fn test_reference_diagnostics(
             __result
         });
         let counts = occurrences.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, i64>(),
-            |acc: Rc<HashMap<String, i64>>, o: Rc<TestReferenceOccurrence>| {
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, o: Rc<TestReferenceOccurrence>| {
                 v1_rt::rc_map_insert(
                     acc.clone(),
                     test_reference_occurrence_key(o.clone()),
@@ -1207,8 +1205,8 @@ pub fn test_reference_diagnostics(
             },
         );
         let first_spans = occurrences.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
-            |acc: Rc<HashMap<String, Rc<SourceSpan>>>, o: Rc<TestReferenceOccurrence>| {
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, o: Rc<TestReferenceOccurrence>| {
                 if v1_rt::map_contains_key(&acc, test_reference_occurrence_key(o.clone())) {
                     acc.clone()
                 } else {
@@ -1222,10 +1220,8 @@ pub fn test_reference_diagnostics(
         );
         let debt = test_reference_debt();
         let debt_keys = debt.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, r: Rc<TestReferenceDebtRow>| {
-                test_reference_admission_insert(acc, r.clone())
-            },
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, r: Rc<TestReferenceDebtRow>| test_reference_admission_insert(acc, r.clone()),
         );
         let occurrence_diags = Rc::new({
             let mut __result = Vec::new();
@@ -1264,8 +1260,8 @@ pub fn test_reference_census(
         CorpusScope::CorpusUnknown => Rc::new(CensusKnowledge::CensusAbsent),
         CorpusScope::CorpusKnown => Rc::new(CensusKnowledge::CensusLoaded {
             modules: fill_modules.iter().cloned().fold(
-                v1_rt::rc_empty_map::<String, bool>(),
-                |acc: Rc<HashMap<String, bool>>, m: Rc<Node>| {
+                v1_rt::rc_empty_map::<_, _>(),
+                |acc: _, m: Rc<Node>| {
                     v1_rt::rc_map_insert(
                         acc,
                         crate::v1_std_core::authored_name_at(census_si.clone(), m.clone()),
@@ -1599,8 +1595,8 @@ pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Strin
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, pair: (i64, Rc<Node>)| {
+        v1_rt::rc_empty_map::<_, _>(),
+        |acc: _, pair: (i64, Rc<Node>)| {
             v1_rt::rc_map_insert(
                 acc,
                 crate::v1_compiler_dag_collect::dag_node_key(pair.1.clone()),
@@ -1612,8 +1608,8 @@ pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Strin
 
 pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     typed.modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<_, _>(),
+        |acc: _, m: Rc<TypedModule>| {
             v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
         },
     )
@@ -3598,7 +3594,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
-                        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                        v1_rt::rc_empty_map::<_, _>(),
                         p.newline_index.clone().file.clone(),
                         p.newline_index.clone(),
                     ),
@@ -3644,10 +3640,8 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
         let module_inputs = parsed.module_inputs.clone();
         let source_indices = newline_indices.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
-                v1_rt::rc_map_insert(acc, si.file.clone(), si.clone())
-            },
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, si: Rc<NewlineIndex>| v1_rt::rc_map_insert(acc, si.file.clone(), si.clone()),
         );
         let occurrence_transport = merge_occurrence_transports(Rc::new({
             let mut __result = Vec::new();
@@ -3819,7 +3813,7 @@ pub fn parse_census_fill_sources_with(
                 let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
-                        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                        v1_rt::rc_empty_map::<_, _>(),
                         p.newline_index.clone().file.clone(),
                         p.newline_index.clone(),
                     ),
@@ -4071,15 +4065,15 @@ pub fn compile_to_resolved_with_options(
             std::option::Option::None => Rc::new(ResolvedPipelineResult {
                 graph: std::option::Option::None,
                 diagnostics: frontend.diagnostics.clone(),
-                source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                source_indices: v1_rt::rc_empty_map::<_, _>(),
                 complexity: crate::v1_compiler_complexity::empty_complexity_report(),
                 ownership: Rc::new(vec![]),
                 newline_indices: newline_indices.clone(),
             }),
             Some(graph) => {
                 let source_indices = newline_indices.iter().cloned().fold(
-                    v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
+                    v1_rt::rc_empty_map::<_, _>(),
+                    |acc: _, index: Rc<NewlineIndex>| {
                         v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
@@ -4095,7 +4089,7 @@ pub fn compile_to_resolved_with_options(
                 );
                 let census_si = fill.newline_indices.clone().iter().cloned().fold(
                     source_indices.clone(),
-                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
+                    |acc: _, index: Rc<NewlineIndex>| {
                         v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );

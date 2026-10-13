@@ -311,11 +311,8 @@ pub fn leaf_owner_modules_from_registry(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<HashMap<String, Rc<LeafOwner>>> {
     Rc::new(v1_rt::map_keys(&registry)).iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
-        |acc: Rc<HashMap<String, Rc<LeafOwner>>>, key: String| match v1_rt::map_get(
-            &registry,
-            key.clone(),
-        ) {
+        v1_rt::rc_empty_map::<_, _>(),
+        |acc: _, key: String| match v1_rt::map_get(&registry, key.clone()) {
             Some(info) => match v1_rt::map_get(&acc, info.name.clone()) {
                 Some(prior) => match (*prior.clone()).clone() {
                     LeafOwner::SingleOwner { module: m, .. } => {

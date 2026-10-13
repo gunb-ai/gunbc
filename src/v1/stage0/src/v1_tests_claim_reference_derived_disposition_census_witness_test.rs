@@ -17,12 +17,10 @@ pub use crate::v1_compiler_infer_emit_info::{TypeSummary, TypeSummaryIndex, Type
 pub use crate::v1_compiler_infer_emit_info::{empty_emit_graph_info, empty_type_summary_index, type_summary_index_insert};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind};
 pub use crate::v1_std_core::{ErrorNode};
-pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex};
 pub use crate::v1_std_core::{no_span, diagnostic_to_message, is_error_diagnostic};
 use crate::gunbc_namespace_cut_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{CandidateSurvived, CandidateOwnModule, CandidateRegistryAbsent, CandidateExportProofFailed, CandidateVariantDelegatedToParent, CandidateVariantParentUnresolved};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr};
 use crate::v1_compiler_infer_items::ItemKind::{FnItem};
-use crate::v1_std_core::LeafOwner::*;
 
 pub fn reference_derived_disposition_census_witness_note() -> String {
     thread_local! {
@@ -48,7 +46,7 @@ pub fn fixture_item_info(name: String, module_name: String) -> Rc<ItemInfo> {
 
 pub fn fixture_registry(name: String, module_name: String) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        v1_rt::rc_empty_map::<_, _>(),
         name.clone(),
         fixture_item_info(name.clone(), module_name.clone()),
     )
@@ -59,9 +57,9 @@ pub fn fixture_export_sets(
     name: String,
 ) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
     v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<_, _>(),
         module_name.clone(),
-        v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, bool>(), name.clone(), true),
+        v1_rt::rc_map_insert(v1_rt::rc_empty_map::<_, _>(), name.clone(), true),
     )
 }
 
@@ -77,36 +75,34 @@ pub fn fixture_disposition(
             registry.clone(),
             export_sets.clone(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<_, _>(),
             crate::v1_compiler_emit_rust::build_module_index(
                 Rc::new(vec![]),
-                v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
+                v1_rt::rc_empty_map::<_, _>(),
             ),
             crate::v1_compiler_infer_emit_info::empty_type_summary_index(),
-            v1_rt::rc_empty_map::<String, String>(),
+            v1_rt::rc_empty_map::<_, _>(),
             false,
         ),
     )
 }
 
 pub fn candidate_the_registry_does_not_know_is_registry_absent() -> bool {
-    (fixture_disposition(
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-    ) == "registry-absent".to_string())
+    (fixture_disposition(v1_rt::rc_empty_map::<_, _>(), v1_rt::rc_empty_map::<_, _>())
+        == "registry-absent".to_string())
 }
 
 pub fn candidate_provided_by_this_module_is_own_module() -> bool {
     (fixture_disposition(
         fixture_registry("PeerName".to_string(), "fixture.consumer".to_string()),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<_, _>(),
     ) == "own-module".to_string())
 }
 
 pub fn cross_module_candidate_without_export_proof_is_export_proof_failed() -> bool {
     (fixture_disposition(
         fixture_registry("PeerName".to_string(), "fixture.provider".to_string()),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<_, _>(),
     ) == "export-proof-failed".to_string())
 }
 
@@ -118,13 +114,13 @@ pub fn cross_module_candidate_with_export_proof_survives() -> bool {
         fixture_registry("PeerName".to_string(), "fixture.provider".to_string()),
         fixture_export_sets("fixture.provider".to_string(), "PeerName".to_string()),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<_, _>(),
         crate::v1_compiler_emit_rust::build_module_index(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
+            v1_rt::rc_empty_map::<_, _>(),
         ),
         crate::v1_compiler_infer_emit_info::empty_type_summary_index(),
-        v1_rt::rc_empty_map::<String, String>(),
+        v1_rt::rc_empty_map::<_, _>(),
         false,
     ) == Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
         provider_module: "fixture.provider".to_string(),
@@ -219,11 +215,11 @@ pub fn fixture_variant_type_summaries() -> Rc<TypeSummaryIndex> {
             name: "E".to_string(),
             key: "fixture.E".to_string(),
             repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
-            field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
-            field_type_map: v1_rt::rc_empty_map::<String, String>(),
+            field_summaries: v1_rt::rc_empty_map::<_, _>(),
+            field_type_map: v1_rt::rc_empty_map::<_, _>(),
             field_import_surface_names: Rc::new(vec![]),
             variant_name_set: v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, bool>(),
+                v1_rt::rc_empty_map::<_, _>(),
                 "V".to_string(),
                 true,
             ),
@@ -238,17 +234,17 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
         "V".to_string(),
         "fixture.consumer".to_string(),
         crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<_, _>(),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<_, _>(),
         crate::v1_compiler_emit_rust::build_module_index(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
+            v1_rt::rc_empty_map::<_, _>(),
         ),
         fixture_variant_type_summaries(),
         v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<String, String>(),
+            v1_rt::rc_empty_map::<_, _>(),
             "V".to_string(),
             "fixture.E".to_string(),
         ),
@@ -278,11 +274,11 @@ pub fn fixture_colliding_variant_type_summaries() -> Rc<TypeSummaryIndex> {
             name: "F".to_string(),
             key: "fixture.F".to_string(),
             repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
-            field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
-            field_type_map: v1_rt::rc_empty_map::<String, String>(),
+            field_summaries: v1_rt::rc_empty_map::<_, _>(),
+            field_type_map: v1_rt::rc_empty_map::<_, _>(),
             field_import_surface_names: Rc::new(vec![]),
             variant_name_set: v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, bool>(),
+                v1_rt::rc_empty_map::<_, _>(),
                 "V".to_string(),
                 true,
             ),
@@ -297,17 +293,17 @@ pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool
         "V".to_string(),
         "fixture.consumer".to_string(),
         crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<_, _>(),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<_, _>(),
         crate::v1_compiler_emit_rust::build_module_index(
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
+            v1_rt::rc_empty_map::<_, _>(),
         ),
         fixture_colliding_variant_type_summaries(),
         v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<String, String>(),
+            v1_rt::rc_empty_map::<_, _>(),
             "V".to_string(),
             "".to_string(),
         ),
@@ -321,17 +317,17 @@ pub fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> b
             "V".to_string(),
             "fixture.consumer".to_string(),
             crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+            v1_rt::rc_empty_map::<_, _>(),
+            v1_rt::rc_empty_map::<_, _>(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<_, _>(),
             crate::v1_compiler_emit_rust::build_module_index(
                 Rc::new(vec![]),
-                v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
+                v1_rt::rc_empty_map::<_, _>(),
             ),
             fixture_variant_type_summaries(),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, String>(),
+                v1_rt::rc_empty_map::<_, _>(),
                 "V".to_string(),
                 "fixture.E".to_string(),
             ),
@@ -352,17 +348,17 @@ pub fn non_variant_name_still_answers_registry_absent() -> bool {
             "NotAVariant".to_string(),
             "fixture.consumer".to_string(),
             crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+            v1_rt::rc_empty_map::<_, _>(),
+            v1_rt::rc_empty_map::<_, _>(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<_, _>(),
             crate::v1_compiler_emit_rust::build_module_index(
                 Rc::new(vec![]),
-                v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
+                v1_rt::rc_empty_map::<_, _>(),
             ),
             fixture_variant_type_summaries(),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, String>(),
+                v1_rt::rc_empty_map::<_, _>(),
                 "V".to_string(),
                 "fixture.E".to_string(),
             ),

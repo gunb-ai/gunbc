@@ -298,10 +298,10 @@ pub struct ParseSourceExtentState {
 
 pub fn parse_source_extent_state_empty() -> Rc<ParseSourceExtentState> {
     Rc::new(ParseSourceExtentState {
-        recorded: v1_rt::rc_empty_map::<OccurrenceId, Rc<SourceSpan>>(),
+        recorded: v1_rt::rc_empty_map::<_, _>(),
         published: Rc::new(vec![]),
         erased_scopes: Rc::new(vec![]),
-        absorbed: v1_rt::rc_empty_map::<OccurrenceId, OccurrenceId>(),
+        absorbed: v1_rt::rc_empty_map::<_, _>(),
     })
 }
 
@@ -322,8 +322,8 @@ pub fn parsed_source_extents_published(
 ) -> Rc<ParsedSourceExtents> {
     {
         let published_ids = state.published.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<OccurrenceId, bool>(),
-            |acc: Rc<HashMap<OccurrenceId, bool>>, row: Rc<ParsedSourceExtent>| {
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, row: Rc<ParsedSourceExtent>| {
                 v1_rt::rc_map_insert(acc, row.occurrence.clone(), true)
             },
         );
@@ -18464,7 +18464,7 @@ pub fn parse_field_init_list(
         tokens.clone(),
         ctx.clone(),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
+        v1_rt::rc_empty_map::<_, _>(),
     )
 }
 

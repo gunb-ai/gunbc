@@ -234,7 +234,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
     {
         let result = typed.modules.clone().iter().cloned().fold(
             Rc::new(ModuleFilenameOwners {
-                owners: v1_rt::rc_empty_map::<String, String>(),
+                owners: v1_rt::rc_empty_map::<_, _>(),
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ModuleFilenameOwners>, tm: Rc<TypedModule>| {
@@ -300,7 +300,7 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let result = items.iter().cloned().fold(
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
+                seen: v1_rt::rc_empty_map::<_, _>(),
                 result: Rc::new(vec![]),
             }),
             |acc: Rc<UniqueAccum>, item: String| {
@@ -936,7 +936,7 @@ pub fn emitted_symbol_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec<
         let source_indices = tm.type_env.clone().source_indices.clone();
 let module_name = crate::v1_std_core::authored_name_at(source_indices.clone(), tm.module.clone());
 let result = tm.items.clone().iter().cloned().fold(Rc::new(EmittedSymbolOwners {
-    owners: v1_rt::rc_empty_map::<String, String>(),
+    owners: v1_rt::rc_empty_map::<_, _>(),
     diagnostics: Rc::new(vec![]),
 }), |acc: Rc<EmittedSymbolOwners>, item: Rc<Node>| emitted_symbol_bindings_for_item(item.clone(), source_indices.clone()).iter().cloned().fold(acc, |inner: Rc<EmittedSymbolOwners>, binding: Rc<EmittedSymbolBinding>| match v1_rt::map_get(&inner.owners.clone(), binding.symbol.clone()) {
     Some(owner) => if (owner.clone() == binding.identity.clone()) {

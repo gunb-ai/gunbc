@@ -16,11 +16,8 @@ pub fn compute_in_graph_deps(
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let result = all_names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
-                &deps_map,
-                name.clone(),
-            ) {
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, name: String| match v1_rt::map_get(&deps_map, name.clone()) {
                 Some(deps) => {
                     let local = Rc::new({
                         let mut __result = Vec::new();
@@ -48,45 +45,48 @@ pub fn build_reverse_adj(
     all_names: Rc<Vec<String>>,
     local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    all_names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
-            &local_deps,
-            name.clone(),
-        ) {
-            Some(deps) => deps.iter().cloned().fold(
-                acc.clone(),
-                |inner_acc: Rc<HashMap<String, Rc<Vec<String>>>>, dep: String| {
-                    let existing = match v1_rt::map_get(&inner_acc, dep.clone()) {
-                        Some(v) => v.clone(),
-                        std::option::Option::None => Rc::new(vec![]),
-                    };
-                    v1_rt::rc_map_insert(
-                        inner_acc.clone(),
-                        dep.clone(),
-                        v1_rt::rc_list_push(existing.clone(), name.clone()),
-                    )
-                },
-            ),
-            std::option::Option::None => acc.clone(),
-        },
-    )
+    {
+        let seed = v1_rt::rc_empty_map::<_, _>();
+        all_names.iter().cloned().fold(
+            seed.clone(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
+                &local_deps,
+                name.clone(),
+            ) {
+                Some(deps) => deps.iter().cloned().fold(
+                    acc.clone(),
+                    |inner_acc: Rc<HashMap<String, Rc<Vec<String>>>>, dep: String| {
+                        let existing = match v1_rt::map_get(&inner_acc, dep.clone()) {
+                            Some(v) => v.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        };
+                        v1_rt::rc_map_insert(
+                            inner_acc.clone(),
+                            dep.clone(),
+                            v1_rt::rc_list_push(existing.clone(), name.clone()),
+                        )
+                    },
+                ),
+                std::option::Option::None => acc.clone(),
+            },
+        )
+    }
 }
 
 pub fn build_in_degree(
     all_names: Rc<Vec<String>>,
     local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
 ) -> Rc<HashMap<String, i64>> {
-    all_names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, name: String| {
+    all_names
+        .iter()
+        .cloned()
+        .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, name: String| {
             let deg = match v1_rt::map_get(&local_deps, name.clone()) {
                 Some(deps) => (deps.clone().len() as i64),
                 std::option::Option::None => 0,
             };
             v1_rt::rc_map_insert(acc, name.clone(), deg.clone())
-        },
-    )
+        })
 }
 
 pub fn kahn_remove_loop(

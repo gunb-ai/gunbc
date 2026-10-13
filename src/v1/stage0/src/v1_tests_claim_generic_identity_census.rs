@@ -728,22 +728,19 @@ pub fn gi_all_sigs(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
     modules.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, m: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<_, _>(),
+        |acc: _, m: Rc<TypedModule>| {
             let module_file = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
             Rc::new(v1_rt::map_values(&m.func_env.clone().local.clone()))
                 .iter()
                 .cloned()
-                .fold(
-                    acc,
-                    |inner: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, sig: Rc<ResolvedFuncSig>| {
-                        v1_rt::rc_map_insert(
-                            inner,
-                            gi_sig_key(module_file.clone(), sig.name.clone()),
-                            sig.clone(),
-                        )
-                    },
-                )
+                .fold(acc, |inner: _, sig: Rc<ResolvedFuncSig>| {
+                    v1_rt::rc_map_insert(
+                        inner,
+                        gi_sig_key(module_file.clone(), sig.name.clone()),
+                        sig.clone(),
+                    )
+                })
         },
     )
 }
@@ -1006,7 +1003,7 @@ pub fn gi_supplied_node_reading_lines(
         let substituted = crate::v1_compiler_infer::substitute_generics_apply(
             xs.declared_type.clone(),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                v1_rt::rc_empty_map::<_, _>(),
                 "T".to_string(),
                 int_node.clone(),
             ),
@@ -1024,7 +1021,7 @@ pub fn gi_supplied_node_reading_lines(
         let copied = crate::v1_compiler_infer::substitute_generics_apply(
             xs.declared_type.clone(),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                v1_rt::rc_empty_map::<_, _>(),
                 "gic_no_such_parameter".to_string(),
                 int_node.clone(),
             ),
@@ -1039,14 +1036,14 @@ pub fn gi_supplied_node_reading_lines(
             list_of_int.clone(),
             Rc::new(vec!["T".to_string()]),
             si.clone(),
-            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            v1_rt::rc_empty_map::<_, _>(),
         );
         let bound_by_name_alone = crate::v1_compiler_infer::unify_generics(
             renamed_xs.substitution_basis.clone(),
             list_of_int.clone(),
             Rc::new(vec!["M".to_string()]),
             si.clone(),
-            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            v1_rt::rc_empty_map::<_, _>(),
         );
         let renamed_child_key = match gi_first_child(renamed_xs.substitution_basis.clone()) {
             Some(c) => gi_declaration_label(c.declaration.clone()),
@@ -1125,13 +1122,18 @@ pub fn gi_supplied_node_reading_lines(
 }
 
 pub fn gi_tally(keys: Rc<Vec<String>>) -> Rc<HashMap<String, i64>> {
-    keys.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
-            Some(n) => v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1)),
-            std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
-        },
-    )
+    {
+        let tally_seed = v1_rt::rc_empty_map::<_, _>();
+        keys.iter().cloned().fold(
+            tally_seed.clone(),
+            |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
+                Some(n) => {
+                    v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1))
+                }
+                std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
+            },
+        )
+    }
 }
 
 pub fn gi_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Vec<String>> {
@@ -1488,7 +1490,7 @@ pub fn gi_foreign_label_under_owner(
             generic_names: Rc::new(vec![]),
             si: si.clone(),
             sigs: v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+                v1_rt::rc_empty_map::<_, _>(),
                 "gic.a::head_of".to_string(),
                 owner.clone(),
             ),

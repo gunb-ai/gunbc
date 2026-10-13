@@ -20,7 +20,6 @@ pub use crate::v1_compiler_parse::ParseWithTableResult;
 pub use crate::v1_compiler_tokenize::tokenize_artifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::NewlineIndex;
 pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -73,7 +72,7 @@ pub fn gap_parse(source: String) -> Rc<GapParse> {
         let parsed = crate::v1_compiler_parse::parse_with_table(
             artifact.tokens.clone(),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                v1_rt::rc_empty_map::<_, _>(),
                 gap_fixture_file(),
                 crate::v1_std_core::build_newline_index(gap_fixture_file(), source.clone()),
             ),

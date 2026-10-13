@@ -144,10 +144,7 @@ pub fn builtin_callable_candidates(name: String) -> Rc<Vec<Rc<CallableCandidate>
                 }),
                 inferred: builtin_return.clone(),
                 output_provenance: Rc::new(vec![]),
-                variant_provenance: v1_rt::rc_empty_map::<
-                    String,
-                    Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-                >(),
+                variant_provenance: v1_rt::rc_empty_map::<_, _>(),
             }),
         })]),
         std::option::Option::None => Rc::new(vec![]),
@@ -678,10 +675,7 @@ pub fn borrowed_census_callable_candidate(
                 }),
                 inferred: return_type.clone(),
                 output_provenance: Rc::new(vec![]),
-                variant_provenance: v1_rt::rc_empty_map::<
-                    String,
-                    Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-                >(),
+                variant_provenance: v1_rt::rc_empty_map::<_, _>(),
             }),
         })
     }
@@ -846,16 +840,7 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             ),
                                             inferred: raw_return.clone(),
                                             output_provenance: Rc::new(vec![]),
-                                            variant_provenance: v1_rt::rc_empty_map::<
-                                                String,
-                                                Rc<
-                                                    HashMap<
-                                                        String,
-                                                        Rc<HashMap<String, Rc<SubValueRelation>>>,
-                                                    >,
-                                                >,
-                                            >(
-                                            ),
+                                            variant_provenance: v1_rt::rc_empty_map::<_, _>(),
                                         }),
                                         declared: Rc::new(DeclaredCallableIdentity {
                                             owner_module_path: bd.owner_module_path.clone(),
@@ -882,21 +867,7 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                 ),
                                                 inferred: qualified_return.clone(),
                                                 output_provenance: Rc::new(vec![]),
-                                                variant_provenance: v1_rt::rc_empty_map::<
-                                                    String,
-                                                    Rc<
-                                                        HashMap<
-                                                            String,
-                                                            Rc<
-                                                                HashMap<
-                                                                    String,
-                                                                    Rc<SubValueRelation>,
-                                                                >,
-                                                            >,
-                                                        >,
-                                                    >,
-                                                >(
-                                                ),
+                                                variant_provenance: v1_rt::rc_empty_map::<_, _>(),
                                             }),
                                             declared: Rc::new(DeclaredCallableIdentity {
                                                 owner_module_path: bd.owner_module_path.clone(),
@@ -1096,11 +1067,7 @@ pub fn lookup_coproduct_common_field_node(
 }
 
 pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
-    resolve_scrutinee_type_node_seen(
-        env.clone(),
-        n.clone(),
-        v1_rt::rc_empty_map::<String, bool>(),
-    )
+    resolve_scrutinee_type_node_seen(env.clone(), n.clone(), v1_rt::rc_empty_map::<_, _>())
 }
 
 pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {

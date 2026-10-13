@@ -107,7 +107,7 @@ pub fn collect_typed_service_calls(
         let result = collect_typed_service_calls_into(
             texpr.clone(),
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
+                seen: v1_rt::rc_empty_map::<_, _>(),
                 result: Rc::new(vec![]),
             }),
             source_indices.clone(),
@@ -346,7 +346,7 @@ pub fn collect_callee_edges(
         let result = collect_callee_edges_into(
             texpr.clone(),
             Rc::new(CalleeAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
+                seen: v1_rt::rc_empty_map::<_, _>(),
                 result: Rc::new(vec![]),
             }),
             source_indices.clone(),
@@ -738,17 +738,16 @@ pub fn expansion_pass_bound(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 
     {
         let item_count = (Rc::new(v1_rt::map_keys(&registry)).len() as i64);
         let distinct_service_keys = Rc::new(v1_rt::map_keys(&registry)).iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, key: String| match v1_rt::map_get(
-                &registry,
-                key.clone(),
-            ) {
-                Some(info) => info.service_names.clone().iter().cloned().fold(
-                    acc.clone(),
-                    |inner: Rc<HashMap<String, bool>>, svc: String| {
+            v1_rt::rc_empty_map::<_, _>(),
+            |acc: _, key: String| match v1_rt::map_get(&registry, key.clone()) {
+                Some(info) => info
+                    .service_names
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .fold(acc.clone(), |inner: _, svc: String| {
                         v1_rt::rc_map_insert(inner, svc.clone(), true)
-                    },
-                ),
+                    }),
                 std::option::Option::None => acc.clone(),
             },
         );

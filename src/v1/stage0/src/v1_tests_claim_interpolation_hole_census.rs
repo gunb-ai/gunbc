@@ -620,9 +620,10 @@ pub fn ihc_module_templates(
 
 pub fn ihc_number_holes(rows: Rc<Vec<Rc<HoleRow>>>) -> Rc<Vec<Rc<HoleRow>>> {
     {
+        let seen_seed = v1_rt::rc_empty_map::<_, _>();
         let numbered = rows.iter().cloned().fold(
             Rc::new(IhcNumbering {
-                seen: v1_rt::rc_empty_map::<String, i64>(),
+                seen: seen_seed.clone(),
                 out: Rc::new(vec![]),
             }),
             |acc: Rc<IhcNumbering>, r: Rc<HoleRow>| {
@@ -678,10 +679,12 @@ pub fn ihc_census_of_graph(
     subjects: Rc<Vec<String>>,
 ) -> Rc<IhcCensus> {
     {
-        let subject_set = subjects.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, p: String| v1_rt::rc_map_insert(acc, p.clone(), true),
-        );
+        let subject_set = subjects
+            .iter()
+            .cloned()
+            .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, p: String| {
+                v1_rt::rc_map_insert(acc, p.clone(), true)
+            });
         let templates = Rc::new({
             let mut __result = Vec::new();
             for t in Rc::new({
@@ -850,13 +853,18 @@ pub fn ihc_row_tsv(r: Rc<HoleRow>) -> String {
 }
 
 pub fn ihc_tally(keys: Rc<Vec<String>>) -> Rc<HashMap<String, i64>> {
-    keys.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
-            Some(n) => v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1)),
-            std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
-        },
-    )
+    {
+        let tally_seed = v1_rt::rc_empty_map::<_, _>();
+        keys.iter().cloned().fold(
+            tally_seed.clone(),
+            |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
+                Some(n) => {
+                    v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1))
+                }
+                std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
+            },
+        )
+    }
 }
 
 pub fn ihc_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Vec<String>> {
@@ -903,10 +911,11 @@ pub fn ihc_observed_count(templates: Rc<Vec<Rc<ObservedTemplate>>>, file: String
 }
 
 pub fn ihc_int_set(xs: Rc<Vec<i64>>) -> Rc<HashMap<i64, bool>> {
-    xs.iter().cloned().fold(
-        v1_rt::rc_empty_map::<i64, bool>(),
-        |acc: Rc<HashMap<i64, bool>>, x: i64| v1_rt::rc_map_insert(acc, x.clone(), true),
-    )
+    xs.iter()
+        .cloned()
+        .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, x: i64| {
+            v1_rt::rc_map_insert(acc, x.clone(), true)
+        })
 }
 
 pub fn ihc_int_in(set: Rc<HashMap<i64, bool>>, key: i64) -> bool {
