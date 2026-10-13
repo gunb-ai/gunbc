@@ -176,32 +176,11 @@ fn parallelism_witness(tree: InferredTree, dependencies: List<DependencyView>) -
   }
 }
 
-fn parallelism_relation_eq(a: ParallelismRelation, b: ParallelismRelation) -> Bool {
-  match a {
-    DataDependent => match b {
-      DataDependent => true
-      _ => false
-    }
-    EffectCoupled => match b {
-      EffectCoupled => true
-      _ => false
-    }
-    BarrierCoupled => match b {
-      BarrierCoupled => true
-      _ => false
-    }
-    UnresolvedCoupling { diagnostic: ad } => match b {
-      UnresolvedCoupling { diagnostic: bd } => ad == bd
-      _ => false
-    }
-  }
-}
-
 fn parallelism_classified_eq(
   a: ClassifiedDependencyView<ParallelismRelation>,
   b: ClassifiedDependencyView<ParallelismRelation>
 ) -> Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: parallelism_relation_eq)
+  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { a == b })
 }
 
 fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
