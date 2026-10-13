@@ -3,7 +3,7 @@ module v2.test.claim.module_header
 import std.types { Bool, List }
 import v2.std.integer { Int }
 import v2.std.text { String }
-import v2.std.algebra { for_all, length }
+import std.algebra { for_all, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.module_header {

@@ -285,13 +285,13 @@ test fn w_qualified_call_emits_only_the_declaration_last_segment() -> Bool {
   )
 }
 
-// LENGTH, THE DISCRIMINATING RED. v2.std.algebra length is a ModeledProjection of the `length`
+// LENGTH, THE DISCRIMINATING RED. std.algebra length is a ModeledProjection of the `length`
 // primitive and rt_function_registry has no `length` row, so emission took the identity arm of
 // rust_runtime_bridge_name and wrote `v1_rt::length` -- a symbol the seed does not define -- at
 // 73 sites. The declaration has a real fold body, so it is what a call must reach.
 test fn w_unbridged_modeled_primitive_emits_its_declaration() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.length_projection_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, length }\nfn probe(xs: FreeMonoid<Int>) -> Int { length(xs: xs) }\n",
+    "module test.claim.length_projection_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport std.algebra { FreeMonoid, length }\nfn probe(xs: FreeMonoid<Int>) -> Int { length(xs: xs) }\n",
     "src/test_claim_length_projection_probe.rs",
     ["crate::v2_std_algebra::length("],
     ["v1_rt::length("]
@@ -454,7 +454,7 @@ test fn w_realized_seam_keeps_its_declaration_and_delegates_to_the_bridge() -> B
 // negative assertion is the refusal message, because that is precisely the state this row leaves.
 test fn w_is_empty_lowers_to_its_rust_realization_not_a_refusal() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.is_empty_probe\nimport std.types { Int, Bool }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, is_empty }\nfn probe(xs: FreeMonoid<Int>) -> Bool { xs |> is_empty }\n",
+    "module test.claim.is_empty_probe\nimport std.types { Int, Bool }\nimport std.occurrence_identity { OccurrenceId }\nimport std.algebra { FreeMonoid, is_empty }\nfn probe(xs: FreeMonoid<Int>) -> Bool { xs |> is_empty }\n",
     "src/test_claim_is_empty_probe.rs",
     [".is_empty()"],
     ["v1_rt::is_empty(", "neither a resolved callable receiver field"]
@@ -523,7 +523,7 @@ test fn w_map_receiver_operation_is_not_read_as_a_callable_field() -> Bool {
 // is the carrier authority and must be what the arm falls back to.
 test fn w_witness_carrier_falls_back_to_the_fn_return_when_the_value_identity_is_erased() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.witness_carrier_probe\nimport std.types { Int }\nimport std.algebra { Cons, Empty }\nimport v2.std.algebra { fold_list }\nimport std.algebra { list_snoc_item }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype Progress { edges: List<Int>, index: Int }\nfn step(p: Witness<Progress>, x: Int) -> Witness<Progress> { match p { Holds { value: Progress { edges: es, index: i } } => Holds { value: Progress { edges: list_snoc_item(xs: es, item: x), index: i + 1 } }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\nfn probe(xs: List<Int>) -> Witness<List<Int>> { match fold_list(xs: xs, empty: Holds { value: Progress { edges: Empty, index: 0 } }, cons: fn(p, x) { step(p: p, x: x) }) { Holds { value: Progress { edges: result, index: _ } } => Holds { value: result }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\n",
+    "module test.claim.witness_carrier_probe\nimport std.types { Int }\nimport std.algebra { Cons, Empty, fold_list }\nimport std.algebra { list_snoc_item }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype Progress { edges: List<Int>, index: Int }\nfn step(p: Witness<Progress>, x: Int) -> Witness<Progress> { match p { Holds { value: Progress { edges: es, index: i } } => Holds { value: Progress { edges: list_snoc_item(xs: es, item: x), index: i + 1 } }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\nfn probe(xs: List<Int>) -> Witness<List<Int>> { match fold_list(xs: xs, empty: Holds { value: Progress { edges: Empty, index: 0 } }, cons: fn(p, x) { step(p: p, x: x) }) { Holds { value: Progress { edges: result, index: _ } } => Holds { value: result }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\n",
     "src/test_claim_witness_carrier_probe.rs",
     ["Witness::<"],
     ["UNRESOLVED_CompilerError"]
@@ -960,7 +960,7 @@ test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool {
 // REALIZATION IDENTITY FOR list_append'S CONCAT ROUTING. The probe CALLS production
 // list_append (the length-sibling pattern: the probe file must reach the declaration, not
 // inline a concat). list_append lives in std.algebra (dag/std/algebra.dag, beside FreeMonoid;
-// gunbc#12208 moved it from v2.std.algebra), so the body surface is src/std_algebra.rs: that
+// gunbc#12208 moved it from std.algebra), so the body surface is src/std_algebra.rs: that
 // module has one concat call, list_append's `left |> concat(right)`, so a revert to
 // fold_list_right drops `v1_rt::concat` from that file. Not a doubling-ratio timing witness: both arms are linear.
 test fn w_list_append_emits_the_concat_primitive_not_a_left_fold() -> Bool {

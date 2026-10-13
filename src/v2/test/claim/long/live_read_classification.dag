@@ -252,11 +252,11 @@ test fn g2_roster_gate_live_integration_holds() -> Bool {
   classification_has_filesystem_read_carrier(classification: c)
     && classification_has_literal_path(
       classification: c,
-      path: "src/v2/std/algebra.dag"
+      path: "dag/std/algebra.dag"
     )
     && runtime_read_touched_by_path_g2(
       classification: c,
-      touched_path: "src/v2/std/algebra.dag"
+      touched_path: "dag/std/algebra.dag"
     )
     && runtime_read_touched_by_path_g2(
       classification: c,

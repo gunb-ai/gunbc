@@ -58,7 +58,7 @@ data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWi
 // WHY THESE CALLS SAY string_contains RATHER THAN contains, and it is a receipt rather than a style
 // choice. Deriving the declared_high expectation from its authority row required importing
 // gunbc.runner.runner_slot_allocation into this module. v1-seed fn names are NOT module-scoped, so
-// widening the import closure pulled v2.std.algebra into it, and that module's contains(xs, item,
+// widening the import closure pulled std.algebra into it, and that module's contains(xs, item,
 // eq) over FreeMonoid captured the bare name these lines were using for the STRING
 // contains(haystack, needle). Four calls on lines unrelated to the change refused with 'no
 // parameter named haystack', and the floor fold aborted during preparation -- so the whole

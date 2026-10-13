@@ -1,11 +1,10 @@
 module v2.workflow.floor_discovery_source_authority
 
-import std.algebra { trim }
+import std.algebra { trim, length, fold_list }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { String, Int, List }
-import v2.std.algebra { length, fold_list }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import std.optional {
   Absent,

@@ -1,6 +1,6 @@
 module v2.test.claim.compiler.dependency_demand_census
 
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list, length }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.compile { native_demand_census_report }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
@@ -27,7 +27,6 @@ import v2.compiler.dependency_demand_census {
   RowTypeUnresolved
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.algebra { fold_list, length }
 import v2.std.collection { List }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }

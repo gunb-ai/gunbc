@@ -4,6 +4,7 @@
 pub use crate::gunbc_rust_emitted_crate::EmittedRustCrate;
 pub use crate::gunbc_rust_emitted_edge::module_to_filename;
 pub use crate::gunbc_rust_emitted_edge::EmittedEdge;
+pub use crate::std_unicode_scalar::{ascii_lowercase, ascii_uppercase, ascii_uppercase_first};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
@@ -51,32 +52,176 @@ pub struct TestProjection {
     pub type_env: Rc<TypeEnv>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct JsonControlEscape {
+    pub delimiter: String,
+    pub replacement: String,
+}
+
+pub fn json_control_escapes() -> Rc<Vec<Rc<JsonControlEscape>>> {
+    Rc::new(vec![
+        Rc::new(JsonControlEscape {
+            delimiter: "\x00".to_string(),
+            replacement: "\\u0000".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0001".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0002".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0003".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0004".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0005".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0006".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0007".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\b".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u000B".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\f".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "\x0d".to_string(),
+            replacement: "\\r".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u000E".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u000F".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0010".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0011".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0012".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0013".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0014".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0015".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0016".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0017".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0018".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u0019".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001A".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001B".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001C".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001D".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001E".to_string(),
+        }),
+        Rc::new(JsonControlEscape {
+            delimiter: "".to_string(),
+            replacement: "\\u001F".to_string(),
+        }),
+    ])
+}
+
 pub fn escape_json_string(s: String) -> String {
-    Rc::new(
-        Rc::new(
+    {
+        let named = Rc::new(
             Rc::new(
                 Rc::new(
-                    s.clone()
-                        .split(&"\\".to_string())
-                        .map(|s| s.to_string())
-                        .collect::<Vec<_>>(),
+                    Rc::new(
+                        s.clone()
+                            .split(&"\\".to_string())
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>(),
+                    )
+                    .join(&"\\\\".to_string())
+                    .split(&"\"".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
                 )
-                .join(&"\\\\".to_string())
-                .split(&"\"".to_string())
+                .join(&"\\\"".to_string())
+                .split(&"\n".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
             )
-            .join(&"\\\"".to_string())
-            .split(&"\n".to_string())
+            .join(&"\\n".to_string())
+            .split(&"\t".to_string())
             .map(|s| s.to_string())
             .collect::<Vec<_>>(),
         )
-        .join(&"\\n".to_string())
-        .split(&"\t".to_string())
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>(),
-    )
-    .join(&"\\t".to_string())
+        .join(&"\\t".to_string());
+        json_control_escapes().iter().cloned().fold(
+            named.clone(),
+            |acc: String, row: Rc<JsonControlEscape>| {
+                Rc::new(
+                    acc.split(&row.delimiter.clone())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                )
+                .join(&row.replacement.clone())
+            },
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -284,14 +429,19 @@ pub fn to_snake(name: String) -> String {
                 __result.push({
                     let idx = pair.0.clone();
                     let ch = pair.1.clone();
+                    let spelled =
+                        v1_rt::substring(&name, idx.clone(), v1_rt::int_add(idx.clone(), 1));
                     if is_upper(ch.clone()) {
                         if (idx.clone() == 0) {
-                            to_lower_char(ch.clone())
+                            crate::std_unicode_scalar::ascii_lowercase(spelled.clone())
                         } else {
-                            v1_rt::concat("_".to_string(), to_lower_char(ch.clone()))
+                            v1_rt::concat(
+                                "_".to_string(),
+                                crate::std_unicode_scalar::ascii_lowercase(spelled.clone()),
+                            )
                         }
                     } else {
-                        v1_rt::from_code_point(ch.clone())
+                        spelled.clone()
                     }
                 });
             }
@@ -304,50 +454,12 @@ pub fn to_snake(name: String) -> String {
 pub fn to_screaming_snake(name: String) -> String {
     {
         let snake = to_snake(name.clone());
-        Rc::new({
-            let mut __result = Vec::new();
-            for ch in Rc::new(snake.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
-                .iter()
-                .cloned()
-            {
-                __result.push(to_upper_char(ch.clone()));
-            }
-            __result
-        })
-        .join(&"".to_string())
+        crate::std_unicode_scalar::ascii_uppercase(snake.clone())
     }
 }
 
 pub fn is_upper(ch: i64) -> bool {
     ((ch.clone() >= 65) && (ch.clone() <= 90))
-}
-
-pub fn to_lower_char(ch: i64) -> String {
-    {
-        let cp = ch.clone();
-        if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
-            {
-                let lower_cp = v1_rt::int_add(cp.clone(), 32);
-                v1_rt::from_code_point(lower_cp.clone())
-            }
-        } else {
-            v1_rt::from_code_point(ch.clone())
-        }
-    }
-}
-
-pub fn to_upper_char(ch: i64) -> String {
-    {
-        let cp = ch.clone();
-        if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
-            {
-                let upper_cp = v1_rt::int_sub(cp.clone(), 32);
-                v1_rt::from_code_point(upper_cp.clone())
-            }
-        } else {
-            v1_rt::from_code_point(ch.clone())
-        }
-    }
 }
 
 pub fn sanitize_service_name(name: String) -> String {
@@ -375,29 +487,7 @@ pub fn capitalize_first(s: String) -> String {
         if ((chars_list.clone().len() as i64) == 0) {
             "".to_string()
         } else {
-            Rc::new({
-                let mut __result = Vec::new();
-                for pair in Rc::new(
-                    chars_list
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                {
-                    __result.push(if (pair.0.clone() == 0) {
-                        to_upper_char(pair.1.clone())
-                    } else {
-                        v1_rt::from_code_point(pair.1.clone())
-                    });
-                }
-                __result
-            })
-            .join(&"".to_string())
+            crate::std_unicode_scalar::ascii_uppercase_first(s.clone())
         }
     }
 }

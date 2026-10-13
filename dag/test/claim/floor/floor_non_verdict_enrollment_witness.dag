@@ -1,7 +1,7 @@
 module test.claim.floor.floor_non_verdict_enrollment_witness
 
 import std.types { List, Int, Bool }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import gunbc.floor.floor_non_verdict_enrollment {
   NonVerdictCauseCount, PopulationBasis, MeasuredOnOneRun, BoundedByRefusal,
   floor_non_verdict_cause_census, floor_non_verdict_measured_total,

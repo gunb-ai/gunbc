@@ -23,7 +23,7 @@ import v2.lens.vacuity {
   vacuity_census_row,
   vacuity_evidence_eq
 }
-import v2.std.algebra { count_where, length, list_map }
+import std.algebra { count_where, length, list_map }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,

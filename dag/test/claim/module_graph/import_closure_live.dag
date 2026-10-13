@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //   dag/std/error_primitives.dag        <- std.algebra
 //   dag/std/dissolution.dag, dag/std/types.dag
 //                                       <- std.occurrence_identity
-// The golden this replaces listed an older, wider envelope (std.primitives, v2.std.algebra,
+// The golden this replaces listed an older, wider envelope (std.primitives, std.algebra,
 // collection, diagnostic, logic, node_query, witness) the entry no longer imports. It went stale
 // unseen because this module did not resolve: witness_layer_roots was used bare.
 data expected_conformance_closure: FreeMonoid<String> = [

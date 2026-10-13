@@ -23,9 +23,8 @@ import v2.test.fixture.frontier_probe_elision_boundary_overlay {
   frontier_probe_elision_boundary_closure_refs,
   frontier_probe_elision_boundary_coverage_receipt
 }
-import v2.std.algebra { length }
 import v2.std.cross_tree.import_model { DagTree }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, length }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

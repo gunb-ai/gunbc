@@ -8,7 +8,7 @@ import v2.compiler.source_authority {
   manifest_inline_list_max,
   source_root_overflow_never_empty_population_holds
 }
-import v2.std.algebra { Empty }
+import std.algebra { Empty }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

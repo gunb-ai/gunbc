@@ -10,8 +10,7 @@ import v2.lens.meta_exec_confinement {
   meta_exec_roster_stale_count_live
 }
 import v2.std.layer_import_scan { layer_import_facts_live }
-import v2.std.algebra { is_empty }
-import std.algebra { list_append }
+import std.algebra { list_append, is_empty }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String }
 

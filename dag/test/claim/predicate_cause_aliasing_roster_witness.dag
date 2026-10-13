@@ -7,7 +7,7 @@ import gunbc.predicate_cause_aliasing_roster {
   negative_control_site_is_named
 }
 import std.logic { Bool }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

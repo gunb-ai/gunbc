@@ -20,7 +20,7 @@ import std.goal_assessment {
   GoalInspected, GoalObservationRefused,
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
-import v2.std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE INSTALLED PLANT. The order gates answer "should this be bought"; this

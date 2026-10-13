@@ -19,9 +19,8 @@ import gunbc.rust_item_identity {
   RustTypeAlias,
   rust_item_identity_key
 }
-import std.algebra { trim, list_snoc_item, freemonoid_empty }
+import std.algebra { trim, list_snoc_item, freemonoid_empty, fold_list, length, list_map }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.algebra { fold_list, length, list_map }
 
 // WHY THIS READER EXISTS, AND WHAT CAPABILITY IT RESTORES.
 //

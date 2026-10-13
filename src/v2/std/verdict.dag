@@ -1,8 +1,7 @@
 module v2.std.verdict
 
 import std.types { List }
-import std.algebra { Monoid }
-import v2.std.algebra { is_empty }
+import std.algebra { Monoid, is_empty }
 import std.optional {
   Optional,
   Absent

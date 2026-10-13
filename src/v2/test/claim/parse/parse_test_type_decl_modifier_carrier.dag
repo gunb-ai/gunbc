@@ -15,7 +15,7 @@ import v2.compiler.program_assembly { dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.grammar { parse_production_emitted_identity_optional }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.language_model { LanguageModel }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

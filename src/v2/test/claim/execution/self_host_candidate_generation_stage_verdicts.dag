@@ -11,8 +11,7 @@ import v2.test.claim.execution.dag_add_emit_round_trip {
   dag_add_emitted_root,
   dag_add_target_model
 }
-import v2.std.algebra { Empty, fold_list, is_empty }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, Empty, fold_list, is_empty }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.text { String }

@@ -170,6 +170,16 @@ test fn malformed_numeric_string_escapes_refuse() -> Bool {
     && (slv_decode_refusal(lexeme: "\"\\u12\"") == ^dag_string_literal_escape_malformed)
 }
 
+// THE SCALAR BOUNDARY IS DECIDED BY std.unicode.scalar from_code_point, NOT BY A GUARD IN THE
+// DECODER: both surrogate ends and the first value past U+10FFFF refuse, and the neighbours just
+// inside each boundary decode, so a decoder that stopped consulting from_code_point reds here.
+test fn a_non_scalar_unicode_escape_refuses_at_the_scalar_boundary() -> Bool {
+  (slv_decode_refusal(lexeme: "\"\\u\{D800\}\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_refusal(lexeme: "\"\\u\{DFFF\}\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_refusal(lexeme: "\"\\u\{110000\}\"") == ^dag_string_literal_escape_malformed)
+    && (slv_decode_value(lexeme: "\"\\u\{D7FF\}\\u\{E000\}\\u\{10FFFF\}\"") == "\u{D7FF}\u{E000}\u{10FFFF}")
+}
+
 test fn two_different_string_literals_are_two_different_nodes() -> Bool {
   match dag_string_literal_node_from_lexeme(lexeme: "\"a\"", occurrence_id: OccurrenceSynthetic) {
     Accepted { value: a, diagnostics: _ } =>

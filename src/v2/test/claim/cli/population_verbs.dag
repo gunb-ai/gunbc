@@ -15,7 +15,7 @@ import v2.cli.population_verbs {
   population_parse_refused,
   population_parse_report
 }
-import v2.std.algebra { HeadAbsent, HeadFound, fold_list, length, list_head }
+import std.algebra { HeadAbsent, HeadFound, fold_list, length, list_head }
 import v2.std.collection { empty_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }

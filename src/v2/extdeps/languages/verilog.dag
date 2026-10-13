@@ -1,6 +1,6 @@
 module v2.extdeps.languages.verilog
 
-import v2.std.algebra { list_reverse }
+import std.algebra { list_reverse }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.nat { Nat }

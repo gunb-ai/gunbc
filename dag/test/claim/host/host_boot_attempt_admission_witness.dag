@@ -286,8 +286,8 @@ test fn w_no_named_receipt_leaves_every_field_not_recorded() -> Bool {
 }
 
 // ── THE TRACKED BLOB: only a regular file tracked at the revision can be a receipt ───────────────
-fn tab() -> String { from_code_point(9) }
-fn nul() -> String { from_code_point(0) }
+fn tab() -> String { "\u{9}" }
+fn nul() -> String { "\u{0}" }
 
 fn refusal_tag_of(c: AttemptReceiptRefusal?) -> String {
   match c {

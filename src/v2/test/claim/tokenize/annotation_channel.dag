@@ -4,7 +4,7 @@ import std.live_tree { LiveTreeDisposition }
 import v2.std.node { symbol_lexeme }
 import v2.std.text { String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { fold_list, length }
+import std.algebra { fold_list, length }
 import std.source_annotation { LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.compilers.lexing {
   AnnotationRule,

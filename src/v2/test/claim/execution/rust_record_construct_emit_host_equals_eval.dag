@@ -27,7 +27,7 @@ import v2.extdeps.languages.rust_fixtures {
 }
 import extdeps.communication.medium { Medium }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-import v2.std.algebra { length }
+import std.algebra { length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
   Map,

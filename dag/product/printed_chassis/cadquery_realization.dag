@@ -186,7 +186,7 @@ type LineEmission
 //
 // The previous cut rendered dimensions into one list, held the literal fragments in a second, and
 // paired them with zip_map -- and its annotation asserted that zip_map refuses a length mismatch.
-// It does not: v2.std.algebra.zip_map answers Empty as soon as EITHER side is exhausted, so it
+// It does not: std.algebra.zip_map answers Empty as soon as EITHER side is exhausted, so it
 // truncates to the shorter input. Four fragments against three wires produced a shorter but
 // syntactically plausible Python line, which is the fabricated-plausible-output failure in the one
 // artifact whose errors are invisible until the plastic is measured. That is the third appearance

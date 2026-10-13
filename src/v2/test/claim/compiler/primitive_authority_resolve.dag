@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // with infer_reason_primitive_without_declared_signature_authority -- the primitive has a cost row but no .dag type
 // signature authority, and typing it as unknown would be silent wrongness (DESIGN section 5).
 //
-// THE PEERS RESTATE the contract row (std.primitives) and, for the shadowing control, the ordinary v2.std.algebra
+// THE PEERS RESTATE the contract row (std.primitives) and, for the shadowing control, the ordinary std.algebra
 // declaration; the real corpus is covered by the bounded native re-measure cited in the PR.
 
 fn par_primitives_peer(rows: String) -> DagSourceReadWitness {
@@ -63,7 +63,7 @@ test fn par_local_fn_wins_over_primitive() -> Bool {
 }
 
 // (3) CONTROL: with std.primitives indexed AND holding any_contract, an imported ordinary `any`
-// (supplied fixture module q, not a live v2.std.algebra declaration) still wins.
+// (supplied fixture module q, not a live std.algebra declaration) still wins.
 test fn par_imported_ordinary_fn_wins_over_primitive() -> Bool {
   par_reason(o: bla_assemble_with_peers(
     p_src: "module p\n\nimport q { any }\n\nfn f(x: Int) -> Int {\n  any(x)\n}\n",

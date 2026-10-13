@@ -3,7 +3,7 @@ module v2.test.claim.reference_derived_graph_fixture
 import std.types { List }
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.compiler.normalized_tree { no_resource_declarations }
 import v2.compiler.normalize { record_declaration_capture }
 import v2.compiler.parse { parse_module }
@@ -16,7 +16,6 @@ import v2.lens.module_graph {
   located_roots_from_source_root_ingest,
   no_located_roots
 }
-import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic {

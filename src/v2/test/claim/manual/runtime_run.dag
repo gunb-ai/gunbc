@@ -8,7 +8,7 @@ import v2.compiler.eval {
   eval_diagnostic
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.std.algebra { length }
+import std.algebra { length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
   Map

@@ -27,7 +27,7 @@ import std.goal_assessment {
   GoalInspected, GoalObservationRefused,
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
-import v2.std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE SWITCH SUBJECT. `cable_plant_assessment_witness` holds the CABLES to

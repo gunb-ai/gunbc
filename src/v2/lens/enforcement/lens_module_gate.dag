@@ -28,8 +28,7 @@ import v2.lens.registry.completeness {
   lens_registry_completeness_unenrolled_count_from_facts
 }
 import std.disposition { RealizationDispatch }
-import v2.std.algebra { contains, count_where, fold_list, list_head, HeadFound, HeadAbsent }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, contains, count_where, fold_list, list_head, HeadFound, HeadAbsent }
 import v2.std.integer { Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String, string_eq }

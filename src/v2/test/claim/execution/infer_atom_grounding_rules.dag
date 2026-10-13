@@ -13,7 +13,7 @@ import v2.extdeps.languages.dag {
   dag_inhabitant_atom,
   dag_int_inhabitant_node
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.compilers.target_model {
   IsLess,
   IsNotEqual,

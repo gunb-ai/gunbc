@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { content_hash_equal }
 import std.measure { positive_millisecond, PositiveMeasureSuccessor }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { length }
+import std.algebra { length }
 import extdeps.bmc.redfish_telemetry {
   RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint, RedfishTemperatureCelsius, RedfishReadingValue, RedfishHealthOk, RedfishStateEnabled,
 }

@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall
 
 import std.types { String, List, Bool, Int }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_label, guarantee_rung_index }
 import gunbc.lifecycle_bounded_referent {
   DashboardWorkItemReferent,

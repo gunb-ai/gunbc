@@ -13,7 +13,7 @@ import v2.extdeps.languages.dag {
   dag_type_atom_node
 }
 import v2.extdeps.languages.typescript { ts_fn_add_lex, ts_target_model }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic {
   Accepted,

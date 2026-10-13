@@ -10,7 +10,7 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, contains }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic {
@@ -74,7 +74,6 @@ import v2.test.lens_common.resolve_fixture {
 }
 import v2.compiler.resolve { BoundAtRoot, ClosureProviderRefusal, resolve_dotted_path_reading }
 import v2.std.node_query { construct_node }
-import v2.std.algebra { contains }
 
 // WHERE A FIELD PROJECTION STOPS TODAY, measured stage by stage rather than asserted. The normalized
 // shape exists and is documented as a declared frontier: v2.std.node_query field_projection_node

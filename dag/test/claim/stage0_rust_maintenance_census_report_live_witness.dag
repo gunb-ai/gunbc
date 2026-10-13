@@ -6,7 +6,7 @@ import gunbc.stage0.stage0_rust_maintenance_census_report {
   RustMaintenanceCensusObservationRefused,
   current_rust_maintenance_census_report
 }
-import v2.std.algebra { length }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

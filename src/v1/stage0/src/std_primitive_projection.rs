@@ -391,7 +391,7 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
         ),
         primitive_projection_row(
             primitive_length(),
-            "v2.std.algebra".to_string(),
+            "std.algebra".to_string(),
             "length".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),

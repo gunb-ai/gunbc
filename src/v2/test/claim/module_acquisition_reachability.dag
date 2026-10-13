@@ -3,7 +3,7 @@ module v2.test.claim.module_acquisition_reachability
 import std.types { Bool, List }
 import v2.compiler.module_acquisition { AcquireImportedModule, AcquireQualifiedReference, AcquiredModule }
 import v2.test.claim.module_acquisition { a_member, a_request, key_of, verdict_over }
-import v2.std.algebra { list_map }
+import std.algebra { list_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 

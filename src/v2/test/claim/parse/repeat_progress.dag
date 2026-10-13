@@ -6,8 +6,7 @@ import v2.std.grammar { GrammarExpr, ModeledGrammar, GrammarProduction, GrammarR
 import v2.compiler.parse { ParseExprAccepted, ParseExprRejected, PreparedModeled, PreparedVoidGrammar, parse_expr, parse_production_prepared, parse_prov_initial, parse_refusal_reason_diagnostic, parse_table_empty, prepare_grammar }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.parse_refusal_reason { TokenStartsNotIncreasing }
-import std.algebra { Cons }
-import v2.std.algebra { length }
+import std.algebra { Cons, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 

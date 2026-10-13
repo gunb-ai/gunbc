@@ -14,7 +14,7 @@ import gunbc.generated_artifact_emit {
 import gunbc.generated_artifact_observation {
   observe_generated_artifact_population
 }
-import v2.std.algebra { fold_list, length }
+import std.algebra { fold_list, length }
 import gunbc.ledger_row_coherence { render_ledger_repair_trailers, ledger_row_coherence, artifact_is_ledger, heal_repair_declaration_artifact_path }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,

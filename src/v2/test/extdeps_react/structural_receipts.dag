@@ -35,8 +35,7 @@ import v2.extdeps.frameworks.react {
   UseSyncExternalStore,
   UseTransition,
 }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { length }
+import std.algebra { Cons, Empty, length }
 
 import v2.std.verification {
   BoolWitness,

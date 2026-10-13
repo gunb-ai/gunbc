@@ -3,7 +3,7 @@ module test.claim.swift_rows_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, List }
 import std.optional { Present }
-import v2.std.algebra { list_append }
+import std.algebra { list_append }
 import v2.extdeps.languages.swift.syntax {
   SwiftSourceFile, SwiftDecl, SwiftStaticModifier, SwiftDocLineComment,
   SwiftVariableDecl, SwiftArrayLiteral, SwiftStringLiteral, SwiftStringText,
