@@ -17,7 +17,9 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // receipt on the PR. v1 seed-reader change is admissible because it unblocks residue
 // burn-down for the v2 program.
 
-data non_fold_residue_frontier_discovery_note: String = "host union of every `data non_fold_residue_frontier` list in a production `.dag` file, keyed on that reserved data name; enrolled in gunbc.roster_registry. Rows must stay DIRECT record literals (a helper-fn call would blind the host reader)."
+// Roster name enrolled in gunbc.roster_registry. This module holds no FrontierRow
+// records; membership is the host union of every subject-module list of this name.
+data non_fold_residue_frontier: String = "distributed: host union of every subject-module `data non_fold_residue_frontier` list of DIRECT record literals. This module carries vocabulary and the enrollment name, not rows."
 
 data non_fold_residue_stale_row_ruling_note: String = "2026-07-20 stale-row-removal receipt (carried over from the Rust const): create_double_init_collapsible and create_effect_is_dedupable were rostered AND declared kernel-permanent in cla_is_kernel_permanent_fn, so the analyzer never reports them as live sites and the rows could only ever count as stale. DESIGN §6 makes the classes mutually exclusive — a non-fold residue is either a named irreducible kernel or un-migrated modeling, there is no third — so a declared kernel must not also carry a burn-down row; the kernel declaration is the authority. Attribution (checked, not assumed): main was already red on non_fold_residue_clean_holds / non_fold_residue_no_unrostered_or_stale before #6848 merged — the scheduled cold falsifier failed exactly those witnesses at 2026-07-20T14:12Z on main at 73eea76dd7 (#6914); per-PR ci stayed green because affected-set selection did not run the corpus-read nfr witnesses for those diffs (the masking class the dated reason strings below describe)."
 

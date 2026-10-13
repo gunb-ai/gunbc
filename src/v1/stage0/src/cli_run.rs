@@ -30298,25 +30298,34 @@ mod nfr_tests {
                FrontierRow {\n\
                  subject: PathSubject { path: \"synthetic/a.dag::f\" },\n\
                  reason: shared_reason,\n\
-                 trigger: TriggerProse { text: \"synthetic trigger\" }\n\
+                 dissolution: shared_dissolve\n\
                },\n\
                FrontierRow {\n\
                  subject: PathSubject { path: \"synthetic/b.dag::g\" },\n\
-                 reason: \"inline reason\",\n\
-                 trigger: TriggerProse { text: shared_trigger }\n\
+                 reason: inline_reason,\n\
+                 dissolution: unbound_dissolution(description: \"d\")\n\
                }\n\
              ]\n";
+        let triples = super::non_fold_residue_triples_from_module_source_with(
+            "synthetic.dag",
+            synthetic,
+            super::NfrHomeCheck::Skip,
+        );
         assert_eq!(
-            super::non_fold_residue_units_from_module_source_with(
-                "synthetic.dag",
-                synthetic,
-                super::NfrHomeCheck::Skip,
-            ),
-            vec![
-                "synthetic/a.dag::f".to_string(),
-                "synthetic/b.dag::g".to_string()
-            ],
+            triples.iter().map(|t| t.path.as_str()).collect::<Vec<_>>(),
+            vec!["synthetic/a.dag::f", "synthetic/b.dag::g"],
             "the frontier reader must FOLLOW the authority, not a hardcoded copy"
+        );
+        assert_eq!(
+            triples
+                .iter()
+                .map(super::nfr_identity_join_line)
+                .collect::<Vec<_>>(),
+            vec![
+                "synthetic/a.dag::f\tshared_reason\tshared_dissolve".to_string(),
+                "synthetic/b.dag::g\tinline_reason\tunbound_dissolution".to_string(),
+            ],
+            "the reader must emit the (path, reason ident, dissolution ident) triples the identity join prints"
         );
     }
 
@@ -30324,8 +30333,8 @@ mod nfr_tests {
     fn nfr_frontier_reader_refuses_duplicate_unit() {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r\", trigger: TriggerProse { text: \"d\" } },\n\
-               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r2\", trigger: TriggerProse { text: \"d2\" } }\n\
+               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: r, dissolution: d },\n\
+               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: r2, dissolution: d2 }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source_with(
@@ -30345,7 +30354,7 @@ mod nfr_tests {
     fn nfr_frontier_reader_refuses_missing_unit_field() {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
+               FrontierRow { reason: r, dissolution: d }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source_with(
@@ -30365,7 +30374,7 @@ mod nfr_tests {
     fn nfr_frontier_reader_locates_path_subject_without_path() {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { subject: PathSubject { }, reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
+               FrontierRow { subject: PathSubject { }, reason: r, dissolution: d }\n\
              ]\n";
         let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source_with(
@@ -30389,13 +30398,13 @@ mod nfr_tests {
 
     #[test]
     fn nfr_frontier_reader_refuses_row_not_at_home() {
-        let synthetic = "module other\n\n\
+        let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r\", dissolution: d }\n\
+               FrontierRow { subject: PathSubject { path: \"b.dag::f\" }, reason: r, dissolution: d }\n\
              ]\n";
         let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source_with(
-                "other.dag",
+                "a.dag",
                 synthetic,
                 super::NfrHomeCheck::Require,
             )
@@ -30408,9 +30417,30 @@ mod nfr_tests {
             .unwrap_or_default();
         assert!(
             message.contains("not at home")
-                && message.contains("other.dag")
-                && message.contains("synthetic/a.dag::f"),
+                && message.contains("a.dag")
+                && message.contains("b.dag::f"),
             "the refusal must LOCATE the hosting file and the row path; got: {message}"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_accepts_row_at_home() {
+        let synthetic = "module a\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"a.dag::f\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        let triples = super::non_fold_residue_triples_from_module_source_with(
+            "a.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        );
+        assert_eq!(
+            triples
+                .iter()
+                .map(super::nfr_identity_join_line)
+                .collect::<Vec<_>>(),
+            vec!["a.dag::f\tr\td".to_string()],
+            "a row hosted in a.dag naming a.dag::f must be accepted"
         );
     }
 

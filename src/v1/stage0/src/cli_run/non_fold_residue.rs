@@ -93,6 +93,43 @@ pub(crate) enum NfrHomeCheck {
     Skip,
 }
 
+/// One co-located row as the identity-join prints it: path::fn, reason ident, dissolution ident.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct NfrFrontierTriple {
+    pub path: String,
+    pub reason: String,
+    pub dissolution: String,
+}
+
+pub(crate) fn nfr_identity_join_line(t: &NfrFrontierTriple) -> String {
+    format!("{}\t{}\t{}", t.path, t.reason, t.dissolution)
+}
+
+fn nfr_expr_ident(
+    value: std::rc::Rc<crate::v1_std_core::Node>,
+    source_indices: std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
+    field: &str,
+    module_rel_path: &str,
+) -> String {
+    use crate::v1_std_core::{ExprData, LiteralValue};
+    match value.expr_data.as_ref() {
+        ExprData::ExprVar { .. } | ExprData::ExprCall { .. } => {
+            crate::v1_std_core::authored_name_at(source_indices, value)
+        }
+        ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
+            LiteralValue::LitStr { value: s } => s.clone(),
+            _ => panic!(
+                "nfr frontier reader: `{field}` in a `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` row of \
+                 {module_rel_path} is not an ident"
+            ),
+        },
+        _ => panic!(
+            "nfr frontier reader: `{field}` in a `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` row of \
+             {module_rel_path} is not an ident"
+        ),
+    }
+}
+
 pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
     content.lines().any(|line| {
         let t = line.trim_start();
@@ -161,11 +198,11 @@ fn nfr_frontier_list_source(content: &str) -> Option<String> {
     None
 }
 
-pub(crate) fn non_fold_residue_units_from_module_source_with(
+pub(crate) fn non_fold_residue_triples_from_module_source_with(
     module_rel_path: &str,
     content: &str,
     home: NfrHomeCheck,
-) -> Vec<String> {
+) -> Vec<NfrFrontierTriple> {
     let Some(parse_src) = nfr_frontier_list_source(content) else {
         // Condition 4: a byte-scan hit (comment, string, similarly spelled decl) with no
         // frontier list is skipped, never refused.
@@ -174,11 +211,22 @@ pub(crate) fn non_fold_residue_units_from_module_source_with(
     non_fold_residue_units_from_parse_source(module_rel_path, &parse_src, home)
 }
 
-fn non_fold_residue_units_from_parse_source(
+pub(crate) fn non_fold_residue_units_from_module_source_with(
     module_rel_path: &str,
     content: &str,
     home: NfrHomeCheck,
 ) -> Vec<String> {
+    non_fold_residue_triples_from_module_source_with(module_rel_path, content, home)
+        .into_iter()
+        .map(|t| t.path)
+        .collect()
+}
+
+fn non_fold_residue_units_from_parse_source(
+    module_rel_path: &str,
+    content: &str,
+    home: NfrHomeCheck,
+) -> Vec<NfrFrontierTriple> {
     use crate::v1_std_core::{ExprData, LiteralValue};
 
     let filename = module_rel_path.to_string();
@@ -230,15 +278,35 @@ fn non_fold_residue_units_from_parse_source(
                 );
             }
             let mut path: Option<String> = None;
+            let mut reason: Option<String> = None;
+            let mut dissolution: Option<String> = None;
             for field in el.children.iter() {
                 let fname = crate::v1_std_core::field_init_node_name_at(
                     field.clone(),
                     source_indices.clone(),
                 );
+                let value = crate::v1_std_core::field_init_node_value(field.clone());
+                if fname == "reason" {
+                    reason = Some(nfr_expr_ident(
+                        value,
+                        source_indices.clone(),
+                        "reason",
+                        module_rel_path,
+                    ));
+                    continue;
+                }
+                if fname == "dissolution" {
+                    dissolution = Some(nfr_expr_ident(
+                        value,
+                        source_indices.clone(),
+                        "dissolution",
+                        module_rel_path,
+                    ));
+                    continue;
+                }
                 if fname != "subject" {
                     continue;
                 }
-                let value = crate::v1_std_core::field_init_node_value(field.clone());
                 match value.expr_data.as_ref() {
                     ExprData::ExprRecordLit { .. } => {
                         let variant_name = crate::v1_std_core::authored_name_at(
@@ -312,7 +380,23 @@ fn non_fold_residue_units_from_parse_source(
                      typed roster refuses them)"
                 );
             }
-            units.push(path);
+            let reason = reason.unwrap_or_else(|| {
+                panic!(
+                    "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
+                     `reason` ident"
+                )
+            });
+            let dissolution = dissolution.unwrap_or_else(|| {
+                panic!(
+                    "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
+                     `dissolution` ident"
+                )
+            });
+            units.push(NfrFrontierTriple {
+                path,
+                reason,
+                dissolution,
+            });
         }
         if units.is_empty() {
             panic!(
@@ -360,16 +444,18 @@ fn nfr_collect_units_from_files(files: &[(String, String)], home: NfrHomeCheck) 
         if !nfr_content_declares_frontier(content) {
             continue;
         }
-        let units = non_fold_residue_units_from_module_source_with(rel, content, home);
-        for unit in units {
-            if !seen.insert(unit.clone()) {
+        let triples = non_fold_residue_triples_from_module_source_with(rel, content, home);
+        for triple in triples {
+            if !seen.insert(triple.path.clone()) {
                 panic!(
-                    "nfr frontier reader: duplicate path {unit:?} across co-located \
+                    "nfr frontier reader: duplicate path {:?} across co-located \
                      `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` lists (first collision involving \
-                     {rel})"
+                     {rel}; {})",
+                    triple.path,
+                    nfr_identity_join_line(&triple)
                 );
             }
-            all.push(unit);
+            all.push(triple.path);
         }
     }
     all
