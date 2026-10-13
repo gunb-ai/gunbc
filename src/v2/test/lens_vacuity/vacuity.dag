@@ -20,8 +20,7 @@ import v2.lens.vacuity {
   vacuity_advisory_census_from_rows,
   vacuity_advisory_census_matches_row_count,
   vacuity_carries_parallel_authority_debt,
-  vacuity_census_row,
-  vacuity_evidence_eq
+  vacuity_census_row
 }
 import std.algebra { count_where, length, list_map }
 import v2.std.diagnostic {
@@ -366,81 +365,65 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = list_map(
 )
 
 fn vacuity_falsification_case_matches_expected(case: VacuityFalsificationCase) -> Bool {
-  vacuity_evidence_eq(a: case.row.evidence, b: case.expected)
+  case.row.evidence == case.expected
 }
 
 fn vacuity_falsification_expected_count(cases: List<VacuityFalsificationCase>, target: VacuityEvidence) -> Int {
-  count_where(xs: cases, predicate: fn(c) { vacuity_evidence_eq(a: c.expected, b: target) })
+  count_where(xs: cases, predicate: fn(c) { c.expected == target })
 }
 
 test fn vacuity_rung5_emit_vs_eval_classifies_proven_independent() -> Bool {
-  return vacuity_evidence_eq(
-    a: classify_test_claim_vacuity(
+  return classify_test_claim_vacuity(
       claim: vacuity_test_emit_vs_eval_claim,
       transport: EmitVsEval { target: rust_minimal_target_model_staging() },
       lhs_provenance: OperandProvenanceUnknown,
       rhs_provenance: OperandProvenanceUnknown,
       operand_provenance: OperandProvenanceUnknown
-    ),
-    b: ProvenIndependent
-  )
+    ) == ProvenIndependent
 }
 
 test fn vacuity_single_eval_readback_classifies_proven_duplicate() -> Bool {
-  return vacuity_evidence_eq(
-    a: classify_test_claim_vacuity(
+  return classify_test_claim_vacuity(
       claim: vacuity_test_single_eval_readback_claim,
       transport: EvalOnly,
       lhs_provenance: ReadBack,
       rhs_provenance: LiteralOracle,
       operand_provenance: OperandProvenanceUnknown
-    ),
-    b: ProvenDuplicate
-  )
+    ) == ProvenDuplicate
 }
 
 test fn vacuity_unknown_provenance_classifies_unknown() -> Bool {
-  return vacuity_evidence_eq(
-    a: classify_test_claim_vacuity(
+  return classify_test_claim_vacuity(
       claim: vacuity_test_unknown_provenance_claim,
       transport: EvalOnly,
       lhs_provenance: OperandProvenanceUnknown,
       rhs_provenance: OperandProvenanceUnknown,
       operand_provenance: OperandProvenanceUnknown
-    ),
-    b: Unknown
-  )
+    ) == Unknown
 }
 
 test fn vacuity_constant_inequality_taxonomy_classifies_proven_duplicate() -> Bool {
-  return vacuity_evidence_eq(
-    a: classify_test_claim_vacuity(
+  return classify_test_claim_vacuity(
       claim: vacuity_test_constant_inequality_claim,
       transport: EvalOnly,
       lhs_provenance: LiteralOracle,
       rhs_provenance: LiteralOracle,
       operand_provenance: OperandProvenanceUnknown
-    ),
-    b: ProvenDuplicate
-  )
+    ) == ProvenDuplicate
 }
 
 test fn vacuity_rendering_transform_classifies_proven_independent() -> Bool {
-  return vacuity_evidence_eq(
-    a: classify_test_claim_vacuity(
+  return classify_test_claim_vacuity(
       claim: vacuity_test_rendering_transform_claim,
       transport: EvalOnly,
       lhs_provenance: RenderingTransform,
       rhs_provenance: LiteralOracle,
       operand_provenance: OperandProvenanceUnknown
-    ),
-    b: ProvenIndependent
-  )
+    ) == ProvenIndependent
 }
 
 test fn vacuity_unified_node_corpus_matches_transport_classifier() -> Bool {
-  return vacuity_evidence_eq(
-    a: classify_unified_test_claim_vacuity(
+  return classify_unified_test_claim_vacuity(
       claim: NodeCorpus {
         claim: vacuity_test_emit_vs_eval_claim,
         transport: EmitVsEval { target: rust_minimal_target_model_staging() }
@@ -448,22 +431,17 @@ test fn vacuity_unified_node_corpus_matches_transport_classifier() -> Bool {
       lhs_provenance: OperandProvenanceUnknown,
       rhs_provenance: OperandProvenanceUnknown,
       operand_provenance: OperandProvenanceUnknown
-    ),
-    b: ProvenIndependent
-  )
+    ) == ProvenIndependent
 }
 
 test fn vacuity_datasheet_transcriptions_classify_proven_independent_with_parallel_debt() -> Bool {
-  return vacuity_evidence_eq(
-    a: classify_test_claim_vacuity(
+  return classify_test_claim_vacuity(
       claim: vacuity_test_datasheet_transcription_claim,
       transport: EvalOnly,
       lhs_provenance: IndependentTranscription,
       rhs_provenance: IndependentTranscription,
       operand_provenance: OperandProvenanceUnknown
-    ),
-    b: ProvenIndependent
-  )
+    ) == ProvenIndependent
     && vacuity_carries_parallel_authority_debt(
       lhs_provenance: IndependentTranscription,
       rhs_provenance: IndependentTranscription

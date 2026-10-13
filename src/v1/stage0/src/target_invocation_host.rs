@@ -6,7 +6,7 @@
 // differential's classifier and rendering), `extdeps.bazel.label` (the label grammar mirrored
 // here) and `extdeps.bazel.target_pattern` (the pattern grammar mirrored here). The SET forms
 // (`//pkg:all`, `//pkg:*`, `//pkg/...`) execute only inside a route's universe: the native test
-// route (`//v2/test/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
+// route (`//v2/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
 // evaluated by the floor's own discovery authority and claim evaluation). A set form outside both
 // is refused with status 2 (`test_operand_set_form_refusal_rendered`, mirroring
 // `gunbc.target_invocation`) and is never widened into another route. None of the
@@ -1171,7 +1171,7 @@ fn exact_head_standing_outcome(
 ///
 /// It calls the SAME producer `--v2-native-route` calls, so the two cannot disagree about whether
 /// the seed can build v2 -- only one of them decides it. That route then spends roughly nine
-/// further minutes executing the v2.test.* universe through the emitted binary, which is a
+/// further minutes executing the marked `v2` declarations through the emitted binary, which is a
 /// different claim (what the emitted compiler ANSWERS), and bundling it here would price the
 /// self-host question at the cost of a question nobody asked.
 ///
@@ -1239,8 +1239,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 /// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
 /// clause or the pattern was narrower than the universe, so the subject was not reached.
 fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
-    let pattern = native_route_default_pattern_text();
-    match cli_run::run_v2_native_frontier(source_roots, &pattern) {
+    match cli_run::run_v2_native_frontier(source_roots) {
         Ok(run) => {
             let termination = match run.frontier.as_str() {
                 "held" | "advanced" | "grew-by-owned-correctness-flip" => Termination::ObservationHeld,
@@ -2285,23 +2284,23 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, mirrored: the native test
-/// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
+/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, READ from the file rendered from
+/// it: the native test route's whole universe. An operand CONTAINED in it belongs to that route.
 ///
-/// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
-/// The lane's runner needs the same fact as TEXT (it is an argv word) and this verb needs it as a
-/// PATTERN, which is two renderings of one value, not two values. A bare `"//v2/test/..."` literal
-/// beside this one would be the second independently editable spelling DESIGN section 3 forbids,
-/// and the drift would be load-bearing rather than cosmetic: narrow one and not the other and the
-/// verb routes an operand native that the lane's default excludes, or the reverse.
-pub fn native_route_default_pattern() -> TargetPattern {
-    TargetPattern::SubtreeTargets(vec!["v2".to_string(), "test".to_string()])
-}
-
-/// The universe above as the argv word the emitted binary's `adjudicate` verb takes. Derived from
-/// the one pattern rather than spelled again.
-pub fn native_route_default_pattern_text() -> String {
-    render_target_pattern(&native_route_default_pattern())
+/// THIS SEED HAS NO SPELLING OF THAT UNIVERSE. `NATIVE_ROUTE_DEFAULT_PATTERN` is a constant of
+/// `native_route_seed_boundary_generated`, which `gunbc.native_route_seed_boundary_emit` renders from
+/// the one declaration and the generated-artifact drift wall holds to it: moving the boundary in
+/// `.dag` moves this routing at the next regeneration, and a hand edit of the constant is a drift
+/// finding that regeneration undoes.
+/// The declaration cannot be read here directly, because this decision is taken before any emitted
+/// binary exists. The text goes through this file's own pattern parser, and a text that does not
+/// parse is a refusal the caller reports, never a panic and never a fallback to some other universe.
+///
+/// The universe the EMITTED binary adjudicates by default is the same declaration read inside the
+/// compiler (`v2.compiler.compile`, `adjudicate` without `--pattern`); the seed passes it a pattern
+/// only when the operator wrote one, so nothing here is handed to it as text.
+fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal> {
+    parse_target_pattern(crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN)
 }
 
 /// THE NATIVE TEST ROUTE, ENTERED WITH THE OPERAND'S OWN PATTERN.
@@ -2331,7 +2330,7 @@ pub fn native_route_default_pattern_text() -> String {
 /// `SubjectUnreached` while letting a definite member failure through unchanged.
 fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
     let rendered = render_target_pattern(pattern);
-    match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
+    match cli_run::run_required_v2_native(&self_host_source_roots(), Some(&rendered)) {
         cli_run::NativeRouteOutcome::LaneQualificationHeld { summary, members } => {
             native_member_outcome(
                 &rendered,
@@ -3441,7 +3440,23 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
             };
         }
     };
-    if target_pattern_within(&pattern, &native_route_default_pattern()) {
+    let native_universe = match native_route_default_pattern() {
+        Ok(universe) => universe,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "gunbc test: the native route's boundary, {:?}, is not an admitted target pattern; \
+                     src/v1/stage0/src/native_route_seed_boundary_generated.rs is rendered from \
+                     gunbc.witness.v2_native_route native_route_default_pattern by \
+                     gunbc.native_route_seed_boundary_emit, so regenerate it rather than route without a boundary\n  cause: {}",
+                    crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN,
+                    target_pattern_refusal_text(&cause)
+                ),
+            };
+        }
+    };
+    if target_pattern_within(&pattern, &native_universe) {
         return run_native_test_route(&pattern);
     }
     if target_pattern_within(&pattern, &claim_route_universe()) {

@@ -12,6 +12,7 @@ import product.fabric.work { MaterializedProgram,
   Shape, HardRequirements, ControlPlaneCapacity, work_for,
   OutputObligation, OutputArtifactObligation, TerminalResultObligation,
   DeclaredOutputObligations,
+ WarmResidencyRequired,
 }
 import std.durable_compare_and_set { CasSlotObservationRefused, CasStoreRefused, CasUnreadableReadRefused }
 import extdeps.github.checks {
@@ -115,6 +116,7 @@ fn fixture_requirements() -> ExecutionRequirements {
     capabilities: "linux-arm64",
     trust_domain: "fleet-owned",
     isolation: shared_kernel_sandbox_profile(),
+    revocation: WarmResidencyRequired,
   }
 }
 

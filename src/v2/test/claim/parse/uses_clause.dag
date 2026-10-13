@@ -58,3 +58,27 @@ test fn a_fn_with_a_uses_clause_parses_holds() -> Bool { uses_parsed() }
 test fn a_fn_with_a_uses_clause_refuses_at_the_clause_holds() -> Bool { uses_refusal().is_unmodeled }
 
 test fn the_uses_refusal_is_located_at_the_clause_holds() -> Bool { uses_refusal().at_clause }
+
+// After D13 deletes a restating uses row, the remaining fn is an ordinary body: it must lower. The
+// same shape with the clause still present keeps the UsesClauseCarrier refusal (no signature carrier).
+data restatement_without_uses_source: String = "module probe.derived_restatement\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n\nservice H {\n  operation Get {\n    requires Network\n  }\n}\n\nfn restates(p: Int) -> Int {\n  let r = H.Get()\n  p\n}\n"
+
+data restatement_with_uses_source: String = "module probe.derived_restatement_uses\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n\nservice H {\n  operation Get {\n    requires Network\n  }\n}\n\nfn restates(p: Int) -> Int uses net: Network {\n  let r = H.Get()\n  p\n}\n"
+
+fn restatement_without_uses_lowers() -> Bool {
+  match conservation_subject_of_text(path: "probe_derived_restatement.dag", text: restatement_without_uses_source).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn restatement_with_uses_refuses_unmodeled() -> Bool {
+  match conservation_subject_of_text(path: "probe_derived_restatement_uses.dag", text: restatement_with_uses_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_uses_clause_unmodeled
+  }
+}
+
+test fn a_restating_body_without_a_uses_clause_lowers_holds() -> Bool { restatement_without_uses_lowers() }
+
+test fn a_restating_body_with_a_uses_clause_still_refuses_RED() -> Bool { restatement_with_uses_refuses_unmodeled() }
