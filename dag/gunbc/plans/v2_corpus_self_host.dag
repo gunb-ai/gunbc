@@ -5,6 +5,7 @@ import std.dissolution { unbound_dissolution }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 // WHY THIS PLAN CITES RATHER THAN RESTATES. Every binding below is a DeclarationRef, so the
 // ingestion-time citation wall in v1_compiler.declaration_index resolves it on every required
@@ -189,7 +190,7 @@ fn v2_corpus_self_host_body() -> List<MarkdownBlock> {
 }
 
 data v2_corpus_self_host_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: "gunbc.plans.v2_corpus_self_host — its markdown was deleted by a295e17415, whose whole subject is the ruling that the hand-authored plan markdown is dropped because the .dag carrier is the authority. Regenerating it would perform exactly what that commit refused." },
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "v2-corpus-self-host",
   title: "Plan — v2 self-hosts the entire v2 corpus",
   body: v2_corpus_self_host_body(),
