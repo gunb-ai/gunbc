@@ -3,7 +3,7 @@ module v2.workflow.local_repo_wet_terminal
 import std.types { List }
 import v2.std.text { String }
 import v2.std.integer { Int }
-import v2.std.algebra { Cons, Empty, length }
+import std.algebra { Cons, Empty, length }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
@@ -901,36 +901,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_names_a_row_that_went_dark_by_real_execution" },
-      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution.dag",
-      function: "row_extractor_names_a_row_that_went_dark_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_reconciles_with_both_rosters_by_real_execution" },
-      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution.dag",
-      function: "row_extractor_reconciles_with_both_rosters_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_refuses_a_duplicated_identity_by_real_execution" },
-      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution.dag",
-      function: "row_extractor_refuses_a_duplicated_identity_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "row_extractor_refuses_a_substituted_identity_by_real_execution" },
-      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution.dag",
-      function: "row_extractor_refuses_a_substituted_identity_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "driver_printed_step_two_carries_the_row_extractor_by_real_execution" },
-      entry: "dag/test/claim/generated_artifact_merge_driver_real_execution.dag",
-      function: "driver_printed_step_two_carries_the_row_extractor_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.generated_artifact_merge_driver_real_execution", function: "divergent_generated_artifact_merge_refuses_by_real_execution" },
       entry: "dag/test/claim/generated_artifact_merge_driver_real_execution.dag",
       function: "divergent_generated_artifact_merge_refuses_by_real_execution",
@@ -1564,6 +1534,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.filesystem_link_create_new_wet_witness", function: "a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution" },
       entry: "dag/test/claim/filesystem_link_create_new_wet_witness.dag",
       function: "a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_custody_export_receipt_wet_witness", function: "a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real_execution" },
+      entry: "dag/test/claim/host_custody_export_receipt_wet_witness.dag",
+      function: "a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_custody_export_receipt_wet_witness", function: "an_ordinary_publication_lands_a_regular_file_by_real_execution" },
+      entry: "dag/test/claim/host_custody_export_receipt_wet_witness.dag",
+      function: "an_ordinary_publication_lands_a_regular_file_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_custody_export_receipt_wet_witness", function: "a_second_publication_over_an_existing_regular_receipt_stays_a_regular_file_by_real_execution" },
+      entry: "dag/test/claim/host_custody_export_receipt_wet_witness.dag",
+      function: "a_second_publication_over_an_existing_regular_receipt_stays_a_regular_file_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

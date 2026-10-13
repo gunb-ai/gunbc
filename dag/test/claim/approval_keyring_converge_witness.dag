@@ -2,7 +2,7 @@ module test.claim.approval_keyring_converge_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, List }
-import v2.std.algebra { list_head, HeadFound }
+import std.algebra { list_head, HeadFound }
 import gunbc.fleet.fleet_posix_accounts { fleet_usermod_binary_path }
 import std.process { ExitSuccess }
 import gunbc.auth.approval_keyring_pins { approval_mac_key_payload_sha256_prefix, approval_submission_mac_key_payload_sha256_prefix, approval_store_receipt_mac_key_payload_sha256_prefix }

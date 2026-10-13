@@ -2,7 +2,6 @@ module gunbc.spark.fabric_switch_desired
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import v2.std.algebra { non_empty_to_list }
 import extdeps.ethernet.link_mode { LinkMode }
 import extdeps.mikrotik.crs812 {
   Crs812LaneSpeed, crs812_lane_speed_for_link_mode,
@@ -11,7 +10,7 @@ import extdeps.mikrotik.crs812 {
   crs812_board_name, crs812_management_interface, crs812_default_bridge,
   crs812_passive_dac_requires_forced_mode,
 }
-import std.algebra { FreeSemigroup }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import product.cable_plant_assessment {
   CablePlant, CableLegOutcome, CableLegUnknown, CablePlantAssessRefusal,
 }

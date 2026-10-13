@@ -1,7 +1,7 @@
 module v2.workflow.floor_expected_red
 
 import std.types { List }
-import v2.std.algebra { Cons, Empty, list_flat_map }
+import std.algebra { Cons, Empty, list_flat_map }
 
 // 101 ROWS LEFT THIS ROSTER ON 2026-08-20 AND WERE NEVER ELIGIBLE FOR IT — a fact about this
 // mechanism, not those rows, so it is recorded at the top where the next enrolling author reads it.
@@ -796,7 +796,6 @@ fn floor_expected_red_chunk_21() -> List<String> {
 fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<String> {
   Cons { head: "test.claim.cli_dispatch_surface.interpreter_first_returns_the_modeled_optional", tail: Empty {} }
 }
-
 
 // THIRTEEN FURTHER IDENTITIES RETIRED 2026-08-26 BY ONE REPAIR, and the number is the finding. The
 // local-binding-shadow repair -- a call site spelling a name held by both a local binding and a

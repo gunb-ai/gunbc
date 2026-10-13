@@ -23,8 +23,7 @@ import v2.std.diagnostic {
   outcome_accepted
 }
 import v2.std.text { String }
-import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list }
+import std.algebra { Empty, FreeMonoid, fold_list }
 
 // The module source is ASSEMBLED FROM the contribution tree, never reconstructed by concatenating
 // strings beside it (std.emission_provenance): emit_module_text materializes what

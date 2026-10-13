@@ -6,8 +6,7 @@ import gunbc.witness.v2_native_route { native_route_identity_qualified }
 import v2.compiler.compile { native_lane_universe_selected }
 import v2.compiler.module_acquisition { AcquiredModule }
 import v2.compiler.source_authority { ModuleFileRef }
-import v2.std.algebra { contains, fold_list, length }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, contains, fold_list, length }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -235,6 +234,29 @@ test fn an_unlabelable_declaration_inside_the_universe_refuses_typed() -> Bool {
     text: "//...",
     reason: ^native_lane_identity_label_refused
   )
+}
+
+// A namespace name whose dummy label cannot be formed is filtered from entries so it is not
+// acquired, but the listing still carries it: the universe fold refuses with the same located
+// cause rather than dropping the name (DESIGN section 5).
+test fn an_unformable_population_name_refuses_typed() -> Bool {
+  match parse_target_pattern(text: "//...") {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(
+        modules: [inside_probe()],
+        population: ["v2.test.selection_probe", "v2.test.foo..bar"],
+        pattern: pattern
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          d.head.reason == ^native_lane_identity_label_refused
+            && (d.tail |> any(fn(x) {
+                 string_contains(s: symbol_lexeme(sym: x.reason), pattern: "v2.test.foo..bar")
+                   && string_contains(s: symbol_lexeme(sym: x.reason), pattern: "empty package segment")
+               }))
+      }
+  }
 }
 
 // ── discovery covers the acquired universe members, and refuses for them ───────────────────────────

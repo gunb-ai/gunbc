@@ -1,7 +1,7 @@
 module v2.workflow.floor_route_gap
 
 import std.types { List }
-import v2.std.algebra { Cons, Empty, list_flat_map }
+import std.algebra { Cons, Empty, list_flat_map }
 import v2.std.collection { Map, map_contains_key }
 
 // THE EXPECTATION IS TYPED AT THE TWO FACTS THE INTERPRETER OBSERVES. An identity-only row
@@ -193,23 +193,8 @@ fn floor_route_gap_chunk_00() -> List<String> {
       tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution",
       tail: Cons {
-      head: "test.claim.generated_artifact_merge_driver_real_execution.driver_printed_step_two_carries_the_row_extractor_by_real_execution",
-      tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution",
-      tail: Cons {
-      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_names_a_row_that_went_dark_by_real_execution",
-      tail: Cons {
-      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_reconciles_with_both_rosters_by_real_execution",
-      tail: Cons {
-      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_refuses_a_duplicated_identity_by_real_execution",
-      tail: Cons {
-      head: "test.claim.generated_artifact_merge_driver_real_execution.row_extractor_refuses_a_substituted_identity_by_real_execution",
       tail: Empty {}
-    }
-    }
-    }
-    }
-    }
     }
     }
     }

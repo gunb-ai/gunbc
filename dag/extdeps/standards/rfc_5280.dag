@@ -4,6 +4,7 @@ import std.types { Int, String, List, Timestamp }
 import std.logic { Bool }
 import std.bignat { bignat_pad_front }
 import std.decimal { decimal_digits_only }
+import std.encoding { ascii_decode_octets, AsciiDecoded, AsciiNonAscii }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.standards.x690_der {
@@ -86,6 +87,7 @@ type X509Refusal
   = X509DerRefused { cause: DerRefusal }
   | X509SignatureAlgorithmMismatch { tbs: String, outer: String }
   | X509TimeTagUnexpected { at: Int, tag: Int }
+  | X509TimeNotAscii { at: Int, octet: Int }
   | X509ExtensionMalformed { at: Int }
   | X509ExtensionDefaultEncoded { at: Int }
 
@@ -131,9 +133,6 @@ fn read_algorithm_identifier(octets: List<Int>, e: DerElement) -> AlgorithmIdent
   }
 }
 
-fn ascii_of(octets: List<Int>) -> String {
-  fold(octets, init: "", f: (acc, o) => acc + from_code_point(cp: o))
-}
 
 // Time ::= CHOICE { utcTime UTCTime, generalTime GeneralizedTime }: THE CHOICE IS CARRIED (review
 // 69660 of gunbc#11975 -- a bare String lost the arm, and the two arms read their year differently:
@@ -150,12 +149,29 @@ type X509TimeRead
   = X509TimeOk { time: X509Time }
   | X509TimeRefused { cause: X509Refusal }
 
+// UTCTime and GeneralizedTime are VisibleString subsets (X.680 sections 46-47; RFC 5280 section
+// 4.1.2.5), so their contents are ASCII. They cross to text through the declared std.encoding
+// ascii_decode_octets route; a non-ASCII octet REFUSES (X509TimeNotAscii, at the octet's offset in
+// the value) rather than being spelled as a Latin-1 character. (Before: a total octet-as-char
+// fold admitted any octet silently.)
+fn read_time_text(octets: List<Int>, e: DerElement, utc: Bool) -> X509TimeRead {
+  match ascii_decode_octets(octets: der_value(octets: octets, e: e)) {
+    AsciiNonAscii { at, octet } => X509TimeRefused { cause: X509TimeNotAscii { at: at, octet: octet } }
+    AsciiDecoded { text } =>
+      if utc {
+        X509TimeOk { time: UtcTime { text: text } }
+      } else {
+        X509TimeOk { time: GeneralizedTime { text: text } }
+      }
+  }
+}
+
 fn read_time(octets: List<Int>, e: DerElement) -> X509TimeRead {
   match der_element_expect_universal(e: e, tag_number: der_tag_utc_time) {
-    Absent => X509TimeOk { time: UtcTime { text: ascii_of(octets: der_value(octets: octets, e: e)) } }
+    Absent => read_time_text(octets: octets, e: e, utc: true)
     Present { value: _ } =>
       match der_element_expect_universal(e: e, tag_number: der_tag_generalized_time) {
-        Absent => X509TimeOk { time: GeneralizedTime { text: ascii_of(octets: der_value(octets: octets, e: e)) } }
+        Absent => read_time_text(octets: octets, e: e, utc: false)
         Present { value: _ } => X509TimeRefused { cause: X509TimeTagUnexpected { at: e.header_at, tag: e.tag_number } }
       }
   }

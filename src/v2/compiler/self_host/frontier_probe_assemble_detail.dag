@@ -1,7 +1,6 @@
 module v2.compiler.self_host.frontier_probe_assemble_detail
 
-import std.algebra { list_snoc_item }
-import v2.std.algebra { Empty, fold_list }
+import std.algebra { list_snoc_item, Empty, fold_list }
 import v2.compiler.self_host.frontier_probe_types {
   AssembleMissingModule,
   AssembleRejectionCause,

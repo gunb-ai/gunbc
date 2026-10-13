@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef }
 import std.affine_space { Point2, point2 }
 import std.orthogonal_geometry { point2_x, point2_y }
 import std.measure { Micrometer, micrometer_count }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import product.electrical.connectivity {
   ComponentInstanceIdentity,
   ElectricalNet,

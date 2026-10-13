@@ -1057,6 +1057,19 @@ fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
   measure_count(m)
 }
 
+// Signed money-micros: NetValue subtracts HigherIsBetter terms, so contribution,
+// sum and score payloads go negative. Scale itself is MoneyAmountMicro (Nat).
+// CONSUMERS: std.decision valued-objective contribution/sum/score payloads.
+type SignedMoneyAmountMicro = Measure<Currency, Micro, Int>
+
+fn signed_money_amount_micro(count: Int) -> SignedMoneyAmountMicro {
+  Measure { count: count }
+}
+
+fn signed_money_amount_micro_count(m: SignedMoneyAmountMicro) -> Int {
+  measure_count(m)
+}
+
 // A whole-dollar monetary amount in USD, on the Currency axis at the One scale (cf. MoneyAmountMicro
 // at Micro). Defined here alongside MoneyAmountMicro because a second consumer (extdeps.sec.facts
 // and now extdeps.network.mikrotik_crs812) independently needed the same shape; defining it once
@@ -1089,6 +1102,23 @@ type Once
 type MoneyRate<P> {
   amount: MoneyAmountMicro
   currency: CurrencyCode
+}
+
+// Undenominated rate: period is the type argument, denomination is supplied by
+// the buyer when a MoneyRate is minted. CONSUMERS: product.fabric.demand
+// TermValuations.delay (BuyTerms.currency is stamped in demand_delay_valuation).
+type MoneyAmountRate<P> {
+  amount: MoneyAmountMicro
+}
+
+type MoneyAmountPerSecond = MoneyAmountRate<PerSecond>
+
+fn money_amount_per_second(count: Nat) -> MoneyAmountPerSecond {
+  MoneyAmountRate { amount: money_amount_micro(count: count) }
+}
+
+fn money_amount_per_second_count(q: MoneyAmountPerSecond) -> Nat {
+  money_amount_micro_count(m: q.amount)
 }
 
 type MoneyPerSecond = MoneyRate<PerSecond>
