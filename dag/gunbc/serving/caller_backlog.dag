@@ -759,7 +759,7 @@ type AttemptCommit
 // CONSUMERS (§3c): declared frontier, not consumed in this change. SeatLeaseFence and
 // logical_work_id_of/DispatchTurnKey are consumed by the harness serving-seat wiring, which
 // supplies (dispatch node id, turn ordinal) and the seat's LeaseGrant; that wiring is owned by
-// session bright-moth-475 and is dispatched once these symbols land. Trigger: this PR merging.
+// session bright-moth-475 and is dispatched once these symbols land. Trigger: the harness serving-seat wiring calling logical_work_id_of and building SeatLeaseFence; until then the basis of StableTurnIdentity stays resume_waiting_durable and is not moved onto the unconsumed key.
 type AttemptFence
   = ComputeCellFence { account: MoneyAccount }
   | SeatLeaseFence { grant: LeaseGrant, holder: LeaseFence, at: EpochSecs }
@@ -1098,7 +1098,7 @@ fn caller_retry_disposition(record: CallerWorkRecord) -> CallerRetryDisposition 
 
 data persist_before_offer_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable")
 data retriable_refusal_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "caller_retry_disposition")
-data stable_turn_identity_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "logical_work_id_of")
+data stable_turn_identity_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "resume_waiting_durable")
 data idempotent_retry_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_durable")
 data no_expiry_on_long_wait_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "apply_ready_supply_law")
 data durable_cancellation_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "cancel_work_durable")
