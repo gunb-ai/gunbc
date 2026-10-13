@@ -17,11 +17,8 @@ import gunbc.live_deploy.desired {
   srv1_production_selected_identity,
   srv1_lab_selected_identity,
 }
-import gunbc.live_deploy.spec {
-  DeploymentSpec,
-  roadmap_serve_entry_file,
-  approval_broker_serve_entry_file,
-}
+import gunbc.live_deploy.spec { DeploymentSpec }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 
 // PRE-MUTATION ADMISSION FOR A LIVE SWAP. Two observed holes, one decision, used by the CI
@@ -30,7 +27,11 @@ import extdeps.git
 //
 // (1) SERVE-ENTRY COMPILE. A revision whose server did not compile (a source annotation inside a
 // fn body) was installed; the new process crash-looped; deploy learned this only at readiness.
-// The candidate's declared serve entry is typechecked before any apply fold runs.
+// The candidate's declared serve entry file (DeploymentServiceConfig.serve_entry, the same
+// path ExecStart binds) is compiled before any apply fold runs. The path is a spec fact, not
+// a reverse lookup of a module name (DESIGN §3: paths follow names; this does not invent a
+// second path-to-name table). The compiled subject is that file's own source, not a glued
+// probe module.
 //
 // (2) TARGET-BOUND BRANCH. Operator 2026-10-09 let an empty --candidate-branch admit any nonempty
 // checkout (fleet_converge_deploy_branch_admits). Operator 2026-10-13 (gunbc.design_ruling
@@ -114,47 +115,22 @@ fn serve_entry_compile_of(census: CompileDiagnosticCensus) -> ServeEntryCompileV
   }
 }
 
-fn serve_module_path_of_entry(entry: String) -> String {
+fn observe_serve_entry_file_compile(entry: String) -> ServeEntryCompileVerdict {
   let path = trim(s: entry)
-  if path == (roadmap_serve_entry_file as String) {
-    "gunbc.roadmap.roadmap_serve"
-  } else if path == (approval_broker_serve_entry_file as String) {
-    "gunbc.auth.approval_broker_serve"
+  if path == "" {
+    ServeEntryCompileUnobserved { detail: "serve entry path is empty" }
   } else {
-    ""
-  }
-}
-
-fn serve_entry_preflight_source(module_path: String, symbol: String) -> String {
-  join([
-    "module deploy_serve_preflight\nimport ",
-    module_path,
-    " { ",
-    symbol,
-    " }\nfn ping() -> Int { 0 }\n",
-  ], "")
-}
-
-fn observe_serve_entry_compile(entry: String, symbol: String) -> ServeEntryCompileVerdict {
-  let module_path = serve_module_path_of_entry(entry: entry)
-  if module_path == "" || trim(s: symbol) == "" {
-    ServeEntryCompileUnobserved {
-      detail: join(["serve entry '", trim(s: entry), "' has no declared module mapping"], ""),
+    let r = Filesystem.Read(path: path)
+    if !r.success {
+      ServeEntryCompileUnobserved { detail: r.error }
+    } else {
+      serve_entry_compile_of(census: compile_dag_diagnostic_census(r.content))
     }
-  } else {
-    serve_entry_compile_of(
-      census: compile_dag_diagnostic_census(
-        serve_entry_preflight_source(module_path: module_path, symbol: trim(s: symbol)),
-      ),
-    )
   }
 }
 
 fn observe_spec_serve_entry_compile(spec: DeploymentSpec) -> ServeEntryCompileVerdict {
-  observe_serve_entry_compile(
-    entry: spec.service.serve_entry as String,
-    symbol: spec.service.serve_function as String,
-  )
+  observe_serve_entry_file_compile(entry: spec.service.serve_entry as String)
 }
 
 fn live_deploy_pre_swap_admission(

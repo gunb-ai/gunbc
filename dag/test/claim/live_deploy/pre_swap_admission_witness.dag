@@ -21,6 +21,7 @@ import gunbc.live_deploy.pre_swap_admission {
   ServeEntryCompileAdmitted,
   ServeEntryCompileBlocked,
   ServeEntryCompileUnobserved,
+  observe_serve_entry_file_compile,
   live_deploy_pre_swap_admission,
   PreSwapAdmission,
   TargetBranchAdmission,
@@ -181,6 +182,14 @@ test fn a_type_error_fixture_is_a_blocked_verdict() -> Bool {
     ServeEntryCompileBlocked { blocking } => blocking > 0
     ServeEntryCompileAdmitted => false
     ServeEntryCompileUnobserved { detail: _ } => false
+  }
+}
+
+test fn an_empty_serve_entry_path_is_unobserved() -> Bool {
+  match observe_serve_entry_file_compile(entry: "") {
+    ServeEntryCompileUnobserved { detail } => string_contains(s: detail, pattern: "empty")
+    ServeEntryCompileAdmitted => false
+    ServeEntryCompileBlocked { blocking: _ } => false
   }
 }
 
