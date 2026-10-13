@@ -653,10 +653,6 @@ fn flex_cleanup_dead(cards: List<FlexOwnedCard>, ours: FlexOwnerLabel) -> List<F
   )
 }
 
-fn flex_foreign_untouched(owner: FlexOwnership) -> Bool {
-  !flex_ours_only(owner: owner)
-}
-
 // Probe result is a catalog unit, not a second spelling of vLLM parser names.
 // Those names stay on harness_unit_tool_call_parser for vLLM units. A ninfer
 // Qwen3_8_27bOnNinfer card is placeable.

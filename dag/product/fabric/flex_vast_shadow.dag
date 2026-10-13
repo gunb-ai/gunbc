@@ -48,8 +48,6 @@ data flex_m3_rent_cooldown_starts_at_ask: DissolutionCondition = unbound_dissolu
 
 data flex_m3_pass_stops_at_first_failure: DissolutionCondition = unbound_dissolution(description: "M3: stop the observation/plan pass at the first failure so the next pass plans from what really happened. TRIGGER: the wet loop refuses to continue after the first typed failure. SUFFICIENT FOR deleting this row.")
 
-data flex_qwen_probe_harness_placement_frontier: DissolutionCondition = unbound_dissolution(description: "M3: wire flex_rented_card_fungible into gunbc.harness.harness_requirement_placement. TRIGGER: placement refuses a rented card whose probe is not FlexQwenProbeConfirmed with qwen3 / qwen3_coder. SUFFICIENT FOR deleting this row. NOT satisfied by declaring the requirement here.")
-
 data flex_wet_create_release_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create/destroy loop consumes FlexCreateStanding, flex_reconcile_acquisition, FlexReleaseStanding, flex_release_readback, flex_trial_total (reservation ceiling), flex_objective, and flex_delay_unvalued. TRIGGER: that loop is the remaining executing route if test.claim.fabric.flex_vast_shadow_witness is deleted. SUFFICIENT FOR deleting this row.")
 
 type FlexWriteDecision
@@ -267,20 +265,6 @@ data flex_qwen_serving_image: NonEmptyStr = "vastai/vllm:v0.30.0-cuda-13.0"
 data flex_qwen_published_tcp_port: Int = 8000
 data flex_qwen_disk: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 32))
 data flex_qwen_model_id: NonEmptyStr = "qwen"
-data flex_qwen_reasoning_parser: NonEmptyStr = "qwen3"
-data flex_qwen_tool_call_parser: NonEmptyStr = "qwen3_coder"
-
-type FlexQwenProbeStanding
-  = FlexQwenProbeConfirmed { reasoning_parser: NonEmptyStr, tool_call_parser: NonEmptyStr }
-  | FlexQwenProbeUnconfirmed
-
-fn flex_rented_card_fungible(probe: FlexQwenProbeStanding) -> Bool {
-  match probe {
-    FlexQwenProbeUnconfirmed => false
-    FlexQwenProbeConfirmed { reasoning_parser: r, tool_call_parser: t } =>
-      r == flex_qwen_reasoning_parser && t == flex_qwen_tool_call_parser
-  }
-}
 
 type FlexServingTemplate {
   image: NonEmptyStr

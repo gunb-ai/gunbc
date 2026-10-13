@@ -50,20 +50,19 @@ import product.fabric.flex_vast_shadow {
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
   flex_bind_attempt_to_offer, flex_vast_offer_key, flex_keyset_page_limit,
   flex_instances_page, flex_fold_instance_pages, flex_cap_from_roster,
-  flex_charges_page, FlexChargesExhausted, FlexChargesPartial, FlexChargesUnreadable,
+  flex_charges_page, flex_fold_charge_pages, FlexChargesExhausted, FlexChargesPartial, FlexChargesUnreadable,
   flex_vast_api_read_grant, flex_delay_unvalued,
   FlexCreateLost, FlexCreateRefused, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
   FlexReconcileNeedsExhaustedRoster,
   flex_reconcile_acquisition,
   flex_qwen_serving_image, flex_qwen_published_tcp_port, flex_qwen_disk, flex_qwen_model_id,
-  flex_qwen_reasoning_parser, flex_qwen_tool_call_parser, FlexQwenProbeConfirmed, FlexQwenProbeUnconfirmed,
-  flex_rented_card_fungible, flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable,
+  flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable,
   FlexWriteBlockedOverCap, FlexWriteBlockedPartialRoster, FlexWriteWetUnwired,
   FlexInstancesStanding, FlexInstancesExhausted, FlexInstancesPartial, FlexInstancesUnreadable,
   FlexCapUnder, FlexCapOver, FlexCapAtLimit, FlexCapNeedsExhaustedRoster, FlexCapUnreadable,
   flex_rental_readback, FlexRentalHeld, FlexRentalPending, FlexRentalUnknown, FlexRentalGone,
   flex_search_offers_inhabitance_frontier, flex_m3_rent_cooldown_starts_at_ask,
-  flex_m3_pass_stops_at_first_failure, flex_qwen_probe_harness_placement_frontier,
+  flex_m3_pass_stops_at_first_failure,
   flex_wet_create_release_consumer_frontier,
   flex_release_readback, FlexReleaseRequested, FlexReleaseLost, FlexReleasePending,
   FlexReleaseConfirmedGone, FlexReleaseUnknown, flex_record_pass,
@@ -306,7 +305,6 @@ fn flex_actuation_mode_default_is_dry() -> Bool {
     FlexActuationWet => false
   }
     && write_gate_conjunction()
-    && qwen_probe_refuses_unconfirmed()
     && frontiers_are_unbound()
 }
 
@@ -371,22 +369,6 @@ fn write_gate_conjunction() -> Bool {
   }
 }
 
-fn qwen_probe_refuses_unconfirmed() -> Bool {
-  !flex_rented_card_fungible(probe: FlexQwenProbeUnconfirmed)
-    && flex_rented_card_fungible(
-      probe: FlexQwenProbeConfirmed {
-        reasoning_parser: flex_qwen_reasoning_parser,
-        tool_call_parser: flex_qwen_tool_call_parser,
-      },
-    )
-    && !flex_rented_card_fungible(
-      probe: FlexQwenProbeConfirmed {
-        reasoning_parser: "other" as NonEmptyStr,
-        tool_call_parser: flex_qwen_tool_call_parser,
-      },
-    )
-}
-
 fn frontiers_are_unbound() -> Bool {
   match flex_search_offers_inhabitance_frontier {
     UnboundDissolution { description: _ } => true
@@ -397,10 +379,6 @@ fn frontiers_are_unbound() -> Bool {
       BoundDissolution { trigger: _ } => false
     }
     && match flex_m3_pass_stops_at_first_failure {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
-    && match flex_qwen_probe_harness_placement_frontier {
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
     }
@@ -691,6 +669,13 @@ test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
     next_token: Present { value: "c" },
     results: [],
   }
+  let charges_last = VastAiCharges {
+    success: true,
+    count: 0,
+    total: 1,
+    next_token: none,
+    results: [],
+  }
   (flex_keyset_page_limit == vast_ai_keyset_page_limit)
     && (match flex_instances_page(page: first) {
       FlexInstancesPartial { next_token: t, observed: rows, total: n } =>
@@ -705,6 +690,10 @@ test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
       FlexChargesPartial { next_token: t, observed: _, total: _ } => t == "c"
       FlexChargesExhausted { results: _, total: _ } => false
       FlexChargesUnreadable => false
+    })
+    && (match flex_fold_charge_pages(pages: [charges_open, charges_last]) {
+      FlexChargesExhausted { results: rows, total: n } => ((rows |> length) == 0) && (n == 1)
+      _ => false
     })
     && (match flex_cap_from_roster(
       policy: flex_trial_policy,
