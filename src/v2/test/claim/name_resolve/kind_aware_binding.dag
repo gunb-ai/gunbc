@@ -1,0 +1,120 @@
+module v2.test.claim.name_resolve.kind_aware_binding
+
+import v2.compiler.compile {
+  native_test_context_from_ingest,
+  native_module_resolve_verdict,
+  native_lane_file_refusal_index,
+  NativeTestContext,
+  NativeModuleResolveVerdict,
+  NativeModuleResolveAccepted,
+  NativeModuleResolveRefused
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data kab_opt_type_source: String = "module v2.test.kab.opt_type\n\ntype Optional<T> = | Present { value: T } | Absent\n"
+
+data kab_opt_var_source: String = "module v2.test.kab.opt_var\n\ntype Cardinality = | Optional | Required\n"
+
+data kab_opt_type_b_source: String = "module v2.test.kab.opt_type_b\n\ntype Optional<T> = | Some { value: T } | None\n"
+
+data kab_repro_source: String = "module v2.test.kab.repro\n\nimport v2.test.kab.opt_type { Optional }\nimport v2.test.kab.opt_var { Optional }\n\ntype Flag = | Yes | No\ntype T = Optional<Flag>\n"
+
+data kab_wrong_kind_source: String = "module v2.test.kab.wrong_kind\n\nimport v2.test.kab.opt_var { Optional }\n\ntype Flag = | Yes | No\ntype T = Optional<Flag>\n"
+
+data kab_ambiguous_types_source: String = "module v2.test.kab.ambiguous_types\n\nimport v2.test.kab.opt_type { Optional }\nimport v2.test.kab.opt_type_b { Optional }\n\ntype Flag = | Yes | No\ntype T = Optional<Flag>\n"
+
+data kab_construct_source: String = "module v2.test.kab.construct\n\nimport v2.test.kab.opt_type { Optional }\nimport v2.test.kab.opt_var { Optional, Cardinality }\n\nfn pick() -> Cardinality { Optional }\n"
+
+fn kab_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+fn kab_context() -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest(ingest: [
+    kab_read(text: kab_opt_type_source, id: ^kab_opt_type, path: "src/v2/test/fixture/kab/opt_type.dag"),
+    kab_read(text: kab_opt_var_source, id: ^kab_opt_var, path: "src/v2/test/fixture/kab/opt_var.dag"),
+    kab_read(text: kab_opt_type_b_source, id: ^kab_opt_type_b, path: "src/v2/test/fixture/kab/opt_type_b.dag"),
+    kab_read(text: kab_repro_source, id: ^kab_repro, path: "src/v2/test/fixture/kab/repro.dag"),
+    kab_read(text: kab_wrong_kind_source, id: ^kab_wrong_kind, path: "src/v2/test/fixture/kab/wrong_kind.dag"),
+    kab_read(text: kab_ambiguous_types_source, id: ^kab_ambiguous_types, path: "src/v2/test/fixture/kab/ambiguous_types.dag"),
+    kab_read(text: kab_construct_source, id: ^kab_construct, path: "src/v2/test/fixture/kab/construct.dag")
+  ])
+}
+
+type KabVerdicts {
+  repro: NativeModuleResolveVerdict
+  wrong_kind: NativeModuleResolveVerdict
+  ambiguous_types: NativeModuleResolveVerdict
+  construct: NativeModuleResolveVerdict
+}
+
+fn kab_verdicts() -> Optional<KabVerdicts> {
+  match kab_context() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        optional_present(value: KabVerdicts {
+          repro: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.repro", path: ^kab_repro).verdict,
+          wrong_kind: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.wrong_kind", path: ^kab_wrong_kind).verdict,
+          ambiguous_types: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.ambiguous_types", path: ^kab_ambiguous_types).verdict,
+          construct: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.construct", path: ^kab_construct).verdict
+        })
+      }
+  }
+}
+
+fn kab_accepted(v: NativeModuleResolveVerdict) -> Bool {
+  match v {
+    NativeModuleResolveAccepted { resolved: _ } => true
+    _ => false
+  }
+}
+
+fn kab_refuses_reason(v: NativeModuleResolveVerdict, reason: Symbol) -> Bool {
+  match v {
+    NativeModuleResolveRefused { first: first, rest: _, observation: _ } =>
+      diagnostics_fatal_reason(d: first) == reason
+    _ => false
+  }
+}
+
+test fn a_type_application_resolves_when_a_homonymous_variant_is_also_imported() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.repro)
+  }
+}
+
+test fn a_type_application_of_a_variant_only_import_refuses() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_refuses_reason(v: vs.wrong_kind, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+
+test fn two_imported_types_of_one_name_stay_ambiguous() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_refuses_reason(v: vs.ambiguous_types, reason: ^resolve_reason_ambiguous_symbol)
+  }
+}
+
+test fn a_constructor_resolves_when_a_homonymous_type_is_also_imported() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.construct)
+  }
+}

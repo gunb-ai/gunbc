@@ -2,7 +2,7 @@ module v2.test.claim.parameter_reference
 
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, FreeMonoid, PartialFunction, list_snoc_item }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
+import std.occurrence_identity { LexicalValueOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.reference_closure { ReferenceOwnerless, ReferenceOwnership, ReferencesOwned, reference_closure_ownership }
@@ -333,7 +333,8 @@ fn pr_ctx(kind: FrameKind) -> ResolveContext {
     position: pr_qn(dotted: "m"),
     lm: dag_language_model(),
     under_module_root: false,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    reference_category: LexicalValueOccurrence
   }
 }
 

@@ -28,8 +28,42 @@ import std.optional {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Node, Symbol }
-import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, binder_conj_names, type_alias_renaming }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Disj,
+  Instantiation,
+  Node,
+  Occupancy,
+  Symbol,
+  TypeNode
+}
+import v2.std.type_binder {
+  AliasRenaming,
+  GenericTypeDecl,
+  NotARenaming,
+  OpaqueTypeDecl,
+  PlainTypeDecl,
+  PureRenamingOf,
+  TypeAlias,
+  binder_conj_names,
+  type_alias_renaming,
+  type_decl_view
+}
+import std.occurrence_identity {
+  CallableOccurrence,
+  ConstructorOccurrence,
+  NamespaceSegmentOccurrence,
+  OccurrenceCategory,
+  TypeOccurrence
+}
+import std.occurrence_binding_resolve {
+  OccurrenceCategoryBindingAdmissible,
+  OccurrenceCategoryBindingInadmissible,
+  occurrence_category_binding_verdict
+}
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_init,
@@ -685,6 +719,59 @@ fn symbol_index_lexical_collect(
 // (DESIGN section 3, the witness standing rule: a witness discriminates at ONE interface with its
 // inputs supplied at that boundary). Nothing about the answer changes: symbol_index_lexical_lookup
 // below is the same composition it always was.
+fn symbol_index_candidate_category(index: SymbolIndex, path: QualifiedName) -> OccurrenceCategory {
+  match symbol_index_declared_payload_at(index: index, qualified_path: path) {
+    Present { value: VariantArmPayload } => ConstructorOccurrence
+    Present { value: RecordTypePayload } => TypeOccurrence
+    Absent =>
+      if symbol_index_binds_namespace_body_at(index: index, qualified_path: path) {
+        NamespaceSegmentOccurrence
+      } else if symbol_index_declares_resource_at(index: index, qualified_path: path) {
+        TypeOccurrence
+      } else {
+        match symbol_index_entry_at(index: index, qualified_path: path) {
+          Absent => CallableOccurrence
+          Present { value: node } =>
+            match type_decl_view(target: node) {
+              GenericTypeDecl { binders: _, member: _ } => TypeOccurrence
+              TypeAlias { binders: _, aliased: _ } => TypeOccurrence
+              OpaqueTypeDecl { binders: _ } => TypeOccurrence
+              PlainTypeDecl { member: member } =>
+                match member.kind {
+                  TypeNode { connective: Arrow } => CallableOccurrence
+                  TypeNode { connective: Atom { identity: _ } } => TypeOccurrence
+                  TypeNode { connective: Conj } => TypeOccurrence
+                  TypeNode { connective: Disj } => TypeOccurrence
+                  TypeNode { connective: Instantiation } => TypeOccurrence
+                  TypeNode { connective: Occupancy } => TypeOccurrence
+                  ComputationNode { behavior: _ } => CallableOccurrence
+                }
+            }
+        }
+      }
+  }
+}
+
+fn symbol_index_lexical_eligible(
+  index: SymbolIndex,
+  required: OccurrenceCategory,
+  candidates: FreeMonoid<LexicalBindingCandidate>
+) -> FreeMonoid<LexicalBindingCandidate> {
+  fold_list(
+    xs: candidates,
+    empty: Empty,
+    cons: fn(acc, candidate) {
+      match occurrence_category_binding_verdict(
+        reference: required,
+        declaration: symbol_index_candidate_category(index: index, path: candidate.path)
+      ) {
+        OccurrenceCategoryBindingAdmissible => list_snoc_item(xs: acc, item: candidate)
+        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => acc
+      }
+    }
+  )
+}
+
 fn symbol_index_lexical_selection(
   candidates: FreeMonoid<LexicalBindingCandidate>
 ) -> LexicalLookup {
@@ -711,6 +798,26 @@ fn symbol_index_lexical_lookup(
       position: position,
       name: name,
       acc: Empty
+    )
+  )
+}
+
+fn symbol_index_lexical_lookup_for(
+  index: SymbolIndex,
+  position: QualifiedName,
+  name: Symbol,
+  required: OccurrenceCategory
+) -> LexicalLookup {
+  symbol_index_lexical_selection(
+    candidates: symbol_index_lexical_eligible(
+      index: index,
+      required: required,
+      candidates: symbol_index_lexical_collect(
+        index: index,
+        position: position,
+        name: name,
+        acc: Empty
+      )
     )
   )
 }

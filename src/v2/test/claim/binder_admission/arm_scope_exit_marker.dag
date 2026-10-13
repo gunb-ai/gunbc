@@ -15,6 +15,7 @@ import v2.compiler.resolve {
   ResolveWalkRefused,
   resolve_node_walk,
 }
+import std.occurrence_identity { LexicalValueOccurrence }
 import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.std.compilers.body_lowering { lower_bind }
 import std.algebra { Cons, Empty }
@@ -68,7 +69,8 @@ fn asem_ctx() -> ResolveContext {
     position: Empty,
     lm: void_language_model(identity: ^asem_void_language),
     under_module_root: false,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    reference_category: LexicalValueOccurrence
   }
 }
 
