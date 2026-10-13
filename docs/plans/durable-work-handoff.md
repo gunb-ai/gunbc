@@ -187,7 +187,7 @@ Each queue publishes one health reading, and the served page renders it:
 - lost wake-ups found by resync, by source;
 - consumer start failures.
 
-**A consumer that cannot start is a `Stopped` standing on its queue**, with the unit failure as the cause. The publication helper's day of `200/CHDIR` would have been one red line on the page. Two existing readings become this one (wave D): `gunbc.roadmap_launch_deployment_observe` `event_backlog_judge` (`StaleBacklog`, today the exit spool only) and `gunbc.live_deploy.unit_standing`'s unit judgments, extended to every queue's consumer units.
+**A consumer that cannot start is a `Stopped` standing on its queue**, with the unit failure as the cause. The publication helper's day of `200/CHDIR` would have been one red line on the page. Two existing readings become this one (wave D): `gunbc.roadmap.roadmap_launch_deployment_observe` `event_backlog_judge` (`StaleBacklog`, today the exit spool only) and `gunbc.live_deploy.unit_standing`'s unit judgments, extended to every queue's consumer units.
 
 ### 5.9 Decisions the queue delegates: the agreed interface
 

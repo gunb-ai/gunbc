@@ -183,7 +183,7 @@ fn durable_work_handoff_body() -> List<MarkdownBlock> {
       li(text: "lost wake-ups found by resync, by source;"),
       li(text: "consumer start failures."),
     ]),
-    p(text: "**A consumer that cannot start is a `Stopped` standing on its queue**, with the unit failure as the cause. The publication helper's day of `200/CHDIR` would have been one red line on the page. Two existing readings become this one (wave D): `gunbc.roadmap_launch_deployment_observe` `event_backlog_judge` (`StaleBacklog`, today the exit spool only) and `gunbc.live_deploy.unit_standing`'s unit judgments, extended to every queue's consumer units."),
+    p(text: "**A consumer that cannot start is a `Stopped` standing on its queue**, with the unit failure as the cause. The publication helper's day of `200/CHDIR` would have been one red line on the page. Two existing readings become this one (wave D): `gunbc.roadmap.roadmap_launch_deployment_observe` `event_backlog_judge` (`StaleBacklog`, today the exit spool only) and `gunbc.live_deploy.unit_standing`'s unit judgments, extended to every queue's consumer units."),
     h3(text: "5.9 Decisions the queue delegates: the agreed interface"),
     p(text: "Agreed with the flex-inference lane (deep-otter-797), which owns the objective model, on 2026-10-12:"),
     ul(items: [
