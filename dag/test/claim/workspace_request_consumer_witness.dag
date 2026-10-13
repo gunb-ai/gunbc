@@ -150,14 +150,14 @@ test fn enrolled_roster_discovers_a_customer_request_the_operator_pass_misses() 
 test fn a_store_conflict_is_admissible_retry_until_the_law_exhausts_whole_history() -> Bool {
   (match workspace_consumer_retry_from_history(history: [
     RetryHistoryEvent { class: RealWorkFailure, at: 1 },
-  ], at: 1) {
+  ]) {
     WorkspaceConsumerRetry => true
     _ => false
   }) && (match workspace_consumer_retry_from_history(history: [
     RetryHistoryEvent { class: RealWorkFailure, at: 1 },
     RetryHistoryEvent { class: RealWorkFailure, at: 2 },
     RetryHistoryEvent { class: RealWorkFailure, at: 3 },
-  ], at: 3) {
+  ]) {
     WorkspaceConsumerRefused { reason: r } => r == "workspace store conflicts exhausted the retry law"
     _ => false
   })

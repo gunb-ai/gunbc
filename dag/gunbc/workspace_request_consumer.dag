@@ -37,11 +37,10 @@ data workspace_consumer_retry_law: RetryLaw = RetryLaw {
   real_work_failure_bound: 3,
 }
 
-fn workspace_consumer_retry_from_history(history: List<RetryHistoryEvent>, at: EpochSecs) -> WorkspaceConsumerNext {
+fn workspace_consumer_retry_from_history(history: List<RetryHistoryEvent>) -> WorkspaceConsumerNext {
   match retry_admissibility(
     law: workspace_consumer_retry_law,
     history: history,
-    last_at: at,
     hint: retry_no_hint(),
     jitter: second(count: Zero),
   ) {
@@ -57,18 +56,35 @@ type WorkspaceWriteAcc
   = WorkspaceWriteClosed { result: WorkspaceStoreWrite }
   | WorkspaceWriteOpen { history: List<RetryHistoryEvent> }
 
+type WorkspaceConsumerWriteKind
+  = WorkspaceWriteSettleUnplanned
+  | WorkspaceWriteRecordExpiry
+
 // A lost CAS cannot persist the count on the slot that lost. This pass therefore re-issues the
 // same write while accumulating history, so the bound is reachable without a second store.
-fn workspace_consumer_write_until_law(write: fn() -> WorkspaceStoreWrite, at: EpochSecs) -> WorkspaceStoreWrite {
+fn workspace_consumer_issue_write(kind: WorkspaceConsumerWriteKind, store: FabricStorageBinding,
+  owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  match kind {
+    WorkspaceWriteSettleUnplanned => workspace_settle_unplanned_retirement(
+      store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at)
+    WorkspaceWriteRecordExpiry => workspace_record_expiry(
+      store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at)
+  }
+}
+
+fn workspace_consumer_write_until_law(kind: WorkspaceConsumerWriteKind, store: FabricStorageBinding,
+  owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp, at: EpochSecs) -> WorkspaceStoreWrite {
   match fold(
     nat_range_inclusive(lo: Succ { prev: Zero }, hi: workspace_consumer_retry_law.real_work_failure_bound),
     init: WorkspaceWriteOpen { history: [] },
     f: (acc, _) => match acc {
       WorkspaceWriteClosed { result: r } => WorkspaceWriteClosed { result: r }
-      WorkspaceWriteOpen { history: h } => match write() {
+      WorkspaceWriteOpen { history: h } => match workspace_consumer_issue_write(
+        kind: kind, store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at,
+      ) {
         WorkspaceStoreConflict => {
           let next_history = concat(h, [RetryHistoryEvent { class: RealWorkFailure, at: at }])
-          match workspace_consumer_retry_from_history(history: next_history, at: at) {
+          match workspace_consumer_retry_from_history(history: next_history) {
             WorkspaceConsumerRetry => WorkspaceWriteOpen { history: next_history }
             WorkspaceConsumerRefused { reason: d } =>
               WorkspaceWriteClosed { result: WorkspaceStoreWriteRefused { reason: d } }
@@ -144,15 +160,13 @@ fn workspace_consumer_retire(store: FabricStorageBinding, owner: PrincipalRef,
         match allocation.plan {
           Present { value: _ } => WorkspaceConsumerRoute { allocation: allocation }
           Absent => workspace_consumer_settlement_result(result: workspace_consumer_write_until_law(
-            write: () => workspace_settle_unplanned_retirement(
-              store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at),
-            at: 0,
+            kind: WorkspaceWriteSettleUnplanned, store: store, owner: owner,
+            idempotency_key: idempotency_key, observed_at: observed_at, at: 0,
           ))
         }
       } else { match workspace_consumer_write_until_law(
-        write: () => workspace_record_expiry(store: store, owner: owner,
-          idempotency_key: idempotency_key, observed_at: observed_at),
-        at: 0,
+        kind: WorkspaceWriteRecordExpiry, store: store, owner: owner,
+        idempotency_key: idempotency_key, observed_at: observed_at, at: 0,
       ) {
         WorkspaceStoreConflict =>
           WorkspaceConsumerRefused { reason: "workspace store conflicts exhausted the retry law" }
@@ -162,9 +176,8 @@ fn workspace_consumer_retire(store: FabricStorageBinding, owner: PrincipalRef,
         } else { match current.plan {
           Present { value: _ } => WorkspaceConsumerRoute { allocation: current }
           Absent => workspace_consumer_settlement_result(result: workspace_consumer_write_until_law(
-            write: () => workspace_settle_unplanned_retirement(
-              store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at),
-            at: 0,
+            kind: WorkspaceWriteSettleUnplanned, store: store, owner: owner,
+            idempotency_key: idempotency_key, observed_at: observed_at, at: 0,
           ))
         } }
       } }

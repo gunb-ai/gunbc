@@ -22,13 +22,6 @@ type CapacityAfterExpiry
   | CapacityFreed
   | CapacityHeldPendingQuiescence
 
-fn release_law_eq(left: ReleaseLaw, right: ReleaseLaw) -> Bool {
-  match left {
-    FencedResource => match right { FencedResource => true  QuiescenceRequired => false }
-    QuiescenceRequired => match right { QuiescenceRequired => true  FencedResource => false }
-  }
-}
-
 fn release_law_wire(law: ReleaseLaw) -> String {
   match law {
     FencedResource => "fenced-resource"

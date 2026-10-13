@@ -25,7 +25,7 @@ test fn a_probe_success_does_not_reset_a_failing_real_work_series() -> Bool {
     ev(class: ProbeOutcome { succeeded: true }, at: 110),
     ev(class: RealWorkFailure, at: 120),
   ]
-  match retry_admissibility(law: witness_law, history: history, last_at: 120, hint: retry_no_hint(), jitter: second(count: Zero)) {
+  match retry_admissibility(law: witness_law, history: history, hint: retry_no_hint(), jitter: second(count: Zero)) {
     RetryAdmissible { earliest: e, real_work_failures: n } => (n as Int) == 2 && e == 120 + 4
     _ => false
   }
@@ -37,10 +37,10 @@ test fn a_resume_does_not_reset_the_whole_history_bound() -> Bool {
     ev(class: RealWorkFailure, at: 2),
   ]
   let after_resume = concat(prior_session, [ev(class: RealWorkFailure, at: 80)])
-  (match retry_admissibility(law: witness_law, history: prior_session, last_at: 2, hint: retry_no_hint(), jitter: second(count: Zero)) {
+  (match retry_admissibility(law: witness_law, history: prior_session, hint: retry_no_hint(), jitter: second(count: Zero)) {
     RetryAdmissible { earliest: _, real_work_failures: n } => (n as Int) == 2
     _ => false
-  }) && (match retry_admissibility(law: witness_law, history: after_resume, last_at: 80, hint: retry_no_hint(), jitter: second(count: Zero)) {
+  }) && (match retry_admissibility(law: witness_law, history: after_resume, hint: retry_no_hint(), jitter: second(count: Zero)) {
     RetryTerminalExhausted { real_work_failures: n } => (n as Int) == 3
     _ => false
   })
@@ -52,7 +52,7 @@ test fn a_probe_success_is_not_counted_toward_the_failure_bound() -> Bool {
     ev(class: ProbeOutcome { succeeded: true }, at: 2),
     ev(class: ProbeOutcome { succeeded: true }, at: 3),
   ]
-  match retry_admissibility(law: witness_law, history: history, last_at: 3, hint: retry_no_hint(), jitter: second(count: Zero)) {
+  match retry_admissibility(law: witness_law, history: history, hint: retry_no_hint(), jitter: second(count: Zero)) {
     RetryAdmissible { earliest: _, real_work_failures: n } => (n as Int) == 1
     _ => false
   }
@@ -60,9 +60,9 @@ test fn a_probe_success_is_not_counted_toward_the_failure_bound() -> Bool {
 
 test fn an_upstream_retry_after_is_a_lower_bound_never_a_shortening() -> Bool {
   let history = [ev(class: RealWorkFailure, at: 50)]
-  let with_hint = retry_admissibility(law: witness_law, history: history, last_at: 50, hint: retry_hint_from_delta(delay: second(count: 10)), jitter: second(count: Zero))
-  let without = retry_admissibility(law: witness_law, history: history, last_at: 50, hint: retry_no_hint(), jitter: second(count: Zero))
-  let below_backoff = retry_admissibility(law: witness_law, history: history, last_at: 50, hint: retry_hint_from_delta(delay: second(count: 1)), jitter: second(count: Zero))
+  let with_hint = retry_admissibility(law: witness_law, history: history, hint: retry_hint_from_delta(delay: second(count: 10)), jitter: second(count: Zero))
+  let without = retry_admissibility(law: witness_law, history: history, hint: retry_no_hint(), jitter: second(count: Zero))
+  let below_backoff = retry_admissibility(law: witness_law, history: history, hint: retry_hint_from_delta(delay: second(count: 1)), jitter: second(count: Zero))
   match with_hint {
     RetryAdmissible { earliest: hinted, real_work_failures: _ } =>
       match without {
@@ -86,13 +86,13 @@ test fn exhaustion_and_cancellation_are_persisted_terminals() -> Bool {
   ]
   let cancelled_hist = [ev(class: Cancelled { by: "operator" as NonEmptyStr }, at: 9)]
   let succeeded = [ev(class: RealWorkSuccess, at: 4)]
-  (match retry_admissibility(law: witness_law, history: exhausted_hist, last_at: 3, hint: retry_no_hint(), jitter: second(count: Zero)) {
+  (match retry_admissibility(law: witness_law, history: exhausted_hist, hint: retry_no_hint(), jitter: second(count: Zero)) {
     RetryTerminalExhausted { real_work_failures: n } => (n as Int) == 3
     _ => false
-  }) && (match retry_admissibility(law: witness_law, history: cancelled_hist, last_at: 9, hint: retry_no_hint(), jitter: second(count: Zero)) {
+  }) && (match retry_admissibility(law: witness_law, history: cancelled_hist, hint: retry_no_hint(), jitter: second(count: Zero)) {
     RetryTerminalCancelled { by: who } => (who as String) == "operator"
     _ => false
-  }) && (match retry_admissibility(law: witness_law, history: succeeded, last_at: 4, hint: retry_no_hint(), jitter: second(count: Zero)) {
+  }) && (match retry_admissibility(law: witness_law, history: succeeded, hint: retry_no_hint(), jitter: second(count: Zero)) {
     RetryAlreadySucceeded => true
     _ => false
   })
