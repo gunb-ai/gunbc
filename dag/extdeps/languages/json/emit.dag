@@ -5,6 +5,7 @@ import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_
 import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -94,49 +95,54 @@ fn escape_json_string(s: String) -> String {
 // code point below 0x20 is covered by construction, and none of the replacement texts contains a
 // code point a later pass splits on, so each original character escapes exactly once. Output bytes
 // are identical to the per-char fold's; only the building cost changes (DESIGN section 6).
-// Each row spells its own delimiter as a text literal and names its code point beside it; the two are tied by test.claim.json_emit_witness (review 79062), so no code point is computed at run time and no Int
-// is asked to be a Char at run time (gunbc.recurring_failure_mode char_brand_admits_any_int).
-type JsonEscapeRow { code_point: Int, spelled: String }
+// Each row is ONE fact, the control character spelled as a text literal. Its code point is DERIVED from
+// that spelling through the declared Unicode scalar unfold (std.coercion unicode_scalar_unfold), so the
+// number and the character cannot drift apart (review 79227) and no Int is asked to be a Char at run time
+// (gunbc.recurring_failure_mode char_brand_admits_any_int). A row of other than one scalar is not a
+// control character; the witness holds every row to one scalar and the two lists to 0..31 exactly.
+fn json_escape_row_code_point(spelled: String) -> Int {
+  fold(unicode_scalar_unfold(s: spelled), init: 0, f: (_acc, c) => c)
+}
 
-fn json_named_escape_rows() -> List<JsonEscapeRow> {
+fn json_named_escape_rows() -> List<String> {
   [
-  JsonEscapeRow { code_point: 8, spelled: "\u{8}" },
-  JsonEscapeRow { code_point: 9, spelled: "\u{9}" },
-  JsonEscapeRow { code_point: 10, spelled: "\u{a}" },
-  JsonEscapeRow { code_point: 12, spelled: "\u{c}" },
-  JsonEscapeRow { code_point: 13, spelled: "\u{d}" },
+  "\u{8}",
+  "\u{9}",
+  "\u{a}",
+  "\u{c}",
+  "\u{d}",
   ]
 }
 
-fn json_control_escape_rows() -> List<JsonEscapeRow> {
+fn json_control_escape_rows() -> List<String> {
   [
-  JsonEscapeRow { code_point: 0, spelled: "\u{0}" },
-  JsonEscapeRow { code_point: 1, spelled: "\u{1}" },
-  JsonEscapeRow { code_point: 2, spelled: "\u{2}" },
-  JsonEscapeRow { code_point: 3, spelled: "\u{3}" },
-  JsonEscapeRow { code_point: 4, spelled: "\u{4}" },
-  JsonEscapeRow { code_point: 5, spelled: "\u{5}" },
-  JsonEscapeRow { code_point: 6, spelled: "\u{6}" },
-  JsonEscapeRow { code_point: 7, spelled: "\u{7}" },
-  JsonEscapeRow { code_point: 11, spelled: "\u{b}" },
-  JsonEscapeRow { code_point: 14, spelled: "\u{e}" },
-  JsonEscapeRow { code_point: 15, spelled: "\u{f}" },
-  JsonEscapeRow { code_point: 16, spelled: "\u{10}" },
-  JsonEscapeRow { code_point: 17, spelled: "\u{11}" },
-  JsonEscapeRow { code_point: 18, spelled: "\u{12}" },
-  JsonEscapeRow { code_point: 19, spelled: "\u{13}" },
-  JsonEscapeRow { code_point: 20, spelled: "\u{14}" },
-  JsonEscapeRow { code_point: 21, spelled: "\u{15}" },
-  JsonEscapeRow { code_point: 22, spelled: "\u{16}" },
-  JsonEscapeRow { code_point: 23, spelled: "\u{17}" },
-  JsonEscapeRow { code_point: 24, spelled: "\u{18}" },
-  JsonEscapeRow { code_point: 25, spelled: "\u{19}" },
-  JsonEscapeRow { code_point: 26, spelled: "\u{1a}" },
-  JsonEscapeRow { code_point: 27, spelled: "\u{1b}" },
-  JsonEscapeRow { code_point: 28, spelled: "\u{1c}" },
-  JsonEscapeRow { code_point: 29, spelled: "\u{1d}" },
-  JsonEscapeRow { code_point: 30, spelled: "\u{1e}" },
-  JsonEscapeRow { code_point: 31, spelled: "\u{1f}" },
+  "\u{0}",
+  "\u{1}",
+  "\u{2}",
+  "\u{3}",
+  "\u{4}",
+  "\u{5}",
+  "\u{6}",
+  "\u{7}",
+  "\u{b}",
+  "\u{e}",
+  "\u{f}",
+  "\u{10}",
+  "\u{11}",
+  "\u{12}",
+  "\u{13}",
+  "\u{14}",
+  "\u{15}",
+  "\u{16}",
+  "\u{17}",
+  "\u{18}",
+  "\u{19}",
+  "\u{1a}",
+  "\u{1b}",
+  "\u{1c}",
+  "\u{1d}",
+  "\u{1e}",
+  "\u{1f}",
   ]
 }
 
@@ -165,8 +171,8 @@ fn json_escape_via_passes(s: String) -> String {
     f: fn(acc, row) {
       json_escape_replace(
         s: acc,
-        delimiter: row.spelled,
-        replacement: json_escape_named_replacement(code_point: row.code_point),
+        delimiter: row,
+        replacement: json_escape_named_replacement(code_point: json_escape_row_code_point(spelled: row)),
       )
     },
   )
@@ -176,8 +182,8 @@ fn json_escape_via_passes(s: String) -> String {
     f: fn(acc, row) {
       json_escape_replace(
         s: acc,
-        delimiter: row.spelled,
-        replacement: json_escape_control_replacement(code_point: row.code_point),
+        delimiter: row,
+        replacement: json_escape_control_replacement(code_point: json_escape_row_code_point(spelled: row)),
       )
     },
   )

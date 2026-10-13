@@ -2,8 +2,9 @@ module test.claim.json_emit_witness
 
 import extdeps.external_authority { ExternalAuthority }
 import std.unicode.scalar { from_code_point }
+import std.coercion { unicode_scalar_unfold }
 import std.error_primitives { Ok, Err }
-import extdeps.languages.json.emit { json_named_escape_rows, json_control_escape_rows, JsonEscapeRow, escape_json_string, json_array, json_bool, json_int, json_int_list, json_kv, json_null, json_number_from_lexeme_string, json_object, json_str_list, json_unicode_escape_hex4, quote_json_string, serialize_json }
+import extdeps.languages.json.emit { json_named_escape_rows, json_control_escape_rows, json_escape_row_code_point, escape_json_string, json_array, json_bool, json_int, json_int_list, json_kv, json_null, json_number_from_lexeme_string, json_object, json_str_list, json_unicode_escape_hex4, quote_json_string, serialize_json }
 import extdeps.languages.json.grammar { json_int_lexeme, json_number_lexeme, json_number_lexeme_valid, json_production_rows }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -195,22 +196,25 @@ test fn witness_json_text_parse_agrees_with_lexeme_surface_on_exponents() -> Boo
   })
 }
 
-// Each escape row states its character twice (code_point and spelled); nothing else ties them, so a
-// drifted row would escape the wrong character silently (review 79062). The one authored Int -> text
-// route must spell every row's code_point as exactly its spelled text.
-fn json_escape_row_agrees(row: JsonEscapeRow) -> Bool {
-  match from_code_point(cp: row.code_point) {
-    Ok { value: t } => t == row.spelled
-    Err { value: n } => false
+// Each escape row is one fact (the spelled character); its code point is derived from it. The rows
+// must be exactly one scalar each, and together exactly 0..31 with no gap or repeat (review 79227).
+fn jew_row_is_one_scalar(row: String) -> Bool {
+  (unicode_scalar_unfold(s: row)).length() == 1
+}
+
+fn jew_covers(cp: Int) -> Bool {
+  if cp > 31 { true } else {
+    let hits = concat(json_named_escape_rows(), json_control_escape_rows()) |> filter(row => json_escape_row_code_point(spelled: row) == cp)
+    hits.length() == 1 && jew_covers(cp: cp + 1)
   }
 }
 
-test fn witness_escape_rows_spell_the_code_point_they_name() -> Bool {
-  all(json_named_escape_rows(), row => json_escape_row_agrees(row: row)) && all(json_control_escape_rows(), row => json_escape_row_agrees(row: row))
+test fn witness_escape_rows_are_one_scalar_each_and_cover_0_to_31_once() -> Bool {
+  all(json_named_escape_rows(), row => jew_row_is_one_scalar(row: row)) && all(json_control_escape_rows(), row => jew_row_is_one_scalar(row: row)) && jew_covers(cp: 0)
 }
 
-test fn RED_witness_a_drifted_escape_row_is_detected() -> Bool {
-  !json_escape_row_agrees(row: JsonEscapeRow { code_point: 27, spelled: "\u{1c}" })
+test fn RED_witness_a_doubled_row_is_detected() -> Bool {
+  !jew_row_is_one_scalar(row: "\u{1b}\u{1c}") && !jew_row_is_one_scalar(row: "")
 }
 
 // The authority held to RFC 8259 section 7 on every control code point: \b \t \n \f \r for 8, 9, 10,
