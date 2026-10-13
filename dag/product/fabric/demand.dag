@@ -6,7 +6,6 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure {
   MoneyAmountMicro, MoneyPerSecond, MoneyRate, MoneyAmountPerSecond,
   money_amount_micro, money_amount_micro_count, money_amount_per_second,
-  money_amount_per_second_count, signed_money_amount_micro,
 }
 import extdeps.currency.currency { CurrencyCode }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
@@ -219,10 +218,10 @@ fn interpret_demand_objective(terms: AdmissionTerms) -> InterpretedDemandObjecti
   InterpretedDemandObjective {
     profile: terms.objective.profile,
     valuations: [
-      TermValuation { term: term_money.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: terms.objective.valuations.money) as Int), goal: LowerIsBetter },
-      TermValuation { term: term_delay.identity, scale_micro: signed_money_amount_micro(count: money_amount_per_second_count(q: terms.objective.valuations.delay) as Int), goal: LowerIsBetter },
-      TermValuation { term: term_interruption.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: terms.objective.valuations.interruption) as Int), goal: LowerIsBetter },
-      TermValuation { term: term_accepted_work.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: terms.objective.valuations.accepted_work) as Int), goal: HigherIsBetter },
+      TermValuation { term: term_money.identity, scale_micro: terms.objective.valuations.money, goal: LowerIsBetter },
+      TermValuation { term: term_delay.identity, scale_micro: terms.objective.valuations.delay.amount, goal: LowerIsBetter },
+      TermValuation { term: term_interruption.identity, scale_micro: terms.objective.valuations.interruption, goal: LowerIsBetter },
+      TermValuation { term: term_accepted_work.identity, scale_micro: terms.objective.valuations.accepted_work, goal: HigherIsBetter },
     ],
     delay: terms.objective.valuations.delay,
     measure: terms.objective.measure,

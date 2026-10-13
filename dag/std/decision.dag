@@ -4,7 +4,10 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { OrderedClosedInterval, degenerate_interval, interval_low, interval_high }
 import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_int_add, checked_int_multiply, checked_int_subtract }
-import std.measure { SignedMoneyAmountMicro, signed_money_amount_micro, signed_money_amount_micro_count }
+import std.measure {
+  MoneyAmountMicro, SignedMoneyAmountMicro,
+  money_amount_micro_count, signed_money_amount_micro, signed_money_amount_micro_count,
+}
 import std.observation_completeness {
   ObservationCompleteness,
   ObservationComplete,
@@ -741,13 +744,12 @@ type CandidateFieldStanding
 // One row per declared objective term the caller supplies. Completeness against the
 // assessment terms (membership, uniqueness, orientation vs funded Pareto axes) is
 // admit_term_valuations, not a closed record of one domain's units. A zero scale is
-// present, never dropped. scale_micro is SignedMoneyAmountMicro so a negative is
-// authorable; admission refuses it, because a negative LowerIsBetter scale silently
-// reverses orientation. CONSUMERS: ValuedObjective; product.fabric.demand
+// present, never dropped. scale_micro is MoneyAmountMicro so a negative scale is
+// unwritable; orientation lives on goal. CONSUMERS: ValuedObjective; product.fabric.demand
 // interpret_demand_objective.
 type TermValuation {
   term: DeclarationRef
-  scale_micro: SignedMoneyAmountMicro
+  scale_micro: MoneyAmountMicro
   goal: AxisGoal
 }
 
@@ -1234,7 +1236,7 @@ type ValuedContribution
   | ValuedContributionRefused { defect: NonEmptyStr }
 
 // CONSUMER: valued_sum / cost_sum.
-fn valued_scale_contribution(entry: ParetoEntry, term: DeclarationRef, scale: SignedMoneyAmountMicro) -> ValuedContribution {
+fn valued_scale_contribution(entry: ParetoEntry, term: DeclarationRef, scale: MoneyAmountMicro) -> ValuedContribution {
   match reading_for(e: entry, wanted: term) {
     ReadingDuplicated { duplicated_axis: ax } =>
       ValuedContributionNeeds {
@@ -1252,7 +1254,7 @@ fn valued_scale_contribution(entry: ParetoEntry, term: DeclarationRef, scale: Si
           },
         }
       } else {
-        match checked_int_multiply(a: interval_low(interval: iv), b: signed_money_amount_micro_count(m: scale)) {
+        match checked_int_multiply(a: interval_low(interval: iv), b: money_amount_micro_count(m: scale) as Int) {
           CheckedIntOverflow { cause: _ } =>
             ValuedContributionRefused { defect: "valued-term product overflowed" as NonEmptyStr }
           CheckedIntReady { value: micros } => ValuedContributionReady { micros: signed_money_amount_micro(count: micros) }
@@ -1550,7 +1552,7 @@ fn unit_row_defects(valuations: List<TermValuation>, unit: DeclarationRef) -> Li
           HigherIsBetter => []
           LowerIsBetter => ["cost-per-accepted-unit unit term must be HigherIsBetter" as NonEmptyStr]
         },
-        if signed_money_amount_micro_count(m: tv.scale_micro) == 1 {
+        if money_amount_micro_count(m: tv.scale_micro) == 1 {
           []
         } else {
           ["cost-per-accepted-unit unit scale_micro must be 1; the denominator is the unit reading" as NonEmptyStr]
@@ -1583,19 +1585,12 @@ fn admit_term_valuations(valuations: List<TermValuation>, terms: List<ObjectiveT
   let orientations = fold(valuations, init: [], f: (acc, tv) =>
     concat(acc, orientation_defects(pareto_axes: pareto_axes, wanted: tv.term, expected: tv.goal))
   )
-  let scales = fold(valuations, init: [], f: (acc, tv) =>
-    if signed_money_amount_micro_count(m: tv.scale_micro) < 0 {
-      concat(acc, ["valued-objective scale_micro must be nonnegative" as NonEmptyStr])
-    } else {
-      acc
-    }
-  )
   let unit_defects = match measure {
     NetValue => []
     CostPerAcceptedUnit { unit: unit } => unit_row_defects(valuations: valuations, unit: unit)
   }
   concat(
-    concat(concat(concat(completeness_defects(join: join), orientations), scales), unit_defects),
+    concat(concat(completeness_defects(join: join), orientations), unit_defects),
     money_constraint_defects(constraints: constraints, policy_currency: policy_currency),
   )
 }

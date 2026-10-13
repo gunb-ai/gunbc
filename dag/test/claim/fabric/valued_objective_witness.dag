@@ -44,7 +44,7 @@ import product.fabric.demand {
   admission_terms, BuyTerms, AdmissionTerms, fabric_demand_required_term_ids,
   interpret_demand_objective, valued_objective_policy,
 }
-import std.measure { money_amount_micro, money_rate_micros, signed_money_amount_micro }
+import std.measure { money_amount_micro, money_rate_micros }
 import extdeps.currency.currency { Usd, Eur, currency_code_eq }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -354,38 +354,6 @@ fn delay_bound_to_money_valuations(objective: DemandObjective) -> List<TermValua
       v
     }
   )
-}
-
-fn with_delay_scale(objective: DemandObjective, scale: Int) -> List<TermValuation> {
-  map(interpret_demand_objective(terms: usd_admission(objective: objective)).valuations, v =>
-    if declaration_ref_eq(a: v.term, b: term_delay.identity) {
-      TermValuation { term: v.term, scale_micro: signed_money_amount_micro(count: scale), goal: v.goal }
-    } else {
-      v
-    }
-  )
-}
-
-test fn a_negative_delay_scale_refuses_rather_than_reversing_orientation() -> Bool {
-  match pick(field: tradeoff_field(), objective: latency_sensitive_objective, constraints: []) {
-    Picked { id: move_id, policy: _ } =>
-      declaration_ref_eq(a: move_id, b: id_move)
-        && match pick_with_policy(
-          field: tradeoff_field(),
-          objective: latency_sensitive_objective,
-          constraints: [],
-          policy: ValuedObjective {
-            identity: latency_sensitive_objective.profile,
-            valuations: with_delay_scale(objective: latency_sensitive_objective, scale: -1),
-            measure: latency_sensitive_objective.measure,
-            currency: Usd,
-          },
-        ) {
-          Refused => true
-          _ => false
-        }
-    _ => false
-  }
 }
 
 test fn cost_per_accepted_unit_refuses_a_lower_is_better_denominator() -> Bool {

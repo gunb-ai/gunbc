@@ -1057,10 +1057,9 @@ fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
   measure_count(m)
 }
 
-// Signed money-micros: NetValue subtracts HigherIsBetter terms, and a negative
-// scale must stay authorable so admission can refuse it. MoneyAmountMicro is Nat
-// and cannot carry that sign. CONSUMERS: std.decision TermValuation.scale_micro
-// and the valued-objective contribution/sum/score payloads.
+// Signed money-micros: NetValue subtracts HigherIsBetter terms, so contribution,
+// sum and score payloads go negative. Scale itself is MoneyAmountMicro (Nat).
+// CONSUMERS: std.decision valued-objective contribution/sum/score payloads.
 type SignedMoneyAmountMicro = Measure<Currency, Micro, Int>
 
 fn signed_money_amount_micro(count: Int) -> SignedMoneyAmountMicro {
