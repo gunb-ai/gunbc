@@ -2,6 +2,7 @@ module v2.test.claim.parse.record_field_pun
 
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Hash, content_hash, symbol_lexeme }
 import std.optional { Absent, Optional, Present }
@@ -149,3 +150,22 @@ test fn an_unclosed_pun_record_refuses_holds() -> Bool { refused_at_parse(tag: "
 test fn commas_between_puns_stay_optional_like_every_field_list_holds() -> Bool {
   same_tree(a: normalized_hash(tag: "nc", text: probe(body: "X { s t }")), b: normalized_hash(tag: "tl4", text: top_long_source()))
 }
+
+// THE END-TO-END REFUSAL, NOT ONLY "NOT A RECORD". `X { true s }` and `X { 1 }` parse as `X` plus a block
+// statement (function-body juxtaposition, which this change neither adds nor widens), so a tree that merely
+// differs from the long form would also pass a silent misread. Through the production assembly route
+// (assemble_program_from_ingest) they are Rejected, while the long form assembles: nothing compiles.
+fn assembly_source(body: String) -> String {
+  "module p\n\ntype X {\n  s: Int\n  t: Int\n}\n\nfn f(s: Int, t: Int, u: Int) -> X {\n  " + body + "\n}\n"
+}
+
+fn assembles(body: String) -> Bool {
+  match tpb_assemble(src: assembly_source(body: body)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn the_long_form_assembles_end_to_end_holds() -> Bool { assembles(body: "X { s: s, t: t }") }
+test fn a_comma_less_keyword_pun_is_rejected_end_to_end_holds() -> Bool { assembles(body: "X { true s }") == false }
+test fn a_literal_pun_is_rejected_end_to_end_holds() -> Bool { assembles(body: "X { 1 }") == false }
