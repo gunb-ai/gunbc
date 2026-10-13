@@ -78,12 +78,14 @@ type RequiredCiContractIdentity = ContractIdentity<RequiredCiContract>
 type RequiredCiContractResult
   = RequiredCiContractReady { identity: RequiredCiContractIdentity }
   | RequiredCiContractUnwritable { identity: NonEmptyStr }
+  | RequiredCiContractMemoryRequirementUnreadable { raw: String }
 
 // The naming surface is the repository, the name is the workflow the contract IS, and the epoch is
 // its declared effective version. Each component reads its own authority: none is spelled here, and
 // the epoch deliberately comes from gunbc.required_ci_contract_epoch rather than from this module,
 // so the side that JUDGES does not also author what it requires. A duplicated obligation identity
 // is Unwritable — not a ContractIdentity whose epoch field was filled with the identity text.
+// An unreadable memory requirement is its own arm, not a fabricated Unwritable identity.
 fn required_ci_contract() -> RequiredCiContractResult {
   match required_ci_contract_epoch_derivation {
     RequiredCiEpochDerived { epoch: epoch } =>
@@ -97,7 +99,7 @@ fn required_ci_contract() -> RequiredCiContractResult {
     RequiredCiObligationIdentityDuplicated { identity: identity } =>
       RequiredCiContractUnwritable { identity: identity }
     RequiredCiMemoryRequirementUnreadable { raw: raw } =>
-      RequiredCiContractUnwritable { identity: concat("unreadable-memory-requirement:", raw) as NonEmptyStr }
+      RequiredCiContractMemoryRequirementUnreadable { raw: raw }
   }
 }
 
@@ -129,6 +131,8 @@ fn required_ci_admit<E>(revision: GitObjectId, evidence: E) -> RequiredCiAdmissi
       }
     RequiredCiContractUnwritable { identity: identity } =>
       RequiredCiRefused { cause: CiContractObligationIdentityDuplicated { identity: identity as String } }
+    RequiredCiContractMemoryRequirementUnreadable { raw: raw } =>
+      RequiredCiRefused { cause: CiContractMemoryRequirementUnreadable { raw: raw } }
   }
 }
 
