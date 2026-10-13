@@ -1000,11 +1000,15 @@ fn lex_walk_is_done(acc: LexWalkAcc) -> Bool {
   acc.done
 }
 
-// Whether the walk ended where the whole lex ends -- it finished, refused, or has no input left --
-// rather than at the window's edge. A halt at Beyond is the one stop that is not the lex's end, and a
-// cursor at the end of a truncated carrier is not empty: its head is Beyond.
+// Whether the walk ended where the whole lex ends -- it finished or refused -- rather than at the
+// window's edge. A halt at Beyond is the one stop that is not the lex's end, and a cursor at the end
+// of a truncated carrier is not empty: its head is Beyond. A walk that has consumed its whole input is
+// done: fold_source takes the end of the source as a step of its own (v2.std.text fold_source), so the
+// walk's step on an empty cursor always runs. This used to read "or the cursor is empty" as well, which
+// answered the same question from the cursor and so could not tell a walk that had finished from one
+// whose end-of-input verdict never ran.
 fn lex_walk_reached_end(acc: LexWalkAcc) -> Bool {
-  (acc.done && !acc.beyond) || lex_cursor_empty(cursor: acc.remaining)
+  acc.done && !acc.beyond
 }
 
 // THE WALK STOPS, UNDECIDED, WHERE THE WINDOW ENDS INSIDE WHAT THE NEXT TOKEN NEEDS. Nothing is
