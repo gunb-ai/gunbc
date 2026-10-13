@@ -4340,9 +4340,6 @@ fn live_session_row_with_process(
 ) -> DispatchLiveSession? {
   match dispatch_worker_observation_for_process(process: process) {
     Present { value: worker } => {
-      // PARTITION FOLD: the observed-command partition (worker_process_observed_command) names
-      // the running pane's fingerprint instead of leaving the other evidence shapes behind a
-      // wildcard.
       let obs = match worker_process_observed_command(process: process) {
         Present { value: command } =>
           SessionObserved {

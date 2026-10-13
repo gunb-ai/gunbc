@@ -787,9 +787,6 @@ test fn a_item_kind_partition_names_only_reporting() -> Bool {
 }
 
 test fn a_fold_event_is_locked_for_every_locked_class() -> Bool {
-  // A locked-class state folds to itself: its label survives the fold. The locked classes are
-  // exactly Completed, Refused, EventsRefused (4 of the 8 states); the open classes fold the
-  // event.
   witness_terminal_states.filter(
     s => match provider_execution_terminality(state: s) {
            TerminalityCompleted { activity: _ } => true

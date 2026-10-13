@@ -361,16 +361,6 @@ fn provider_execution_reconcile_process(
   provider: ProviderExecutionState,
   process: WorkerProcessEvidence,
 ) -> ProviderExecutionState {
-  // PARTITION FOLD: the outer match on the state's variant list is replaced
-  // by the provider_execution_terminality partition. Only the Completed class
-  // reconciles against process evidence — and the raw completion is the class
-  // payload, not provider_execution_activity (which reports "Agent complete"
-  // for every completed state), because the conflict detail is the completion
-  // the process evidence contradicts. The Refused and EventsRefused classes
-  // keep themselves; the NotStarted and Working classes fold over the
-  // forced-outcome partition: Running forces nothing (the not-started case
-  // becomes Starting; everything else keeps itself), the other three evidence
-  // variants force their refusal.
   match provider_execution_terminality(state: provider) {
     TerminalityCompleted { activity } =>
       match process {

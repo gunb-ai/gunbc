@@ -9193,11 +9193,6 @@ fn belt_worker_process_terminal(evidence: WorkerProcessEvidence) -> Bool {
 }
 
 fn belt_provider_is_terminal(provider: ProviderExecutionState) -> Bool {
-  // Reads the ONE terminality partition (provider_execution_terminality) so the
-  // belt and the event fold share a single terminality fact. The belt's
-  // terminal set is the two completed/refused classes; EventsRefused and the
-  // open classes are not terminal. The EventsRefused difference lives in the
-  // type (TerminalityEventsRefused is its own class), not in a comment.
   match provider_execution_terminality(state: provider) {
     TerminalityCompleted { activity: _ } => true
     TerminalityRefused => true

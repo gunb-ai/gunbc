@@ -1124,8 +1124,6 @@ test fn a_reconciled_refused_terminal_states_keep_themselves_under_any_process()
 }
 
 test fn a_completed_reconciled_against_an_incompatible_exit_is_a_refusal_named_by_the_raw_activity() -> Bool {
-  // The completed class reads its RAW stored activity (the class payload), not the "Agent
-  // complete" label, because the conflict names the completion the exit contradicts.
   match provider_execution_reconcile_process(
     provider: ProviderCompleted { activity: "Codex turn complete" },
     process: WorkerProcessExited { exit_code: 3, last_command: "codex" },

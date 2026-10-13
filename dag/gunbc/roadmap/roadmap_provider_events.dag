@@ -677,12 +677,6 @@ fn provider_execution_fold_event(
   state: ProviderExecutionState,
   event: ProviderEvent,
 ) -> ProviderExecutionState {
-  // PARTITION FOLD: the locked arm of the old match is the
-  // provider_execution_terminality partition, so the fold branches on the
-  // partition instead of naming the four locked variants (the fold body is
-  // written once, in provider_execution_event_step; naming the locked
-  // variants per arm would clone it, and a new state variant forces a
-  // decision in the classifier, once).
   match provider_execution_terminality(state: state) {
     TerminalityCompleted { activity: _ } => state
     TerminalityRefused => state
@@ -718,8 +712,6 @@ fn provider_execution_event_step(
         ),
       }
     ItemCompleted { activity } => {
-      // PARTITION FOLD: the item-kind partition names Reporting as a case
-      // instead of defaulting the other eleven activities behind a wildcard.
       let label = match provider_item_activity_kind(activity: activity) {
         ItemKindReporting => "Agent finishing"
         ItemKindWorking => join(["Agent working · ", provider_item_activity_label(activity: activity)], "")
@@ -812,8 +804,6 @@ fn provider_execution_activity(state: ProviderExecutionState) -> String {
 }
 
 fn provider_execution_detail(state: ProviderExecutionState) -> String {
-  // PARTITION FOLD: read the carried-detail partition instead of re-listing the
-  // four detail-carrying variants with a wildcard default.
   match provider_execution_carried_detail(state: state) {
     Present { value: detail } => detail
     none => ""
