@@ -18,7 +18,7 @@ import extdeps.systemd { MemoryMax, MemoryHigh }
 import std.measure { byte_size_count }
 import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approval_broker_slice_memory_high }
 import extdeps.tools.env { env_prefixed_argv }
-import v2.std.orchestration { EnvSet }
+import std.env_binding { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.auth.approval_broker_placement { approval_broker_host_under, approval_broker_base_url_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
