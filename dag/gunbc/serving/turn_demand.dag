@@ -6,6 +6,7 @@ import product.fabric.work {
   Work, WorkContract, WorkStep, OpaqueEffects, OfferedService, ServiceInterfaceRef, ArtifactManifestRef,
   EffectContractRef, OutputContractRef, DeclaredOutputObligations, declared_terminal_obligations,
   ExecutionRequirements, CapacityClass, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef, work_for, identity_frame,
+ WarmResidencyRequired,
 }
 import product.fabric.envelope { unstated_envelope }
 import std.measure { hardware_thread_count }
@@ -129,6 +130,7 @@ fn serving_turn_requirements(
     capabilities: capabilities,
     trust_domain: trust_domain,
     isolation: isolation,
+    revocation: WarmResidencyRequired,
   }
 }
 
