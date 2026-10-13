@@ -61,14 +61,6 @@ fn fse_resolve(subject: String) -> Outcome<ResolvedTree> {
   }
 }
 
-fn fse_accepted_with(resolved: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
-  match rcf_verdict(resolved: resolved) {
-    RcfInferAccepted { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: reason)
-    RcfInferRefused { diagnostics: _ } => false
-    RcfResolveRefused => false
-  }
-}
-
 fn fse_accepted_plain(resolved: Outcome<ResolvedTree>) -> Bool {
   match rcf_verdict(resolved: resolved) {
     RcfInferAccepted { diagnostics: _ } => true
@@ -94,19 +86,4 @@ test fn fse_a_constructed_nonempty_value_is_accepted_holds() -> Bool {
   fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_built_ok"))
 }
 
-
-fn fse_resolved_ok(resolved: Outcome<ResolvedTree>) -> Bool {
-  match resolved {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: _ } => true
-  }
-}
-
-fn fse_infer_refused(resolved: Outcome<ResolvedTree>) -> Bool {
-  match rcf_verdict(resolved: resolved) {
-    RcfInferRefused { diagnostics: _ } => true
-    RcfInferAccepted { diagnostics: _ } => false
-    RcfResolveRefused => false
-  }
-}
 
