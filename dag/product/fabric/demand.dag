@@ -230,6 +230,10 @@ fn interpret_demand_objective(terms: AdmissionTerms) -> InterpretedDemandObjecti
   }
 }
 
+// CONSUMER today: test.claim.fabric.valued_objective_witness. Production
+// select_realization that scores this policy from AdmissionTerms is a declared
+// frontier (later fabric slice); demand_delay_valuation is already on the
+// harness serving path.
 fn valued_objective_policy(terms: AdmissionTerms) -> SelectionPolicy {
   let interpreted = interpret_demand_objective(terms: terms)
   ValuedObjective {
@@ -289,8 +293,10 @@ fn buy_order_constraint(buy: BuyTerms) -> HardConstraint {
   }
 }
 
-// CONSUMERS: test.claim.fabric.valued_objective_witness (d) and any select_realization
-// call that must refuse an over-cap candidate. Caps are not copied onto DemandObjective.
+// CONSUMER today: test.claim.fabric.valued_objective_witness (over-cap and EUR/USD).
+// Production select_realization constraint lists from BuyTerms are a declared
+// frontier (same later fabric slice as valued_objective_policy). Caps are not
+// copied onto DemandObjective.
 fn admission_hard_constraints(terms: AdmissionTerms) -> List<HardConstraint> {
   [buy_order_constraint(buy: terms.buy)]
 }
