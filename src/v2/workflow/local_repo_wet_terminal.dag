@@ -1555,6 +1555,168 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_custody_export_receipt_wet_witness", function: "the_real_take_accepts_the_production_export_publication" },
+      entry: "dag/test/claim/host_custody_export_receipt_wet_witness.dag",
+      function: "the_real_take_accepts_the_production_export_publication",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_take_copies_the_custody_bytes_to_the_snapshot_path" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_take_copies_the_custody_bytes_to_the_snapshot_path",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "an_absent_custody_file_refuses_naming_it_and_writes_no_snapshot" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "an_absent_custody_file_refuses_naming_it_and_writes_no_snapshot",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "an_empty_custody_file_refuses_and_writes_no_snapshot" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "an_empty_custody_file_refuses_and_writes_no_snapshot",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "discard_removes_the_snapshot_the_take_wrote" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "discard_removes_the_snapshot_the_take_wrote",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "replacing_the_custody_file_after_the_take_does_not_change_the_launch_input" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "replacing_the_custody_file_after_the_take_does_not_change_the_launch_input",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_claude_launch_binds_the_taken_snapshot_through_the_env_wrapper_never_argv" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_claude_launch_binds_the_taken_snapshot_through_the_env_wrapper_never_argv",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "an_ambient_profile_tree_is_not_a_bindable_credential" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "an_ambient_profile_tree_is_not_a_bindable_credential",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "the_captured_trip_reaches_a_credential_bound_claude_spawn_on_srv1" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "the_captured_trip_reaches_a_credential_bound_claude_spawn_on_srv1",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "the_claude_launch_carries_a_pinned_model" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "the_claude_launch_carries_a_pinned_model",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "witness_headless_claude_spawn_does_not_refuse_as_tmux_event_pipe" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "witness_headless_claude_spawn_does_not_refuse_as_tmux_event_pipe",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "witness_lab_instance_moves_repo_and_attempt_state_together" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "witness_lab_instance_moves_repo_and_attempt_state_together",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_cursor_turn_on_srv2_binds_the_taken_snapshot_through_the_env_wrapper" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_cursor_turn_on_srv2_binds_the_taken_snapshot_through_the_env_wrapper",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_cursor_turn_off_its_custody_host_refuses" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_cursor_turn_off_its_custody_host_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "an_abandoned_cursor_attempt_leaves_no_snapshot_behind" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "an_abandoned_cursor_attempt_leaves_no_snapshot_behind",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_launch_prepared_for_another_attempt_refuses" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_launch_prepared_for_another_attempt_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_launch_prepared_for_another_instance_refuses" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_launch_prepared_for_another_instance_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_cursor_selection_holding_a_claude_snapshot_refuses" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_cursor_selection_holding_a_claude_snapshot_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_matching_receipt_records_the_joined_generation" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_matching_receipt_records_the_joined_generation",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "replaced_custody_bytes_without_a_new_receipt_refuse_the_digest" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "replaced_custody_bytes_without_a_new_receipt_refuse_the_digest",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_receipt_for_another_secret_or_version_refuses_the_version" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_receipt_for_another_secret_or_version_refuses_the_version",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "an_absent_receipt_refuses_and_writes_no_snapshot" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "an_absent_receipt_refuses_and_writes_no_snapshot",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_receipt_with_wrong_placement_reader_or_publisher_refuses_each" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_receipt_with_wrong_placement_reader_or_publisher_refuses_each",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_symlink_or_group_writable_receipt_refuses_metadata" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_symlink_or_group_writable_receipt_refuses_metadata",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_malformed_or_duplicated_field_receipt_refuses_decode" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_malformed_or_duplicated_field_receipt_refuses_decode",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_receipt_for_another_host_refuses_the_host" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_receipt_for_another_host_refuses_the_host",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_receipt_naming_the_secret_in_another_project_refuses_the_version" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_receipt_naming_the_secret_in_another_project_refuses_the_version",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.filesystem_link_create_new_wet_witness", function: "an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution" },
       entry: "dag/test/claim/filesystem_link_create_new_wet_witness.dag",
       function: "an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution",

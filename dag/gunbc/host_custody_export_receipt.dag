@@ -4,8 +4,6 @@ import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.content_hash { Sha256DigestHex, sha256_hex_digest }
-import std.dissolution { DissolutionCondition, bound_dissolution }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.cloud.gcp.secret_manager {
@@ -14,6 +12,17 @@ import extdeps.cloud.gcp.secret_manager {
   SmResolvedVersionIdentityDecoded,
   SmResolvedVersionIdentityDecodeRefused,
 }
+
+// THE RECEIPT PATH IS DERIVED FROM THE PLACED FILE, ONCE. The snapshot take imports this leaf rather
+// than gunbc.fleet.host_credential_custody_converge: the path is a function of the custody row's path,
+// and the converge is the publisher, not the naming authority. A second spelling of the suffix beside
+// this function would be a fork the reader could miss.
+//
+// The sibling lives in the same directory as the placed file. For Cursor and Claude that directory
+// is root-owned with operator group traverse (not write), so the reader can open the receipt and
+// cannot replace it through directory permissions. Authority is the host access model being claimed
+// (root versus the operator account), not protection from privileges that model does not constrain.
+// Ownership itself is declared once in gunbc.worker_turn_snapshot_custody.
 
 data host_custody_export_receipt_suffix: String = ".gunbc-export-receipt"
 
@@ -49,7 +58,10 @@ fn host_custody_export_receipt_wire(receipt: HostCustodyExportReceipt) -> String
 
 type HostCustodyExportReceiptDecodeRefusal
   = ReceiptWireMissingHeader
+  | ReceiptWireDuplicatedHeader
+  | ReceiptWireWhitespace
   | ReceiptWireMissingField { field: NonEmptyStr }
+  | ReceiptWireEmptyField { field: NonEmptyStr }
   | ReceiptWireDuplicatedField { field: NonEmptyStr }
   | ReceiptWireUnknownField { field: String }
   | ReceiptWireDigestNotSha256
@@ -59,6 +71,21 @@ type HostCustodyExportReceiptDecodeRefusal
 type HostCustodyExportReceiptDecode
   = HostCustodyExportReceiptDecoded { receipt: HostCustodyExportReceipt }
   | HostCustodyExportReceiptDecodeRefused { cause: HostCustodyExportReceiptDecodeRefusal }
+
+fn host_custody_export_receipt_decode_refusal_text(cause: HostCustodyExportReceiptDecodeRefusal) -> String {
+  match cause {
+    ReceiptWireMissingHeader => "missing header"
+    ReceiptWireDuplicatedHeader => "duplicated header"
+    ReceiptWireWhitespace => "whitespace in a wire line"
+    ReceiptWireMissingField { field: f } => join(["missing field ", f as String], "")
+    ReceiptWireEmptyField { field: f } => join(["empty field ", f as String], "")
+    ReceiptWireDuplicatedField { field: f } => join(["duplicated field ", f as String], "")
+    ReceiptWireUnknownField { field: k } => join(["unknown field ", k], "")
+    ReceiptWireDigestNotSha256 => "digest is not a Sha256DigestHex"
+    ReceiptWireVersionNotIdentity => "version is not an SmResolvedVersionIdentity"
+    ReceiptWireGenerationStandingMismatch => "generation_standing mismatch"
+  }
+}
 
 data receipt_wire_keys: List<String> = [
   "sm_version",
@@ -70,8 +97,35 @@ data receipt_wire_keys: List<String> = [
   "generation_standing",
 ]
 
+type ReceiptWireSplit {
+  count: Int
+  at: Int
+  acc: List<String>
+}
+
+fn receipt_wire_drop_trailing_empty(parts: List<String>) -> List<String> {
+  match last(parts) {
+    Absent => []
+    Present { value: t } =>
+      if t == "" {
+        fold(parts, init: ReceiptWireSplit { count: count(parts), at: 0, acc: [] }, f: (acc, seg) =>
+          ReceiptWireSplit {
+            count: acc.count,
+            at: acc.at + 1,
+            acc: if acc.at + 1 < acc.count { concat(acc.acc, [seg]) } else { acc.acc },
+          }).acc
+      } else {
+        parts
+      }
+  }
+}
+
 fn receipt_wire_lines(text: String) -> List<String> {
-  filter(map(split(s: text, delimiter: "\n"), l => trim(s: l)), l => l != "")
+  receipt_wire_drop_trailing_empty(parts: split(s: text, delimiter: "\n"))
+}
+
+fn receipt_wire_has_whitespace(lines: List<String>) -> Bool {
+  any(lines, l => l == "" || trim(s: l) != l)
 }
 
 fn receipt_wire_line_key(line: String) -> String? {
@@ -95,6 +149,10 @@ fn receipt_wire_line_value(line: String) -> String {
 
 fn receipt_wire_key_count(lines: List<String>, key: String) -> Int {
   count(filter(lines, l => starts_with(s: l, prefix: concat(key, "="))))
+}
+
+fn receipt_wire_header_count(lines: List<String>) -> Int {
+  count(filter(lines, l => l == host_custody_export_receipt_header))
 }
 
 fn receipt_wire_value(lines: List<String>, key: String) -> String {
@@ -166,17 +224,25 @@ fn host_custody_export_receipt_decode(text: String) -> HostCustodyExportReceiptD
       if first_line != host_custody_export_receipt_header {
         HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireMissingHeader }
       } else {
-        match receipt_wire_first_unknown(lines: lines) {
-          Present { value: k } => HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireUnknownField { field: k } }
-          Absent =>
-            match receipt_wire_first_duplicate(lines: lines) {
-              Present { value: k } => HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireDuplicatedField { field: k as NonEmptyStr } }
+        if receipt_wire_has_whitespace(lines: lines) {
+          HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireWhitespace }
+        } else {
+          if receipt_wire_header_count(lines: lines) > 1 {
+            HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireDuplicatedHeader }
+          } else {
+            match receipt_wire_first_unknown(lines: lines) {
+              Present { value: k } => HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireUnknownField { field: k } }
               Absent =>
-                match receipt_wire_first_missing(lines: lines) {
-                  Present { value: k } => HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireMissingField { field: k as NonEmptyStr } }
-                  Absent => host_custody_export_receipt_decode_fields(lines: lines)
+                match receipt_wire_first_duplicate(lines: lines) {
+                  Present { value: k } => HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireDuplicatedField { field: k as NonEmptyStr } }
+                  Absent =>
+                    match receipt_wire_first_missing(lines: lines) {
+                      Present { value: k } => HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireMissingField { field: k as NonEmptyStr } }
+                      Absent => host_custody_export_receipt_decode_fields(lines: lines)
+                    }
                 }
             }
+          }
         }
       }
   }
@@ -191,27 +257,39 @@ fn host_custody_export_receipt_decode_fields(lines: List<String>) -> HostCustody
     let placement_text = receipt_wire_value(lines: lines, key: "placement")
     let reader_text = receipt_wire_value(lines: lines, key: "reader")
     let publisher_text = receipt_wire_value(lines: lines, key: "publisher")
-    if host_text == "" || placement_text == "" || reader_text == "" || publisher_text == "" {
-      HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireMissingField { field: "nonempty" as NonEmptyStr } }
+    if host_text == "" {
+      HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireEmptyField { field: "host" as NonEmptyStr } }
     } else {
-      match decode_sm_resolved_version_identity_wire(name: receipt_wire_value(lines: lines, key: "sm_version")) {
-        SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
-          HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireVersionNotIdentity }
-        SmResolvedVersionIdentityDecoded { identity } =>
-          match sha256_hex_digest(hex: receipt_wire_value(lines: lines, key: "content_sha256")) {
-            Absent => HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireDigestNotSha256 }
-            Present { value: d } =>
-              HostCustodyExportReceiptDecoded {
-                receipt: HostCustodyExportReceipt {
-                  sm_version: identity,
-                  host: host_text as HostIdentity,
-                  placement: placement_text as NonEmptyStr,
-                  reader: reader_text as NonEmptyStr,
-                  publisher: publisher_text as NonEmptyStr,
-                  content_sha256: d.hex,
-                },
-              }
+      if placement_text == "" {
+        HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireEmptyField { field: "placement" as NonEmptyStr } }
+      } else {
+        if reader_text == "" {
+          HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireEmptyField { field: "reader" as NonEmptyStr } }
+        } else {
+          if publisher_text == "" {
+            HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireEmptyField { field: "publisher" as NonEmptyStr } }
+          } else {
+            match decode_sm_resolved_version_identity_wire(name: receipt_wire_value(lines: lines, key: "sm_version")) {
+              SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
+                HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireVersionNotIdentity }
+              SmResolvedVersionIdentityDecoded { identity } =>
+                match sha256_hex_digest(hex: receipt_wire_value(lines: lines, key: "content_sha256")) {
+                  Absent => HostCustodyExportReceiptDecodeRefused { cause: ReceiptWireDigestNotSha256 }
+                  Present { value: d } =>
+                    HostCustodyExportReceiptDecoded {
+                      receipt: HostCustodyExportReceipt {
+                        sm_version: identity,
+                        host: host_text as HostIdentity,
+                        placement: placement_text as NonEmptyStr,
+                        reader: reader_text as NonEmptyStr,
+                        publisher: publisher_text as NonEmptyStr,
+                        content_sha256: d.hex,
+                      },
+                    }
+                }
+            }
           }
+        }
       }
     }
   }
@@ -224,11 +302,3 @@ type SnapshotCustodyDeclaration {
   reader: NonEmptyStr
   publisher: NonEmptyStr
 }
-
-data host_custody_export_receipt_reader_frontier: DissolutionCondition = bound_dissolution(
-  ref: DeclarationRef {
-    module_path: "gunbc.dispatch_credential_snapshot" as NonEmptyStr,
-    decl_name: "dispatch_credential_snapshot_take" as NonEmptyStr,
-    field: WholeDeclaration,
-  },
-)
