@@ -1,0 +1,328 @@
+module v2.test.claim.module_header
+
+import std.types { Bool, List }
+import v2.std.integer { Int }
+import v2.std.text { String }
+import v2.std.algebra { for_all, length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.module_header {
+  ModuleHeaderAbsent,
+  ModuleHeaderDeclared,
+  ModuleHeaderRead,
+  ModuleHeaderReader,
+  ModuleHeaderRefused,
+  module_header_read
+}
+import v2.compiler.module_acquisition { AcquisitionEnvReady, AcquisitionEnvUnprepared, acquisition_env, acquisition_header_reader }
+import v2.compiler.parse { PreparedVoidGrammar, parse_module_prepared }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import v2.std.node { symbol_intern_lexeme }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.cli.repository_layout { repository_storage_layout }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES OF THE ONE MODULE-HEADER READING (v2.compiler.module_header module_header_read). The subject is
+// the reading itself, so each control hands it SUPPLIED TEXT and asserts what it takes from the text: the
+// name a header declares, the absence of any, or the refusal of text that is not a header. The real lexer
+// and the grammar's module_header production decide each case; none of the controls recognises a keyword
+// or a delimiter, so a control that passed because the reader spelled `module` itself would fail the
+// cases that spell it differently.
+//
+// The reader the controls hold is built from the shared prepared carriers (dag_prepared_lex,
+// dag_prepared_grammar), the carriers the lookup's reader is built from, and the INHABITANCE CONTROL at the
+// end builds the reader the acquirer and the layout verb really use (acquisition_env) and asserts it reads
+// as this one does. A grammar that did not prepare reads as void and refuses every header, so no control
+// can pass over a reader that read nothing.
+
+fn reader() -> ModuleHeaderReader {
+  ModuleHeaderReader {
+    lex: dag_prepared_lex(),
+    grammar: match dag_prepared_grammar() {
+      Accepted { value: prepared, diagnostics: _ } => prepared
+      Rejected { diagnostics: _ } => PreparedVoidGrammar
+    }
+  }
+}
+
+fn read_text(read: ModuleHeaderRead) -> String {
+  match read {
+    ModuleHeaderDeclared { module: name } => concat("declared:", name)
+    ModuleHeaderAbsent => "absent"
+    ModuleHeaderRefused { cause: _ } => "refused"
+  }
+}
+
+fn header_of(content: String) -> String {
+  read_text(read: module_header_read(reader: reader(), file: "test/header.dag", content: content))
+}
+
+// ---- accepted spellings ---------------------------------------------------------------------------------------
+
+test fn the_plain_header_declares_its_module() -> Bool {
+  header_of(content: "module a.b\n") == "declared:a.b"
+    && header_of(content: "module a.b.c.d\n") == "declared:a.b.c.d"
+    && header_of(content: "module a\n") == "declared:a"
+}
+
+test fn a_header_with_tabs_or_mixed_whitespace_declares_its_module() -> Bool {
+  header_of(content: "module\ta.b\n") == "declared:a.b"
+    && header_of(content: "module \t a.b\n") == "declared:a.b"
+    && header_of(content: "module  a.b  \t \n") == "declared:a.b"
+    && header_of(content: "  module a.b\n") == "declared:a.b"
+}
+
+test fn a_header_with_crlf_line_endings_declares_its_module() -> Bool {
+  header_of(content: "module a.b\r\n") == "declared:a.b"
+    && header_of(content: "\r\n// lead\r\nmodule a.b\r\nfn f() -> Bool { true }\r\n") == "declared:a.b"
+}
+
+test fn a_header_with_a_trailing_annotation_declares_its_module() -> Bool {
+  header_of(content: "module a.b // note\n") == "declared:a.b"
+    && header_of(content: "module a.b // module a.c\nfn f() -> Bool { true }\n") == "declared:a.b"
+    && header_of(content: "module a.b//tight\n") == "declared:a.b"
+}
+
+test fn blank_lines_and_annotations_around_the_header_do_not_move_it() -> Bool {
+  header_of(content: "\n\n// lead\n\nmodule a.b\n// after\n\nfn f() -> Bool { true }\n") == "declared:a.b"
+    && header_of(content: "// one\n// two\nmodule a.b") == "declared:a.b"
+}
+
+test fn a_header_without_a_final_newline_declares_its_module() -> Bool {
+  header_of(content: "module a.b") == "declared:a.b"
+}
+
+// ---- no header, and what is not one ----------------------------------------------------------------------------
+
+test fn a_file_with_no_token_declares_nothing() -> Bool {
+  header_of(content: "") == "absent"
+    && header_of(content: "\n\n  \t\n") == "absent"
+    && header_of(content: "// only prose\n\n// and more\n") == "absent"
+}
+
+test fn text_whose_first_token_is_not_a_header_is_refused_not_absent() -> Bool {
+  header_of(content: "no header here\n") == "refused"
+    && header_of(content: "fn f() -> Bool { true }\n") == "refused"
+    && header_of(content: "import std.types { Bool }\nmodule a.b\n") == "refused"
+}
+
+// ---- a later `module` is not the header -------------------------------------------------------------------------
+
+// The header is the first thing a file says. Each control below holds a `module a.b` that is NOT the
+// header, in a comment, a string and a declaration, and the reading is the file's actual first token's.
+test fn a_later_comment_string_or_line_that_spells_a_module_is_never_the_header() -> Bool {
+  header_of(content: "module a.real\n// module a.b\n") == "declared:a.real"
+    && header_of(content: "module a.real\ndata s: String = \"module a.b\"\n") == "declared:a.real"
+    && header_of(content: "module a.real\nmodule a.b\n") == "declared:a.real"
+    && header_of(content: "// module a.b\nfn f() -> Bool { true }\n") == "refused"
+    && header_of(content: "data s: String = \"module a.b\"\nmodule a.b\n") == "refused"
+}
+
+// ---- malformed names, and headers that continue past a line ---------------------------------------------------------
+
+// A name that does not begin as a path is refused: the production consumes nothing from it, so there is
+// no prefix to read. (What follows a header that DOES parse is the body's concern, below.)
+test fn a_name_that_does_not_begin_a_path_is_refused_and_never_read_as_another() -> Bool {
+  header_of(content: "module .a\n") == "refused"
+    && header_of(content: "module\n") == "refused"
+    && header_of(content: "module 1a\n") == "refused"
+    && header_of(content: "module \"a.b\"\n") == "refused"
+}
+
+// WHERE A HEADER ENDS IS THE GRAMMAR'S, so no rule about lines applies: the production reads across line
+// breaks and stops where its path stops, and whatever follows is the body. These are the spellings an
+// earlier line-bounded reading refused although the grammar accepts them.
+test fn a_header_sharing_or_splitting_its_line_declares_its_module() -> Bool {
+  header_of(content: "module a.b fn f() -> Bool { true }\n") == "declared:a.b"
+    && header_of(content: "module\na.b\n") == "declared:a.b"
+    && header_of(content: "module\na.b\nfn f() -> Bool { true }\n") == "declared:a.b"
+    && header_of(content: "module\n\n// between\n  a.b // tail\n\nfn f() -> Bool { true }\n") == "declared:a.b"
+}
+
+// A PATH THE GRAMMAR CANNOT EXTEND ENDS THE HEADER, and what stands after it is the body. `module a..b`
+// is the header `module a` followed by text no declaration begins with, so the header reads `a`; the
+// file as a whole is still refused, by the full parse (the second control pins that, so the shorter name
+// is never the file's verdict). Refusing here instead would be a rule about what may follow a header,
+// which the module production owns.
+test fn a_path_the_grammar_cannot_extend_ends_the_header_and_the_full_parse_refuses_the_file() -> Bool {
+  header_of(content: "module a..b\n") == "declared:a"
+    && header_of(content: "module a.\n") == "declared:a"
+    && header_of(content: "module a b\n") == "declared:a"
+    && header_of(content: "module a.b.\n") == "declared:a.b"
+    && full_parse_is_refused(content: "module a..b\n")
+    && full_parse_is_refused(content: "module a.\n")
+    && full_parse_is_refused(content: "module a b\n")
+    && full_parse_is_refused(content: "module a.b.\n")
+}
+
+// ---- a long leading block ------------------------------------------------------------------------------------------------
+
+fn trivia_lines(remaining: Int) -> String {
+  if remaining <= 0 {
+    ""
+  } else {
+    concat("// leading note\n\n", trivia_lines(remaining: remaining - 1))
+  }
+}
+
+// A leading block of annotations and blank lines reads exactly as the header alone.
+test fn a_long_leading_block_reads_as_the_header_alone() -> Bool {
+  header_of(content: concat(trivia_lines(remaining: 40), "module a.b\n")) == header_of(content: "module a.b\n")
+    && header_of(content: concat(trivia_lines(remaining: 40), "module a.b\n")) == "declared:a.b"
+    && header_of(content: trivia_lines(remaining: 40)) == "absent"
+    && header_of(content: concat(trivia_lines(remaining: 40), "no header here\n")) == "refused"
+}
+
+// ---- the law ---------------------------------------------------------------------------------------------------------
+
+// The module a reader of the TEXT sees (authored here, not derived by the reader under test), per case. An
+// empty name is a text that declares none. The reader accepts exactly the text whose authored module it
+// declares, and declares nothing for the rest.
+type HeaderCase {
+  content: String
+  authored: String
+}
+
+data header_cases: List<HeaderCase> = [
+  HeaderCase { content: "module a.b\n", authored: "a.b" },
+  HeaderCase { content: "module\ta.b\n", authored: "a.b" },
+  HeaderCase { content: "module a.b // a.c\n", authored: "a.b" },
+  HeaderCase { content: "// a.c\r\nmodule a.b\r\n", authored: "a.b" },
+  HeaderCase { content: "module a.c\n// module a.b\n", authored: "a.c" },
+  HeaderCase { content: "module a.b.c\n", authored: "a.b.c" },
+  HeaderCase { content: "// module a.b\n", authored: "" },
+  HeaderCase { content: "data s: String = \"module a.b\"\n", authored: "" },
+  HeaderCase { content: "module a..b\n", authored: "a" },
+  HeaderCase { content: "module a b\n", authored: "a" },
+  HeaderCase { content: "module a.b fn f() -> Bool { true }\n", authored: "a.b" },
+  HeaderCase { content: "module\na.b\n", authored: "a.b" }
+]
+
+fn reads_as_authored(case: HeaderCase) -> Bool {
+  match module_header_read(reader: reader(), file: "test/header.dag", content: case.content) {
+    ModuleHeaderDeclared { module: name } => name == case.authored
+    ModuleHeaderAbsent => case.authored == ""
+    ModuleHeaderRefused { cause: _ } => case.authored == ""
+  }
+}
+
+test fn the_reader_declares_exactly_the_module_a_reader_of_the_text_sees() -> Bool {
+  length(xs: header_cases) > 5 && for_all(xs: header_cases, predicate: fn(case) { reads_as_authored(case: case) })
+}
+
+// ---- the equivalence with the full parse ------------------------------------------------------------------------------
+
+// THE HEADER READ AND THE FULL PARSE ARE ONE READING OF THE SAME PRODUCTION. The oracle is the
+// grammar's whole-module parse and the name read off its tree (v2.extdeps.languages.dag
+// qualified_name_from_module_node), not anything this claim authors: whenever a text parses as a
+// module, the header read declares the module that parse names. A text the full parse refuses has
+// nothing to agree with, so it is out of the law; the controls after it say what the header read still
+// owes such a text.
+type FullParse
+  = FullParseNamed { module: String }
+  | FullParseUnnamed
+  | FullParseRefused
+
+fn full_parse_of(content: String) -> FullParse {
+  match tokenize_prepared(text: content, file: symbol_intern_lexeme(lexeme: "test/header.dag"), prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => FullParseRefused
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module_prepared(tokens: stream, prepared: reader().grammar) {
+        Rejected { diagnostics: _ } => FullParseRefused
+        Accepted { value: artifact, diagnostics: _ } =>
+          match qualified_name_from_module_node(root: artifact.tree) {
+            Rejected { diagnostics: _ } => FullParseUnnamed
+            Accepted { value: name, diagnostics: _ } => FullParseNamed { module: qualified_name_to_dotted_string(qn: name) }
+          }
+      }
+  }
+}
+
+fn full_parse_is_named(content: String, authored: String) -> Bool {
+  match full_parse_of(content: content) {
+    FullParseNamed { module: name } => name == authored
+    FullParseUnnamed => false
+    FullParseRefused => false
+  }
+}
+
+fn full_parse_is_refused(content: String) -> Bool {
+  match full_parse_of(content: content) {
+    FullParseRefused => true
+    FullParseUnnamed => false
+    FullParseNamed { module: _ } => false
+  }
+}
+
+fn agrees_with_the_full_parse(content: String) -> Bool {
+  match full_parse_of(content: content) {
+    FullParseRefused => true
+    FullParseUnnamed => false
+    FullParseNamed { module: name } => header_of(content: content) == concat("declared:", name)
+  }
+}
+
+// Texts the grammar accepts as modules, spelled the ways the lexer and the grammar allow: split across
+// lines, sharing its line with the first declaration, led by annotations and blanks, with tabs, CRLF
+// and a trailing annotation, with and without a body.
+data parsing_spellings: List<String> = [
+  "module a.b\n",
+  "module a.b",
+  "module\ta.b\n",
+  "module a.b // note\nfn f() -> Bool { true }\n",
+  "module a.b//tight\n",
+  "// lead\n\n\n// more\nmodule a.b\n\nfn f() -> Bool { true }\n",
+  "module\na.b\nfn f() -> Bool { true }\n",
+  "module a.b fn f() -> Bool { true }\n",
+  "module\n  a.b\n  // between\nfn f() -> Bool { true }\n",
+  "module a.b.c.d\n\ntest fn t() -> Bool { true }\n",
+  "\r\n// lead\r\nmodule a.b\r\nfn f() -> Bool { true }\r\n"
+]
+
+// Texts that carry a valid header and a body that does not parse.
+data valid_header_malformed_body: List<String> = [
+  "module a.b\nfn f( -> Bool { true }\n",
+  "module a.b\nthis is not a declaration\n",
+  "module a.b fn\n",
+  "module a.b\nmodule a.c\n",
+  "// lead\nmodule\na.b\n}}}\n"
+]
+
+// NON-VACUITY: the oracle must actually accept the spellings the law is asserted over, or the law
+// above would be satisfied by a full parse that refuses everything.
+test fn the_full_parse_accepts_every_spelling_the_law_is_asserted_over() -> Bool {
+  length(xs: parsing_spellings) > 8
+    && for_all(xs: parsing_spellings, predicate: fn(content) { full_parse_is_named(content: content, authored: "a.b") || full_parse_is_named(content: content, authored: "a.b.c.d") })
+}
+
+test fn the_header_read_declares_the_module_the_full_parse_names() -> Bool {
+  for_all(xs: parsing_spellings, predicate: fn(content) { agrees_with_the_full_parse(content: content) })
+}
+
+test fn a_valid_header_with_a_malformed_body_is_still_read() -> Bool {
+  for_all(xs: valid_header_malformed_body, predicate: fn(content) { full_parse_is_refused(content: content) })
+    && header_of(content: "module a.b\nfn f( -> Bool { true }\n") == "declared:a.b"
+    && header_of(content: "module a.b\nthis is not a declaration\n") == "declared:a.b"
+    && header_of(content: "module a.b fn\n") == "declared:a.b"
+    && header_of(content: "module a.b\nmodule a.c\n") == "declared:a.b"
+    && header_of(content: "// lead\nmodule\na.b\n}}}\n") == "declared:a.b"
+}
+
+// ---- inhabitance ---------------------------------------------------------------------------------------------------------
+
+// The reader the acquirer's lookup and the layout verb really hold is the one acquisition_env builds. It
+// reads the spellings above as this claim's reader does, and a reader that read nothing would fail the
+// declared case; deleting the production reader makes this fail, so the supplied values above stay
+// attached to the route the corpus takes.
+test fn the_reader_the_acquirer_holds_reads_headers_as_this_reader_does() -> Bool {
+  match acquisition_env(layout: repository_storage_layout(), bindings: []) {
+    AcquisitionEnvUnprepared { diagnostics: _ } => false
+    AcquisitionEnvReady { env: env } =>
+      read_text(read: module_header_read(reader: acquisition_header_reader(env: env), file: "test/header.dag", content: "// note\nmodule\ta.b // tail\nfn f() -> Bool { true }\n")) == "declared:a.b"
+        && read_text(read: module_header_read(reader: acquisition_header_reader(env: env), file: "test/header.dag", content: "data s: String = \"module a.b\"\nmodule a.b\n")) == "refused"
+        && read_text(read: module_header_read(reader: acquisition_header_reader(env: env), file: "test/header.dag", content: "// only\n")) == "absent"
+  }
+}
