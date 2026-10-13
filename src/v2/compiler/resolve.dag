@@ -1037,21 +1037,35 @@ fn resolve_ctx_type_role(ctx: ResolveContext, scope: Scope) -> ResolveContext {
   )
 }
 
-// A TYPE DECLARATION'S MEMBER IS A TYPE POSITION. Record field types, variant payloads and
-// alias right-hand sides look up names as TypeOccurrence (the same eligibility as a fn
-// parameter type). Keeping the module-root LexicalValueOccurrence would bind a colliding
-// constructor and silently drop the type (DESIGN section 5). Arrow members stay value-rooted:
-// their domain/codomain slots switch on their own. Scope is not swapped here — a type
-// declaration's <T> lives on `scope` via resolve_type_param_frame, not on type_scope.
-fn resolve_type_decl_member_uses_type_role(target: Node) -> Bool {
-  match type_decl_view(target: target) {
-    PlainTypeDecl { member: member } =>
-      match member.kind {
-        TypeNode { connective: Arrow } => false
-        TypeNode { connective: _ } => true
-        ComputationNode { behavior: _ } => false
+// A MODULE-LEVEL TYPE DECLARATION'S TARGET IS A TYPE POSITION. Applied only at the
+// declaration edge (DeclaringAt the module qn): type_decl_view's PlainTypeDecl arm is
+// every non-wrapper node, so using it on every Authored child would walk construct
+// field atoms (`Rec { value: U }`) as TypeOccurrence (DESIGN section 5). Wrappers and
+// record/coproduct members at the module root switch here; TypeBodyEdge / TypeAliasEdge
+// cover generic members and alias RHS. Nested walks inherit the category. Scope is not
+// swapped — a type declaration's <T> lives on `scope` via resolve_type_param_frame.
+fn resolve_type_decl_member_uses_type_role(ctx: ResolveContext, target: Node) -> Bool {
+  match ctx.declaring {
+    DeclaringAt { path: path } =>
+      if path == ctx.namespace.module_qn {
+        match type_decl_view(target: target) {
+          PlainTypeDecl { member: member } =>
+            match member.kind {
+              TypeNode { connective: Conj } => true
+              TypeNode { connective: Disj } => true
+              TypeNode { connective: Instantiation } => true
+              TypeNode { connective: Occupancy } => true
+              TypeNode { connective: Atom { identity: _ } } => false
+              TypeNode { connective: Arrow } => false
+              ComputationNode { behavior: _ } => false
+            }
+          _ => true
+        }
+      } else {
+        false
       }
-    _ => true
+    DeclaringInSpine { path: _, body: _ } => false
+    NotDeclaring => false
   }
 }
 
@@ -4231,7 +4245,7 @@ fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
     } else {
       ctx
     }
-    let walk_ctx = if resolve_type_decl_member_uses_type_role(target: e.target) {
+    let walk_ctx = if resolve_type_decl_member_uses_type_role(ctx: ctx, target: e.target) {
       resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
     } else {
       child_ctx
