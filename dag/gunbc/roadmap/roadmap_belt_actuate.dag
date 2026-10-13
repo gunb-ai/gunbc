@@ -326,6 +326,7 @@ import gunbc.roadmap.roadmap_publish_observe {
   observe_worktree_repository_binding,
 }
 import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
+import gunbc.compute.attempt_lifecycle { DispatchOwned }
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
   provide_result_host_record, host_record_was_written, host_record_wire,
@@ -8835,7 +8836,7 @@ fn belt_run_claim_through_compute(
       args: ["--entry", entry as String, "--functions", function as String],
     }
     let wire = modeled_validation_command_wire(command: command)
-    let result = compute_provide(instance: instance, commit: subject.head_sha as String, op: op)
+    let result = compute_provide(instance: instance, owner: DispatchOwned { node_id: subject.node_identity as String, attempt_key: subject.attempt_key }, commit: subject.head_sha as String, op: op)
     let document = provide_result_document(r: result)
     let citation = match stored_outcome_subject_tree(document: document) {
       Present { value: tree } =>

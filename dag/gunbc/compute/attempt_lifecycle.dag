@@ -157,6 +157,26 @@ fn attempt_state_wire(s: AttemptState) -> String {
 // lease terms and now_epoch_seconds carry, so the comparison recovery makes against the deadline is
 // between two values of one type. The unit and the epoch appear as bare numbers only at the JSON
 // boundary below, where the wire keeps its spelling (granted_kib) and the decode re-admits them.
+//
+// THE OWNER IS A TWO-ARM FACT RECORDED AT OPEN, NOT AN OPTIONAL (DESIGN 3b, cardinality: an absent
+// owner would read as "no owner" and mean two things). DispatchOwned names the dispatch attempt
+// whose end derives this seat's discharge; DirectInvocation says why no dispatch attempt owns it (an
+// operator CLI, a test). A caller that JOINS an existing build acquires nothing and is not an owner.
+type AttemptOwner
+  = DispatchOwned { node_id: String, attempt_key: String }
+  | DirectInvocation { why: String }
+
+fn attempt_owner_wire(o: AttemptOwner) -> String {
+  match o {
+    DispatchOwned { node_id: n, attempt_key: k } => join(["dispatch:", n, "#", k], "")
+    DirectInvocation { why: w } => join(["direct:", w], "")
+  }
+}
+
+// A record written before the owner was a fact has no owner member. It decodes to the typed
+// DirectInvocation arm with this reason, never to a dispatch owner it cannot name.
+data attempt_owner_legacy_why: String = "record predates the recorded owner"
+
 type AttemptRecord {
   identity: String
   reference: String
@@ -165,6 +185,7 @@ type AttemptRecord {
   opened_at: EpochSecs
   launch_deadline: EpochSecs
   state: AttemptState
+  owner: AttemptOwner
 }
 
 fn attempt_record_json(r: AttemptRecord) -> JsonValue {
@@ -176,6 +197,9 @@ fn attempt_record_json(r: AttemptRecord) -> JsonValue {
     json_kv(key: "opened_at", value: json_int(n: r.opened_at)),
     json_kv(key: "launch_deadline", value: json_int(n: r.launch_deadline)),
     json_kv(key: "state", value: json_string(s: attempt_state_wire(s: r.state))),
+    json_kv(key: "owner_kind", value: json_string(s: match r.owner { DispatchOwned { node_id: _, attempt_key: _ } => "dispatch"  DirectInvocation { why: _ } => "direct" })),
+    json_kv(key: "owner_node", value: json_string(s: match r.owner { DispatchOwned { node_id: n, attempt_key: _ } => n  DirectInvocation { why: _ } => "" })),
+    json_kv(key: "owner_key", value: json_string(s: match r.owner { DispatchOwned { node_id: _, attempt_key: k } => k  DirectInvocation { why: w } => w })),
     json_kv(key: "detail", value: json_string(s: match r.state { AttemptTerminal { verdict: _, detail: d } => d  AttemptReserved => ""  AttemptLaunching => "" })),
   ])
 }
@@ -185,7 +209,7 @@ fn attempt_record_wire(r: AttemptRecord) -> String {
 }
 
 fn attempt_record_with_state(r: AttemptRecord, state: AttemptState) -> AttemptRecord {
-  AttemptRecord { identity: r.identity, reference: r.reference, unit: r.unit, granted: r.granted, opened_at: r.opened_at, launch_deadline: r.launch_deadline, state: state }
+  AttemptRecord { identity: r.identity, reference: r.reference, unit: r.unit, granted: r.granted, opened_at: r.opened_at, launch_deadline: r.launch_deadline, state: state, owner: r.owner }
 }
 
 // ── READING THE SLOT, AND UNREADABLE IS NEVER ABSENT ──────────────────────────────────────────
@@ -263,16 +287,41 @@ fn attempt_record_decode(text: String) -> AttemptRecord? {
                           match attempt_member(doc: doc, key: "state") {
                             Absent => none
                             Present { value: word } =>
+                              match attempt_owner_decode(doc: doc) {
+                                Absent => none
+                                Present { value: owner } =>
                               match attempt_state_decode(word: word, detail: match attempt_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" }) {
                                 Absent => none
                                 Present { value: state } =>
-                                  Present { value: AttemptRecord { identity: identity, reference: reference, unit: unit, granted: granted, opened_at: opened, launch_deadline: deadline, state: state } }
+                                  Present { value: AttemptRecord { identity: identity, reference: reference, unit: unit, granted: granted, opened_at: opened, launch_deadline: deadline, state: state, owner: owner } }
+                              }
                               }
                           }
                       }
                       }
                   }
               }
+          }
+      }
+  }
+}
+
+fn attempt_owner_decode(doc: JsonValue) -> AttemptOwner? {
+  match attempt_member(doc: doc, key: "owner_kind") {
+    Absent => Present { value: DirectInvocation { why: attempt_owner_legacy_why } }
+    Present { value: kind } =>
+      match attempt_member(doc: doc, key: "owner_key") {
+        Absent => none
+        Present { value: key } =>
+          if kind == "dispatch" {
+            match attempt_member(doc: doc, key: "owner_node") {
+              Absent => none
+              Present { value: node } => Present { value: DispatchOwned { node_id: node, attempt_key: key } }
+            }
+          } else if kind == "direct" {
+            Present { value: DirectInvocation { why: key } }
+          } else {
+            none
           }
       }
   }

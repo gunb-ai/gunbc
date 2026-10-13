@@ -11,7 +11,7 @@ import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.durable_cas_file_store { CasSlotKeys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, cas_slot_keys }
 import gunbc.compute.attempt_lifecycle {
-  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
+  AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_state_wire,
@@ -256,6 +256,7 @@ fn session_attempt_record(node_id: String, attempt_key: String, granted: Kibibyt
     opened_at: now,
     launch_deadline: now + compute_pre_launch_ceiling_seconds,
     state: AttemptReserved,
+    owner: DispatchOwned { node_id: node_id, attempt_key: attempt_key },
   }
 }
 
@@ -316,7 +317,7 @@ fn session_placement_begin_launch(stores: SessionPlacementStores, grant: Session
       SessionLaunchAdmitted { grant: SessionPlacementGrant {
         node_id: grant.node_id, attempt_key: grant.attempt_key, unit: grant.unit, lease: grant.lease, partition: grant.partition,
         amount: grant.amount, class_grant: grant.class_grant, store: grant.store,
-        slot: AttemptRecord { identity: grant.slot.identity, reference: grant.slot.reference, unit: grant.slot.unit, granted: grant.slot.granted, opened_at: grant.slot.opened_at, launch_deadline: grant.slot.launch_deadline, state: s },
+        slot: AttemptRecord { identity: grant.slot.identity, reference: grant.slot.reference, unit: grant.slot.unit, granted: grant.slot.granted, opened_at: grant.slot.opened_at, launch_deadline: grant.slot.launch_deadline, state: s, owner: grant.slot.owner },
         slot_generation: g,
       } }
     AttemptLostRace { expected: e, observed: o } => SessionLaunchRefused { detail: join(["the session slot moved before launch (expected ", e, ", found ", o, "); settlement ended this attempt, so its unit is not started"], "") }
