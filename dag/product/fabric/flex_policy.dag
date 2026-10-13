@@ -28,7 +28,7 @@ import product.fabric.selection {
   CandidateOffer, DispatchInputs, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   AvailabilityObservation, AvailableRevocable, AvailableForInterval, AvailableIndefinitely,
   AvailabilityUnobserved, SelectedOffer, select_supply, price_over_horizon,
-  OfferPriced, OfferNotPriceable, OfferNotFungible, OfferUnavailableForGrant,
+  OfferCandidacy, OfferPriced, OfferNotPriceable, OfferNotFungible, OfferUnavailableForGrant,
   OfferCannotHoldAnUnboundedGrant, OfferWrongCurrency, OfferUnaffordable,
   OfferLiabilityOverBuyOrder, OfferRevocationNotAdmitted, selection_liability,
 }
@@ -124,6 +124,8 @@ type FlexBidAttempt<P> {
 type FlexBidRefusal
   = FlexNoAcquisitionRemaining
   | FlexOnDemandReferenceUnobserved
+  | FlexOnDemandReferenceCandidacyRefused { candidacy: OfferCandidacy<NonEmptyStr> }
+  | FlexReservedBidCandidacyRefused { candidacy: OfferCandidacy<NonEmptyStr> }
   | FlexTargetNotRevocable
   | FlexTargetAvailabilityUnobserved
   | FlexOnDemandRelativeCeilingExceeded { ceiling: MoneyAmountMicro, projected: MoneyAmountMicro }
@@ -269,6 +271,7 @@ fn advance_window(window: FlexAcquisitionWindow) -> FlexAcquisitionWindow {
 type FlexPricedHorizon
   = FlexHorizonPriced { cost: MoneyAmountMicro }
   | FlexHorizonUnobserved
+  | FlexHorizonRefused { candidacy: OfferCandidacy<NonEmptyStr> }
 
 fn offer_quoted_at(offer: SupplierOffer<NonEmptyStr>, rate: MoneyPerHour) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
@@ -295,7 +298,7 @@ fn flex_price_offer(
   budget_currency: CurrencyCode,
   maximum_buy_order: MoneyAmountMicro,
 ) -> FlexPricedHorizon {
-  match price_over_horizon(
+  let candidacy = price_over_horizon(
     offer: offer,
     inputs: inputs,
     requirements: attempt.requirements,
@@ -303,18 +306,19 @@ fn flex_price_offer(
     maximum_buy_order: maximum_buy_order,
     budget_currency: budget_currency,
     delay_valuation: attempt.delay_valuation,
-  ) {
+  )
+  match candidacy {
     OfferPriced { offer: _, cost: c, basis: _, horizon: _ } =>
       FlexHorizonPriced { cost: selection_liability(c: c) }
     OfferLiabilityOverBuyOrder { offer: _, liability: observed, maximum: _ } =>
       FlexHorizonPriced { cost: observed }
-    OfferNotPriceable { offer: _, unpriced: _ } => FlexHorizonUnobserved
-    OfferNotFungible { offer: _, fungibility: _ } => FlexHorizonUnobserved
-    OfferUnavailableForGrant { offer: _, needed: _, available: _ } => FlexHorizonUnobserved
-    OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => FlexHorizonUnobserved
-    OfferWrongCurrency { offer: _, mismatch: _ } => FlexHorizonUnobserved
-    OfferUnaffordable { offer: _, affordability: _ } => FlexHorizonUnobserved
-    OfferRevocationNotAdmitted { offer: _ } => FlexHorizonUnobserved
+    OfferNotPriceable { offer: _, unpriced: _ } => FlexHorizonRefused { candidacy: candidacy }
+    OfferNotFungible { offer: _, fungibility: _ } => FlexHorizonRefused { candidacy: candidacy }
+    OfferUnavailableForGrant { offer: _, needed: _, available: _ } => FlexHorizonRefused { candidacy: candidacy }
+    OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => FlexHorizonRefused { candidacy: candidacy }
+    OfferWrongCurrency { offer: _, mismatch: _ } => FlexHorizonRefused { candidacy: candidacy }
+    OfferUnaffordable { offer: _, affordability: _ } => FlexHorizonRefused { candidacy: candidacy }
+    OfferRevocationNotAdmitted { offer: _ } => FlexHorizonRefused { candidacy: candidacy }
   }
 }
 
@@ -669,6 +673,10 @@ fn flex_admit_revocable_target(
                   ) {
                     FlexHorizonUnobserved =>
                       FlexBidRefused { cause: FlexOnDemandReferenceUnobserved }
+                    FlexHorizonRefused { candidacy: reference_candidacy } =>
+                      FlexBidRefused {
+                        cause: FlexOnDemandReferenceCandidacyRefused { candidacy: reference_candidacy },
+                      }
                     FlexHorizonPriced { cost: on_demand_cost } => {
                       let ceiling = flex_relative_ceiling(policy: policy, on_demand_cost: on_demand_cost)
                       match flex_price_offer(
@@ -681,6 +689,10 @@ fn flex_admit_revocable_target(
                       ) {
                         FlexHorizonUnobserved =>
                           FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
+                        FlexHorizonRefused { candidacy: bid_candidacy } =>
+                          FlexBidRefused {
+                            cause: FlexReservedBidCandidacyRefused { candidacy: bid_candidacy },
+                          }
                         FlexHorizonPriced { cost: projected } =>
                           if money_amount_micro_count(m: projected) > money_amount_micro_count(m: ceiling) {
                             FlexBidRefused {

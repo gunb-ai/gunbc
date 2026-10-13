@@ -11,7 +11,7 @@ import std.measure {
   DecimalMoneyScaleRefused, DecimalMoneyUnrepresentable, exact_decimal_to_money_amount_micro_ceil,
   DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
 }
-import extdeps.currency.currency { Usd, Eur }
+import extdeps.currency.currency { Usd, Eur, CurrencyCode }
 import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
 import product.fabric.identity { FabricIdentity, OfferKey }
@@ -28,7 +28,10 @@ import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound,
   DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse, PermitNamesAnotherOffer,
   PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
-  AvailabilityObservation, AvailableIndefinitely, AvailableRevocable, AvailabilityUnobserved,
+  AvailabilityObservation, AvailableIndefinitely, AvailableRevocable, AvailableForInterval,
+  AvailabilityUnobserved, OfferPriced, OfferLiabilityOverBuyOrder, OfferNotPriceable, OfferNotFungible,
+  OfferUnavailableForGrant, OfferCannotHoldAnUnboundedGrant, OfferWrongCurrency, OfferUnaffordable,
+  OfferRevocationNotAdmitted,
   PayAsYouGo, StartCostMeasured, NoTransitionRequired,
   OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
 }
@@ -38,14 +41,16 @@ import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
   FlexScreenedCandidate, FlexBidAdmission, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused, FlexNoAcquisitionRemaining,
   FlexRateCapBelowMin, FlexRateCapOccupied, FlexExistingBidWouldRise, FlexMoneyRefused,
-  FlexSupplyNotSelected, FlexOnDemandReferenceUnobserved, FlexTargetNotRevocable,
+  FlexSupplyNotSelected, FlexOnDemandReferenceUnobserved, FlexOnDemandReferenceCandidacyRefused,
+  FlexReservedBidCandidacyRefused, FlexTargetNotRevocable,
   FlexTargetAvailabilityUnobserved, FlexOnDemandRelativeCeilingExceeded,
   FlexCurrencyMismatch, FlexDecimalConversionRefused, FlexCandidateMachineMismatch,
   FlexNewAcquisition, FlexExistingAcquisition, AcquisitionActive,
   FlexOnDemandReference, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
   FlexOnDemandReferenceMissing,
   FlexReservationCeilingChosen, FlexReservationCeilingCurrencyMismatch,
-  flex_floor_buffer, flex_bid_admission, flex_buffered_min, policy_reservation_ceiling,
+  FlexHorizonPriced, FlexHorizonUnobserved, FlexHorizonRefused,
+  flex_floor_buffer, flex_bid_admission, flex_buffered_min, policy_reservation_ceiling, flex_price_offer,
 }
 import extdeps.cloud.vast_ai {
   VastAiOffer, vast_ai_min_bid_money_per_hour, vast_ai_dph_total_money_per_hour,
@@ -258,6 +263,74 @@ fn empty_occupancy() -> FlexFleetOccupancy {
   FlexFleetOccupancy { standing: [] }
 }
 
+fn t_price_from_bound(
+  bound: List<CandidateOffer<NonEmptyStr>>,
+  revocation: RevocationStanding,
+  budget: CurrencyCode,
+  max_micros: Nat,
+) -> FlexPricedHorizon {
+  fold(
+    bound,
+    init: FlexHorizonUnobserved,
+    f: (acc, c) =>
+      match acc {
+        FlexHorizonPriced { cost: _ } => acc
+        FlexHorizonRefused { candidacy: _ } => acc
+        FlexHorizonUnobserved =>
+          flex_price_offer(
+            offer: c.offer,
+            inputs: c.dispatch,
+            policy: t_policy(cap_micros: 5000000),
+            attempt: t_attempt(
+              machine: t_machine(id: "machine-a"),
+              min_bid: one_dollar_wire(),
+              quote: one_ten(),
+              key: "price-probe",
+              reservation: "res-price-probe",
+              revocation: revocation,
+              revocable: true,
+            ),
+            budget_currency: budget,
+            maximum_buy_order: money_amount_micro(count: max_micros),
+          )
+      },
+  )
+}
+
+fn t_price_one(
+  offer: SupplierOffer<NonEmptyStr>,
+  availability: AvailabilityObservation,
+  revocation: RevocationStanding,
+  budget: CurrencyCode,
+  max_micros: Nat,
+) -> FlexPricedHorizon {
+  t_price_from_bound(
+    bound: t_bound_avail(offer: offer, availability: availability),
+    revocation: revocation,
+    budget: budget,
+    max_micros: max_micros,
+  )
+}
+
+fn t_horizon_arm(h: FlexPricedHorizon) -> NonEmptyStr {
+  match h {
+    FlexHorizonPriced { cost: _ } => "priced"
+    FlexHorizonUnobserved => "unobserved"
+    FlexHorizonRefused { candidacy: c } =>
+      match c {
+        OfferPriced { offer: _, cost: _, basis: _, horizon: _ } => "priced-candidacy"
+        OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => "over-buy"
+        OfferNotPriceable { offer: _, unpriced: _ } => "not-priceable"
+        OfferNotFungible { offer: _, fungibility: _ } => "not-fungible"
+        OfferUnavailableForGrant { offer: _, needed: _, available: _ } => "unavailable"
+        OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => "unbounded"
+        OfferWrongCurrency { offer: _, mismatch: _ } => "wrong-currency"
+        OfferUnaffordable { offer: _, affordability: _ } => "unaffordable"
+        OfferRevocationNotAdmitted { offer: _ } => "revocation"
+      }
+  }
+}
+
 fn admitted_bid(o: FlexBidAdmission) -> Nat {
   match o {
     FlexBidAdmitted { bid: b, selection: _, account: _, occupancy: _, window: _ } => money_per_hour_micros(q: b)
@@ -279,6 +352,8 @@ fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
         FlexRateCapOccupied { cap: _, occupied: _, proposed: _ } => "rate-cap-occupied"
         FlexExistingBidWouldRise { current: _, min_bid: _ } => "existing-would-rise"
         FlexOnDemandReferenceUnobserved => "on-demand-unobserved"
+        FlexOnDemandReferenceCandidacyRefused { candidacy: _ } => "on-demand-candidacy"
+        FlexReservedBidCandidacyRefused { candidacy: _ } => "reserved-bid-candidacy"
         FlexTargetNotRevocable => "target-not-revocable"
         FlexTargetAvailabilityUnobserved => "target-unobserved"
         FlexOnDemandRelativeCeilingExceeded { ceiling: _, projected: _ } => "on-demand-ceiling"
@@ -989,6 +1064,108 @@ test fn an_unchanged_existing_acquisition_does_not_consume_the_window() -> Bool 
     FlexBidUnchanged { bid: b, account: _, occupancy: _, window: w } =>
       (money_per_hour_micros(q: b) == 1100000) && (w.remaining == 1)
   }
+}
+
+test fn flex_price_offer_keeps_not_priceable_candidacy() -> Bool {
+  t_horizon_arm(h: t_price_one(
+    offer: t_offer(key: "price-unobs", rate: one_ten()),
+    availability: AvailabilityUnobserved { obligation: "vendor console did not answer" },
+    revocation: RevocationAccepted,
+    budget: Usd,
+    max_micros: 5000000,
+  )) == "not-priceable"
+}
+
+test fn flex_price_offer_keeps_not_fungible_candidacy() -> Bool {
+  t_horizon_arm(h: t_price_one(
+    offer: SupplierOffer {
+      id: FabricIdentity { principal: "gunbc", key: "price-thin" },
+      executor: "gunbc",
+      route: fixture_route(),
+      shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 1) }, envelope: unstated_envelope() },
+      capabilities: t_caps(),
+      trust_domain: t_trust(),
+      isolation: IsolationProfile { guarantees: [] },
+      quantity_bound: 1,
+      ready_at: "2026-10-12T00:00:00Z",
+      quote: QuotedPerHour(one_ten()),
+      billing_quantum: second(count: 3600),
+      evidence: ObservedSupply { observed_at: "2026-10-12T00:00:00Z", receipt: "obs-1" },
+    },
+    availability: AvailableIndefinitely { delay: second(count: 0), receipt: "avail-1" },
+    revocation: RevocationAccepted,
+    budget: Usd,
+    max_micros: 5000000,
+  )) == "not-fungible"
+}
+
+test fn flex_price_offer_keeps_unavailable_for_grant_candidacy() -> Bool {
+  t_horizon_arm(h: t_price_one(
+    offer: t_offer(key: "price-short", rate: one_ten()),
+    availability: AvailableForInterval {
+      delay: second(count: 0),
+      interval: second(count: 1),
+      receipt: "avail-short",
+    },
+    revocation: RevocationAccepted,
+    budget: Usd,
+    max_micros: 5000000,
+  )) == "unavailable"
+}
+
+test fn flex_price_offer_keeps_wrong_currency_candidacy() -> Bool {
+  let offer = t_offer(key: "price-eur-start", rate: one_ten())
+  t_horizon_arm(h: t_price_from_bound(
+    bound: match bind_candidate(
+      offer: offer,
+      dispatch: DispatchInputs {
+        offer: offer.id,
+        availability: AvailableIndefinitely { delay: second(count: 0), receipt: "avail-1" },
+        commitment: PayAsYouGo,
+        start: StartCostMeasured {
+          amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Eur },
+          receipt: "start-eur",
+        },
+        transition: NoTransitionRequired,
+        operating: OperatingCostBorneBySupplier,
+        opportunity: NoFeasibleAlternativeUse { receipt: "opp-1" },
+      },
+      admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+      demand: fixture_demand_for(offer: offer.id),
+      work: fixture_work_for(offer: offer.id),
+    ) {
+      CandidateBound { candidate: c } => [c]
+      DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+      OfferNotAdmittedForUse { offer: _, cause: _ } => []
+      PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+      PermitNamesAnotherRoute { offer: _ } => []
+      PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+      PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
+    },
+    revocation: RevocationAccepted,
+    budget: Usd,
+    max_micros: 5000000,
+  )) == "wrong-currency"
+}
+
+test fn flex_price_offer_keeps_unaffordable_candidacy() -> Bool {
+  t_horizon_arm(h: t_price_one(
+    offer: t_offer(key: "price-dear", rate: usd_hour(micros: 2000000)),
+    availability: AvailableIndefinitely { delay: second(count: 0), receipt: "avail-1" },
+    revocation: RevocationAccepted,
+    budget: Usd,
+    max_micros: 1,
+  )) == "unaffordable"
+}
+
+test fn flex_price_offer_keeps_revocation_not_admitted_candidacy() -> Bool {
+  t_horizon_arm(h: t_price_one(
+    offer: t_offer(key: "price-rev", rate: one_ten()),
+    availability: AvailableRevocable { delay: second(count: 0), receipt: "avail-revocable" },
+    revocation: WarmResidencyRequired,
+    budget: Usd,
+    max_micros: 5000000,
+  )) == "revocation"
 }
 
 test fn admission_converts_the_vast_wire_min_bid() -> Bool {
