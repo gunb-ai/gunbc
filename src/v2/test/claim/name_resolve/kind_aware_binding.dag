@@ -52,6 +52,10 @@ data kab_qual_type_source: String = "module v2.test.kab.qual_type\n\nimport v2.t
 
 data kab_qual_ctor_source: String = "module v2.test.kab.qual_ctor\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Card, Optional }\nfn g() -> Card { v2.test.kab.card.Optional }\n"
 
+data kab_rec_source: String = "module v2.test.kab.rec\n\ntype Rec { value: Unit }\ntype Unit = U\n"
+
+data kab_rec_user_source: String = "module v2.test.kab.rec_user\n\nimport v2.test.kab.rec\nimport v2.test.kab.rec { Rec }\nfn f(x: Rec) -> Rec { x }\n"
+
 fn kab_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -74,7 +78,9 @@ fn kab_context() -> Outcome<NativeTestContext> {
     kab_read(text: kab_data_n_user_source, id: ^kab_data_n_user, path: "src/v2/test/fixture/kab/data_n_user.dag"),
     kab_read(text: kab_data_n_as_type_source, id: ^kab_data_n_as_type, path: "src/v2/test/fixture/kab/data_n_as_type.dag"),
     kab_read(text: kab_qual_type_source, id: ^kab_qual_type, path: "src/v2/test/fixture/kab/qual_type.dag"),
-    kab_read(text: kab_qual_ctor_source, id: ^kab_qual_ctor, path: "src/v2/test/fixture/kab/qual_ctor.dag")
+    kab_read(text: kab_qual_ctor_source, id: ^kab_qual_ctor, path: "src/v2/test/fixture/kab/qual_ctor.dag"),
+    kab_read(text: kab_rec_source, id: ^kab_rec, path: "src/v2/test/fixture/kab/rec.dag"),
+    kab_read(text: kab_rec_user_source, id: ^kab_rec_user, path: "src/v2/test/fixture/kab/rec_user.dag")
   ])
 }
 
@@ -87,6 +93,7 @@ type KabVerdicts {
   data_n_as_type: NativeModuleResolveVerdict
   qual_type: NativeModuleResolveVerdict
   qual_ctor: NativeModuleResolveVerdict
+  rec_user: NativeModuleResolveVerdict
 }
 
 fn kab_verdicts() -> Optional<KabVerdicts> {
@@ -103,7 +110,8 @@ fn kab_verdicts() -> Optional<KabVerdicts> {
           data_n_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_user", path: ^kab_data_n_user).verdict,
           data_n_as_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_as_type", path: ^kab_data_n_as_type).verdict,
           qual_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_type", path: ^kab_qual_type).verdict,
-          qual_ctor: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_ctor", path: ^kab_qual_ctor).verdict
+          qual_ctor: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_ctor", path: ^kab_qual_ctor).verdict,
+          rec_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.rec_user", path: ^kab_rec_user).verdict
         })
       }
   }
@@ -198,5 +206,14 @@ test fn a_qualified_variant_optional_binds_beside_the_type() -> Bool {
   match kab_verdicts() {
     Absent => false
     Present { value: vs } => kab_accepted(v: vs.qual_ctor)
+  }
+}
+
+// CORPUS SHAPE: GitHubAppInstallationId / SystemdRunProperty / R2BucketResponse are record types
+// used in type position with a whole-module import plus a listed import of the name.
+test fn a_listed_record_type_binds_beside_a_whole_module_import() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.rec_user)
   }
 }
