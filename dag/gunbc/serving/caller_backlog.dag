@@ -756,6 +756,10 @@ type AttemptCommit
 // (docs/plans/serving-capacity-home-ruling.md) and is fenced by the generation of its
 // product.capacity.lease LeaseGrant: the replica presents its LeaseFence (grant identity and generation),
 // fence_verdict must find it current, the grant must be the work's reservation, and unexpired at `at`.
+// CONSUMERS (§3c): declared frontier, not consumed in this change. SeatLeaseFence and
+// logical_work_id_of/DispatchTurnKey are consumed by the harness serving-seat wiring, which
+// supplies (dispatch node id, turn ordinal) and the seat's LeaseGrant; that wiring is owned by
+// session bright-moth-475 and is dispatched once these symbols land. Trigger: this PR merging.
 type AttemptFence
   = ComputeCellFence { account: MoneyAccount }
   | SeatLeaseFence { grant: LeaseGrant, holder: LeaseFence, at: EpochSecs }
