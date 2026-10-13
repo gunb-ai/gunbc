@@ -15616,7 +15616,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let local_deps_map = fold(all_local_bindings |> map_values, init: deps_seed, f: (acc, b) =>
     map_insert(acc, b.name, deps_excluding_leaf_self(b: b, source_indices: source_indices))
   )
-  let local_str_bindings = fold(all_local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
+  let local_str_seed: Map<String, TypeBinding> = empty_map()
+  let local_str_bindings = fold(all_local_bindings |> map_values, init: local_str_seed, f: (acc, b) =>
     map_insert(acc, b.name, b)
   )
 
