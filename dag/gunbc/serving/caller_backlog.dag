@@ -1,7 +1,8 @@
 module gunbc.serving.caller_backlog
 
 import std.types { Bool, String, NonEmptyStr, Int, List, brand }
-import std.nat { Nat }
+import std.nat { Nat, Zero, Succ }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
 import v2.std.algebra { length }
 import product.fabric.execution { ReservationRef }
@@ -10,7 +11,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.durable_compare_and_set {
   ExpectSlotAbsent, ExpectSlotGeneration, CasExpectation, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasObservedReadable, CasObservedUnreadable,
-  cas_unreadable_slot_detail,
+  CasGeneration, cas_unreadable_slot_detail,
 }
 import gunbc.durable_cas_file_store {
   admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
@@ -32,8 +33,8 @@ import gunbc.durable_cas_file_store {
 type LogicalWorkId = NonEmptyStr where brand("LogicalWorkId")
 
 type RecoveryBoundDeficit {
-  probes_succeeded: Int
-  requests_failed: Int
+  probes_succeeded: Nat
+  requests_failed: Nat
 }
 
 type CallerWorkPhase
@@ -258,7 +259,7 @@ fn waiting_generation_wire(generation: Int) -> String? {
 }
 
 fn encode_bound_deficit(deficit: RecoveryBoundDeficit) -> String {
-  concat(to_string(deficit.probes_succeeded), concat(":", to_string(deficit.requests_failed)))
+  concat(to_string(deficit.probes_succeeded as Int), concat(":", to_string(deficit.requests_failed as Int)))
 }
 
 fn decode_bound_deficit(s: String) -> RecoveryBoundDeficit? {
@@ -274,19 +275,23 @@ fn decode_bound_deficit(s: String) -> RecoveryBoundDeficit? {
           Present { value: requests_s } =>
             match parse_int(s: probes_s) {
               Absent => none
-              Present { value: probes_succeeded } =>
+              Present { value: probes_i } =>
                 match parse_int(s: requests_s) {
                   Absent => none
-                  Present { value: requests_failed } =>
-                    if probes_succeeded < 0 || requests_failed < 0 {
-                      none
-                    } else {
-                      Present {
-                        value: RecoveryBoundDeficit {
-                          probes_succeeded: probes_succeeded,
-                          requests_failed: requests_failed,
-                        },
-                      }
+                  Present { value: requests_i } =>
+                    match checked_int_to_nat(n: probes_i) {
+                      Absent => none
+                      Present { value: probes_succeeded } =>
+                        match checked_int_to_nat(n: requests_i) {
+                          Absent => none
+                          Present { value: requests_failed } =>
+                            Present {
+                              value: RecoveryBoundDeficit {
+                                probes_succeeded: probes_succeeded,
+                                requests_failed: requests_failed,
+                              },
+                            }
+                        }
                     }
                 }
             }
@@ -586,30 +591,56 @@ fn persist_waiting_idempotent_on_store(root: NonEmptyStr, record: CallerWorkReco
   }
 }
 
-fn persist_phase_on_store(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding {
-  let key = record.work as NonEmptyStr
+type DurableSlotObservation
+  = DurableSlotPresent { record: CallerWorkRecord, generation: CasGeneration }
+  | DurableSlotAbsent
+  | DurableSlotUnreadable { detail: NonEmptyStr }
+  | DurableSlotUndecodable
+  | DurableSlotWorkMismatch
+  | DurableSlotKeyNotSlotAddressable { work: LogicalWorkId }
+
+fn observe_durable_record(root: NonEmptyStr, work: LogicalWorkId) -> DurableSlotObservation {
+  let key = work as NonEmptyStr
   if !cas_key_is_slot_addressable(key: key) {
-    DurablePersistKeyNotSlotAddressable { work: record.work }
+    DurableSlotKeyNotSlotAddressable { work: work }
   } else {
     match observe_cas_slot_state(root: root, key: key) {
-      CasObservedUnreadable { cause: c } => DurablePersistStoreRefused {
+      CasObservedUnreadable { cause: c } => DurableSlotUnreadable {
         detail: cas_unreadable_slot_detail(cause: c) as NonEmptyStr
       }
       CasObservedReadable { readable: readable } =>
         match readable {
-          CasReadableAbsent => DurablePersistStoreRefused {
-            detail: "no waiting slot to advance" as NonEmptyStr
-          }
+          CasReadableAbsent => DurableSlotAbsent
           CasReadablePresent { version: held } =>
-            persist_record_cas(
-              root: root,
-              record: record,
-              expected: ExpectSlotGeneration { generation: held.generation },
-              as_phase: true,
-            )
+            match decode_waiting(payload: held.value) {
+              Absent => DurableSlotUndecodable
+              Present { value: record } =>
+                if logical_work_eq(a: record.work, b: work) {
+                  DurableSlotPresent { record: record, generation: held.generation }
+                } else {
+                  DurableSlotWorkMismatch
+                }
+            }
         }
     }
   }
+}
+
+fn singleton_snapshot(record: CallerWorkRecord) -> CallerBacklogSnapshot {
+  CallerBacklogSnapshot { records: [record] }
+}
+
+fn persist_derived_phase(
+  root: NonEmptyStr,
+  generation: CasGeneration,
+  record: CallerWorkRecord,
+) -> DurablePersistStanding {
+  persist_record_cas(
+    root: root,
+    record: record,
+    expected: ExpectSlotGeneration { generation: generation },
+    as_phase: true,
+  )
 }
 
 fn persist_waiting_durable(
@@ -645,29 +676,15 @@ fn resume_standing_of(record: CallerWorkRecord) -> DurableResumeStanding {
 }
 
 fn resume_waiting_durable(root: NonEmptyStr, work: LogicalWorkId) -> DurableResumeStanding {
-  let key = work as NonEmptyStr
-  if !cas_key_is_slot_addressable(key: key) {
-    DurableResumeStoreUnreadable { detail: "work id is not a slot-addressable CAS key" as NonEmptyStr }
-  } else {
-    match observe_cas_slot_state(root: root, key: key) {
-      CasObservedUnreadable { cause: c } => DurableResumeStoreUnreadable {
-        detail: cas_unreadable_slot_detail(cause: c) as NonEmptyStr
-      }
-      CasObservedReadable { readable: readable } =>
-        match readable {
-          CasReadableAbsent => DurableResumeUnknownWork
-          CasReadablePresent { version: v } =>
-            match decode_waiting(payload: v.value) {
-              Absent => DurableResumePayloadUndecodable
-              Present { value: record } =>
-                if logical_work_eq(a: record.work, b: work) {
-                  resume_standing_of(record: record)
-                } else {
-                  DurableResumeWorkMismatch
-                }
-            }
-        }
+  match observe_durable_record(root: root, work: work) {
+    DurableSlotAbsent => DurableResumeUnknownWork
+    DurableSlotUnreadable { detail: d } => DurableResumeStoreUnreadable { detail: d }
+    DurableSlotUndecodable => DurableResumePayloadUndecodable
+    DurableSlotWorkMismatch => DurableResumeWorkMismatch
+    DurableSlotKeyNotSlotAddressable { work: _ } => DurableResumeStoreUnreadable {
+      detail: "work id is not a slot-addressable CAS key" as NonEmptyStr
     }
+    DurableSlotPresent { record: r, generation: _ } => resume_standing_of(record: r)
   }
 }
 
@@ -855,22 +872,38 @@ fn cancel_work_durable(
   snapshot: CallerBacklogSnapshot,
   work: LogicalWorkId,
 ) -> DurableCancelStanding {
-  match cancel_work(snapshot: snapshot, work: work) {
-    CancelUnknownWork => DurableCancelUnknownWork
-    CancelAlreadyTerminal { phase: p } => DurableCancelAlreadyTerminal { phase: p }
-    CancelledWaiting { record: r } =>
-      match persist_phase_on_store(root: root, record: r) {
-        DurablePhasePersisted { record: stored } => DurableCancelled { record: stored }
-        DurablePersistIdempotent { record: stored } => DurableCancelled { record: stored }
-        DurableWaitingPersisted { record: stored } => DurableCancelled { record: stored }
-        DurablePersistRefusedTerminal { phase: p } => DurableCancelAlreadyTerminal { phase: p }
-        DurablePersistStoreRefused { detail: d } => DurableCancelStoreRefused { detail: d }
-        DurablePersistKeyNotSlotAddressable { work: w } => DurableCancelKeyNotSlotAddressable { work: w }
-        DurablePersistPayloadUnencodable { reason: r } => DurableCancelStoreRefused { detail: r }
-        DurablePersistUnknownWork => DurableCancelUnknownWork
-        DurablePersistDuplicate => DurableCancelStoreRefused { detail: "snapshot has duplicate records for this work" as NonEmptyStr }
+  match observe_durable_record(root: root, work: work) {
+    DurableSlotAbsent => DurableCancelUnknownWork
+    DurableSlotUnreadable { detail: d } => DurableCancelStoreRefused { detail: d }
+    DurableSlotUndecodable => DurableCancelStoreRefused {
+      detail: "slot payload is not a waiting record" as NonEmptyStr
+    }
+    DurableSlotWorkMismatch => DurableCancelStoreRefused {
+      detail: "slot payload names different work" as NonEmptyStr
+    }
+    DurableSlotKeyNotSlotAddressable { work: w } => DurableCancelKeyNotSlotAddressable { work: w }
+    DurableSlotPresent { record: held, generation: g } =>
+      match cancel_work(snapshot: singleton_snapshot(record: held), work: work) {
+        CancelUnknownWork => DurableCancelUnknownWork
+        CancelDuplicate => DurableCancelStoreRefused {
+          detail: "snapshot has duplicate records for this work" as NonEmptyStr
+        }
+        CancelAlreadyTerminal { phase: p } => DurableCancelAlreadyTerminal { phase: p }
+        CancelledWaiting { record: next } =>
+          match persist_derived_phase(root: root, generation: g, record: next) {
+            DurablePhasePersisted { record: stored } => DurableCancelled { record: stored }
+            DurablePersistIdempotent { record: stored } => DurableCancelled { record: stored }
+            DurableWaitingPersisted { record: stored } => DurableCancelled { record: stored }
+            DurablePersistRefusedTerminal { phase: p } => DurableCancelAlreadyTerminal { phase: p }
+            DurablePersistStoreRefused { detail: d } => DurableCancelStoreRefused { detail: d }
+            DurablePersistKeyNotSlotAddressable { work: w } => DurableCancelKeyNotSlotAddressable { work: w }
+            DurablePersistPayloadUnencodable { reason: r } => DurableCancelStoreRefused { detail: r }
+            DurablePersistUnknownWork => DurableCancelUnknownWork
+            DurablePersistDuplicate => DurableCancelStoreRefused {
+              detail: "snapshot has duplicate records for this work" as NonEmptyStr
+            }
+          }
       }
-    CancelDuplicate => DurableCancelStoreRefused { detail: "snapshot has duplicate records for this work" as NonEmptyStr }
   }
 }
 
@@ -889,23 +922,44 @@ fn commit_attempt_durable(
   work: LogicalWorkId,
   presented: Int,
 ) -> DurableAttemptStanding {
-  match commit_attempt(snapshot: snapshot, account: account, work: work, presented: presented) {
-    AttemptUnknownWork => DurableAttemptUnknownWork
-    AttemptFenceRefused => DurableAttemptFenceRefused
-    AttemptNotWaiting { phase: p } => DurableAttemptNotWaiting { phase: p }
-    AttemptCommitted { record: r } =>
-      match persist_phase_on_store(root: root, record: r) {
-        DurablePhasePersisted { record: stored } => DurableAttemptCommitted { record: stored }
-        DurablePersistIdempotent { record: stored } => DurableAttemptCommitted { record: stored }
-        DurableWaitingPersisted { record: stored } => DurableAttemptCommitted { record: stored }
-        DurablePersistRefusedTerminal { phase: p } => DurableAttemptNotWaiting { phase: p }
-        DurablePersistStoreRefused { detail: d } => DurableAttemptStoreRefused { detail: d }
-        DurablePersistKeyNotSlotAddressable { work: w } => DurableAttemptKeyNotSlotAddressable { work: w }
-        DurablePersistPayloadUnencodable { reason: r } => DurableAttemptStoreRefused { detail: r }
-        DurablePersistUnknownWork => DurableAttemptUnknownWork
-        DurablePersistDuplicate => DurableAttemptStoreRefused { detail: "snapshot has duplicate records for this work" as NonEmptyStr }
+  match observe_durable_record(root: root, work: work) {
+    DurableSlotAbsent => DurableAttemptUnknownWork
+    DurableSlotUnreadable { detail: d } => DurableAttemptStoreRefused { detail: d }
+    DurableSlotUndecodable => DurableAttemptStoreRefused {
+      detail: "slot payload is not a waiting record" as NonEmptyStr
+    }
+    DurableSlotWorkMismatch => DurableAttemptStoreRefused {
+      detail: "slot payload names different work" as NonEmptyStr
+    }
+    DurableSlotKeyNotSlotAddressable { work: w } => DurableAttemptKeyNotSlotAddressable { work: w }
+    DurableSlotPresent { record: held, generation: g } =>
+      match commit_attempt(
+        snapshot: singleton_snapshot(record: held),
+        account: account,
+        work: work,
+        presented: presented,
+      ) {
+        AttemptUnknownWork => DurableAttemptUnknownWork
+        AttemptDuplicate => DurableAttemptStoreRefused {
+          detail: "snapshot has duplicate records for this work" as NonEmptyStr
+        }
+        AttemptFenceRefused => DurableAttemptFenceRefused
+        AttemptNotWaiting { phase: p } => DurableAttemptNotWaiting { phase: p }
+        AttemptCommitted { record: next } =>
+          match persist_derived_phase(root: root, generation: g, record: next) {
+            DurablePhasePersisted { record: stored } => DurableAttemptCommitted { record: stored }
+            DurablePersistIdempotent { record: stored } => DurableAttemptCommitted { record: stored }
+            DurableWaitingPersisted { record: stored } => DurableAttemptCommitted { record: stored }
+            DurablePersistRefusedTerminal { phase: p } => DurableAttemptNotWaiting { phase: p }
+            DurablePersistStoreRefused { detail: d } => DurableAttemptStoreRefused { detail: d }
+            DurablePersistKeyNotSlotAddressable { work: w } => DurableAttemptKeyNotSlotAddressable { work: w }
+            DurablePersistPayloadUnencodable { reason: r } => DurableAttemptStoreRefused { detail: r }
+            DurablePersistUnknownWork => DurableAttemptUnknownWork
+            DurablePersistDuplicate => DurableAttemptStoreRefused {
+              detail: "snapshot has duplicate records for this work" as NonEmptyStr
+            }
+          }
       }
-    AttemptDuplicate => DurableAttemptStoreRefused { detail: "snapshot has duplicate records for this work" as NonEmptyStr }
   }
 }
 
@@ -913,19 +967,23 @@ fn is_failed_request(event: RecoveryEvent) -> Bool {
   event.kind == RecoveryRequest && !event.succeeded
 }
 
+fn recovery_event_count(events: List<RecoveryEvent>, pred: fn(RecoveryEvent) -> Bool) -> Nat {
+  fold(filter(events, pred), init: Zero, f: (acc, _) => Succ { prev: acc })
+}
+
 fn recovery_bound_deficit(events: List<RecoveryEvent>) -> RecoveryBoundDeficit {
   RecoveryBoundDeficit {
-    probes_succeeded: length(filter(events, e => e.kind == RecoveryProbe && e.succeeded)),
-    requests_failed: length(filter(events, e => is_failed_request(event: e))),
+    probes_succeeded: recovery_event_count(events: events, pred: e => e.kind == RecoveryProbe && e.succeeded),
+    requests_failed: recovery_event_count(events: events, pred: e => is_failed_request(event: e)),
   }
 }
 
 fn recovery_deficit_text(deficit: RecoveryBoundDeficit) -> NonEmptyStr {
   join([
     "recovery bound exhausted across the logical work's whole history; probes succeeded: ",
-    to_string(deficit.probes_succeeded),
+    to_string(deficit.probes_succeeded as Int),
     "; requests failed: ",
-    to_string(deficit.requests_failed),
+    to_string(deficit.requests_failed as Int),
     "; probe success is not a request completion and does not reset the bound",
   ], "") as NonEmptyStr
 }
@@ -993,12 +1051,29 @@ fn note_recovery_durable(
   event: RecoveryEvent,
   bound: Nat,
 ) -> DurablePersistStanding {
-  match note_recovery(snapshot: snapshot, work: work, event: event, bound: bound) {
-    RecoveryUnknownWork => DurablePersistUnknownWork
-    RecoveryDuplicate => DurablePersistDuplicate
-    RecoveryAlreadyTerminal { phase: p } => DurablePersistRefusedTerminal { phase: p }
-    RecoveryNoted { record: r } => persist_phase_on_store(root: root, record: r)
-    RecoveryBoundExceeded { record: r } => persist_phase_on_store(root: root, record: r)
+  match observe_durable_record(root: root, work: work) {
+    DurableSlotAbsent => DurablePersistUnknownWork
+    DurableSlotUnreadable { detail: d } => DurablePersistStoreRefused { detail: d }
+    DurableSlotUndecodable => DurablePersistStoreRefused {
+      detail: "slot payload is not a waiting record" as NonEmptyStr
+    }
+    DurableSlotWorkMismatch => DurablePersistStoreRefused {
+      detail: "slot payload names different work" as NonEmptyStr
+    }
+    DurableSlotKeyNotSlotAddressable { work: w } => DurablePersistKeyNotSlotAddressable { work: w }
+    DurableSlotPresent { record: held, generation: g } =>
+      match note_recovery(
+        snapshot: singleton_snapshot(record: held),
+        work: work,
+        event: event,
+        bound: bound,
+      ) {
+        RecoveryUnknownWork => DurablePersistUnknownWork
+        RecoveryDuplicate => DurablePersistDuplicate
+        RecoveryAlreadyTerminal { phase: p } => DurablePersistRefusedTerminal { phase: p }
+        RecoveryNoted { record: next } => persist_derived_phase(root: root, generation: g, record: next)
+        RecoveryBoundExceeded { record: next } => persist_derived_phase(root: root, generation: g, record: next)
+      }
   }
 }
 
