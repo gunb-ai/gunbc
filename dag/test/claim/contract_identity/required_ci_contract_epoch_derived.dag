@@ -95,7 +95,6 @@ test fn changing_a_payload_moves_the_epoch() -> Bool {
             requirement: contract.requirement,
             memory_max: contract.memory_max,
             memory_swap_max: byte_size(1),
-            enforcement: contract.enforcement,
           }
         }
       RequiredContextObligation { name: name } => RequiredContextObligation { name: name }

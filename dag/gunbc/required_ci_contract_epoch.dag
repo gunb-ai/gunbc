@@ -41,20 +41,22 @@ import gunbc.source_layout {
 //
 // WHAT MOVES THIS VALUE. The epoch is a digest of required_ci_obligation_rows after canonicalizing
 // by identity. Each payload is a value the executing fold is handed: the required context name, the
-// product-reuse env the subject step emits, the memory contract the envelope verdict reads, the
-// layout policy check_layout is handed, and the declared refusal classes parse_population begins
-// with. Adding, removing, or changing those values moves the digest; permuting the authored list
-// does not; a duplicated identity refuses. Do NOT digest the workflow text or the step list -- an
-// internal change (a prelude step, a timeout, a cache key) must not move fleet admission. Do NOT
-// hash a Bool that names a behaviour the fold does not read: that is a second representation of the
-// fold, and editing it can move the epoch while the realization stays put (§5).
+// product-reuse env the subject step emits, the memory requirement and slot sizes the step env
+// and cgroup bind, the layout policy check_layout is handed, and the declared refusal classes
+// parse_population begins with. Adding, removing, or changing those values moves the digest;
+// permuting the authored list does not; a duplicated identity refuses. Do NOT digest the workflow
+// text or the step list -- an internal change (a prelude step, a timeout, a cache key) must not
+// move fleet admission. Do NOT hash a Bool that names a behaviour the executing path does not
+// read: that is a second representation of the fold, and editing it can move the epoch while the
+// realization stays put (§5). memory_envelope_verdict's refuse_oom / refuse_swap are such Bools
+// until the retained CLI evaluates that fold (gunbc.memory_envelope_receipt_seed_growth).
 //
 // THE HONEST RUNG. A cross-epoch admission is MECHANICALLY PREVENTED by the production join that
 // compares this required value against the observed one. Materiality of the hashed VALUES is
 // derived from those executing authorities. Materiality of what the folds DO with those values
-// (the walk, the parse, OOM refusal in the host mirror) remains the folds themselves — declared-
-// version diligence until acceptance can derive contract materiality from the contract's own
-// surface. Classifying a new step as an obligation row is the residual manual question.
+// (the walk, the parse, OOM/swap refusal in the host mirror) remains the folds themselves —
+// declared-version diligence until acceptance can derive contract materiality from the contract's
+// own surface. Classifying a new step as an obligation row is the residual manual question.
 
 // THE REQUIRED CONTEXT NAME, one spelling. gunbc.witness.compiler_gate_workflow's job id,
 // gunbc.witness.witness_floor_workflow_job_id, and gunbc.repo.repo_ruleset desired_required_contexts

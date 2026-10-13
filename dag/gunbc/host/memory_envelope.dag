@@ -126,9 +126,12 @@ type MemoryEnvelopeVerdict
   = EnvelopeHeld
   | EnvelopeViolated { oom_kills_delta: Int, swap_current: Int?, swap_peak_rose: Bool?, swap_max_zero: Bool }
 
-// WHAT A GREEN ENVELOPE ENTITLES A CONSUMER TO CONCLUDE, and what the contract epoch hashes.
-// memory_envelope_verdict is the execution of this row: a different enforcement is a different
-// contract, even if the env var name that carries EnvelopeSlotRequired stays put.
+// WHAT THE REQUIRED JOB BINDS, and what the contract epoch hashes: the requirement the step env
+// carries and the slot sizes the cgroup is set to. refuse_oom / refuse_swap are inputs to
+// memory_envelope_verdict only. The required CI path still refuses through the host mirror
+// (gunbc.memory_envelope_receipt_seed_growth); hashing those Bools would move the epoch while the
+// shell stayed put. They enter the preimage when that trigger fires and the test verb evaluates
+// the verdict fold.
 type MemoryEnvelopeEnforcement {
   refuse_oom: Bool
   refuse_swap: Bool
@@ -143,7 +146,6 @@ type MemoryEnvelopeContract {
   requirement: MemoryEnvelopeRequirement
   memory_max: ByteSize
   memory_swap_max: ByteSize
-  enforcement: MemoryEnvelopeEnforcement
 }
 
 fn memory_envelope_requirement_digest(requirement: MemoryEnvelopeRequirement) -> String {
@@ -154,24 +156,13 @@ fn memory_envelope_requirement_digest(requirement: MemoryEnvelopeRequirement) ->
   }
 }
 
-fn memory_envelope_enforcement_digest(enforcement: MemoryEnvelopeEnforcement) -> String {
-  join([
-    if enforcement.refuse_oom { "refuse_oom" } else { "allow_oom" },
-    "\t",
-    if enforcement.refuse_swap { "refuse_swap" } else { "allow_swap" },
-  ], "")
-}
-
 fn memory_envelope_contract_digest(contract: MemoryEnvelopeContract) -> String {
   concat(
     concat(
-      concat(
-        concat(to_string(byte_size_count(b: contract.memory_max)), "\t"),
-        concat(to_string(byte_size_count(b: contract.memory_swap_max)), "\t")
-      ),
-      concat(memory_envelope_requirement_digest(requirement: contract.requirement), "\t")
+      concat(to_string(byte_size_count(b: contract.memory_max)), "\t"),
+      concat(to_string(byte_size_count(b: contract.memory_swap_max)), "\t")
     ),
-    memory_envelope_enforcement_digest(enforcement: contract.enforcement)
+    memory_envelope_requirement_digest(requirement: contract.requirement)
   )
 }
 
@@ -181,7 +172,6 @@ fn memory_envelope_required_ci_contract() -> MemoryEnvelopeContract {
     requirement: EnvelopeSlotRequired,
     memory_max: slot.memory_max,
     memory_swap_max: slot.memory_swap_max,
-    enforcement: memory_envelope_enforcement,
   }
 }
 
