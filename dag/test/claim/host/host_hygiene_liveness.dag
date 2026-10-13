@@ -1,6 +1,6 @@
 module test.claim.host.host_hygiene_liveness
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import gunbc.host.host_hygiene_liveness_observe {
   SlotListeningReadOutcome,
   SlotListeningRead,

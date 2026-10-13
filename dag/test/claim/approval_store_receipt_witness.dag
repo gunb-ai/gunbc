@@ -3,7 +3,7 @@ module test.claim.approval_store_receipt_witness
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Secret }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, mac_sign }
 import gunbc.durable_cas_file_store { CasGenerationRead, GenerationPresent, GenerationAbsent }

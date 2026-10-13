@@ -51,7 +51,7 @@ import gunbc.ci.ci_floor_measurement {
   CapEffective,
   CapUnbounded,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

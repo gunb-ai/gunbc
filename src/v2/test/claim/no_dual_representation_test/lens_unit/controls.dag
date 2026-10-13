@@ -1,6 +1,6 @@
 module v2.test.claim.no_dual_representation_test.lens_unit.controls
 
-import v2.std.algebra { length }
+import std.algebra { length }
 import v2.lens.no_dual_representation_test.scan {
   dual_rep_clean_holds_for_scans,
   dual_rep_coverage_honesty_holds,
@@ -15,7 +15,7 @@ import v2.lens.no_dual_representation_test.scan {
   synthetic_literal_mirror_scan,
   synthetic_same_symbol_scan
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,5 +1,13 @@
 module test.claim.json_emit_witness
 
+import extdeps.external_authority { ExternalAuthority }
+import std.unicode.scalar { from_code_point }
+import std.coercion { unicode_scalar_unfold }
+import std.error_primitives { Ok, Err }
+import extdeps.languages.json.emit { json_named_escape_rows, json_control_escape_rows, json_escape_row_code_point, escape_json_string, json_array, json_bool, json_int, json_int_list, json_kv, json_null, json_number_from_lexeme_string, json_object, json_str_list, json_unicode_escape_hex4, quote_json_string, serialize_json }
+import extdeps.languages.json.grammar { json_int_lexeme, json_number_lexeme, json_number_lexeme_valid, json_production_rows }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_json_cites_rfc8259() -> Bool {
@@ -17,15 +25,15 @@ test fn witness_escape_newline() -> Bool {
 }
 
 test fn witness_escape_tab() -> Bool {
-  escape_json_string(s: concat("a", concat(from_code_point(cp: 9), "b"))) == "a\\tb"
+  escape_json_string(s: concat("a", concat("\u{9}", "b"))) == "a\\tb"
 }
 
 test fn witness_escape_carriage_return() -> Bool {
-  escape_json_string(s: concat("x", concat(from_code_point(cp: 13), "y"))) == "x\\ry"
+  escape_json_string(s: concat("x", concat("\u{d}", "y"))) == "x\\ry"
 }
 
 test fn witness_escape_control_u0001() -> Bool {
-  escape_json_string(s: from_code_point(cp: 1)) == "\\u0001"
+  escape_json_string(s: "\u{1}") == "\\u0001"
 }
 
 // THE PASS DECOMPOSITION'S LOAD-BEARING ORDER, pinned: the backslash pass leads, so a literal
@@ -33,12 +41,12 @@ test fn witness_escape_control_u0001() -> Bool {
 // control range is covered to its top, so cp 31 escapes as \u001f exactly as the per-char fold
 // produced it. Both rows red the moment a pass is reordered or dropped.
 test fn witness_escape_backslash_leads_over_newline() -> Bool {
-  escape_json_string(s: concat(from_code_point(cp: 92), from_code_point(cp: 10))) == "\\\\\\n"
+  escape_json_string(s: concat("\u{5c}", "\u{a}")) == "\\\\\\n"
 }
 
 test fn witness_escape_control_top_of_range() -> Bool {
-  escape_json_string(s: from_code_point(cp: 31)) == "\\u001F"
-    && escape_json_string(s: from_code_point(cp: 11)) == "\\u000B"
+  escape_json_string(s: "\u{1f}") == "\\u001F"
+    && escape_json_string(s: "\u{b}") == "\\u000B"
 }
 
 test fn witness_escape_combined_source_text() -> Bool {
@@ -186,4 +194,52 @@ test fn witness_json_text_parse_agrees_with_lexeme_surface_on_exponents() -> Boo
     let by_lexeme = extdeps.languages.json.grammar.json_number_lexeme_valid(s: c)
     by_text == by_lexeme
   })
+}
+
+// Each escape row is one fact (the spelled character); its code point is derived from it. The rows
+// must be exactly one scalar each, and together exactly 0..31 with no gap or repeat (review 79227).
+fn jew_row_is_one_scalar(row: String) -> Bool {
+  (unicode_scalar_unfold(s: row)).length() == 1
+}
+
+fn jew_covers(cp: Int) -> Bool {
+  if cp > 31 { true } else {
+    let hits = concat(json_named_escape_rows(), json_control_escape_rows()) |> filter(row => json_escape_row_code_point(spelled: row) == cp)
+    hits.length() == 1 && jew_covers(cp: cp + 1)
+  }
+}
+
+test fn witness_escape_rows_are_one_scalar_each_and_cover_0_to_31_once() -> Bool {
+  all(json_named_escape_rows(), row => jew_row_is_one_scalar(row: row)) && all(json_control_escape_rows(), row => jew_row_is_one_scalar(row: row)) && jew_covers(cp: 0)
+}
+
+test fn RED_witness_a_doubled_row_is_detected() -> Bool {
+  !jew_row_is_one_scalar(row: "\u{1b}\u{1c}") && !jew_row_is_one_scalar(row: "")
+}
+
+// The authority held to RFC 8259 section 7 on every control code point: \b \t \n \f \r for 8, 9, 10,
+// 12, 13 and uppercase \u00XX (RFC 8259 admits either case) for the rest of 0..31. The seed's own copy of escape_json_string is held
+// to the SAME oracle by the v1 claim tree's escape differential (named in prose: a path here is an emitted edge), which cannot import this
+// authority without growing the stage0 partition.
+data jew_hex: String = "0123456789ABCDEF"
+
+fn jew_rfc_expected(cp: Int) -> String {
+  if cp == 8 { "\\b" } else { if cp == 9 { "\\t" } else { if cp == 10 { "\\n" } else { if cp == 12 { "\\f" } else { if cp == 13 { "\\r" } else {
+    concat("\\u00", concat(substring(s: jew_hex, start: cp / 16, end: cp / 16 + 1), substring(s: jew_hex, start: cp % 16, end: cp % 16 + 1)))
+  } } } } }
+}
+
+fn jew_agrees(cp: Int) -> Bool {
+  match from_code_point(cp: cp) {
+    Ok { value: t } => escape_json_string(s: concat("a", concat(t, "b"))) == concat("a", concat(jew_rfc_expected(cp: cp), "b"))
+    Err { value: _ } => false
+  }
+}
+
+fn jew_all_from(cp: Int) -> Bool {
+  if cp > 31 { true } else { jew_agrees(cp: cp) && jew_all_from(cp: cp + 1) }
+}
+
+test fn witness_json_escape_spells_rfc_8259_for_every_control_code_point() -> Bool {
+  jew_all_from(cp: 0)
 }

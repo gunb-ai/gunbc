@@ -1,6 +1,6 @@
 module test.claim.machine_intake.mtcollins1_power_on_account_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present }
 import extdeps.crypto.hash { sha256_digest }

@@ -6,7 +6,7 @@ import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtr
 import gunbc.roadmap.roadmap_component {
   dispatch_reserved_width, workflow_controls_class,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

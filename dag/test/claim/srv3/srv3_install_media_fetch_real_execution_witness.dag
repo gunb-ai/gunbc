@@ -8,7 +8,7 @@ import gunbc.artifact_acquisition {
 }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

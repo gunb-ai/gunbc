@@ -3,7 +3,7 @@ module gunbc.evaluation_store_address_census
 import std.types { Bool, List, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.materialization_provider_targets {
   evaluation_store_address_production_consumers,
   evaluation_store_address_persist_callers_expected,

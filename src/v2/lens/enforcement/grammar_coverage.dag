@@ -6,8 +6,7 @@ import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.coverage { dedupe_snoc }
-import v2.std.algebra { fold_list, length }
-import std.algebra { list_append }
+import std.algebra { list_append, fold_list, length }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
 import v2.std.integer { Int }
 import v2.std.node { Symbol, symbol_identity_digest }

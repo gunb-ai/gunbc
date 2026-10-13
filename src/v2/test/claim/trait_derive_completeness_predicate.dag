@@ -51,7 +51,7 @@ import v2.std.compilers.target_model {
   TargetCapabilityRequirement,
   symbol_kernel_type_node
 }
-import v2.std.algebra {
+import std.algebra {
   Cons,
   Empty
 }

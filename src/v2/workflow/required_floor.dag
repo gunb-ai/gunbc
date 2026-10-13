@@ -1,6 +1,5 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty, contains, list_reverse }
 import gunbc.explicit_witness_admission { explicit_witness_admissions, explicit_witness_admission_is_known_red }
 import std.optional { Optional, Present, Absent }
 import v2.std.integer { Int, int_gt, int_add, int_mul }
@@ -46,7 +45,7 @@ import std.measure {
 import std.types { NonEmptyStr, List, Milliseconds }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 import extdeps.languages.yaml.types { yaml_entry_count }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, contains, list_reverse }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
@@ -696,7 +695,7 @@ fn fixture_home_prefixes() -> List<String> {
 // The nested compiles are denominated in a two- or three-module manifest with no corpus roots.
 // Preparation growth is this module's import closure: `gunbc.instruments.multi_module_compile_fixture`, which
 // the admitted `test.claim.namespace_` and `test.claim.match_exhaustiveness_coproduct_witness`
-// rows already carry, plus `extdeps.filesystem.filesystem_io` and `v2.std.live_tree`.
+// rows already carry, plus `extdeps.filesystem.filesystem_io` and `std.live_tree`.
 //
 // IT DECLARES ReadsLiveTree TRUTHFULLY -- it reads the four fixture files from the checkout -- and
 // that is no longer a decline: `DeclinedLiveTree` is deleted at the root above.

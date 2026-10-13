@@ -437,7 +437,7 @@ type NativeServeOutgoing {
 fn native_serve_value_is_field_safe(value: String) -> Bool {
   (split(s: value, delimiter: "\r") |> count) == 1
     && (split(s: value, delimiter: "\n") |> count) == 1
-    && (split(s: value, delimiter: from_code_point(0)) |> count) == 1
+    && (split(s: value, delimiter: "\u{0}") |> count) == 1
 }
 
 fn native_serve_unwritable(reason: String) -> NativeServeOutgoing {

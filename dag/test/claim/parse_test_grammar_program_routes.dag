@@ -3,9 +3,9 @@ module test.claim.parse_test_grammar_program_routes
 import v2.compiler.body_lowering_fold { body_lower_call_arg_capture_is_named, body_lower_find_captured }
 import v2.test.claim.parse.parse_test_declaration_choice_route { route_parse_at, route_shells }
 import v2.extdeps.languages.dag { ParseSubtreeAbsent, ParseSubtreeFound }
-import v2.std.algebra { length }
+import std.algebra { length }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

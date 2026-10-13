@@ -2,7 +2,7 @@ module test.claim.infer_sibling_operand_effect_order_witness
 
 import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
 import std.types { Bool, Int, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

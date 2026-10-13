@@ -13,7 +13,7 @@ import v2.compiler.native_test_vocabulary {
   native_test_refused_located,
 }
 import v2.std.diagnostic { Locus, Textual, WholeFile }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, List }
 
 // EVERY ROW IN THIS MODULE IS AUTHORED IN THE SOURCE, so the whole file is hermetic and says so.

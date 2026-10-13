@@ -3,7 +3,7 @@ module test.claim.normalize_retention_contract_probe
 import std.types { List }
 import v2.std.text { String }
 import v2.std.node { Symbol }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import std.content_hash { compare_content_hash, ContentHashEqual }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, module_unavailable_diagnostic }
 import gunbc.instruments.frontier_ingestion_probe {

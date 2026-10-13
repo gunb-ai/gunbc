@@ -15,16 +15,15 @@ import v2.compiler.reference_conservation {
   report_with_advisories,
   OccurrenceRoleTableUnadmitted
 }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list, length, list_map }
 import std.optional { Absent, Present }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.occurrence_role { NameProductionTableAdmission, NameProductionTableRefused, NameRoleNotYetRead, dag_name_production_rows, name_production_table_admission, name_row }
 import v2.extdeps.languages.dag { dag_grammar_root }
-import v2.std.algebra { fold_list, length, list_map }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Rejected, Some, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton, invariant_port_locus }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
 import v2.std.integer { Int }
@@ -455,16 +454,12 @@ test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -
 
 // ---- roles are observed whatever normalization does (review 5330814496) -----------------------
 
-// A module that parses and whose normalization refuses BY DESIGN: it holds a service with a transport
-// member, which every route except census grade refuses as
-// body_lowering_reason_service_realization_unreachable (gunbc.recurring_failure_mode
-// service_interface_member_has_no_carrier). An else-less `if` guard was the refusal here until
-// #12713 lowered early-return guards, which made this control lose its subject. Every
-// name-bearing production of the `.dag` grammar is now read, so a live gap no longer exists to observe;
-// the gap is PLANTED AT THE INTERFACE instead: the role table is the real one with its param_list row
+// A module that parses and whose normalization refuses BY DESIGN: it holds a service whose argv is
+// the empty list, which the realization wall refuses as service_realization_argv_refused (ArgvEmpty).
+// An else-less `if` guard was the refusal here until #12713, then the set-aside blanket until XL-2
+// 3c. The gap is PLANTED AT THE INTERFACE: the role table is the real one with its param_list row
 // supplied as NameRoleNotYetRead, and the module's one fn has one parameter list, so an observed role
-// pass counts exactly one not-yet-read node. Before the repair the refusal arm never ran the role
-// producer and reported zero, a gap nobody had observed.
+// pass counts exactly one not-yet-read node.
 data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nservice rc.Svc {\n  operation RcOp {\n    transport shell { argv: [] }\n  }\n}\n\nfn rc_plain(n: Int) -> Int { n }\n"
 
 fn planted_param_list_unread_admission() -> NameProductionTableAdmission {
@@ -492,8 +487,8 @@ test fn the_refused_normalization_fixture_refuses_for_the_service_realization_re
   match normalization_refused_subject().normalized {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: ne } =>
-      fold_list(xs: ne.tail, empty: ne.head.reason == ^body_lowering_reason_service_realization_unreachable, cons: fn(found, d) {
-        found || d.reason == ^body_lowering_reason_service_realization_unreachable
+      fold_list(xs: ne.tail, empty: ne.head.reason == ^service_realization_argv_refused, cons: fn(found, d) {
+        found || d.reason == ^service_realization_argv_refused
       })
   }
 }
@@ -520,7 +515,8 @@ test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool
 // where, so a reader of its lines could tell THAT a module refused and never WHY. Three claims over
 // reports this module already computes (no new shared producer):
 //   the typed carrier holds the fixture's own fatal reason, located in the module's TEXT (a node
-//     locus resolved through the span index, not left as a node);
+//     locus resolved through the span index, not left as a node -- the empty argv's `[` at
+//     bytes 111..112 of this fixture);
 //   the summary line prints that reason and that locus;
 //   the accepted control prints `refusal=none`, so the field is read beside a module that has none.
 // MUTATION: dropping the report_with_normalize_refusal call in conservation_against_refusal reds the
@@ -536,15 +532,15 @@ test fn a_refused_normalization_carries_its_fatal_reason_located_in_text_holds()
   match refused_normalization_report().normalize_refusal {
     Absent => false
     Present { value: refusal } =>
-      refusal.fatal.reason == ^body_lowering_reason_service_realization_unreachable
-        && string_contains(s: refusal.located, pattern: " bytes 47..54")
+      refusal.fatal.reason == ^service_realization_argv_refused
+        && string_contains(s: refusal.located, pattern: " bytes 111..112")
   }
 }
 
 test fn a_refused_normalization_prints_its_reason_and_locus_on_the_summary_line_holds() -> Bool {
   let line = conservation_summary_line(report: refused_normalization_report())
-  string_contains(s: line, pattern: " refusal=normalize:body_lowering_reason_service_realization_unreachable @ ")
-    && string_contains(s: line, pattern: " bytes 47..54")
+  string_contains(s: line, pattern: " refusal=normalize:service_realization_argv_refused @ ")
+    && string_contains(s: line, pattern: " bytes 111..112")
 }
 
 test fn an_accepted_module_prints_no_refusal_on_the_summary_line_holds() -> Bool {

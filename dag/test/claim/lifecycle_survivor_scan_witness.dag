@@ -7,7 +7,7 @@ import gunbc.lifecycle_survivor_scan {
   planted_ordinary_string_note,
   planted_raw_survivor,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // The per-PR half of the lifecycle-carrier census: the selection MECHANISM, exercised on
 // synthetic rows, at zero corpus cost. The corpus half -- whose subject is the live tree's

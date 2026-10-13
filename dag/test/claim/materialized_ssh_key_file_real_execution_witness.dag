@@ -13,7 +13,7 @@ import gunbc.auth.materialized_secret {
   MaterializedSshKeyFileBracketCompleted,
   MaterializedSshKeyFileBracketRefused,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

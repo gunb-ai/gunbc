@@ -1,13 +1,13 @@
 module v2.test.claim.floor_non_verdict_admission
 
 import std.types { List }
-import v2.std.algebra { Cons, Empty, length }
+import std.algebra { Cons, Empty, length }
 import v2.std.text { String }
 import v2.workflow.floor_non_verdict_admission {
   non_verdict_added, non_verdict_repaid, non_verdict_admits,
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 data roster_fixture: List<String> = Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Empty {} } } }
 

@@ -8,7 +8,7 @@ import gunbc.systemd_directive_value_grain {
 }
 import std.dissolution { DissolutionCondition, BoundDissolution, UnboundDissolution }
 import std.types { String, Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

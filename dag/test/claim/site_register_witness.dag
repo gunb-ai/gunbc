@@ -36,7 +36,7 @@ import gunbc.site.moodboard {
 }
 import gunbc.site.theme_transition { reframe_css, unthemed_color_decls }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

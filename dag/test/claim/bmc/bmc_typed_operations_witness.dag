@@ -36,7 +36,7 @@ import extdeps.bmc.openbmc_fan_control {
 }
 import extdeps.tools.jq { JqExecutionRefused, JqOutputAbsent, JqOutputPresent }
 import extdeps.ssh.password_session { PasswordSshExecResult }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { byte_size_count, rpm, rpm_count }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -3,7 +3,7 @@ module v2.workflow.local_repo_wet_terminal
 import std.types { List }
 import v2.std.text { String }
 import v2.std.integer { Int }
-import v2.std.algebra { Cons, Empty, length }
+import std.algebra { Cons, Empty, length }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
@@ -1528,6 +1528,42 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution" },
       entry: "dag/test/claim/durable_cas_file_store_wet_witness.dag",
       function: "reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "persist_then_resume_reads_the_slot_not_memory_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "persist_then_resume_reads_the_slot_not_memory_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "persist_cancel_and_commit_resume_as_terminal_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "persist_cancel_and_commit_resume_as_terminal_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "persist_recovery_history_survives_resume_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "persist_recovery_history_survives_resume_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "persist_idempotent_observes_the_slot_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "persist_idempotent_observes_the_slot_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "stale_waiting_snapshot_cannot_commit_over_cancel_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "stale_waiting_snapshot_cannot_commit_over_cancel_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "stale_recovery_cannot_truncate_or_revive_terminal_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "stale_recovery_cannot_truncate_or_revive_terminal_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

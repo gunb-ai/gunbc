@@ -14,7 +14,7 @@ import extdeps.deepseek.deepseek_v4 {
 // These pin a TRANSCRIPTION against the shape the source has. The preamble is read from the cited
 // encoder at the cited revision; a re-transcription that dropped a sentence, or a tier that grew a
 // preamble the encoder does not give it, goes red here.
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 test fn the_think_max_preamble_is_the_encoders_opening_line() -> Bool {
   (deepseek_v4_think_max_preamble as String).starts_with("Reasoning Effort: Absolute maximum with no shortcuts permitted.")

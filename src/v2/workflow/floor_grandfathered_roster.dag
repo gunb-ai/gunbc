@@ -1,13 +1,12 @@
 module v2.workflow.floor_grandfathered_roster
 
-import v2.std.algebra { Cons, Empty, list_flat_map, length, contains }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { EvalStepCount }
 import std.types { NonEmptyStr, List }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_flat_map, length, contains }
 
 // THE CLOSED ROSTER OF WITNESS IDENTITIES GRANDFATHERED AT THE CUT COMMIT (operator ruling via
 // fierce-lark-661, 2026-09-13). It exists so the required floor can carry TWO ceilings without
@@ -751,6 +750,16 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "v2.test.claim.self_host.compiler_closure_ingest_boundary_witness.compiler_closure_ingest_boundary_exact_cap_transport_holds" as NonEmptyStr,
     deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): the exact-cap transport of the whole-tree ingest has no subject once no producer reads the whole tree" as NonEmptyStr
   },
+  WitnessRenamed {
+    previous_identity: "v2.test.v2_native_route.the_universe_is_the_prefix_and_nothing_else" as NonEmptyStr,
+    new_identity: "v2.test.v2_native_route.the_route_boundary_is_the_v2_tree_and_nothing_else" as NonEmptyStr,
+    renamed_in: "the test-marker universe cutover (gunbc.recurring_failure_mode test_identity_restated_as_a_location_predicate_beside_the_marker): the native lane's universe is the marked declarations of the acquired modules and no namespace predicate participates in test identity, so the claim no longer pins a universe prefix; the same subject, the default pattern as the route boundary, is pinned under the boundary's own name" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.v2_native_route.a_foreign_universe_member_is_refused" as NonEmptyStr,
+    new_identity: "v2.test.v2_native_route.a_universe_member_outside_the_route_boundary_is_refused" as NonEmptyStr,
+    renamed_in: "the test-marker universe cutover (gunbc.recurring_failure_mode test_identity_restated_as_a_location_predicate_beside_the_marker): a universe member is foreign to the route when its module lies outside the default pattern's subtree, not when it lacks the retired v2.test prefix; the claim keeps its subject and is named for the boundary it asserts" as NonEmptyStr,
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {
@@ -1483,7 +1492,7 @@ fn grandfathered_in_chunks(name: String, chunks: List<List<String>>) -> Bool {
 }
 
 // THE HOT SCAN KEEPS ITS OWN DESCENT, AND THAT IS DECLARED RATHER THAN LEFT TO BE NOTICED
-// (review 65778). `v2.std.algebra` `contains` is the canonical membership surface and the two COLD
+// (review 65778). `std.algebra` `contains` is the canonical membership surface and the two COLD
 // membership tests in this module now consume it. This one does not, and the reason is a defect in
 // the primitive rather than a preference here: `contains` delegates to the collection-roster `any`
 // (`std.algebra.collection_any_shape`), which does NOT short-circuit, so it visits every row even
@@ -1506,7 +1515,7 @@ fn grandfathered_in_chunks(name: String, chunks: List<List<String>>) -> Bool {
 // helper beside this one does NOT discharge it: each keeps a second membership spelling, which is
 // the condition being retired.
 data grandfathered_membership_descent_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: the collection-roster any (std.algebra.collection_any_shape, CallbackAnyByOr) short-circuits its traversal, so v2.std.algebra contains answers without visiting every element and this module deletes grandfathered_in_chunk in favour of it. BLOCKED ON A PRIMITIVE REALIZATION DEFECT, NOT ON PLUMBING: roster any's step is acc || B and visits the whole list after the answer is known, which on this 3,795-row roster is the difference between 8,066 and 43,583 eval steps per claim against a ceiling this lane declares. The two cold membership tests in this module already consume contains; this is the single retained exception and it exists so the corpus carries ONE hand-rolled descent rather than one per hot consumer. Owner of the primitive defect: whoever owns the collection-roster any realization; owner of this row: the required-floor ceiling lane, currently smart-heron-867. Related realization defect in the sibling primitive: gunbc.recurring_failure_mode nested_membership_scan_where_a_map_primitive_exists." as NonEmptyStr,
+  description: "dissolve-on: the collection-roster any (std.algebra.collection_any_shape, CallbackAnyByOr) short-circuits its traversal, so std.algebra contains answers without visiting every element and this module deletes grandfathered_in_chunk in favour of it. BLOCKED ON A PRIMITIVE REALIZATION DEFECT, NOT ON PLUMBING: roster any's step is acc || B and visits the whole list after the answer is known, which on this 3,795-row roster is the difference between 8,066 and 43,583 eval steps per claim against a ceiling this lane declares. The two cold membership tests in this module already consume contains; this is the single retained exception and it exists so the corpus carries ONE hand-rolled descent rather than one per hot consumer. Owner of the primitive defect: whoever owns the collection-roster any realization; owner of this row: the required-floor ceiling lane, currently smart-heron-867. Related realization defect in the sibling primitive: gunbc.recurring_failure_mode nested_membership_scan_where_a_map_primitive_exists." as NonEmptyStr,
 )
 
 fn grandfathered_in_chunk(name: String, rows: List<String>) -> Bool {

@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
-    paths: [dag/**, src/v2/**, src/v1/**, .cargo/config.toml, dag/gunbc/stage0/stage0_crate_layout_generated.dag, src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs, dag/gunbc/stage0/stage0_crate_partition_generated.dag, dag/gunbc/stage0/stage0_executable_assembly_generated.dag, src/v1/stage0/linked_partition_crates.generated.txt, src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs, src/v1/stage0/src/v1_interpreter_dispatch_generated.rs, src/v1/stage0/src/evaluation_budget_consequence_generated.rs, src/v1/stage0/src/release_locus_seed_constants_generated.rs, src/v1/stage0/src/gunbc_file_transport_generated.rs]
+    paths: [dag/**, src/v2/**, src/v1/**, .cargo/config.toml, dag/gunbc/stage0/stage0_crate_layout_generated.dag, src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs, dag/gunbc/stage0/stage0_crate_partition_generated.dag, dag/gunbc/stage0/stage0_executable_assembly_generated.dag, src/v1/stage0/linked_partition_crates.generated.txt, src/v1/stage0/src/bootstrap_seed_retention_frontier_generated.rs, src/v1/stage0/src/v1_interpreter_dispatch_generated.rs, src/v1/stage0/src/evaluation_budget_consequence_generated.rs, src/v1/stage0/src/release_locus_seed_constants_generated.rs, src/v1/stage0/src/gunbc_file_transport_generated.rs, src/v1/stage0/src/native_route_seed_boundary_generated.rs]
   workflow_dispatch:
     inputs:
       pull_number:

@@ -11,7 +11,7 @@ import extdeps.astronomy.stellar_classification {
   classes_hot_to_cool_by_floor, g_class, temperature_label,
 }
 import gunbc.site.accent_study { accent_study_html, accent_study_preconditions_hold }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

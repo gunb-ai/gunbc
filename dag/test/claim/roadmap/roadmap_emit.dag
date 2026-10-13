@@ -5,7 +5,7 @@ import gunbc.roadmap.roadmap_emit { project_roadmap_section }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, WorkItemDispatch, NotDispatchable, SectionElement, section_group }
 import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

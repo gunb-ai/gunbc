@@ -3,7 +3,7 @@ module test.claim.bmc.bmc_wif_delegation_chain_witness
 // IMPORTS NAMED (the file carried none, so SecretAccessGrant resolved ambiguously between
 // gunbc.auth.secret_access_grant and gunbc.auth.gcp_secret_access), and list heads matched as the
 // optionals they are rather than passed where a value is declared. Each claim's meaning is unchanged.
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource, secret_ref_hash_known }

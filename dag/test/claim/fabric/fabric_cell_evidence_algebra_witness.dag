@@ -18,7 +18,7 @@ import gunbc.fabric.fabric_cell_converge {
   fabric_cell_address_evidence,
   FabricCellResourceBoundaryAddress,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

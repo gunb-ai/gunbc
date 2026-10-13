@@ -10,7 +10,7 @@ import gunbc.roadmap.roadmap_dispatch_environment {
   CapabilityEnsureReceipt,
   capability_ensure_receipt,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

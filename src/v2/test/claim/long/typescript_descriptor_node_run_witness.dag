@@ -1,6 +1,6 @@
 module v2.test.claim.long.typescript_descriptor_node_run_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.test.claim.manual.typescript_descriptor_node_run {
   typescript_descriptor_node_host_run_i32
 }

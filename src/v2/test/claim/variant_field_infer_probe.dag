@@ -15,11 +15,10 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, list_append }
+import std.algebra { Cons, Empty, list_append, contains, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
-import v2.std.algebra { contains, list_map }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.std.node_query { construct_tag_optional }
 import v2.std.node {

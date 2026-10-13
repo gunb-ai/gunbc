@@ -15,7 +15,7 @@ import extdeps.docker.cli {
   docker_container_inspect_env_from_stdout, DockerContainerInspectEnv, DockerContainerInspectEnvUnreadable,
 }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
