@@ -2585,15 +2585,44 @@ fn compute_recovery_wire(r: ComputeRecovery) -> String {
 // meantime, the observation recovery decided on is stale and the store refuses it. The re-check is
 // not a second read that could also go stale; it is the compare-and-set itself, which is the only
 // form of re-check that cannot be overtaken between the checking and the acting.
+//
+// THE STORE IS A PARAMETER (the next-rung trigger of gunbc.recurring_failure_mode
+// a_held_compute_seat_has_no_in_corpus_discharge). compute_recover_attempt_in takes the attempts
+// root and the capacity subject it discharges against, so a control can hold a seat in a temporary
+// directory and drive it through THIS door; compute_recover_attempt is the same door with the
+// instance's own root, subject and an OBSERVED unit. There is no second recovery path: the wrapper
+// below is one call.
+type UnitLifecycleSource
+  = ObserveUnitLifecycle
+  | SuppliedUnitLifecycle { lifecycle: UnitLifecycle }
+
+fn unit_lifecycle_from_source(source: UnitLifecycleSource, unit: NonEmptyStr) -> UnitLifecycle {
+  match source {
+    ObserveUnitLifecycle => observe_unit_lifecycle(unit: unit)
+    SuppliedUnitLifecycle { lifecycle: l } => l
+  }
+}
+
 fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyStr) -> ComputeRecovery {
-  let attempts_root = compute_attempts_root(instance: instance)
+  match compute_capacity_subject(instance: instance, request: kibibyte(count: 0)) {
+    ComputeSubjectHostUnresolved { host: h } => RecoveryRefused { detail: join(["no capacity subject resolves for host ", h as String], "") }
+    ComputeSubjectResolved { subject: subj } =>
+      compute_recover_attempt_in(
+        attempts_root: compute_attempts_root(instance: instance),
+        subject: subj,
+        reference: reference,
+        source: ObserveUnitLifecycle)
+  }
+}
+
+fn compute_recover_attempt_in(attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, reference: NonEmptyStr, source: UnitLifecycleSource) -> ComputeRecovery {
   match attempt_slot_read(root: attempts_root, reference: reference) {
     AttemptSlotUnreadable { detail: d } =>
       RecoveryRefused { detail: join(["the attempt slot for ", reference as String, " could not be read (", d, "), and an unreadable slot is not an absent one -- releasing on a read that failed would return a seat whose attempt was never observed"], "") }
     AttemptSlotAbsent =>
       RecoveryRefused { detail: join(["no attempt slot exists for ", reference as String, "; there is no record binding that reference to a unit, and this door will not release a seat it cannot name the attempt of"], "") }
     AttemptSlotHeld { record: rec, generation: g } => {
-      let lifecycle = observe_unit_lifecycle(unit: rec.unit as NonEmptyStr)
+      let lifecycle = unit_lifecycle_from_source(source: source, unit: rec.unit as NonEmptyStr)
       match now_epoch_seconds() {
         Absent => RecoveryRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger is a comparison against a deadline" }
         Present { value: now } =>
@@ -2610,7 +2639,7 @@ fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyS
                   compute_recovery_after_settlement(
                     reference: rec.reference,
                     verdict: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], ""),
-                    returned: compute_recover_release(instance: instance, reference: reference, granted: rec.granted, reason: why))
+                    returned: compute_recover_release(subject: subject, reference: reference, reason: why))
               }
           }
       }
@@ -2632,17 +2661,13 @@ fn compute_recovery_after_settlement(reference: String, verdict: String, returne
 // whole partition with an UnknownEncumbrance every later read would refuse on. The subject's
 // request is the seat the attempt record says it was granted -- the release fold consults no
 // request, but the subject names the hold it is about rather than a figure invented for it.
-fn compute_recover_release(instance: HostDashboardInstance, reference: NonEmptyStr, granted: Kibibyte, reason: String) -> ComputeRelease {
-  match compute_capacity_subject(instance: instance, request: granted) {
-    ComputeSubjectHostUnresolved { host: h } => ComputeReleaseRefused { detail: join(["no capacity subject resolves for host ", h as String], "") }
-    ComputeSubjectResolved { subject: subj } =>
-      compute_release_on(
-        store: compute_capacity_store(subject: subj),
-        partition: subj.partition,
-        appropriation: kibibyte(count: 0),
-        reference: reference,
-        reason: join(["recovered: ", reason], "") as NonEmptyStr)
-  }
+fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyStr, reason: String) -> ComputeRelease {
+  compute_release_on(
+    store: compute_capacity_store(subject: subject),
+    partition: subject.partition,
+    appropriation: kibibyte(count: 0),
+    reference: reference,
+    reason: join(["recovered: ", reason], "") as NonEmptyStr)
 }
 
 // THE DOOR A WORKER OR AN OPERATOR ACTUALLY OPENS. Three exits and they are the three the rest of
