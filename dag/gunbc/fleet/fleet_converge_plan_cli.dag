@@ -890,10 +890,13 @@ fn fleet_converge_plan_scoped_bound_wet(
       exit_failure(reason: concat("fleet_converge_plan: RequestUnobserved — ", why))
     FleetConvergeRequestObserved { request: request } =>
   {
-    let artifact = fleet_converge_plan_artifact_of_request(
+    match fleet_converge_plan_artifact_of_request(
       request: request,
       prior_generation: prior_generation,
-    )
+    ) {
+      Absent =>
+        exit_failure(reason: "fleet_converge_plan: lease generation successor refused")
+      Present { value: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
@@ -988,6 +991,7 @@ fn fleet_converge_plan_scoped_bound_wet(
             }
           }
         }
+      }
       }
     }
   }

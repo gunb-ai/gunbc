@@ -292,9 +292,24 @@ fn cas_generation(n: Int) -> CasGeneration? {
 }
 
 fn cas_generation_first() -> CasGeneration {
-  match cas_generation(n: 1) {
-    Present { value: g } => g
-    Absent => 1
+  1
+}
+
+// The generation after an integer prior. prior 0 is "no generation yet" and yields first.
+// A negative prior or an exhausted successor is Absent — not first (DESIGN §5).
+fn cas_generation_following(prior: Int) -> CasGeneration? {
+  if prior < 0 {
+    Absent
+  } else if prior == 0 {
+    Present { value: cas_generation_first() }
+  } else {
+    match cas_generation(n: prior) {
+      Absent => Absent
+      Present { value: g } => match cas_generation_successor(g: g) {
+        CasSuccessorGeneration { generation: n } => Present { value: n }
+        CasSuccessorExhausted { head: _ } => Absent
+      }
+    }
   }
 }
 

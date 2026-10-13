@@ -8,6 +8,7 @@ import std.retry_law {
   RetryAdmissible, RetryAdmissibleNow, RetryTerminalExhausted, RetryTerminalCancelled, RetryAlreadySucceeded,
   RetryHintUnreadable, RetryHintUnanchored,
 }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation_store {
@@ -78,7 +79,11 @@ fn workspace_consumer_issue_write(kind: WorkspaceConsumerWriteKind, store: Fabri
 }
 
 fn workspace_consumer_write_until_law(kind: WorkspaceConsumerWriteKind, store: FabricStorageBinding,
-  owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp, at: EpochSecs) -> WorkspaceStoreWrite {
+  owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  if !utc_instant_is_canonical(t: observed_at) {
+    WorkspaceStoreWriteRefused { reason: "consumer clock is unreadable" }
+  } else {
+  let at = utc_instant_seconds(t: observed_at)
   match fold(
     nat_range_inclusive(lo: Succ { prev: Zero }, hi: workspace_consumer_retry_law.real_work_failure_bound),
     init: WorkspaceWriteOpen { history: [] },
@@ -105,6 +110,7 @@ fn workspace_consumer_write_until_law(kind: WorkspaceConsumerWriteKind, store: F
     WorkspaceWriteClosed { result: r } => r
     WorkspaceWriteOpen { history: _ } =>
       WorkspaceStoreWriteRefused { reason: "workspace store conflicts exhausted the retry law" }
+  }
   }
 }
 
@@ -166,12 +172,12 @@ fn workspace_consumer_retire(store: FabricStorageBinding, owner: PrincipalRef,
           Present { value: _ } => WorkspaceConsumerRoute { allocation: allocation }
           Absent => workspace_consumer_settlement_result(result: workspace_consumer_write_until_law(
             kind: WorkspaceWriteSettleUnplanned, store: store, owner: owner,
-            idempotency_key: idempotency_key, observed_at: observed_at, at: 0,
+            idempotency_key: idempotency_key, observed_at: observed_at,
           ))
         }
       } else { match workspace_consumer_write_until_law(
         kind: WorkspaceWriteRecordExpiry, store: store, owner: owner,
-        idempotency_key: idempotency_key, observed_at: observed_at, at: 0,
+        idempotency_key: idempotency_key, observed_at: observed_at,
       ) {
         WorkspaceStoreConflict =>
           WorkspaceConsumerRefused { reason: "workspace store conflicts exhausted the retry law" }
@@ -182,7 +188,7 @@ fn workspace_consumer_retire(store: FabricStorageBinding, owner: PrincipalRef,
           Present { value: _ } => WorkspaceConsumerRoute { allocation: current }
           Absent => workspace_consumer_settlement_result(result: workspace_consumer_write_until_law(
             kind: WorkspaceWriteSettleUnplanned, store: store, owner: owner,
-            idempotency_key: idempotency_key, observed_at: observed_at, at: 0,
+            idempotency_key: idempotency_key, observed_at: observed_at,
           ))
         } }
       } }
