@@ -4,7 +4,7 @@
 
 The document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it, or an independent peer, never a restatement. The principles apply to this document too.
 
-It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); declared rung drops in [docs/design-rung-drops.md](docs/design-rung-drops.md) (`gunbc.rung_drop`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. Plans live under `docs/plans/`, linked from the section that governs them.
+It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); declared rung drops under `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. A plan's authority is its `.dag` carrier; generated plan markdown whose only consumer is ProjectDocumentation is not a checkout artifact (ruling `gunbc.design_ruling project_documentation_projections_are_not_checkout_artifacts`). Write it on demand (`gunbc.instruments.generated_artifact_gate` `documentation_wet`). Plans that still project committed markdown stay linked from the section that governs them.
 
 ---
 
@@ -52,7 +52,7 @@ Single authority governs meaning, not only symbols. Nicknaming's dual is a **mea
 
 Two corollaries. The import graph's only structural law is **acyclicity**: the `std`/`extdeps`/`compiler`/`workflow` folders are browsing conventions, not a direction rule. And a fact's home is its *layer*, not its file.
 
-**The name-to-path mapping is a single authority too, and it runs one way.** Module `a.b.c` is stored at `<root(a)>/b/c.dag`, where `root(v2)` is `src/v2` and `root(a)` is `dag/a` for every other top-level namespace: paths follow names, never the reverse. A location that must be read out of a file is a second authority for one fact, and makes finding one module cost reading all of them (§2). Which namespaces exist is declared top-down in `gunbc.source_layout`, and a file outside that layout is not compilable. The rule fixes where a module is stored, not which way imports point: acyclicity stays the import graph's only structural law, and the cross-tree direction stays an import-model fact (`v2.std.cross_tree.import_model` `cross_tree_import_admitted`), enforced through the storage lookup. The argument and the one-PR cutover that brings the corpus under the rule: → [source layout authority](docs/plans/source-layout-authority.md).
+**The name-to-path mapping is a single authority too, and it runs one way.** Module `a.b.c` is stored at `<root(a)>/b/c.dag`, where `root(v2)` is `src/v2` and `root(a)` is `dag/a` for every other top-level namespace: paths follow names, never the reverse. A location that must be read out of a file is a second authority for one fact, and makes finding one module cost reading all of them (§2). Which namespaces exist is declared top-down in `gunbc.source_layout`, and a file outside that layout is not compilable. The rule fixes where a module is stored, not which way imports point: acyclicity stays the import graph's only structural law, and the cross-tree direction stays an import-model fact (`v2.std.cross_tree.import_model` `cross_tree_import_admitted`), enforced through the storage lookup. The argument and the one-PR cutover that brings the corpus under the rule: `gunbc.plans.source_layout_authority`.
 
 The load-bearing consequence: **interface, realization and policy are three facts.** `extdeps/` owns a dependency's *interface shape*; *transport* (shell, REST, SDK) is one of N handlers bound to it; *business policy* (which base ref, which flag) is a workflow fact. Policy has leaked when an argv carries a literal it should receive as a parameter; transport has fused when an operation is forked per transport. **The dispatch that selects a realization is itself realization**, so it sits peripheral.
 
@@ -180,7 +180,11 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 
 **Owns.** Selection, allocation, placement and admission of compute resources. product.capacity and product.fabric are the shared authority, consumed by compute cells and by inference serving.
 
-**Boundary.** Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).
+**Boundaries.**
+
+- Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).
+- Whether a choice is attributable to its objective, constraints, candidates and evidence belongs to the decision / selection domain and std.decision; this row only checks that a resource choice reaches that authority with the work's declared objective rather than a local one.
+- Buyer headroom (what a demand will pay minus a supplier's ask) is not margin: product.fabric.contention withdrew that reading, so a matching change may not book it as earned.
 
 **Existing authorities**
 
@@ -188,6 +192,8 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
   - `product.fabric.selection::select_supply`
   - `product.fabric.work::ExecutionRequirements`
   - `gunbc.compute.work_request::WorkOperation`
+  - `product.fabric.contention::select_demand_for_offer`
+  - `gunbc.ci.ci_runner_target::CiRunnerTarget`
 - **Compute cells** — layout, reservation and admission
   - `gunbc.compute.work_provider_local::ComputeLayout`
   - `gunbc.fabric.fabric_control_plane::CellReservation`
@@ -201,7 +207,7 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 
 ### Decision / selection
 
-**Owns.** A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority.
+**Owns.** A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority. Every use case that matches demand with supply or chooses how a demanded result is realized onboards here, through one interface rather than its own scoring: it supplies the required outcome, the owners' objectives and time valuations, the constraints and commitments, and each candidate's consequences as readings on declared axes, then realizes and reads back the selected plan. Fabric allocation, CI runner placement, compute sold beside internal work, standing buy orders matched against a scanned marketplace, and eval realization are named consumers. A rough estimate is an admitted reading with its standing, and improving it does not create a new choosing mechanism.
 
 **Boundaries.**
 
@@ -227,7 +233,7 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Boundaries.**
 
 - Faithfully realizing an admitted identity belongs to materialization / realization.
-- Demand identity and the dependency read set are a declared frontier, entering when M1 of [demand-engine-program.md](docs/plans/demand-engine-program.md) lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).
+- Demand identity and the dependency read set are a declared frontier, entering when M1 of `gunbc.plans.demand_engine_program` lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).
 
 **Existing authorities**
 
@@ -322,7 +328,7 @@ Four meta-obligations make the ladder operational:
 
 At a service boundary rung honesty is commercial: an opaque dimension needs a falsifiable quality floor with a named consequence (billing, remedy or refusal), or the claim is marketing. Below-floor delivery refuses or discharges the remedy; materially different delivery is its own named, priced product; losing the ability to verify a floor is a declared drop that may force refusal and never licenses silent below-floor delivery.
 
-Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_failure_mode`): invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in full in [docs/design-rung-drops.md](docs/design-rung-drops.md) (`gunbc.rung_drop`). The two are separate because they are appended separately, and this document names neither population so that an append never regenerates it.
+Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_failure_mode`): invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate` `regen`). The two are separate because they are appended separately, and this document names neither population so that an append never regenerates it.
 
 **The floor first, the differentiator above it.** gunbc must hold the ordinary compiler floor — names resolve, applications bind in exact bijection, values inhabit declared types, fields exist, closed variants eliminate exhaustively — and no higher capability compensates a failure there. Above it, because the substrate carries causal, cardinality, algebraic, effect, ownership, cost and realization facts, the ladder reaches classes ordinary compilers leave to tests and postmortems: an empty collection into a nonempty consumer, recursion without descent proof, a non-idempotent effect under retry, a blown complexity bound, a realization that does not preserve behavior.
 
@@ -421,7 +427,7 @@ One file per class under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_f
 
 ## Building & checks
 
-The CI contract. From a bare clone, start at [docs/onboarding.md](docs/onboarding.md) (`gunbc.contributor_onboarding_path`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document.
+The CI contract. From a bare clone, start at `gunbc.contributor_onboarding_path` (combined view: `gunbc.instruments.docs_projection_gate` `regen`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document.
 
 - **CI is one required job.** `gunbc.witness.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `witnesses`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no `witnesses` check — unobserved, not excused.
 - **A non-required job repairs two generated populations and judges nothing.** `gunbc.heal_workflow` runs on same-repository pull requests that touch the generation inputs, converges the stage0 mirrors to the seed's own fixed point and rewrites the seed-build artifacts, and `gunbc.heal_publisher_workflow` pushes the result as one bot commit, compare-and-set on the head, with a receipt naming each artifact. A fork pull request gets a notice, and a non-converging round pushes nothing. `gunbc.drift_watch_workflow` runs on a schedule, reads the default branch and fails with one typed, located finding per drifted workflow, runner sudoers, githook, `.gitignore`, `.gitattributes` or fci1 context, each naming its remedy (`gunbc.tier_o_artifact_emit` `tier_o_artifacts`); it writes nothing. Neither is a required context and neither refuses a merge; every other generated artifact is left to its author (`gunbc.rung_drop` `v1_required_lanes_withdrawn`); the two added jobs are recorded at (ruling `gunbc.design_ruling regeneration_jobs_added_to_roster`).
