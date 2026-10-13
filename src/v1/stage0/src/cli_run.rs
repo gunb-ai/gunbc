@@ -22984,21 +22984,31 @@ fn trim_retained_heap() -> Option<u64> {
 /// Reading a Linux value as bytes would understate peak residency 1024x, in the direction
 /// that looks survivable.
 pub fn peak_rss_vhwm_bytes() -> Option<u64> {
+    // LINUX: THE NEW ADDRESS SPACE'S OWN HIGH-WATER, NOT `ru_maxrss`. Linux seeds a process's
+    // `ru_maxrss` at exec from the high-water of the address space it replaces, so a process spawned
+    // from a large parent reads the parent's peak (`gunbc.recurring_failure_mode`
+    // `a_child_peak_resident_inherits_the_predecessor_address_space`). `VmHWM` belongs to the mm the
+    // exec created and is not inherited. A missing field is None, never a fabricated zero.
+    #[cfg(target_os = "linux")]
+    {
+        return proc_status_kb_field("VmHWM").filter(|b| *b > 0);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        peak_rss_getrusage_bytes()
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn peak_rss_getrusage_bytes() -> Option<u64> {
     // SAFETY: `ru` is a live, fully-owned zeroed `rusage`; `getrusage` only writes it.
     let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
     let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
     if rc != 0 || ru.ru_maxrss <= 0 {
         return None;
     }
-    let raw = ru.ru_maxrss as u64;
-    #[cfg(target_os = "macos")]
-    {
-        Some(raw)
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Some(raw.saturating_mul(1024))
-    }
+    // Darwin reports bytes (extdeps.darwin.rusage); other non-Linux hosts are not modeled.
+    Some(ru.ru_maxrss as u64)
 }
 
 fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
@@ -41057,4 +41067,61 @@ mod collect_node_values_depth_tests {
 
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+}
+
+/// THE CONTROL FOR `a_child_peak_resident_inherits_the_predecessor_address_space`: a tiny child under
+/// a large parent must read small. The parent touches 512 MiB and keeps it live, spawns this test
+/// binary as the child, and the child reports `peak_rss_vhwm_bytes` beside the raw `ru_maxrss` it
+/// would have reported before the fix. The child's own peak is a few MiB; the parent's is over 512.
+#[cfg(all(test, target_os = "linux"))]
+mod peak_resident_inheritance_control_tests {
+    const CHILD: &str = "GUNBC_PEAK_RSS_CONTROL_CHILD";
+    const PARENT_BYTES: usize = 512 * 1024 * 1024;
+
+    #[test]
+    fn peak_rss_vhwm_bytes_is_not_the_spawning_parents() {
+        if std::env::var(CHILD).is_ok() {
+            let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+            unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
+            println!(
+                "PEAK_CONTROL vmhwm={} raw_ru_maxrss={}",
+                super::peak_rss_vhwm_bytes().expect("VmHWM readable"),
+                (ru.ru_maxrss as u64) * 1024
+            );
+            return;
+        }
+        let mut big = vec![0u8; PARENT_BYTES];
+        for page in big.chunks_mut(4096) {
+            page[0] = 1;
+        }
+        let out = std::process::Command::new(std::env::current_exe().expect("test exe"))
+            .args([
+                "--exact",
+                "cli_run::peak_resident_inheritance_control_tests::peak_rss_vhwm_bytes_is_not_the_spawning_parents",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("child process");
+        std::hint::black_box(&big);
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let line = text
+            .lines()
+            .find_map(|l| l.find("PEAK_CONTROL").map(|at| &l[at..]))
+            .unwrap_or_else(|| panic!("child printed no reading: {text}"));
+        eprintln!("{line}");
+        let field = |name: &str| -> u64 {
+            line.split_whitespace()
+                .find_map(|f| f.strip_prefix(name))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(|| panic!("no {name} in {line}"))
+        };
+        let vmhwm = field("vmhwm=");
+        assert!(vmhwm > 0, "a Measured peak must exist: {line}");
+        assert!(
+            vmhwm < (PARENT_BYTES as u64) / 2,
+            "the child's own peak read as the parent's: {line}"
+        );
+    }
 }
