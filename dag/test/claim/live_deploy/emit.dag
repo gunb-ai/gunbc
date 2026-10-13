@@ -7,7 +7,7 @@ import gunbc.live_deploy.member_identity {
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_emitted_steps_text, apply_empty_host_effects, claim_oidc_now }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_emitted_steps_text, apply_emitted_steps_text_at, apply_empty_host_effects, claim_oidc_now }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
@@ -983,7 +983,7 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
   spec_owned_paths(spec: twin) == reverse(applied_paths)
 }
 
-data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the EMITTED TEXT rather than the declared member list. It asserts over what apply and retract actually emit that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nTHE APPLY HALF READS THE STEP PROJECTION, NOT THE ASSEMBLED PROGRAM (2026-09-14). test.claim.live_deploy.apply_emission_projection apply_emitted_steps_text flat-maps `apply_step_effects` over `spec.steps` — the same function over the same population in the same order that `apply_intent_from_effects` uses — with ONE input mocked: the membership effects, which in production come from observing the host and here are an empty host. So the dispatch is production's, and the strings asserted below are the bytes production's own producers emit. What it drops is the program FRAME (the shell options line, the generated-by comments, the stage trap, the sudoers preamble, the cap step, the receipt), and no conjunct here names any of them. The reason is a cost ceiling rather than a modeling one, and it is stated at that module's header: one render of the assembled apply is ~194,000 eval steps against a per-claim ceiling of 72,300. The retract half still reads the assembled script, because retract has no such projection and no claim here needed one.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
+data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the EMITTED TEXT rather than the declared member list. It asserts over what apply and retract actually emit that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nTHE APPLY HALF READS THE STEP PROJECTION, NOT THE ASSEMBLED PROGRAM (2026-09-14). test.claim.live_deploy.apply_emission_projection apply_emitted_steps_text is compose_host_script_mutate_steps over apply_intent_fragments — the mutate half apply_intent_from_effects hands to compose_host_script — with ONE input mocked: the membership effects, which in production come from observing the host and here are an empty host. So the dispatch is production's compose drop, and the strings asserted below are the bytes production's own producers emit when every Decide proceeds. Decide-only frame comments are outside this text. The reason is a cost ceiling rather than a modeling one, and it is stated at that module's header: one render of the assembled apply is ~194,000 eval steps against a per-claim ceiling of 72,300. The retract half still reads the assembled script, because retract has no such projection and no claim here needed one.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
 
 test fn production_apply_carries_its_own_handler_and_tree_sync_env() -> Bool {
   let live = apply_emitted_steps_text(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
@@ -1892,6 +1892,21 @@ test fn a_refused_serve_unit_is_not_reloaded_enabled_or_restarted() -> Bool {
       Decide { member: _, standing: _, steps: _ } => false
     })
     && !string_contains(s: pipeline_steps_text(steps: retract_pipe.steps), pattern: join(["restart ", unit], ""))
+}
+
+// THE SHARED PROJECTION MUST SEE COMPOSE'S DROP. A refusing OIDC clock (Absent) is one member's
+// Decide. compose_host_script_mutate_steps then emits no Mutate for any other member. RED if
+// apply_emitted_steps_text_at still flat-maps apply_step_effects: the twin's handler would remain
+// in the refused text after oidc emptied.
+test fn a_refused_oidc_clock_projects_no_other_member_mutates() -> Bool {
+  let spec = srv1_twin_spec()
+  let plan = deploy_witness_full_install_plan(spec: spec)
+  let other_member = "--function roadmap_serve_handle_srv1_lab "
+  let proceeding = apply_emitted_steps_text_at(spec: spec, plan: plan, oidc_now: claim_oidc_now())
+  let refused = apply_emitted_steps_text_at(spec: spec, plan: plan, oidc_now: Absent)
+  string_contains(s: proceeding, pattern: other_member)
+    && refused == ""
+    && !string_contains(s: refused, pattern: other_member)
 }
 
 // ── THE ADDITIVE INSTALL TOUCHES THE ROADMAP UNIT IN NO WAY ─────────────────────────────────

@@ -146,13 +146,17 @@ fn claim_oidc_now() -> Second? {
   tracker_web_test_console_readback_observed_at_epoch
 }
 
-fn apply_emitted_steps_text(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
+fn apply_emitted_steps_text_at(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> String {
   pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: apply_intent_fragments(
     spec: spec,
     effects: apply_empty_host_effects(spec: spec),
     access: ci_deploy_srv1_access,
     plan: plan,
     cap_authorization: CapConvergeWithheld { cause: "apply emission projection" },
-    oidc_now: claim_oidc_now(),
+    oidc_now: oidc_now,
   )))
+}
+
+fn apply_emitted_steps_text(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
+  apply_emitted_steps_text_at(spec: spec, plan: plan, oidc_now: claim_oidc_now())
 }
