@@ -44,7 +44,7 @@ test fn a_one_element_free_semigroup_is_accepted() -> Bool {
 // FreeSemigroup position is DeclaredTypeNotInhabited: that inhabitance seam is still
 // silent (receipt on gunbc.recurring_failure_mode.a_possibly_empty_producer_enters_a_nonempty_consumer;
 // next-rung trigger cardinality-vertical-slice).
-test fn an_empty_conformance_home_list_refuses_inhabitance() -> Bool {
+test fn a_missing_head_free_semigroup_refuses_construction() -> Bool {
   match compile_dag_diagnostic_census(missing_head_source()) {
     CensusNotRunnable { cause: _ } => false
     CensusObserved { rows: red } => match compile_dag_diagnostic_census(one_element_source()) {
