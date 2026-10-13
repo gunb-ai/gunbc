@@ -2364,6 +2364,101 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     roadmap_node(
+      identity: "rn_B7B9QVT0KCWB5PVWG9SE6PHFS7",
+      id: "emission-minimum-cost",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/emit_copy_qualification.dag"),
+      line: ticket(t: level_fields(
+          headline: "Every .dag building block has an understood, minimum-cost Rust realization, proven by execution, and larger programs inherit it",
+          boundary: "The .dag core is small and fold-heavy: Node and Edge, Value, Transform, Branch, Loop, Bind and Match, plus record and variant construction, field reads, generic instantiation and closures. Each of those building blocks gets a stated realization contract (what it may allocate, copy, retain or share, and why) and an executing specimen that holds it, through the real emitter, an untouched emitted crate, a release build and a run. Composite patterns are qualified only on top of qualified building blocks. The contracts are stated against the source construct, not against Rust spelling, so a later target adds realization rows under the same contracts. Rust is the first target.",
+          approach: "Bottom-up. First the single building blocks (emission-building-block-realization), then the frontend and lowering facts their failures trace to (emission-ownership-facts-survive-lowering), then composite patterns built only from qualified blocks (emission-composite-patterns), then real consumers profiled against those contracts (emission-real-consumer-profiles), then the same specimens through the v2 emitter and its successor (emission-cost-native-successor). gunbc.emit_copy_qualification is the existing cost model and is extended, never forked; its battery has never executed (gunbc.rung_drop.emit_copy_qualification_without_a_consumer), and this project is what restores it.",
+          red_control: "A building block or composite whose contract is stated but whose specimen did not execute through the production emitter reads unqualified, never qualified. A deliberately violating realization (a redundant owning retain on an observation, a copied accumulated prefix, a mutated retained snapshot) must turn its control red through the same observation path that greens the valid one.",
+          displaced_cost: "The emitter's ownership and allocation choices are not stated anywhere a reader can check, so the cost of a .dag program is discovered after the fact. Receipt: the native parse-population control (v2.cli.population_verbs) added about 15 minutes to every pull request's witnesses run once it walked the whole corpus, and nobody could say from the source which part of that cost was the algorithm and which was the realization.",
+          handback: "Every building block and composite family in this project reads qualified by execution under both the seed-emitted and the v2-emitted producer, and gunbc.rung_drop.emit_copy_qualification_without_a_consumer is retired by its own trigger."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "v2 is meant to be better than the seed, not only to compile. A self-hosted compiler whose emitted code has no stated cost cannot scale to the corpus it compiles, and a fold-heavy language only stays cheap if its few building blocks are."),
+    ),
+    roadmap_node(
+      identity: "rn_90MWFH4W3TY4WJCEYX1YEHBPKA",
+      id: "emission-building-block-realization",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/emit_copy_qualification.dag"),
+      line: ticket(t: fields(
+        headline: "Each .dag building block, alone, emits Rust whose ownership and allocation are stated and checked by execution",
+        boundary: "One minimal specimen per building block: a Value (scalar, record, nonrecursive variant, generic instance over a scalar and over a nontrivial payload), a Transform, a Branch, a Loop with a record accumulator, a Bind, a Match, a field read, a record rebuild with one field changed, and a local and an escaping closure. Each carries a contract in gunbc.emit_copy_qualification terms (OwnershipPattern, CarrierRealization, ControlShape, ConsumerContract): which operations may allocate, copy a payload or take an owning reference, and which may not. The specimen is ordinary .dag compiled by the production frontend and emitter into an untouched crate, built in release, and run with allocation and owning-retain counters; the counters and the emitted ownership operations are both read, because neither alone establishes the contract.",
+        displaced_cost: "Today a reader cannot say what a record rebuild or a fold step costs in emitted Rust without reading generated code, and the seed's habits (an Rc around every record, a .clone() at every read) are inherited by every program above them unexamined.",
+        first_slice: "Three building blocks end to end: a read-only observation of a large value, a loop-carried record accumulator with unchanged context, and a record rebuild with one field changed. Each lands with its contract, its specimen, its violating variant and the run that discriminates them.",
+        red_control: "For each specimen a violating variant goes through the same path and goes red: an owning retain added to the observation, a per-step allocation of the accumulator, a copy of the unchanged context. A contract whose specimen did not execute reads unqualified.",
+        out_of_scope: "Composite patterns (emission-composite-patterns). Repairing the emitter (emission-ownership-facts-survive-lowering). Partial evaluation or specialization of constant data: the reference realization executes the same algorithm as the source.",
+        handback: "The building-block contracts, their executing specimens and violating variants, and the measured realization of each under the seed emitter, including the ones that currently fail."
+      )),
+      parent: in_project(project: "emission-minimum-cost", contribution: "The building blocks are the floor: every larger pattern's cost is only explainable if these are."),
+    ),
+    roadmap_node(
+      identity: "rn_N8V3A6H9W3XX87NPVJ81E78M5X",
+      id: "emission-ownership-facts-survive-lowering",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/compiler/wrap_decision.dag"),
+      line: ticket(t: fields(
+        headline: "The facts a minimum-cost realization needs reach the emitter: what a use observes, transfers, retains, and which uses coexist",
+        boundary: "For each building-block contract that fails, find the earliest stage that lacks or discards the needed fact (DESIGN section 6b) and repair it there, with its consumer and a discriminating source-to-Rust control in the same change. The facts in scope are use kind (observe, transfer, retain, consume), coexistence across branches and joins, escape of closures and fields, and liveness across a loop step. The v1 model conflates a use proven not to consume with a use never classified (Read in src/v1/ownership.dag); v2 must keep unknown distinct from proven, so an unknown neither becomes an unsafe borrow nor an expensive default reported as minimum cost. v2.compiler.translate and v2.compiler.wrap_decision already consume representation decisions and are extended, not paralleled.",
+        displaced_cost: "Without the facts, the emitter can only choose the safe expensive realization everywhere, and every future emitter (a second target, the v2 successor) rediscovers the same missing facts.",
+        first_slice: "Trace the first failing contract from emission-building-block-realization to its earliest unjustified boundary and land that one fact with its consumer and control.",
+        red_control: "A repaired fact with no consumer in the emitter is dangling and refuses review. A use whose classification is unknown is emitted with the conservative realization and is counted as unknown, never as qualified.",
+        out_of_scope: "Rewriting generated Rust by hand or by a post-pass. Name-keyed shortcuts (recognizing a function name and applying a special realization).",
+        handback: "Each repaired fact, the stage that now carries it, its consumer, and the building-block contract that turned green because of it."
+      )),
+      parent: in_project(project: "emission-minimum-cost", contribution: "Contracts expose where cost is lost; this node repairs the loss at its source so every program benefits."),
+    ),
+    roadmap_node(
+      identity: "rn_PF21EXV44N0VP89DSHTG1E8ZNM",
+      id: "emission-composite-patterns",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/emit_copy_qualification.dag"),
+      line: ticket(t: fields(
+        headline: "Composite patterns built only from qualified building blocks keep the blocks' costs",
+        boundary: "About ten small specimen families, each composed from building blocks already qualified: read-only fan-out, read then project then transfer, branch split and join, loop-carried state, unique sequence and text construction, persistent update with a retained old version, closure capture and invocation, a data-driven rule interpreter over runtime-supplied rules, and a parallel diamond. Each states which costs are necessary (a retained snapshot, a genuinely shared child, a task boundary) and which are not. Text specimens include multibyte Unicode and check byte spans separately from character positions; collection specimens use sizes on both sides of the pinned collection implementation's representation transitions, not only the existing 0, 4, 16, 64 grid.",
+        displaced_cost: "Without composites, a qualified block can still be realized expensively once combined (a branch join that manufactures sharing, a closure that clones its environment per call), and that is where real programs spend.",
+        first_slice: "Read-only fan-out, loop-carried state and unique sequence construction, each with its snapshot or violating control.",
+        red_control: "A composite whose cost exceeds the sum of its qualified blocks' contracts without a stated necessary cost goes red. A snapshot specimen in which the old version is changed goes red even if it is faster.",
+        out_of_scope: "Qualifying building blocks (emission-building-block-realization). Changing the algorithm a specimen executes.",
+        handback: "The composite families, their stated necessary costs, and their executing controls."
+      )),
+      parent: in_project(project: "emission-minimum-cost", contribution: "Composites prove the blocks compose: confidence in a small set of patterns only holds if combining them adds no hidden cost."),
+    ),
+    roadmap_node(
+      identity: "rn_4FHSKX20JR8S9SGE3E7GEG1S73",
+      id: "emission-real-consumer-profiles",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/compiler/tokenize.dag"),
+      line: ticket(t: fields(
+        headline: "Real emitted hot paths are profiled against the building-block contracts and their cost is attributed to the realization or the algorithm",
+        boundary: "Profile the emitted v2 lexer and parser (the parse-population verb over the live roots), one compiler graph traversal and one scheduler payload path, using the actual emitted artifacts. Each hot spot is attributed to a building-block or composite contract it violates, or to the algorithm itself. A realization defect becomes a row for emission-ownership-facts-survive-lowering; an algorithmic cost (interpreting constant rules per character) is recorded separately and only then considered for preparation or specialization.",
+        displaced_cost: "The parse-population control costs about 15 minutes on every pull request and its split between realization and algorithm is unknown, so any fix today is a guess at the measured link (DESIGN section 6b, measurement is the adversary).",
+        first_slice: "Profile parse-population on a fixed set of large modules and split time between lexing, parsing and allocation, citing the producing run.",
+        red_control: "A claimed speedup must name the contract or algorithmic change it comes from and show the old computation gone; an improvement on a small specimen is not evidence for the consumer.",
+        out_of_scope: "Reducing what the CI population control covers; that is a CI scope decision outside this project.",
+        handback: "Per consumer, the attributed profile and the contract rows or algorithmic findings it produced."
+      )),
+      parent: in_project(project: "emission-minimum-cost", contribution: "Real consumers are the test that the building blocks were the right ones and that qualifying them actually moved production cost."),
+    ),
+    roadmap_node(
+      identity: "rn_W009PFM599AS8444GNDVTE2D3F",
+      id: "emission-cost-native-successor",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/emitted_subject_build_gate.dag"),
+      line: ticket(t: fields(
+        headline: "The qualified specimens hold under the v2 emitter and its successor, on the required route",
+        boundary: "Run the building-block and composite specimens through the seed-emitted subject, the v2-emitted subject and the successor-v2-emitted subject, with producer identity on every result; an unsupported route reads unqualified and never substitutes the seed. The battery joins the required route as a row judged through gunbc test, not as a new job (the job roster is closed to growth).",
+        displaced_cost: "A qualification that only holds for the seed's emitter is lost at promotion, which is exactly when the seed stops being available to compare against.",
+        first_slice: "The first-slice building-block specimens run under the v2-emitted subject with producer identity recorded.",
+        red_control: "A result whose producer is the seed while the run claims the v2 emitter refuses. A specimen that is qualified under the seed and unqualified under v2 blocks promotion of that claim.",
+        out_of_scope: "Adding a CI job.",
+        handback: "The specimens qualified under both producers, the required-route row, and gunbc.rung_drop.emit_copy_qualification_without_a_consumer retired."
+      )),
+      parent: in_project(project: "emission-minimum-cost", contribution: "Carries the qualification across self-hosting so it survives the seed's retirement."),
+    ),
+    roadmap_node(
       identity: "rn_GG8OZ558D0UB3R98N5MQCDPKB",
       id: "ci-end-to-end-execution",
       owner: "ci-control",
@@ -2586,7 +2681,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/compiler_frontend_program_interlock.dag"),
       line: ticket(t: level_fields(
           headline: "The new compiler is the one that runs",
-          boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its seven member projects.",
+          boundary: "v2 reads, names, types and emits the whole corpus. It builds itself, then rebuilds itself. It is the required native route, admitted for production, and the v1 seed is retired. No work sits on this node; the work lives in its eight member projects.",
           approach: "Order: frontend first (the native seven, then the whole corpus), then generations (a second build made by the built CLI), then the native route made required and admitted (D10), then the seed retired. The namespace cutover (XL-6/XL-7) comes after seed retirement. gunbc.compiler_frontend_program_interlock owns this order, and this node does not restate it.",
           red_control: "Seed retirement stays unreachable while any SelfHostSeedRetirement prerequisite in gunbc.compiler_frontend_program_status reads OUTSTANDING. A v2 task whose membership walk does not reach this node refuses as unrooted.",
           displaced_cost: "v2 work is spread over about 12 disconnected roadmap components, and the page's focus filter hid most of them. So nobody can tell whether a v2 PR moves the compiler closer to running.",
@@ -4578,6 +4673,9 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-mercurial-upstream-model", parent: "fabric-bringup"),
     edge(child: "2-scm-pijul-upstream-model", parent: "fabric-bringup"),
     edge(child: "2-claim-indexed-evidence", parent: "fabric-bringup"),
+    edge(child: "emission-ownership-facts-survive-lowering", parent: "emission-building-block-realization"),
+    edge(child: "emission-composite-patterns", parent: "emission-building-block-realization"),
+    edge(child: "emission-cost-native-successor", parent: "emission-composite-patterns"),
     edge(child: "fabric-consequence-standing", parent: "fabric-demand-objective"),
     edge(child: "fabric-dimension-extension-law", parent: "fabric-consequence-standing"),
     edge(child: "fabric-scenario-evaluation", parent: "fabric-consequence-standing"),
