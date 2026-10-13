@@ -48,7 +48,7 @@ import product.fabric.flex_policy {
   FlexNewAcquisition, FlexExistingAcquisition, AcquisitionActive, AcquisitionPending,
   occupancy_sum, FlexOccupancySummed,
   FlexOnDemandReference, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
-  FlexOnDemandReferenceMissing,
+  FlexOnDemandReferenceMissing, FlexActuationDry,
   FlexHorizonPriced, FlexHorizonUnobserved, FlexHorizonRefused,
   FlexMarketPriceUnobserved, FlexMarketQuoteCurrencyMismatch,
   flex_bid_admission, flex_price_offer,
@@ -168,6 +168,7 @@ fn t_policy(cap: MoneyPerHour) -> FlexPolicy {
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
+    actuation: FlexActuationDry,
   }
 }
 
@@ -181,6 +182,7 @@ fn t_policy_eur(cap: MoneyPerHour) -> FlexPolicy {
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
+    actuation: FlexActuationDry,
   }
 }
 
@@ -405,6 +407,7 @@ fn vast_min_sample() -> VastAiOffer {
     storage_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 3 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 3 },
+    gpu_ram: 24576,
   }
 }
 

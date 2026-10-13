@@ -1,0 +1,542 @@
+module test.claim.fabric.flex_vast_shadow_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, List, Bool, Int, String }
+import std.nat { Nat }
+import std.decl_ref { decl_ref }
+import std.decimal { ExactDecimal }
+import std.measure {
+  MoneyRate, MoneyPerHour, MoneyAmountMicro,   money_amount_micro, money_amount_micro_count,
+  second, hardware_thread_count, byte_size_count, gibibyte, gibibyte_to_byte_size,
+}
+import extdeps.currency.currency { Usd }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.work {
+  Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
+  ControlPlaneCapacity, RevocationAccepted, RevocationStanding,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply {
+  SupplierOffer, QuotedPerHour, ObservedSupply, StableRosterOrder, PlacementAffinityKey,
+}
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound,
+  DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse, PermitNamesAnotherOffer,
+  PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
+  AvailableRevocable, AvailableIndefinitely, PayAsYouGo, StartCostMeasured,
+  NoTransitionRequired, OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
+}
+import product.fabric.budget { MoneyAccount }
+import product.fabric.flex_policy {
+  FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
+  FlexScreenedCandidate, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused,
+  FlexNewAcquisition, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
+  FlexOnDemandReferenceMissing, FlexActuationDry, FlexActuationWet,
+  flex_machine_key_eq,
+}
+import product.fabric.flex_market {
+  FlexMarketQuoted, FlexBidLevelMarket, flex_owner_label_gunbc_flex,
+}
+import product.fabric.flex_vast_shadow {
+  flex_trial_fleet_rate_cap, flex_trial_total, flex_trial_policy, flex_objective,
+  flex_qwen_serving_template, flex_ninfer_min_driver, flex_vllm_min_driver,
+  FlexNinfer, FlexVllm, flex_engine_min_driver,
+  flex_gpu_class_rtx_5000_48gb, flex_gpu_class_72gb, flex_gpu_class_rtx_pro_6000_96gb,
+  flex_gpu_class_matches, flex_offer_supported, flex_offer_in_shadow_field,
+  flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
+  flex_vast_api_read_grant, flex_host_driver_unread_frontier, flex_delay_unvalued,
+  FlexCreateLost, FlexCreateRefused, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
+  flex_reconcile_acquisition,
+  flex_qwen_serving_image, flex_qwen_published_tcp_port, flex_qwen_disk, flex_qwen_model_id,
+  flex_qwen_reasoning_parser, flex_qwen_tool_call_parser, FlexQwenProbeConfirmed, FlexQwenProbeUnconfirmed,
+  flex_rented_card_fungible, flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable,
+  FlexWriteBlockedOverCap, FlexWriteWetUnwired, FlexInstanceListRead, FlexInstanceListUnreadable,
+  flex_rental_readback, FlexRentalHeld, FlexRentalPending, FlexRentalUnknown, FlexRentalGone,
+  flex_search_offers_inhabitance_frontier, flex_m3_rent_cooldown_starts_at_ask,
+  flex_m3_pass_stops_at_first_failure, flex_qwen_probe_harness_placement_frontier,
+  flex_wet_create_release_consumer_frontier,
+  flex_release_readback, FlexReleaseRequested, FlexReleaseLost, FlexReleasePending,
+  FlexReleaseConfirmedGone, FlexReleaseUnknown, flex_record_pass,
+}
+import std.rational { NonzeroNatFraction }
+import std.dissolution { UnboundDissolution, BoundDissolution }
+import extdeps.cloud.vast_ai {
+  VastAiOffer, VastAiInstance, vast_ai_search_type_bid, vast_ai_quote_currency,
+}
+import std.decision { CostPerAcceptedUnit, NetValue }
+import test.claim.fabric.provider_use_fixture {
+  fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
+}
+import gunbc.secret_provision { fleet_secret_ref }
+import gunbc.harness.harness_operator_route { harness_operator_route }
+import gunbc.auth.gcp_secret_access { secret_accessor_grant }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn t_caps() -> CapabilityManifestRef { "gunbc.capabilities.linux-rust-toolchain" }
+fn t_trust() -> TrustDomainRef { "gunbc.trust.internal-fleet" }
+
+fn t_reqs() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) }, envelope: unstated_envelope() },
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    revocation: RevocationAccepted,
+  }
+}
+
+fn usd_hour(amount: MoneyAmountMicro) -> MoneyPerHour {
+  MoneyPerHour { amount: amount, currency: Usd }
+}
+
+fn t_offer(key: OfferKey, rate: MoneyPerHour) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: key },
+    executor: "gunbc",
+    route: fixture_route(),
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 64) }, envelope: unstated_envelope() },
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    quantity_bound: 1,
+    ready_at: "2026-10-13T00:00:00Z",
+    quote: QuotedPerHour(rate),
+    billing_quantum: second(count: 3600),
+    evidence: ObservedSupply { observed_at: "2026-10-13T00:00:00Z", receipt: "obs-shadow" },
+  }
+}
+
+fn t_bound(offer: SupplierOffer<NonEmptyStr>, revocable: Bool) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: DispatchInputs {
+      offer: offer.id,
+      availability: if revocable {
+        AvailableRevocable { delay: second(count: 0), receipt: "avail-revocable" }
+      } else {
+        AvailableIndefinitely { delay: second(count: 0), receipt: "avail-1" }
+      },
+      commitment: PayAsYouGo,
+      start: StartCostMeasured {
+        amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+        receipt: "start-1",
+      },
+      transition: NoTransitionRequired,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: NoFeasibleAlternativeUse { receipt: "opp-1" },
+    },
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
+  }
+}
+
+fn t_machine(id: NonEmptyStr) -> FlexMachineKey {
+  flex_machine_key(account: "vast-account-1", machine: id)
+}
+
+fn t_account() -> MoneyAccount {
+  MoneyAccount {
+    account: "flex-fleet",
+    currency: Usd,
+    ledger: EncumbranceLedger {
+      appropriation: Appropriation { ceiling: flex_trial_total },
+      entries: [],
+    },
+    leases: [],
+  }
+}
+
+fn empty_occupancy() -> FlexFleetOccupancy {
+  FlexFleetOccupancy { standing: [] }
+}
+
+fn t_window(remaining: Nat) -> FlexAcquisitionWindow {
+  FlexAcquisitionWindow { remaining: remaining }
+}
+
+fn t_attempt(machine: FlexMachineKey, min_bid: ExactDecimal, quote: MoneyPerHour, key: OfferKey) -> FlexBidAttempt<NonEmptyStr> {
+  FlexBidAttempt {
+    machine: machine,
+    min_bid: min_bid,
+    quote_currency: vast_ai_quote_currency,
+    candidates: fold(
+      t_bound(offer: t_offer(key: key, rate: quote), revocable: true),
+      init: [],
+      f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
+    ),
+    subject: FlexNewAcquisition,
+    on_demand_reference: fold(
+      t_bound(offer: t_offer(key: "on-demand-ref", rate: usd_hour(amount: money_amount_micro(count: 2000000))), revocable: false),
+      init: FlexOnDemandReferenceMissing,
+      f: (acc, c) =>
+        match acc {
+          FlexOnDemandReferenceFresh { candidate: existing } =>
+            FlexOnDemandReferenceFresh { candidate: existing }
+          FlexOnDemandReferenceStale { candidate: s } => FlexOnDemandReferenceStale { candidate: s }
+          FlexOnDemandReferenceMissing => FlexOnDemandReferenceFresh { candidate: c }
+        },
+    ),
+    requirements: t_reqs(),
+    reservation: "res-shadow",
+    generation: 1,
+    delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+    tie: StableRosterOrder,
+    affinity: "test.flex.shadow" as PlacementAffinityKey,
+    market: FlexMarketQuoted {
+      median: usd_hour(amount: money_amount_micro(count: 1100000)),
+      level: FlexBidLevelMarket,
+    },
+  }
+}
+
+fn wire_offer(name: String, ram: Int, bid: Bool, rentable: Bool) -> VastAiOffer {
+  VastAiOffer {
+    id: 7,
+    machine_id: 42,
+    gpu_name: name,
+    num_gpus: 1,
+    compute_cap: 1200,
+    gpu_arch: Present { value: "nvidia" },
+    verification: "verified",
+    geolocation: "US",
+    rentable: rentable,
+    rented: false,
+    is_bid: Present { value: bid },
+    min_bid: ExactDecimal { units: 1, fraction_digits: 0 },
+    dph_total: ExactDecimal { units: 2, fraction_digits: 0 },
+    storage_cost: ExactDecimal { units: 15, fraction_digits: 2 },
+    inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
+    inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
+    gpu_ram: ram,
+  }
+}
+
+fn inst(id: Int, machine_id: Int) -> VastAiInstance {
+  VastAiInstance {
+    id: id,
+    machine_id: machine_id,
+    actual_status: Present { value: "running" },
+    gpu_name: "RTX PRO 6000",
+    gpu_ram: 98304,
+    num_gpus: 1,
+    image_uuid: flex_qwen_serving_image as String,
+    is_bid: Present { value: true },
+    min_bid: ExactDecimal { units: 1, fraction_digits: 0 },
+    dph_total: ExactDecimal { units: 1, fraction_digits: 0 },
+    label: none,
+  }
+}
+
+test fn operator_template_and_policy_are_named_facts() -> Bool {
+  (flex_qwen_serving_template.image == flex_qwen_serving_image)
+    && flex_qwen_serving_template.published_tcp_port == flex_qwen_published_tcp_port
+    && byte_size_count(b: flex_qwen_serving_template.disk) == byte_size_count(b: flex_qwen_disk)
+    && (flex_qwen_serving_template.model_id == flex_qwen_model_id)
+    && flex_qwen_published_tcp_port == 8000
+    && byte_size_count(b: flex_qwen_disk) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 32)))
+    && flex_search_type == vast_ai_search_type_bid
+    && flex_engine_min_driver(engine: FlexNinfer) == flex_ninfer_min_driver
+    && flex_engine_min_driver(engine: FlexVllm) == flex_vllm_min_driver
+    && money_per_hour_cap_is_one_fifty()
+    && flex_actuation_mode_default_is_dry()
+    && objective_is_cost_per_accepted_unit()
+    && money_amount_micro_count(m: flex_delay_unvalued.amount) == 0
+    && read_grant_is_accessor()
+    && machine_key_follows_offer_id()
+}
+
+fn read_grant_is_accessor() -> Bool {
+  let target = fleet_secret_ref(secret_id: "fixture-vast-api-key")
+  let expected = secret_accessor_grant(target: target)
+  let grant = flex_vast_api_read_grant(target: target)
+  grant.role == expected.role && grant.target.secret == expected.target.secret
+}
+
+fn machine_key_follows_offer_id() -> Bool {
+  let offer = wire_offer(name: "RTX PRO 6000", ram: 98304, bid: true, rentable: true)
+  flex_machine_key_for_offer(account: "vast-account-1", offer: offer).machine
+    == flex_machine_key(account: "vast-account-1", machine: "42").machine
+}
+
+fn money_per_hour_cap_is_one_fifty() -> Bool {
+  money_amount_micro_count(m: flex_trial_fleet_rate_cap.amount) == 1500000
+}
+
+fn flex_actuation_mode_default_is_dry() -> Bool {
+  match flex_trial_policy.actuation {
+    FlexActuationDry => true
+    FlexActuationWet => false
+  }
+    && write_gate_conjunction()
+    && qwen_probe_refuses_unconfirmed()
+    && frontiers_are_unbound()
+}
+
+fn live_policy() -> FlexPolicy {
+  FlexPolicy {
+    fleet_rate_cap: flex_trial_fleet_rate_cap,
+    on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
+    acquisition_horizon: second(count: 3600),
+    owner: flex_owner_label_gunbc_flex,
+    actuation: FlexActuationWet,
+  }
+}
+
+fn write_gate_conjunction() -> Bool {
+  match flex_write_decision(
+    policy: flex_trial_policy,
+    instances: FlexInstanceListRead { instances: [] },
+    over_cap: false,
+  ) {
+    FlexWriteHeldDry =>
+      match flex_write_decision(
+        policy: live_policy(),
+        instances: FlexInstanceListUnreadable,
+        over_cap: false,
+      ) {
+        FlexWriteBlockedUnreadable =>
+          match flex_write_decision(
+            policy: live_policy(),
+            instances: FlexInstanceListRead { instances: [] },
+            over_cap: true,
+          ) {
+            FlexWriteBlockedOverCap =>
+              match flex_write_decision(
+                policy: live_policy(),
+                instances: FlexInstanceListRead { instances: [] },
+                over_cap: false,
+              ) {
+                FlexWriteWetUnwired => true
+                FlexWriteHeldDry => false
+                FlexWriteBlockedUnreadable => false
+                FlexWriteBlockedOverCap => false
+              }
+            FlexWriteHeldDry => false
+            FlexWriteBlockedUnreadable => false
+            FlexWriteWetUnwired => false
+          }
+        FlexWriteHeldDry => false
+        FlexWriteBlockedOverCap => false
+        FlexWriteWetUnwired => false
+      }
+    FlexWriteBlockedUnreadable => false
+    FlexWriteBlockedOverCap => false
+    FlexWriteWetUnwired => false
+  }
+}
+
+fn qwen_probe_refuses_unconfirmed() -> Bool {
+  !flex_rented_card_fungible(probe: FlexQwenProbeUnconfirmed)
+    && flex_rented_card_fungible(
+      probe: FlexQwenProbeConfirmed {
+        reasoning_parser: flex_qwen_reasoning_parser,
+        tool_call_parser: flex_qwen_tool_call_parser,
+      },
+    )
+    && !flex_rented_card_fungible(
+      probe: FlexQwenProbeConfirmed {
+        reasoning_parser: "other" as NonEmptyStr,
+        tool_call_parser: flex_qwen_tool_call_parser,
+      },
+    )
+}
+
+fn frontiers_are_unbound() -> Bool {
+  match flex_search_offers_inhabitance_frontier {
+    UnboundDissolution { description: _ } => true
+    BoundDissolution { trigger: _ } => false
+  }
+    && match flex_m3_rent_cooldown_starts_at_ask {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
+    && match flex_m3_pass_stops_at_first_failure {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
+    && match flex_qwen_probe_harness_placement_frontier {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
+    && match flex_wet_create_release_consumer_frontier {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
+    && match flex_host_driver_unread_frontier {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
+}
+
+fn objective_is_cost_per_accepted_unit() -> Bool {
+  match flex_objective.measure {
+    CostPerAcceptedUnit { unit: _ } => true
+    NetValue => false
+  }
+}
+
+test fn supported_gpu_classes_screen_offers() -> Bool {
+  flex_gpu_class_matches(
+    offer: wire_offer(name: "RTX 5000 Ada", ram: 49152, bid: true, rentable: true),
+    class: flex_gpu_class_rtx_5000_48gb,
+  )
+    && !flex_gpu_class_matches(
+      offer: wire_offer(name: "RTX 4090", ram: 49152, bid: true, rentable: true),
+      class: flex_gpu_class_rtx_5000_48gb,
+    )
+    && flex_gpu_class_matches(
+      offer: wire_offer(name: "H100", ram: 73728, bid: true, rentable: true),
+      class: flex_gpu_class_72gb,
+    )
+    && flex_gpu_class_matches(
+      offer: wire_offer(name: "RTX PRO 6000 Blackwell", ram: 98304, bid: true, rentable: true),
+      class: flex_gpu_class_rtx_pro_6000_96gb,
+    )
+    && flex_offer_supported(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true))
+    && !flex_offer_in_shadow_field(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: false, rentable: true))
+    && !flex_offer_in_shadow_field(offer: wire_offer(name: "RTX 4090", ram: 24576, bid: true, rentable: true))
+}
+
+test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
+  let observed = [inst(id: 99, machine_id: 42)]
+  let lost = flex_reconcile_acquisition(
+    standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
+    instances: observed,
+  )
+  let refused_empty = flex_reconcile_acquisition(
+    standing: FlexCreateRefused { ask_id: 7, machine_id: 42 },
+    instances: [],
+  )
+  let lost_unseen = flex_reconcile_acquisition(
+    standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
+    instances: [],
+  )
+  (match lost {
+    FlexAlreadyHeld { instance: i } => i.id == 99
+    FlexAcquisitionUnknown => false
+    FlexMayAcquire => false
+  })
+    && (match refused_empty {
+      FlexMayAcquire => true
+      _ => false
+    })
+    && (match lost_unseen {
+      FlexAcquisitionUnknown => true
+      _ => false
+    })
+    && (match flex_rental_readback(
+      standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
+      instances: observed,
+      bound_expired: false,
+    ) {
+      FlexRentalHeld { instance: i } => i.id == 99
+      _ => false
+    })
+    && (match flex_rental_readback(
+      standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
+      instances: [],
+      bound_expired: true,
+    ) {
+      FlexRentalUnknown => true
+      FlexRentalPending { ask_id: _, machine_id: _ } => false
+      FlexRentalHeld { instance: _ } => false
+      FlexRentalGone => false
+    })
+    && release_counts_only_when_confirmed_gone()
+    && excess_demand_uses_operator_share()
+    && dry_pass_records_unreadable_list()
+}
+
+fn release_counts_only_when_confirmed_gone() -> Bool {
+  let held = [inst(id: 99, machine_id: 42)]
+  (match flex_release_readback(
+    standing: FlexReleaseRequested { instance_id: 99 },
+    instances: FlexInstanceListRead { instances: held },
+  ) {
+    FlexReleasePending { instance_id: i } => i == 99
+    FlexReleaseConfirmedGone => false
+    FlexReleaseUnknown => false
+  })
+    && (match flex_release_readback(
+      standing: FlexReleaseLost { instance_id: 99 },
+      instances: FlexInstanceListRead { instances: [] },
+    ) {
+      FlexReleaseConfirmedGone => true
+      FlexReleasePending { instance_id: _ } => false
+      FlexReleaseUnknown => false
+    })
+    && (match flex_release_readback(
+      standing: FlexReleaseLost { instance_id: 99 },
+      instances: FlexInstanceListUnreadable,
+    ) {
+      FlexReleaseUnknown => true
+      FlexReleasePending { instance_id: _ } => false
+      FlexReleaseConfirmedGone => false
+    })
+}
+
+fn excess_demand_uses_operator_share() -> Bool {
+  let share = harness_operator_route.concurrency_ceiling
+  share + 1 > share && !(share > share)
+}
+
+fn dry_pass_records_unreadable_list() -> Bool {
+  let pass = flex_record_pass(
+    policy: flex_trial_policy,
+    instances: FlexInstanceListUnreadable,
+    receipts: [],
+    over_cap: false,
+  )
+  match pass.instances {
+    FlexInstanceListUnreadable =>
+      match pass.write {
+        FlexWriteHeldDry => true
+        FlexWriteBlockedUnreadable => false
+        FlexWriteBlockedOverCap => false
+        FlexWriteWetUnwired => false
+      }
+    FlexInstanceListRead { instances: _ } => false
+  }
+}
+
+test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
+  let offer = wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true)
+  let receipt = flex_shadow_bid(
+    policy: flex_trial_policy,
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(),
+    offer: offer,
+    attempt: t_attempt(
+      machine: t_machine(id: "9"),
+      min_bid: ExactDecimal { units: 9, fraction_digits: 0 },
+      quote: usd_hour(amount: money_amount_micro(count: 1100000)),
+      key: "offer-42",
+    ),
+  )
+  receipt.offer_id == 7
+    && flex_machine_key_eq(left: receipt.machine, right: flex_machine_key_for_offer(account: "vast-account-1", offer: offer))
+    && match receipt.actuation {
+      FlexActuationDry => true
+      FlexActuationWet => false
+    }
+    && match receipt.admission {
+      FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => true
+      FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => false
+      FlexBidRefused { cause: _ } => false
+    }
+}

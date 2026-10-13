@@ -40,11 +40,12 @@ import product.fabric.selection {
 
 // Fleet interruptible-bid policy. The bid is product.fabric.flex_market flex_quoted_bid
 // (class median × level, never below the machine floor). On-demand_fraction remains a hard
-// horizon ceiling, not a second bid formula. DECLARED FRONTIER (DESIGN §3c): the production
-// consumer is the fold that maps a Vast SearchOffers row through vast_ai_min_bid_money_per_hour
-// and a market quote into FlexBidAttempt and calls flex_bid_admission. TRIGGER: that adapter
-// exists as a production module (not a test) and deleting the witness still leaves an execution
-// of the real path.
+// horizon ceiling, not a second bid formula. Adapter: product.fabric.flex_vast_shadow
+// flex_shadow_bid maps a VastAiOffer through vast_ai_min_bid_money_per_hour, binds a market
+// quote, and calls flex_bid_admission. DECLARED FRONTIER (DESIGN §3c): a non-test executing
+// route that remains if the witness is deleted. TRIGGER: an instrument or wet readonly Search
+// that calls flex_shadow_bid. Until then the executing consumer is
+// test.claim.fabric.flex_vast_shadow_witness. No create or destroy.
 
 type PhysicalMachineObservationIdentity = NonEmptyStr where brand("PhysicalMachineObservationIdentity")
 
@@ -78,6 +79,10 @@ type FlexBidSubject
   = FlexNewAcquisition
   | FlexExistingAcquisition { current_bid: MoneyPerHour }
 
+type FlexActuationMode
+  = FlexActuationDry
+  | FlexActuationWet
+
 type FlexPolicy {
   fleet_rate_cap: MoneyPerHour
   // Fraction of comparable on-demand horizon cost (setup and transfer included).
@@ -86,6 +91,9 @@ type FlexPolicy {
   acquisition_horizon: Second
   // Defence in depth if the Vast account is later split; still required.
   owner: FlexOwnerLabel
+  // Write loop. FlexActuationDry is observe/plan/record; Wet is the write loop.
+  // Trial and every current constructor are Dry.
+  actuation: FlexActuationMode
 }
 
 type FlexAcquisitionWindow {
