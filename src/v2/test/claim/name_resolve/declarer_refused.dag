@@ -1,0 +1,140 @@
+module v2.test.claim.name_resolve.declarer_refused
+
+import v2.compiler.compile {
+  native_test_context_from_ingest,
+  native_lane_file_refusal_index,
+  native_module_resolve_verdict,
+  NativeTestContext,
+  NativeModuleResolveVerdict,
+  NativeModuleResolveAccepted,
+  NativeModuleResolveRefused
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.std.diagnostic {
+  Accepted,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  diagnostics_fatal_reason,
+  diagnostics_list_has_reason
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.types { Bool }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dr_v2lib_source: String = "module v2.test.dr.v2lib\n\ntype Lib = L\n"
+
+data dr_decl_source: String = "module v2.test.dr.decl\n\nimport v2.test.dr.v2lib { Lib }\ntype Rec { value: Lib }\n"
+
+data dr_user_source: String = "module v2.test.dr.user\n\nimport v2.test.dr.decl { Rec }\nfn f(x: Rec) -> Rec { x }\n"
+
+data dr_rec_source: String = "module v2.test.dr.rec\n\ntype Rec { value: Unit }\ntype Unit = U\n"
+
+data dr_rec_user_source: String = "module v2.test.dr.rec_user\n\nimport v2.test.dr.rec\nimport v2.test.dr.rec { Rec }\nfn f(x: Rec) -> Rec { x }\n"
+
+data dr_missing_source: String = "module v2.test.dr.missing\n\nfn f(x: Nowhere) -> Int { 1 }\n"
+
+fn dr_read(text: String, id: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: root
+  }
+}
+
+fn dr_context() -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest(ingest: [
+    dr_read(text: dr_v2lib_source, id: ^dr_v2lib, path: "src/v2/test/fixture/dr/v2lib.dag", root: V2Tree),
+    dr_read(text: dr_decl_source, id: ^dr_decl, path: "src/v2/test/fixture/dr/decl.dag", root: DagTree),
+    dr_read(text: dr_user_source, id: ^dr_user, path: "src/v2/test/fixture/dr/user.dag", root: DagTree),
+    dr_read(text: dr_rec_source, id: ^dr_rec, path: "src/v2/test/fixture/dr/rec.dag", root: DagTree),
+    dr_read(text: dr_rec_user_source, id: ^dr_rec_user, path: "src/v2/test/fixture/dr/rec_user.dag", root: DagTree),
+    dr_read(text: dr_missing_source, id: ^dr_missing, path: "src/v2/test/fixture/dr/missing.dag", root: DagTree)
+  ])
+}
+
+type DrVerdicts {
+  user: NativeModuleResolveVerdict
+  rec_user: NativeModuleResolveVerdict
+  missing: NativeModuleResolveVerdict
+}
+
+fn dr_verdicts() -> Optional<DrVerdicts> {
+  match dr_context() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        optional_present(value: DrVerdicts {
+          user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.user", path: ^dr_user).verdict,
+          rec_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.rec_user", path: ^dr_rec_user).verdict,
+          missing: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.missing", path: ^dr_missing).verdict
+        })
+      }
+  }
+}
+
+fn dr_accepted(v: NativeModuleResolveVerdict) -> Bool {
+  match v {
+    NativeModuleResolveAccepted { resolved: _ } => true
+    _ => false
+  }
+}
+
+fn dr_refused_first(v: NativeModuleResolveVerdict) -> Optional<NonEmptyDiagnostics> {
+  match v {
+    NativeModuleResolveRefused { first: d, rest: _, observation: _ } => optional_present(value: d)
+    _ => optional_absent()
+  }
+}
+
+fn dr_refuses_with(v: NativeModuleResolveVerdict, reason: Symbol) -> Bool {
+  match dr_refused_first(v: v) {
+    Present { value: d } => diagnostics_fatal_reason(d: d) == reason
+    Absent => false
+  }
+}
+
+fn dr_chain_names_cause(v: NativeModuleResolveVerdict, reason: Symbol) -> Bool {
+  match dr_refused_first(v: v) {
+    Present { value: d } =>
+      (d.head.reason == reason) || diagnostics_list_has_reason(xs: d.tail, reason: reason)
+    Absent => false
+  }
+}
+
+// (a) A listed import of a name whose declaring module refused for dag→v2 is
+// declarer-refused, carrying that module's cross-tree chain, not unbound_symbol.
+test fn an_imported_name_from_a_cross_tree_refused_declarer_is_declarer_refused() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      dr_refuses_with(v: vs.user, reason: ^resolve_reason_declarer_refused)
+        && dr_chain_names_cause(v: vs.user, reason: ^resolve_cross_tree_import_denied)
+        && !dr_refuses_with(v: vs.user, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+
+// (b) Whole-module import plus listed record type, same tree, declarer resolves.
+test fn a_listed_record_type_binds_beside_a_whole_module_import() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } => dr_accepted(v: vs.rec_user)
+  }
+}
+
+// (c) A name nothing declares stays unbound.
+test fn a_genuinely_undeclared_name_is_unbound() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } => dr_refuses_with(v: vs.missing, reason: ^resolve_reason_unbound_symbol)
+  }
+}
