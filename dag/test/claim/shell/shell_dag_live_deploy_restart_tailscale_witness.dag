@@ -5,7 +5,7 @@ import gunbc.live_deploy.emit { tree_sync_restart_step_with_diagnosis, tailscale
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import v2.std.orchestration { Pipeline, PipelineStep, FailFast }
 import v2.workflow.orchestration_bash_emit_support { orch_bash_emit_pipeline }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -3,7 +3,7 @@ module v2.test.claim.long.grammar_coverage_fatal_route
 import v2.lens.enforcement.grammar_coverage { ParseRejected, grammar_coverage_ingest_source_text }
 import v2.std.logic { Bool }
 import v2.std.node { symbol_intern_lexeme }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

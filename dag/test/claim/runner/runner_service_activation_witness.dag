@@ -3,7 +3,7 @@ module test.claim.runner.runner_service_activation_witness
 import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied }
 
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import extdeps.exec.command { shell_command_render }

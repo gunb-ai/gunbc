@@ -12,7 +12,7 @@ import extdeps.llm.cli {
   ProviderAccountDefaultModel,
   ReasoningHigh,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

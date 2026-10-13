@@ -19,7 +19,7 @@ import gunbc.host.host_axis_caps {
   runner_memory_cap_author_ready_for_shadow_revert,
   derived_runner_memory_cap_members,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

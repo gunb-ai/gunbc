@@ -28,7 +28,7 @@ import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeUnreache
 import gunbc.bmc.bmc_onboarding { srv3_onboarding_plan, srv4_onboarding_plan }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import std.process { ExitFailure }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -5,7 +5,7 @@ import std.coercion { unicode_scalar_fold }
 import v2.std.text { String }
 import std.algebra { for_all, length, list_map }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderReader, ModuleHeaderRefused }
 import v2.compiler.parse { PreparedVoidGrammar }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }

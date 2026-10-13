@@ -71,7 +71,7 @@ import extdeps.google.issue_tracker {
   issue_assignee_input_is_email,
 }
 import std.types { list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

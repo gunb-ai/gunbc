@@ -44,7 +44,7 @@ import test.manual.roadmap_launch_canary_oracle {
   roadmap_launch_canary_expected_sentinel,
   roadmap_launch_canary_sentinel_completed,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

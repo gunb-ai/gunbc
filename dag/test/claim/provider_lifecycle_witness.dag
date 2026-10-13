@@ -37,7 +37,7 @@ import gunbc.worker_lifecycle {
   terminal_outcome_evidence_label,
 }
 import std.types { Bool, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

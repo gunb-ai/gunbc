@@ -23,7 +23,7 @@ import gunbc.roadmap.roadmap_identity {
   distinct_active_slug_count,
   active_identity_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

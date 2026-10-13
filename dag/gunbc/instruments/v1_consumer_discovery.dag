@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.algebra { list_append, list_snoc_item, fold_list }
 import v2.std.decl_index { DeclFact, decl_facts, decl_facts_at }
 import v2.std.fn_index { atom_identities_in_node }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node { Node, NodeFold, Symbol, fold_node, symbol_lexeme }
 import gunbc.replacement_cut { Undecided }
 import gunbc.v1.v1_consumer_census {

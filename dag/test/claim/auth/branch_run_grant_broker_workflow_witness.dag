@@ -1,6 +1,6 @@
 module test.claim.auth.branch_run_grant_broker_workflow_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
 import std.optional { Present, Absent }
 import extdeps.github.actions { PermRead, PermWrite }

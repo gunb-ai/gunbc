@@ -14,7 +14,7 @@ import std.authorization_profile {
   DisclosureRequest, disclosure_access_request,
   SealedExecutionRequest, sealed_execution_access_request,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

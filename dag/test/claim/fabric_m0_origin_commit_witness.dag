@@ -12,7 +12,7 @@ import std.durable_compare_and_set {
   ExpectSlotGeneration,
   cas_generation_first,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.fabric.fabric_m0_origin_readback {
   OriginReading,
   OriginFetchOutcome,

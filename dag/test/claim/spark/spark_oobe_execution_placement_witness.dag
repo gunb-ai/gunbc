@@ -2,7 +2,7 @@ module test.claim.spark.spark_oobe_execution_placement_witness
 
 import std.types { Bool, List, Int, NonEmptyStr }
 import std.types { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.access.posix { PosixLoginName }
 import extdeps.network.endpoint { NetworkHost, HostByName, HostByAddress, render_network_host }
 import extdeps.toolchain.types { Architecture, Aarch64 }

@@ -4,7 +4,7 @@ module test.claim.host.served_slice_charge_follows_prod_role_witness
 // srv1. The realization is supplied (the resolver is judged in test.claim.prod_role_realization_witness);
 // the inhabitance claim runs the real prod_role_realization route.
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }

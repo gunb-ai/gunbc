@@ -20,7 +20,7 @@ import v2.workflow.namespace_xl2_rehearsal_controls {
   xl2_two_failure_control_source, xl2_unstripped
 }
 import gunbc.compiler_frontend_program_status { xl2_prerequisites_outstanding }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.diagnostic { None, Some, diagnostics_eq }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

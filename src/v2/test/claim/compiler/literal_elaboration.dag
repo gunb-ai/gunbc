@@ -25,7 +25,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.runtime { RuntimeValue }
 import v2.std.qualified_name { declaration_reference_path_optional }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

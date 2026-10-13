@@ -1,7 +1,7 @@
 module test.claim.spark.spark_oobe_screen_observation_witness
 
 import std.types { Bool, List, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import extdeps.systems.nvidia_dgx_spark_setup {
   OobeLanguage,

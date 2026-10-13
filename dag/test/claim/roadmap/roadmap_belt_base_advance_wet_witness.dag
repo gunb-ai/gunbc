@@ -14,7 +14,7 @@ module test.claim.roadmap.roadmap_belt_base_advance_wet_witness
 import std.logic { Bool }
 import std.types { String, FilePath, NonEmptyStr, List }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }

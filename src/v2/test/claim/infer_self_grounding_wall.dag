@@ -38,7 +38,7 @@ import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_pick_if_body_
 import std.algebra { list_snoc_item, fold_list }
 import v2.std.diagnostic { Accepted, Rejected, Some, None, NonEmptyDiagnostics, diagnostics_fatal_reason }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node {
   Node,
   Edge,

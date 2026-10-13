@@ -1,7 +1,7 @@
 module test.claim.variant_owner_homonym_witness
 
 import std.types { String, Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import test.fixture.variant_owner_homonym.roster { homonym_arm_label, FirstHomonymArm, SecondHomonymArm }
 import test.fixture.variant_owner_homonym.record { HomonymOwner }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
