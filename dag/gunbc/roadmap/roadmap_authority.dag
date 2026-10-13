@@ -6143,15 +6143,15 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       id: "cardinality-absence-retirement",
       owner: "compiler-guarantee",
       carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "The obsolete absence authorities and the migration allowance are deleted",
         boundary: "Finish the remainder and delete legacy keyword, mint and runtime routes, spelling fallbacks, compatibility machinery and the migration allowance. Shared foreign-null machinery survives only where an independently retained upstream contract requires it. The remainder is explicit, identity-based and shrink-only; counts are observations, not oracles.",
         displaced_cost: "Rival authorities left in place keep shaping decisions.",
         first_slice: "The census of remaining consumers by identity.",
         red_control: "A retained DAG consumer on the retired semantics, or a fallback reintroducing them, keeps this red.",
         out_of_scope: "The persistent conformance domain and its regression evidence.",
-        handback: "No retained consumer uses the retired semantics, no production fallback, every formerly permitted subject restored or retired, the allowance deleted."
-      ), on: "2026-10-13", note: "First-slice census lives on the existing homes, not a new roster: gunbc.recurring_failure_mode.none_literal_is_a_second_spelling_of_absent and absence_carried_by_a_second_representation name remaining roots, consumers, replacements and blocked-on siblings. No empty deletion cohort. Optional authority is std.optional (v2.std.optional gone). ListHeadResult/ListTailResult are std.algebra. JSON null stays. Occupancy/T? cut is neat-bear-75 after N7; kind-aware binding is #13832; mint deletion coordinates with neat-bear-75; emitter spelling fallback with clever-crane-830.")),
+        handback: "No retained consumer uses the retired semantics, no production fallback, every formerly permitted subject restored or retired, the allowance deleted. Prerequisites are per deletion cohort, not a RoadmapEdge on this node (an unmet parent would refuse the census). none-keyword after cardinality-native-closure-cutover; mint and binding scaffold after cardinality-optional-declaration; std.constructors Cardinality, NonEmptyDiagnostics, and std.algebra ListHeadResult/ListTailResult after cardinality-carrier-consolidation; host_option_arm_reading spelling fallback after cardinality-realization-conformance. Each deletion PR enumerates remaining consumers by name before deleting."
+      ), on: "2026-10-13", note: "First-slice census lives on the existing homes, not a new roster: gunbc.recurring_failure_mode.none_literal_is_a_second_spelling_of_absent and absence_carried_by_a_second_representation name remaining roots, consumers, replacements and blocked-on siblings. No empty deletion cohort. Optional authority is std.optional (v2.std.optional gone). ListHeadResult/ListTailResult are std.algebra. JSON null stays. Occupancy/T? cut is neat-bear-75 after N7; kind-aware binding is #13832; mint deletion coordinates with neat-bear-75; emitter spelling fallback with clever-crane-830."), on: "2026-10-13", note: "Retracted four RoadmapEdges from this node onto optional-declaration, native-closure-cutover, carrier-consolidation, and realization-conformance: RoadmapEdge has no start/finish split, so an unmet parent would block dispatch of the census. Cohort prerequisites stay in handback and on each deletion PR.")),
       dispatch: dispatchable(),
       parent: in_project(project: "cardinality-absence", contribution: "No gate on native progress."),
     ),
@@ -6441,12 +6441,6 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "compiler-source-exemption-removal", parent: "declared-conformance-grounding"),
     edge(child: "cardinality-vertical-slice", parent: "ladder-claims-carrier"),
     edge(child: "cardinality-vertical-slice", parent: "unforgeable-construction-capability"),
-    // Retirement deletes rival routes; it consumes the replacement each sibling delivers. Fan-in,
-    // not a chain: census does not wait; a deletion whose replacement has not landed is refused.
-    edge(child: "cardinality-absence-retirement", parent: "cardinality-optional-declaration"),
-    edge(child: "cardinality-absence-retirement", parent: "cardinality-native-closure-cutover"),
-    edge(child: "cardinality-absence-retirement", parent: "cardinality-carrier-consolidation"),
-    edge(child: "cardinality-absence-retirement", parent: "cardinality-realization-conformance"),
     edge(child: "v2-translate-underived-refusal", parent: "v2-self-grounding-frontier"),
     edge(child: "v2-inferred-tree-completeness", parent: "v2-translate-underived-refusal"),
     edge(child: "v2-target-realization-gate", parent: "primitive-identity-join"),
