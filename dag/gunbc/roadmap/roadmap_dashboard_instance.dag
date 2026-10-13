@@ -216,6 +216,7 @@ type HostDashboardInstance {
   local_origin_publish_ref: NonEmptyStr
   repo_root: FilePath
   dispatch_base_ref: NonEmptyStr
+  publication_base_branch: NonEmptyStr
   dispatch_state_scope: DispatchStateScope
   execution_environment: DispatchHostEnvironment
   provider_state: DashboardProviderStateBinding
@@ -925,6 +926,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: macbook_local_repo_root,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: "main" as NonEmptyStr,
     dispatch_state_scope: DispatchStateInstanceOwned {
       worktree_child: "attempts" as NonEmptyStr,
       attempt_state_child: "attempt-state" as NonEmptyStr,
@@ -1027,6 +1029,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: srv1_gunbc_repo_root,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: "main" as NonEmptyStr,
     dispatch_state_scope: DispatchStateHostShared {
       worktree_root: srv1_dispatch_worktree_root,
       attempt_state_root: srv1_dispatch_attempt_state_root,
@@ -1113,6 +1116,7 @@ fn isolated_dashboard_instance(
     serve_function: serve_function, listen_port: listen_port, source_anchor_ref: source_anchor_ref,
     actuation: actuation, provision_transport: provision_transport,
     admitted_revision: fleet_admitted_revision_source,
+    publication_base_branch: "main" as NonEmptyStr,
   )
 }
 
@@ -1130,6 +1134,7 @@ fn isolated_dashboard_instance_admitting(
   actuation: DashboardActuationPosture,
   provision_transport: DashboardProvisionTransport,
   admitted_revision: DashboardAdmittedRevisionSource,
+  publication_base_branch: NonEmptyStr,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,
@@ -1141,6 +1146,7 @@ fn isolated_dashboard_instance_admitting(
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "source"),
     dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: publication_base_branch,
     dispatch_state_scope: DispatchStateInstanceOwned {
       worktree_child: "attempts" as NonEmptyStr,
       attempt_state_child: "attempt-state" as NonEmptyStr,
@@ -1198,6 +1204,7 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     actuation: DashboardActuating,
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     admitted_revision: srv1_lab_admitted_revision_source,
+    publication_base_branch: srv1_lab_publication_base_branch,
   )
 }
 
@@ -1263,15 +1270,24 @@ data srv2_deploy_instance_root: FilePath = "/home/briansrls/.local/share/gunbc-s
 
 data srv2_deploy_serve_binary: FilePath = "/home/briansrls/gunbc-srv2-deploy/target/release/gunbc" as FilePath
 
-// THE BRANCH ATTEMPTS ARE PUBLISHED AGAINST IS THE BRANCH THEY WERE DISPATCHED FROM. dispatch_base_ref
-// is a remote-tracking ref ("origin/<branch>"); publication needs the branch name the pull request
-// targets. Deriving it here, from the same row, is what keeps a srv2 attempt (dispatched from
-// origin/srv2-deploy) from being offered against main with sixty unrelated commits in its diff --
-// which is what reading the repository's default_branch did (2026-09-05).
+// THE BRANCH ATTEMPTS ARE PUBLISHED AGAINST IS THE BRANCH THEIR BASE REVISION BELONGS TO, declared per
+// instance (publication_base_branch) rather than derived. Reading the repository's default_branch
+// offered a srv2 attempt (dispatched from origin/srv2-deploy) against main with sixty unrelated commits
+// (2026-09-05); deriving it by stripping "origin/" from dispatch_base_ref then broke the same way for
+// the srv1 lab, whose "origin/main" is rewritten to its admitted lab-dev revision
+// (srv1_lab_publication_base_branch). The branch is a fact about where the base revision lives on the
+// publication remote, so each instance states it.
 fn dispatch_base_branch(instance: HostDashboardInstance) -> NonEmptyStr {
-  let r = instance.dispatch_base_ref as String
-  if starts_with(s: r, prefix: "origin/") { substring(s: r, start: 7, end: string_length(s: r)) as NonEmptyStr } else { r as NonEmptyStr }
+  instance.publication_base_branch
 }
+
+// THE SRV1 LAB PUBLISHES INTO ITS INTEGRATION BRANCH (operator, 2026-10-13). Its attempts fork from the
+// lab's admitted revision: the lab deploy rewrites the source repository's refs/remotes/origin/main to
+// that revision (reflog, 2026-10-12: 5935eae at 03:04, cf420d9 at 17:08), so the row's "origin/main"
+// names the admitted lab-dev commit, not GitHub main. Deriving the publication base from that name
+// offered lab attempts against GitHub main, with every lab-only commit in the diff. The admitted
+// revision is a commit of this branch, so a pull request against it carries only the worker's change.
+data srv1_lab_publication_base_branch: NonEmptyStr = "bright-moth-475/lab-dev" as NonEmptyStr
 
 data srv2_deploy_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
   remote: ".",
@@ -1294,6 +1310,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: srv2_deploy_repo_root,
     dispatch_base_ref: "test/main-plus-roadmap-daily" as NonEmptyStr,
+    publication_base_branch: "test/main-plus-roadmap-daily" as NonEmptyStr,
     dispatch_state_scope: DispatchStateInstanceOwned {
       worktree_child: "attempts" as NonEmptyStr,
       attempt_state_child: "attempt-state" as NonEmptyStr,
