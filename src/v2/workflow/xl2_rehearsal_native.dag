@@ -1,5 +1,11 @@
 module v2.workflow.xl2_rehearsal_native
 
+// UNLABELLED ON PURPOSE (DESIGN §3c frontier). This entry runs only the three supplied fixture controls; it is
+// not the whole-tree rehearsal and no instrument_targets label is bound to it. The label is registered by the
+// change that adds the subject read, the tree-id recompute and the seed prep, and that also makes the native
+// closure build (emit defect in extdeps.posix.shell_command_language). Until then it is exercised through
+// test.claim.namespace_xl2_rehearsal_census.
+
 import std.types { Bool, List, String }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import v2.workflow.namespace_xl2_rehearsal_census {

@@ -403,12 +403,6 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
-            instrument_label("xl2-rehearsal-native"),
-            TargetProducer::NativeClaimProgram {
-                entry: "src/v2/workflow/xl2_rehearsal_native.dag",
-            },
-        ),
-        (
             instrument_label("native-emission-controls"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_emission_controls.dag",
