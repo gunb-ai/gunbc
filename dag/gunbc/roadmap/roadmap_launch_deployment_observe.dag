@@ -1,4 +1,4 @@
-module gunbc.roadmap_launch_deployment_observe
+module gunbc.roadmap.roadmap_launch_deployment_observe
 
 import std.measure { Second, second, second_count }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
@@ -18,15 +18,15 @@ import gunbc.actions_run_binding { json_required_string_member, JsonStringMember
 import gunbc.running_release_identity { RunningReleaseIdentity, observe_running_release_identity }
 import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   belt_tick_receipt_decode,
 }
 
 // LIVE HTTP OBSERVATIONS OF THE DEPLOYED PUBLIC ROUTES, DECODED INTO THE TYPES THE ROUTES
 // SERIALIZE. The RLM-2 ruling (section 5) rejects renderers as evidence:
-// gunbc.roadmap_site_surface_render healthz_body_with_release_identity CONSTRUCTS the expected
-// /healthz body and gunbc.roadmap_serve serve_workflow_response_for_instance CONSTRUCTS the
+// gunbc.roadmap.roadmap_site_surface_render healthz_body_with_release_identity CONSTRUCTS the expected
+// /healthz body and gunbc.roadmap.roadmap_serve serve_workflow_response_for_instance CONSTRUCTS the
 // /workflow.json response, so calling either in the receipt process proves what the code would say,
 // not what the routed service said. This module performs the GETs (extdeps.http.client
 // GetLocalhostBounded, the same operation gunbc.live_deploy.readiness uses for its local probe) and
@@ -34,8 +34,8 @@ import gunbc.roadmap_belt_actuate {
 // 
 // THE DECODERS ARE THE INVERSE OF THE PRODUCERS, member for member: /healthz through
 // gunbc.running_release_identity observe_running_release_identity (the existing inverse);
-// /instance.json through the members gunbc.roadmap_serve dashboard_instance_json writes;
-// /workflow.json through the schema and belt_tick members gunbc.roadmap_belt_actuate
+// /instance.json through the members gunbc.roadmap.roadmap_serve dashboard_instance_json writes;
+// /workflow.json through the schema and belt_tick members gunbc.roadmap.roadmap_belt_actuate
 // belt_workflow_attempts_json_value_for_instance writes, with the nested tick decoded by the
 // receipt's own decoder so a v3 or damaged embedded tick is Unreadable here exactly as it is on
 // disk. HTTP 200 is not sufficient for /workflow.json: a valid document whose belt_tick is absent

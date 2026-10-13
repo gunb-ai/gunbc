@@ -1,13 +1,13 @@
-module gunbc.machine_intake_pre_os_inventory_assessment
+module gunbc.machine_intake.pre_os_inventory_assessment
 
-import gunbc.machine_intake_pre_os_refusal { PreOsRefusal, PreOsOwnershipRefusal, PreOsSubjectRefusal, PreOsCommitRefusal, PreOsContinuityRefusal, PreOsSourceRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at }
+import gunbc.machine_intake.pre_os_refusal { PreOsRefusal, PreOsOwnershipRefusal, PreOsSubjectRefusal, PreOsCommitRefusal, PreOsContinuityRefusal, PreOsSourceRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at }
 import std.types { List, NonEmptyStr, String }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalAssessment, GoalSatisfied, GoalDiverged, GoalAssessmentRefused }
 import std.algebra { FreeSemigroup, Empty }
-import gunbc.memory_configuration { MemoryConfiguration }
-import gunbc.memory_observation { MemoryCaptureCoverage, MemoryCaptureInterval, MemoryCaptureCycles, MemoryPrintedPartBinding, MemoryPrintedPositionBinding, memory_cycle_coverage_refusal, memory_inventory_in_capture }
-import gunbc.fleet_observation_observation_envelope { SourceByteFact, SourceBytesObserved, SourceProducedNoBytesInRange, CoverageGapNotDurablyCommitted, CoverageGapCommitDoesNotBindThisChunk, CoverageGapContinuityBroken, CoverageGapContinuityShortOfRange, CoverageGapPositionsIncomparable, CoverageGapRangeNotCovered, CoverageGapNotTheRecordingOwner, CoverageGapEvidenceNamesAnotherSubject }
-import gunbc.machine_intake_pre_os_observer { pre_os_terminal_from_console }
+import gunbc.host.memory_configuration { MemoryConfiguration }
+import gunbc.host.memory_observation { MemoryCaptureCoverage, MemoryCaptureInterval, MemoryCaptureCycles, MemoryPrintedPartBinding, MemoryPrintedPositionBinding, memory_cycle_coverage_refusal, memory_inventory_in_capture }
+import gunbc.fleet_observation.observation_envelope { SourceByteFact, SourceBytesObserved, SourceProducedNoBytesInRange, CoverageGapNotDurablyCommitted, CoverageGapCommitDoesNotBindThisChunk, CoverageGapContinuityBroken, CoverageGapContinuityShortOfRange, CoverageGapPositionsIncomparable, CoverageGapRangeNotCovered, CoverageGapNotTheRecordingOwner, CoverageGapEvidenceNamesAnotherSubject }
+import gunbc.machine_intake.pre_os_observer { pre_os_terminal_from_console }
 
 // The question names its expected configuration and emitting phase before any
 // collector reports. Coverage itself remains #11198's MemoryCaptureCoverage.

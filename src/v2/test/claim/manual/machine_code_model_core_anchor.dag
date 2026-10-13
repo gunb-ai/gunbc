@@ -1,4 +1,4 @@
-module v2.test.manual.machine_code_model_core_anchor
+module v2.test.claim.manual.machine_code_model_core_anchor
 
 import v2.extdeps.languages.machine_code { machine_code_model_core, mc_integer_facts_node }
 

@@ -1,4 +1,4 @@
-module v2.test.manual.rust_language_model_anchor
+module v2.test.claim.manual.rust_language_model_anchor
 
 import v2.extdeps.languages.rust { rust_fn_add_language_model, rust_inhabitant_i32_node }
 

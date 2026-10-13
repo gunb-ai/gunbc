@@ -1,11 +1,11 @@
-module gunbc.fleet_ssh_access
+module gunbc.fleet.fleet_ssh_access
 
 import std.types { List, NonEmptyStr }
-import extdeps.ssh { SshPublicKey, Ed25519 }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_access_url }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.fleet_posix_accounts { FleetPosixAccountKey, FleetAccountOperator }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet.fleet_posix_accounts { FleetPosixAccountKey, FleetAccountOperator }
 
 data fleet_automation_sa_email: ServiceAccountEmail = "fleet-automation@gunbai-secrets.iam.gserviceaccount.com"
 

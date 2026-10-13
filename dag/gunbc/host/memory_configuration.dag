@@ -1,4 +1,4 @@
-module gunbc.memory_configuration
+module gunbc.host.memory_configuration
 
 import extdeps.board_authority { BoardAuthorityRef }
 import std.types { List, NonEmptyStr }

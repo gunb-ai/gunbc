@@ -1,4 +1,4 @@
-module gunbc.runner_microvm_boot_probe
+module gunbc.runner.runner_microvm_boot_probe
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -20,18 +20,18 @@ import extdeps.virtualization.firecracker {
   firecracker_vm_config_document, firecracker_run_config_command,
 }
 import extdeps.github.actions_runner { ActionsRunnerRelease }
-import gunbc.runner_microvm {
+import gunbc.runner.runner_microvm {
   RunnerGuestImage, gunbc_runner_guest_image,
   RunnerMicroVmNetworking, GuestNetworkAbsent,
   RunnerMicroVmConfigResolution, MicroVmConfigResolved, MicroVmConfigUnresolved,
   gunbc_runner_microvm_vm_config, jit_drive_without_credential,
 }
-import gunbc.runner_guest_image {
+import gunbc.runner.runner_guest_image {
   guest_console_carries, GuestEmitted, GuestBooted,
   runner_guest_image_root, runner_guest_image_path,
   runner_guest_base_artifact_path, runner_guest_kernel_artifact,
 }
-import gunbc.runner_microvm_host_ready {
+import gunbc.runner.runner_microvm_host_ready {
   FirecrackerHostStanding, firecracker_host_ready_in_this_process, firecracker_installed_binary,
   firecracker_install_root, firecracker_host_standing_text,
   observe_firecracker_host_standing_wet,
@@ -48,7 +48,7 @@ data runner_microvm_boot_probe_disposition: ConstructionMechanism = SingleAuthor
 // checkout-built artifact, not a gunbc binary carried in the host image on tmpfs at host boot.
 
 // THE BOOT IS THE MEASUREMENT THE GUEST IMAGE MODULE PROMISED, AND IT IS THE ONLY THING THAT CAN
-// SETTLE IT. gunbc.runner_guest_image builds a root filesystem WITHOUT ROOT, and states in full what
+// SETTLE IT. gunbc.runner.runner_guest_image builds a root filesystem WITHOUT ROOT, and states in full what
 // that costs: an unprivileged extraction restores no ownership, no setuid bits and no device nodes.
 // It argues all three are survivable in this guest and says plainly that survivable is not proven.
 //
@@ -60,7 +60,7 @@ data runner_microvm_boot_probe_disposition: ConstructionMechanism = SingleAuthor
 // would justify buying the privileged build.
 //
 // IT IS A PROBE AND NOT A PROVISIONER, and the difference is load-bearing rather than modest.
-// gunbc.runner_microvm's admission still refuses every production configuration, because the VMM's
+// gunbc.runner.runner_microvm's admission still refuses every production configuration, because the VMM's
 // own memory reserve is uncited and the guest cannot be judged against the bounded cell without it.
 // Nothing here overrides that: this boots ONE VM outside any cell to observe whether the image
 // works, and it measures the reserve that admission is waiting on. Reading this probe's success as
@@ -68,7 +68,7 @@ data runner_microvm_boot_probe_disposition: ConstructionMechanism = SingleAuthor
 
 // THE GUEST HAS NO NETWORK, DECLARED RATHER THAN OMITTED. The per-slot tap is a later slice, so this
 // guest cannot reach GitHub and therefore cannot register a runner -- it is not a degraded runner,
-// it is a different kind of VM, and gunbc.runner_microvm's networking coproduct is where that is
+// it is a different kind of VM, and gunbc.runner.runner_microvm's networking coproduct is where that is
 // said. Naming a tap device that does not exist would have made Firecracker fail at device setup and
 // the failure would have read as an image defect.
 fn runner_microvm_boot_probe_networking() -> RunnerMicroVmNetworking {
@@ -79,7 +79,7 @@ fn runner_microvm_boot_probe_networking() -> RunnerMicroVmNetworking {
 
 // THE PROBE BOOTS A COPY, NEVER THE BUILT IMAGE ITSELF. A Firecracker root drive is attached
 // READ-WRITE -- the guest's init writes to it -- so booting the built artifact would mutate the
-// thing whose digest gunbc.runner_guest_image just recorded, and the next observe would report a
+// thing whose digest gunbc.runner.runner_guest_image just recorded, and the next observe would report a
 // digest that disagrees with the build receipt for no reason anybody could reconstruct. The copy is
 // removed first so a probe never boots a previous probe's dirtied filesystem and reports it as this
 // image's behaviour.
@@ -107,9 +107,9 @@ fn runner_microvm_boot_probe_stage_commands(root: String, image: RunnerGuestImag
 }
 
 // THE JIT DRIVE CARRIES NO CREDENTIAL, BY THE CONTRACT RATHER THAN BY ACCIDENT. The guest agent reads
-// that device as a systemd environment file (gunbc.runner_microvm jit_drive_content), so the
+// that device as a systemd environment file (gunbc.runner.runner_microvm jit_drive_content), so the
 // earlier stand-in -- the rootfs copy's own path -- would now hand systemd an 8 GiB ext4 image to
-// parse. The probe instead writes gunbc.runner_microvm jit_drive_without_credential: whole sectors
+// parse. The probe instead writes gunbc.runner.runner_microvm jit_drive_without_credential: whole sectors
 // of blank lines. The guest boots, prints its runner version and GuestBooted, the listener refuses as
 // unconfigured, and the manager powers the VM off -- a boot probe spends no registration.
 fn runner_microvm_boot_probe_jit_drive(root: String) -> String {
@@ -196,7 +196,7 @@ fn boot_probe_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation
 }
 
 // A LIVE BOOT OF THIS IMAGE MUST ALSO CARRY THE AGENT'S GuestBooted MARKER, read through
-// gunbc.runner_guest_image guest_console_carries -- the host's one console reader -- so a version
+// gunbc.runner.runner_guest_image guest_console_carries -- the host's one console reader -- so a version
 // string that reached the console some other way is not read as the agent having run. It is a layer
 // over boot_probe_verdict rather than inside it because that verdict also judges consoles captured
 // before the marker existed (gunbc.runner_observed_version_check's committed Mt. Collins capture),

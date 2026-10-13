@@ -3,7 +3,7 @@ module gunbc.capability_binding
 import std.types { String, Bool, Int, List, Milliseconds }
 import std.integer { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_realization {
+import gunbc.host.host_realization {
   HostRealization, ApplicationContainerKind, RendererKind, HostRole,
   container_kind_key, renderer_kind_key, host_identity_is_exact,
 }
@@ -665,7 +665,7 @@ data coverage_targets: List<BindingCoverageTarget> = [
     },
     implementation: Implemented {
       implementation: DeclarationRef {
-        module_path: "gunbc.roadmap_component",
+        module_path: "gunbc.roadmap.roadmap_component",
         decl_name: "motion_devicemotion_probe_statement",
         field: WholeDeclaration
       }
@@ -683,7 +683,7 @@ data coverage_targets: List<BindingCoverageTarget> = [
     },
     implementation: Implemented {
       implementation: DeclarationRef {
-        module_path: "gunbc.roadmap_component",
+        module_path: "gunbc.roadmap.roadmap_component",
         decl_name: "motion_sensor_probe_statement",
         field: WholeDeclaration
       }

@@ -1,11 +1,11 @@
-module tools.emit_host_transport
+module gunbc.instruments.emit_host_transport
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 import extdeps.python
 import extdeps.go
 import extdeps.node
@@ -33,7 +33,7 @@ import v2.std.host_transport {
   HostRuntimeRowPresent
 }
 import v2.std.node { Atom, Node, TypeNode }
-import tools.emit_host_fixtures {
+import gunbc.instruments.emit_host_fixtures {
   rust_stdout_fixture_source,
   python_stdout_fixture_source,
   go_stdout_fixture_source,
@@ -144,7 +144,7 @@ fn run_python_smoke() -> Bool {
 //
 // These take the reported stdout and the harness bit as plain values rather than the run record,
 // because shell.Exec.Run returns an anonymous output record no fixture can construct. Scalars make
-// the cause-swap control in test.claim.emit_host_reported_comparison_cause_swap_test authorable
+// the cause-swap control in test.claim.emit_host_reported_comparison_cause_swap authorable
 // with no host effect: the two failure causes it distinguishes are supplied directly, so the
 // control measures THE PREDICATE rather than the toolchain.
 fn emit_host_reported_octets_match(reported_stdout: String, expected_text: String) -> Bool {

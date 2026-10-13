@@ -118,9 +118,9 @@ fix-forward validation, recovery anchors, or PR-level declared-change vs regress
 | Symbol | Role |
 |---|---|
 | `v2.compiler.self_host.canonical_emitted_bytes_digest` | Host-grounded digest over actual emitted bytes (`Medium<String>`) |
-| `tools.floor_effect_gate_witness.regen_verify_gate_passes` | CI floor gate: `RegenVerifyGate` compares regen output to committed Rust |
+| `gunbc.instruments.floor_effect_gate_witness.regen_verify_gate_passes` | CI floor gate: `RegenVerifyGate` compares regen output to committed Rust |
 | `v2.workflow.self_host_realized_comparison_gate` | Behavioral + staleness gates over realized comparison transport |
-| `gunbc.ci_spec.RegenVerifyGate` | Spec row; regen skip policy keyed on merge-base diff vs regen input closure |
+| `gunbc.ci.ci_spec.RegenVerifyGate` | Spec row; regen skip policy keyed on merge-base diff vs regen input closure |
 
 **What this already buys:** fail-closed byte mismatch on the regen path and behavioral
 witnesses on a curated roster.
@@ -515,7 +515,7 @@ more likely repair.
 
 **(b) There is no emitted-artifact-to-module join.** `GeneratedArtifact` is a closed enum of
 specific artifacts and emitted stage0 Rust as a surface is not among them (the generated stage0
-surface is now a derived population, `gunbc.stage0_rust_source_lifecycle_scaffold`
+surface is now a derived population, `gunbc.stage0.stage0_rust_source_lifecycle_scaffold`
 `derived_generated_stage0_repo_paths`, not a roster), and nothing today derives **which
 compiler module emitted a given `.rs` path** -- exactly why that derivation is the complement of
 the crate-layout claim rather than a module-to-path join. So an authorization minted for a

@@ -11,7 +11,7 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.clock_read { clock_now_probed_at }
 import product.placement_supply { HostIdentity }
 import gunbc.principal_projection { PrincipalRef }
-import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObservation, workspace_convergence_observe, WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
 import gunbc.workspace_allocation_launch_directive { workspace_launch_directive, workspace_launch_directive_text, workspace_launch_directive_from_text, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
 import gunbc.workspace_reconcile_once { workspace_reconcile_prepare }

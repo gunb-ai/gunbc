@@ -11,12 +11,12 @@ import extdeps.linux.cgroup_v2_memory {
   CgroupMemoryLimitUnparseable,
   parse_cgroup_memory_limit,
 }
-import gunbc.floor_demand { FloorBeatReading, FloorPhaseAttribution, floor_phase_attribution }
+import gunbc.floor.floor_demand { FloorBeatReading, FloorPhaseAttribution, floor_phase_attribution }
 
 // WHAT THIS MODULE IS FOR, AND WHY IT IS NOT A SECOND HOME FOR A NUMBER.
 //
 // A peak RSS or cgroup charge read from a run that was HELD measures what the process was
-// ALLOWED, not what it needs. `gunbc.runner_slot_allocation` states the reading directly -- a
+// ALLOWED, not what it needs. `gunbc.runner.runner_slot_allocation` states the reading directly -- a
 // peak equal to the throttle line is "the censored lower bound ... the workload being held, not
 // the workload being measured" -- and then, on 2026-09-12, recorded two disagreeing figures for
 // one run and said in as many words that it did not know which cgroup level each named.
@@ -333,7 +333,7 @@ fn qualify_floor_memory_from_readings(
 // THE SAME RUN, READ BY PHASE. The qualification above says whether the whole-run peak is a
 // demand; this says which phase held what, over the beats the measured child printed while this
 // instrument supervised it. Two readings of one run, so neither needs a second run to be joined
-// to the other. The fold is `gunbc.floor_demand`'s, beside the held-set rule it reuses; this entry
+// to the other. The fold is `gunbc.floor.floor_demand`'s, beside the held-set rule it reuses; this entry
 // only admits it to the instrument's closure.
 fn floor_phase_attribution_from_readings(readings: List<FloorBeatReading>) -> FloorPhaseAttribution {
   floor_phase_attribution(readings: readings)

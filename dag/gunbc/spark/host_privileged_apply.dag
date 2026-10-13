@@ -6,18 +6,18 @@ import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.ssh.session { SshSessionExecResult, ssh_client_error_exit_status }
 import gunbc.spark.remote_leg_began { remote_leg_began_word, remote_leg_began_payload_line, remote_leg_lines, remote_leg_reported_began }
-import gunbc.fleet_bootstrap_principal_session {
+import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
 }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_path_wire, spark_reach_endpoint }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy,
   SshTarget, portable_remote_words,
 }
-import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // PRIVILEGED HOST APPLY OVER SSH, WITHOUT A SERVING REALIZATION. The Spark pair/native serving
 // apply used this leg shape; serving actuation is retired (hardware sold). Fabric rail apply still

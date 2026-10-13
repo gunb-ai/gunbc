@@ -1,11 +1,11 @@
-module gunbc.roadmap_verify
+module gunbc.roadmap.roadmap_verify
 
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.roadmap_model { RoadmapNode }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_model { RoadmapNode }
+import gunbc.roadmap.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContractUnspecified,
   ExecutionContract,
@@ -24,7 +24,7 @@ import gunbc.roadmap_execution_contract {
   non_agent_work_mode_label,
   contract_closure,
 }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardProvisionTransport,
   DashboardLocalProvision,
@@ -39,13 +39,13 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   BeltNodeLookup,
   NodeFound,
   NodeMissing,
   belt_lookup_node,
 }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_verification_path_for_instance,
 }
 import extdeps.filesystem.filesystem_io
@@ -136,11 +136,11 @@ type VerificationOutcome
 // running on the wrong machine against paths that do not exist there fails, and reads as incomplete
 // work.\n\nAn empty validations list is Unbound rather than Passed for the same reason: zero checks
 // passing is not a green result. That decision no longer lives here — it is
-// gunbc.roadmap_execution_contract's contract_closure, because two other modules were deciding it
+// gunbc.roadmap.roadmap_execution_contract's contract_closure, because two other modules were deciding it
 // too and one of them disagreed.
 
 // VERIFICATION RUNS WHERE THE INSTANCE LIVES, which is the defect this function exists to close.
-// The routing is the same one gunbc.roadmap_dashboard_instance_apply already performs for every
+// The routing is the same one gunbc.roadmap.roadmap_dashboard_instance_apply already performs for every
 // provisioning step — match the transport, run locally or over SSH — and the verifier simply was
 // not doing it.\n\nThe workdir is threaded rather than assumed. A local run gets it from env -C
 // through WitnessBin.Run's own workdir parameter; an SSH run has no workdir channel, so the argv is
@@ -346,7 +346,7 @@ fn verify_base_node_id(
   }
 }
 
-// DECLARED LEGACY STATE — DISSOLVE-ON: gunbc.roadmap_verification_receipt VerificationReceipt is
+// DECLARED LEGACY STATE — DISSOLVE-ON: gunbc.roadmap.roadmap_verification_receipt VerificationReceipt is
 // wired into verify_attempt and the persistence function below deletes. This was the first attempt
 // receipt and proved the wrong-host/wrong-worktree class, but its one command_wire and evidence
 // string summarize a contract to one validation, its revision is an anonymous NonEmptyStr, and it
@@ -561,10 +561,10 @@ fn verify_attempt(
 // that does not exist here yet. The argv allowlist in gunbc.typed_argv_exec deliberately excludes
 // the braces and quotes a JSON document is made of, which is why smuggling the write through an
 // echo argv is not available and should not be.\n\nDISSOLVES ON a transport-routed write — the same
-// seam gunbc.roadmap_dashboard_instance_apply's dashboard_copy_to_target_atomically already crosses
+// seam gunbc.roadmap.roadmap_dashboard_instance_apply's dashboard_copy_to_target_atomically already crosses
 // for staged files via scp. Until then a remote attempt's verification returns its outcome and its
 // receipt as VALUES, which are complete and checkable, and refuses only the persistence step. Note
-// that gunbc.roadmap_belt_actuate's attempt-state initialization writes through the same local
+// that gunbc.roadmap.roadmap_belt_actuate's attempt-state initialization writes through the same local
 // Filesystem.Write with the same latent assumption; this row does not fix that, and does not hide
 // it either.
 

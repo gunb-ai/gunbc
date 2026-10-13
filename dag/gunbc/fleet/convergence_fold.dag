@@ -27,7 +27,7 @@ import gunbc.host_convergence_census {
 
 // THE CONVERGENCE FOLD, READ-ONLY CORE (docs/plans/managed-host-untangle.md, cut O1c-1). One shared
 // home for ordering several domain-owned convergence steps as ONE run, with the arrival prefix as its
-// first real consumer (gunbc.machine_intake_arrival_converge) and the Spark serving arm as its second.
+// first real consumer (gunbc.machine_intake.arrival_converge) and the Spark serving arm as its second.
 //
 // BOUNDARY (B), RULED. The fold COMPOSES ALREADY-EXECUTED, DOMAIN-OWNED STEP OUTCOMES. Each domain
 // runs its own step through gunbc.host_convergence_protocol (observe, assess, decide) and mints its
@@ -37,13 +37,13 @@ import gunbc.host_convergence_census {
 // C8 (gunbc.host_convergence_protocol host_effect_decide_apply_frontier stays awaiting).
 //
 // WHAT THIS HOME CARRIES SINCE O1c-2, with its first effectful consumer (the PriorLifeBoundary
-// archive in gunbc.machine_intake_prior_life_boundary): an applied step's outcome, per-leg deadlines,
+// archive in gunbc.machine_intake.prior_life_boundary): an applied step's outcome, per-leg deadlines,
 // and INCOMPLETE as its own arm -- a step whose actuation was attempted and whose completion its
 // independent readback does not ground. Incomplete is neither refused (the domain decided not to act,
 // or acting was refused before any effect) nor converged, and it never satisfies a precondition.
 //
 // WHAT THIS HOME CARRIES SINCE O1c-3, with BmcSecure as first gated consumer
-// (gunbc.machine_intake_arrival_converge): a step is Ungated or GatedOnAuthorization; a gated
+// (gunbc.machine_intake.arrival_converge): a step is Ungated or GatedOnAuthorization; a gated
 // instance whose receipt declares that authorization was required (the Apply arm) refuses without a
 // discharge for that (run, step, subject); Noop does not require one (parent D4). A discharge's
 // principal is NonEmptyStr at the sole constructor, so the fold does not re-check emptiness.
@@ -101,7 +101,7 @@ fn precondition_key(p: StepPrecondition, key: StepInstanceKey) -> StepInstanceKe
 
 // A STEP: its census identity, the ONE member of the order authority it is bound to, and its
 // preconditions. The member type is the authority's own (for the arrival prefix
-// gunbc.machine_intake_phase IntakePhase); the fold reads it only through the authority's rank.
+// gunbc.machine_intake.phase IntakePhase); the fold reads it only through the authority's rank.
 // A STEP IS UNGATED, OR GATED ON AN AUTHORIZATION DISCHARGED FOR THAT INSTANCE. Selected before the
 // fold: the caller names which pattern discharged it. The fold never selects a pattern.
 type StepGate
@@ -143,7 +143,7 @@ type ConvergencePlanningAuthority<M> sole_constructor {
 
 fn convergence_planning_authority<M>(order: ConvergenceOrderAuthority<M>) -> ConvergencePlanningAuthority<M>
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "arrival_planning_authority"),
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "arrival_planning_authority"),
   ]
 {
   ConvergencePlanningAuthority { order: order }
@@ -336,14 +336,14 @@ type ConvergenceReceiptProjection<R> sole_constructor {
 
 fn convergence_receipt_projection<R>(key_of: fn(R) -> StepInstanceKey, consumed_of: fn(R) -> List<StepInstanceKey>, authorization_required_of: fn(R) -> Bool) -> ConvergenceReceiptProjection<R>
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "arrival_receipt_projection"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_precondition_is_not_satisfied_by_a_receipt_from_another_run"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_an_incomplete_instance_satisfies_no_dependent_and_the_run_is_incomplete"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_noop_needs_no_discharge"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_discharge_refuses"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "apply_fold_undischarged"),
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "arrival_receipt_projection"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_a_precondition_is_not_satisfied_by_a_receipt_from_another_run"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_an_incomplete_instance_satisfies_no_dependent_and_the_run_is_incomplete"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_noop_needs_no_discharge"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_discharge_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "apply_fold_undischarged"),
   ]
 {
   ConvergenceReceiptProjection { key_of: key_of, consumed_of: consumed_of, authorization_required_of: authorization_required_of }
@@ -359,13 +359,13 @@ type InstanceAuthorization sole_constructor {
 
 fn instance_authorization(key: StepInstanceKey, principal: NonEmptyStr) -> InstanceAuthorization
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "discharge_bmc_secure_apply"),
-    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "capability_discharge"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_discharge_refuses"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_noop_needs_no_discharge"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "apply_fold_undischarged"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_discharge_for_another_run_refuses"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_discharge_for_another_unit_refuses"),
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "discharge_bmc_secure_apply"),
+    decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "capability_discharge"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_discharge_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_noop_needs_no_discharge"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "apply_fold_undischarged"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_discharge_for_another_run_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_discharge_for_another_unit_refuses"),
   ]
 {
   InstanceAuthorization { key: key, principal: principal }
@@ -610,8 +610,8 @@ type LegBudget sole_constructor {
 
 fn leg_budget(leg: DeclarationRef, budget: PositiveMillisecond) -> LegBudget
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "prior_life_archive_write_budget"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "prior_life_archive_write_budget"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {
   LegBudget { leg: leg, budget: budget }
@@ -628,8 +628,8 @@ type LegDeadline sole_constructor {
 
 fn effect_leg_deadline(budget: LegBudget, started: ObserverClockInstant) -> LegDeadline
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_write_archive"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {
   LegDeadline { budget: budget, started: started }
@@ -662,8 +662,8 @@ type LegCompletion
 
 fn complete_effect_leg(deadline: LegDeadline, finished: ObserverClockRead) -> LegCompletion
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_write_archive"),
-    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
+    decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_write_archive"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
   ]
 {
   match finished {

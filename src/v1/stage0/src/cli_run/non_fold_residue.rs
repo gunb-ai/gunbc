@@ -281,7 +281,7 @@ pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
 // The required floor runs it DIFF-SCOPED over the graph its strict preparation already typed
 // (`non_fold_residue_diff_verdict`): no second compile. What that scope cannot see is declared,
 // not implied -- gunbc.recurring_failure_mode non_fold_residue_diff_scope_misses_an_untouched_flip.
-// v1 standing (`gunbc.v1_maintenance_standing` v1_seed_standing): admitted under the purpose test,
+// v1 standing (`gunbc.v1.v1_maintenance_standing` v1_seed_standing): admitted under the purpose test,
 // it adds no analysis to the frozen 04_* stages and only reads their output. It dissolves into
 // v2.lens.fallback_arm_census when v2.compiler.infer types coproduct match scrutinees.
 // ---------------------------------------------------------------------------
@@ -357,9 +357,6 @@ pub(crate) fn typed_fallback_arm_walk(
             continue;
         }
         let rel = rel_path_for_layer_import(Path::new(&tm.module.span.file));
-        if is_test_dag(&rel) {
-            continue;
-        }
         walk.covered_paths.insert(rel.clone());
         walk.module_of_path.insert(rel.clone(), module_path.clone());
         walk.covered_modules.insert(module_path);
@@ -760,6 +757,36 @@ mod nfr_typed_tests {
         );
     }
 
+    // THE A6 (build_projection_partition) SHAPE, RED: an accumulator fold whose outer match
+    // wildcard-shadows the non-refused arms of a closed coproduct, with a second wildcard over
+    // the same accumulator nested in the open arm (running vs. first derivation). Both arms sit
+    // in `step`'s body, so the single function is the site.
+    const A6_SHAPE_RED: &str = "module m\ntype P = Derived { v: Int } | Empty | Refused { c: Int }\nfn step(acc: P, x: Int) -> P {\n  match acc {\n    Refused { c: c } => Refused { c: c }\n    _ =>\n      match acc {\n        Derived { v: v } => Derived { v: v }\n        _ => Derived { v: x }\n      }\n  }\n}\n";
+
+    // THE A6 SHAPE, POSITIVE CONTROL: the same fold totalized by a derived refused-vs-open
+    // partition the accumulator is projected to (open side carries the running fact), so the
+    // fold matches on the partition and the carried value -- no wildcard over the closed
+    // coproduct anywhere, and no fabricated arm for the excluded refused state.
+    const A6_SHAPE_GREEN: &str = "module m\ntype Opt = OptAbsent | OptPresent { value: Int }\ntype P = Derived { v: Int } | Empty | Refused { c: Int }\ntype PPart = PPartOpen { running: Opt } | PPartRefused { c: Int }\nfn p_part(p: P) -> PPart {\n  match p {\n    Derived { v: v } => PPartOpen { running: OptPresent { value: v } }\n    Empty => PPartOpen { running: OptAbsent }\n    Refused { c: c } => PPartRefused { c: c }\n  }\n}\nfn step(acc: P, x: Int) -> P {\n  match p_part(p: acc) {\n    PPartRefused { c: c } => Refused { c: c }\n    PPartOpen { running: r } =>\n      match r {\n        OptPresent { value: v } => Derived { v: v }\n        OptAbsent => Derived { v: x }\n      }\n  }\n}\n";
+
+    #[test]
+    fn red_control_a6_projection_fold_shape_is_residue() {
+        let got = sites(A6_SHAPE_RED);
+        assert!(
+            got.contains("m.dag::step"),
+            "the accumulator fold with wildcard over the closed projection coproduct must be flagged; got {got:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_a6_partition_carried_total_fold_is_not_residue() {
+        let got = sites(A6_SHAPE_GREEN);
+        assert!(
+            !got.contains("m.dag::step") && !got.contains("m.dag::p_part"),
+            "the partition-carried total fold must NOT be flagged; got {got:?}"
+        );
+    }
+
     const WILDCARD_MODULE: &str = "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n";
     const TOTAL_MODULE: &str = "module a\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n  }\n}\n";
 
@@ -875,29 +902,6 @@ mod nfr_typed_tests {
         let unjudged =
             non_fold_residue_row_subjects_unjudged(&[subject], &TypedFallbackArmWalk::default());
         assert_eq!(unjudged.len(), 1);
-    }
-
-    #[test]
-    fn red_control_row_subject_excluded_test_path_refuses() {
-        // The walk types the module but excludes `_test.dag` paths, so the row's exact path is
-        // never covered: the row must refuse rather than pass unjudged.
-        let src = "module t\ntype Mode = A | B\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n";
-        let subject =
-            non_fold_residue_classify_row_subject("dag/test/x_test.dag", true, Ok(src.to_string()));
-        assert_eq!(
-            subject,
-            NonFoldResidueRowSubject::Module {
-                path: "dag/test/x_test.dag".to_string(),
-                module: "t".to_string()
-            }
-        );
-        let walk = typed_fallback_arm_walk_for_fixture(&[("dag/test/x_test.dag", src)])
-            .unwrap_or_else(|c| panic!("{c}"));
-        assert!(!walk.covered_paths.contains("dag/test/x_test.dag"));
-        assert_eq!(
-            non_fold_residue_row_subjects_unjudged(&[subject], &walk).len(),
-            1
-        );
     }
 
     #[test]

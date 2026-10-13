@@ -1,4 +1,4 @@
-module gunbc.baseboard_dimm_figure
+module gunbc.host.baseboard_dimm_figure
 
 import std.types { List }
 import extdeps.external_authority { ExternalAuthority }

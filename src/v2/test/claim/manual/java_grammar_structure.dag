@@ -1,4 +1,4 @@
-module v2.test.manual.java_grammar_structure
+module v2.test.claim.manual.java_grammar_structure
 
 
 fn java_grammar_structure_satisfied(lm: LanguageModel) -> Bool {

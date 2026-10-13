@@ -30,17 +30,17 @@ import gunbc.spark.host_effect_quiescence {
   HostEffectResidueSpec, HostQuiescenceEvidence, HostQuiescence, HostQuiet, HostResidue, HostQuiescenceUnread, ArgvRun, ArgvRan, ArgvLegDidNotRun, observe_host_effect_quiescence,
   ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, ClaimantStanding, parse_claimant_standing,
 }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 
-import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host }
 import product.capacity.event_chain { EventId, PartitionId }
 import std.measure { Second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, spark_serving_arm_host_claims }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 import gunbc.spark.serving_subject {

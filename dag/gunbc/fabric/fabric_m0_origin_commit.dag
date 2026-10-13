@@ -1,4 +1,4 @@
-module gunbc.fabric_m0_origin_commit
+module gunbc.fabric.fabric_m0_origin_commit
 
 import std.types { NonEmptyStr, FilePath, List, Bool, String }
 import std.process { ProcessExit, exit_failure }
@@ -15,14 +15,14 @@ import std.durable_compare_and_set {
   cas_generation_first,
 }
 import gunbc.auth.access_token_source { AccessTokenSource }
-import gunbc.fabric_m0_origin_readback {
+import gunbc.fabric.fabric_m0_origin_readback {
   OriginFetchOutcome,
   OriginObjectStaged,
   OriginObjectAbsent,
   OriginFetchUnavailable,
   origin_reading_digest,
 }
-import gunbc.fabric_m0_job_ending { JobEnding, process_exit_of_job_ending, publication_exit_reason }
+import gunbc.fabric.fabric_m0_job_ending { JobEnding, process_exit_of_job_ending, publication_exit_reason }
 import gunbc.cloudflare.r2_staged_transfer {
   WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains,
   R2StagingCustody, R2StagingNotCreated, R2StagingRemoved, R2StagingResidue,
@@ -38,14 +38,14 @@ import gunbc.cloudflare.r2_origin_object {
   OriginFetch,
   fetch_origin_object,
 }
-import gunbc.fabric_m0_completion { OriginReadback, ReadbackAbsent, ReadbackUnknown, origin_readback_of_fetch }
+import gunbc.fabric.fabric_m0_completion { OriginReadback, ReadbackAbsent, ReadbackUnknown, origin_readback_of_fetch }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.data_category { BuildOutput }
 import product.data_class {
   Classified, DataEffectPermit, classify_build_output, SinkKind, DurableOrigin, DataOperation, StoreDurably,
 }
 import product.fabric.provider_route { ProviderRoute, provider_route_eq }
-import gunbc.fabric_m0_commit {
+import gunbc.fabric.fabric_m0_commit {
   CommitNamespace,
   CommitTransportOutcome,
   StoreAnswered,
@@ -55,7 +55,7 @@ import gunbc.fabric_m0_commit {
   manifest_read_of_origin_fetch,
 }
 
-// THE COMMIT BOUNDARY BOUND TO THE DURABLE ORIGIN. gunbc.fabric_m0_commit declares what a store
+// THE COMMIT BOUNDARY BOUND TO THE DURABLE ORIGIN. gunbc.fabric.fabric_m0_commit declares what a store
 // answer and an independent readback MEAN; this module is the realization that OBTAINS them from
 // the R2 origin -- one PUT of the manifest at the slot derived from the attempt, and one self-
 // staging fetch of the same slot -- and seals the pair so a caller cannot combine a transport
@@ -136,7 +136,7 @@ type OriginCommitObservation sole_constructor {
 // origin returned into a directory the fetch minted. The recorded digest is compared with that
 // reading one layer up, never here.
 //
-// CONSUMERS (DESIGN 3c): tools.fabric_m0_origin_object_probe canary_ending, the identified canary
+// CONSUMERS (DESIGN 3c): gunbc.instruments.fabric_m0_origin_object_probe canary_ending, the identified canary
 // whose process conclusion follows the JobEnding built over this observation. The pure fold above
 // is exercised by test.claim.fabric_m0_origin_commit_witness across every PUT x fetch arm.
 fn commit_manifest_to_origin(
@@ -230,7 +230,7 @@ fn fabric_durable_origin_route() -> ProviderRoute {
 //
 // WHAT IS NOT WALLED: the transport underneath. gunbc.cloudflare.r2_origin_object put_origin_object
 // is exported with no admit_callers and takes a bare path; commit_manifest_to_origin below calls it
-// for the manifest, and tools.fabric_m0_origin_object_probe roundtrip calls it for the fixture, so
+// for the manifest, and gunbc.instruments.fabric_m0_origin_object_probe roundtrip calls it for the fixture, so
 // a module that imports the transport can still PUT unclassified bytes to the same bucket. This
 // entry is therefore a permit-taking door beside an open one: rung 1 for the class "job output
 // written without admission", not construction. NEXT-RUNG TRIGGER, capability grain: the transport's
@@ -240,7 +240,7 @@ fn fabric_durable_origin_route() -> ProviderRoute {
 // by sealing this module's callers alone. That seal lives in r2_origin_object, which gunbc#11214
 // is editing, and is not taken here.
 //
-// CONSUMERS (DESIGN 3c): tools.fabric_m0_origin_object_probe canary_ending; the fold above is
+// CONSUMERS (DESIGN 3c): gunbc.instruments.fabric_m0_origin_object_probe canary_ending; the fold above is
 // exercised by test.claim.fabric_m0_origin_commit_witness.
 type OriginObjectCommit sole_constructor {
   readback: OriginReadback

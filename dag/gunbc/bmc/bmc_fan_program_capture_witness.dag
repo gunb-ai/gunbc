@@ -1,8 +1,8 @@
-module gunbc.bmc_fan_program_capture_witness
+module gunbc.bmc.bmc_fan_program_capture_witness
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.bmc_fan_program_capture {
+import gunbc.bmc.bmc_fan_program_capture {
   AcousticLevelMeasured,
   AcousticLevelNoInstrument,
   CapturedProgramReceipt,

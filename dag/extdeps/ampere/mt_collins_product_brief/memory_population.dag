@@ -171,7 +171,7 @@ data mt_collins_population_32_dimms_completion: MtCollinsPopulationCorrection = 
 
 // GSG Issue 1.05, page 10, paragraph immediately above Table 10. Equal DIMM
 // size is required within one socket; different sockets may use different sizes.
-// Consumer: gunbc.memory_configuration_evaluation's separate capacity obligation.
+// Consumer: gunbc.host.memory_configuration_evaluation's separate capacity obligation.
 fn mt_collins_socket_dimm_sizes_supported(left_socket: Nat, left_capacity: ByteSize, right_socket: Nat, right_capacity: ByteSize) -> Bool {
   left_socket != right_socket || left_capacity == right_capacity
 }

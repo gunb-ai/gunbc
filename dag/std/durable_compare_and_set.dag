@@ -10,7 +10,7 @@ module std.durable_compare_and_set
 // generation: that generation is a FENCING TOKEN, and a fencing token excludes
 // nothing on its own. Holding generation N does not stop another writer from
 // acting; it only lets a store REJECT a stale writer, and only if the store
-// performs the check. In gunbc.fleet_converge_plan_cli the exclusion that
+// performs the check. In gunbc.fleet.fleet_converge_plan_cli the exclusion that
 // actually holds is flock, which is single-host by construction and therefore
 // cannot serialize two writers on different hosts. This module is the missing
 // half: the store-side check itself, whose refusal arm belongs to the store
