@@ -1,7 +1,7 @@
 module test.claim.resource_requirement_call_admission_witness
 
 import std.types { String, Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

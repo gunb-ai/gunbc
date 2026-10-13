@@ -3,7 +3,7 @@ module test.claim.serving.rented_offer_admission_witness
 import std.types { Bool, String, NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.work { Shape }
 import product.fabric.offer_route { OfferRouteRow }

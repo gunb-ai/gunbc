@@ -22,7 +22,7 @@ import extdeps.cpu.amd {
   ryzen_7_pro_8700ge_catalog,
   ryzen_9_7950x3d_catalog,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

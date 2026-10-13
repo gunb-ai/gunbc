@@ -6,7 +6,7 @@
 // differential's classifier and rendering), `extdeps.bazel.label` (the label grammar mirrored
 // here) and `extdeps.bazel.target_pattern` (the pattern grammar mirrored here). The SET forms
 // (`//pkg:all`, `//pkg:*`, `//pkg/...`) execute only inside a route's universe: the native test
-// route (`//v2/test/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
+// route (`//v2/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
 // evaluated by the floor's own discovery authority and claim evaluation). A set form outside both
 // is refused with status 2 (`test_operand_set_form_refusal_rendered`, mirroring
 // `gunbc.target_invocation`) and is never widened into another route. None of the
@@ -250,6 +250,32 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 pub enum V2NativeCensusReading {
     RefusalCensus,
     TypeDeclarationUse,
+    NativeProcessMemory { workload: NativeMeasuredWorkload },
+}
+
+/// `gunbc.instruments.native_process_memory_reading` `NativeCensusVerb`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeCensusVerb {
+    FrontEnd,
+    Infer,
+}
+
+impl NativeCensusVerb {
+    /// `native_census_verb_argv` and the `.dag` constructor name, in that order.
+    fn argv_and_variant(self) -> (&'static str, &'static str) {
+        match self {
+            Self::FrontEnd => ("census", "NativeCensusFrontEnd"),
+            Self::Infer => ("census-infer", "NativeCensusInfer"),
+        }
+    }
+}
+
+/// `gunbc.instruments.native_process_memory_reading` `NativeMeasuredWorkload`, narrowed to the arms a
+/// row binds today. `NativeSelfCompileWorkload` is a declared frontier there and gains an arm here
+/// when the native compile verb accepts the self-host closure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeMeasuredWorkload {
+    Census { verb: NativeCensusVerb },
 }
 
 /// `gunbc.target_binding` `TargetProducer`, narrowed to the members this seam realizes today.
@@ -372,6 +398,16 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("type-declaration-use-census"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::TypeDeclarationUse,
+            },
+        ),
+        (
+            instrument_label("native-process-memory-census"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::NativeProcessMemory {
+                    workload: NativeMeasuredWorkload::Census {
+                        verb: NativeCensusVerb::FrontEnd,
+                    },
+                },
             },
         ),
         (
@@ -865,6 +901,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_type_declaration_use_census(&self_host_source_roots()),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::NativeProcessMemory { workload },
+        } => run_native_process_memory(&self_host_source_roots(), workload),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
@@ -1132,7 +1171,7 @@ fn exact_head_standing_outcome(
 ///
 /// It calls the SAME producer `--v2-native-route` calls, so the two cannot disagree about whether
 /// the seed can build v2 -- only one of them decides it. That route then spends roughly nine
-/// further minutes executing the v2.test.* universe through the emitted binary, which is a
+/// further minutes executing the marked `v2` declarations through the emitted binary, which is a
 /// different claim (what the emitted compiler ANSWERS), and bundling it here would price the
 /// self-host question at the cost of a question nobody asked.
 ///
@@ -1200,8 +1239,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 /// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
 /// clause or the pattern was narrower than the universe, so the subject was not reached.
 fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
-    let pattern = native_route_default_pattern_text();
-    match cli_run::run_v2_native_frontier(source_roots, &pattern) {
+    match cli_run::run_v2_native_frontier(source_roots) {
         Ok(run) => {
             let termination = match run.frontier.as_str() {
                 "held" | "advanced" | "grew-by-owned-correctness-flip" => Termination::ObservationHeld,
@@ -1396,7 +1434,23 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
             }
         }
     };
-    match cli_run::classify_cli_wire(&value, &ctx) {
+    reader_standing_outcome(
+        &ctx,
+        &value,
+        label_name,
+        "type_declaration_use_census_standing",
+    )
+}
+
+/// A reader's `CliWireResponse`, as the invocation outcome: exit 0 held, 1 did not hold, any other
+/// code no observation. Shared by every producer whose standing a `.dag` reader decides.
+fn reader_standing_outcome(
+    ctx: &crate::v1_interpreter::InterpContext,
+    value: &crate::v1_interpreter::Value,
+    label_name: &str,
+    reader: &str,
+) -> InvocationOutcome {
+    match cli_run::classify_cli_wire(value, ctx) {
         cli_run::CliWireClass::Printable { bytes, exit } => {
             let (termination, verdict) = match exit {
                 cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
@@ -1413,7 +1467,10 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
                     format!("the reader returned `{type_name}`, not a ProcessExit"),
                 ),
             };
-            InvocationOutcome { termination, message: format!("{bytes}{label_name}: {verdict}") }
+            InvocationOutcome {
+                termination,
+                message: format!("{bytes}{label_name}: {verdict}"),
+            }
         }
         cli_run::CliWireClass::Unprintable { cause } => InvocationOutcome {
             termination: Termination::Refused,
@@ -1422,7 +1479,7 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
         cli_run::CliWireClass::NotCliWire { type_name } => InvocationOutcome {
             termination: Termination::Refused,
             message: format!(
-                "{label_name}: type_declaration_use_census_standing returned `{type_name}`, not a CliWireResponse"
+                "{label_name}: {reader} returned `{type_name}`, not a CliWireResponse"
             ),
         },
         cli_run::CliWireClass::MalformedCliWire { detail } => InvocationOutcome {
@@ -1430,6 +1487,149 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
             message: format!("{label_name}: malformed CliWireResponse: {detail}"),
         },
     }
+}
+
+/// THE NATIVE PROCESS MEMORY PRODUCER. The host writes the one-module control root from the reader's
+/// own rows, runs the workload's verb over it and over the source roots on ONE prepared binary, each
+/// child reaped by `wait4`, and hands both readings to `native_process_memory_standing`, which decides.
+fn run_native_process_memory(
+    source_roots: &[String],
+    workload: NativeMeasuredWorkload,
+) -> InvocationOutcome {
+    use crate::v1_interpreter::{str_value, Value};
+    let label_name = "native-process-memory-census";
+    let unreached = |message: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message,
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/instruments/native_process_memory_reading.dag";
+    let (graph, source_indices) =
+        match cli_run::resolve_entry_graph(&cli_run::default_source_roots(), READER) {
+            Ok(resolved) => resolved,
+            Err(cause) => {
+                return unreached(format!(
+                    "{label_name}: resolve failed for {READER}: {cause}"
+                ))
+            }
+        };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let read_str = |function: &str| -> Result<String, String> {
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true) {
+            Ok(v) => match &v {
+                Value::Str(s) => Ok(s.to_string()),
+                _ => Err(format!("{label_name}: {function} is not a String")),
+            },
+            Err(cause) => Err(format!("{label_name}: {function} failed: {cause}")),
+        }
+    };
+    let write_control = |run_dir: &std::path::Path| -> Result<std::path::PathBuf, String> {
+        let tree = run_dir
+            .join("control")
+            .join(read_str("native_process_memory_control_tree")?);
+        let target = tree.join(read_str("native_process_memory_control_path")?);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{label_name}: {e}"))?;
+        }
+        std::fs::write(&target, read_str("native_process_memory_control_content")?)
+            .map_err(|e| format!("{label_name}: {e}"))?;
+        Ok(tree)
+    };
+    let NativeMeasuredWorkload::Census { verb } = workload;
+    let (argv, verb_variant) = verb.argv_and_variant();
+    let runs = match cli_run::run_native_process_memory_runs(source_roots, argv, write_control) {
+        Ok(runs) => runs,
+        Err(cause) => return unreached(cause),
+    };
+    // THE INPUT IS OBSERVED OR SAID TO BE UNOBSERVED, never invented (the same rule
+    // `run_required_v2_native_inner` states for GITHUB_SHA).
+    let input_identity = format!(
+        "roots={} tree={}",
+        source_roots.join(","),
+        std::env::var("GITHUB_SHA").unwrap_or_else(|_| "unobserved(GITHUB_SHA unset)".to_string())
+    );
+    let reading = |r: &cli_run::NativeChildMeasured| {
+        let terminal = r
+            .stdout
+            .lines()
+            .rev()
+            .find(|l| l.contains("\"_terminal\""))
+            .unwrap_or("");
+        let peak = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_child_maxrss",
+            &[(Some("raw_value".to_string()), Value::Int(r.maxrss_kib))],
+            true,
+        )
+        .map_err(|cause| format!("{label_name}: native_child_maxrss failed: {cause}"))?;
+        Ok::<Value, String>(Value::Record {
+            type_name: ctx.sym("NativeChildReading"),
+            fields: std::rc::Rc::new(vec![
+                (ctx.sym("peak"), peak),
+                (
+                    ctx.sym("elapsed"),
+                    Value::Record {
+                        type_name: ctx.sym("Measure"),
+                        fields: std::rc::Rc::new(vec![(
+                            ctx.sym("count"),
+                            Value::Int(r.elapsed_ns),
+                        )]),
+                    },
+                ),
+                (ctx.sym("exit_code"), Value::Int(i64::from(r.exit_code))),
+                (ctx.sym("signal"), Value::Int(i64::from(r.signal))),
+                (ctx.sym("terminal"), str_value(terminal)),
+            ]),
+        })
+    };
+    let (control_reading, workload_reading) =
+        match (reading(&runs.control), reading(&runs.workload)) {
+            (Ok(c), Ok(w)) => (c, w),
+            (Err(cause), _) | (_, Err(cause)) => return unreached(cause),
+        };
+    let variant = |type_name: &str, name: &str, fields: Vec<(&str, Value)>| Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(name),
+        fields: std::rc::Rc::new(fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect()),
+    };
+    let workload_value = variant(
+        "NativeMeasuredWorkload",
+        "NativeCensusWorkload",
+        vec![("verb", variant("NativeCensusVerb", verb_variant, vec![]))],
+    );
+    let args = [
+        (Some("workload".to_string()), workload_value),
+        (
+            Some("binary_identity".to_string()),
+            str_value(&runs.binary_identity),
+        ),
+        (
+            Some("input_identity".to_string()),
+            str_value(&input_identity),
+        ),
+        (Some("envelope".to_string()), str_value(&runs.envelope)),
+        (Some("control".to_string()), control_reading),
+        (Some("measured".to_string()), workload_reading),
+    ];
+    let value = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_process_memory_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => value,
+        Err(cause) => return unreached(format!("{label_name}: the reader failed: {cause}")),
+    };
+    reader_standing_outcome(&ctx, &value, label_name, "native_process_memory_standing")
 }
 
 /// THE V2-NATIVE CLI PRODUCER: does the v2-exclusive front door compile.
@@ -2084,23 +2284,23 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, mirrored: the native test
-/// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
+/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, READ from the file rendered from
+/// it: the native test route's whole universe. An operand CONTAINED in it belongs to that route.
 ///
-/// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
-/// The lane's runner needs the same fact as TEXT (it is an argv word) and this verb needs it as a
-/// PATTERN, which is two renderings of one value, not two values. A bare `"//v2/test/..."` literal
-/// beside this one would be the second independently editable spelling DESIGN section 3 forbids,
-/// and the drift would be load-bearing rather than cosmetic: narrow one and not the other and the
-/// verb routes an operand native that the lane's default excludes, or the reverse.
-pub fn native_route_default_pattern() -> TargetPattern {
-    TargetPattern::SubtreeTargets(vec!["v2".to_string(), "test".to_string()])
-}
-
-/// The universe above as the argv word the emitted binary's `adjudicate` verb takes. Derived from
-/// the one pattern rather than spelled again.
-pub fn native_route_default_pattern_text() -> String {
-    render_target_pattern(&native_route_default_pattern())
+/// THIS SEED HAS NO SPELLING OF THAT UNIVERSE. `NATIVE_ROUTE_DEFAULT_PATTERN` is a constant of
+/// `native_route_seed_boundary_generated`, which `gunbc.native_route_seed_boundary_emit` renders from
+/// the one declaration and the generated-artifact drift wall holds to it: moving the boundary in
+/// `.dag` moves this routing at the next regeneration, and a hand edit of the constant is a drift
+/// finding that regeneration undoes.
+/// The declaration cannot be read here directly, because this decision is taken before any emitted
+/// binary exists. The text goes through this file's own pattern parser, and a text that does not
+/// parse is a refusal the caller reports, never a panic and never a fallback to some other universe.
+///
+/// The universe the EMITTED binary adjudicates by default is the same declaration read inside the
+/// compiler (`v2.compiler.compile`, `adjudicate` without `--pattern`); the seed passes it a pattern
+/// only when the operator wrote one, so nothing here is handed to it as text.
+fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal> {
+    parse_target_pattern(crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN)
 }
 
 /// THE NATIVE TEST ROUTE, ENTERED WITH THE OPERAND'S OWN PATTERN.
@@ -2130,7 +2330,7 @@ pub fn native_route_default_pattern_text() -> String {
 /// `SubjectUnreached` while letting a definite member failure through unchanged.
 fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
     let rendered = render_target_pattern(pattern);
-    match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
+    match cli_run::run_required_v2_native(&self_host_source_roots(), Some(&rendered)) {
         cli_run::NativeRouteOutcome::LaneQualificationHeld { summary, members } => {
             native_member_outcome(
                 &rendered,
@@ -2649,6 +2849,24 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// (`gunbc.target_invocation` `assess_binary_freshness`), then route. Kept beside `test_verb`
 /// rather than inside it so the routing tests stay a function of the operand alone.
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
+    // THE MEASURED-SPAWN TRAMPOLINE, BEFORE ANY WORK, so this process's address space is still small
+    // (`cli_run::measured_spawn_trampoline`). Entered only through its reserved operand, which only
+    // the native process memory producer emits; the receipt variable beside any other operand refuses.
+    match cli_run::measured_spawn_route(
+        operand,
+        std::env::var_os(cli_run::MEASURED_SPAWN_RECEIPT_ENV),
+    ) {
+        cli_run::MeasuredSpawnRoute::NotRequested => {}
+        cli_run::MeasuredSpawnRoute::Enter(receipt) => {
+            std::process::exit(cli_run::measured_spawn_trampoline(receipt))
+        }
+        cli_run::MeasuredSpawnRoute::Refuse(message) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message,
+            }
+        }
+    }
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
     // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate
@@ -3222,7 +3440,23 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
             };
         }
     };
-    if target_pattern_within(&pattern, &native_route_default_pattern()) {
+    let native_universe = match native_route_default_pattern() {
+        Ok(universe) => universe,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "gunbc test: the native route's boundary, {:?}, is not an admitted target pattern; \
+                     src/v1/stage0/src/native_route_seed_boundary_generated.rs is rendered from \
+                     gunbc.witness.v2_native_route native_route_default_pattern by \
+                     gunbc.native_route_seed_boundary_emit, so regenerate it rather than route without a boundary\n  cause: {}",
+                    crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN,
+                    target_pattern_refusal_text(&cause)
+                ),
+            };
+        }
+    };
+    if target_pattern_within(&pattern, &native_universe) {
         return run_native_test_route(&pattern);
     }
     if target_pattern_within(&pattern, &claim_route_universe()) {

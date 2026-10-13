@@ -28,7 +28,7 @@ import gunbc.host.host_effect {
 import gunbc.host.host_effect_realize { resolve_host_effect_cell, host_effect_apply, ReplaceRunnerIncarnationOnHost, IncompatibleCell }
 import gunbc.runner.runner_lifecycle_realize { runner_lifecycle_realize_replace_runner_incarnation }
 import std.realization_reconcile { Converged, NotConverged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

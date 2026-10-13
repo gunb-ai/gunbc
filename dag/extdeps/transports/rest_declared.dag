@@ -61,3 +61,23 @@ fn rest_binding_field_of_key(key: String) -> Optional<RestBindingField> {
   else if key == "response_format" { optional_present(value: RestResponseFormat) }
   else { optional_absent() }
 }
+
+// WHAT THE AUTHOR WRITES AT EACH FIELD. path is Template<OperationInputName> (or a list of those);
+// the others are their own contracts (method atom, body/query/headers records, …). A new field
+// must pick a contract here; the realization wall reads this fold and does not restate the table.
+type RestBindingFieldContract
+  = RestStringTemplateContract
+  | RestOtherContract
+
+fn rest_binding_field_contract(field: RestBindingField) -> RestBindingFieldContract {
+  match field {
+    RestPath => RestStringTemplateContract
+    RestMethod => RestOtherContract
+    RestQuery => RestOtherContract
+    RestHeaders => RestOtherContract
+    RestBody => RestOtherContract
+    RestTls => RestOtherContract
+    RestAuthBasic => RestOtherContract
+    RestResponseFormat => RestOtherContract
+  }
+}

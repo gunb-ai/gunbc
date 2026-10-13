@@ -20,7 +20,7 @@ import gunbc.dispatch_selection {
   sizing_profile_expectation,
 }
 import gunbc.roadmap.roadmap_spawner { node_json }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -45,7 +45,7 @@ import extdeps.cpu.ampere_altra_package {
   altra_power_and_ground_pin_count,
   altra_reserved_pin_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

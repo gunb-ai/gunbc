@@ -1,6 +1,6 @@
 module test.claim.resolved_call_emission_identity_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -106,5 +106,27 @@ test fn w_resolved_signature_owner_selects_runtime_primitive() -> Bool {
     "src/test_claim_resolved_signature_owner_probe.rs",
     ["v1_rt::rc_map_insert("],
     ["call target identity was not established"]
+  )
+}
+
+// Homonym vs the std.algebra HostRealizedSeam: a same-named ordinary fn must keep its authored
+// body. The name-keyed rust_host_string_op_fn_emit arm would have written v1_rt::string_contains
+// here; selection is the projection row for std.algebra string_contains only.
+test fn w_homonym_string_contains_keeps_authored_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.homonym_string_contains_probe\nimport std.types { Bool, String }\nfn string_contains(s: String, pattern: String) -> Bool { false }\nfn probe() -> Bool { string_contains(s: \"haystack\", pattern: \"stack\") }\n",
+    "src/test_claim_homonym_string_contains_probe.rs",
+    ["false"],
+    ["v1_rt::string_contains("]
+  )
+}
+
+// The rostered declaration reaches the bridge.
+test fn w_algebra_string_contains_delegate_reaches_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.algebra_string_contains_probe\nimport std.types { Bool, String }\nimport std.algebra { string_contains }\nfn probe() -> Bool { string_contains(s: \"haystack\", pattern: \"stack\") }\n",
+    "src/test_claim_algebra_string_contains_probe.rs",
+    ["v1_rt::string_contains("],
+    []
   )
 }

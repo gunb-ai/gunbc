@@ -1,6 +1,6 @@
 module test.claim.examples.blackjack_round_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import examples.blackjack.cards { Card, Ace, Five, Six, Nine, Ten, King, Queen, Clubs, Diamonds, Hearts, Spades }
 import examples.blackjack.hand { Hand }
 import examples.blackjack.round {

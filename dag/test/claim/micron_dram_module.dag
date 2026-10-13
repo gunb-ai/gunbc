@@ -3,7 +3,7 @@ module test.claim.micron_dram_module
 import std.types { Bool, NonEmptyStr, list_length }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
 import std.decl_ref { decl_ref, declaration_ref_eq }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.memory.types {
   DramModuleCatalogRow,
   DramModuleClass,

@@ -9,7 +9,7 @@ import gunbc.instruments.diagnostics_witness_transport {
   run_diagnostics_record_field_walls_witness,
 }
 import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

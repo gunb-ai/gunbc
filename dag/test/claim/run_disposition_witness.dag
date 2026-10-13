@@ -3,7 +3,7 @@ module test.claim.run_disposition_witness
 import std.types { Bool, String, NonEmptyStr, List }
 import product.host_identity { HostIdentity }
 import std.measure { hardware_thread_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runs {
   WorkflowRunRecord,
   RunSettlementInFlight,

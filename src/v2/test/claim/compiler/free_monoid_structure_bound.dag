@@ -5,7 +5,7 @@ import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_inf
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.qualified_name { qualified_name_from_dotted_string, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Authored, BinderStructureEdge, BinderTypeEdge, Conj, CoreEdgeLabel, Edge, Instantiation, Node, Positional, Symbol, TypeNode, core_edge_label, host_text_concatenation, node_subtree_nodes, node_synthetic }
 import v2.std.type_binder { ArgumentOutsideKind, KindUnresolved, edge_is_type_params, TypeApplicationArityMismatch, TypeApplicationBinderOrderMalformed, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, type_application_conformance, type_binder_set_children }
 import v2.std.algebra_structure_signature { algebra_binary_fn_node, algebra_inhabitance_node, free_monoid_structure_node, monoid_type_node }

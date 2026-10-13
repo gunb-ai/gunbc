@@ -20,7 +20,7 @@ import gunbc.fleet.fleet_main_revision {
   RemoteRevisionPresent,
   RemoteRevisionAbsent,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

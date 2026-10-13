@@ -2,7 +2,7 @@ module test.claim.github_effect_perform_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.integer { UInt8 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets, JwsEncoded, JwsEncodeNotOctets }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
 import extdeps.tools.openssl { openssl_signature_of, OpensslSigned, OpensslSignRefused }

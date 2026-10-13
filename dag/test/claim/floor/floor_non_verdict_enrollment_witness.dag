@@ -8,7 +8,7 @@ import gunbc.floor.floor_non_verdict_enrollment {
   floor_non_verdict_population_basis,
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 fn census_total(rows: List<NonVerdictCauseCount>) -> Int {
   fold_list(xs: rows, empty: 0, cons: fn(acc, r) { acc + r.identities })

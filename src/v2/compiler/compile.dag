@@ -15,8 +15,7 @@ import gunbc.witness.v2_native_route {
   native_route_label_in_package,
   native_route_module_package_text,
   native_route_default_pattern,
-  native_route_universe_member,
-  native_route_universe_prefix,
+  native_route_module_probe_declaration,
   required_v2_native_job_name
 }
 // THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside
@@ -130,17 +129,15 @@ import v2.compiler.module_acquisition {
   BoundModules,
   BoundModulesListed,
   BoundModulesRefused,
-  NamespaceModulesListed,
-  NamespaceModulesRefused,
   PopulationReadComplete,
   PopulationReadRefused,
   SourceRootBinding,
   VerifiedAcquisition,
   acquire_verified,
+  acquisition_first_duplicate,
   acquisition_ingest,
   acquisition_module_path,
   enumerate_bound_modules,
-  enumerate_namespace_modules,
   read_population
 }
 import v2.cli.repository_layout { repository_storage_layout }
@@ -189,8 +186,15 @@ import v2.compiler.dependency_demand_census {
   DemandCensusAuthoredReading,
   DemandCensusModuleStanding,
   DemandCensusReport,
+  DemandCensusUnboundLocus,
+  DemandCensusUnreadable,
+  DemandCensusUnreadableStage,
+  UnboundNamed,
+  UnboundShaped,
   DemandModuleResolveRefused,
   DemandModuleResolved,
+  UnreadableAtParse,
+  UnreadableAtTokenize,
   demand_census_authored_readings,
   demand_census_exit,
   demand_census_lines,
@@ -217,7 +221,7 @@ import v2.compiler.resolve {
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
 import v2.std.staging { then_outcome }
 import v2.std.compilers.lexing { TokenStream }
-import v2.std.grammar { ParseTree }
+import v2.std.grammar { ParseTree, node_atom_identity_optional }
 import v2.std.language_model { LanguageModel }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel }
@@ -261,6 +265,7 @@ import v2.std.diagnostic {
   InvariantPortLocus,
   DeclarationLocus,
   declaration_locus,
+  diagnostics_fatal,
   diagnostics_fatal_reason,
   invariant_port_locus,
   Rejected,
@@ -270,10 +275,9 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
-  outcome_with_diagnostics,
-  diagnostics_fatal
+  outcome_with_diagnostics
 }
-import v2.std.node { Arrow, Atom, ComputationNode, Edge, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
+import v2.std.node { Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Node, NodeFold, NodeKind, Occupancy, Positional, Symbol, Transform, TypeNode, Value, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
 import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -2038,10 +2042,11 @@ fn native_lane_declared_module_name(content: String) -> Optional<String> {
 // producer runs no text scan of its own and the module's name is the name it was requested by, never
 // a second reading of its header.
 //
-// THE FACTS COVER UNIVERSE MEMBERS ONLY. A module outside the universe has nothing to discover, and a
-// walk over it would assert whole-repository sidecar and disposition hygiene from a consumer whose
-// subject is the requested tests' completeness -- a different subject, answered by a fold over a
-// population this lane did not ask for (DESIGN section 2, one fact one home).
+// THE FACTS COVER MODULES THAT CARRY A MARKER ONLY. A module with no marked declaration has no test to
+// discover, and a walk over it would assert whole-repository sidecar and disposition hygiene from a
+// consumer whose subject is the requested tests' completeness -- a different subject, answered by a
+// fold over a population this lane did not ask for (DESIGN section 2, one fact one home). Which
+// modules those are is read off what the acquirer captured, never off where a module lives.
 type NativeLaneSourceFacts {
   module: String
   path: Symbol
@@ -2062,7 +2067,7 @@ fn native_lane_member_facts(member: AcquiredModule) -> NativeLaneSourceFacts {
 
 fn native_lane_source_facts(modules: List<AcquiredModule>) -> List<NativeLaneSourceFacts> {
   list_map(
-    xs: filter(xs: modules, predicate: fn(member) { native_route_universe_member(module_qn: member.name) }),
+    xs: filter(xs: modules, predicate: fn(member) { length(xs: member.test_markers) > 0 }),
     f: fn(member) { native_lane_member_facts(member: member) }
   )
 }
@@ -2146,11 +2151,21 @@ data native_driver_verb_demand_census: String = "demand-census"
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
-data native_driver_adjudicate_needs_pattern: String = "REFUSED: adjudicate takes a target pattern after the host facts file and before the source roots"
+data native_driver_adjudicate_needs_pattern: String = "REFUSED: adjudicate --pattern takes a target pattern as the next word"
+
+// THE PATTERN IS AN OPTION AND NOT AN OPERAND, SO THAT ABSENCE HAS A MEANING OF ITS OWN: the
+// compiler's route boundary, `gunbc.witness.v2_native_route` `native_route_default_pattern`. The
+// caller that wants the lane's whole universe says nothing, and the one value it would have said is
+// read here, from the declaration that owns it, rather than spelled again by every caller (the seed
+// used to hand-mirror it and pass it on every spawn; that mirror was a second authority for the
+// boundary). A caller that wants a focused run, `gunbc test <operand>`, names its own pattern and
+// the authority still parses it. The flag is recognised only immediately after the facts path, so a
+// source root is never mistaken for it once roots have begun.
+data native_driver_pattern_flag: String = "--pattern"
 
 // THE PATTERN OPERAND IS PARSED BY ITS AUTHORITY, AND A BAD ONE IS A COMMAND-LINE REFUSAL. The text
 // goes to `extdeps.bazel.target_pattern` `parse_target_pattern` unchanged; its typed cause is
@@ -2174,7 +2189,8 @@ type NativeDriverParseState
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
   | DriverDemandCensusRoots { roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
-  | DriverAdjudicateSeekPattern { facts_path: String }
+  | DriverAdjudicateOptions { facts_path: String }
+  | DriverAdjudicateSeekPatternValue { facts_path: String }
   | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
   | DriverParseRefused { reason: Symbol, detail: String }
 
@@ -2218,8 +2234,18 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
     DriverDemandCensusRoots { roots: roots } =>
       DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
-      DriverAdjudicateSeekPattern { facts_path: word }
-    DriverAdjudicateSeekPattern { facts_path: facts_path } =>
+      DriverAdjudicateOptions { facts_path: word }
+    DriverAdjudicateOptions { facts_path: facts_path } =>
+      if word == native_driver_pattern_flag {
+        DriverAdjudicateSeekPatternValue { facts_path: facts_path }
+      } else {
+        DriverAdjudicateRoots {
+          facts_path: facts_path,
+          pattern: native_route_default_pattern(),
+          roots: [word]
+        }
+      }
+    DriverAdjudicateSeekPatternValue { facts_path: facts_path } =>
       match parse_target_pattern(text: word) {
         TargetPatternRefused { cause: cause } =>
           DriverParseRefused {
@@ -2238,9 +2264,12 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
   }
 }
 
-// THE TWO STATES THAT ARE INCOMPLETE RATHER THAN EMPTY. Reaching the end still seeking a verb means
-// argv was empty; still seeking a facts path means `adjudicate` was the last word. Both are
-// refusals the rendered main raised inline, and both are raised here with its exact message.
+// THE STATES THAT ARE INCOMPLETE RATHER THAN EMPTY. Reaching the end still seeking a verb means
+// argv was empty; still seeking a facts path means `adjudicate` was the last word; still seeking a
+// pattern value means `--pattern` was. The first two are refusals the rendered main raised inline
+// and are raised here with its exact message; the third is the one new way to be incomplete, and a
+// flag with nothing after it refuses rather than falling back to the default, because a caller
+// that named a pattern and lost it must not be answered for a different population.
 fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan {
   match state {
     DriverParseRefused { reason: reason, detail: detail } =>
@@ -2263,7 +2292,15 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
     DriverDemandCensusRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
-    DriverAdjudicateSeekPattern { facts_path: _ } =>
+    DriverAdjudicateOptions { facts_path: facts_path } =>
+      NativeDriverPlanned {
+        verb: NativeDriverAdjudicate {
+          facts_path: facts_path,
+          pattern: native_route_default_pattern(),
+          source_roots: []
+        }
+      }
+    DriverAdjudicateSeekPatternValue { facts_path: _ } =>
       NativeDriverPlanRefused {
         reason: ^native_driver_adjudicate_without_pattern,
         detail: native_driver_adjudicate_needs_pattern
@@ -2317,15 +2354,16 @@ fn native_driver_plan_exit(plan: NativeDriverPlan) -> ProcessExit {
 // the module's package text once per module, `parse_label` once per declaration -- and carries the
 // parsed label forward; `native_lane_universe_module_for_source` then admits by
 // `extdeps.bazel.target_pattern` `target_pattern_matches` over the CARRIED label, the one matcher,
-// within the floor's universe. There is one decision site for a refused label and one parse per
+// within the universe. There is one decision site for a refused label and one parse per
 // identity (review 69565: the earlier pre-pass and filter each re-derived every label).
 // `the_default_pattern_admits_every_universe_member` pins that the default narrows nothing.
 //
-// THE UNIVERSE AND THE SELECTION ARE TWO AUTHORITIES. The universe is the floor's
-// (`native_route_universe_member`, the required gate's own prefix): only its members are labeled at
-// all, so a module outside it -- including a declaration no label can name, `test fn all` -- is
-// neither the lane's population nor the lane's defect (review 69555). The pattern only narrows
-// WITHIN the universe; a pattern reaching outside it selects nothing rather than widening the lane.
+// THE UNIVERSE AND THE SELECTION ARE TWO AUTHORITIES. The universe is the marked declarations of the
+// modules the acquirer returned, so every marked declaration is labeled and a marked declaration no
+// label can name, `test fn all`, is a located defect of the lane rather than a test that silently
+// is not one: a location predicate that excused it would be a second statement of what a test is.
+// The pattern only selects WITHIN the universe; a pattern reaching outside it selects nothing rather
+// than widening the lane.
 //
 // PER IDENTITY IS THE GRAIN THE SINGLE-TARGET FORM NEEDS: `//pkg:name` names a declaration, not a
 // module. A MODULE WITH NO ADMITTED DECLARATION IS NOT IN THE UNIVERSE, so the emptiness check
@@ -2376,8 +2414,7 @@ fn native_lane_label_rows(declared: String, rows: List<FloorDiscoveryRow>) -> Na
   )
 }
 
-// ONLY UNIVERSE MEMBERS ARE LABELED. The facts already hold nothing else; the guard keeps this fold
-// total over any list a caller hands it.
+// EVERY FACT IS LABELED, because the facts already hold only modules that carry a marker.
 fn native_lane_label_universe(facts: List<NativeLaneSourceFacts>) -> NativeLaneLabeling {
   fold_list(
     xs: facts,
@@ -2386,20 +2423,16 @@ fn native_lane_label_universe(facts: List<NativeLaneSourceFacts>) -> NativeLaneL
       match acc {
         NativeLaneLabelRefused { identity: _ } => acc
         NativeLaneLabeled { sources: sources } =>
-          if !native_route_universe_member(module_qn: f.module) {
-            acc
-          } else {
-            match native_lane_label_rows(declared: f.module, rows: f.discovery.rows) {
-              NativeLaneSourceLabelRefused { identity: identity } =>
-                NativeLaneLabelRefused { identity: identity }
-              NativeLaneSourceLabeled { identities: identities } =>
-                NativeLaneLabeled {
-                  sources: list_snoc_item(
-                    xs: sources,
-                    item: NativeLaneLabeledSource { module: f.module, path: f.path, identities: identities }
-                  )
-                }
-            }
+          match native_lane_label_rows(declared: f.module, rows: f.discovery.rows) {
+            NativeLaneSourceLabelRefused { identity: identity } =>
+              NativeLaneLabelRefused { identity: identity }
+            NativeLaneSourceLabeled { identities: identities } =>
+              NativeLaneLabeled {
+                sources: list_snoc_item(
+                  xs: sources,
+                  item: NativeLaneLabeledSource { module: f.module, path: f.path, identities: identities }
+                )
+              }
           }
       }
     }
@@ -2428,10 +2461,37 @@ fn native_lane_universe_module_for_source(
   }
 }
 
-// THE SELECTED UNIVERSE: the identities `pattern` admits among the test modules the acquisition
-// returned. `population` is the `v2.test` namespace's module NAMES, not its sources: the lane acquires
-// only the modules the pattern could admit (native_lane_candidate_entries), so a module the pattern
-// did not admit is a name here and nothing more. The names are what a single target that spells a
+// EVERY CAPTURED MARKER YIELDS EXACTLY ONE ENTRY, OR THE LANE REFUSES. Discovery keys its rows by entry
+// and function and drops a repeat without a word (floor_discovery_append_row), so a marker list that
+// names one declaration twice would reach the receipt as one test whose second declaration nobody ran.
+// The acquirer cannot hand the lane such a list: a module declaring one name twice is refused at its
+// member read (namespace_graft_declaration_name_repeated), before any universe exists. This refusal is the
+// universe's own contract over the markers it is SUPPLIED (AcquiredModule.test_markers), so it holds for
+// any other source of AcquiredModule values, and it names the (module, declaration) identity it repeated.
+fn native_lane_duplicate_marker_in(member: AcquiredModule) -> Optional<String> {
+  match acquisition_first_duplicate(pending: member.test_markers, seen: empty_map()) {
+    Present { value: name } => optional_present(value: concat(member.name, ".", name))
+    Absent => optional_absent()
+  }
+}
+
+fn native_lane_duplicate_marker(modules: List<AcquiredModule>) -> Optional<String> {
+  fold_list(
+    xs: modules,
+    empty: optional_absent(),
+    cons: fn(acc, member) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => native_lane_duplicate_marker_in(member: member)
+      }
+    }
+  )
+}
+
+// THE SELECTED UNIVERSE: the identities `pattern` admits among the marked declarations of the modules
+// the acquisition returned. `population` is the bound trees' module NAMES, not their sources: the lane
+// acquires only the modules the pattern could admit (native_lane_candidate_entries), so a module the
+// pattern did not admit is a name here and nothing more. The names are what a single target that spells a
 // module is recognised by (native_lane_pattern_named_module).
 //
 // A caller naming a narrower pattern gets a narrower population through the same producer, never a
@@ -2442,7 +2502,11 @@ fn native_lane_universe_selected(
   population: List<String>,
   pattern: TargetPattern
 ) -> Outcome<NativeLaneUniverse> {
-  native_lane_universe_of_facts(facts: native_lane_source_facts(modules: modules), population: population, pattern: pattern)
+  match native_lane_duplicate_marker(modules: modules) {
+    Present { value: identity } => native_lane_refused(reason: ^native_lane_duplicate_marker, detail: identity)
+    Absent =>
+      native_lane_universe_of_facts(facts: native_lane_source_facts(modules: modules), population: population, pattern: pattern)
+  }
 }
 
 // A POPULATION NAME WHOSE DUMMY LABEL CANNOT BE FORMED is still a located identity of the namespace
@@ -2458,7 +2522,7 @@ fn native_lane_population_unformable_identity(population: List<String>) -> Optio
         Absent =>
           match native_route_label_in_package(
             package_text: native_route_module_package_text(module_qn: name),
-            declaration: "any_declaration"
+            declaration: native_route_module_probe_declaration
           ) {
             LabelRefused { cause: cause } =>
               optional_present(value: concat(concat(name, ": "), label_refusal_text(r: cause)))
@@ -2491,9 +2555,9 @@ fn native_lane_universe_of_facts(
 // ruling 2026-09-21). Under this lane's correspondence a module namespace is a PACKAGE and a
 // declaration is a TARGET, so `//v2/test/claim/parse:expression_bodied_fn_decl_parse` asks for a
 // declaration of that name in module `v2.test.claim.parse`. When no identity answers it AND a module
-// of the `v2.test` population is named `<package>.<target>`, the author meant that module -- the
+// of the population is named `<package>.<target>`, the author meant that module -- the
 // file-as-target spelling -- and an empty universe would be a silent wrong answer. The population is
-// the namespace's module NAMES (native_lane_acquire_bound lists them), so recognising the spelling
+// the bound trees' module NAMES (native_lane_acquire_bound lists them), so recognising the spelling
 // reads no module the pattern did not otherwise admit. The refusal names the module
 // spelling, `//<package>/<target>:all`. The comparison is made in PACKAGE-TEXT space with the one
 // correspondence the selection already uses (gunbc.witness.v2_native_route
@@ -2540,9 +2604,9 @@ fn native_lane_pattern_names_a_module_detail(pattern: TargetPattern, module_qn: 
 
 // THE FACTS' DISCOVERY STATES ARE FINALIZED BY THE FLOOR'S OWN PRODUCER, OVER THE MEMBERS THIS LANE
 // ACQUIRED. Every state is handed to floor_discovery_finalize_source_outcomes unchanged, so a walk
-// failure, a disposition refusal or a sidecar violation in an acquired universe member refuses the
+// failure, a disposition refusal or a sidecar violation in an acquired marked module refuses the
 // derivation exactly as it refuses any other discovery, and only then are the pattern's modules kept.
-// The walked set is the requested closure's universe members, not the repository: a violation in a
+// The walked set is the requested closure's marked modules, not the repository: a violation in a
 // module this run did not request is not this lane's to raise (the read set is the requested closure,
 // exactly).
 //
@@ -2615,11 +2679,11 @@ fn native_lane_universe_after_labels(
 // tokenized, parsed and normalized every corpus source before evaluating anything -- a fixed cost
 // independent of the population it was asked about). DESIGN section 2: minimize the demand graph
 // before materializing its answers. What is acquired is decided by NAMES: the entries are the live
-// control module and the test modules the pattern could admit, and v2.compiler.module_acquisition
+// control module and the bound modules the pattern could admit, and v2.compiler.module_acquisition
 // reads each entry's file by the storage rule (gunbc.source_layout), reads the modules each member's
 // own text requests, and checks the read set against that requested closure exactly. No directory is
-// walked for a closure and no file is read that was not requested; the one listing is the `v2.test`
-// namespace's, the population a pattern selects within.
+// walked for a closure and no file is read that was not requested; the one listing is the bound trees'
+// module names (enumerate_bound_modules), the population a pattern selects within.
 //
 // THE ADJUDICATION RECEIPT'S file_refusals THEREFORE MEAN "refusals among the sources the selected
 // population needed", which is what the Context-stage classification joins against: a refusal outside
@@ -2732,24 +2796,13 @@ fn native_lane_module_reachable(
   }
 }
 
-// THE POPULATION A PATTERN SELECTS WITHIN is the `v2.test` namespace, named by the prefix the universe
-// admits members by (gunbc.witness.v2_native_route native_route_universe_prefix, trailing dot
-// dropped), so the namespace listed and the namespace admitted are one fact.
-fn native_lane_universe_namespace() -> String {
-  substring(
-    s: native_route_universe_prefix,
-    start: 0,
-    end: string_length(s: native_route_universe_prefix) - 1
-  )
-}
-
 // THE DECLARATION A MODULE IS PROBED WITH when the pattern is asked whether it could admit the module
 // at all: a single target names the declaration it wants, a package or subtree pattern admits any.
 fn native_lane_pattern_probe_declaration(pattern: TargetPattern) -> String {
   match pattern {
     SingleTarget { label: label } => label.target.name as String
-    PackageTargets { package: _ } => "any_declaration"
-    SubtreeTargets { package: _ } => "any_declaration"
+    PackageTargets { package: _ } => native_route_module_probe_declaration
+    SubtreeTargets { package: _ } => native_route_module_probe_declaration
   }
 }
 
@@ -2773,12 +2826,18 @@ fn native_lane_pattern_admits_module(pattern: TargetPattern, module_qn: String) 
 }
 
 // THE ENTRIES OF THE ACQUISITION: the live-control module (its declarations are the controls the
-// receipt runs) and every candidate test module. Everything else the run reads is a module one of these
-// requests.
+// receipt runs) and every bound module the pattern could admit. Everything else the run reads is a
+// module one of these requests. The control module is itself a bound module under the default
+// pattern, so it is named once, as the head, and never again from the population.
 fn native_lane_candidate_entries(pattern: TargetPattern, population: List<String>) -> List<String> {
   Cons {
     head: native_route_live_control_module,
-    tail: filter(xs: population, predicate: fn(name) { native_lane_pattern_admits_module(pattern: pattern, module_qn: name) })
+    tail: filter(
+      xs: population,
+      predicate: fn(name) {
+        name != native_route_live_control_module && native_lane_pattern_admits_module(pattern: pattern, module_qn: name)
+      }
+    )
   }
 }
 
@@ -2850,14 +2909,10 @@ fn native_lane_acquire_listed(
 }
 
 fn native_lane_acquire_bound(bindings: List<SourceRootBinding>, pattern: TargetPattern) -> Outcome<NativeLaneAcquisition> {
-  match enumerate_namespace_modules(
-    layout: repository_storage_layout(),
-    bindings: bindings,
-    namespace: native_lane_universe_namespace()
-  ) {
-    NamespaceModulesRefused { namespace: namespace, cause: cause } =>
-      native_lane_refused(reason: ^native_lane_population_unlisted, detail: concat(namespace, ": ", cause))
-    NamespaceModulesListed { namespace: _, modules: population } =>
+  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces()) {
+    BoundModulesRefused { subject: subject, cause: cause } =>
+      native_lane_refused(reason: ^native_lane_population_unlisted, detail: concat(subject, ": ", cause))
+    BoundModulesListed { modules: population } =>
       native_lane_acquire_listed(bindings: bindings, population: population, pattern: pattern)
   }
 }
@@ -2871,7 +2926,7 @@ fn native_lane_roots_refusal<T>(bindings: SourceRootBindings) -> Outcome<T> {
   )
 }
 
-// THE ADJUDICATING RUN'S ONE DOOR TO ITS SOURCES: bind the roots, list the test namespace, acquire the
+// THE ADJUDICATING RUN'S ONE DOOR TO ITS SOURCES: bind the roots, list the modules they hold, acquire the
 // closure of the candidate entries and verify it. The universe is derived from what was acquired by
 // native_lane_acquired, a separate pure fold.
 fn native_lane_acquire(source_roots: FreeMonoid<String>, pattern: TargetPattern) -> Outcome<NativeLaneAcquisition> {
@@ -3364,9 +3419,9 @@ fn native_lane_identity_row(
 
 // THE WHOLE-TREE CENSUS ROSTER. The universe roster above answers "which modules carry test
 // identities"; this one answers "which modules the ingest carries at all". They are separate folds
-// rather than one fold with a flag because universe membership is a PREFIX test on the qualified
-// name AND an enrolled discovery row, and a census that inherited either would report a residual
-// over the test corpus while naming one over the tree.
+// rather than one fold with a flag because universe membership is a captured marker AND an enrolled
+// discovery row, and a census that inherited either would report a residual over the test corpus
+// while naming one over the tree.
 // THE MODULE NAME IS READ FROM THE SOURCE, NOT FROM THE CONTEXT INDEX. A file the context refused
 // never reached absorb, so it holds no index binding; a roster derived from the index would exclude
 // exactly the files whose refusals a census exists to report, and it would do so silently.
@@ -3383,7 +3438,8 @@ fn native_lane_identity_row(
 // root index -- so in the production context a uses fn's module is absent, and so are the
 // operations and fns it declares. A census that stripped one module at a time would read every edge
 // into such a module as outside the closure. So this route folds the whole ingest once with the
-// clause elided (v2.compiler.dependency_demand_census demand_census_strip, between parse and
+// the uses clause elided (aliases are not rewritten; resolve does not model the clause)
+// (v2.compiler.dependency_demand_census demand_census_strip, between parse and
 // normalize) and absorbs each root through the SAME native_test_context_absorb the production fold
 // uses: the only difference from native_test_context_fold_step is the strip, which is why that step
 // is entered phase by phase here rather than through program_assembly_read_to_normalized_root_seeded.
@@ -3397,11 +3453,42 @@ type NativeDemandCensusFoldState {
   context: NativeTestContextFoldState
   authored: List<AuthoredUsesFunction>
   file_refused: List<AuthoredUsesFunction>
-  unreadable: Int
+  unreadable: List<DemandCensusUnreadable>
 }
 
 fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<AuthoredUsesFunction>) -> List<AuthoredUsesFunction> {
   fold_list(xs: ys, empty: xs, cons: fn(acc, y) { list_snoc_item(xs: acc, item: y) })
+}
+
+fn native_demand_census_unreadable(
+  read: DagSourceReadWitness,
+  stage: DemandCensusUnreadableStage,
+  d: NonEmptyDiagnostics
+) -> DemandCensusUnreadable {
+  DemandCensusUnreadable {
+    file_path: read.artifact.file_path,
+    stage: stage,
+    reason: diagnostics_fatal_reason(d: d)
+  }
+}
+
+fn native_demand_census_unbound_locus(d: NonEmptyDiagnostics) -> Optional<DemandCensusUnboundLocus> {
+  let fatal = diagnostics_fatal(d: d)
+  if fatal.reason == ^resolve_reason_unbound_symbol {
+    match fatal.at {
+      NodeLocus { anchor: a } =>
+        match node_atom_identity_optional(node: a.at) {
+          Present { value: n } => optional_present(value: UnboundNamed { name: n })
+          Absent => optional_present(value: UnboundShaped { kind: a.at.kind })
+        }
+      Textual { file: _, extent: _ } => optional_absent()
+      SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
+      InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
+      DeclarationLocus { declaration: _ } => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
 }
 
 fn native_demand_census_read(
@@ -3414,35 +3501,40 @@ fn native_demand_census_read(
     Present { value: qn } => qn
     Absent => Empty
   }
-  match bind_outcome(
-    o: program_assembly_phase_tokenize(read: read, lex: front.lex),
-    f: fn(tokens) {
-      parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, seed: state.context.alloc)
-    }
-  ) {
+  match program_assembly_phase_tokenize(read: read, lex: front.lex) {
     Rejected { diagnostics: d } =>
       NativeDemandCensusFoldState {
         context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
         authored: state.authored,
         file_refused: state.file_refused,
-        unreadable: state.unreadable + 1
+        unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtTokenize, d: d))
       }
-    Accepted { value: artifact, diagnostics: _ } =>
-      let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
-      match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, seed: state.context.alloc) {
         Rejected { diagnostics: d } =>
           NativeDemandCensusFoldState {
-            context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
             authored: state.authored,
-            file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
-            unreadable: state.unreadable
-          }
-        Accepted { value: scoped, diagnostics: _ } =>
-          NativeDemandCensusFoldState {
-            context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
-            authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
             file_refused: state.file_refused,
-            unreadable: state.unreadable
+            unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtParse, d: d))
+          }
+        Accepted { value: artifact, diagnostics: _ } =>
+          let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
+          match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+            Rejected { diagnostics: d } =>
+              NativeDemandCensusFoldState {
+                context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
+                authored: state.authored,
+                file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
+                unreadable: state.unreadable
+              }
+            Accepted { value: scoped, diagnostics: _ } =>
+              NativeDemandCensusFoldState {
+                context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
+                authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
+                file_refused: state.file_refused,
+                unreadable: state.unreadable
+              }
           }
       }
   }
@@ -3484,13 +3576,17 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
       let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
       let step = native_test_resolve_module(context: w.context, module: module_qn)
       match step.resolved {
-        Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: d } =>
           NativeDemandCensusWalk {
             context: step.context,
             functions: w.functions,
             operations: w.operations,
             audited: w.audited,
-            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused { authored: mine })
+            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused {
+              authored: mine,
+              first_reason: diagnostics_fatal_reason(d: d),
+              first_unbound: native_demand_census_unbound_locus(d: d)
+            })
           }
         Accepted { value: resolved, diagnostics: _ } =>
           let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
@@ -3517,7 +3613,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensus
     bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
       let folded = fold_list(
         xs: ingest,
-        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: 0 },
+        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty },
         cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
       )
       let walked = fold_list(
@@ -3539,7 +3635,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensus
         standings: walked.standings,
         file_refused: folded.file_refused,
         file_refusals: length(xs: folded.context.file_refusals),
-        unreadable_files: folded.unreadable
+        unreadable: folded.unreadable
       ))
     })
   })
@@ -4554,10 +4650,10 @@ fn native_census_roots_from_buckets(
   }
 }
 
-// THE LIVE-VERDICT CONTROLS, EXECUTED BY THE SAME ROUTE AS EVERY MEMBER. They sit outside the
-// universe prefix, so discovery enrols nothing for them and the authority's own declaration is
-// what names them; a verdict is Absent exactly when the route could not produce one, which is the
-// state the false/true clauses refuse. BOTH are answered from ONE prepare: they share a module,
+// THE LIVE-VERDICT CONTROLS, EXECUTED BY THE SAME ROUTE AS EVERY MEMBER. They carry no test marker,
+// so discovery enrols nothing for them and the authority's own declaration is what names them; a
+// verdict is Absent exactly when the route could not produce one, which is the state the false/true
+// clauses refuse. BOTH are answered from ONE prepare: they share a module,
 // and resolve + infer over the whole context is the per-module cost this fold exists to pay once.
 type NativeLaneControls {
   false_control: Optional<NativeTestVerdict>

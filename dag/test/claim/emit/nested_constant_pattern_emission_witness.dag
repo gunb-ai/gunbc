@@ -1,7 +1,7 @@
 module test.claim.emit.nested_constant_pattern_emission_witness
 
 import std.types { Int, Bool, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

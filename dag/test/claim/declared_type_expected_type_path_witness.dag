@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { String, Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // ReadsLiveTree: compile_dag_diagnostic_census walks the live checkout. SubstrateInputsOnly
 // was the DeclinedLiveTree dodge; that arm is deleted and this module matches

@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // ReadsLiveTree: compile_dag_diagnostic_census walks the live checkout via
 // build_module_path_index_from_witness_roots. SubstrateInputsOnly was stamped so the

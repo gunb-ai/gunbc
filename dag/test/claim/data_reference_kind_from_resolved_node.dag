@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { String }
 import std.measure { Gigabyte }
 import extdeps.vendor.gigabyte { gigabyte }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

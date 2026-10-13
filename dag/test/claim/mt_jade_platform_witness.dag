@@ -82,7 +82,7 @@ import extdeps.ocp.mt_jade.platform {
 }
 import extdeps.external_authority { external_subject_ref_eq, ExternalSubjectRef, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

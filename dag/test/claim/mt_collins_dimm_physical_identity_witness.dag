@@ -36,7 +36,7 @@ import gunbc.mt_collins_dimm_physical_identity {
   PopulationCountDisagrees, PopulationConnectorRepeated,
   resolve_dimm_diagram_identity, population_diagram_identity, sixteen_dimm_diagram_identity,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
