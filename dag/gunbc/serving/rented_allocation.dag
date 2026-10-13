@@ -7,6 +7,8 @@ import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
 import product.fabric.work { identity_frame }
 import product.fabric.supply { SupplierOffer }
+import product.supplier.vast_ai { VastAiAskReceipt }
+import std.measure { MoneyPerHour }
 import extdeps.network.endpoint { SocketAddress, render_network_host }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch, ninfer_serve_program }
@@ -60,12 +62,22 @@ fn rented_allocation_wire(id: RentedAllocationIdentity) -> NonEmptyStr {
   ) as NonEmptyStr
 }
 
-// HOW THE ALLOCATION CAME TO BE HELD. The first producer is the operator handing over a card they rented by
-// hand; the record names the launch observation that says what the card was found running, so an imported
-// allocation is never mistaken for one this repository provisioned. Automatic acquisition (the flex lane's
-// Vast create) becomes a second arm of this coproduct when it lands, producing the same carrier.
+// HOW THE ALLOCATION CAME TO BE HELD. Imported: the operator handed over a card they rented by hand, and
+// the record names the launch observation that says what the card was found running, so it is never
+// mistaken for one this repository provisioned. Acquired: a bidder this repository runs created it. The
+// receipt carries what the create was asked with, and never the contract id, which is the identity's.
+// owner is the label that isolates this bidder's rentals from another bidder on the same provider account.
+// asked_rate is the rate actually PUT, not the offer's advertised minimum. asked_at is the PUT time, the
+// same instant a rent cooldown starts from, because a create that timed out may still have rented.
+// DECLARED FRONTIER (DESIGN 3c): the producer of Acquired is the flex bidder's wet create loop
+// (product.fabric.flex_vast_shadow flex_rented_serving_allocation_join). It constructs on an answered
+// create, and on a lost create whose reconcile finds the instance held; it never constructs on a refused
+// create. STATED DIVERGENCE (DESIGN 3, upstream decomposition): the provider ask is Vast's own receipt
+// type because Vast is the only bidder; a second acquiring provider makes it a per-provider receipt
+// rather than a widened field here.
 type RentedAllocationOrigin
   = RentedAllocationImported { imported_by: NonEmptyStr, imported_on: NonEmptyStr, found_running: DeclarationRef }
+  | RentedAllocationAcquired { owner: NonEmptyStr, asked_at: String, asked_rate: MoneyPerHour, provider_ask: VastAiAskReceipt }
 
 // WHEN THE ALLOCATION IS MEANT TO END. An allocation with no stated end is an open-ended spend, so the end
 // is a required field, and "the operator decides" is a stated end rather than its absence.

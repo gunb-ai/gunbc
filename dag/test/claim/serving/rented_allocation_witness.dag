@@ -13,10 +13,13 @@ import extdeps.ninfer.ninfer_serve { NinferServeLaunch }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.harness.harness_operator_route { operator_observed_launch }
 import gunbc.serving.rented_replica { RentedGpuDevice }
+import product.supplier.vast_ai { VastAiAskReceipt }
+import std.measure { MoneyRate, money_amount_micro }
+import extdeps.currency.currency { Usd }
 import gunbc.serving.rented_enrollment { rented_enrollment_index, rented_enrolled_routes }
 import gunbc.serving.serving_enrollment { ServingRouteResolved, ServingRouteUnresolved, serving_route_endpoint_wire, serving_route_turn_ceiling_count }
 import gunbc.serving.rented_allocation {
-  RentedServingAllocation, RentedAllocationImported, RentedEndsOnOperatorRelease, RentedNinferEngine,
+  RentedServingAllocation, RentedAllocationImported, RentedAllocationAcquired, RentedEndsOnOperatorRelease, RentedNinferEngine,
   RentedAccessRoute, RentedDirectPublishedPort, RentedSshLocalForward, RentedContractUnread,
   RentedAllocationEnrollment, RentedAllocationEnrollable, RentedAllocationNotEnrollable,
   rented_allocation_identity, rented_allocation_wire, rented_allocation_enrollment,
@@ -122,4 +125,22 @@ test fn two_providers_with_one_contract_number_are_two_allocations() -> Bool {
   let vast = rented_allocation_identity(provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"), contract: "1001" as NonEmptyStr)
   let packet = rented_allocation_identity(provider: decl_ref(module_path: "extdeps.cloud.packet_ai", decl_name: "extdeps_external_authority_anchor"), contract: "1001" as NonEmptyStr)
   (rented_allocation_wire(id: vast) as String) != (rented_allocation_wire(id: packet) as String)
+}
+
+// THE ORIGIN DOES NOT CHANGE WHERE A TURN IS SENT: a bidder-acquired allocation with the same route derives
+// the same endpoint as an imported one.
+test fn an_acquired_allocation_derives_the_same_endpoint_as_an_imported_one() -> Bool {
+  let imported = a_allocation(route: a_tunnel(target_port: 8000))
+  let acquired = RentedServingAllocation {
+    identity: imported.identity,
+    origin: RentedAllocationAcquired {
+      owner: "gunbc-flex" as NonEmptyStr,
+      asked_at: "2026-10-13T20:00:00Z",
+      asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
+      provider_ask: VastAiAskReceipt { ask_id: 77, machine_id: 42 },
+    },
+    contract: imported.contract, card: imported.card, end: imported.end, engine: imported.engine,
+    artifact: imported.artifact, host: imported.host, route: imported.route, credential_generation: imported.credential_generation,
+  }
+  a_endpoint_wire(e: rented_allocation_enrollment(a: acquired)) == a_endpoint_wire(e: rented_allocation_enrollment(a: imported))
 }
