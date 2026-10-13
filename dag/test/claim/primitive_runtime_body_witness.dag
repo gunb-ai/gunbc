@@ -8,7 +8,7 @@ import std.primitive_identity {
 }
 import extdeps.languages.rust.emit { RuntimeFunction }
 import std.types { Bool, String }
-import v1.compiler.primitive_runtime_body {
+import gunbc.primitive_runtime_body {
   primitive_runtime_body_census_in,
   runtime_body_required_check_in,
 }
