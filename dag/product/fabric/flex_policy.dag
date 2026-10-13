@@ -211,12 +211,19 @@ fn occupy_pending(occupancy: FlexFleetOccupancy, bid: MoneyPerHour) -> FlexFleet
   }
 }
 
-fn policy_reservation_ceiling(policy: FlexPolicy, min_bid: MoneyPerHour) -> MoneyPerHour {
+type FlexReservationCeiling
+  = FlexReservationCeilingChosen { rate: MoneyPerHour }
+  | FlexReservationCeilingCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
+
+fn policy_reservation_ceiling(policy: FlexPolicy, min_bid: MoneyPerHour) -> FlexReservationCeiling {
   let buffered = flex_buffered_min(min_bid: min_bid, buffer: policy.floor_buffer)
   match money_per_hour_compare(left: buffered, right: policy.fleet_rate_cap) {
-    MoneyPerHourCurrencyMismatch { left: _, right: _ } => policy.fleet_rate_cap
+    MoneyPerHourCurrencyMismatch { left: cap_left, right: cap_right } =>
+      FlexReservationCeilingCurrencyMismatch { left: cap_left, right: cap_right }
     MoneyPerHourCompared { left_le_right: buffered_under_cap } =>
-      if buffered_under_cap { buffered } else { policy.fleet_rate_cap }
+      FlexReservationCeilingChosen {
+        rate: if buffered_under_cap { buffered } else { policy.fleet_rate_cap },
+      }
   }
 }
 
@@ -228,12 +235,17 @@ fn flex_liability_for_horizon(rate: MoneyPerHour, horizon: Second) -> MoneyAmoun
   )
 }
 
-fn availability_is_on_demand(a: AvailabilityObservation) -> Bool {
+type FlexAvailabilityStanding
+  = FlexAvailabilityOnDemand
+  | FlexAvailabilityRevocable
+  | FlexAvailabilityUnobserved
+
+fn flex_availability_standing(a: AvailabilityObservation) -> FlexAvailabilityStanding {
   match a {
-    AvailableRevocable { delay: _, receipt: _ } => false
-    AvailableForInterval { delay: _, interval: _, receipt: _ } => true
-    AvailableIndefinitely { delay: _, receipt: _ } => true
-    AvailabilityUnobserved { obligation: _ } => false
+    AvailableRevocable { delay: _, receipt: _ } => FlexAvailabilityRevocable
+    AvailableForInterval { delay: _, interval: _, receipt: _ } => FlexAvailabilityOnDemand
+    AvailableIndefinitely { delay: _, receipt: _ } => FlexAvailabilityOnDemand
+    AvailabilityUnobserved { obligation: _ } => FlexAvailabilityUnobserved
   }
 }
 
@@ -291,15 +303,16 @@ fn flex_on_demand_reference_cost(
     FlexOnDemandReferenceMissing => FlexHorizonUnobserved
     FlexOnDemandReferenceStale { candidate: _ } => FlexHorizonUnobserved
     FlexOnDemandReferenceFresh { candidate: c } =>
-      if !availability_is_on_demand(a: c.dispatch.availability) {
-        FlexHorizonUnobserved
-      } else {
-        flex_price_candidate(
-          candidate: c,
-          policy: policy,
-          attempt: attempt,
-          budget_currency: budget_currency,
-        )
+      match flex_availability_standing(a: c.dispatch.availability) {
+        FlexAvailabilityUnobserved => FlexHorizonUnobserved
+        FlexAvailabilityRevocable => FlexHorizonUnobserved
+        FlexAvailabilityOnDemand =>
+          flex_price_candidate(
+            candidate: c,
+            policy: policy,
+            attempt: attempt,
+            budget_currency: budget_currency,
+          )
       }
   }
 }
@@ -383,41 +396,46 @@ fn flex_bid_after_min(
           cause: FlexRateCapBelowMin { cap: policy.fleet_rate_cap, min_bid: min_rate },
         }
       } else {
-        let ceiling = policy_reservation_ceiling(policy: policy, min_bid: min_rate)
-        match attempt.subject {
-          FlexExistingAcquisition { current_bid: current } =>
-            match money_per_hour_compare(left: min_rate, right: current) {
-              MoneyPerHourCurrencyMismatch { left: l, right: r } => refuse_currency(left: l, right: r)
-              MoneyPerHourCompared { left_le_right: min_under_current } =>
-                if !min_under_current {
-                  FlexBidRefused {
-                    cause: FlexExistingBidWouldRise { current: current, min_bid: min_rate },
-                  }
-                } else {
-                  flex_admit_at(
-                    policy: policy,
-                    occupancy: occupancy,
-                    window: window,
-                    account: account,
-                    attempt: attempt,
-                    min_rate: min_rate,
-                    bid: current,
-                    append_standing: false,
-                    joined: joined,
-                  )
+        match policy_reservation_ceiling(policy: policy, min_bid: min_rate) {
+          FlexReservationCeilingCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
+            refuse_currency(left: mismatch_left, right: mismatch_right)
+          FlexReservationCeilingChosen { rate: ceiling } =>
+            match attempt.subject {
+              FlexExistingAcquisition { current_bid: current } =>
+                match money_per_hour_compare(left: min_rate, right: current) {
+                  MoneyPerHourCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
+                    refuse_currency(left: mismatch_left, right: mismatch_right)
+                  MoneyPerHourCompared { left_le_right: min_under_current } =>
+                    if !min_under_current {
+                      FlexBidRefused {
+                        cause: FlexExistingBidWouldRise { current: current, min_bid: min_rate },
+                      }
+                    } else {
+                      flex_admit_at(
+                        policy: policy,
+                        occupancy: occupancy,
+                        window: window,
+                        account: account,
+                        attempt: attempt,
+                        min_rate: min_rate,
+                        bid: current,
+                        append_standing: false,
+                        joined: joined,
+                      )
+                    }
                 }
+              FlexNewAcquisition =>
+                flex_admit_new(
+                  policy: policy,
+                  occupancy: occupancy,
+                  window: window,
+                  account: account,
+                  attempt: attempt,
+                  min_rate: min_rate,
+                  bid: ceiling,
+                  joined: joined,
+                )
             }
-          FlexNewAcquisition =>
-            flex_admit_new(
-              policy: policy,
-              occupancy: occupancy,
-              window: window,
-              account: account,
-              attempt: attempt,
-              min_rate: min_rate,
-              bid: ceiling,
-              joined: joined,
-            )
         }
       }
   }

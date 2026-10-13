@@ -28,7 +28,8 @@ import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound,
   DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse, PermitNamesAnotherOffer,
   PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
-  AvailableIndefinitely, AvailableRevocable, PayAsYouGo, StartCostMeasured, NoTransitionRequired,
+  AvailabilityObservation, AvailableIndefinitely, AvailableRevocable, AvailabilityUnobserved,
+  PayAsYouGo, StartCostMeasured, NoTransitionRequired,
   OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
 }
 import product.fabric.budget { MoneyAccount }
@@ -42,7 +43,8 @@ import product.fabric.flex_policy {
   FlexNewAcquisition, FlexExistingAcquisition, AcquisitionActive,
   FlexOnDemandReference, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
   FlexOnDemandReferenceMissing,
-  flex_floor_buffer, flex_bid_admission, flex_buffered_min,
+  FlexReservationCeilingChosen, FlexReservationCeilingCurrencyMismatch,
+  flex_floor_buffer, flex_bid_admission, flex_buffered_min, policy_reservation_ceiling,
 }
 import extdeps.cloud.vast_ai {
   VastAiOffer, vast_ai_min_bid_money_per_hour, vast_ai_dph_total_money_per_hour,
@@ -89,16 +91,15 @@ fn t_offer(key: OfferKey, rate: MoneyPerHour) -> SupplierOffer<NonEmptyStr> {
   }
 }
 
-fn t_bound(offer: SupplierOffer<NonEmptyStr>, revocable: Bool) -> List<CandidateOffer<NonEmptyStr>> {
+fn t_bound_avail(
+  offer: SupplierOffer<NonEmptyStr>,
+  availability: AvailabilityObservation,
+) -> List<CandidateOffer<NonEmptyStr>> {
   match bind_candidate(
     offer: offer,
     dispatch: DispatchInputs {
       offer: offer.id,
-      availability: if revocable {
-        AvailableRevocable { delay: second(count: 0), receipt: "avail-revocable" }
-      } else {
-        AvailableIndefinitely { delay: second(count: 0), receipt: "avail-1" }
-      },
+      availability: availability,
       commitment: PayAsYouGo,
       start: StartCostMeasured {
         amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
@@ -120,6 +121,17 @@ fn t_bound(offer: SupplierOffer<NonEmptyStr>, revocable: Bool) -> List<Candidate
     PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
     PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
   }
+}
+
+fn t_bound(offer: SupplierOffer<NonEmptyStr>, revocable: Bool) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound_avail(
+    offer: offer,
+    availability: if revocable {
+      AvailableRevocable { delay: second(count: 0), receipt: "avail-revocable" }
+    } else {
+      AvailableIndefinitely { delay: second(count: 0), receipt: "avail-1" }
+    },
+  )
 }
 
 fn t_machine(id: NonEmptyStr) -> FlexMachineKey {
@@ -727,6 +739,50 @@ test fn a_stale_on_demand_reference_refuses() -> Bool {
       )) == "on-demand-unobserved"
     FlexOnDemandReferenceStale { candidate: _ } => false
   }
+}
+
+test fn a_reservation_ceiling_currency_mismatch_is_refused() -> Bool {
+  match policy_reservation_ceiling(
+    policy: t_policy(cap_micros: 5000000),
+    min_bid: eur_hour(micros: 1100000),
+  ) {
+    FlexReservationCeilingCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
+      mismatch_left == Eur && mismatch_right == Usd
+    FlexReservationCeilingChosen { rate: _ } => false
+  }
+}
+
+test fn an_unobserved_on_demand_availability_refuses() -> Bool {
+  let reference = fold(
+    t_bound_avail(
+      offer: t_offer(key: "od-unobserved", rate: usd_hour(micros: 2000000)),
+      availability: AvailabilityUnobserved { obligation: "vendor console did not answer" },
+    ),
+    init: FlexOnDemandReferenceMissing,
+    f: (acc, c) =>
+      match acc {
+        FlexOnDemandReferenceFresh { candidate: existing } =>
+          FlexOnDemandReferenceFresh { candidate: existing }
+        FlexOnDemandReferenceStale { candidate: stale_c } => FlexOnDemandReferenceStale { candidate: stale_c }
+        FlexOnDemandReferenceMissing => FlexOnDemandReferenceFresh { candidate: c }
+      },
+  )
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap_micros: 5000000),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: 10000000),
+    attempt: t_attempt_ref(
+      machine: t_machine(id: "machine-a"),
+      min_bid: one_dollar_wire(),
+      quote: one_ten(),
+      key: "offer-unobserved-od",
+      reservation: "res-unobserved-od",
+      revocation: RevocationAccepted,
+      revocable: true,
+      reference: reference,
+    ),
+  )) == "on-demand-unobserved"
 }
 
 test fn rediscovery_never_lifts_the_on_demand_relative_ceiling() -> Bool {
