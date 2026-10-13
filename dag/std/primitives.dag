@@ -174,12 +174,15 @@ data replace_section_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-// replace(s, from, to): every occurrence of `from` in `s` replaced by `to`. Each of the n positions is
-// compared against `from` (length m), and each of at most n / m matches writes `to` (length k).
+// replace(s, from, to): every occurrence of `from` (length m) in `s` (length n) replaced by `to`
+// (length k). The bound is total over accepted inputs, including an empty `from`, which matches at
+// every one of the n + 1 boundaries: at most n + 1 matches each write k, so the output is at most
+// n + (n + 1) * k. Work covers comparing each position against `from` and writing that output:
+// n * m + m + n + (n + 1) * k, below (n + 1) * (m + k + 1).
 data replace_contract: PrimitiveContract = {
   name: "replace",
-  work: "n * m",
-  output_size: "n + (n / m) * k",
+  work: "(n + 1) * (m + k + 1)",
+  output_size: "n + (n + 1) * k",
   certainty: Conservative,
   carrier_cost: CarrierInsensitive
 }
