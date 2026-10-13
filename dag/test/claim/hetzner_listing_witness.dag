@@ -27,7 +27,7 @@ import gunbc.procurement.hetzner_supply_observation {
   hetzner_arm_rows_orderable, admissible_as_purchasable_floor, hetzner_supply_coverage_is_complete,
   hetzner_cx23_scarce, hetzner_cax_line_unavailable,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

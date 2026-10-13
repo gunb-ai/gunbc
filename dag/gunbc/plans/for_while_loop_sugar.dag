@@ -101,7 +101,7 @@ fn section_3_for() -> List<MarkdownBlock> {
     p(text: "`for` is **finite, pointwise iteration over a canonically ordered domain**, and in S1 that domain is `List<T>` only."),
     ul(items: [
       li(text: "**Why only lists.** The promises about result and diagnostic order need an enumeration and an ordinal, and a cardinality supplies only a count: a finite set of five members has no canonical first member. `v2.std.refinement` already distinguishes `StructurallyOrdered` from `StructurallyUnordered`. A list is structurally ordered and its index is its ordinal. A range comes once a range carrier with its own canonical enumeration exists, and any other finite domain needs an ordering witness or an explicit ordering projection."),
-      li(text: "**Why not `list_map`.** `v2.std.algebra` `list_map` is defined by `fold_list_right`, which threads an accumulator, and lowering through it or through `fold_call_lowering` installs a carrier. `for` lowers directly to the domain encoding of §2.3."),
+      li(text: "**Why not `list_map`.** `std.algebra` `list_map` is defined by `fold_list_right`, which threads an accumulator, and lowering through it or through `fold_call_lowering` installs a carrier. `for` lowers directly to the domain encoding of §2.3."),
       li(text: "**Pure bodies only.** An effectful body is refused in S1, until ordering or commutativity evidence for effects is modeled (§7)."),
     ]),
     table2(

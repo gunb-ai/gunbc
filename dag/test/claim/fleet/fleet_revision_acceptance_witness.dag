@@ -37,7 +37,7 @@ import gunbc.fleet.fleet_revision_acceptance {
   observe_default_branch_revision,
   admit_fleet_revision,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 // The epoch dimension is exercised by its own two REDs; every other admission witness here

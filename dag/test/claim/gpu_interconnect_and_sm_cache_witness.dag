@@ -13,7 +13,7 @@ import std.logic { Bool }
 import std.nat { Nat }
 import std.measure { bandwidth_count, byte_size_count }
 import std.types { list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

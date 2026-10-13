@@ -5,7 +5,7 @@ import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel }
 
 import std.algebra { Cons, Empty }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
 import v2.std.arrow_signature { declared_signature }

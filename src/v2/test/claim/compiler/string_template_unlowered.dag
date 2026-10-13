@@ -9,7 +9,7 @@ import v2.compiler.translate { translate }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import std.optional { Absent, Present }

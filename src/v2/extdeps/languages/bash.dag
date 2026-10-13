@@ -2,8 +2,7 @@ module v2.extdeps.languages.bash
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_right, list_flat_map, list_map }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_flat_map, list_map }
 import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,

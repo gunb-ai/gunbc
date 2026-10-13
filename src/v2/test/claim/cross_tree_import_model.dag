@@ -10,7 +10,7 @@ data dag_std_to_v2_std_edge: CrossTreeImport = CrossTreeImport {
   from_tree: DagTree,
   from_module: "dag.std.freeMonoid",
   to_tree: V2Tree,
-  to_module: "v2.std.algebra"
+  to_module: "v2.std.node"
 }
 
 data dag_std_to_v2_compiler_edge: CrossTreeImport = CrossTreeImport {

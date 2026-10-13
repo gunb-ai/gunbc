@@ -15,7 +15,7 @@ import gunbc.cli_run_hand_rust_area_ledger {
 }
 import std.types { Int, List, NonEmptyStr }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

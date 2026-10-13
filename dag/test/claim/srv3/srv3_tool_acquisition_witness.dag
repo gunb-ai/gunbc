@@ -2,8 +2,8 @@ module test.claim.srv3.srv3_tool_acquisition_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { list_map }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { list_map }
 import gunbc.host.host_effect_realize {
   Srv3ToolRow,
   Srv3ToolAcquisition,

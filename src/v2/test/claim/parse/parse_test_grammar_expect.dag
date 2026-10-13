@@ -45,7 +45,7 @@ import v2.std.parse_refusal_reason {
   parse_refusal_reason_symbol
 }
 import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, content_hash }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

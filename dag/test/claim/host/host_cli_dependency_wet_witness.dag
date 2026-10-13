@@ -2,7 +2,7 @@ module test.claim.host.host_cli_dependency_wet_witness
 
 import extdeps.tools.gnu_coreutils { true_program }
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present, Absent }
 import std.types { Bool, NonEmptyStr }
 import extdeps.tools { CliTool, SourceCoreutils }

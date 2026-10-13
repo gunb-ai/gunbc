@@ -1,6 +1,6 @@
 module test.claim.trait_bound_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // 'v1.compiler.trait_bound_witness' not found`, which is what this note now documents rather than
 // repeats. The fix is not a broader source-root (a shared CI-workflow change, out of this PR's
 // scope) but to rely on the SAME pattern the sibling Clone-bound witness already uses:
-// dag/test/claim/generic_item_clone_bound_witness.dag imports nothing beyond v2.std.live_tree
+// dag/test/claim/generic_item_clone_bound_witness.dag imports nothing beyond std.live_tree
 // and proves its v1 trait-derive-emit behavior entirely through compile_dag_rust_emit_check, a host
 // builtin that runs the real v1 emit pipeline without requiring a static import of any v1.compiler
 // module. w_current_defect_reproduces_bare_generic_no_clone_impl below is that same shape: it

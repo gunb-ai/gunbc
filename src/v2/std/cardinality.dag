@@ -52,7 +52,6 @@ import v2.std.node {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
-type Never
 type Unit
 type NonZeroNat {
   prev: Nat

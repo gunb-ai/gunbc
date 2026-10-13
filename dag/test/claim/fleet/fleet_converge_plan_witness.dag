@@ -162,7 +162,7 @@ import gunbc.fleet.fleet_converge_plan_cli {
   fleet_converge_deploy_branch_admits,
 }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,

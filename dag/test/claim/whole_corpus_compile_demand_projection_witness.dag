@@ -2,7 +2,7 @@ module test.claim.whole_corpus_compile_demand_projection_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.measure { byte_size }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.repository_census_observation { RepositoryIdentity, SourceRootIdentity }
 import gunbc.whole_corpus_compile_admission {
   WholeCorpusCompileRootIdentity,

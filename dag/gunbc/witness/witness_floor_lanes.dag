@@ -1,7 +1,7 @@
 module gunbc.witness.witness_floor_lanes
 
 import std.types { String, List }
-import v2.std.algebra { FreeSemigroup, list_map, non_empty_to_list }
+import std.algebra { FreeSemigroup, list_map, non_empty_to_list }
 
 // THE REQUIRED LANE, AS ONE CONCEPT WITH N INSTANCES RATHER THAN N NAMED PARAMETERS.
 //

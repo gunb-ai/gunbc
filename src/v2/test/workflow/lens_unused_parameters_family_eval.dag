@@ -9,7 +9,7 @@ import v2.test.lens_unused_parameters.non_use_edges {
 import v2.test.lens_unused_parameters.rollup_unused_declaration {
   unused_parameters_rollup_claim_passes
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

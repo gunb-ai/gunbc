@@ -8,13 +8,13 @@ import v2.lens.leaf_model_verification {
   rust_r2b_release_fixture_pair,
   rust_r3_external_fixture_pair
 }
-import v2.std.algebra { fold_list, is_empty }
+import std.algebra { fold_list, is_empty }
 import v2.std.leaf_model_verification {
   LeafModelFixturePair,
   TargetCompileAccepted,
   TargetCompileRejected
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

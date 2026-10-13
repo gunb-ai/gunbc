@@ -5,8 +5,7 @@ import v2.lens.synthesis {
   synthesis_lens,
   synthesis_lens_diagnostics
 }
-import v2.std.algebra { fold_list, is_empty, non_empty }
-import std.algebra { list_append }
+import std.algebra { list_append, fold_list, is_empty, non_empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.report { Report }
 import v2.test.claim.synthesis_gate.subject_technique_roster {

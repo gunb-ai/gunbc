@@ -4,7 +4,7 @@ import std.types { Bool, List, String, NonEmptyStr }
 import std.integer { UInt8 }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalDiverged, GoalIndeterminate, GoalSatisfied }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelPopulationRole, mt_collins_channel_population_roles, PopulationRolesResolved, PopulationRolesRefused,
 }

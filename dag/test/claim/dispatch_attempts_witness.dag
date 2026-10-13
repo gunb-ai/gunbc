@@ -16,7 +16,7 @@ import gunbc.roadmap.roadmap_component {
   js_attempts_observe_fn,
 }
 import gunbc.roadmap.roadmap_style { roadmap_css }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

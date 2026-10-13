@@ -3,7 +3,7 @@ module test.claim.srv3.srv3_principal_privilege_witness
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.posix.identity {
   PosixUserId,
   PosixGroupId,

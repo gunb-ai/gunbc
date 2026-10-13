@@ -1,6 +1,6 @@
 module test.claim.ci.ci_budget_tree_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.session_reservation_policy { session_reservation_bytes, ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished }
 import gunbc.ci.ci_runner_placement { resolve_session_slice }
 import gunbc.ci.ci_runner_target { FleetSelfHosted, ci_runner_target_ram_speed_budget }

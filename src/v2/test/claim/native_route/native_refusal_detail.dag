@@ -26,10 +26,9 @@ import v2.compiler.native_test_vocabulary {
   NativeTestVerdict
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.algebra { count_where, fold_list, length }
 import v2.std.collection { Map }
 import v2.std.integer { Int }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, count_where, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
@@ -51,7 +50,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, Atom, Conj, TypeNode, node_synthetic, symbol_intern_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
@@ -416,13 +415,13 @@ test fn an_ordinary_atom_renders_readably_holds() -> Bool {
 }
 
 test fn an_embedded_backtick_and_backslash_stay_unambiguous_holds() -> Bool {
-  atom_locus_text(lexeme: concat("left`right", concat(from_code_point(cp: 92), "x")))
-    == concat("<synthetic node occurrence \"left`right", concat(from_code_point(cp: 92), concat(from_code_point(cp: 92), "x\">")))
+  atom_locus_text(lexeme: concat("left`right", concat("\u{5c}", "x")))
+    == concat("<synthetic node occurrence \"left`right", concat("\u{5c}", concat("\u{5c}", "x\">")))
 }
 
 test fn newline_cr_and_esc_become_visible_escapes_holds() -> Bool {
-  let bs = from_code_point(cp: 92)
-  atom_locus_text(lexeme: concat("a", concat(from_code_point(cp: 10), concat("b", concat(from_code_point(cp: 13), concat("c", concat(from_code_point(cp: 27), "d")))))))
+  let bs = "\u{5c}"
+  atom_locus_text(lexeme: concat("a", concat("\u{a}", concat("b", concat("\u{d}", concat("c", concat("\u{1b}", "d")))))))
     == concat("<synthetic node occurrence \"a", concat(bs, concat("nb", concat(bs, concat("rc", concat(bs, "u001Bd\">"))))))
 }
 

@@ -19,7 +19,7 @@ import product.spatial_world {
   WorldVariant, world_variant, realize_variant, variant_base,
 }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.spatial_frame {
   SpatialFrameRegistry, empty_frame_registry, register_frame, registry_with,
   FrameRegistered, FrameRegistrationRefused

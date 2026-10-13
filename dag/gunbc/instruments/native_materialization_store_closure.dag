@@ -41,7 +41,7 @@ import v2.std.node { symbol_identity_digest }
 //                       hand-written Debug/PartialEq impls whose headers omitted the item header's
 //                       own Clone bound.
 //   tree_label_*        std.effect_grant namespace_tree_of_label -- the four kernel-String values
-//                       that were passed to v2.std.algebra length (gunbc.rung_drop
+//                       that were passed to std.algebra length (gunbc.rung_drop
 //                       text_boundary_identity_wall, specimens of 2026-10-03). The prefix-only
 //                       label is the RED for that exact comparison.
 //   roster_*            v2.compiler.self_host.generation roster_scan_step -- the fifth specimen,

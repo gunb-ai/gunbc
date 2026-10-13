@@ -1,6 +1,6 @@
 module test.claim.v1_interpreter_primitive_dispatch_authority_acceptance
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import gunbc.v1.v1_interpreter_dispatch_emit {
   any_roster_site_has_rust_variant_collision,
