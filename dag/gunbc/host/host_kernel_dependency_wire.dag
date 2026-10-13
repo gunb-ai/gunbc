@@ -1,4 +1,4 @@
-module gunbc.host_kernel_dependency_wire
+module gunbc.host.host_kernel_dependency_wire
 
 import std.types { String, NonEmptyStr, CommitSha, Bool }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
@@ -6,7 +6,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import extdeps.linux.kernel { LinuxKernelRelease }
 import extdeps.linux.tun_fdinfo { TunAttachedQueueRequirement }
 import product.host_identity { HostIdentity }
-import gunbc.host_kernel_dependency { HostKernelDependencyPlan, InstallKernelAndActivate, ActivateInstalledKernel, tun_kernel_provider_for_host, kernel_provider_selection }
+import gunbc.host.host_kernel_dependency { HostKernelDependencyPlan, InstallKernelAndActivate, ActivateInstalledKernel, tun_kernel_provider_for_host, kernel_provider_selection }
 
 data host_kernel_dependency_row_prefix: String = "commissioning-kernel-dependency:"
 

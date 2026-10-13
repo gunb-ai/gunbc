@@ -41,7 +41,7 @@ data github_app_jwt_lifetime_seconds: Int = 540
 // THE APP JWT'S CLAIMS, as installation_token_citation states them: iss is the App id, iat is
 // backdated for clock skew, exp is within ten minutes of issue. ONE authority for the claim SHAPE:
 // github_app_jwt_claims_json_of spells the JSON once over rendered values, and both producers go
-// through it -- gunbc.github_effect_perform with the numbers themselves, and gunbc.ci_spec's shell
+// through it -- gunbc.github_effect_perform with the numbers themselves, and gunbc.ci.ci_spec's shell
 // preludes with printf placeholders their runtime `date +%s` fills (those preludes compute the
 // clock in the step that signs, so they cannot take a number from here; the shape and both bounds
 // they still can).

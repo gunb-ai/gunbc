@@ -1,4 +1,4 @@
-module gunbc.build_cache_endpoint_observe
+module gunbc.build_cache.build_cache_endpoint_observe
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.decimal { decimal_digit_char }
@@ -26,14 +26,14 @@ import extdeps.linux.proc_self_cgroup {
   MembershipMalformed,
   read_unified_cgroup_membership,
 }
-import gunbc.runner_unit {
+import gunbc.runner.runner_unit {
   read_runner_unit_name,
   RunnerUnitNameReading,
   NotARunnerUnit,
   RunnerUnitInstanceMalformed,
   RunnerUnitInstance,
 }
-import gunbc.build_cache_instance {
+import gunbc.build_cache.build_cache_instance {
   BuildCacheInstance,
   ProcessIdentity,
   BuildCacheEndpointObservation,
@@ -56,7 +56,7 @@ import gunbc.build_cache_instance {
   BuildCacheServerPlacement,
   placement_of_endpoint_observation,
 }
-import gunbc.build_cache_endpoint_path {
+import gunbc.build_cache.build_cache_endpoint_path {
   EndpointPathState,
   EndpointPathAbsent,
   EndpointListening,
@@ -68,7 +68,7 @@ import gunbc.build_cache_endpoint_path {
   ObservationStale,
   ObservationCurrencyUnknown,
 }
-import gunbc.runner_slot_allocation {
+import gunbc.runner.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
@@ -78,18 +78,18 @@ import product.host_identity { HostIdentity }
 data build_cache_endpoint_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 
 // THIS MODULE IS THE PRODUCER TWO PROVEN-BUT-UNWIRED AUTHORITIES WERE WAITING ON.
-// gunbc.build_cache_ensure admit_ensure_build_cache_instance takes a BuildCacheServerPlacement, an
-// EndpointPathState and an ObservationCurrency; gunbc.build_cache_endpoint_observation could
+// gunbc.build_cache.build_cache_ensure admit_ensure_build_cache_instance takes a BuildCacheServerPlacement, an
+// EndpointPathState and an ObservationCurrency; gunbc.build_cache.build_cache_endpoint_observation could
 // produce none of them and said so in its own body, returning ProcTableUnreadable with the detail
 // 'shell transport available but /proc endpoint-owner walk has no host_effect producer yet'. So the
-// admission was reachable only from tests, and gunbc.host_effect_realize
+// admission was reachable only from tests, and gunbc.host.host_effect_realize
 // realize_provision_build_cache rendered and restarted the unit unconditionally instead. That is
 // the rung problem the shell-to-dag census C-note names: the refusal a live CI-capacity incident
 // was fixed by is computed by a function no production caller called.
 //
 // WHAT IS HERE AND WHAT IS NOT. Everything below is a PURE DECODE of read text into the modeled
 // states -- no transport, no effect, no host. The reads themselves are performed by
-// gunbc.host_effect_realize, which is where a transport already exists, and are handed back as
+// gunbc.host.host_effect_realize, which is where a transport already exists, and are handed back as
 // BuildCacheEndpointReads. Splitting it that way is not tidiness: it makes every arm of the decode
 // reachable from a fixture, so the discriminating REDs run against specimen text rather than
 // against a host, and it keeps this module free of the effect graph it would otherwise have to
@@ -131,7 +131,7 @@ type EndpointPathKind
 // looked at a path and found nothing there, which licenses a bind; no-path means the question does
 // not apply to this instance's endpoint shape at all. Collapsing them would make the two
 // indistinguishable to a reader deciding whether an unlink could ever be relevant -- and
-// gunbc.build_cache_endpoint_path already refuses a stale-socket unlink over a TCP endpoint
+// gunbc.build_cache.build_cache_endpoint_path already refuses a stale-socket unlink over a TCP endpoint
 // positively for the same reason, so answering the path axis with a fabricated 'absent' here would
 // put the contradiction one layer earlier where nothing refuses it.
 
@@ -157,7 +157,7 @@ type BuildCacheEndpointSurvey {
 
 // THIS IS THE CHAIN THE STEP-1 PLACEMENT RECEIPT EXECUTED BY HAND, and it is here rather than a
 // tool that answers the same question in one call because the receipt and
-// gunbc.build_cache_instance endpoint_ownership_note both specify it and both explicitly exclude
+// gunbc.build_cache.build_cache_instance endpoint_ownership_note both specify it and both explicitly exclude
 // ss, pgrep, head -1 and lsof. An earlier revision of this module DID use ss, on the stated ground
 // that resolving a socket inode to its holder needs a glob over /proc and therefore a shell this
 // lane may not emit. THAT GROUND WAS FALSE and was refuted by execution 2026-08-21, twice
@@ -172,7 +172,7 @@ type BuildCacheEndpointSurvey {
 // boundary is worse than a missing feature -- it tells the next person not to try.
 //
 // WHAT THE CORRECTION BUYS, concretely: the fd-holder step IS clause (3) of
-// gunbc.build_cache_endpoint_path's stale-socket observer contract -- no open descriptor anywhere
+// gunbc.build_cache.build_cache_endpoint_path's stale-socket observer contract -- no open descriptor anywhere
 // in /proc still resolves to the socket's inode. Under ss that clause was unreadable, so
 // EndpointStaleSocket could never be produced and srv4's stranded socket refused forever. It is
 // readable now, so the arm is produced and the admitted unlink is reachable.
@@ -264,7 +264,7 @@ fn nat_from_digits(digits: String, whence: String) -> EndpointListenerRead {
 // warns about -- that rule is about naming something the containment tree already names by where it
 // sits, and a kernel-fixed column has no name to use instead. The PATH is matched exactly, never by
 // prefix: /var/lib/ctrl/sccache-ci/server.sock and /var/lib/ctrl/sccache/server.sock are two
-// different instances on the same host (gunbc.build_cache_instance ci_cache_instance and
+// different instances on the same host (gunbc.build_cache.build_cache_instance ci_cache_instance and
 // session_cache_instance), so a prefix match would classify one instance's server as the other's.
 //
 // A LINE WITH FEWER THAN EIGHT FIELDS IS UNNAMED, NOT UNMATCHED. An abstract-namespace or unnamed
@@ -480,7 +480,7 @@ fn unit_name_of_cgroup_path(cgroup_path: NonEmptyStr) -> String {
 }
 
 // THE LIFECYCLE IS A QUESTION ABOUT TODAY'S FLEET, ASKED AT CLASSIFICATION TIME.
-// gunbc.build_cache_instance runner_slot_lifecycle_note fixes the rule -- a slot is retired exactly
+// gunbc.build_cache.build_cache_instance runner_slot_lifecycle_note fixes the rule -- a slot is retired exactly
 // when it does not appear in the fleet's desired slots now, not when someone remembers it being
 // decommissioned -- so the index parsed out of the cgroup is compared against
 // gunbc_runner_committed_width for the host the instance names. That comparison is why the coproduct
@@ -504,7 +504,7 @@ fn runner_slot_index_text(unit_name: String) -> String {
 // CALLED ALL OF THEM RETIRED. The comparison read an underivable width as zero, so every index fell
 // through to RetiredRunnerSlot -- a positive lifecycle claim about slots that may be running, made
 // out of a missing denominator. There is no third arm to add here because RunnerSlotLifecycle is
-// gunbc.build_cache_instance's two-state fact; the honest answer is Absent, and the caller that
+// gunbc.build_cache.build_cache_instance's two-state fact; the honest answer is Absent, and the caller that
 // receives it already has an undecided arm for exactly this (OwnerContextUndecided).
 // THE CAUSE IS CARRIED, NOT DISCARDED AND RE-DESCRIBED. An Option here was already safe -- the
 // caller cannot call a live slot retired through an Absent -- but it threw away the reservation
@@ -738,7 +738,7 @@ fn endpoint_owner_observation(
 }
 
 // THE PATH AXIS AND THE OWNER AXIS ARE DERIVED FROM ONE PAIR OF READS, AND THAT IS A JOIN RATHER
-// THAN A SECOND OPINION. gunbc.build_cache_endpoint_path's authority note fixes why the axes are
+// THAN A SECOND OPINION. gunbc.build_cache.build_cache_endpoint_path's authority note fixes why the axes are
 // separate: EndpointStaleSocket and EndpointPathAbsent both project to EndpointAbsent on the
 // ownership axis, so ownership cannot carry the distinction actuation needs. What they must never
 // do is disagree about whether a listener exists, which is what would happen if each ran its own

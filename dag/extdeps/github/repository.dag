@@ -60,7 +60,7 @@ fn repository_visibility_label(visibility: RepositoryVisibility) -> String {
 //
 // This is deliberately a function over the EXISTING Repository rather than a second instance type.
 // An earlier draft of this module minted a RepositoryVisibilityStanding carrying owner, name and
-// visibility, and gunbc.repo_identity authored a row of it for gunb-ai/gunbc -- which was a SIXTH
+// visibility, and gunbc.repo.repo_identity authored a row of it for gunb-ai/gunbc -- which was a SIXTH
 // spelling of an instance fact gunbc.repository gunbc_repository already owns, in a change whose
 // whole thesis is de-forking. gunbc.repository's own note anticipates the move in as many words:
 // the answer to five nicknames is not a sixth carrying a promise to consolidate later, it is one

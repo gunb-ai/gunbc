@@ -5,7 +5,7 @@ import gunbc.workspace_commissioning_start_identity { workspace_commissioning_sn
 import std.types { NonEmptyStr, String, Bool }
 import std.decl_ref { decl_ref }
 import std.durable_exclusive_hold { HoldSlotHeld, HoldObservationUnavailable, HoldSlotFree, HoldSlotUndecodable }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.workspace_slot_mutation { workspace_slot_mutation_key, workspace_commissioning_mutation_owner }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
@@ -44,7 +44,7 @@ fn workspace_executor_mutation_matches(record: WorkspaceExecutorRecord) -> Bool 
 
 fn workspace_executor_claim_controller(provenance: WorkspaceCommissioningProvenance,
   invocation: NonEmptyStr) -> WorkspaceExecutorControllerAdmission
-  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "workspace_slot_dispatch_directive")]
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "workspace_slot_dispatch_directive")]
 {
   let submitter = workspace_commissioning_snapshotted_submitter()
   let slot_key = runner_slot_instance_name(slot: provenance.slot)

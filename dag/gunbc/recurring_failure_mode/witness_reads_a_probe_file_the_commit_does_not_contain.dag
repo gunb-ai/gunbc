@@ -11,7 +11,7 @@ data witness_reads_a_probe_file_the_commit_does_not_contain: RecurringFailureMod
 
     "THE CAUSE IS OUTSIDE THE REPOSITORY, WHICH IS WHY IT IS SILENT. The shared clone's .git/info/exclude -- one file for every worktree on the host -- carries a `probe/` rule, so `git add dag` skips any new dag/test/probe/*.dag without a word, and `git status` shows nothing left to add. Nothing in the tree records the rule, and a reader of the tree cannot see it.",
 
-    "SPECIMEN, gunbc#13225 at d664bb32de6 (2026-10-04): test.claim.qualification_job_log_receipt_forged_probe_witness reads dag/test/probe/qualification_job_log_receipt_forged_probe.dag. Two claims errored claim_failed on the required floor; the file had passed `git add dag` but was ignored. Fixed by `git add -f` at 022f7ecb632. #13206's probe in the same directory was committed, so the rule bites per-file at add time, not per-directory forever.",
+    "SPECIMEN, gunbc#13225 at d664bb32de6 (2026-10-04): test.claim.runner.qualification_job_log_receipt_forged_probe_witness reads dag/test/probe/qualification_job_log_receipt_forged_probe.dag. Two claims errored claim_failed on the required floor; the file had passed `git add dag` but was ignored. Fixed by `git add -f` at 022f7ecb632. #13206's probe in the same directory was committed, so the rule bites per-file at add time, not per-directory forever.",
 
     "RECOGNITION RULE: after adding a source a witness reads by path, `git ls-files <path>` it; `git check-ignore -v <path>` names the rule if it is missing.",
 

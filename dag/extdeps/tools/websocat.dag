@@ -52,7 +52,7 @@ fn websocat_github_release_download_url(tag: NonEmptyStr, asset: NonEmptyStr) ->
 }
 
 // THE BMCWEB NBD-PROXY BRIDGE the srv3 nbd-proxy serve path runs as a systemd transient unit
-// (gunbc.host_effect_nbd_proxy_serve): websocat bridges the BMC's wss nbd-proxy websocket to a
+// (gunbc.host.host_effect_nbd_proxy_serve): websocat bridges the BMC's wss nbd-proxy websocket to a
 // local TCP port, text mode, TLS verification refused (--insecure) because the BMC presents a
 // device certificate this repository has made no observation of. The flags are this operation's
 // own, minted here beside the cited upstream authority above and nowhere else -- a builder outside
@@ -70,7 +70,7 @@ fn websocat_github_release_download_url(tag: NonEmptyStr, asset: NonEmptyStr) ->
 //
 // THE HEADER WORD CARRIES A QUOTING CONVENTION INSIDE ARGV, AND THAT IS A RECORDED OBLIGATION,
 // NOT A CHOICE MADE HERE: the `--header=` element embeds literal double quotes and a space, which
-// is byte-identical to the raw word list this builder replaces (gunbc.host_effect_nbd_proxy_serve
+// is byte-identical to the raw word list this builder replaces (gunbc.host.host_effect_nbd_proxy_serve
 // realized the same words before this carrier existed) and load-bearing only for a downstream
 // parser this carrier cannot name -- over an SSH transport the portable-word wall
 // (gunbc.typed_argv_exec) refuses the word outright, and the production realization is the
@@ -100,5 +100,5 @@ fn websocat_nbd_proxy_bridge_command(
 // THE OBLIGATION, TYPED SO A MECHANISM CAN SEE IT (the entropy.dag pattern: an unbound
 // dissolution beside the declaration that owes it).
 data websocat_header_argv_word_dissolution_trigger: DissolutionCondition = unbound_dissolution(
-  description: "🟡 dissolve-on: the --header= argv word of websocat_nbd_proxy_bridge_command stops carrying the BMCWEB session token inside argv at all (gunbc.credential_argv_exposure instance 3: the token reaches the websocat cmdline for the served ISO's lifetime, systemd-run's own argv, and the recorded ExecStart/journal; measured latent, unexercised on all four fleet hosts 2026-08-25; repair is a systemd EnvironmentFile at 0600 or the operator-ruled alternative, with the two token-in-argv witnesses inverted deliberately), or the consuming carrier states WHICH parser re-splits these words so the embedded double quotes are a named fact instead of an accident of spelling. Until one lands, the word is the pinned obligation: refused over SSH by gunbc.typed_argv_exec, load-bearing only on the actuator host's own session, and asserted word-for-word by test.claim.srv3_os_install_actuate nbd_proxy_serve_session_token_is_literal_in_websocat_argv.",
+  description: "🟡 dissolve-on: the --header= argv word of websocat_nbd_proxy_bridge_command stops carrying the BMCWEB session token inside argv at all (gunbc.credential_argv_exposure instance 3: the token reaches the websocat cmdline for the served ISO's lifetime, systemd-run's own argv, and the recorded ExecStart/journal; measured latent, unexercised on all four fleet hosts 2026-08-25; repair is a systemd EnvironmentFile at 0600 or the operator-ruled alternative, with the two token-in-argv witnesses inverted deliberately), or the consuming carrier states WHICH parser re-splits these words so the embedded double quotes are a named fact instead of an accident of spelling. Until one lands, the word is the pinned obligation: refused over SSH by gunbc.typed_argv_exec, load-bearing only on the actuator host's own session, and asserted word-for-word by test.claim.srv3.srv3_os_install_actuate_witness nbd_proxy_serve_session_token_is_literal_in_websocat_argv.",
 )

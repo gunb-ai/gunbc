@@ -7,7 +7,7 @@ import extdeps.filesystem.filesystem_io {Filesystem}
 import extdeps.languages.json.emit {json_object,json_kv,json_string,serialize_json}
 import extdeps.shell.exec {ProcessOutputPresent,ProcessOutputAbsent,ProcessRefused}
 import gunbc.fleet.printer_job_monitor {observe_job,JobRunning,JobPaused,JobFailed,JobCompletedAwaitingInspection,JobUnresolved}
-import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer}
+import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer}
 import gunbc.fleet.printer_report {report_once_using_session}
 import gunbc.fleet.printer_receipt {write_receipt,write_receipt_at}
 import gunbc.auth.access_token_source {AccessTokenSource}

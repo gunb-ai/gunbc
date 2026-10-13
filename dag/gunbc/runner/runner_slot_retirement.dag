@@ -1,15 +1,15 @@
-module gunbc.runner_slot_retirement
+module gunbc.runner.runner_slot_retirement
 
 import std.types { Bool, List, String, NonEmptyStr, list_length }
 import std.algebra { trim }
-import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
-import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
-import gunbc.runner_width_transition {
+import gunbc.host.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
+import gunbc.runner.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
 }
-import gunbc.runner_slot_allocation {
+import gunbc.runner.runner_slot_allocation {
   fabric_execution_slot_identities,
   srv3_fabric_first_slot,
   srv3_fabric_second_slot,
@@ -20,11 +20,11 @@ import gunbc.runner_slot_allocation {
   RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_unit { runner_slot_unit_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
 import product.host_identity { HostIdentity }
-import gunbc.host_effect { HostEffectTransport }
-import gunbc.host_operation_exec {
+import gunbc.host.host_effect { HostEffectTransport }
+import gunbc.host.host_operation_exec {
   HostOperation,
   SystemctlMaskNow,
   CgroupPathIsDirectory,
@@ -64,7 +64,7 @@ import gunbc.systemctl_show_read {
 //      ends, which is what makes this a drain.
 //   3. OBSERVE IT GONE, and observe the CGROUP EMPTY -- two facts, not one.
 //
-// WHY THE CGROUP IS A SEPARATE OBSERVATION FROM THE UNIT. `gunbc.runner_unit`'s teardown intent
+// WHY THE CGROUP IS A SEPARATE OBSERVATION FROM THE UNIT. `gunbc.runner.runner_unit`'s teardown intent
 // (ExitType=main, KillMode=control-group) exists precisely because a runner unit could report
 // stopped while its Runner.Worker, claim_executor and gunbc children kept running -- the orphan
 // class that motivated that drop-in. A unit reported gone whose cgroup still holds processes is
@@ -472,7 +472,7 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 // moment the two disagreed -- an authorization broader than the transition manufactures required
 // retirees, and one narrower leaves an identity required only while the census can still see it.
 //
-// `gunbc.runner_width_transition` now owns the obligation, derived from a DECLARED prior population
+// `gunbc.runner.runner_width_transition` now owns the obligation, derived from a DECLARED prior population
 // minus the model's target. It is durable across passes by construction, because nothing in it reads
 // an observation. What remains here is the relation the review asked for:
 //
@@ -504,7 +504,7 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 //
 // required_retirees_for_host derives its set from a WIDTH TRANSITION: prior width down to committed
 // width, so srv4's 13..21 and srv1's 13..50. That covers a slot the host stops having. It does not
-// cover a slot the host still has whose PURPOSE changed -- and gunbc.runner_slot_allocation
+// cover a slot the host still has whose PURPOSE changed -- and gunbc.runner.runner_slot_allocation
 // reassigns exactly that: a committed index stops serving GitHub Actions and becomes a fabric
 // execution cell. The index is inside the width, so the width transition produces no retiree for it,
 // no authorization is consulted, and nothing refuses. The fabric cell's directory and cgroup slice
@@ -517,7 +517,7 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 // THE OBLIGATION IS DERIVED FROM THE FABRIC POPULATION RATHER THAN AUTHORED BESIDE IT, which is the
 // whole reason it can be trusted to keep covering. A fifth cell added to
 // fabric_execution_slot_identities acquires its retirement obligation with no edit here, exactly as
-// gunbc.fabric_cell_converge acquires its desired members. An authored list would have to be
+// gunbc.fabric.fabric_cell_converge acquires its desired members. An authored list would have to be
 // remembered, and the evidence that it would not be is that this hole opened the first time.
 //
 // THE WIDTH IS NOW A RESOLUTION RATHER THAN AN Int (#11762), AND THIS FOLD REFUSES THROUGH IT
@@ -1221,7 +1221,7 @@ fn cgroup_occupancy_from_batched_events(control_group: String, batch: CgroupEven
 // THE ROOT ONE READ CAN COVER, AND WHY IT IS NOT THE UNIT'S OWN CGROUP PATH. systemd escapes the
 // runner slice's name, so every retiree's `ControlGroup` carries a `\x2d` component
 // (extdeps.systemd systemd_name_component_is_escaped) -- and the fleet's typed argv edge REFUSES a
-// backslash rather than quoting it (gunbc.fleet_known_hosts_anchor portable_remote_word_char_allowed),
+// backslash rather than quoting it (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed),
 // which is the wall working. Naming those paths in an argv therefore cannot execute at all, so the
 // read is rooted at the deepest ancestor with NO escaped component: for
 // `/system.slice/system-actions\x2drunner.slice/<unit>` that is `/sys/fs/cgroup/system.slice`. The

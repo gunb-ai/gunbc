@@ -3,7 +3,7 @@ module gunbc.root_demand_measurement
 import std.types { Int, String, NonEmptyStr, Bool, List }
 import std.measure { ByteSize, byte_size, byte_size_count, gibibyte_scale_factor_bytes }
 import std.decl_ref { DeclarationRef }
-import gunbc.host_budget_source {
+import gunbc.host.host_budget_source {
   BudgetSourceCgroupMemoryMax,
   host_budget_source_label,
 }

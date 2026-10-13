@@ -16,7 +16,7 @@ import extdeps.systemd {
   parse_systemd_memory_limit_show,
   systemd_unit_load_state_not_found_wire,
 }
-import gunbc.host_effect { HostEffectTransport }
+import gunbc.host.host_effect { HostEffectTransport }
 import gunbc.systemctl_show_read {
   SystemdPropertyCapture,
   SystemdPropertyCaptured,
@@ -25,12 +25,12 @@ import gunbc.systemctl_show_read {
   systemctl_show_property_read,
   systemctl_show_load_state_read,
 }
-import gunbc.build_cache_instance {
+import gunbc.build_cache.build_cache_instance {
   CgroupMemoryLimits,
   EndpointObservationUnavailableReason,
   ReachRefused,
 }
-import gunbc.host_compile_pool {
+import gunbc.host.host_compile_pool {
   CompilePoolObservation,
   CompilePoolSliceObserved,
   CompilePoolSliceAbsent,
@@ -39,10 +39,10 @@ import gunbc.host_compile_pool {
 
 data compile_pool_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 
-// THE MISSING PRODUCER. gunbc.host_compile_pool declares CompilePoolObservation and gunbc.compile_pool_ensure
+// THE MISSING PRODUCER. gunbc.host.host_compile_pool declares CompilePoolObservation and gunbc.compile_pool_ensure
 // consumes it, and until this module existed every value of that type in the tree was hand-authored inside a
 // test -- so the admission that decides whether a host may have its compile-pool slice written was proven over
-// fixtures and computed over nothing. That is the same shape gunbc.build_cache_endpoint_observe closed for the
+// fixtures and computed over nothing. That is the same shape gunbc.build_cache.build_cache_endpoint_observe closed for the
 // endpoint observation, and this is the slice half of it.
 //
 // WHAT IT READS AND IN WHICH ORDER. LoadState first, because it is the only reading that separates an absent
@@ -54,7 +54,7 @@ data compile_pool_observe_scope_disposition: ConstructionMechanism = SingleAutho
 // the managed slice exists to replace and reporting it as a size would fabricate the thing being checked.
 //
 // WHAT IT DOES NOT DO: it decides nothing. Whether the observed slice is large enough, correctly named, or
-// permitted to be written is gunbc.compile_pool_ensure's and gunbc.host_compile_pool's judgement over this
+// permitted to be written is gunbc.compile_pool_ensure's and gunbc.host.host_compile_pool's judgement over this
 // value; this module only reports what the host said.
 
 fn compile_pool_reach_refusal(slice_unit: NonEmptyStr, what: String, why: String) -> CompilePoolObservation {

@@ -26,7 +26,7 @@ import extdeps.bmc.megarac_observed_output {
   megarac_session_body, megarac_write_ack_body,
 }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
-import gunbc.machine_intake_megarac_media_attach { json_string_member, json_number_member }
+import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_hpm_check_bmc0_32,
   ipmitool_mc_info_mt_collins,
@@ -211,7 +211,7 @@ fn megarac_authenticated<S>(get: fn(S) -> MegaRacMediaWorld, render: fn(S, Opera
 }
 
 // The start and stop bodies are the production builders' JSON; the model reads them with the same
-// member readers the production decoders use (gunbc.machine_intake_megarac_media_attach).
+// member readers the production decoders use (gunbc.machine_intake.megarac_media_attach).
 fn body_member_text(call: OperationCall, key: String) -> String? {
   match parse_json_document(s: call_text(call: call, name: "json_body")) {
     JsonDocumentParsed { value: doc } => json_string_member(doc: doc, key: key)

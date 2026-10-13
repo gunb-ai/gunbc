@@ -11,13 +11,13 @@ import std.keyed_roster {
   KeyedRosterBuildDuplicateKey,
 }
 import extdeps.tailscale.serve { ScopedRemovalUnobserved }
-import gunbc.fleet_intent { srv2_host }
-import gunbc.fleet_intent_network {
+import gunbc.fleet.fleet_intent { srv2_host }
+import gunbc.fleet.fleet_intent_network {
   srv2_tailscale_endpoint,
   fleet_intent_network,
 }
-import gunbc.fleet_host_identity { operator_host_srv2 }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.roadmap.roadmap_dashboard_instance {
   DeploymentId,
   HostDashboardInstance,
   ProdRoleRealization,
@@ -140,7 +140,7 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
 }
 
 // THE PROD ROLE AS SOMETHING THAT CAN BE ACTUATED. The holder resolves over the six dashboard
-// instances (gunbc.roadmap_dashboard_instance prod_role_realization), but only a row of THIS roster
+// instances (gunbc.roadmap.roadmap_dashboard_instance prod_role_realization), but only a row of THIS roster
 // has a target and a spec, so a holder outside it -- the MacBook, srv2-preview, srv2's lab -- names a
 // deployment nothing can install. Joined here, against the one roster, it refuses with
 // ProdRoleHolderUnactuatable instead of placing the role-following singletons nowhere. Every

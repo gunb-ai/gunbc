@@ -1,4 +1,4 @@
-module gunbc.fleet_runner_connectivity
+module gunbc.fleet.fleet_runner_connectivity
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat, nat_range_inclusive }
@@ -14,20 +14,20 @@ import extdeps.github.ci_runner {
 }
 import extdeps.github.effect { GitHubOrganizationRef }
 import gunbc.auth.github_apps { gunbai_ci_declared }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet_enrollment { runner_executor_hosts }
-import gunbc.runner_slot_allocation {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_enrollment { runner_executor_hosts }
+import gunbc.runner.runner_slot_allocation {
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
   RunnerWidthUnresolvedCause, runner_width_unresolved_cause_text,
   runner_label_sets_equal,
 }
-import gunbc.runner_registration_labels {
+import gunbc.runner.runner_registration_labels {
   runner_slot_labels_conform, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
 }
-import gunbc.runner_lifecycle { runner_slot_instance_name }
-import gunbc.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
+import gunbc.runner.runner_lifecycle { runner_slot_instance_name }
+import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
 
 data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
@@ -47,7 +47,7 @@ data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
 // facts above are the surviving contents of that row, enumerated rather than swept away with it --
 // a prose row deleted for one reason takes everything in it unless its contents are named first.
 
-// THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths
+// THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner.runner_slot_allocation's desired-side widths
 // (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows;
 // connected_width counts status == online; schedulable_width counts online AND NOT busy;
 // executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_committed_width
@@ -109,7 +109,7 @@ type FleetAchievedRunnerWidths
 // WHAT IT COST, on the live roster read of 2026-09-19 (gunbc#11711, fleet-converge mode
 // org_runner_roster_observe): the organization holds srv2-02 and srv2-05 as registrations. srv2's
 // session reservation is unestablished, so its width does not resolve, so both decoded
-// RegistrationNamesNoCommittedSlot -- and gunbc.runner_capacity_plan folds the WHOLE org roster
+// RegistrationNamesNoCommittedSlot -- and gunbc.runner.runner_capacity_plan folds the WHOLE org roster
 // for every host it plans, so EVERY host's plan refused with "resolves to no committed fleet
 // slot". A true sentence about the derivation, a false one about the fleet, and it blocked
 // planning on the three hosts that have nothing wrong with them.
@@ -139,7 +139,7 @@ type RegistrationSlotDecoding
 // from the enumerator -- a COLLISION rather than a wrong name, since every index above 8 produced
 // the same string and two slots would contend for one GitHub registration.
 //
-// All now route through gunbc.build_cache_instance runner_slot_index_suffix, the identity's own
+// All now route through gunbc.build_cache.build_cache_instance runner_slot_index_suffix, the identity's own
 // module and therefore the rule's layer. Derived, total over Nat, no fall-through to reach. My
 // census of this fork said three sites twice -- to a reviewer and in a PR body -- and it was five;
 // the two I missed reached the rule INDIRECTLY, the same shape as every other undercount in this
@@ -196,7 +196,7 @@ fn fleet_committed_slot_identities() -> FleetCommittedSlotPopulation {
 // the committed population is enumerable, so the match is a total decision over it. A host whose
 // width does not resolve has no enumeration to match against, so there is nothing to decide over --
 // and the only remaining question is which host the name BELONGS to. That is answered with
-// gunbc.build_cache_instance runner_slot_instance_name_prefix, the forward naming authority's own
+// gunbc.build_cache.build_cache_instance runner_slot_instance_name_prefix, the forward naming authority's own
 // prefix, rather than by splitting the string on a separator spelled here.
 fn registration_names_unresolved_host(
   reg: GitHubSelfHostedRunnerRegistration,
@@ -301,7 +301,7 @@ data incident_runner_version: NonEmptyStr = "2.334.0"
 
 // THE CORPUS PINNED STATUS, NOT LABELS. Each fixture registration carries the class labels plus
 // the label of the host it names, i.e. the registration contract
-// (gunbc.runner_registration_labels runner_registration_labels) spelled independently here, so the
+// (gunbc.runner.runner_registration_labels runner_registration_labels) spelled independently here, so the
 // connectivity rows below exercise status while label divergence is exercised by its own reds.
 data incident_runner_class_labels: List<NonEmptyStr> = [
   "self-hosted" as NonEmptyStr,
@@ -338,11 +338,11 @@ fn incident_registration(
 }
 
 // THE CORPUS IS AUTHORED PER HOST AND CONCATENATED, SO A HOST SLICE IS A PROJECTION AND NOT A
-// SECOND SPELLING. The 2026-09-13 26/25 GiB transition (gunbc.runner_slot_allocation) deleted
+// SECOND SPELLING. The 2026-09-13 26/25 GiB transition (gunbc.runner.runner_slot_allocation) deleted
 // srv2's held width: its commitment is unestablished, so gunbc_runner_committed_width answers
 // RunnerWidthUnresolved and committed_slot_identities(srv2) answers
 // CommittedPopulationWidthUnresolved. srv2-01/02/05 below therefore decode
-// RegistrationHostWidthUnresolved, and gunbc.runner_capacity_plan refuses a plan handed the
+// RegistrationHostWidthUnresolved, and gunbc.runner.runner_capacity_plan refuses a plan handed the
 // whole-org corpus NAMING THAT HOST AND THAT CAUSE. An earlier revision of this note said the
 // refusal was correct because the three registrations were 'exactly the surplus convergence must
 // account for'; that reading is withdrawn -- a registration on a host whose width does not resolve
@@ -566,7 +566,7 @@ fn partial_roster_unseen_reason(observed_count: Int, authority_total: Int) -> St
 // what absence MEANS, so that is the only thing passed in.
 //
 // AN ONLINE REGISTRATION IS HEALTHY ONLY UNDER THE SLOT'S OWN LABELS. The desired side is
-// gunbc.runner_registration_labels of the slot's host, compared as a set under GitHub's label
+// gunbc.runner.runner_registration_labels of the slot's host, compared as a set under GitHub's label
 // equivalence (a host whose labels do not resolve is Unknown, not Healthy); a runner online under a
 // missing class label, a missing host label, or ANOTHER host's label is online and still unreachable
 // by the selectors meant for this slot, so it is not counted healthy.
@@ -686,7 +686,7 @@ fn count_executing_registrations(registrations: List<GitHubSelfHostedRunnerRegis
 }
 
 // The runner-executor population, derived from the enrollment root rather than listed here
-// (gunbc.fleet_enrollment runner_executor_hosts): CI-enrolled hosts whose backing does not forbid the
+// (gunbc.fleet.fleet_enrollment runner_executor_hosts): CI-enrolled hosts whose backing does not forbid the
 // execution path. Consumers fold it as the hosts a pinned runner can execute on -- the workflow host
 // choice, the eligible compile set, committed slot identities -- so a provider guest refused that
 // path is not a member, and its refusal is read from the CI enrollment instead.

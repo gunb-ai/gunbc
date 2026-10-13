@@ -1,4 +1,4 @@
-module gunbc.bmc_fan_program_representability_witness
+module gunbc.bmc.bmc_fan_program_representability_witness
 
 import std.types { Bool, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -15,7 +15,7 @@ import extdeps.bmc.pid_control_representability {
   ResidueUnmodeled,
   program_representability,
 }
-import gunbc.bmc_fan_program_observation {
+import gunbc.bmc.bmc_fan_program_observation {
   ArtifactJsonValueObserved,
   srv3_program_json,
   srv4_program_json,
