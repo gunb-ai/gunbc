@@ -4,8 +4,7 @@ import std.types { List }
 import std.nat { Nat }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list }
+import std.algebra { Cons, Empty, fold_list }
 import std.types { brand }
 
 // THE PHYSICAL CONSTRAINT FILE, OWNED BY THE FORMAT RATHER THAN BY A PRODUCT. A .pcf is what

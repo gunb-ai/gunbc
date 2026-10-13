@@ -31,8 +31,7 @@ import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme, symbol_
 import std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
-import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { for_all }
+import std.algebra { Empty, FreeMonoid, for_all }
 import std.types { is_kernel_type }
 import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
   rcf_member_accepted_and_decided,

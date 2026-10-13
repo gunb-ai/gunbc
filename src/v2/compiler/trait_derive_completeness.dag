@@ -34,7 +34,7 @@ import extdeps.languages.rust.capabilities {
   RustNeg,
   rust_capability_shape_table
 }
-import v2.std.algebra {
+import std.algebra {
   Cons,
   Empty
 }

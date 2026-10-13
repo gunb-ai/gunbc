@@ -5,7 +5,7 @@ import v2.lens.registry {
   lens_owned_fn_llvm_instruction_cost,
   lens_owned_fn_registry_v0
 }
-import v2.std.algebra { count_equal, unique }
+import std.algebra { count_equal, unique }
 
 fn p9_owned_fn_name_eq(left: LensOwnedFnV0, right: LensOwnedFnV0) -> Bool {
   left.fn_name == right.fn_name

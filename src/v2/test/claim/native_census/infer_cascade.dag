@@ -37,9 +37,8 @@ import v2.compiler.compile {
 }
 import v2.compiler.resolve { ClosureProviderRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.algebra { fold_list, length, list_map }
 import v2.std.integer { Int }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list, length, list_map }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }

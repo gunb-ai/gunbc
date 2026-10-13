@@ -20,7 +20,7 @@ import v2.std.data_initializer_identity {
   resolved_variant_name_optional,
   value_projection_is_resolved_variant,
 }
-import v2.std.algebra { length }
+import std.algebra { length }
 
 // Step-1 prerequisite (#7796), PARTIAL: outer record-constructor SPELLING
 // (OuterRecordConstructorLexeme) is reflected and tested via executing witnesses. Nullary variant

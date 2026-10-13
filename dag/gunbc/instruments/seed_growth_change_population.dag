@@ -15,7 +15,7 @@ import gunbc.seed_growth_admission { seed_growth_unjustified_additions }
 import gunbc.repo.repo_identity { gunbc_merge_target_ref }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { List, String }
-import v2.std.algebra { fold_list, length }
+import std.algebra { fold_list, length }
 
 // THE POPULATION AN AUTHOR MUST NOT COUNT BY HAND.
 //
