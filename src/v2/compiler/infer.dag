@@ -38,7 +38,7 @@ import v2.compiler.inferred_tree {
   ObligatedInferredTree,
   NodeGrounding
 }
-import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration }
+import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_field_operation_type, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
 import gunbc.structural_realization_bindings { kernel_grounding_rows, literal_homomorphism_rows }
@@ -3362,8 +3362,11 @@ fn infer_loop_iteration(
 // A BINARY ALGEBRA OPERATOR NAMES ONE FIELD OF A STRUCTURE, and the field is the whole of what it says: the
 // lowered operator is a canonical-operation wire (v2.std.compilers.target_model canonical_operation_from_wire_node)
 // whose AlgebraPrimitive carries the signature field -- ^ring_field_add for `+`, ^lattice_field_join for `||`,
-// ^lattice_field_meet for `&&`. The bare `+` token is the add field's surface spelling
-// (canonical_operation_op_add). Anything else is not an algebra primitive and stays out of this arm.
+// ^lattice_field_meet for `&&` -- and whose EqualityComparison carries ^equivalence_field_eq for `==` and `!=`
+// (the predicate only negates the answer; the field, and so the operand judgment and the result type, are one).
+// The bare `+` token is the add field's surface spelling (canonical_operation_op_add). Ordering comparisons and
+// inverse-compose operators (`-`) stay out of this arm until the structure reading names their fields
+// (gunbc.recurring_failure_mode comparison_operands_never_judged_in_v2_infer).
 fn infer_binary_algebra_field(op_node: Node) -> Optional<Symbol> {
   if infer_operator_is_plus_token(op_node: op_node) {
     infer_canonical_operation_field(operation: canonical_operation_op_add())
@@ -3391,7 +3394,7 @@ fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Sy
     AlgebraPrimitive { algebra_field: field } => optional_present(value: field)
     AlgebraInverseCompose { binary_field: _, inverse_field: _ } => optional_absent()
     OrderingComparison { compare_field: _, predicate: _ } => optional_absent()
-    EqualityComparison { eq_field: _, predicate: _ } => optional_absent()
+    EqualityComparison { eq_field: field, predicate: _ } => optional_present(value: field)
     CoercionCrossing { homomorphism_rule: _ } => optional_absent()
   }
 }
@@ -3402,10 +3405,9 @@ fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Sy
 // the sub-structures it composes -- never a name found inside an operation's signature). The row is SELECTED by
 // the carrier its own inhabitance node is over (the ^inhabitant_edge target, read in the same call), never by the
 // row's outer `inhabitant` field: that field is a second copy of the carrier, and selecting by it let a row whose
-// copy disagreed with its structure lend the structure's fields to a type the structure is not over. The result is the
-// operand type because every binary algebra primitive these structures carry is closed on the carrier: a
-// lattice join is algebra_binary_fn_node(domain: T, T, codomain: T), and ring add is the operation of the
-// abelian group the ring composes. This replaces the Int-only arm that hard-coded `+` over
+// copy disagreed with its structure lend the structure's fields to a type the structure is not over. The result is
+// the codomain the field DECLARES (infer_algebra_field_codomain_result): the operand type where the field is closed
+// on the carrier -- a lattice join is algebra_binary_fn_node(domain: T, codomain: T) -- and Bool for equivalence's eq. This replaces the Int-only arm that hard-coded `+` over
 // ^dag_binding_type_int: Int add derives through Int's ordered-ring row and Bool join through Bool's
 // boolean-algebra row, by one route; a type with no row declaring the field (Bool `+`, Int `||`) is refused as
 // an operand mismatch exactly as a non-Int `+` was.
@@ -3427,7 +3429,7 @@ fn infer_algebra_field_result_type(rows: List<AlgebraInhabitanceDecl>, operand_t
           InhabitanceFieldRead { carrier: carrier, declaration: declaration } =>
             if infer_branch_type_atoms_equal(a: carrier, b: operand_type) {
               match declaration {
-                FieldDeclared => AlgebraFieldResultType { result: operand_type }
+                FieldDeclared { field_type: t } => infer_algebra_field_codomain_result(field_type: t, carrier: carrier, operand_type: operand_type)
                 FieldNotDeclared => AlgebraFieldNotCarried
                 InhabitanceMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
               }
@@ -3439,6 +3441,32 @@ fn infer_algebra_field_result_type(rows: List<AlgebraInhabitanceDecl>, operand_t
   })
 }
 
+// THE FIELD'S RESULT IS ITS OPERATION'S DECLARED CODOMAIN. The operation is the field's own Arrow, or, for a
+// field typed by a composed structure (ring add is an abelian group), that structure's binary operation
+// (v2.std.algebra_structure_signature algebra_field_operation_type). A codomain that is the row's carrier
+// answers the operand's own type node (the use's, which already matched the carrier), so a closed operation
+// types exactly as before; any other codomain -- eq's Bool -- is the result as the structure declares it. A
+// field whose operation is not an Arrow is a malformed row, refused with its cause, never a guessed result.
+fn infer_algebra_field_codomain_result(field_type: Node, carrier: Node, operand_type: Node) -> InferAlgebraFieldResult {
+  match algebra_field_operation_type(field_type: field_type) {
+    InhabitanceMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
+    FieldNotDeclared => AlgebraFieldRowMalformed { cause: ^algebra_field_structure_declares_no_operation }
+    FieldDeclared { field_type: op } =>
+      match infer_operator_arrow(operator: op) {
+        Absent => AlgebraFieldRowMalformed { cause: ^algebra_field_type_not_an_arrow }
+        Present { value: arrow } =>
+          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+            Absent => AlgebraFieldRowMalformed { cause: ^algebra_field_type_not_an_arrow }
+            Present { value: codomain } =>
+              if infer_branch_type_atoms_equal(a: codomain, b: carrier) {
+                AlgebraFieldResultType { result: operand_type }
+              } else {
+                AlgebraFieldResultType { result: codomain }
+              }
+          }
+      }
+  }
+}
 
 fn infer_transform_is_binary_infix_algebra_shape(node: Node) -> Bool {
   let positional_targets = node_positional_child_targets(node: node)
@@ -3456,6 +3484,17 @@ fn infer_transform_is_binary_infix_algebra_shape(node: Node) -> Bool {
   }
 }
 
+// THE OPERAND JUDGMENT, THREE-VALUED, because a comparison must not read "not judged" as "different". The
+// operands are one type; or their derived types disagree; or they are not judgeable -- an operand whose type
+// is not derived, or a literal that elaborates at the other operand's type (v2.compiler.infer
+// infer_literal_elaborates_at: `n == 0` over std.nat Nat), an elaboration the comparison does not carry to eval
+// yet. `==` keeps the third arm on the counted not-derived frontier; `+`, `||` and `&&` refuse it with its
+// diagnostic exactly as they refused it before the judgment had three arms.
+type InferOperandJudgment
+  = OperandsOneType { operand_type: Node }
+  | OperandsDisagree { diagnostic: Diagnostic }
+  | OperandsNotJudged { diagnostic: Diagnostic }
+
 fn infer_unify_transform_operand_types(
   left_node: Node,
   left_facts: InferredFacts,
@@ -3463,9 +3502,9 @@ fn infer_unify_transform_operand_types(
   right_facts: InferredFacts,
   entries: List<InferredFactsEntry>,
   resolved: ResolvedTree,
-) -> Outcome<Node> {
+) -> InferOperandJudgment {
   match infer_branch_operand_resolved_type_with_entries(node: left_node, facts: left_facts, entries: entries, instances: infer_no_type_variable_instances(), resolved: resolved) {
-    Violates { diagnostic: d } => outcome_rejected(d)
+    Violates { diagnostic: d } => OperandsNotJudged { diagnostic: d }
     Holds { value: left_type } =>
       match infer_branch_operand_resolved_type_with_entries(
         node: right_node,
@@ -3474,14 +3513,39 @@ fn infer_unify_transform_operand_types(
         instances: infer_no_type_variable_instances(),
         resolved: resolved
       ) {
-        Violates { diagnostic: d } => outcome_rejected(d)
+        Violates { diagnostic: d } => OperandsNotJudged { diagnostic: d }
         Holds { value: right_type } =>
-          if infer_branch_type_atoms_equal(a: left_type, b: right_type) {
-            Accepted { value: left_type, diagnostics: None }
+          // Two uses of one declared type are two nodes with different occurrences, so they are one type by
+          // structure with provenance ignored, as a kernel atom is one type by identity. Equality brings declared
+          // operands to this judgment (`p == q` over a record), where the bare node comparison refused them.
+          if infer_branch_type_atoms_equal(a: left_type, b: right_type) || infer_type_equal_ignoring_provenance(a: left_type, b: right_type) {
+            OperandsOneType { operand_type: left_type }
           } else {
-            outcome_rejected(infer_transform_operand_type_mismatch_diagnostic(node: left_node))
+            if infer_operand_literal_elaborates_at(literal_node: right_node, expected: left_type, resolved: resolved)
+              || infer_operand_literal_elaborates_at(literal_node: left_node, expected: right_type, resolved: resolved) {
+              OperandsNotJudged { diagnostic: infer_transform_operand_type_mismatch_diagnostic(node: left_node) }
+            } else {
+              OperandsDisagree { diagnostic: infer_transform_operand_type_mismatch_diagnostic(node: left_node) }
+            }
           }
       }
+  }
+}
+
+fn infer_operand_literal_elaborates_at(literal_node: Node, expected: Node, resolved: ResolvedTree) -> Bool {
+  match infer_literal_elaborates_at(literal_node: literal_node, expected: expected, declarations: resolved.resolved_declarations) {
+    InferLiteralElaboratesTo { destination_type: _ } => true
+    InferLiteralNotElaborated => false
+    InferLiteralElaborationRefused { cause: _ } => false
+  }
+}
+
+// AN EQUALITY THAT IS NOT DERIVED stays on the counted frontier, as every comparison did before `==` was judged.
+fn infer_equality_not_derived(node: Node, od: Diagnostics) -> Outcome<InferredFacts> {
+  match infer_descent_witness_for_node(n: node) {
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: descent_proof } =>
+      bind_outcome_accepted(od: od, inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof }))
   }
 }
 
@@ -4616,7 +4680,7 @@ fn infer_row_declares_fields(row: AlgebraInhabitanceDecl, fields: List<Symbol>) 
       StructureRowMalformed { cause: _ } => acc
       StructureInhabited { generator: _ } =>
         match algebra_inhabitance_field_declaration(inhabitance: row.algebra, field: field) {
-          FieldDeclared => acc
+          FieldDeclared { field_type: _ } => acc
           FieldNotDeclared => StructureNotInhabited
           InhabitanceMalformed { cause: c } => StructureRowMalformed { cause: c }
         }
@@ -4825,13 +4889,24 @@ fn infer_transform_binary_infix(
                                 entries: entries,
                                 resolved: resolved
                               ) {
-                                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                                Accepted { value: unified_type, diagnostics: ud } =>
+                                OperandsDisagree { diagnostic: d } => outcome_rejected(d)
+                                OperandsNotJudged { diagnostic: d } =>
+                                  if field == ^equivalence_field_eq { infer_equality_not_derived(node: node, od: cd) } else { outcome_rejected(d) }
+                                OperandsOneType { operand_type: unified_type } =>
                                   match infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: unified_type, field: field) {
+                                    // NO ROW IS NOT "NOT COMPARABLE". The operands are already judged one type; a
+                                    // carrier with no Equivalence row has an equality the language model does not
+                                    // state yet (Bool, host text, a declared record), so the comparison stays on the
+                                    // counted not-derived frontier as it did before this arm judged it. An operation
+                                    // field with no row (`true + false`) is a refusal: the carrier has no such operation.
                                     AlgebraFieldNotCarried =>
-                                      outcome_rejected(
-                                        infer_transform_operand_type_mismatch_diagnostic(node: node)
-                                      )
+                                      if field == ^equivalence_field_eq {
+                                        infer_equality_not_derived(node: node, od: cd)
+                                      } else {
+                                        outcome_rejected(
+                                          infer_transform_operand_type_mismatch_diagnostic(node: node)
+                                        )
+                                      }
                                     AlgebraFieldRowMalformed { cause: cause } =>
                                       outcome_rejected(Diagnostic {
                                         reason: cause,
@@ -4852,7 +4927,7 @@ fn infer_transform_binary_infix(
                                           f: fn(facts) {
                                             Accepted {
                                               value: facts,
-                                              diagnostics: diagnostics_merge(outer: cd, inner: ud)
+                                              diagnostics: cd
                                             }
                                           }
                                         )
