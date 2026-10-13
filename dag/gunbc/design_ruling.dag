@@ -168,6 +168,13 @@ data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Nonemptiness is constructed or proved, then consumed. `FreeSemigroup` is used where a nonempty sequence is the value contract. A possibly-empty producer enters a nonempty consumer only through established evidence or explicit checked admission. A type name, arbitrary predicate callback or sealed wrapper alone does not establish the claimed guarantee. General bound propagation is delivered by roadmap node `cardinality-vertical-slice`; its Required activation is `extended-admission-cardinality`.",
 }
 
+data production_is_main_only_lab_admits_integration: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "production_is_main_only_lab_admits_integration"),
+  decided: "2026-10-13",
+  section: "3",
+  provenance: "Operator plan 2026-10-13. Narrows the 2026-10-09 fleet-converge ruling that an empty --candidate-branch admits any nonempty checkout (gunbc.fleet.fleet_converge_plan_cli fleet_converge_deploy_branch_admits). Production admits only main. The lab target admits the integration branch lab-dev (bright-moth-475). One decision, gunbc.live_deploy.pre_swap_admission target_branch_admission, is consulted by the operator-local converge deploy and the CI apply; the routes are not forked.",
+}
+
 data native_first_complete_cuts: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_first_complete_cuts"),
   decided: "2026-10-13",
@@ -198,6 +205,7 @@ fn design_rulings() -> List<DesignRuling> {
     optional_sugar_is_declaration_bound,
     nonemptiness_is_constructed_or_proved,
     native_first_complete_cuts,
+    production_is_main_only_lab_admits_integration,
   ]
 }
 

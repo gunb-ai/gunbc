@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.unsafe_candidate_swapped_into_a_running_service
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unsafe_candidate_swapped_into_a_running_service: RecurringFailureMode = RecurringFailureMode {
+  identity: "unsafe_candidate_swapped_into_a_running_service" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a live-deploy apply switches the running service onto a candidate that was not admitted for that target — either the serve entry does not compile, or the checkout is not the branch that target may install. HARM: the running revision is replaced by a crash-loop (lab, source annotation inside a fn body, learned only at readiness) or by a development checkout aimed at production (gunbc converge --host srv1 --mode deploy on a dev branch, stopped by hand).",
+
+    "DISTINGUISHING FACTS: readiness and a human stop are AFTER the mutation. The 2026-10-09 empty --candidate-branch admit (fleet_converge_deploy_branch_admits) is the hole that let a nonempty non-main checkout through to production. The serve-entry hole is the missing compile of the declared serve entry before the unit swap.",
+
+    "REPAIR: gunbc.live_deploy.pre_swap_admission live_deploy_pre_swap_admission, one decision. Production is main-only; lab admits lab-dev (gunbc.design_ruling production_is_main_only_lab_admits_integration). A blocking or unobserved serve-entry compile refuses. Both CI (live_deploy_admitted_wet_with_access, live_deploy_transaction_admitted) and operator-local (live_deploy_operator_local_admitted, fleet_converge_operator_cli_dispatch) consult it after the candidate is named and before access preflight or receipted apply. A refusal states that nothing was mutated.",
+
+    "CLAIMS: test.claim.live_deploy.pre_swap_admission_witness a_non_main_revision_aimed_at_production_refuses, a_blocking_compile_refuses_with_nothing_mutated, a_type_error_fixture_is_a_blocked_verdict; controls main_aimed_at_production_admits, lab_dev_aimed_at_lab_admits, a_clean_compile_on_main_to_production_proceeds, a_clean_int_fixture_is_an_admitted_verdict.",
+
+    "RUNG FOUND AT: 1, mitigatable — the failure occurred on the host (crash-loop; a hand-stopped production aim). RUNG NOW: 2, mechanically preventable — the decision fold refuses on supplied standings and on a real compile census of a fixture, and the wet apply entries call that fold before mutation; the claims are not on the required witnesses path. CEILING: 3, structurally guaranteed — target class and compile standing are decidable from the selected identity and a compile of the declared serve entry. NEXT TRIGGER: a required claim that a wet apply of a fixture-broken serve entry, or of a non-main checkout at production, refuses on the real apply path with the host tree and unit unchanged.",
+  ],
+
+  evidence: [],
+}
