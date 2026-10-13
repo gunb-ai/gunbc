@@ -77,6 +77,16 @@ type FlexPolicy {
   // Not a mix of on-demand vs interruptible headcount.
   on_demand_fraction: NonzeroNatFraction
   acquisition_horizon: Second
+  // Write loop. false is Dry: observe, plan, record. true is Wet. Default false.
+  live: Bool
+}
+
+type FlexActuationMode
+  = FlexActuationDry
+  | FlexActuationWet
+
+fn flex_policy_actuation(policy: FlexPolicy) -> FlexActuationMode {
+  if policy.live { FlexActuationWet } else { FlexActuationDry }
 }
 
 type FlexAcquisitionWindow {

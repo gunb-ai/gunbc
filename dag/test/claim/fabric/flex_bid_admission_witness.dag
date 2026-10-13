@@ -162,6 +162,7 @@ fn t_policy(cap: MoneyPerHour) -> FlexPolicy {
     floor_buffer: flex_floor_buffer,
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
+    live: false,
   }
 }
 
@@ -175,6 +176,7 @@ fn t_policy_eur(cap: MoneyPerHour) -> FlexPolicy {
     floor_buffer: flex_floor_buffer,
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
+    live: false,
   }
 }
 

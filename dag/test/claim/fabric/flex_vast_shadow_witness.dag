@@ -31,14 +31,13 @@ import product.fabric.selection {
 }
 import product.fabric.budget { MoneyAccount }
 import product.fabric.flex_policy {
-  FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
+  FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
   FlexScreenedCandidate, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused,
   FlexNewAcquisition, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
-  FlexOnDemandReferenceMissing,
+  FlexOnDemandReferenceMissing, FlexActuationDry, FlexActuationWet, flex_policy_actuation,
+  flex_floor_buffer,
 }
 import product.fabric.flex_vast_shadow {
-  FlexActuationDry, FlexActuationWet, FlexActuationHeldDry, FlexActuationWetUnwired,
-  flex_actuation_mode_default, flex_actuation_decision,
   flex_trial_fleet_rate_cap, flex_trial_total, flex_trial_policy, flex_objective,
   flex_qwen_serving_template, flex_ninfer_min_driver, flex_vllm_min_driver,
   FlexNinfer, FlexVllm, flex_engine_min_driver,
@@ -49,7 +48,15 @@ import product.fabric.flex_vast_shadow {
   FlexCreateLost, FlexCreateRefused, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
   flex_reconcile_acquisition, flex_may_acquire,
   flex_qwen_serving_image, flex_qwen_published_tcp_port, flex_qwen_disk_gb, flex_qwen_model_id,
+  flex_qwen_reasoning_parser, flex_qwen_tool_call_parser, FlexQwenProbeConfirmed, FlexQwenProbeUnconfirmed,
+  flex_rented_card_fungible, flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable,
+  FlexWriteBlockedOverCap, FlexWriteWetUnwired, FlexInstanceListRead, FlexInstanceListUnreadable,
+  flex_rental_readback, FlexRentalHeld, FlexRentalPending, FlexRentalUnknown, FlexRentalGone,
+  flex_search_offers_inhabitance_frontier, flex_m3_rent_cooldown_starts_at_ask,
+  flex_m3_pass_stops_at_first_failure, flex_qwen_probe_harness_placement_frontier,
 }
+import std.rational { NonzeroNatFraction }
+import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiInstance, vast_ai_search_type_bid, vast_ai_quote_currency,
 }
@@ -261,18 +268,102 @@ fn money_per_hour_cap_is_one_fifty() -> Bool {
 }
 
 fn flex_actuation_mode_default_is_dry() -> Bool {
-  match flex_actuation_mode_default {
-    FlexActuationDry =>
-      match flex_actuation_decision(mode: FlexActuationDry) {
-        FlexActuationHeldDry =>
-          match flex_actuation_decision(mode: FlexActuationWet) {
-            FlexActuationWetUnwired => true
-            FlexActuationHeldDry => false
-          }
-        FlexActuationWetUnwired => false
-      }
-    FlexActuationWet => false
+  !flex_trial_policy.live
+    && match flex_policy_actuation(policy: flex_trial_policy) {
+      FlexActuationDry => true
+      FlexActuationWet => false
+    }
+    && write_gate_conjunction()
+    && qwen_probe_refuses_unconfirmed()
+    && frontiers_are_unbound()
+}
+
+fn live_policy() -> FlexPolicy {
+  FlexPolicy {
+    fleet_rate_cap: flex_trial_fleet_rate_cap,
+    floor_buffer: flex_floor_buffer,
+    on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
+    acquisition_horizon: second(count: 3600),
+    live: true,
   }
+}
+
+fn write_gate_conjunction() -> Bool {
+  match flex_write_decision(
+    policy: flex_trial_policy,
+    instances: FlexInstanceListRead { instances: [] },
+    over_cap: false,
+  ) {
+    FlexWriteHeldDry =>
+      match flex_write_decision(
+        policy: live_policy(),
+        instances: FlexInstanceListUnreadable,
+        over_cap: false,
+      ) {
+        FlexWriteBlockedUnreadable =>
+          match flex_write_decision(
+            policy: live_policy(),
+            instances: FlexInstanceListRead { instances: [] },
+            over_cap: true,
+          ) {
+            FlexWriteBlockedOverCap =>
+              match flex_write_decision(
+                policy: live_policy(),
+                instances: FlexInstanceListRead { instances: [] },
+                over_cap: false,
+              ) {
+                FlexWriteWetUnwired => true
+                FlexWriteHeldDry => false
+                FlexWriteBlockedUnreadable => false
+                FlexWriteBlockedOverCap => false
+              }
+            FlexWriteHeldDry => false
+            FlexWriteBlockedUnreadable => false
+            FlexWriteWetUnwired => false
+          }
+        FlexWriteHeldDry => false
+        FlexWriteBlockedOverCap => false
+        FlexWriteWetUnwired => false
+      }
+    FlexWriteBlockedUnreadable => false
+    FlexWriteBlockedOverCap => false
+    FlexWriteWetUnwired => false
+  }
+}
+
+fn qwen_probe_refuses_unconfirmed() -> Bool {
+  !flex_rented_card_fungible(probe: FlexQwenProbeUnconfirmed)
+    && flex_rented_card_fungible(
+      probe: FlexQwenProbeConfirmed {
+        reasoning_parser: flex_qwen_reasoning_parser,
+        tool_call_parser: flex_qwen_tool_call_parser,
+      },
+    )
+    && !flex_rented_card_fungible(
+      probe: FlexQwenProbeConfirmed {
+        reasoning_parser: "other" as NonEmptyStr,
+        tool_call_parser: flex_qwen_tool_call_parser,
+      },
+    )
+}
+
+fn frontiers_are_unbound() -> Bool {
+  match flex_search_offers_inhabitance_frontier {
+    UnboundDissolution { description: _ } => true
+    BoundDissolution { trigger: _ } => false
+  }
+    && match flex_m3_rent_cooldown_starts_at_ask {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
+    && match flex_m3_pass_stops_at_first_failure {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
+    && match flex_qwen_probe_harness_placement_frontier {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
 }
 
 fn objective_is_cost_per_accepted_unit() -> Bool {
@@ -331,6 +422,24 @@ test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
       FlexAcquisitionUnknown => !flex_may_acquire(verdict: lost_unseen)
       _ => false
     })
+    && (match flex_rental_readback(
+      standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
+      instances: observed,
+      bound_expired: false,
+    ) {
+      FlexRentalHeld { instance: i } => i.id == 99
+      _ => false
+    })
+    && (match flex_rental_readback(
+      standing: FlexCreateLost { ask_id: 7, machine_id: 42 },
+      instances: [],
+      bound_expired: true,
+    ) {
+      FlexRentalUnknown => true
+      FlexRentalPending { ask_id: _, machine_id: _ } => false
+      FlexRentalHeld { instance: _ } => false
+      FlexRentalGone => false
+    })
 }
 
 test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
@@ -346,7 +455,6 @@ test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
       key: "offer-42",
     ),
     offer_id: 7,
-    actuation: flex_actuation_mode_default,
   )
   flex_shadow_records_admission(receipt: receipt)
     && receipt.offer_id == 7
