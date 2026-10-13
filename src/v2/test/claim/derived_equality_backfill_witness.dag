@@ -1,0 +1,101 @@
+module v2.test.claim.derived_equality_backfill_witness
+
+import v2.compiler.source_authority {
+  DiscoveredSourceRefsDigest,
+  DiscoveredSourceRefsDigestFromList,
+  DiscoveredSourceRefsDigestNoRefList,
+  DiscoveredSourceRefsDigestUnavailable,
+}
+import v2.lens.unused_parameters { UseRelation, IsUseOfDeclaration, IsStructuralComposition, IsNonUseDependency, RequiresResolutionWitness }
+import v2.std.node_minimal { NodeSupersetField, NsfName, NsfSpan, NsfExprData }
+import v2.std.probe_selector { DiagnosticInterfaceKind, DiagnosticSsh, DiagnosticIpmi, DiagnosticBmcSensors }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
+
+// D1 derived-equality backfill: the hand equality folds (use_relation_eq /
+// discovered_source_refs_digest_eq / node_superset_field_eq /
+// diagnostic_interface_kind_eq) are deleted; their call sites now read the
+// derived == from dag/std/algebra (DESIGN §3/§4). The RED is the control for
+// the backfill: distinct variants (or distinct payload values) compare unequal,
+// so any equality that conflated them (the failure mode the hand folds were
+// backfilling) FAILs. The positive control pins the equal-values-equal
+// direction, recursing through the payload fields where the hand fold recursed
+// by hand.
+
+test fn use_relation_derived_eq_red_distinct_variants_unequal() -> Bool {
+  (IsUseOfDeclaration == IsUseOfDeclaration)
+    && (IsUseOfDeclaration != IsStructuralComposition)
+    && (IsUseOfDeclaration != IsNonUseDependency)
+    && (IsStructuralComposition != IsNonUseDependency)
+}
+
+test fn use_relation_derived_eq_positive_control_equal_values_equal() -> Bool {
+  (IsStructuralComposition == IsStructuralComposition)
+    && (IsNonUseDependency == IsNonUseDependency)
+    && (RequiresResolutionWitness == RequiresResolutionWitness)
+}
+
+test fn discovered_source_refs_digest_derived_eq_red_distinct_variants_unequal() -> Bool {
+  (DiscoveredSourceRefsDigestFromList {
+    digest: Fnv1a64Structural { digest: "0000000000000001" as Fnv1a64StructuralDigestHex }
+  }
+  == DiscoveredSourceRefsDigestFromList {
+    digest: Fnv1a64Structural { digest: "0000000000000001" as Fnv1a64StructuralDigestHex }
+  })
+    && (DiscoveredSourceRefsDigestFromList {
+      digest: Fnv1a64Structural { digest: "0000000000000001" as Fnv1a64StructuralDigestHex }
+    }
+    != DiscoveredSourceRefsDigestUnavailable {
+      cause: DiscoveredSourceRefsDigestNoRefList { reason: "red-control" }
+    })
+    && (DiscoveredSourceRefsDigestFromList {
+      digest: Fnv1a64Structural { digest: "0000000000000001" as Fnv1a64StructuralDigestHex }
+    }
+    != DiscoveredSourceRefsDigestFromList {
+      digest: Fnv1a64Structural { digest: "0000000000000002" as Fnv1a64StructuralDigestHex }
+    })
+    && (DiscoveredSourceRefsDigestUnavailable {
+      cause: DiscoveredSourceRefsDigestNoRefList { reason: "red-control" }
+    }
+    != DiscoveredSourceRefsDigestUnavailable {
+      cause: DiscoveredSourceRefsDigestNoRefList { reason: "red-control-two" }
+    })
+}
+
+test fn discovered_source_refs_digest_derived_eq_positive_control_equal_values_equal() -> Bool {
+  (DiscoveredSourceRefsDigestUnavailable {
+    cause: DiscoveredSourceRefsDigestNoRefList { reason: "substrate-red-control" }
+  }
+  == DiscoveredSourceRefsDigestUnavailable {
+    cause: DiscoveredSourceRefsDigestNoRefList { reason: "substrate-red-control" }
+  })
+    && (DiscoveredSourceRefsDigestFromList {
+      digest: Fnv1a64Structural { digest: "0000000000000002" as Fnv1a64StructuralDigestHex }
+    }
+    == DiscoveredSourceRefsDigestFromList {
+      digest: Fnv1a64Structural { digest: "0000000000000002" as Fnv1a64StructuralDigestHex }
+    })
+}
+
+test fn node_superset_field_derived_eq_red_distinct_variants_unequal() -> Bool {
+  (NsfName == NsfName)
+    && (NsfName != NsfSpan)
+    && (NsfName != NsfExprData)
+    && (NsfSpan != NsfExprData)
+}
+
+test fn node_superset_field_derived_eq_positive_control_equal_values_equal() -> Bool {
+  (NsfSpan == NsfSpan)
+    && (NsfExprData == NsfExprData)
+}
+
+test fn diagnostic_interface_kind_derived_eq_red_distinct_variants_unequal() -> Bool {
+  (DiagnosticSsh == DiagnosticSsh)
+    && (DiagnosticSsh != DiagnosticIpmi)
+    && (DiagnosticSsh != DiagnosticBmcSensors)
+    && (DiagnosticIpmi != DiagnosticBmcSensors)
+}
+
+test fn diagnostic_interface_kind_derived_eq_positive_control_equal_values_equal() -> Bool {
+  (DiagnosticIpmi == DiagnosticIpmi)
+    && (DiagnosticBmcSensors == DiagnosticBmcSensors)
+}

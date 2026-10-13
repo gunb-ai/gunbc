@@ -6,7 +6,7 @@
 // differential's classifier and rendering), `extdeps.bazel.label` (the label grammar mirrored
 // here) and `extdeps.bazel.target_pattern` (the pattern grammar mirrored here). The SET forms
 // (`//pkg:all`, `//pkg:*`, `//pkg/...`) execute only inside a route's universe: the native test
-// route (`//v2/test/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
+// route (`//v2/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
 // evaluated by the floor's own discovery authority and claim evaluation). A set form outside both
 // is refused with status 2 (`test_operand_set_form_refusal_rendered`, mirroring
 // `gunbc.target_invocation`) and is never widened into another route. None of the
@@ -308,6 +308,7 @@ pub enum TargetProducer {
     DependencyDemandCensus,
     GenericIdentityCensus,
     InterpolationHoleCensus,
+    SharedTypeLeafCollisionCensus,
     RegenRoundCost,
     /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
     /// of the same shape is a registry row, never another variant. The Millisecond deadline is
@@ -511,6 +512,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("interpolation-hole-census"),
             TargetProducer::InterpolationHoleCensus,
+        ),
+        (
+            instrument_label("shared-type-leaf-collision-census"),
+            TargetProducer::SharedTypeLeafCollisionCensus,
         ),
         (
             instrument_label("regen-round-cost"),
@@ -942,6 +947,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::InterpolationHoleCensus => {
             run_interpolation_hole_census(&self_host_source_roots())
         }
+        TargetProducer::SharedTypeLeafCollisionCensus => {
+            run_shared_type_leaf_collision_census(&self_host_source_roots())
+        }
         TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
             "self-host-behavioral-equivalence",
@@ -1171,7 +1179,7 @@ fn exact_head_standing_outcome(
 ///
 /// It calls the SAME producer `--v2-native-route` calls, so the two cannot disagree about whether
 /// the seed can build v2 -- only one of them decides it. That route then spends roughly nine
-/// further minutes executing the v2.test.* universe through the emitted binary, which is a
+/// further minutes executing the marked `v2` declarations through the emitted binary, which is a
 /// different claim (what the emitted compiler ANSWERS), and bundling it here would price the
 /// self-host question at the cost of a question nobody asked.
 ///
@@ -1239,8 +1247,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 /// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
 /// clause or the pattern was narrower than the universe, so the subject was not reached.
 fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
-    let pattern = native_route_default_pattern_text();
-    match cli_run::run_v2_native_frontier(source_roots, &pattern) {
+    match cli_run::run_v2_native_frontier(source_roots) {
         Ok(run) => {
             let termination = match run.frontier.as_str() {
                 "held" | "advanced" | "grew-by-owned-correctness-flip" => Termination::ObservationHeld,
@@ -2285,23 +2292,23 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, mirrored: the native test
-/// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
+/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, READ from the file rendered from
+/// it: the native test route's whole universe. An operand CONTAINED in it belongs to that route.
 ///
-/// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
-/// The lane's runner needs the same fact as TEXT (it is an argv word) and this verb needs it as a
-/// PATTERN, which is two renderings of one value, not two values. A bare `"//v2/test/..."` literal
-/// beside this one would be the second independently editable spelling DESIGN section 3 forbids,
-/// and the drift would be load-bearing rather than cosmetic: narrow one and not the other and the
-/// verb routes an operand native that the lane's default excludes, or the reverse.
-pub fn native_route_default_pattern() -> TargetPattern {
-    TargetPattern::SubtreeTargets(vec!["v2".to_string(), "test".to_string()])
-}
-
-/// The universe above as the argv word the emitted binary's `adjudicate` verb takes. Derived from
-/// the one pattern rather than spelled again.
-pub fn native_route_default_pattern_text() -> String {
-    render_target_pattern(&native_route_default_pattern())
+/// THIS SEED HAS NO SPELLING OF THAT UNIVERSE. `NATIVE_ROUTE_DEFAULT_PATTERN` is a constant of
+/// `native_route_seed_boundary_generated`, which `gunbc.native_route_seed_boundary_emit` renders from
+/// the one declaration and the generated-artifact drift wall holds to it: moving the boundary in
+/// `.dag` moves this routing at the next regeneration, and a hand edit of the constant is a drift
+/// finding that regeneration undoes.
+/// The declaration cannot be read here directly, because this decision is taken before any emitted
+/// binary exists. The text goes through this file's own pattern parser, and a text that does not
+/// parse is a refusal the caller reports, never a panic and never a fallback to some other universe.
+///
+/// The universe the EMITTED binary adjudicates by default is the same declaration read inside the
+/// compiler (`v2.compiler.compile`, `adjudicate` without `--pattern`); the seed passes it a pattern
+/// only when the operator wrote one, so nothing here is handed to it as text.
+fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal> {
+    parse_target_pattern(crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN)
 }
 
 /// THE NATIVE TEST ROUTE, ENTERED WITH THE OPERAND'S OWN PATTERN.
@@ -2331,7 +2338,7 @@ pub fn native_route_default_pattern_text() -> String {
 /// `SubjectUnreached` while letting a definite member failure through unchanged.
 fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
     let rendered = render_target_pattern(pattern);
-    match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
+    match cli_run::run_required_v2_native(&self_host_source_roots(), Some(&rendered)) {
         cli_run::NativeRouteOutcome::LaneQualificationHeld { summary, members } => {
             native_member_outcome(
                 &rendered,
@@ -3441,7 +3448,23 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
             };
         }
     };
-    if target_pattern_within(&pattern, &native_route_default_pattern()) {
+    let native_universe = match native_route_default_pattern() {
+        Ok(universe) => universe,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "gunbc test: the native route's boundary, {:?}, is not an admitted target pattern; \
+                     src/v1/stage0/src/native_route_seed_boundary_generated.rs is rendered from \
+                     gunbc.witness.v2_native_route native_route_default_pattern by \
+                     gunbc.native_route_seed_boundary_emit, so regenerate it rather than route without a boundary\n  cause: {}",
+                    crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN,
+                    target_pattern_refusal_text(&cause)
+                ),
+            };
+        }
+    };
+    if target_pattern_within(&pattern, &native_universe) {
         return run_native_test_route(&pattern);
     }
     if target_pattern_within(&pattern, &claim_route_universe()) {
@@ -4610,6 +4633,273 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
+/// `gunbc.instrument_targets` `shared_type_leaf_collision_census_label`.
+///
+/// TRANSPORT: load each measured closure, `compile_to_resolved`, emit, and ask cargo
+/// once per subject. Sharing rows and fixture standing are
+/// `v1.tests.claim.shared_type_leaf_collision_census`. Independent sharing is
+/// `v1.compiler.emit_rust` `maybe_mark_shared_type` per declaration. Standing is the
+/// three fixture cargo controls; the live rows are a report (sharing at declaration
+/// grain, rustc at subject grain). Completed cargo is a subject-grain finding;
+/// NotAttempted / DidNotComplete / DependencyFetchFailed are SubjectUnreached.
+fn shared_type_census_subject_build_from_cargo_verdict(
+    verdict: &crate::cli_run::emitted_closure_compile_host::CargoVerdict,
+) -> Result<
+    std::rc::Rc<crate::v1_tests_claim_shared_type_leaf_collision_census::SubjectBuild>,
+    String,
+> {
+    use crate::cli_run::emitted_closure_compile_host::{cargo_verdict_summary, CargoVerdict};
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+    match verdict {
+        CargoVerdict::Completed { status, .. } if *status == 0 => Ok(census::build_accepted()),
+        CargoVerdict::Completed { .. } => Ok(census::build_refused(cargo_verdict_summary(verdict))),
+        CargoVerdict::NotAttempted { .. }
+        | CargoVerdict::DidNotComplete { .. }
+        | CargoVerdict::DependencyFetchFailed { .. } => Err(cargo_verdict_summary(verdict)),
+    }
+}
+
+fn shared_type_census_termination(
+    standing_held: bool,
+    mapping_controls_hold: bool,
+    live_unobserved: bool,
+) -> Termination {
+    if !standing_held || !mapping_controls_hold {
+        Termination::ObservationDidNotHold
+    } else if live_unobserved {
+        Termination::SubjectUnreached
+    } else {
+        Termination::ObservationHeld
+    }
+}
+
+fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationOutcome {
+    use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use crate::v1_compiler_emit_rust::emit_rust;
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+    use std::rc::Rc;
+
+    const PREFIX: &str = "shared-type-leaf-collision-census";
+    const FIXTURE_DIR: &str = "fixtures/shared_type_leaf_collision";
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("{PREFIX}: subject unreached: {detail}"),
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return unreached(format!("could not anchor at the workspace root: {e}"));
+    }
+
+    fn load_dir(dir: &str) -> Result<Vec<Rc<SourceFile>>, String> {
+        let mut out = Vec::new();
+        let entries = std::fs::read_dir(dir).map_err(|e| format!("{dir}: {e}"))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("{dir}: {e}"))?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+                continue;
+            }
+            let content =
+                std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            out.push(Rc::new(SourceFile {
+                path: path.to_string_lossy().to_string(),
+                content,
+            }));
+        }
+        if out.is_empty() {
+            return Err(format!("{dir}: no .dag files"));
+        }
+        out.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(out)
+    }
+
+    fn subject_build_of_cargo(
+        entry: &str,
+        graph: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+    ) -> Result<Rc<census::SubjectBuild>, String> {
+        let emit = emit_rust(graph);
+        match super::emitted_closure_compile_host::cargo_verdict_of_emit(entry, &emit) {
+            Err(cause) => Err(cause),
+            Ok(verdict) => shared_type_census_subject_build_from_cargo_verdict(&verdict),
+        }
+    }
+
+    fn print_report(kind: &str, subject: &str, report: Rc<census::SubjectCollisionReport>) {
+        println!(
+            "{PREFIX}: {}",
+            census::subject_summary_line(kind.to_string(), subject.to_string(), report.clone())
+        );
+        for row in report.rows.iter() {
+            println!(
+                "{PREFIX}: {}",
+                census::collision_report_line(subject.to_string(), row.clone())
+            );
+        }
+    }
+
+    fn classify_sources(
+        label: &str,
+        sources: Vec<Rc<SourceFile>>,
+    ) -> Result<Rc<census::SubjectCollisionReport>, String> {
+        let compiled = compile_to_resolved(Rc::new(sources.into()));
+        let graph = compiled
+            .graph
+            .clone()
+            .ok_or_else(|| format!("{label}: compile_to_resolved produced no graph"))?;
+        let rows = census::collisions_of_graph(graph.clone());
+        let build = subject_build_of_cargo(label, graph)?;
+        Ok(census::subject_report(rows, build))
+    }
+
+    let fixture_sources = match load_dir(FIXTURE_DIR) {
+        Ok(all) => all,
+        Err(e) => return unreached(e),
+    };
+    let select = |names: &[&str]| {
+        fixture_sources
+            .iter()
+            .filter(|s| {
+                let name = std::path::Path::new(&s.path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                names.iter().any(|want| name == *want)
+            })
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    let refuse_sources = select(&["copy_word.dag", "shared_word.dag", "red_entry.dag"]);
+    let silent_sources = select(&["silent_zcopy.dag", "silent_share.dag", "silent_entry.dag"]);
+    let green_sources = select(&["green_a.dag", "green_b.dag", "green_entry.dag"]);
+    if refuse_sources.len() != 3 {
+        return unreached("refuse fixture files missing".to_string());
+    }
+    if silent_sources.len() != 3 {
+        return unreached("silent fixture files missing".to_string());
+    }
+    if green_sources.len() != 3 {
+        return unreached("green fixture files missing".to_string());
+    }
+
+    let refuse_report = match classify_sources("stlc.red_entry", refuse_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    let silent_report = match classify_sources("stlc.silent_entry", silent_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    let green_report = match classify_sources("stlc.green_entry", green_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    print_report("fixture", "stlc.red_entry", refuse_report.clone());
+    print_report("fixture", "stlc.silent_entry", silent_report.clone());
+    print_report("fixture", "stlc.green_entry", green_report.clone());
+
+    let standing = census::fixture_standing(
+        refuse_report.clone(),
+        silent_report.clone(),
+        green_report.clone(),
+    );
+    for line in standing.lines() {
+        println!("{PREFIX}: {line}");
+    }
+    let held = census::fixture_controls_hold(
+        refuse_report.clone(),
+        silent_report.clone(),
+        green_report.clone(),
+    );
+
+    use super::emitted_closure_compile_host::CargoVerdict;
+    let unobserved_mapped = [
+        CargoVerdict::NotAttempted {
+            reason: "bounded-control-unobserved".to_string(),
+        },
+        CargoVerdict::DidNotComplete {
+            detail: "bounded-control-unobserved".to_string(),
+        },
+        CargoVerdict::DependencyFetchFailed {
+            status: None,
+            stderr_tail: "bounded-control-unobserved".to_string(),
+        },
+    ]
+    .iter()
+    .all(|v| shared_type_census_subject_build_from_cargo_verdict(v).is_err());
+    let unobserved_live_control = unobserved_mapped && !census::observation_held(held, true);
+    let completed_nonzero_control = census::build_is_refused_finding(refuse_report.build.clone())
+        && census::build_is_reportable_finding(refuse_report.build.clone())
+        && census::observation_held(held, false);
+    println!(
+        "{PREFIX}: {}",
+        census::control_line(
+            "unobserved_live_with_standing_unreaches".to_string(),
+            unobserved_live_control,
+        )
+    );
+    println!(
+        "{PREFIX}: {}",
+        census::control_line(
+            "completed_nonzero_refusal_does_not_unreach".to_string(),
+            completed_nonzero_control,
+        )
+    );
+    let mapping_controls_hold = unobserved_live_control && completed_nonzero_control;
+
+    let mut subjects: Vec<(String, String)> = Vec::new();
+    for (label, producer) in instrument_registry() {
+        match producer {
+            TargetProducer::SelfHost => subjects.push((
+                label.target.clone(),
+                cli_run::native_compile_entry().to_string(),
+            )),
+            TargetProducer::V2NativeCli => subjects.push((
+                label.target.clone(),
+                cli_run::v2_native_cli_entry().to_string(),
+            )),
+            TargetProducer::NativeClaimProgram { entry } => {
+                subjects.push((label.target.clone(), entry.to_string()));
+            }
+            _ => {}
+        }
+    }
+
+    let mut reports_ok = true;
+    for (name, entry) in subjects {
+        match cli_run::load_sources_for_entry_with_pool_index(source_roots, &entry, false) {
+            Ok(sources) => match classify_sources(&name, sources) {
+                Ok(report) => print_report("closure", &name, report),
+                Err(e) => {
+                    reports_ok = false;
+                    println!("{PREFIX}: subject kind=closure name={name} unreached {e}");
+                }
+            },
+            Err(e) => {
+                reports_ok = false;
+                println!("{PREFIX}: subject kind=closure name={name} unreached {e}");
+            }
+        }
+    }
+
+    let live_unobserved = !reports_ok;
+    InvocationOutcome {
+        termination: shared_type_census_termination(
+            held,
+            mapping_controls_hold,
+            live_unobserved,
+        ),
+        message: format!(
+            "{PREFIX}: {} (controls over {FIXTURE_DIR}; report over required subjects and NativeClaimProgramProducer entries)",
+            if census::observation_held(held && mapping_controls_hold, live_unobserved) {
+                "STANDING held"
+            } else if live_unobserved && held && mapping_controls_hold {
+                "subject unreached"
+            } else {
+                "STANDING unmet"
+            }
+        ),
+    }
+}
+
 /// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
 /// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
 /// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
@@ -4749,5 +5039,81 @@ fn run_regen_round_cost_instrument() -> InvocationOutcome {
                 round.round_failures.join("; ")
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod shared_type_census_cargo_mapping_tests {
+    use super::*;
+    use crate::cli_run::emitted_closure_compile_host::CargoVerdict;
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+
+    fn completed(status: i32) -> CargoVerdict {
+        CargoVerdict::Completed {
+            status,
+            stderr_tail: "error[E0204]: bounded-control".to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+            warning_headers: Vec::new(),
+            cargo_network_retries: 0,
+            first_error: None,
+        }
+    }
+
+    #[test]
+    fn unobserved_cargo_outcomes_are_unreached_not_refused_findings() {
+        let not_attempted = CargoVerdict::NotAttempted {
+            reason: "live-subject-not-attempted".to_string(),
+        };
+        let did_not = CargoVerdict::DidNotComplete {
+            detail: "live-subject-did-not-complete".to_string(),
+        };
+        let fetch = CargoVerdict::DependencyFetchFailed {
+            status: Some(1),
+            stderr_tail: "live-subject-fetch-failed".to_string(),
+        };
+        let na = shared_type_census_subject_build_from_cargo_verdict(&not_attempted);
+        let dc = shared_type_census_subject_build_from_cargo_verdict(&did_not);
+        let ff = shared_type_census_subject_build_from_cargo_verdict(&fetch);
+        assert!(na.as_ref().unwrap_err().contains("NotAttempted"));
+        assert!(na
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-not-attempted"));
+        assert!(dc.as_ref().unwrap_err().contains("DidNotComplete"));
+        assert!(dc
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-did-not-complete"));
+        assert!(ff.as_ref().unwrap_err().contains("DependencyFetchFailed"));
+        assert!(ff
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-fetch-failed"));
+        assert_eq!(
+            shared_type_census_termination(true, true, true),
+            Termination::SubjectUnreached
+        );
+        assert!(!census::observation_held(true, true));
+    }
+
+    #[test]
+    fn completed_nonzero_is_a_reportable_refusal_and_does_not_unreach() {
+        let build = shared_type_census_subject_build_from_cargo_verdict(&completed(101)).unwrap();
+        assert!(census::build_is_refused_finding(build.clone()));
+        assert!(census::build_is_reportable_finding(build));
+        assert!(census::observation_held(true, false));
+        assert_eq!(
+            shared_type_census_termination(true, true, false),
+            Termination::ObservationHeld
+        );
+    }
+
+    #[test]
+    fn completed_zero_is_accepted() {
+        let build = shared_type_census_subject_build_from_cargo_verdict(&completed(0)).unwrap();
+        assert!(!census::build_is_refused_finding(build.clone()));
+        assert!(census::build_is_reportable_finding(build));
     }
 }

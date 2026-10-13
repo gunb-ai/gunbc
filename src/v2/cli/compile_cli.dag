@@ -55,6 +55,7 @@ import v2.std.qualified_name { qualified_name_from_dotted_string }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex }
 import v2.std.text { String }
+import std.types { List }
 
 // THE V2-NATIVE CLI. THIS IS THE COMPILER'S OWN FRONT DOOR, WRITTEN IN THE COMPILER'S OWN LANGUAGE.
 //

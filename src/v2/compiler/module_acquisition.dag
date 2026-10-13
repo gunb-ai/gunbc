@@ -28,7 +28,8 @@ import gunbc.source_root_read {
 }
 import v2.compiler.name_resolve { Import }
 import v2.compiler.normalize { normalize }
-import v2.compiler.module_header { ModuleHeaderReader }
+import v2.compiler.grammar_reach { Reach }
+import v2.compiler.module_header { ModuleHeaderReader, module_header_tail }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
@@ -191,6 +192,7 @@ type AcquisitionEnv {
   bindings: List<SourceRootBinding>
   lex: PreparedLexRules
   grammar: PreparedGrammar
+  header_tail: Reach
 }
 
 // The pending requests are a stack (a member's requests are pushed in front), so a push costs the
@@ -786,20 +788,27 @@ fn acquisition_env(layout: SourceStorageLayout, bindings: List<SourceRootBinding
     Rejected { diagnostics: d } => AcquisitionEnvUnprepared { diagnostics: d }
     Accepted { value: prepared, diagnostics: _ } =>
       AcquisitionEnvReady {
-        env: AcquisitionEnv {
-          layout: layout,
-          bindings: bindings,
-          lex: prepare_lex_rules(rules: dag_language_model().lex),
-          grammar: prepared
-        }
+        env: acquisition_env_over(layout: layout, bindings: bindings, lex: prepare_lex_rules(rules: dag_language_model().lex), grammar: prepared)
       }
   }
+}
+
+// THE ENV OVER A PREPARED LEXER AND GRAMMAR: the one place the header production's tail is derived
+// from the grammar (v2.compiler.module_header module_header_tail), so it is carried once per run and
+// every env built through it holds the tail its own grammar gives.
+fn acquisition_env_over(
+  layout: SourceStorageLayout,
+  bindings: List<SourceRootBinding>,
+  lex: PreparedLexRules,
+  grammar: PreparedGrammar
+) -> AcquisitionEnv {
+  AcquisitionEnv { layout: layout, bindings: bindings, lex: lex, grammar: grammar, header_tail: module_header_tail(grammar: grammar) }
 }
 
 // The header reader over the env's prepared lexer and grammar: the one reading of a file's declared
 // module (v2.compiler.module_header), shared by the lookup's agreement check and the layout verb.
 fn acquisition_header_reader(env: AcquisitionEnv) -> ModuleHeaderReader {
-  ModuleHeaderReader { lex: env.lex, grammar: env.grammar }
+  ModuleHeaderReader { lex: env.lex, grammar: env.grammar, tail: env.header_tail }
 }
 
 // THE DOOR: the closure of the entry modules under the layout, read through the bindings. One
@@ -816,6 +825,259 @@ fn acquire_closure(layout: SourceStorageLayout, bindings: List<SourceRootBinding
   acquire_closure_of(layout: layout, bindings: bindings, entries: [entry])
 }
 
+// ---- the census door: a closure that records where it is blocked ------------------------------
+
+// THE CENSUS ACQUIRES THE SAME CLOSURE THE COMPILER DOES, BUT DOES NOT STOP AT A BLOCK. The compiler's
+// door (acquisition_loop) refuses at the first refusal, because a compiler cannot build past an
+// unreadable member. A census exists to report every such member, so this loop runs the SAME lookup
+// and the SAME verdict step and, where the step refuses at one member or one edge, records the
+// refusal and continues with the rest of the frontier. What a blocked member would have requested is
+// unobserved, and the result says so: CensusAcquisitionBlocked is "acquired this far; behind these,
+// unobserved", never a smaller population presented as closed (gunbc.plans.census_scoped_run).
+// CONSUMERS: executed over planted closures by v2.test.claim.census_scoped_acquisition in this change;
+// the emitted driver's census-scoped verb, run by //gunbc/instruments:v2-native-census-scoped, is a
+// declared frontier (DESIGN 3c), trigger: that verb lands (gunbc.plans.census_scoped_run section 5).
+// The refusal is carried WHOLE -- its arm is its meaning (R3); this door adds no classification of
+// its own beyond whether a refusal is local to one member, local to one edge, or ends the run.
+// The refusals local to one member, and only those: a member block cannot hold an edge's or a
+// run's refusal (DESIGN 5, unwritable). Each arm is the AcquisitionRefusal arm of the same name less
+// the module, which the block carries once.
+type CensusMemberRefusal
+  = CensusMemberFrontEndRefused { file: ModuleFileRef, diagnostics: NonEmptyDiagnostics }
+  | CensusMemberSitesUnreadable { file: ModuleFileRef }
+  | CensusMemberIdentityDisagrees { file: ModuleFileRef, declared: String }
+
+// The three refusals local to one edge, and only those: an edge block cannot hold a member's or a
+// run's refusal (DESIGN 5). Each arm is the AcquisitionRefusal arm of the same name and fields.
+type CensusEdgeRefusal
+  = CensusEdgeUnknownModule { request: AcquisitionRequest }
+  | CensusEdgeLookupRefused { request: AcquisitionRequest, lookup: ReferenceLookup }
+  | CensusEdgeTreeUnbound { tree: String, request: AcquisitionRequest }
+
+type CensusBlock
+  = CensusMemberBlock {
+      module: String
+      refusal: CensusMemberRefusal
+      // The bytes the attempted read returned, so the census reports the member from the read
+      // acquisition made and never from a second one (R1).
+      content: String
+      host_directory: String
+      // Every request that reached this member, in arrival order. A diamond onto one malformed
+      // member is one block with two requesters, not two reads (R2).
+      requesters: List<AcquisitionRequest>
+    }
+  | CensusEdgeBlock { refusal: CensusEdgeRefusal }
+
+type CensusAcquisition
+  = CensusAcquisitionClosed { entries: List<String>, modules: List<AcquiredModule>, reads: List<String> }
+  | CensusAcquisitionBlocked {
+      entries: List<String>
+      modules: List<AcquiredModule>
+      blocked_first: CensusBlock
+      blocked_rest: List<CensusBlock>
+      reads: List<String>
+    }
+  | CensusAcquisitionRefused { refusal: AcquisitionRefusal }
+
+type CensusAcquisitionState {
+  state: AcquisitionState
+  // Blocked members by name, and every block, newest first (each block's requesters likewise newest
+  // first); census_acquisition_finished reverses both once. The map holds the block's ordinal in
+  // recording order, and block_count the number recorded, so a later requester reaches the one block
+  // it names at position block_count - 1 - ordinal from the head.
+  blocked_members: Map<String, Int>
+  blocks: List<CensusBlock>
+  block_count: Int
+}
+
+// Which refusals are local. A refusal that is local to neither (grammar unprepared, entry
+// underivable) ends the census acquisition exactly as it ends the compiler's.
+type CensusBlockLocality
+  = CensusBlockedMember { module: String, refusal: CensusMemberRefusal }
+  | CensusBlockedEdge { refusal: CensusEdgeRefusal }
+  | CensusBlockNotLocal
+
+fn census_block_locality(refusal: AcquisitionRefusal) -> CensusBlockLocality {
+  match refusal {
+    AcquisitionMemberRefused { module: m, file: f, diagnostics: d } =>
+      CensusBlockedMember { module: m, refusal: CensusMemberFrontEndRefused { file: f, diagnostics: d } }
+    AcquisitionMemberSitesUnreadable { module: m, file: f } =>
+      CensusBlockedMember { module: m, refusal: CensusMemberSitesUnreadable { file: f } }
+    AcquisitionMemberIdentityDisagrees { module: m, file: f, declared: d } =>
+      CensusBlockedMember { module: m, refusal: CensusMemberIdentityDisagrees { file: f, declared: d } }
+    AcquisitionUnknownModule { request: q } => CensusBlockedEdge { refusal: CensusEdgeUnknownModule { request: q } }
+    AcquisitionLookupRefused { request: q, lookup: l } => CensusBlockedEdge { refusal: CensusEdgeLookupRefused { request: q, lookup: l } }
+    AcquisitionTreeUnbound { tree: t, request: q } => CensusBlockedEdge { refusal: CensusEdgeTreeUnbound { tree: t, request: q } }
+    AcquisitionGrammarUnprepared { diagnostics: _ } => CensusBlockNotLocal
+    AcquisitionEntryUnderivable { entry: _, cause: _ } => CensusBlockNotLocal
+  }
+}
+
+fn census_block_with_requester(block: CensusBlock, request: AcquisitionRequest) -> CensusBlock {
+  match block {
+    CensusMemberBlock { module: m, refusal: r, content: c, host_directory: h, requesters: rs } =>
+      CensusMemberBlock { module: m, refusal: r, content: c, host_directory: h, requesters: Cons { head: request, tail: rs } }
+    CensusEdgeBlock { refusal: r } => CensusEdgeBlock { refusal: r }
+  }
+}
+
+fn census_blocks_with_requester(blocks: List<CensusBlock>, at: Int, request: AcquisitionRequest) -> List<CensusBlock> {
+  match blocks {
+    Empty => Empty
+    Cons { head: b, tail: rest } =>
+      if at == 0 {
+        Cons { head: census_block_with_requester(block: b, request: request), tail: rest }
+      } else {
+        Cons { head: b, tail: census_blocks_with_requester(blocks: rest, at: at - 1, request: request) }
+      }
+  }
+}
+
+fn census_with_state(acc: CensusAcquisitionState, state: AcquisitionState) -> CensusAcquisitionState {
+  CensusAcquisitionState { state: state, blocked_members: acc.blocked_members, blocks: acc.blocks, block_count: acc.block_count }
+}
+
+fn census_with_edge_block(acc: CensusAcquisitionState, state: AcquisitionState, refusal: CensusEdgeRefusal) -> CensusAcquisitionState {
+  CensusAcquisitionState {
+    state: state,
+    blocked_members: acc.blocked_members,
+    blocks: Cons { head: CensusEdgeBlock { refusal: refusal }, tail: acc.blocks },
+    block_count: acc.block_count + 1
+  }
+}
+
+// The member is marked known so a later request reaches it through the lookup's known shortcut --
+// AFTER the lookup's cross-tree check, which therefore still denies a requester whose tree may not
+// import it (R2) -- and is attached to this block instead of being read again.
+fn census_with_member_block(
+  acc: CensusAcquisitionState,
+  state: AcquisitionState,
+  module: String,
+  refusal: CensusMemberRefusal,
+  content: String,
+  host_directory: String,
+  request: AcquisitionRequest
+) -> CensusAcquisitionState {
+  CensusAcquisitionState {
+    state: AcquisitionState {
+      pending: state.pending,
+      modules: state.modules,
+      known: map_insert(m: state.known, key: module, value: true),
+      absent: state.absent,
+      absent_probes: state.absent_probes,
+      reads: state.reads
+    },
+    blocked_members: map_insert(m: acc.blocked_members, key: module, value: acc.block_count),
+    blocks: Cons {
+      head: CensusMemberBlock { module: module, refusal: refusal, content: content, host_directory: host_directory, requesters: [request] },
+      tail: acc.blocks
+    },
+    block_count: acc.block_count + 1
+  }
+}
+
+// A block in arrival order: its requesters were kept newest first.
+fn census_block_in_order(block: CensusBlock) -> CensusBlock {
+  match block {
+    CensusMemberBlock { module: m, refusal: r, content: c, host_directory: h, requesters: rs } =>
+      CensusMemberBlock { module: m, refusal: r, content: c, host_directory: h, requesters: list_reverse(xs: rs) }
+    CensusEdgeBlock { refusal: r } => CensusEdgeBlock { refusal: r }
+  }
+}
+
+fn census_acquisition_finished(acc: CensusAcquisitionState, entries: List<String>) -> CensusAcquisition {
+  match list_map(xs: list_reverse(xs: acc.blocks), f: fn(b) { census_block_in_order(block: b) }) {
+    Empty =>
+      CensusAcquisitionClosed { entries: entries, modules: list_reverse(xs: acc.state.modules), reads: list_reverse(xs: acc.state.reads) }
+    Cons { head: first, tail: rest } =>
+      CensusAcquisitionBlocked {
+        entries: entries,
+        modules: list_reverse(xs: acc.state.modules),
+        blocked_first: first,
+        blocked_rest: rest,
+        reads: list_reverse(xs: acc.state.reads)
+      }
+  }
+}
+
+// ONE STEP OF THE CENSUS LOOP: the compiler's lookup, then either the attachment of a requester to a
+// member already blocked, or the compiler's verdict step with its refusal recorded.
+type CensusStep
+  = CensusStepContinued { acc: CensusAcquisitionState }
+  | CensusStepEnded { refusal: AcquisitionRefusal }
+
+fn census_verdict_step(env: AcquisitionEnv, acc: CensusAcquisitionState, request: AcquisitionRequest, looked: CandidateLookup) -> CensusStep {
+  match acquisition_verdict_step(env: env, request: request, looked: looked) {
+    AcquisitionAdvanced { state: next } => CensusStepContinued { acc: census_with_state(acc: acc, state: next) }
+    AcquisitionStepRefused { refusal: refusal, state: stopped } =>
+      match census_block_locality(refusal: refusal) {
+        CensusBlockNotLocal => CensusStepEnded { refusal: refusal }
+        CensusBlockedEdge { refusal: edge_refusal } => CensusStepContinued { acc: census_with_edge_block(acc: acc, state: stopped, refusal: edge_refusal) }
+        CensusBlockedMember { module: m, refusal: member_refusal } =>
+          match looked.verdict {
+            CandidateFresh { module: _, file: _, host_directory: directory, content: content } =>
+              CensusStepContinued { acc: census_with_member_block(acc: acc, state: stopped, module: m, refusal: member_refusal, content: content, host_directory: directory, request: request) }
+            // A member refusal is only produced by admitting a fresh candidate; any other verdict
+            // here is a step this loop does not understand, and it ends the run rather than
+            // recording a block without the read it came from.
+            _ => CensusStepEnded { refusal: refusal }
+          }
+      }
+  }
+}
+
+fn census_acquisition_step(env: AcquisitionEnv, acc: CensusAcquisitionState, request: AcquisitionRequest) -> CensusStep {
+  let looked = acquisition_lookup(env: env, state: acc.state, request: request, candidates: acquisition_candidates(request: request))
+  match looked.verdict {
+    CandidateKnown { module: m } =>
+      match map_lookup(acc.blocked_members, m) {
+        Present { value: at } =>
+          CensusStepContinued {
+            acc: CensusAcquisitionState {
+              state: looked.state,
+              blocked_members: acc.blocked_members,
+              blocks: census_blocks_with_requester(blocks: acc.blocks, at: acc.block_count - 1 - at, request: request),
+              block_count: acc.block_count
+            }
+          }
+        Absent => census_verdict_step(env: env, acc: acc, request: request, looked: looked)
+      }
+    _ => census_verdict_step(env: env, acc: acc, request: request, looked: looked)
+  }
+}
+
+fn census_acquisition_loop(env: AcquisitionEnv, acc: CensusAcquisitionState, entries: List<String>) -> CensusAcquisition {
+  match list_head(xs: acc.state.pending) {
+    HeadAbsent => census_acquisition_finished(acc: acc, entries: entries)
+    HeadFound { value: request } =>
+      match census_acquisition_step(env: env, acc: census_with_state(acc: acc, state: acquisition_popped(state: acc.state)), request: request) {
+        CensusStepEnded { refusal: refusal } => CensusAcquisitionRefused { refusal: refusal }
+        CensusStepContinued { acc: next } => census_acquisition_loop(env: env, acc: next, entries: entries)
+      }
+  }
+}
+
+fn acquire_census_closure_of(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, entries: List<String>) -> CensusAcquisition {
+  match acquisition_env(layout: layout, bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: d } => CensusAcquisitionRefused { refusal: AcquisitionGrammarUnprepared { diagnostics: d } }
+    AcquisitionEnvReady { env: env } =>
+      match acquisition_entry_requests(layout: env.layout, pending: entries, acc: []) {
+        AcquisitionEntriesRefused { refusal: refusal } => CensusAcquisitionRefused { refusal: refusal }
+        AcquisitionEntriesDerived { requests: requests } =>
+          census_acquisition_loop(
+            env: env,
+            acc: CensusAcquisitionState {
+              state: AcquisitionState { pending: requests, modules: [], known: empty_map(), absent: empty_map(), absent_probes: 0, reads: [] },
+              blocked_members: empty_map(),
+              blocks: [],
+              block_count: 0
+            },
+            entries: entries
+          )
+      }
+  }
+}
+
 // ---- the acquired set as the compiler's source ingest ----------------------------------------------
 
 // The host path an acquired member was read from. It is the artifact id, the artifact path and the
@@ -826,12 +1088,19 @@ fn acquisition_module_path(module: AcquiredModule) -> String {
 }
 
 fn acquisition_witness(module: AcquiredModule) -> DagSourceReadWitness {
-  let path = acquisition_module_path(module: module)
+  acquisition_read_witness(file: module.file, host_directory: module.host_directory, content: module.content)
+}
+
+// ONE WITNESS SHAPE FOR EVERY READ THE ACQUIRER MADE, admitted or blocked: the path is the host path
+// the bytes came from, and the bytes are the ones read, so a census reporting a blocked member reports
+// it from acquisition's read and never from a second one.
+fn acquisition_read_witness(file: ModuleFileRef, host_directory: String, content: String) -> DagSourceReadWitness {
+  let path = source_root_child_path(directory: host_directory, name: file.relative_path)
   DagSourceReadWitness {
-    source: Medium { carried: module.content, fidelity: Lossless },
+    source: Medium { carried: content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
     compilation_unit: symbol_intern_lexeme(lexeme: path),
-    source_root: module.file.tree
+    source_root: file.tree
   }
 }
 
@@ -849,6 +1118,42 @@ fn acquisition_ingest_go(pending: List<AcquiredModule>, acc: SourceRootIngest) -
 // carrying the bytes the acquirer read.
 fn acquisition_ingest(modules: List<AcquiredModule>) -> SourceRootIngest {
   acquisition_ingest_go(pending: list_reverse(xs: modules), acc: Empty)
+}
+
+// THE CENSUS INGEST: the admitted members, then every blocked member's own read, each exactly once.
+// A blocked member enters the census so its front-end refusal is reported as a row; an edge block
+// read nothing and enters nothing -- it is reported from the acquisition, not from the ingest.
+fn census_block_witness(block: CensusBlock) -> Optional<DagSourceReadWitness> {
+  match block {
+    CensusEdgeBlock { refusal: _ } => optional_absent()
+    CensusMemberBlock { module: _, refusal: refusal, content: content, host_directory: directory, requesters: _ } =>
+      match refusal {
+        CensusMemberFrontEndRefused { file: file, diagnostics: _ } =>
+          optional_present(value: acquisition_read_witness(file: file, host_directory: directory, content: content))
+        CensusMemberSitesUnreadable { file: file } =>
+          optional_present(value: acquisition_read_witness(file: file, host_directory: directory, content: content))
+        CensusMemberIdentityDisagrees { file: file, declared: _ } =>
+          optional_present(value: acquisition_read_witness(file: file, host_directory: directory, content: content))
+      }
+  }
+}
+
+// Built by cons from the back: the blocked reads in block order, then the acquired members consed
+// in front of them by acquisition_ingest_go.
+fn census_acquisition_ingest(modules: List<AcquiredModule>, blocks: List<CensusBlock>) -> SourceRootIngest {
+  acquisition_ingest_go(
+    pending: list_reverse(xs: modules),
+    acc: fold_list(
+      xs: list_reverse(xs: blocks),
+      empty: Empty,
+      cons: fn(acc, block) {
+        match census_block_witness(block: block) {
+          Absent => acc
+          Present { value: w } => Cons { head: w, tail: acc }
+        }
+      }
+    )
+  )
 }
 
 // ---- the read set is the requested closure, exactly (R9) ---------------------------------------------
@@ -1110,13 +1415,11 @@ fn acquire_verified(layout: SourceStorageLayout, bindings: List<SourceRootBindin
 // ---- enumerating a namespace (a population job's explicit input) ------------------------------------------
 //
 // Compiling an entry never walks a directory. A job whose input IS a population (a census, the
-// population parse, the native lane's candidate test modules) names the namespace it enumerates and
-// gets the module names the storage rule puts under it. A name follows its path under the rule, so the
-// enumeration is the inverse of module_file for one directory; the acquirer's `module` line check then
-// confirms each name when it is requested.
-type NamespaceModules
-  = NamespaceModulesListed { namespace: String, modules: List<String> }
-  | NamespaceModulesRefused { namespace: String, cause: String }
+// population parse, the native lane's candidate modules) is handed the module names the storage rule
+// puts under the namespaces the layout declares (enumerate_bound_modules). A name follows its path under
+// the rule, so the enumeration is the inverse of module_file for one directory; the acquirer's `module`
+// line check then confirms each name when it is requested. The walk below is the one directory observation
+// that enumeration is built from; no caller enumerates a single named namespace.
 
 // What one directory walk observed, before a caller decides what an absent directory means.
 type NamespaceWalk
@@ -1175,32 +1478,6 @@ fn namespace_walk_under(namespace: String, root: String, relative: String) -> Na
     namespace_walk(namespace: namespace, directory: root)
   } else {
     namespace_walk(namespace: namespace, directory: source_root_child_path(directory: root, name: relative))
-  }
-}
-
-// A population job that NAMES one namespace gets its modules, and a named namespace with no directory
-// is a refusal: the caller asked for a population that is not there.
-fn namespace_named_listing(walk: NamespaceWalk) -> NamespaceModules {
-  match walk {
-    NamespaceWalkAbsent { namespace: namespace, directory: directory } =>
-      NamespaceModulesRefused { namespace: namespace, cause: concat(directory, ": the namespace has no directory under its tree") }
-    NamespaceWalkListed { namespace: namespace, modules: modules } => NamespaceModulesListed { namespace: namespace, modules: modules }
-    NamespaceWalkRefused { namespace: namespace, cause: cause } => NamespaceModulesRefused { namespace: namespace, cause: cause }
-  }
-}
-
-fn enumerate_namespace_modules(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, namespace: String) -> NamespaceModules {
-  match module_file(layout: layout, name: concat(namespace, ".x")) {
-    ModuleNameUnderivable { name: _, cause: cause } => NamespaceModulesRefused { namespace: namespace, cause: cause }
-    ModuleFileDerived { file: file } =>
-      match acquisition_host_directory(bindings: bindings, tree: file.tree) {
-        Absent =>
-          NamespaceModulesRefused { namespace: namespace, cause: concat("tree ", source_root_ref_label(tree: file.tree), " is not bound") }
-        Present { value: root } =>
-          namespace_named_listing(
-            walk: namespace_walk_under(namespace: namespace, root: root, relative: namespace_relative_directory(probe_relative_path: file.relative_path))
-          )
-      }
   }
 }
 
