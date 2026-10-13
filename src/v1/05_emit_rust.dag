@@ -2250,9 +2250,15 @@ fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List
 // applied binding but never `params`, so a declaration node with no applied binding answered
 // "bound" and the closure annotation was written. With no applied binding, a formal outside the
 // fn's generic scope is as unbound as any other atom, and the annotation defers to `_`.
+// A KERNEL MINT IS NOT A BARE-NAME ATOM. The walk descends a resolved declaration, and the kernel's
+// Bool (`True | False`) is a declaration whose variant arms are kernel-minted leaves named `True` and
+// `False`. They are not type references, and lookup_type_by_name answers only for a scope that
+// happens to bind a type spelling those arms, so `Map<String, Bool>` in `FirstDuplicateScan<T>`
+// read as unbound in a closure whose std.list scope binds none (rustc E0282, `|acc: _, x: _|`) and as
+// bound where another module did. The kernel identifies its own mints, so they never take the scope lookup.
 fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let leaf_name = authored_name_at(source_indices: source_indices, node: n)
-  if n.children |> count == 0 && leaf_name != "" {
+  if n.children |> count == 0 && leaf_name != "" && !(n.inferred == none && node_is_kernel_mint(n: n)) {
     if type_leaf_is_unbound_in_closure_scope(name: leaf_name, generic_param_names: generic_param_names, env: env) { return true }
   }
   if n.inferred != none {
