@@ -16,6 +16,7 @@ import v2.compiler.module_acquisition {
   AcquisitionMarkersRead,
   AcquisitionMarkersRefused,
   AcquisitionMemberRead,
+  AcquisitionLookupRefused,
   AcquisitionMemberReadOk,
   AcquisitionMemberReadRefused,
   AcquisitionReadNotRequested,
@@ -59,11 +60,12 @@ import v2.compiler.source_authority {
   ReferenceNextReadFile,
   ReferenceNextReadNone,
   module_file_key,
+  ReferenceCrossTreeDenied,
   reference_next_read,
   reference_prefixes
 }
 import v2.std.algebra { HeadAbsent, HeadFound, length, list_head, list_map }
-import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.cross_tree.import_model { CrossTreeToTreeLessFundamental, DagTree, V2Tree }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
@@ -866,4 +868,27 @@ test fn a_well_formed_member_parses() -> Bool {
 
 test fn a_member_with_an_unclosed_body_is_refused() -> Bool {
   member_parse_text(content: "module v2.test.subject\nfn subject() -> Bool { true\n") == "refused"
+}
+
+// A DAG-TREE MODULE IMPORTING A V2-ONLY MODULE STILL REFUSES ON THIS DOOR. The Never slice
+// retargets cardinality importers onto std.types; this claim keeps the direction law on the
+// acquirer's refusal text (the same sentence native_lane_acquire prints as ACQUISITION-REFUSED).
+// The lookup decision before any read is v2.test.claim.source_layout_lookup
+// lookup_dag_to_v2_reference_is_denied_before_any_read.
+test fn a_dag_tree_import_of_a_v2_module_still_refuses_on_the_acquisition_door() -> Bool {
+  acquisition_refusal_text(
+    refusal: AcquisitionLookupRefused {
+      request: AcquisitionRequest {
+        from_module: "product.cable_plant_assessment",
+        from_tree: DagTree {},
+        spelling: "v2.std.cardinality",
+        kind: AcquireImportedModule
+      },
+      lookup: ReferenceCrossTreeDenied {
+        module: "v2.std.cardinality",
+        file: ModuleFileRef { tree: V2Tree {}, relative_path: "std/cardinality.dag" },
+        reason: CrossTreeToTreeLessFundamental
+      }
+    }
+  ) == "v2.std.cardinality (requested by product.cable_plant_assessment): module v2.std.cardinality at v2:std/cardinality.dag lies in a tree the requesting tree may not import"
 }

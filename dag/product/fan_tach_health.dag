@@ -1,6 +1,6 @@
 module product.fan_tach_health
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, Never, NonEmptyStr }
 import std.measure { RevolutionsPerMinute }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_fan_tach_expectation {
@@ -13,7 +13,6 @@ import gunbc.fleet.fleet_fan_tach_expectation {
   TachNotExpected,
 }
 import product.fan_tach { FanTachEndpointIdentity, FanTachWindow }
-import v2.std.cardinality { Never }
 import std.goal_assessment {
   GoalAssessment,
   GoalAssessmentRefused,
