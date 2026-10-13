@@ -27,6 +27,7 @@ import v2.std.logic { Bool }
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme }
 import v2.std.symbol_index {
+  SymbolIndex,
   VariantArmPayload,
   empty_symbol_index,
   symbol_index_bind_at,
@@ -204,13 +205,16 @@ test fn an_absent_index_does_not_guess_the_coproduct_from_the_alias_spelling_hol
   }
 }
 
-test fn a_module_root_parent_is_not_a_coproduct_identity_holds() -> Bool {
-  let indexed = symbol_index_insert(
+fn wall_unclaimed_alias_index() -> SymbolIndex {
+  symbol_index_insert(
     index: symbol_index_mark_module_root(index: empty_symbol_index(), qualified_path: wall_module_aca()),
     qualified_path: wall_alias_path(),
     resolved: wall_at
   )
-  match infer_coproduct_path_of_variant_arm(index: indexed, arm_path: wall_alias_path()) {
+}
+
+test fn a_module_root_parent_is_not_a_coproduct_identity_holds() -> Bool {
+  match infer_coproduct_path_of_variant_arm(index: wall_unclaimed_alias_index(), arm_path: wall_alias_path()) {
     Absent => true
     Present { value: _ } => false
   }
@@ -242,6 +246,27 @@ fn wall_alias_construct() -> Node {
     field_edges: [],
     source: wall_at
   )
+}
+
+test fn an_unclaimed_alias_construct_refuses_declaration_identity_unavailable_not_path_diag_holds() -> Bool {
+  match infer_sole_constructor_diags(
+    tree: ResolvedTree {
+      root: wall_alias_construct(),
+      symbol_index: wall_unclaimed_alias_index(),
+      resolved_declarations: wall_unclaimed_alias_index(),
+      lexical_bindings: empty_map(),
+      unavailable_providers: [],
+      member_kinds: no_member_declaration_kinds(),
+      type_declaration_modifiers: wall_open_channel(),
+      constructing_module: optional_present(value: wall_foreign_module())
+    }
+  ) {
+    None => false
+    Some { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_declaration_identity_unavailable)
+        && !diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_sole_constructor_modifiers_unreadable)
+        && !diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_sole_constructor_refused)
+  }
 }
 
 test fn a_withheld_index_refuses_declaration_identity_unavailable_not_modifiers_unreadable_holds() -> Bool {

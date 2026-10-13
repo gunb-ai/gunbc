@@ -8939,19 +8939,9 @@ fn infer_sole_constructor_node_diags(
                   tree: tree
                 )
               Absent =>
-                match symbol_index_lookup(index: tree.resolved_declarations, qualified_path: path) {
-                  Present { value: _ } =>
-                    infer_sole_constructor_path_diags(
-                      at: node,
-                      type_path: path,
-                      constructing_module: constructing_module,
-                      tree: tree
-                    )
-                  Absent =>
-                    infer_admission_diags_of([
-                      infer_declaration_identity_unavailable_diagnostic(at: node)
-                    ])
-                }
+                infer_admission_diags_of([
+                  infer_declaration_identity_unavailable_diagnostic(at: node)
+                ])
             }
         }
     }
