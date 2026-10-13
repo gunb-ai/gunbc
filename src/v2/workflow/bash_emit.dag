@@ -19,10 +19,9 @@ import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_node,
   bash_fold_serialize_program
 }
-import v2.std.algebra { fold_list }
 import v2.std.text { CharAbsent, CharFound, CharResult, char_eq, string_head }
 import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_refused }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, fold_list }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,

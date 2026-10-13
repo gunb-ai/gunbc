@@ -18,7 +18,6 @@ import gunbc.plans.ensure_closure_design { ensure_closure_design_plan }
 import gunbc.plans.convergence_coverage_program { convergence_coverage_program_plan }
 import gunbc.plans.harness_session_lifecycle { harness_session_lifecycle_plan }
 import gunbc.plans.v2_compiler_architecture { v2_compiler_architecture_plan }
-import gunbc.plans.v2_closed_pr_recovery { v2_closed_pr_recovery_plan }
 import gunbc.plans.source_layout_authority { source_layout_authority_plan }
 import gunbc.plans.census_scoped_run { census_scoped_run_plan }
 
@@ -40,7 +39,6 @@ data batch_g_plans: List<Plan> = [
   convergence_coverage_program_plan,
   harness_session_lifecycle_plan,
   v2_compiler_architecture_plan,
-  v2_closed_pr_recovery_plan,
   source_layout_authority_plan,
   census_scoped_run_plan
 ]

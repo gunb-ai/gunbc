@@ -43,7 +43,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_dsml_token,
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 test fn encoder_and_config_blob_urls_are_the_hub_shape_at_this_pin() -> Bool {
   let enc = hub_blob_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: deepseek_v4_1_flash_encoder_path)

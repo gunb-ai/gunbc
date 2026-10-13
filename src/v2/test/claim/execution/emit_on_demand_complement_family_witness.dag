@@ -36,7 +36,7 @@ import v2.extdeps.languages.dag {
 import v2.test.claim.execution.emit_host_complement_equals_eval {
   emit_complement_eval_tree_for,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

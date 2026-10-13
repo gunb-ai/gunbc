@@ -7,7 +7,7 @@ import product.electrical.connectivity {
   ElectricalNet,
   NetIdentity,
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import product.pcb.stackup {
   AdmittedStackup,
   CopperLayer,

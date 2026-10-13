@@ -9,7 +9,7 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, None, Outcome, Rejected, Some, diagnostics_fatal_reason }
 import v2.std.node { symbol_lexeme }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import std.algebra { list_snoc_item }
 import std.types { Bool, List, String }

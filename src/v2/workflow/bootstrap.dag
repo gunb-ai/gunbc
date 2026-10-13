@@ -4,13 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import v2.std.node { Atom, Conj, Edge, Hash, Authored, StructuralLabel, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, symbol_eq }
-import v2.std.algebra {
-  bag_eq,
-  contains,
-  fold_list,
-  unique
-}
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, bag_eq, contains, fold_list, unique }
 import v2.std.language_model {
   LanguageModel,
   language_model_to_node,

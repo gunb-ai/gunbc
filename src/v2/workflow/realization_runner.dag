@@ -1,7 +1,6 @@
 module v2.workflow.realization_runner
 
-import v2.std.algebra { contains, non_empty }
-import std.algebra { list_append, list_snoc_item }
+import std.algebra { list_append, list_snoc_item, contains, non_empty }
 import v2.std.dependency { DependencyView }
 import std.measure { ByteSize, byte_size, measure_add }
 import std.types { Int, List }

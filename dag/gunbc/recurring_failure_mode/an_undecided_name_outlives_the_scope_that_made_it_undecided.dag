@@ -1,0 +1,39 @@
+module gunbc.recurring_failure_mode.an_undecided_name_outlives_the_scope_that_made_it_undecided
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_undecided_name_outlives_the_scope_that_made_it_undecided: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_undecided_name_outlives_the_scope_that_made_it_undecided" as NonEmptyStr,
+
+  receipts: [
+    "**an undecided name outlives the scope that made it undecided** (INVALID STATE: the reference walk that decides which dotted spellings may probe storage (`v2.compiler.reference_site_collector` `site_head_binding`) holds a name as `HeadBindingUndecided` after the scope that made it undecided has ended in the resolver. A name is undecided while a match-arm pattern atom may be a constructor or a binder, and while an import has not been consulted; an undecided name is never a module candidate, because treating it as one would read a file for a projection.)",
+
+    "SPECIMEN, gunbc#13783 review 5497130206. In `let x = match s with a returning arm`, the resolver ends the arm scope at the let: the match value resolves under the arm, and the binder and the REST of the function resolve in the scope enclosing the match (`v2.compiler.resolve` `resolve_arm_scope_exit_bind`, keyed by `v2.std.node` `MatchArmScopeExitEdge`). The reference walk kept the arm's pattern atoms undecided through that rest. With an arm that binds an atom spelled `std`, a later `std.logic.and(a: x, b: true)` was classified undecided, so no request was made for `std/logic/and.dag`, and resolution then refused a valid program for a module it was never offered.",
+
+    "HARM: a false refusal, not a silent acceptance. The class is a hidden request, so the read set was smaller than the set resolution consults, and the refusal is typed and located but wrong. Section 5 forbids silent wrongness; this sits one step above it and still costs the author the time of finding a refusal that names a module that exists.",
+
+    "DISTINGUISHING FACTS: the name must be an arm pattern atom of an enclosing match whose scope ended at a let-match, spelled as the head of a dotted reference in the REST of that function. The in-arm use of the same spelling (`std.y` inside the arm) must stay undecided, and an enclosing arm's atoms must stay undecided through the nested let-match's rest, so a repair that clears every undecided name at the let is the same class pointed the other way: it reads a file for a projection.",
+
+    "REPAIR AT THE EARLIEST UNJUSTIFIED BOUNDARY (section 6b): the scope the walk applies must be the scope resolution applies, and that was two decisions of one fact. `v2.compiler.lexical_scope` `bind_carries_arm_scope_exit` is now the single producer of the marker's presence, consumed by resolve and by the walk; the walk keeps one undecided layer per enclosing arm (`v2.compiler.reference_site_collector` `SiteScope`) and `ChildSeesParentValuesBeyondCurrentArm` pops only the innermost layer at the marked bind's binder and body, leaving enclosing arms and imports.",
+
+    "RECOGNITION RULE: when a program with a returning let-match is refused for a module reference that its tail names, ask whether acquisition requested that module before asking whether the file is wrong. A request set that disagrees with the resolver's scope at a scope boundary is this class, whatever the boundary is.",
+
+    "THE OPPOSITE ERROR, WHICH THE REPAIR MUST NOT COMMIT: ending an undecided name too early makes it a candidate, and a candidate probes storage for a projection, so the verdict of a program then depends on a file it does not mention. The in-arm and enclosing-arm controls are enrolled beside the tail control for that reason: the three together require the boundary to be exact in both directions.",
+
+    "RUNG FOUND AT: mitigatable (a typed, located refusal of a valid program). RUNG NOW: mitigatable. The repair removes this instance by making the two scope decisions share a producer, and does not climb the class, because the reference walk still computes its scopes in a fold of its own beside the resolver's.",
+
+    "CEILING: 3, structurally guaranteed. Membership is decidable: a head is a candidate or it is not, given the scope the resolver applies. NEXT-RUNG TRIGGER, phrased as the capability: ONE SCOPE FOLD for the resolver and the reference walk, sufficient that a scope-ending rule added to resolve cannot be omitted by acquisition, so that the request set equals the set resolution consults by construction. A trigger naming this marker, this edge or these controls is less than that capability and would retire the row while the next scope-ending rule can still fork the two walks.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.lexical_scope", decl_name: "bind_carries_arm_scope_exit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.reference_site_collector", decl_name: "site_head_is_undecided", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.module_acquisition", decl_name: "a_dag_member_naming_a_dag_module_in_the_rest_of_a_let_match_is_requested_and_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.module_acquisition", decl_name: "a_dag_member_keeps_the_enclosing_arms_names_in_the_rest_of_a_nested_let_match", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.lexical_scope", decl_name: "a_pattern_atom_is_unbound_in_the_rest_of_its_let_match", field: WholeDeclaration },
+  ],
+}

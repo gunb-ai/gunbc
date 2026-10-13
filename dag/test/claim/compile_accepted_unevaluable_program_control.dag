@@ -1,7 +1,7 @@
 module test.claim.compile_accepted_unevaluable_program_control
 
 import std.types { Bool, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // WHY THIS FILE EXISTS. Required-floor run 32633501354 (main, head 907f19c2cc) reported
 // `known_red_runtime_errored=164`: 164 identities the compiler ACCEPTED and the interpreter could

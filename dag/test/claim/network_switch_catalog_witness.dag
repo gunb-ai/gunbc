@@ -38,7 +38,7 @@ import extdeps.network.arista_7050s_52 {
   arista_7050s_52_scale,
   arista_7050s_52_gap_count, arista_7050s_52_tracked_gap_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Green-by-execution proof for the two modelled switches and the shared switch catalog shape
 // they populate: the MikroTik CRS812-8DS-2DQ-2DDQ-RM and the Arista DCS-7050S-52, plus the

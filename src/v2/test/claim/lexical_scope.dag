@@ -19,10 +19,10 @@ import v2.compiler.reference_site_collector {
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { HeadAbsent, HeadFound, list_head, list_map }
+import std.algebra { HeadAbsent, HeadFound, list_head, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { symbol_lexeme }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -197,6 +197,48 @@ test fn an_imported_name_is_undecided() -> Bool {
 // The unbound edge of the pair: the same body, with no import to bind the head.
 test fn a_name_nothing_imports_is_unbound() -> Bool {
   head_of_site(content: "module v2.test.subject\n\nfn subject() -> Bool {\n  thing.y\n}\n", spelling: "thing.y") == "unbound"
+}
+
+// ---- A `let` that ends its match arm's binders ----------------------------------------------------------------
+//
+// `let x = match o { P => v  Q => return .. }` followed by the rest of the function is lowered so the rest sits
+// UNDER the binding arm's `let` (v2.std.node MatchArmScopeExitEdge): the `let`'s value stands in the arm, and its
+// binder and body stand in the scope enclosing the match. The names the pattern MAY bind are undecided in the
+// value and end at the binder, so a head spelled like one is a candidate module reference in the rest of the
+// function, which resolution reads as one. A walk that kept the arm's names there would hide that reference and
+// request nothing for it, and resolution would refuse a valid program. The names of the arms AROUND the match
+// stay, because the rest of the function is still inside them. Each claim below is paired with the claim for
+// the other side of the boundary in the same source.
+
+fn let_match_subject(arm: String, tail: String) -> String {
+  concat("module v2.test.subject\n\ntype Slot = SlotHeld { version: Bool } | SlotEmpty\n\nfn subject(o: Slot) -> Bool {\n  let x = match o {\n    ", arm, "\n    SlotEmpty => return false\n  }\n  ", tail, "\n}\n")
+}
+
+fn nested_let_match_subject() -> String {
+  "module v2.test.subject\n\ntype Slot = SlotHeld { version: Bool } | SlotEmpty\n\nfn subject(o: Slot, p: Slot) -> Bool {\n  match o {\n    SlotHeld { version: v2 } => {\n      let x = match p {\n        SlotHeld { version: std } => std.y\n        SlotEmpty => return false\n      }\n      std.logic.and(a: x, b: v2.member)\n    }\n    SlotEmpty => false\n  }\n}\n"
+}
+
+test fn a_pattern_atom_is_undecided_in_the_arm_of_a_let_match_that_returns() -> Bool {
+  head_of_site(content: let_match_subject(arm: "SlotHeld { version: std } => std.y", tail: "std.logic.and(a: x, b: true)"), spelling: "std.y") == "undecided"
+}
+
+// The boundary: the same atom, in the rest of the function the `let` lowers under the arm.
+test fn a_pattern_atom_is_unbound_in_the_rest_of_its_let_match() -> Bool {
+  head_of_site(content: let_match_subject(arm: "SlotHeld { version: std } => std.y", tail: "std.logic.and(a: x, b: true)"), spelling: "std.logic.and") == "unbound"
+}
+
+// The `let`'s own binder is what the rest sees in place of the arm's names.
+test fn the_binder_of_a_let_match_is_bound_in_its_rest() -> Bool {
+  head_of_site(content: let_match_subject(arm: "SlotHeld { version: std } => std.y", tail: "x.z"), spelling: "x.z") == "frame"
+}
+
+test fn the_arm_around_a_let_match_stays_undecided_in_its_rest() -> Bool {
+  head_of_site(content: nested_let_match_subject(), spelling: "v2.member") == "undecided"
+}
+
+test fn the_arm_of_a_nested_let_match_ends_at_its_rest() -> Bool {
+  head_of_site(content: nested_let_match_subject(), spelling: "std.logic.and") == "unbound"
+    && head_of_site(content: nested_let_match_subject(), spelling: "std.y") == "undecided"
 }
 
 // ---- what a module root binds, and which bindings name a value --------------------------------------------

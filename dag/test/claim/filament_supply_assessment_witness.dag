@@ -55,7 +55,7 @@ import extdeps.currency.currency { Usd }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.minted_identity { minted_id_eq }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

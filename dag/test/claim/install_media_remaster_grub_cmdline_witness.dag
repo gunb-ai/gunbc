@@ -1,6 +1,6 @@
 module test.claim.install_media_remaster_grub_cmdline_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_with_cmdline }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64_grub_cfg }

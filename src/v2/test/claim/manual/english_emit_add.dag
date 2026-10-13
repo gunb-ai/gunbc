@@ -17,7 +17,7 @@ import v2.extdeps.languages.english {
   english_lex
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
   Map
@@ -52,7 +52,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

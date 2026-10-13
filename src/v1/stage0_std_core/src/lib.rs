@@ -57,6 +57,12 @@ pub mod std_emit_model;
 #[path = "../../stage0/src/std_measure.rs"]
 pub mod std_measure;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_decimal.rs"]
+pub mod std_decimal;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_render_repeat_string_bootstrap.rs"]
+pub mod std_render_repeat_string_bootstrap;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_types.rs"]
 pub mod std_types;
 #[rustfmt::skip]
@@ -92,6 +98,9 @@ pub mod std_induction;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_graph.rs"]
 pub mod std_graph;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_unicode_scalar.rs"]
+pub mod std_unicode_scalar;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_uri.rs"]
 pub mod extdeps_uri;

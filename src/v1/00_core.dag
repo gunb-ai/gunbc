@@ -184,7 +184,7 @@ type DeclaredCallableIdentity {
 // The resolver knows both halves at once: that this call resolved to declaration D, and that
 // std.primitive_projection says D projects primitive P. It used to record only P, and every
 // emitter then had to assume P has a bridge in ITS runtime. That assumption is false and was
-// fabricating: v2.std.algebra length is a ModeledProjection of the `length` primitive, the Rust
+// fabricating: std.algebra length is a ModeledProjection of the `length` primitive, the Rust
 // registry has no `length` row (its list realization is `count`, its string realization is
 // `string_length`), and 05_emit_rust rendered `v1_rt::length` -- a symbol that does not exist in
 // the seed -- at 73 sites. That is DESIGN section 5 fabricated-plausible-output: the emitter

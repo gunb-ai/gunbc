@@ -20,7 +20,7 @@ import gunbc.commit_workflow {
   CommitWriterConflictMarkerTextRefusal,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

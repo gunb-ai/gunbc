@@ -11,7 +11,7 @@ import std.roster_frontier {
   frontier_subject_eq,
 }
 import std.keyed_roster { KeyedRosterBuildDuplicateKey, KeyedRosterBuilt }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.machine_intake.mtjade1_coverage_frontier {
   mtjade1_coverage_frontier_rows,
 }

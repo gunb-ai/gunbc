@@ -1,7 +1,7 @@
 module test.claim.self_host_emitted_contract_driver_witness
 
 import std.logic { Bool }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import gunbc.instruments.self_host_curated_seed_linked_harness {
   CsslWitnessDriver,
   CuratedSeedLinkedClaimRun,

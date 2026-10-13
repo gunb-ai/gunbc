@@ -10,7 +10,7 @@ import gunbc.cli_run_repo_grant {
   cli_run_repo_write_admissible,
   cli_run_repo_frame,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

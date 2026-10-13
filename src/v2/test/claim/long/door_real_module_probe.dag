@@ -5,7 +5,7 @@ import v2.extdeps.languages.dag { dag_surface_edge }
 import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.compiler.name_resolve { resolve_with_admission_policy }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, Authored }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

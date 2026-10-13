@@ -42,7 +42,7 @@ import gunbc.roadmap.roadmap_component { dispatch_client_js_source, dispatch_cla
 import gunbc.site.controls { sound_toggle_class, sound_toggle_label_on, sound_toggle_label_off }
 import gunbc.site.document { site_header, sound_toggle_control }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

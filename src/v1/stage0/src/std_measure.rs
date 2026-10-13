@@ -3,6 +3,8 @@
 
 use self::ClockBasis::*;
 use self::ClockDomain::*;
+use self::DecimalMoneyConversion::*;
+use self::DecimalMoneyPerHourConversion::*;
 use self::FiniteByteSizeBuild::*;
 use self::GrainRounding::*;
 use self::InstantOrder::*;
@@ -29,12 +31,17 @@ pub use crate::extdeps_units_iso_80000_3::{
     degrees_per_turn, square_millimetres_per_square_metre,
 };
 pub use crate::std_algebra::FieldOfFractions;
-pub use crate::std_checked_arithmetic::int_inclusive_max;
+use crate::std_checked_arithmetic::CheckedInt::{CheckedIntOverflow, CheckedIntReady};
 use crate::std_checked_arithmetic::CheckedIntOperands::BinaryOperands;
-use crate::std_checked_arithmetic::IntegerArithmeticOperation::IntegerAdd;
+use crate::std_checked_arithmetic::IntegerArithmeticOperation::{IntegerAdd, IntegerMultiply};
 pub use crate::std_checked_arithmetic::{
-    CheckedIntOperands, IntegerArithmeticOperation, IntegerOverflow,
+    checked_int_multiply, checked_int_to_nat, int_inclusive_max,
 };
+pub use crate::std_checked_arithmetic::{
+    CheckedInt, CheckedIntOperands, IntegerArithmeticOperation, IntegerOverflow,
+};
+pub use crate::std_decimal::checked_decimal_pow10;
+pub use crate::std_decimal::ExactDecimal;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
@@ -1065,6 +1072,19 @@ pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
     measure_count(m.clone())
 }
 
+pub type SignedMoneyAmountMicro = Rc<Measure<Currency, Micro, i64>>;
+
+pub fn signed_money_amount_micro(count: i64) -> SignedMoneyAmountMicro {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn signed_money_amount_micro_count(m: SignedMoneyAmountMicro) -> i64 {
+    measure_count(m.clone())
+}
+
 pub type UsdWholeDollars = MoneyAmount<One>;
 
 pub fn usd_whole_dollars(count: Nat) -> UsdWholeDollars {
@@ -1100,6 +1120,25 @@ pub struct MoneyRate<P> {
     pub _phantom: std::marker::PhantomData<P>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MoneyAmountRate<P> {
+    pub amount: MoneyAmountMicro,
+    pub _phantom: std::marker::PhantomData<P>,
+}
+
+pub type MoneyAmountPerSecond = Rc<MoneyAmountRate<PerSecond>>;
+
+pub fn money_amount_per_second(count: Nat) -> MoneyAmountPerSecond {
+    Rc::new(MoneyAmountRate {
+        amount: money_amount_micro(count.clone()),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn money_amount_per_second_count(q: MoneyAmountPerSecond) -> Nat {
+    money_amount_micro_count(q.amount.clone())
+}
+
 pub type MoneyPerSecond = Rc<MoneyRate<PerSecond>>;
 
 pub type MoneyPerMinute = Rc<MoneyRate<PerMinute>>;
@@ -1130,6 +1169,179 @@ pub fn money_per_minute_micros(q: MoneyPerMinute) -> Nat {
 
 pub fn money_per_hour_micros(q: MoneyPerHour) -> Nat {
     money_rate_micros(q.clone())
+}
+
+pub fn money_micro_fraction_digits() -> i64 {
+    6
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DecimalMoneyConversion {
+    DecimalMoneyConverted { amount: MoneyAmountMicro },
+    DecimalMoneyNegativeRefused { units: i64 },
+    DecimalMoneyScaleRefused { fraction_digits: i64 },
+    DecimalMoneyUnrepresentable { cause: Rc<IntegerOverflow> },
+}
+
+pub fn exact_decimal_to_money_amount_micro_ceil(d: ExactDecimal) -> Rc<DecimalMoneyConversion> {
+    if (d.fraction_digits.clone() < 0) {
+        Rc::new(DecimalMoneyConversion::DecimalMoneyScaleRefused {
+            fraction_digits: d.fraction_digits.clone(),
+        })
+    } else {
+        if (d.units.clone() < 0) {
+            Rc::new(DecimalMoneyConversion::DecimalMoneyNegativeRefused {
+                units: d.units.clone(),
+            })
+        } else {
+            if (d.fraction_digits.clone() <= money_micro_fraction_digits()) {
+                match (*crate::std_decimal::checked_decimal_pow10(v1_rt::int_sub(
+                    money_micro_fraction_digits(),
+                    d.fraction_digits.clone(),
+                )))
+                .clone()
+                {
+                    CheckedInt::CheckedIntOverflow { cause: c, .. } => {
+                        Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
+                            cause: c.clone(),
+                        })
+                    }
+                    CheckedInt::CheckedIntReady { value: factor, .. } => {
+                        match (*crate::std_checked_arithmetic::checked_int_multiply(
+                            d.units.clone(),
+                            factor.clone(),
+                        ))
+                        .clone()
+                        {
+                            CheckedInt::CheckedIntOverflow { cause: c, .. } => {
+                                Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
+                                    cause: c.clone(),
+                                })
+                            }
+                            CheckedInt::CheckedIntReady { value: scaled, .. } => {
+                                match crate::std_checked_arithmetic::checked_int_to_nat(
+                                    scaled.clone(),
+                                ) {
+                                    std::option::Option::None => Rc::new(
+                                        DecimalMoneyConversion::DecimalMoneyUnrepresentable {
+                                            cause: Rc::new(IntegerOverflow {
+                                                operation:
+                                                    IntegerArithmeticOperation::IntegerMultiply,
+                                                operands: Rc::new(
+                                                    CheckedIntOperands::BinaryOperands {
+                                                        lhs: d.units.clone(),
+                                                        rhs: factor.clone(),
+                                                    },
+                                                ),
+                                            }),
+                                        },
+                                    ),
+                                    Some(micros) => {
+                                        Rc::new(DecimalMoneyConversion::DecimalMoneyConverted {
+                                            amount: money_amount_micro(micros.clone()),
+                                        })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                match (*crate::std_decimal::checked_decimal_pow10(v1_rt::int_sub(
+                    d.fraction_digits.clone(),
+                    money_micro_fraction_digits(),
+                )))
+                .clone()
+                {
+                    CheckedInt::CheckedIntOverflow { cause: c, .. } => {
+                        Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
+                            cause: c.clone(),
+                        })
+                    }
+                    CheckedInt::CheckedIntReady { value: grain, .. } => {
+                        let q = v1_rt::int_div(d.units.clone(), grain.clone());
+                        let r = v1_rt::int_sub(
+                            d.units.clone(),
+                            v1_rt::int_mul(q.clone(), grain.clone()),
+                        );
+                        let ceiled = if (r.clone() == 0) {
+                            q.clone()
+                        } else {
+                            v1_rt::int_add(q.clone(), 1)
+                        };
+                        match crate::std_checked_arithmetic::checked_int_to_nat(ceiled.clone()) {
+                            std::option::Option::None => {
+                                Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
+                                    cause: Rc::new(IntegerOverflow {
+                                        operation: IntegerArithmeticOperation::IntegerAdd,
+                                        operands: Rc::new(CheckedIntOperands::BinaryOperands {
+                                            lhs: q.clone(),
+                                            rhs: 1,
+                                        }),
+                                    }),
+                                })
+                            }
+                            Some(micros) => {
+                                Rc::new(DecimalMoneyConversion::DecimalMoneyConverted {
+                                    amount: money_amount_micro(micros.clone()),
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DecimalMoneyPerHourConversion {
+    DecimalMoneyPerHourConverted {
+        rate: MoneyPerHour,
+    },
+    DecimalMoneyPerHourRefused {
+        conversion: Rc<DecimalMoneyConversion>,
+    },
+}
+
+pub fn exact_decimal_to_money_per_hour_ceil(
+    d: ExactDecimal,
+    currency: CurrencyCode,
+) -> Rc<DecimalMoneyPerHourConversion> {
+    match (*exact_decimal_to_money_amount_micro_ceil(d.clone())).clone() {
+        DecimalMoneyConversion::DecimalMoneyConverted { amount: a, .. } => Rc::new(
+            DecimalMoneyPerHourConversion::DecimalMoneyPerHourConverted {
+                rate: Rc::new(MoneyRate {
+                    amount: a.clone(),
+                    currency: currency.clone(),
+                    _phantom: std::marker::PhantomData,
+                }),
+            },
+        ),
+        DecimalMoneyConversion::DecimalMoneyNegativeRefused { units: u, .. } => {
+            Rc::new(DecimalMoneyPerHourConversion::DecimalMoneyPerHourRefused {
+                conversion: Rc::new(DecimalMoneyConversion::DecimalMoneyNegativeRefused {
+                    units: u.clone(),
+                }),
+            })
+        }
+        DecimalMoneyConversion::DecimalMoneyScaleRefused {
+            fraction_digits: f, ..
+        } => Rc::new(DecimalMoneyPerHourConversion::DecimalMoneyPerHourRefused {
+            conversion: Rc::new(DecimalMoneyConversion::DecimalMoneyScaleRefused {
+                fraction_digits: f.clone(),
+            }),
+        }),
+        DecimalMoneyConversion::DecimalMoneyUnrepresentable { cause: c, .. } => {
+            Rc::new(DecimalMoneyPerHourConversion::DecimalMoneyPerHourRefused {
+                conversion: Rc::new(DecimalMoneyConversion::DecimalMoneyUnrepresentable {
+                    cause: c.clone(),
+                }),
+            })
+        }
+    }
 }
 
 pub fn money_per_month_micros(q: MoneyPerMonth) -> Nat {

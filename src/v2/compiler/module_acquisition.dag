@@ -1,7 +1,7 @@
 module v2.compiler.module_acquisition
 
 import std.types { Bool, Int, List }
-import std.algebra { Cons, Empty, list_snoc_item }
+import std.algebra { Cons, Empty, list_snoc_item, HeadAbsent, HeadFound, fold_list, list_find_first, list_head, list_map, list_reverse, skip }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import extdeps.filesystem.filesystem_io {
   FilesystemExactPathAbsent,
@@ -28,6 +28,7 @@ import gunbc.source_root_read {
 }
 import v2.compiler.name_resolve { Import }
 import v2.compiler.normalize { normalize }
+import v2.compiler.module_header { ModuleHeaderReader }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
@@ -55,6 +56,7 @@ import v2.compiler.source_authority {
   ReferenceCrossTreeDenied,
   ReferenceDecided,
   ReferenceLookup,
+  ReferenceModuleHeaderRefused,
   ReferenceModuleLineDisagrees,
   ReferenceModuleLineMissing,
   ReferenceNextReadDenied,
@@ -70,30 +72,19 @@ import v2.compiler.source_authority {
   reference_after_probe,
   reference_next_read,
   reference_prefixes,
-  segment_count,
   source_root_ref_label,
   text_set_has,
   text_set_of
 }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prepared }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.lens.reference_deps { admission_from_module_root }
-import v2.std.algebra {
-  HeadAbsent,
-  HeadFound,
-  fold_list,
-  list_find_first,
-  list_head,
-  list_map,
-  list_reverse,
-  skip
-}
 import v2.std.collection { Map, empty_map, map_contains_key, map_insert, map_lookup }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.qualified_name { qualified_name_init, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
 
@@ -106,8 +97,11 @@ import extdeps.communication.medium { Lossless, Medium }
 // enumerations of the layout; they are never a side effect of compiling one entry.
 //
 // WHAT IS REQUESTABLE. An import names a module exactly. A qualified reference of two or more
-// segments names a module and a member, split by the storage lookup's longest-prefix probe. A BARE
-// NAME IS NOT REQUESTABLE (R1): nothing here derives a module from one, so a bare name that no import
+// spine segments (the QualifiedName list, not a string split on `.`) names a module and a member,
+// split by the storage lookup's longest-prefix probe. A String literal is never a module reference:
+// its payload is one interned atom even when the lexeme contains dots, so identity strings and
+// DeclarationRef.module_path data do not drive acquisition. A BARE NAME IS NOT REQUESTABLE (R1):
+// nothing here derives a module from one, so a bare name that no import
 // or local declaration binds reaches the resolver unbound and refuses there, naming the spelling.
 // A qualified spelling that names no module requests nothing -- it may be a member access on a
 // local, which the resolver judges -- while an import or entry that names no module refuses at once.
@@ -183,6 +177,7 @@ type AcquisitionRefusal
   | AcquisitionLookupRefused { request: AcquisitionRequest, lookup: ReferenceLookup }
   | AcquisitionMemberRefused { module: String, file: ModuleFileRef, diagnostics: NonEmptyDiagnostics }
   | AcquisitionMemberSitesUnreadable { module: String, file: ModuleFileRef }
+  | AcquisitionMemberIdentityDisagrees { module: String, file: ModuleFileRef, declared: String }
 
 // The receipt: `reads` is the key of every file whose content was read, in the order read. Probes
 // that found a file absent are not in it -- they read no module -- and are carried as `absent_probes`
@@ -324,6 +319,7 @@ fn acquisition_decided(state: AcquisitionState, directory: String, lookup: Refer
     ReferenceRefused { module: _, file: _, cause: _ } => acquisition_refused_lookup(state: state, lookup: lookup)
     ReferenceModuleLineMissing { module: _, file: _ } => acquisition_refused_lookup(state: state, lookup: lookup)
     ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => acquisition_refused_lookup(state: state, lookup: lookup)
+    ReferenceModuleHeaderRefused { module: _, file: _, cause: _ } => acquisition_refused_lookup(state: state, lookup: lookup)
     ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => acquisition_refused_lookup(state: state, lookup: lookup)
   }
 }
@@ -384,6 +380,7 @@ fn acquisition_probe_candidate(
     Absent => CandidateProbeSettled { lookup: CandidateLookup { state: state, verdict: CandidateTreeUnbound { tree: file.tree } } }
     Present { value: directory } =>
       match reference_after_probe(
+        reader: acquisition_header_reader(env: env),
         reference: request.spelling,
         module: module,
         rest: rest,
@@ -402,8 +399,20 @@ fn acquisition_probe_candidate(
 
 // ---- reading what a member asks for -------------------------------------------------------------
 
-fn acquisition_spelling_is_qualified(spelling: String) -> Bool {
-  segment_count(segments: split(s: spelling, delimiter: ".")) >= 2
+// A CODE-POSITION QUALIFIED NAME IS A SPINE OF TWO OR MORE SEGMENTS, not a string that happens to
+// contain dots. Flattening the spine and splitting the lexeme again treats a single interned
+// string-literal payload (`"test.claim.spark.foo"` as one atom) as a module reference, which is
+// how identity strings drove acquisition. A bare name (one segment) is not requestable (R1), even
+// when that segment's lexeme contains `.`.
+fn acquisition_qn_names_a_module(qn: QualifiedName) -> Bool {
+  match qn {
+    Empty => false
+    Cons { head: _, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: _, tail: _ } => true
+      }
+  }
 }
 
 fn acquisition_import_texts(rows: List<Import>) -> List<String> {
@@ -451,7 +460,7 @@ fn acquisition_head_is_candidate_module(head: SiteHeadBinding) -> Bool {
 
 fn acquisition_seen_site(acc: AcquisitionSeen, scoped: ScopedReferenceSite) -> AcquisitionSeen {
   let text = qualified_name_to_dotted_string(qn: scoped.site.spelling)
-  if acquisition_head_is_candidate_module(head: scoped.head) && acquisition_spelling_is_qualified(spelling: text) && !text_set_has(set: acc.seen, name: text) {
+  if acquisition_head_is_candidate_module(head: scoped.head) && acquisition_qn_names_a_module(qn: scoped.site.spelling) && !text_set_has(set: acc.seen, name: text) {
     AcquisitionSeen {
       order: list_snoc_item(xs: acc.order, item: text),
       seen: map_insert(m: acc.seen, key: text, value: true)
@@ -568,17 +577,34 @@ fn acquisition_sites_requests(
   }
 }
 
+// The lookup admitted this file because its header read as the requested module; the admit asserts
+// the same thing of the FULL parse, so a file whose whole parse names another module is refused rather
+// than carried under the requested name.
+fn acquisition_identity_checked(front: AcquisitionFrontEnd, module: String, file: ModuleFileRef) -> AcquisitionMemberRead {
+  match qualified_name_from_module_node(root: front.parse_root) {
+    Rejected { diagnostics: d } =>
+      AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
+    Accepted { value: parsed, diagnostics: _ } =>
+      if qualified_name_to_dotted_string(qn: parsed) == module {
+        acquisition_sites_requests(
+          front: front,
+          sites: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })),
+          module: module,
+          file: file
+        )
+      } else {
+        AcquisitionMemberReadRefused {
+          refusal: AcquisitionMemberIdentityDisagrees { module: module, file: file, declared: qualified_name_to_dotted_string(qn: parsed) }
+        }
+      }
+  }
+}
+
 fn acquisition_member_requests(env: AcquisitionEnv, module: String, file: ModuleFileRef, content: String) -> AcquisitionMemberRead {
   match acquisition_front_end(env: env, file: file, content: content) {
     Rejected { diagnostics: d } =>
       AcquisitionMemberReadRefused { refusal: AcquisitionMemberRefused { module: module, file: file, diagnostics: d } }
-    Accepted { value: front, diagnostics: _ } =>
-      acquisition_sites_requests(
-        front: front,
-        sites: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })),
-        module: module,
-        file: file
-      )
+    Accepted { value: front, diagnostics: _ } => acquisition_identity_checked(front: front, module: module, file: file)
   }
 }
 
@@ -768,6 +794,12 @@ fn acquisition_env(layout: SourceStorageLayout, bindings: List<SourceRootBinding
         }
       }
   }
+}
+
+// The header reader over the env's prepared lexer and grammar: the one reading of a file's declared
+// module (v2.compiler.module_header), shared by the lookup's agreement check and the layout verb.
+fn acquisition_header_reader(env: AcquisitionEnv) -> ModuleHeaderReader {
+  ModuleHeaderReader { lex: env.lex, grammar: env.grammar }
 }
 
 // THE DOOR: the closure of the entry modules under the layout, read through the bindings. One
@@ -1257,6 +1289,8 @@ fn acquisition_lookup_text(lookup: ReferenceLookup) -> String {
       concat("the file at ", module_file_key(file: file), " holds no module line, so it is not module ", name)
     ReferenceModuleLineDisagrees { module: name, declared: declared, file: file } =>
       concat("the file at ", module_file_key(file: file), " declares module ", declared, " where the layout stores ", name)
+    ReferenceModuleHeaderRefused { module: name, file: file, cause: cause } =>
+      concat("the file at ", module_file_key(file: file), " holds no readable module header, so it is not module ", name, ": ", cause)
     ReferenceCrossTreeDenied { module: name, file: file, reason: _ } =>
       concat("module ", name, " at ", module_file_key(file: file), " lies in a tree the requesting tree may not import")
   }
@@ -1277,6 +1311,8 @@ fn acquisition_refusal_text(refusal: AcquisitionRefusal) -> String {
       concat("module ", name, " at ", module_file_key(file: file), " did not front-end: ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
     AcquisitionMemberSitesUnreadable { module: name, file: file } =>
       concat("module ", name, " at ", module_file_key(file: file), " lowered but its reference sites are not all readable")
+    AcquisitionMemberIdentityDisagrees { module: name, file: file, declared: declared } =>
+      concat("module ", name, " at ", module_file_key(file: file), " parses as module ", declared)
   }
 }
 

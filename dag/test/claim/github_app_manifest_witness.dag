@@ -223,7 +223,7 @@ import gunbc.instruments.github_app_acquire {
   installations_report_path,
   next_acquisition_step,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -14,7 +14,7 @@ import v2.compiler.self_host.promotion_admission {
   behavioral_receipt_standing_holds
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 // FIXTURE CONTROL for behavioral_receipt_standing, following the house pattern of
 // build_cache_placement_observation_test: construct the observation directly and assert its

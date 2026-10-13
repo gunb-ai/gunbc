@@ -4,7 +4,7 @@ import gunbc.host.managed_host { managed_host_account_driving, managed_host_bind
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import std.types { Bool, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.ipmi_channel { ipmi_controller_channel_census }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.deployment_risk { TestRisk }

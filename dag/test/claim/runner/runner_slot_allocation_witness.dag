@@ -17,7 +17,7 @@ import gunbc.floor.floor_demand {
   floor_peak_reading_kind,
   UncensoredPeak, ThrottlePin, PeakUnmeasured,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

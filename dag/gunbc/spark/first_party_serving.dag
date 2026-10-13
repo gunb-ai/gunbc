@@ -28,7 +28,7 @@ import extdeps.vllm.usage_stats {
   vllm_usage_stats_reporting, vllm_usage_stats_assignment_disables,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
-import v2.std.algebra { list_tail, TailFound, TailAbsent }
+import std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.fleet.fleet_physical_inventory { operator_site }
 import gunbc.fleet.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 

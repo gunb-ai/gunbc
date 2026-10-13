@@ -1,5 +1,6 @@
 module v2.test.claim.gha_workflow_yaml_fold_serialize
 
+
 import extdeps.languages.yaml.types { YamlValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
 import extdeps.github.actions { Job }
@@ -20,7 +21,7 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -57,8 +58,8 @@ fn gha_fold_fold_matches_oracle(job: Job) -> Bool {
 }
 
 test fn gha_fold_pilot_job_byte_identical_holds() -> Bool {
-  gha_fold_prod_kind_sentinel == from_code_point(cp: 2)
-    && gha_fold_scalar_kind_sentinel == from_code_point(cp: 0)
+  gha_fold_prod_kind_sentinel == "\u{2}"
+    && gha_fold_scalar_kind_sentinel == "\u{0}"
     && gha_fold_fold_matches_oracle(job: gha_fold_pilot_job)
 }
 
