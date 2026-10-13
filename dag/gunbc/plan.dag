@@ -12,6 +12,7 @@ import gunbc.plan_governance {
 import extdeps.languages.markdown { serialize_markdown_source }
 import std.types { NonEmptyStr }
 import std.dissolution { DissolutionCondition, dissolution_description }
+import gunbc.design_ruling { DesignRuling }
 
 type PlanRetirement
   = PlanRetiresWhen { condition: DissolutionCondition }
@@ -28,10 +29,11 @@ type PlanRetirement
 // to resurrect deleted files, green either way.
 //
 // So the disposition is a declared fact on the plan, not an inference from the tree.
-// `PlanIsAuthorityOnly` carries the ruling that removed the projection, symbolically, so the row
-// cannot drift from its reason; it is not an exemption list and not a shrink of the registry --
-// the plan is still rostered, generated, and refused if generation fails. Only whether its bytes
-// are expected on disk changes.
+// `PlanIsAuthorityOnly` carries the `gunbc.design_ruling` row that removed the projection, so
+// every authority-only plan cites one resolvable symbol rather than a copied sentence; it is
+// not an exemption list and not a shrink of the registry -- the plan is still rostered,
+// generated, and refused if generation fails. Only whether its bytes are expected on disk
+// changes.
 //
 // `PlanProjectsDerivedMarkdown` is a committed projection part of whose body is DERIVED from the
 // live tree rather than authored. The derivation is a nullary function so it runs where the bytes
@@ -43,7 +45,7 @@ type PlanRetirement
 type PlanProjection
   = PlanProjectsCommittedMarkdown
   | PlanProjectsDerivedMarkdown { derive: fn() -> PlanDerivation }
-  | PlanIsAuthorityOnly { ruling: String }
+  | PlanIsAuthorityOnly { ruling: DesignRuling }
 
 type PlanDerivation
   = PlanDerived { blocks: List<MarkdownBlock> }

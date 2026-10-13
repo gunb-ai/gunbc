@@ -35,24 +35,6 @@ type InductiveField {
   element_type: String
 }
 
-fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> Bool {
-  match a {
-    DirectRecursion => match b { DirectRecursion => true, _ => false }
-    ListRecursion => match b { ListRecursion => true, _ => false }
-    OptionalRecursion => match b { OptionalRecursion => true, _ => false }
-    SetRecursion => match b { SetRecursion => true, _ => false }
-    MapValueRecursion => match b { MapValueRecursion => true, _ => false }
-  }
-}
-
-fn inductive_field_eq(a: InductiveField, b: InductiveField) -> Bool {
-  a.type_name == b.type_name &&
-    a.variant_name == b.variant_name &&
-    a.field_name == b.field_name &&
-    recursion_shape_eq(a: a.shape, b: b.shape) &&
-    a.element_type == b.element_type
-}
-
 fn inductive_field_to_dimension(field: InductiveField, param: String) -> RankingDimension {
   TreeSize { param: param }
 }
@@ -92,52 +74,6 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
   }
 }
 
-fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
-  match a {
-    UnitShrink =>
-      match b { UnitShrink => true, _ => false }
-    ConstantShrink { steps: sa } =>
-      match b {
-        ConstantShrink { steps: sb } =>
-          positive_descent_count(sa) == positive_descent_count(sb)
-        _ => false
-      }
-    ProportionalShrink { divisor: da } =>
-      match b {
-        ProportionalShrink { divisor: db } =>
-          proportional_divisor_to_int(d: da) == proportional_divisor_to_int(d: db)
-        _ => false
-      }
-  }
-}
-
-fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
-  match a {
-    StrictSubValue { field: fa, factor: fac_a } =>
-      match b {
-        StrictSubValue { field: fb, factor: fac_b } =>
-          inductive_field_eq(a: fa, b: fb) && shrink_factor_eq(a: fac_a, b: fac_b)
-        _ => false
-      }
-    IteratedSubValue { field: fa } =>
-      match b {
-        IteratedSubValue { field: fb } => inductive_field_eq(a: fa, b: fb)
-        _ => false
-      }
-    ArithmeticDescent { param: pa, factor: fac_a } =>
-      match b {
-        ArithmeticDescent { param: pb, factor: fac_b } =>
-          (pa == pb) && shrink_factor_eq(a: fac_a, b: fac_b)
-        _ => false
-      }
-    PreservedValue => match b { PreservedValue => true, _ => false }
-    NonIncreasingValue => match b { NonIncreasingValue => true, _ => false }
-    StrictAxisErased => match b { StrictAxisErased => true, _ => false }
-    MixedTop => match b { MixedTop => true, _ => false }
-    SubValueUnknown => match b { SubValueUnknown => true, _ => false }
-  }
-}
-
 fn is_strict_style_structural(r: SubValueRelation) -> Bool {
   match r {
     StrictSubValue { field: _, factor: _ } => true
@@ -165,7 +101,7 @@ fn sub_value_level(r: SubValueRelation) -> Int {
 }
 
 fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
-  if sub_value_structural_eq(a: a, b: b) { a }
+  if a == b { a }
   else {
     let la = sub_value_level(r: a)
     let lb = sub_value_level(r: b)
@@ -197,7 +133,7 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 }
 
 fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
-  if sub_value_structural_eq(a: a, b: b) { a }
+  if a == b { a }
   else {
     let la = sub_value_level(r: a)
     let lb = sub_value_level(r: b)

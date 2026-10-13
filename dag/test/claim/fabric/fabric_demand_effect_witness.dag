@@ -8,7 +8,8 @@ import std.measure { money_amount_micro, MoneyOnce }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey, ExecutionAttemptKey }
 import product.fabric.demand {
-  Demand, SatisfactionRequirement, AdmissionTerms, BuyTerms,
+  Demand, SatisfactionRequirement, AdmissionTerms, BuyTerms, admission_terms,
+  debt_payoff_objective,
   DemandCommand, SubmitDemand, WithdrawDemand, SupersedeDemand,
   UnknownDemand, DemandPrincipalMismatch, DuplicateDemand,
   ReplacementAlreadyRegistered, SupersedeCrossesPrincipal, ReplacementWorkMismatch,
@@ -51,15 +52,16 @@ fn demand_id(principal: NonEmptyStr, key: DemandKey) -> FabricIdentity<NonEmptyS
 }
 
 fn terms() -> AdmissionTerms {
-  AdmissionTerms {
-    deadline: none,
+  admission_terms(
     buy: BuyTerms {
       budget_account: "fleet-ci",
       currency: Usd,
       reservation_price: money_amount_micro(count: 100000),
       maximum_buy_order: money_amount_micro(count: 200000),
     },
-  }
+    deadline: none,
+    objective: debt_payoff_objective,
+  )
 }
 
 fn attaching_satisfaction() -> SatisfactionRequirement {
