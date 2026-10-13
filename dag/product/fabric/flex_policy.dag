@@ -73,6 +73,10 @@ type FlexBidSubject
   = FlexNewAcquisition
   | FlexExistingAcquisition { current_bid: MoneyPerHour }
 
+type FlexActuationMode
+  = FlexActuationDry
+  | FlexActuationWet
+
 type FlexPolicy {
   fleet_rate_cap: MoneyPerHour
   floor_buffer: NonzeroNatFraction
@@ -80,16 +84,9 @@ type FlexPolicy {
   // Not a mix of on-demand vs interruptible headcount.
   on_demand_fraction: NonzeroNatFraction
   acquisition_horizon: Second
-  // Write loop. false is Dry: observe, plan, record. true is Wet. Default false.
-  live: Bool
-}
-
-type FlexActuationMode
-  = FlexActuationDry
-  | FlexActuationWet
-
-fn flex_policy_actuation(policy: FlexPolicy) -> FlexActuationMode {
-  if policy.live { FlexActuationWet } else { FlexActuationDry }
+  // Write loop. FlexActuationDry is observe/plan/record; Wet is the write loop.
+  // Trial and every current constructor are Dry.
+  actuation: FlexActuationMode
 }
 
 type FlexAcquisitionWindow {

@@ -1,7 +1,6 @@
 module product.fabric.flex_vast_shadow
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
-import std.nat { Nat }
 import std.decl_ref { decl_ref }
 import std.integer { int_to_decimal_string }
 import std.measure {
@@ -17,7 +16,7 @@ import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey,
   FlexBidAttempt, FlexBidAdmission, FlexBidRefused, FlexScreenedCandidate,
   FlexDecimalConversionRefused,
-  FlexActuationMode, FlexActuationDry, FlexActuationWet, flex_policy_actuation,
+  FlexActuationMode, FlexActuationDry, FlexActuationWet,
   flex_floor_buffer, flex_bid_admission,
   PhysicalMachineObservationIdentity, ProviderAccountObservationIdentity,
 }
@@ -34,7 +33,7 @@ import std.rational { NonzeroNatFraction }
 // operation is imported. Writes are gated on Wet AND a readable instance list AND not over cap;
 // Wet still has no wired create.
 
-data flex_search_offers_inhabitance_frontier: DissolutionCondition = unbound_dissolution(description: "DECLARED FRONTIER (DESIGN §3 pairing): an inhabitance claim that live vast_ai.SearchOffers Search emits VastAiOffer (ExactDecimal money, gpu_ram in MB). TRIGGER: the Vast API key SecretRef is granted through gunbc.auth.gcp_secret_access and a wet readonly Search executes. SUFFICIENT FOR deleting this row once that claim is enrolled. NOT satisfied by supplied-value fixtures.")
+data flex_search_offers_inhabitance_frontier: DissolutionCondition = unbound_dissolution(description: "DECLARED FRONTIER (DESIGN §3 pairing): an inhabitance claim that live vast_ai.SearchOffers Search emits VastAiOffer (ExactDecimal money, gpu_ram in MB), using flex_vast_api_read_grant on the Vast API key SecretRef. TRIGGER: that grant is issued and a wet readonly Search executes. SUFFICIENT FOR deleting this row once that claim is enrolled. NOT satisfied by supplied-value fixtures.")
 
 data flex_m3_rent_cooldown_starts_at_ask: DissolutionCondition = unbound_dissolution(description: "M3: start the rent cooldown at ASK time, because a timed-out create may have rented. TRIGGER: the wet create loop records ask time as cooldown origin. SUFFICIENT FOR deleting this row.")
 
@@ -42,7 +41,7 @@ data flex_m3_pass_stops_at_first_failure: DissolutionCondition = unbound_dissolu
 
 data flex_qwen_probe_harness_placement_frontier: DissolutionCondition = unbound_dissolution(description: "M3: wire flex_rented_card_fungible into gunbc.harness.harness_requirement_placement. TRIGGER: placement refuses a rented card whose probe is not FlexQwenProbeConfirmed with qwen3 / qwen3_coder. SUFFICIENT FOR deleting this row. NOT satisfied by declaring the requirement here.")
 
-data flex_wet_create_release_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create/destroy loop consumes FlexCreateStanding, flex_reconcile_acquisition, FlexReleaseStanding, and flex_release_readback. TRIGGER: that loop is the remaining executing route if test.claim.fabric.flex_vast_shadow_witness is deleted. SUFFICIENT FOR deleting this row.")
+data flex_wet_create_release_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create/destroy loop consumes FlexCreateStanding, flex_reconcile_acquisition, FlexReleaseStanding, flex_release_readback, flex_trial_total (reservation ceiling), flex_objective, and flex_delay_unvalued. TRIGGER: that loop is the remaining executing route if test.claim.fabric.flex_vast_shadow_witness is deleted. SUFFICIENT FOR deleting this row.")
 
 type FlexWriteDecision
   = FlexWriteHeldDry
@@ -59,7 +58,7 @@ fn flex_write_decision(
   instances: FlexInstanceListStanding,
   over_cap: Bool,
 ) -> FlexWriteDecision {
-  match flex_policy_actuation(policy: policy) {
+  match policy.actuation {
     FlexActuationDry => FlexWriteHeldDry
     FlexActuationWet =>
       match instances {
@@ -86,7 +85,7 @@ data flex_trial_policy: FlexPolicy = FlexPolicy {
   floor_buffer: flex_floor_buffer,
   on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
   acquisition_horizon: second(count: 3600),
-  live: false,
+  actuation: FlexActuationDry,
 }
 
 data flex_delay_unvalued: MoneyPerSecond = MoneyRate {
@@ -286,7 +285,7 @@ fn flex_shadow_bid(
         offer_id: offer.id,
         machine: bound.machine,
         admission: FlexBidRefused { cause: FlexDecimalConversionRefused { conversion: c } },
-        actuation: flex_policy_actuation(policy: policy),
+        actuation: policy.actuation,
       }
     DecimalMoneyPerHourConverted { rate: _ } =>
       FlexShadowBidReceipt {
@@ -299,7 +298,7 @@ fn flex_shadow_bid(
           account: account,
           attempt: bound,
         ),
-        actuation: flex_policy_actuation(policy: policy),
+        actuation: policy.actuation,
       }
   }
 }
@@ -314,16 +313,30 @@ type FlexReconcileVerdict
   | FlexAcquisitionUnknown
   | FlexMayAcquire
 
-fn flex_instance_on_machine(instances: List<VastAiInstance>, machine_id: Int) -> VastAiInstance? {
+type FlexInstanceLookup
+  = FlexLookupContractId { id: Int }
+  | FlexLookupMachineId { machine_id: Int }
+
+fn flex_find_instance(instances: List<VastAiInstance>, lookup: FlexInstanceLookup) -> VastAiInstance? {
   fold(
     instances,
     init: none,
     f: (acc, row) =>
       match acc {
         Present { value: found } => Present { value: found }
-        Absent => if row.machine_id == machine_id { Present { value: row } } else { none }
+        Absent =>
+          match lookup {
+            FlexLookupContractId { id: id } =>
+              if row.id == id { Present { value: row } } else { none }
+            FlexLookupMachineId { machine_id: mid } =>
+              if row.machine_id == mid { Present { value: row } } else { none }
+          }
       },
   )
+}
+
+fn flex_instance_on_machine(instances: List<VastAiInstance>, machine_id: Int) -> VastAiInstance? {
+  flex_find_instance(instances: instances, lookup: FlexLookupMachineId { machine_id: machine_id })
 }
 
 fn flex_reconcile_acquisition(
@@ -332,15 +345,7 @@ fn flex_reconcile_acquisition(
 ) -> FlexReconcileVerdict {
   match standing {
     FlexCreateAnswered { instance_id: id, machine_id: _, ask_id: _ } =>
-      match fold(
-        instances,
-        init: none,
-        f: (acc, row) =>
-          match acc {
-            Present { value: found } => Present { value: found }
-            Absent => if row.id == id { Present { value: row } } else { none }
-          },
-      ) {
+      match flex_find_instance(instances: instances, lookup: FlexLookupContractId { id: id }) {
         Present { value: inst } => FlexAlreadyHeld { instance: inst }
         Absent => FlexAcquisitionUnknown
       }
@@ -354,14 +359,6 @@ fn flex_reconcile_acquisition(
         Present { value: inst } => FlexAlreadyHeld { instance: inst }
         Absent => FlexMayAcquire
       }
-  }
-}
-
-fn flex_may_acquire(verdict: FlexReconcileVerdict) -> Bool {
-  match verdict {
-    FlexMayAcquire => true
-    FlexAlreadyHeld { instance: _ } => false
-    FlexAcquisitionUnknown => false
   }
 }
 
@@ -391,24 +388,12 @@ fn flex_release_readback(
         FlexReleaseRequested { instance_id: i } => i
         FlexReleaseLost { instance_id: i } => i
       }
-      match fold(
-        rows,
-        init: none,
-        f: (acc, row) =>
-          match acc {
-            Present { value: found } => Present { value: found }
-            Absent => if row.id == id { Present { value: row } } else { none }
-          },
-      ) {
+      match flex_find_instance(instances: rows, lookup: FlexLookupContractId { id: id }) {
         Present { value: _ } => FlexReleasePending { instance_id: id }
         Absent => FlexReleaseConfirmedGone
       }
     }
   }
-}
-
-fn flex_demand_exceeds_share(live_sessions: Nat, share: Nat) -> Bool {
-  live_sessions > share
 }
 
 type FlexPassRecord {

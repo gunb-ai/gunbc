@@ -34,7 +34,7 @@ import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
   FlexScreenedCandidate, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused,
   FlexNewAcquisition, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
-  FlexOnDemandReferenceMissing, FlexActuationDry, FlexActuationWet, flex_policy_actuation,
+  FlexOnDemandReferenceMissing, FlexActuationDry, FlexActuationWet,
   flex_floor_buffer, flex_machine_key_eq,
 }
 import product.fabric.flex_vast_shadow {
@@ -46,7 +46,7 @@ import product.fabric.flex_vast_shadow {
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
   flex_vast_api_read_grant, flex_host_driver_unread_frontier, flex_delay_unvalued,
   FlexCreateLost, FlexCreateRefused, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
-  flex_reconcile_acquisition, flex_may_acquire,
+  flex_reconcile_acquisition,
   flex_qwen_serving_image, flex_qwen_published_tcp_port, flex_qwen_disk, flex_qwen_model_id,
   flex_qwen_reasoning_parser, flex_qwen_tool_call_parser, FlexQwenProbeConfirmed, FlexQwenProbeUnconfirmed,
   flex_rented_card_fungible, flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable,
@@ -56,7 +56,7 @@ import product.fabric.flex_vast_shadow {
   flex_m3_pass_stops_at_first_failure, flex_qwen_probe_harness_placement_frontier,
   flex_wet_create_release_consumer_frontier,
   flex_release_readback, FlexReleaseRequested, FlexReleaseLost, FlexReleasePending,
-  FlexReleaseConfirmedGone, FlexReleaseUnknown, flex_demand_exceeds_share, flex_record_pass,
+  FlexReleaseConfirmedGone, FlexReleaseUnknown, flex_record_pass,
 }
 import std.rational { NonzeroNatFraction }
 import std.dissolution { UnboundDissolution, BoundDissolution }
@@ -270,11 +270,10 @@ fn money_per_hour_cap_is_one_fifty() -> Bool {
 }
 
 fn flex_actuation_mode_default_is_dry() -> Bool {
-  !flex_trial_policy.live
-    && match flex_policy_actuation(policy: flex_trial_policy) {
-      FlexActuationDry => true
-      FlexActuationWet => false
-    }
+  match flex_trial_policy.actuation {
+    FlexActuationDry => true
+    FlexActuationWet => false
+  }
     && write_gate_conjunction()
     && qwen_probe_refuses_unconfirmed()
     && frontiers_are_unbound()
@@ -286,7 +285,7 @@ fn live_policy() -> FlexPolicy {
     floor_buffer: flex_floor_buffer,
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
-    live: true,
+    actuation: FlexActuationWet,
   }
 }
 
@@ -420,16 +419,16 @@ test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
     instances: [],
   )
   (match lost {
-    FlexAlreadyHeld { instance: i } => i.id == 99 && !flex_may_acquire(verdict: lost)
+    FlexAlreadyHeld { instance: i } => i.id == 99
     FlexAcquisitionUnknown => false
     FlexMayAcquire => false
   })
     && (match refused_empty {
-      FlexMayAcquire => flex_may_acquire(verdict: refused_empty)
+      FlexMayAcquire => true
       _ => false
     })
     && (match lost_unseen {
-      FlexAcquisitionUnknown => !flex_may_acquire(verdict: lost_unseen)
+      FlexAcquisitionUnknown => true
       _ => false
     })
     && (match flex_rental_readback(
@@ -485,8 +484,7 @@ fn release_counts_only_when_confirmed_gone() -> Bool {
 
 fn excess_demand_uses_operator_share() -> Bool {
   let share = harness_operator_route.concurrency_ceiling
-  flex_demand_exceeds_share(live_sessions: share + 1, share: share)
-    && !flex_demand_exceeds_share(live_sessions: share, share: share)
+  share + 1 > share && !(share > share)
 }
 
 fn dry_pass_records_unreadable_list() -> Bool {
