@@ -1925,10 +1925,12 @@ fn resolve_declared_path_reading(
   }
 }
 
-// A QUALIFIED PATH THAT NAMES NO INDEXED CANDIDATE. If a refused provider's module is a prefix of
-// the path, that chain is the cause. Otherwise the path refuses unbound at its own locus — never
-// a last-segment reread (that would accept foo.bar.Int as canonical Int, and would attribute
-// declarer-refused from an unrelated imported leaf).
+// A QUALIFIED PATH THAT NAMES NO INDEXED CANDIDATE. If the path's fill-time owning module
+// (`symbol_index_owning_module_of`) is in the refused-provider roster, that chain is the cause.
+// Otherwise the path refuses unbound at its own locus — never a last-segment reread (that would
+// accept foo.bar.Int as canonical Int, and would attribute declarer-refused from an unrelated
+// imported leaf) and never a proper-prefix of the path (that would attribute v2.p.child.R to
+// refused parent v2.p).
 fn resolve_reference_path_miss(
   ctx: ResolveContext,
   n: Node,
