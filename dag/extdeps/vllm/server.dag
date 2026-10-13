@@ -1,10 +1,7 @@
 module extdeps.vllm.server
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
-import extdeps.languages.json.parse { JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, json_object_unique_member }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -335,52 +332,4 @@ fn vllm_capacity_source_decision(kind: VllmCapacitySourceKind) -> VllmCapacitySo
         cause: "cache-config block fields are not a generally sufficient KV capacity authority: the scheduler selects block_size as the MINIMUM ACROSS RESOLVED CACHE GROUPS while num_blocks is separately reduced ACROSS WORKERS, so the product of the two joins values from different axes, and a multi-group layout can carry per-group block sizes and windows the resolved minimum does not represent -- the product is not the engine's group-aware capacity even where it coincides with it",
       }
   }
-}
-
-// ── THE /v1/models LIST AND THE --api-key HEADER ────────────────────────────────────────────────
-// GET /v1/models (vllm_route_models) answers the OpenAI-compatible list {object:"list", data:[{id, object,
-// root, max_model_len, ...}]}, one entry per --served-model-name. Under --api-key every /v1 route refuses
-// a request without `Authorization: Bearer <key>`. Both were observed against vLLM 0.31.0 on 2026-10-13
-// (gunbc.harness.operator_pod_launch). This reader takes the one member a route check needs; a document
-// that is not that shape is unreadable, never an empty list.
-type VllmModelsList
-  = VllmModelsAdvertised { ids: List<String> }
-  | VllmModelsUnreadable { cause: NonEmptyStr }
-
-fn vllm_models_entry_id(entry: JsonValue) -> String? {
-  match json_object_unique_member(v: entry, key: "id") {
-    JsonMemberFound { value: idv } =>
-      match idv {
-        JsonString { value: sv } => Present { value: sv }
-        JsonNull => none
-        JsonBool { value: _ } => none
-        JsonNumber { lexeme: _ } => none
-        JsonArray { elements: _ } => none
-        JsonObject { members: _ } => none
-      }
-    JsonMemberAbsent => none
-    JsonMemberDuplicated { count: _ } => none
-    JsonMemberNotAnObject => none
-  }
-}
-
-fn vllm_models_list(doc: JsonValue) -> VllmModelsList {
-  match json_object_unique_member(v: doc, key: "data") {
-    JsonMemberFound { value: d } =>
-      match d {
-        JsonArray { elements: els } => VllmModelsAdvertised { ids: flat_map(els, e => match vllm_models_entry_id(entry: e) { Present { value: v } => [v]  Absent => [] }) }
-        JsonNull => VllmModelsUnreadable { cause: "the data member is not an array" as NonEmptyStr }
-        JsonBool { value: _ } => VllmModelsUnreadable { cause: "the data member is not an array" as NonEmptyStr }
-        JsonNumber { lexeme: _ } => VllmModelsUnreadable { cause: "the data member is not an array" as NonEmptyStr }
-        JsonString { value: _ } => VllmModelsUnreadable { cause: "the data member is not an array" as NonEmptyStr }
-        JsonObject { members: _ } => VllmModelsUnreadable { cause: "the data member is not an array" as NonEmptyStr }
-      }
-    JsonMemberAbsent => VllmModelsUnreadable { cause: "the document carries no data member" as NonEmptyStr }
-    JsonMemberDuplicated { count: _ } => VllmModelsUnreadable { cause: "the document carries more than one data member" as NonEmptyStr }
-    JsonMemberNotAnObject => VllmModelsUnreadable { cause: "the document is not an object" as NonEmptyStr }
-  }
-}
-
-fn vllm_api_key_authorization_header_line(key: NonEmptyStr) -> String {
-  join(["Authorization: Bearer ", key as String, "\n"], "")
 }

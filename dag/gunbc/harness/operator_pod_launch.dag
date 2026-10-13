@@ -1,40 +1,35 @@
 module gunbc.harness.operator_pod_launch
 
 import std.types { NonEmptyStr, Port }
-import std.nat { Nat }
-import std.measure { TokenCount, token_count }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import std.measure { millisecond, token_count }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferKvNvfp4, NinferMtp }
 
-// THE OPERATOR'S vLLM LAUNCH ON THE RENTED GPU POD, as this repository observed it: a consumer-layer
-// observation, not a fact of vLLM (extdeps.vllm) or of the Qwen weights. On 2026-10-13 the operator
-// replaced the pod that ran ninfer-serve over Qwen3.8-27B NVFP4 with one running `vllm serve` (0.31.0)
-// over the Qwen3.8-27B BF16 weights, shared with the operator's dashboard as its "pool". Read from the
-// pod's launch script, GET /v1/models through the srv1 tunnel, one chat completion (reasoning came back
-// split into `reasoning`, the content carried no think tags) and the weights' chat template (it closes
-// reasoning with `</think>`). The API key is deliberately not a field: it lives in a 0600 file on the
-// consuming host (gunbc.harness.harness_operator_route harness_operator_route credential_relative_path).
-type OperatorVllmLaunch {
-  served_model_name: NonEmptyStr
-  listen_port: Port
-  max_model_len: TokenCount
-  max_num_seqs: Nat
-  reasoning_parser: NonEmptyStr
-  tool_call_parser: NonEmptyStr
-  reasoning_field: NonEmptyStr
-  inline_think_end_token: NonEmptyStr
-  standing: CitedFigureStanding
-}
+// THE OPERATOR'S ninfer-serve LAUNCH ON THE CARD THE LAB REACHES, as this repository observed it: a
+// consumer-layer observation, not a fact of ninfer (extdeps.ninfer.ninfer_serve) or of the weights
+// (extdeps.ninfer.qwen3_8_27b_nvfp4). On 2026-10-13 the operator rented an on-demand Vast card for the lab
+// (RTX PRO 5000 Blackwell, 48 GB) and started it from their Vast template, which runs ninfer-serve at the
+// build extdeps.ninfer.ninfer_serve cites over the container whose sha256 extdeps.ninfer.qwen3_8_27b_nvfp4
+// records (re-hashed on the card: equal). Read from the card's run.sh command line, `ninfer-serve --help`
+// for the flags it omits, its startup log, GET /v1/models (id qwen, max_model_len 262144) and two chat
+// completions (reasoning split into reasoning_content, tool calls under tool_calls). --model-id overrides the
+// artifact's own name (qwen3.8-27b), so the id a request names is this launch's, never the container's. The
+// API key is deliberately not a field: it lives in a 0600 file on the consuming host
+// (gunbc.harness.harness_operator_route harness_operator_route credential_relative_path).
+data operator_pod_launch_read_obligation: NonEmptyStr = "Re-read the card's /root/serve/run.sh ninfer-serve line, `ninfer-serve --help`, GET /v1/models with the card key and the reasoning member of one chat completion. max_pending_requests and pending_timeout are NOT read for this launch: its command line omits both flags and --help prints no default for them, so the figures are the 2026-10-11 pod's. Replace this standing with a receipt once the operator route is observed by a modeled probe" as NonEmptyStr
 
-data operator_pod_launch_read_obligation: NonEmptyStr = "Re-read the pod's ~/pool/serve.sh, GET /v1/models with the pool key, the reasoning member of one chat completion and the closing tag in ~/pool/weights/chat_template.jinja; replace this standing with a receipt once the operator route is observed by a modeled probe" as NonEmptyStr
-
-data operator_pod_vllm_launch: OperatorVllmLaunch = OperatorVllmLaunch {
-  served_model_name: "qwen" as NonEmptyStr,
-  listen_port: 18000,
-  max_model_len: token_count(count: 262144),
-  max_num_seqs: 64,
-  reasoning_parser: "qwen3" as NonEmptyStr,
-  tool_call_parser: "qwen3_coder" as NonEmptyStr,
-  reasoning_field: "reasoning" as NonEmptyStr,
-  inline_think_end_token: "</think>" as NonEmptyStr,
+data operator_pod_ninfer_launch: NinferServeLaunch = NinferServeLaunch {
+  model_id: "qwen" as NonEmptyStr,
+  max_concurrency: 8,
+  max_context: token_count(count: 262144),
+  max_pending_requests: 64,
+  pending_timeout: millisecond(count: 900000),
+  default_max_tokens: token_count(count: 8192),
+  kv_dtype: NinferKvNvfp4,
+  kv_capacity_auto: true,
+  speculation: NinferMtp { draft_tokens: 3, lm_head_draft: true },
   standing: TranscribedUncited { read_obligation: operator_pod_launch_read_obligation },
 }
+
+// THE --port FLAG OF THE SAME LAUNCH: where the tunnel's forward lands on the card.
+data operator_pod_listen_port: Port = 8000

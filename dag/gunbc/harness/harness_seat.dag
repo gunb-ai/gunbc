@@ -1181,8 +1181,8 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
 }
 
 // THE OPERATOR ENDPOINT TAKES NO SEAT: the class floor is applied, the Bearer header file is materialized from
-// the credential file, and the binding carries the chat-completions URL. Only the OpenAI chat shape is bound
-// on this route (vLLM's other routes are not), so any other shape refuses by name.
+// the credential file, and the binding carries the chat-completions URL. Only the OpenAI chat shape is spoken
+// by ninfer-serve, so any other shape refuses by name.
 fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape) -> HarnessSeatBinding {
   match shape {
     AnthropicMessagesShape => HarnessSeatRefused { detail: "the operator endpoint speaks the OpenAI chat-completions shape only" }
