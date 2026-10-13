@@ -52,7 +52,14 @@ import product.fabric.flex_market {
   flex_held_effective_rate, flex_dollars_per_vram_micro, flex_rank_entry,
   flex_rank_axes, flex_rank_policy,
   FlexRentalSample,
+  FlexCardUnitEstablished, FlexCardUnitUnconfirmed, flex_rented_card_fungible, flex_ninfer_qwen_probe,
 }
+import gunbc.harness.harness_reasoning_wire {
+  Qwen3_8_27bOnNinfer, NemotronUltraFreeOnOpenRouter, Glm53FlashOnVllm,
+  harness_unit_tool_call_parser,
+}
+import extdeps.cloud.vast_ai { VastAiCreateAskRequest, VastAiChangeBidRequest }
+import std.decimal { ExactDecimal }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -391,4 +398,35 @@ test fn ranking_selects_the_held_card_when_the_premium_covers_a_small_price_gap(
     SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_held)
     _ => false
   }
+}
+
+test fn a_ninfer_qwen_catalog_unit_is_placeable_and_unconfirmed_is_not() -> Bool {
+  flex_rented_card_fungible(probe: flex_ninfer_qwen_probe())
+    && flex_rented_card_fungible(probe: FlexCardUnitEstablished { unit: Qwen3_8_27bOnNinfer })
+    && !flex_rented_card_fungible(probe: FlexCardUnitUnconfirmed)
+    && !flex_rented_card_fungible(probe: FlexCardUnitEstablished { unit: NemotronUltraFreeOnOpenRouter })
+}
+
+test fn vllm_parser_names_stay_on_the_catalog_unit() -> Bool {
+  match harness_unit_tool_call_parser(unit: Glm53FlashOnVllm) {
+    Absent => false
+    Present { value: _ } =>
+      match harness_unit_tool_call_parser(unit: Qwen3_8_27bOnNinfer) {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+test fn a_create_ask_shape_requires_a_label() -> Bool {
+  let req = VastAiCreateAskRequest {
+    price: ExactDecimal { units: 6, fraction_digits: 1 },
+    disk: 32,
+    template_hash_id: "abc" as NonEmptyStr,
+    label: flex_owner_label_gunbc_flex as NonEmptyStr,
+  }
+  let bid = VastAiChangeBidRequest { price: ExactDecimal { units: 6, fraction_digits: 1 } }
+  (req.label as String) == (flex_owner_label_gunbc_flex as String)
+    && (req.disk == 32)
+    && (bid.price.units == 6)
 }

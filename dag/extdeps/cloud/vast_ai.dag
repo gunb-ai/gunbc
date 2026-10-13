@@ -46,6 +46,14 @@ data vast_ai_create_instance_page: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/instances/create-instance" }
 }
 
+data vast_ai_destroy_instance_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/instances/destroy-instance" }
+}
+
+data vast_ai_change_bid_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/instances/change-bid" }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -55,7 +63,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [vast_ai_create_instance_page]
+  further_citations: [vast_ai_create_instance_page, vast_ai_destroy_instance_page, vast_ai_change_bid_page]
 }
 
 data vast_ai_api_base: NonEmptyStr = "https://console.vast.ai/api/v0"
@@ -129,6 +137,131 @@ service vast_ai.SearchOffers {
     response {
       200 => VastAiOffers
       401 => VastAiApiError
+      429 => VastAiApiError
+      5xx => VastAiApiError
+    }
+  }
+}
+
+// WRITE SHAPES. Transport binding and execution belong to the wet consumer
+// (product.fabric.flex_market frontiers / bright-moth-475). label is REQUIRED on
+// this model's Create so an unlabelled rent is unwritable; Vast's OpenAPI lists
+// label as optional.
+
+type VastAiCreateAskRequest {
+  price: ExactDecimal
+  disk: Int
+  template_hash_id: NonEmptyStr
+  label: NonEmptyStr
+}
+
+type VastAiCreateAskResult {
+  success: Bool
+  new_contract: Int
+}
+
+type VastAiDestroyResult {
+  success: Bool
+  msg: String
+}
+
+type VastAiChangeBidRequest {
+  price: ExactDecimal
+}
+
+type VastAiChangeBidResult {
+  success: Bool
+}
+
+service vast_ai.Asks {
+  config {
+    endpoint: vast_ai_api_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Create {
+    requires Network
+    input {
+      api_key: Secret
+      offer_id: Int
+      price: ExactDecimal
+      disk: Int
+      template_hash_id: NonEmptyStr
+      label: NonEmptyStr
+    }
+    output {
+      success: Bool from "success"
+      new_contract: Int from "new_contract"
+    }
+    transport rest {
+      method: PUT,
+      path: "/asks/\{offer_id\}/",
+      body: { price: price, disk: disk, template_hash_id: template_hash_id, label: label }
+    }
+    response {
+      200 => VastAiCreateAskResult
+      400 => VastAiApiError
+      401 => VastAiApiError
+      403 => VastAiApiError
+      404 => VastAiApiError
+      410 => VastAiApiError
+      429 => VastAiApiError
+      5xx => VastAiApiError
+    }
+  }
+}
+
+service vast_ai.InstanceLifecycle {
+  config {
+    endpoint: vast_ai_api_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Destroy {
+    requires Network
+    input {
+      api_key: Secret
+      instance_id: Int
+    }
+    output {
+      success: Bool from "success"
+    }
+    transport rest {
+      method: DELETE,
+      path: "/instances/\{instance_id\}/"
+    }
+    response {
+      200 => VastAiDestroyResult
+      400 => VastAiApiError
+      404 => VastAiApiError
+      429 => VastAiApiError
+      5xx => VastAiApiError
+    }
+  }
+
+  operation ChangeBid {
+    requires Network
+    input {
+      api_key: Secret
+      instance_id: Int
+      price: ExactDecimal
+    }
+    output {
+      success: Bool from "success"
+    }
+    idempotent
+    transport rest {
+      method: PUT,
+      path: "/instances/bid_price/\{instance_id\}/",
+      body: { price: price }
+    }
+    response {
+      200 => VastAiChangeBidResult
+      400 => VastAiApiError
+      401 => VastAiApiError
+      404 => VastAiApiError
       429 => VastAiApiError
       5xx => VastAiApiError
     }

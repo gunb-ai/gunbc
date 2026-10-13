@@ -23,6 +23,10 @@ import std.decision {
   TermValuation as DecisionTermValuation,
   ValuedObjective, CostPerAcceptedUnit, SelectionPolicy,
 }
+import gunbc.harness.harness_reasoning_wire {
+  HarnessServingUnit, Qwen3_8_27bOnNinfer,
+  harness_unit_placement, PlacedOnFleetSeat, RunOnOperatorEndpoint, LeasedFromHostedQuota,
+}
 
 // Market-level interruptible bid, ranking, cleanup pacing, and ownership. Ctrl reference
 // (read-only): gunb-ai/ctrl lib/vast_bidder.mjs, vast_rentals.mjs. No second decision algebra:
@@ -38,7 +42,9 @@ data flex_wet_consumes_market_policy: DissolutionCondition = unbound_dissolution
 
 data flex_owner_label_on_create: DissolutionCondition = unbound_dissolution(description: "Wet create PUT sets label from flex_owner_label_gunbc_flex. TRIGGER: create request carries that required owner. SUFFICIENT FOR deleting this row.")
 
-data flex_qwen_placement_consumes_rank: DissolutionCondition = unbound_dissolution(description: "Harness placement consumes ranked FlexOwnedCard identities, not a parallel rank. TRIGGER: gunbc.harness.harness_requirement_placement reads flex_rank_entry / flex_rank_policy. SUFFICIENT FOR deleting this row.")
+data flex_qwen_placement_consumes_rank: DissolutionCondition = unbound_dissolution(description: "Harness placement consumes flex_rented_card_fungible over a HarnessServingUnit probe (catalog authority gunbc.harness.harness_reasoning_wire), not vLLM parser spellings. TRIGGER: gunbc.harness.harness_requirement_placement refuses a rented card whose probe is not FlexCardUnitEstablished with a placeable catalog unit. SUFFICIENT FOR deleting this row.")
+
+data flex_wet_consumes_vast_write_shapes: DissolutionCondition = unbound_dissolution(description: "Wet loop binds transport and executes vast_ai.Asks Create (label required), vast_ai.InstanceLifecycle Destroy, and ChangeBid. TRIGGER: that loop remains if test.claim.fabric.flex_market_witness is deleted. SUFFICIENT FOR deleting this row.")
 
 // Exact ratios 0.6 / 0.8 / 1.0 (vast_rentals.LEVELS).
 type FlexBidLevel
@@ -506,4 +512,27 @@ fn flex_cleanup_dead(cards: List<FlexOwnedCard>, ours: FlexOwnerLabel) -> List<F
 
 fn flex_foreign_untouched(owner: FlexOwnership) -> Bool {
   !flex_ours_only(owner: owner)
+}
+
+// Probe result is a catalog unit, not a second spelling of vLLM parser names.
+// Those names stay on harness_unit_tool_call_parser for vLLM units. A ninfer
+// Qwen3_8_27bOnNinfer card is placeable.
+type FlexCardProbe
+  = FlexCardUnitEstablished { unit: HarnessServingUnit }
+  | FlexCardUnitUnconfirmed
+
+fn flex_rented_card_fungible(probe: FlexCardProbe) -> Bool {
+  match probe {
+    FlexCardUnitUnconfirmed => false
+    FlexCardUnitEstablished { unit: u } =>
+      match harness_unit_placement(unit: u) {
+        RunOnOperatorEndpoint => true
+        PlacedOnFleetSeat => true
+        LeasedFromHostedQuota => false
+      }
+  }
+}
+
+fn flex_ninfer_qwen_probe() -> FlexCardProbe {
+  FlexCardUnitEstablished { unit: Qwen3_8_27bOnNinfer }
 }
