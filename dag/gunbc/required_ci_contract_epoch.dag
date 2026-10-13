@@ -8,6 +8,7 @@ import std.algebra { list_append }
 import gunbc.emitted_subject_build_gate {
   emitted_subject_build_rows,
   emitted_subject_build_label_text,
+  native_step_memory_envelope_env_name,
 }
 
 // THE REQUIRED CI CONTRACT'S DECLARED EFFECTIVE EPOCH, in one place, because both sides of the
@@ -58,7 +59,6 @@ data required_ci_obligation_kind_population_parse: NonEmptyStr = "population_par
 // of that module, so this contract module does not import the CLI closure.
 data required_ci_layout_check_key: NonEmptyStr = "check-layout" as NonEmptyStr
 data required_ci_population_parse_key: NonEmptyStr = "parse-population" as NonEmptyStr
-data required_ci_memory_envelope_key: NonEmptyStr = "GUNBC_MEMORY_ENVELOPE_REQUIRED" as NonEmptyStr
 
 fn required_ci_obligation(kind: NonEmptyStr, key: NonEmptyStr) -> RequiredCiObligation {
   RequiredCiObligation { kind: kind, key: key }
@@ -79,7 +79,7 @@ fn required_ci_obligation_rows() -> List<RequiredCiObligation> {
     right: list_append(
       left: required_ci_emitted_subject_obligations(),
       right: [
-        required_ci_obligation(kind: required_ci_obligation_kind_memory_envelope, key: required_ci_memory_envelope_key),
+        required_ci_obligation(kind: required_ci_obligation_kind_memory_envelope, key: native_step_memory_envelope_env_name as NonEmptyStr),
         required_ci_obligation(kind: required_ci_obligation_kind_layout_check, key: required_ci_layout_check_key),
         required_ci_obligation(kind: required_ci_obligation_kind_population_parse, key: required_ci_population_parse_key),
       ],
