@@ -45,7 +45,7 @@ import product.fabric.demand {
   interpret_demand_objective, valued_objective_policy,
 }
 import std.measure { money_amount_micro, money_rate_micros }
-import extdeps.currency.currency { Usd }
+import extdeps.currency.currency { Usd, Eur }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -190,7 +190,7 @@ fn pick(field: List<ParetoEntry>, objective: DemandObjective, constraints: List<
     field: field,
     objective: objective,
     constraints: constraints,
-    policy: valued_objective_policy(objective: objective),
+    policy: valued_objective_policy(objective: objective, currency: Usd),
   )
 }
 
@@ -343,9 +343,9 @@ test fn serving_reads_the_demand_delay_valuation() -> Bool {
 }
 
 fn delay_bound_to_money_valuations(objective: DemandObjective) -> List<TermValuation> {
-  map(interpret_demand_objective(objective: objective).valuations, v =>
+  map(interpret_demand_objective(objective: objective, currency: Usd).valuations, v =>
     if declaration_ref_eq(a: v.term, b: term_delay.identity) {
-      TermValuation { term: term_money.identity, scale_micro: v.scale_micro, goal: v.goal }
+      TermValuation { term: term_money.identity, scale_micro: v.scale_micro, goal: v.goal, currency: v.currency }
     } else {
       v
     }
@@ -353,9 +353,9 @@ fn delay_bound_to_money_valuations(objective: DemandObjective) -> List<TermValua
 }
 
 fn with_delay_scale(objective: DemandObjective, scale: Int) -> List<TermValuation> {
-  map(interpret_demand_objective(objective: objective).valuations, v =>
+  map(interpret_demand_objective(objective: objective, currency: Usd).valuations, v =>
     if declaration_ref_eq(a: v.term, b: term_delay.identity) {
-      TermValuation { term: v.term, scale_micro: scale, goal: v.goal }
+      TermValuation { term: v.term, scale_micro: scale, goal: v.goal, currency: v.currency }
     } else {
       v
     }
@@ -374,6 +374,7 @@ test fn a_negative_delay_scale_refuses_rather_than_reversing_orientation() -> Bo
             identity: latency_sensitive_objective.profile,
             valuations: with_delay_scale(objective: latency_sensitive_objective, scale: -1),
             measure: latency_sensitive_objective.measure,
+            currency: Usd,
           },
         ) {
           Refused => true
@@ -393,8 +394,9 @@ test fn cost_per_accepted_unit_refuses_a_lower_is_better_denominator() -> Bool {
           constraints: [],
           policy: ValuedObjective {
             identity: debt_payoff_objective.profile,
-            valuations: interpret_demand_objective(objective: debt_payoff_objective).valuations,
+            valuations: interpret_demand_objective(objective: debt_payoff_objective, currency: Usd).valuations,
             measure: CostPerAcceptedUnit { unit: term_money.identity },
+            currency: Usd,
           },
         ) {
           Refused => true
@@ -416,11 +418,36 @@ test fn remapping_only_the_delay_axis_refuses_rather_than_reversing_the_pick() -
             identity: latency_sensitive_objective.profile,
             valuations: delay_bound_to_money_valuations(objective: latency_sensitive_objective),
             measure: latency_sensitive_objective.measure,
+            currency: Usd,
           },
         ) {
           Refused => true
           _ => false
         }
+    _ => false
+  }
+}
+
+test fn a_eur_cap_with_a_usd_valuation_refuses() -> Bool {
+  let eur_cap = admission_hard_constraints(
+    terms: admission_terms(
+      buy: BuyTerms {
+        budget_account: "fixture",
+        currency: Eur,
+        reservation_price: money_amount_micro(count: 40),
+        maximum_buy_order: money_amount_micro(count: 40),
+      },
+      deadline: none,
+      objective: debt_payoff_objective,
+    ),
+  )
+  match pick_with_policy(
+    field: over_cap_field(),
+    objective: debt_payoff_objective,
+    constraints: eur_cap,
+    policy: valued_objective_policy(objective: debt_payoff_objective, currency: Usd),
+  ) {
+    Refused => true
     _ => false
   }
 }
@@ -432,8 +459,8 @@ test fn both_profiles_carry_the_four_required_valuations() -> Bool {
       declaration_ref_eq(a: debt_unit, b: term_accepted_work.identity)
         && match latency_sensitive_objective.measure {
           CostPerAcceptedUnit { unit: _ } => false
-          NetValue => (interpret_demand_objective(objective: debt_payoff_objective).valuations |> count) == 4
-            && (interpret_demand_objective(objective: latency_sensitive_objective).valuations |> count) == 4
+          NetValue => (interpret_demand_objective(objective: debt_payoff_objective, currency: Usd).valuations |> count) == 4
+            && (interpret_demand_objective(objective: latency_sensitive_objective, currency: Usd).valuations |> count) == 4
         }
   }
 }

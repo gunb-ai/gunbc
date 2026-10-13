@@ -12,7 +12,7 @@ import std.pareto {
   SelectionAxis,
 }
 import std.decision {
-  HardConstraint,
+  HardConstraint, DimensionlessConstraint,
   PreferSurvivor,
   UniqueSurvivorRequired,
   SelectionPolicy,
@@ -237,18 +237,21 @@ data power_cap: HardConstraint = HardConstraint {
   identity: id_constraints,
   axis: ax_power,
   bound_micro: 100,
+  denomination: DimensionlessConstraint,
 }
 
 data tput_floor: HardConstraint = HardConstraint {
   identity: id_constraints,
   axis: ax_tput,
   bound_micro: 5,
+  denomination: DimensionlessConstraint,
 }
 
 data orphan_cap: HardConstraint = HardConstraint {
   identity: id_constraints,
   axis: ax_orphan,
   bound_micro: 1,
+  denomination: DimensionlessConstraint,
 }
 
 fn le_int(a: Int, b: Int) -> Bool { a <= b }
