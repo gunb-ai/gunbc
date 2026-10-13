@@ -12,7 +12,7 @@ import v2.compiler.ingest {
   parse_tree_to_target_model_bridge
 }
 import v2.compiler.infer { algebra_ref_is_grounded, canonical_grounding_for_node }
-import std.kind { TypeDenotationKind, TypeFactKind, kind_node }
+import v2.std.kind { TypeDenotationKind, TypeFactKind, kind_node }
 import v2.compiler.translate { coerce_grounded_node }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.compiler.parse {
@@ -271,7 +271,7 @@ test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() ->
   }
 }
 
-// A KIND IS GROUNDED BY ITS DECLARED AUTHORITY (std.kind), so a roster member's derived type -- its
+// A KIND IS GROUNDED BY ITS DECLARED AUTHORITY (v2.std.kind), so a roster member's derived type -- its
 // kind since gunbc#12290 -- passes v2.compiler.infer algebra_ref_is_grounded; any other bare atom does not.
 test fn a_kind_atom_algebra_is_grounded_holds() -> Bool {
   algebra_ref_is_grounded(algebra: kind_node(kind: TypeDenotationKind))
