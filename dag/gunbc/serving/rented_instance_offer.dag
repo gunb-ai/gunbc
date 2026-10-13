@@ -23,6 +23,11 @@ data rented_instance_inputs_for_another_offer_obligation: NonEmptyStr = "the dis
 
 data rented_instance_gpu_count_unusable_obligation: NonEmptyStr = "the instance offer does not state a positive GPU count that matches the replicas bound to it, so a replica cannot be read from it" as NonEmptyStr
 
+// DECLARED FRONTIER (DESIGN 3c): the consumers of this reader today are its witnesses. The named
+// consumer is C4b, which hands the operator-supplied provider rental record (instance offer plus
+// dispatch observations) to rented_replica_offer_reading from the production rented_offer_reading
+// in the harness seat; until it lands that production reading stays NotRead. The trigger is that
+// C4b change, which is also where a production call site first exists.
 fn rented_replica_offer_key(instance: SupplierOffer<NonEmptyStr>, replica: RentedReplicaIdentity) -> OfferKey {
   concat(
     identity_frame(label: "instance-offer", value: instance.id.key as String),
@@ -54,57 +59,62 @@ type RentedPerGpuEnvelope
   = RentedPerGpuEnvelopeSplit { envelope: ResourceEnvelope }
   | RentedPerGpuEnvelopeIndivisible
 
-fn rented_split_threads(cpu: CpuRequirement?, gpus: Nat) -> CpuRequirement? {
-  match cpu {
-    Absent => none
-    Present { value: c } =>
-      match nat_div_rem(a: hardware_thread_count_value(t: c.min_threads), b: gpus) {
-        NatDivisionByZero => none
-        NatQuotientRemainder { quotient: q, remainder: r } =>
-          if r == 0 { Present { value: CpuRequirement { min_threads: hardware_thread_count(count: q), architecture: c.architecture } } } else { none }
+type RentedAxisShare
+  = RentedAxisNotStated
+  | RentedAxisShared { count: Nat }
+  | RentedAxisIndivisible
+
+fn rented_axis_share(stated: Nat?, gpus: Nat) -> RentedAxisShare {
+  match stated {
+    Absent => RentedAxisNotStated
+    Present { value: count } =>
+      match nat_div_rem(a: count, b: gpus) {
+        NatDivisionByZero => RentedAxisIndivisible
+        NatQuotientRemainder { quotient: q, remainder: r } => if r == 0 { RentedAxisShared { count: q } } else { RentedAxisIndivisible }
       }
   }
 }
 
-fn rented_axis_divides(count: Nat, gpus: Nat) -> Bool {
-  match nat_div_rem(a: count, b: gpus) {
-    NatDivisionByZero => false
-    NatQuotientRemainder { quotient: _, remainder: r } => r == 0
-  }
-}
-
-fn rented_envelope_divides(envelope: ResourceEnvelope, gpus: Nat) -> Bool {
-  (match envelope.cpu { Absent => true, Present { value: c } => rented_axis_divides(count: hardware_thread_count_value(t: c.min_threads), gpus: gpus) })
-    && (match envelope.memory { Absent => true, Present { value: m } => rented_axis_divides(count: byte_size_count(b: m.min_bytes), gpus: gpus) })
-    && (match envelope.storage { Absent => true, Present { value: s } => rented_axis_divides(count: byte_size_count(b: s.min_bytes), gpus: gpus) })
-}
-
-fn rented_split_bytes(count: Nat, gpus: Nat) -> Nat {
-  match nat_div_rem(a: count, b: gpus) {
-    NatDivisionByZero => count
-    NatQuotientRemainder { quotient: q, remainder: _ } => q
-  }
-}
-
 fn rented_one_gpu_envelope(envelope: ResourceEnvelope, gpu: GpuRequirement, gpus: Nat) -> RentedPerGpuEnvelope {
-  if rented_envelope_divides(envelope: envelope, gpus: gpus) {
-    RentedPerGpuEnvelopeSplit {
-      envelope: ResourceEnvelope {
-        cpu: rented_split_threads(cpu: envelope.cpu, gpus: gpus),
-        gpu: Present { value: GpuRequirement { count: 1, min_vram: gpu.min_vram, runtimes: gpu.runtimes } },
-        memory: match envelope.memory {
-          Absent => none
-          Present { value: m } => Present { value: MemoryRequirement { min_bytes: byte_size(count: rented_split_bytes(count: byte_size_count(b: m.min_bytes), gpus: gpus)) } }
-        },
-        storage: match envelope.storage {
-          Absent => none
-          Present { value: s } => Present { value: StorageRequirement { min_bytes: byte_size(count: rented_split_bytes(count: byte_size_count(b: s.min_bytes), gpus: gpus)), persistence: s.persistence } }
-        },
-        network: envelope.network,
-      },
-    }
-  } else {
-    RentedPerGpuEnvelopeIndivisible
+  let one_gpu = Present { value: GpuRequirement { count: 1, min_vram: gpu.min_vram, runtimes: gpu.runtimes } }
+  match rented_axis_share(stated: match envelope.cpu { Absent => none, Present { value: c } => Present { value: hardware_thread_count_value(t: c.min_threads) } }, gpus: gpus) {
+    RentedAxisIndivisible => RentedPerGpuEnvelopeIndivisible
+    cpu_share =>
+      match rented_axis_share(stated: match envelope.memory { Absent => none, Present { value: m } => Present { value: byte_size_count(b: m.min_bytes) } }, gpus: gpus) {
+        RentedAxisIndivisible => RentedPerGpuEnvelopeIndivisible
+        memory_share =>
+          match rented_axis_share(stated: match envelope.storage { Absent => none, Present { value: s } => Present { value: byte_size_count(b: s.min_bytes) } }, gpus: gpus) {
+            RentedAxisIndivisible => RentedPerGpuEnvelopeIndivisible
+            storage_share =>
+              RentedPerGpuEnvelopeSplit {
+                envelope: ResourceEnvelope {
+                  cpu: match envelope.cpu {
+                    Absent => none
+                    Present { value: c } => match cpu_share {
+                      RentedAxisShared { count: q } => Present { value: CpuRequirement { min_threads: hardware_thread_count(count: q), architecture: c.architecture } }
+                      _ => none
+                    }
+                  },
+                  gpu: one_gpu,
+                  memory: match envelope.memory {
+                    Absent => none
+                    Present { value: _ } => match memory_share {
+                      RentedAxisShared { count: q } => Present { value: MemoryRequirement { min_bytes: byte_size(count: q) } }
+                      _ => none
+                    }
+                  },
+                  storage: match envelope.storage {
+                    Absent => none
+                    Present { value: st } => match storage_share {
+                      RentedAxisShared { count: q } => Present { value: StorageRequirement { min_bytes: byte_size(count: q), persistence: st.persistence } }
+                      _ => none
+                    }
+                  },
+                  network: envelope.network,
+                },
+              }
+          }
+      }
   }
 }
 
