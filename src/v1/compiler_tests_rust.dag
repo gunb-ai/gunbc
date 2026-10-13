@@ -382,31 +382,6 @@ fn ct_tco_tail_call_assigns_every_loop_slot_test() -> String {
     "    }}\n\n")
 }
 
-fn ct_tco_cursor_list_walk_test() -> String {
-  concat(
-    "    fn cursor_emit(body: &str) -> String {{\n",
-    "        let src = format!(\"module cursor_fixture\\nimport std.algebra {{{{ Cons, Empty }}}}\\n{{}}\", body);\n",
-    "        let compiled = crate::v1_compiler_compile::compile_sources(\n",
-    "            std::rc::Rc::new(im::vector![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {{\n",
-    "                path: \"cursor_fixture.dag\".to_string(),\n",
-    "                content: src,\n",
-    "            }})]),\n",
-    "            crate::v1_compiler_artifact::RenderTarget::Rust,\n",
-    "        );\n",
-    "        assert!(compiled.diagnostics.is_empty(), \"fixture must compile, got {{:?}}\", compiled.diagnostics);\n",
-    "        compiled.files.iter().find(|f| f.path.ends_with(\"cursor_fixture.rs\")).expect(\"rust emit\").content.clone()\n",
-    "    }}\n\n",
-    "    #[test]\n",
-    "    fn tco_cursor_list_walk_probe() {{\n",
-    "        println!(\"=====pos\\n{{}}\", cursor_emit(\"fn walk(xs: List<Int>, acc: Int) -> Int {\n  match xs {\n    Empty => acc\n    Cons { head: h, tail: t } => walk(t, acc + h)\n  }\n}\n\"));\n",
-    "        println!(\"=====escape\\n{{}}\", cursor_emit(\"fn walk(xs: List<Int>, acc: Int) -> List<Int> {\n  match xs {\n    Empty => []\n    Cons { head: h, tail: t } => if h == 0 { t } else { walk(t, acc + h) }\n  }\n}\n\"));\n",
-    "        println!(\"=====xs_after\\n{{}}\", cursor_emit(\"fn walk(xs: List<Int>, acc: Int) -> Int {\n  match xs {\n    Empty => acc + list_len(xs)\n    Cons { head: h, tail: t } => walk(t, acc + h)\n  }\n}\n\"));\n",
-    "        println!(\"=====other_pos\\n{{}}\", cursor_emit(\"fn walk(xs: List<Int>, ys: List<Int>, acc: Int) -> Int {\n  match xs {\n    Empty => acc\n    Cons { head: h, tail: t } => walk(ys, t, acc + h)\n  }\n}\n\"));\n",
-    "        println!(\"=====depth2\\n{{}}\", cursor_emit(\"fn walk(xs: List<Int>, acc: Int) -> Int {\n  match xs {\n    Empty => acc\n    Cons { head: a, tail: Cons { head: b, tail: r } } => walk(r, acc + a + b)\n    Cons { head: a, tail: Empty } => acc + a\n  }\n}\n\"));\n",
-    "        panic!(\"probe\");\n",
-    "    }}\n\n")
-}
-
 fn ct_fixture_closure_rustc_discrimination_test() -> String {
   concat(
     "    /// THE EMITTED CLOSURE, HANDED TO RUSTC, OVER FIXTURES A TEST CAN AUTHOR.\n",
@@ -5570,7 +5545,6 @@ fn compiler_tests_source() -> String {
     ct_test_reference_import_all_test(),
     ct_test_reference_orphan_row_test(),
     ct_tco_tail_call_assigns_every_loop_slot_test(),
-    ct_tco_cursor_list_walk_test(),
     ct_pipeline_test(),
     ct_entry_point_absent_refusal_test(),
     ct_import_lines_follow_resolved_binding_identity_test(),
