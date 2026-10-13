@@ -9,7 +9,7 @@ import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, PoolReading, PoolForbidden, AccountForbidden, PoolUnreadable, PoolObservedAbsent, AccountObservedAbsent, ProvidersObserved, classify_dedicated_federation, heal_publisher_dedicated_federation, impersonation_cells, heal_publisher_impersonation_cell }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells }
-import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloud.gcp.secret_ref { SecretRef, gcp_secret_resource_by_number }
 import extdeps.cloud.gcp.gcp { GcpProjectId }
 import gunbc.auth.gcp_iam_converge {
   GcpIamPlan, GcpIamDiff, GcpIamNoop, GcpIamApply, GcpIamRefused,
@@ -30,6 +30,10 @@ import gunbc.auth.gcp_iam_converge {
   GrantSet, SecretPolicyReading, gcp_iam_converge_grant_sets, grant_set_secrets, gcp_iam_converge_grant_set_secrets,
   plan_grant_set, gcp_iam_estate_labels_unique, grant_set_payload_permissions,
 }
+import gunbc.fleet.host_credential_custody_converge { HostCredentialCustodyRow, CursorWorkerTurnApiKey, host_credential_custody_row }
+import std.list { distinct_by_key }
+import gunbc.cloudflare.r2_mint_secret_access { r2_mint_custody_grants }
+import gunbc.auth.fleet_secret_accessor_roster { cursor_api_key_harness_accessor_row, fleet_accessor_grant }
 import gunbc.auth.gcp_secret_access { GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
 import gunbc.auth.github_gcp_federation { federated_service_account_member }
 import gunbc.cloudflare.r2_origin { fabric_workspace_read_secret_id, fabric_workspace_write_secret_id }
@@ -646,4 +650,47 @@ test fn the_hand_applied_accessor_cells_read_back_as_noop() -> Bool {
         && match plan_grant_set(g: g, member: grant_member_resolution(), secret_policies: held) { GcpIamNoop { target: _ } => true  _ => false }
     }
   }
+}
+
+// THE CURSOR CUSTODY CELL IS THE ROSTER'S, SELECTED AND NOT RE-DECLARED, AND IT IS THE CELL THE CUSTODY
+// ROW READS. The set's one grant equals fleet_accessor_grant over the roster row, and its secret is the
+// custody row's `secret`: renaming or repointing either side without the other turns this red, and
+// deleting the roster row leaves no declarer for the cell.
+test fn the_cursor_custody_cell_is_the_rosters_and_names_the_custody_secret() -> Bool {
+  match filter(gcp_iam_converge_grant_sets, x => x.label == "worker-turn custody accessor cells").first() {
+    Present { value: g } => g.grants.length() == 1
+      && g.grants == [fleet_accessor_grant(row: cursor_api_key_harness_accessor_row)]
+      && map(grant_set_secrets(g: g), x => x as String) == [host_credential_custody_row(c: CursorWorkerTurnApiKey).secret.secret as String]
+    Absent => false
+  }
+}
+
+// THE ESTATE'S BOOTSTRAP POPULATION GROWS BY EXACTLY THE CURSOR SECRET: the two sets that existed keep
+// the secrets they had (the r2 custody set's own, and the hand-applied set's OpenRouter and OCI), and
+// the population is those followed by the Cursor secret and nothing else.
+test fn the_cursor_secret_joins_the_grant_set_secrets_and_the_others_are_unchanged() -> Bool {
+  let r2 = map(distinct_by_key(xs: r2_mint_custody_grants(), key: x => x.target.secret as String), x => x.target.secret as String)
+  let expected = distinct_by_key(
+    xs: concat(r2, ["openrouter-free-tier-api-key-harness", "oracle-oci-api-signing-key", "cursor-api-key-harness"]),
+    key: x => x,
+  )
+  map(gcp_iam_converge_grant_set_secrets(), x => x as String) == expected
+    && match filter(gcp_iam_converge_grant_sets, x => x.label == "fleet accessor cells applied by hand").first() {
+      Present { value: g } => map(grant_set_secrets(g: g), x => x as String) == ["openrouter-free-tier-api-key-harness", "oracle-oci-api-signing-key"]
+      Absent => false
+    }
+}
+
+// ON THE CURSOR SECRET iam-converge GRANTS AND NEVER READS: the secret carries only the secretPolicy
+// role's binding, whose permissions hold no payload read and no create, and the bootstrap readback
+// expects the payload permissions denied on it.
+test fn iam_converge_holds_no_payload_read_on_the_cursor_secret() -> Bool {
+  let res = gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: "cursor-api-key-harness" as NonEmptyStr)
+  let probes = iam_converge_bootstrap_readback()
+  any(iam_converge_bindings(), b => b.resource == res && match b.role { ConvergeSecretPolicyRole => true  _ => false })
+    && all(grant_set_payload_permissions, p => any(probes, q => match q {
+      ExpectDenied { resource: r, permission: pp } => r == res && pp == p
+      ExpectAdmitted { resource: _, permission: _ } => false
+    }))
+    && !any(iam_converge_secret_policy_role_permissions, p => p == "secretmanager.secrets.create" || p == "secretmanager.versions.access")
 }
