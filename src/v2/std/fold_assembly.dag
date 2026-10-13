@@ -1,4 +1,6 @@
 module v2.std.fold_assembly
+import std.optional { Absent, Optional, Present }
+
 
 import v2.std.node {
   Node,
@@ -19,7 +21,7 @@ import v2.std.node {
   named_edge_target_lookup,
   fold_list_node
 }
-import std.algebra { FreeMonoid, freemonoid_empty, list_append, list_snoc_item, fold_list, length, is_empty, count_where, ListHeadResult, HeadFound, HeadAbsent, list_head, ListTailResult, TailFound, TailAbsent, list_tail }
+import std.algebra { FreeMonoid, freemonoid_empty, list_append, list_snoc_item, fold_list, length, is_empty, count_where, list_head, list_tail }
 import v2.std.anti_unification { ChainGeneralization, is_hole, hole_node }
 import v2.std.diagnostic {
   Outcome, Accepted, Rejected,
@@ -58,12 +60,12 @@ type ApplyEdgesAcc {
 fn apply_fills_into(template: Node, fills: FreeMonoid<Node>) -> ApplyResult {
   if is_hole(template) {
     match list_head(xs: fills) {
-      HeadFound { value: h } =>
+      Present { value: h } =>
         match list_tail(xs: fills) {
-          TailFound { tail: t } => ApplyResult { node: h, rest: t }
-          TailAbsent => ApplyResult { node: h, rest: freemonoid_empty() }
+          Present { value: t } => ApplyResult { node: h, rest: t }
+          Absent => ApplyResult { node: h, rest: freemonoid_empty() }
         }
-      HeadAbsent => ApplyResult { node: template, rest: fills }
+      Absent => ApplyResult { node: template, rest: fills }
     }
   } else {
     apply_fills_rebuild(

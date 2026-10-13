@@ -1,4 +1,6 @@
 module v2.lens.effect_reach
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -8,7 +10,7 @@ import v2.lens.witness_cost_locality {
   ModuleImportFact,
   witness_import_closure
 }
-import std.algebra { list_snoc_item, contains, fold_list, length, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { list_snoc_item, contains, fold_list, length, list_head, list_tail }
 import v2.std.collection { Absent, Present }
 import v2.std.data_index {
   DataInitDecl,
@@ -187,8 +189,8 @@ fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
 
 fn tail_nodes(xs: List<Node>) -> List<Node> {
   match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => empty_node_list
+    Present { value: t } => t
+    Absent => empty_node_list
   }
 }
 
@@ -215,7 +217,7 @@ fn flows_from_sink_call_known(
   data_inits: List<DataInitDecl>
 ) -> List<EffectReachFlow> {
   match list_head(xs: args) {
-    HeadFound { value: arg } =>
+    Present { value: arg } =>
       let text = symbol_lexeme(sym: arg)
       let path = path_literal_from_lexeme(
         text: text,
@@ -229,7 +231,7 @@ fn flows_from_sink_call_known(
           init_literal_fp: ""
         }
       ]
-    HeadAbsent =>
+    Absent =>
       [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
   }
 }
@@ -241,7 +243,7 @@ fn flows_from_call_node(
 ) -> List<EffectReachFlow> {
   let targets = positional_child_targets(node: node)
   match list_head(xs: targets) {
-    HeadFound { value: callee_node } =>
+    Present { value: callee_node } =>
       match node_atom_identity_optional(node: callee_node) {
         Present { value: callee } =>
           let callee_text = symbol_lexeme(sym: callee)
@@ -257,7 +259,7 @@ fn flows_from_call_node(
           }
         Absent => empty_flow_list
       }
-    HeadAbsent => empty_flow_list
+    Absent => empty_flow_list
   }
 }
 

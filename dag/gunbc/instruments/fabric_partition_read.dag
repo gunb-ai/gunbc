@@ -1,4 +1,6 @@
 module gunbc.instruments.fabric_partition_read
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
@@ -6,7 +8,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.capacity.event_chain {
   PartitionId, ChainEnvelope, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
-  HeadExpectation, HeadAbsent, HeadAt,
+  HeadExpectation, Absent, HeadAt,
 }
 import product.capacity.pool_events { PoolEvent, pool_event_wire_text }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageServed, FabricStorageLocalFiles }
@@ -39,7 +41,7 @@ type PartitionReadout {
 
 fn head_word(head: HeadExpectation) -> String {
   match head {
-    HeadAbsent => "absent"
+    Absent => "absent"
     HeadAt { id: h } => join(["at ", h as String], "")
   }
 }

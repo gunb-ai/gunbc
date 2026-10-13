@@ -2,12 +2,12 @@ module gunbc.roadmap.roadmap_task_store
 
 import std.types { String, NonEmptyStr, Bool, List, EpochSecs }
 import std.nat { Nat }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, Optional }
 import std.decl_ref { decl_ref }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log { PartitionRead, PartitionReadOk, PartitionReadRefused, EventAppend, EventAppended, EventAppendStale, EventAppendRefused, event_log_read_partition_with, event_log_append_with, event_log_read_budget }
-import product.capacity.event_chain { PartitionId, ChainEvent, ChainWalked, ChainIncomplete, ChainBudgetExhausted, HeadExpectation, HeadAt, HeadAbsent, EventDecode, EventDecoded, EventUndecodable }
+import product.capacity.event_chain { PartitionId, ChainEvent, ChainWalked, ChainIncomplete, ChainBudgetExhausted, HeadExpectation, HeadAt, Absent, EventDecode, EventDecoded, EventUndecodable }
 import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty }
 import extdeps.languages.json.emit { JsonValue, JsonString, json_kv, json_string }
 import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound, JsonMemberAbsent }
@@ -369,7 +369,7 @@ fn roadmap_task_supersede(store: FabricStorageBinding, actor: NonEmptyStr, at: E
 fn roadmap_task_append(store: FabricStorageBinding, head: HeadExpectation, actor: NonEmptyStr, at: EpochSecs, event: RuntimeTaskEvent, subject: RoadmapNode, events: Nat) -> RuntimeTaskWrite
   admit_callers: [decl_ref(module_path: "gunbc.roadmap.roadmap_task_store", decl_name: "roadmap_task_commit")]
 {
-  let parent = match head { HeadAt { id: i } => Present { value: i } HeadAbsent => none }
+  let parent = match head { HeadAt { id: i } => Present { value: i } Absent => none }
   match event_log_append_with(store: store, partition: roadmap_task_partition_id(), event: ChainEvent { partition: roadmap_task_partition_id(), parent: parent, recorded_at: at, actor: actor, payload: event }, expected: head, encode: fn(e) { roadmap_task_event_text(event: e) }) {
     EventAppended { id: _ } => RuntimeTaskCommitted { task: subject, events: events }
     EventAppendStale { expected: _, observed: _ } => RuntimeTaskConflict

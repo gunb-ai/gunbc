@@ -1,4 +1,6 @@
 module v2.lens.live_read_classification
+import std.optional { Absent, Optional, Present }
+
 
 import v2.std.node { Authored, StructuralLabel }
 
@@ -153,14 +155,14 @@ fn carrier_for_callee_text(
 ) -> LiveReadCarrier {
   if callee_text == "filesystem_read" {
     match list_head(xs: args) {
-      HeadFound { value: arg } =>
+      Present { value: arg } =>
         FilesystemReadPath {
           path_pattern: path_pattern_from_lexeme(
             text: symbol_lexeme(sym: arg),
             param_names: param_names
           )
         }
-      HeadAbsent => FilesystemReadPath { path_pattern: UnknownPath }
+      Absent => FilesystemReadPath { path_pattern: UnknownPath }
     }
   } else if callee_text == "module_declaration_facts"
     || callee_text == "module_declaration_facts_live" {
@@ -194,7 +196,7 @@ fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
 fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<LiveReadCarrier> {
   let targets = positional_child_targets(node: node)
   match list_head(xs: targets) {
-    HeadFound { value: callee_node } =>
+    Present { value: callee_node } =>
       match node_atom_identity_optional(node: callee_node) {
         Present { value: callee } =>
           let callee_text = symbol_lexeme(sym: callee)
@@ -208,14 +210,14 @@ fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<LiveRe
           }
         Absent => empty_carrier_list
       }
-    HeadAbsent => empty_carrier_list
+    Absent => empty_carrier_list
   }
 }
 
 fn tail_nodes(xs: List<Node>) -> List<Node> {
   match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => empty_node_list
+    Present { value: t } => t
+    Absent => empty_node_list
   }
 }
 
@@ -822,8 +824,8 @@ fn decls_with_qualified_name(qualified: String, decls: List<FnArrowDecl>) -> Lis
 
 fn tail_module_facts(xs: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
   match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => empty_module_declaration_fact_list
+    Present { value: t } => t
+    Absent => empty_module_declaration_fact_list
   }
 }
 
@@ -835,27 +837,27 @@ fn bind_g2_root(
 ) -> G2RootBinding {
   let module_matches = module_facts_for_path(path: entry_path, nodes: nodes)
   match list_head(xs: module_matches) {
-    HeadAbsent => G2RootUnbound {
+    Absent => G2RootUnbound {
       cause: concat("no module declaration fact names entry path ", entry_path)
     }
-    HeadFound { value: first_module } =>
+    Present { value: first_module } =>
       match list_head(xs: tail_module_facts(xs: module_matches)) {
-        HeadFound { value: _ } => G2RootUnbound {
+        Present { value: _ } => G2RootUnbound {
           cause: concat("more than one module declaration fact names entry path ", entry_path)
         }
-        HeadAbsent => {
+        Absent => {
           let qualified = concat(concat(first_module.module, "."), fn_name)
           let decl_matches = decls_with_qualified_name(qualified: qualified, decls: decls)
           match list_head(xs: decl_matches) {
-            HeadAbsent => G2RootUnbound {
+            Absent => G2RootUnbound {
               cause: concat("no fn-arrow declaration is named ", qualified)
             }
-            HeadFound { value: first_decl } =>
+            Present { value: first_decl } =>
               match list_head(xs: tail_decls(xs: decl_matches)) {
-                HeadFound { value: _ } => G2RootUnbound {
+                Present { value: _ } => G2RootUnbound {
                   cause: concat("more than one fn-arrow declaration is named ", qualified)
                 }
-                HeadAbsent => G2RootBound {
+                Absent => G2RootBound {
                   entry_path: entry_path,
                   entry_module: first_module.module,
                   decl: first_decl

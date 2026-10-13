@@ -2,7 +2,7 @@ module test.claim.spark.pair_serving_authority_log_real_execution
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, FilePath, List }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, Optional }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts, FabricGroup, FabricGroupB }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
@@ -10,7 +10,7 @@ import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
 import product.capacity.lease { LeaseGrant, LeasePolicy, QuiescenceRequired, lease_grant, lease_fence_of }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
-import product.capacity.event_chain { EventId, HeadAbsent, HeadAt, head_expectation_eq }
+import product.capacity.event_chain { EventId, Absent, HeadAt, head_expectation_eq }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }

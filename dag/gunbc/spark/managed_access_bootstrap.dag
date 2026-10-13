@@ -1,7 +1,9 @@
 module gunbc.spark.managed_access_bootstrap
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
-import std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { list_head, list_tail }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_posix_accounts {
@@ -437,8 +439,8 @@ fn spark_install_basis_accepts_risk_for(basis: List<SparkGrantInstallBasis>, gra
 
 fn spark_install_basis_accepting_risk_for(bases: List<SparkGrantInstallBasis>, grant: SparkManagedGrant) -> SparkGrantInstallBasis? {
   match list_head(xs: filter(bases, b => spark_install_basis_row_accepts_risk_for(basis: b, grant: grant))) {
-    HeadFound { value: h } => Present { value: h }
-    HeadAbsent => none
+    Present { value: h } => Present { value: h }
+    Absent => none
   }
 }
 
@@ -548,15 +550,15 @@ fn authorize_spark_bootstrap(plan: SparkBootstrapPlan) -> SparkBootstrapAuthoriz
 
 fn list_head_of_effects(effects: List<SparkBootstrapEffect>) -> SparkBootstrapEffect? {
   match list_head(effects) {
-    HeadFound { value: e } => Present { value: e }
-    HeadAbsent => none
+    Present { value: e } => Present { value: e }
+    Absent => none
   }
 }
 
 fn list_tail_of_effects(effects: List<SparkBootstrapEffect>) -> List<SparkBootstrapEffect> {
   match list_tail(effects) {
-    TailFound { tail: t } => t
-    TailAbsent => []
+    Present { value: t } => t
+    Absent => []
   }
 }
 

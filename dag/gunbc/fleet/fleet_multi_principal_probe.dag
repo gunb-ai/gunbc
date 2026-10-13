@@ -1,8 +1,10 @@
 module gunbc.fleet.fleet_multi_principal_probe
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.algebra { trim, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { trim, list_head, list_tail }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -531,10 +533,10 @@ fn spark_exact_grant_report(context: FleetSshExecutionContext) -> SparkGrantRepo
     spark_exact_grant_row(context: context, host: h, principal: fleet_bootstrap_principal_login() as String),
   ])
   match list_head(rows) {
-    HeadAbsent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }
-    HeadFound { value: f } => match list_tail(rows) {
-      TailAbsent => GrantsObserved { first: f, more: [] }
-      TailFound { tail: t } => GrantsObserved { first: f, more: t }
+    Absent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }
+    Present { value: f } => match list_tail(rows) {
+      Absent => GrantsObserved { first: f, more: [] }
+      Present { value: t } => GrantsObserved { first: f, more: t }
     }
   }
 }

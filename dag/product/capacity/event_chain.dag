@@ -1,4 +1,6 @@
 module product.capacity.event_chain
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, brand }
 import std.nat { Nat, nat_range_inclusive }
@@ -47,19 +49,19 @@ type EventDecode<P>
 // partition is admitted against an absent head, and a writer that observed absence while another
 // wrote first is stale exactly like any other.
 type HeadExpectation
-  = HeadAbsent
+  = Absent
   | HeadAt { id: EventId }
 
 fn head_expectation_eq(a: HeadExpectation, b: HeadExpectation) -> Bool {
   match a {
-    HeadAbsent => match b { HeadAbsent => true  HeadAt { id: _ } => false }
-    HeadAt { id: x } => match b { HeadAbsent => false  HeadAt { id: y } => (x as String) == (y as String) }
+    Absent => match b { Absent => true  HeadAt { id: _ } => false }
+    HeadAt { id: x } => match b { Absent => false  HeadAt { id: y } => (x as String) == (y as String) }
   }
 }
 
 fn event_parent_expectation<P>(e: ChainEvent<P>) -> HeadExpectation {
   match e.parent {
-    Absent => HeadAbsent
+    Absent => Absent
     Present { value: p } => HeadAt { id: p }
   }
 }
@@ -103,7 +105,7 @@ fn walk_step<P>(envs: List<ChainEnvelope<P>>, st: WalkState<P>) -> WalkState<P> 
     Present { value: _ } => st
     Absent =>
       match st.current {
-        HeadAbsent => st
+        Absent => st
         HeadAt { id: h } =>
           match envelope_with_id(envs: envs, id: h) {
             Absent => WalkState { current: st.current, newest_first: st.newest_first, missing: Present { value: h } }
@@ -124,7 +126,7 @@ fn chain_from_head<P>(envs: List<ChainEnvelope<P>>, head: HeadExpectation, budge
     Absent =>
       match final.current {
         HeadAt { id: h } => ChainBudgetExhausted { at: h }
-        HeadAbsent => ChainWalked { oldest_first: reverse(final.newest_first) }
+        Absent => ChainWalked { oldest_first: reverse(final.newest_first) }
       }
   }
 }

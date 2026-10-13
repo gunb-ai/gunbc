@@ -1,4 +1,6 @@
 module extdeps.exec.command
+import std.optional { Absent, Optional, Present }
+
 
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
@@ -43,7 +45,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // extdeps.shell.exec RunArgv: conflating them is a state-space collapse. It also makes the EMPTY
 // argv -- a command naming no program to execute -- unrepresentable rather than refused after the
 // fact (DESIGN §4b: structurally impossible beats mechanically preventable). The two
-// `HeadAbsent => empty argv` refusal arms in gunbc.command_runner dissolve with this shape; there is
+// `Absent => empty argv` refusal arms in gunbc.command_runner dissolve with this shape; there is
 // always a program, so there is nothing left to refuse.
 //
 // The program is a ProgramIdentity (extdeps.exec.program), not a string: which program a command

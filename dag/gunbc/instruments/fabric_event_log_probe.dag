@@ -1,4 +1,6 @@
 module gunbc.instruments.fabric_event_log_probe
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { String, Bool, Int, NonEmptyStr, List, FilePath, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -7,7 +9,7 @@ import std.measure { Measure, Count, One }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, FabricStorageServed }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, FabricStorageRootRefused }
 import product.capacity.pool { Pool, NoReplenishment, pool_of }
-import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
+import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, Absent, HeadAt, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, SeatRequest }
 import product.capacity.lease { LeasePolicy, FencedResource }
 import gunbc.fabric.fabric_event_log {
@@ -42,7 +44,7 @@ fn probe_root_pool() -> Pool<Count, One> { pool_of(identity: "probe-seats" as No
 fn probe_event(partition: PartitionId, parent: HeadExpectation, at: EpochSecs, payload: PoolEvent) -> ChainEvent<PoolEvent> {
   ChainEvent {
     partition: partition,
-    parent: match parent { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+    parent: match parent { Absent => none  HeadAt { id: h } => Present { value: h } },
     recorded_at: at,
     actor: probe_actor(),
     payload: payload,
@@ -68,16 +70,16 @@ fn fabric_event_log_probe_step(store: FabricStorageBinding, partition: Partition
     match event_log_observe_head(store: store, partition: partition) {
       HeadObservationRefused { cause: _ } => 2
       HeadObserved { head: HeadAt { id: _ } } => 2
-      HeadObserved { head: HeadAbsent } =>
-        match event_log_append(store: store, partition: partition, event: probe_event(partition: partition, parent: HeadAbsent, at: 1000, payload: PoolAcquired { reference: "e1" as NonEmptyStr, amount: 1, term_seconds: 300 }), expected: HeadAbsent) {
+      HeadObserved { head: Absent } =>
+        match event_log_append(store: store, partition: partition, event: probe_event(partition: partition, parent: Absent, at: 1000, payload: PoolAcquired { reference: "e1" as NonEmptyStr, amount: 1, term_seconds: 300 }), expected: Absent) {
           EventAppendRefused { cause: _ } => 3
           EventAppendStale { expected: _, observed: _ } => 3
           EventAppended { id: first_id } =>
-            match event_log_append(store: store, partition: partition, event: probe_event(partition: partition, parent: HeadAbsent, at: 1001, payload: PoolReleased { reference: "e1" as NonEmptyStr, reason: "racer" as NonEmptyStr }), expected: HeadAbsent) {
+            match event_log_append(store: store, partition: partition, event: probe_event(partition: partition, parent: Absent, at: 1001, payload: PoolReleased { reference: "e1" as NonEmptyStr, reason: "racer" as NonEmptyStr }), expected: Absent) {
               EventAppended { id: _ } => 4
               EventAppendRefused { cause: _ } => 4
               EventAppendStale { expected: _, observed: o } =>
-                if !(match o { HeadAt { id: h } => (h as String) == (first_id as String)  HeadAbsent => false }) { 4 } else {
+                if !(match o { HeadAt { id: h } => (h as String) == (first_id as String)  Absent => false }) { 4 } else {
                   match event_log_append(store: store, partition: partition, event: probe_event(partition: partition, parent: HeadAt { id: first_id }, at: 1002, payload: PoolReleased { reference: "e1" as NonEmptyStr, reason: "done" as NonEmptyStr }), expected: HeadAt { id: first_id }) {
                     EventAppendRefused { cause: _ } => 5
                     EventAppendStale { expected: _, observed: _ } => 5
@@ -85,7 +87,7 @@ fn fabric_event_log_probe_step(store: FabricStorageBinding, partition: Partition
                       match event_log_read_partition(store: store, partition: partition, budget: 16) {
                         PartitionReadRefused { cause: _ } => 6
                         PartitionReadOk { head: head, walk: walk } =>
-                          if !(match head { HeadAt { id: h } => (h as String) == (second as String)  HeadAbsent => false }) { 6 } else {
+                          if !(match head { HeadAt { id: h } => (h as String) == (second as String)  Absent => false }) { 6 } else {
                             match walk {
                               ChainIncomplete { missing: _, newest_first_so_far: _ } => 6
                               ChainBudgetExhausted { at: _ } => 6

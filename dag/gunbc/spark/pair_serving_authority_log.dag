@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, HostQuiescenceEvidence, residue_spec_members, residue_spec_decode, quiescence_evidence_members, quiescence_evidence_decode, quiescence_evidence_covers, ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, release_provenance_members, release_provenance_decode, release_provenance_covers, parse_claimant_standing }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, Optional }
 import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash, content_hash_equal }
 import std.temporal_effect {
   HeldLease, HeldLeaseObservedState, LeaseEpoch, held_lease, held_lease_with_observed,
@@ -14,7 +14,7 @@ import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity, lease_gra
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_kv, json_string, json_int, json_array, json_object, serialize_json }
 import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
 import product.capacity.event_chain {
-  PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
+  PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, Absent, HeadAt, head_expectation_eq,
   EventDecode, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
 }
 import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_string, member_nonempty, member_nat }
@@ -451,7 +451,7 @@ fn authority_write_intent(group: FabricGroup, head: HeadExpectation, actor: NonE
 // The intent an authority event proves, derived from the event: its parent is the head, its
 // actor the actor, and the payload's fields the rest.
 fn event_write_intent(env: ChainEnvelope<PairAuthorityEvent>, group: FabricGroup, previous: PairServingGroupAuthority?, next: PairServingGroupAuthority, operation: NonEmptyStr, lifecycle: ContentHash?, grant: LeaseGrant?, entry_state: ContentHash?) -> AuthorityWriteIntent {
-  let head = match env.event.parent { Absent => HeadAbsent  Present { value: p } => HeadAt { id: p } }
+  let head = match env.event.parent { Absent => Absent  Present { value: p } => HeadAt { id: p } }
   authority_write_intent(group: group, head: head, actor: env.event.actor, previous: previous, next: next, operation: operation, lifecycle: lifecycle, grant: grant, entry_state: entry_state)
 }
 
@@ -485,7 +485,7 @@ fn write_intent_members(i: AuthorityWriteIntent) -> List<JsonKeyValue> {
   concat(
     [
       kv(prefix: "intent_", key: "group", value: recorded_group_wire(r: i.group)),
-      kv(prefix: "intent_", key: "head", value: match i.expected_head { HeadAbsent => ""  HeadAt { id: h } => h as String }),
+      kv(prefix: "intent_", key: "head", value: match i.expected_head { Absent => ""  HeadAt { id: h } => h as String }),
       kv(prefix: "intent_", key: "actor", value: i.actor as String),
       kv(prefix: "intent_", key: "operation", value: i.operation as String),
     ],
@@ -997,8 +997,8 @@ fn write_intent_decode(doc: JsonValue) -> AuthorityWriteIntent? {
                                     HashMemberDecoded { digest: d } =>
                                       match grant_decode(doc: doc) {
                                         GrantIncoherent => none
-                                        GrantAbsent => Present { value: AuthorityWriteIntent { group: g, expected_head: if eh == "" { HeadAbsent } else { HeadAt { id: eh as EventId } }, actor: actor, previous: p, next: n, operation: op, lifecycle: lc, grant: none, entry_state: d } }
-                                        GrantDecoded { grant: gr } => Present { value: AuthorityWriteIntent { group: g, expected_head: if eh == "" { HeadAbsent } else { HeadAt { id: eh as EventId } }, actor: actor, previous: p, next: n, operation: op, lifecycle: lc, grant: Present { value: gr }, entry_state: d } }
+                                        GrantAbsent => Present { value: AuthorityWriteIntent { group: g, expected_head: if eh == "" { Absent } else { HeadAt { id: eh as EventId } }, actor: actor, previous: p, next: n, operation: op, lifecycle: lc, grant: none, entry_state: d } }
+                                        GrantDecoded { grant: gr } => Present { value: AuthorityWriteIntent { group: g, expected_head: if eh == "" { Absent } else { HeadAt { id: eh as EventId } }, actor: actor, previous: p, next: n, operation: op, lifecycle: lc, grant: Present { value: gr }, entry_state: d } }
                                       }
                                   }
                               }
@@ -1219,7 +1219,7 @@ fn cancellation_refusal(consumed: List<ConsumedPreparation>, preparation: EventI
 }
 
 fn cancelled_record(env: ChainEnvelope<PairAuthorityEvent>, preparation: EventId, provenance: ReleaseProvenance) -> CancelledPreparation {
-  CancelledPreparation { preparation: preparation, provenance: provenance, actor: env.event.actor, at_head: match env.event.parent { Absent => HeadAbsent  Present { value: p } => HeadAt { id: p } } }
+  CancelledPreparation { preparation: preparation, provenance: provenance, actor: env.event.actor, at_head: match env.event.parent { Absent => Absent  Present { value: p } => HeadAt { id: p } } }
 }
 
 fn consumption_refusal(consumed: List<ConsumedPreparation>, cancelled: List<CancelledPreparation>, carried: PlacementPreparationRef) -> String? {
@@ -1816,7 +1816,7 @@ fn placement_fold_read(store: FabricStorageBinding) -> PlacementRead {
 fn placement_append(store: FabricStorageBinding, head: HeadExpectation, payload: PairAuthorityEvent, actor: NonEmptyStr, at: EpochSecs) -> EventAppend {
   let event = ChainEvent {
     partition: host_placement_partition,
-    parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+    parent: match head { Absent => none  HeadAt { id: h } => Present { value: h } },
     recorded_at: at,
     actor: actor,
     payload: payload,
@@ -2072,7 +2072,7 @@ type Cancellation
 fn cancel_claimed_append(store: FabricStorageBinding, group: FabricGroup, head: HeadExpectation, preparation: EventId, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> Cancellation {
   let event = ChainEvent {
     partition: pair_authority_partition(group: group),
-    parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+    parent: match head { Absent => none  HeadAt { id: h } => Present { value: h } },
     recorded_at: at,
     actor: actor,
     payload: AuthorityAppendCancelled { preparation: preparation, provenance: provenance },
@@ -2187,7 +2187,7 @@ fn pair_serving_authority_establish(store: FabricStorageBinding, group: FabricGr
                   SagaClaimed { preparation: ref, intent: _ } => {
                     let event = ChainEvent {
                       partition: pair_authority_partition(group: group),
-                      parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+                      parent: match head { Absent => none  HeadAt { id: h } => Present { value: h } },
                       recorded_at: at,
                       actor: actor,
                       payload: AuthorityEstablished { authority: authority, placement: ref },
@@ -2391,7 +2391,7 @@ fn pair_serving_authority_transition_at(
 fn authority_transition_append(store: FabricStorageBinding, group: FabricGroup, head: HeadExpectation, current: PairServingGroupAuthority, next: PairServingGroupAuthority, transaction: NonEmptyStr, lifecycle: ContentHash?, grant: LeaseGrant?, entry_state: ContentHash?, preparation: PlacementPreparationRef, actor: NonEmptyStr, at: EpochSecs) -> EventAppend {
   let event = ChainEvent {
     partition: pair_authority_partition(group: group),
-    parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+    parent: match head { Absent => none  HeadAt { id: h } => Present { value: h } },
     recorded_at: at,
     actor: actor,
     payload: AuthorityTransitioned { previous: current, next: next, transaction: transaction, lifecycle: lifecycle, grant: grant, entry_state: entry_state, placement: preparation },

@@ -16,14 +16,14 @@ import gunbc.serving.rented_enrollment { rented_cohort_index, rented_enrolled_ro
 import gunbc.serving.rented_host_grant { rented_host_authorizations, RentedHostClockUnread }
 import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch, replica_endpoint_launch_key, replica_incarnation_unverified_obligation }
 import gunbc.serving.replica_incarnation { ReplicaIncarnationStanding, ReplicaIncarnationBound, ReplicaIncarnationUnread }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, Optional }
 import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
 import gunbc.fabric.fabric_event_log_host {
   HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds,
 }
 import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_release, pool_refusal_wire, PoolAdvanced, PoolRefused }
 import product.capacity.event_chain {
-  PartitionId, EventId, HeadAbsent, HeadAt, ChainEvent, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
+  PartitionId, EventId, Absent, HeadAt, ChainEvent, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
 }
 import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved, SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
@@ -967,7 +967,7 @@ fn harness_seat_reference(attempt: NonEmptyStr, offer_key: NonEmptyStr, now: Epo
 
 fn harness_head_word(head: HeadExpectation) -> NonEmptyStr {
   match head {
-    HeadAbsent => "empty" as NonEmptyStr
+    Absent => "empty" as NonEmptyStr
     HeadAt { id: i } => i as NonEmptyStr
   }
 }
@@ -1307,7 +1307,7 @@ fn release_append(store: FabricStorageBinding, partition: PartitionId, ceiling: 
                 Absent => {
                   let event = ChainEvent {
                     partition: partition,
-                    parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+                    parent: match head { Absent => none  HeadAt { id: h } => Present { value: h } },
                     recorded_at: now,
                     actor: reference,
                     payload: PoolReleased { reference: reference, reason: reason },

@@ -14,7 +14,7 @@ import v2.extdeps.languages.dag {
   dag_canonical_literal_from_node,
   qualified_name_from_module_node
 }
-import std.algebra { Cons, Empty, fold_list, list_tail, TailFound, TailAbsent }
+import std.algebra { Cons, Empty, fold_list, list_tail }
 import v2.std.collection { list_at_optional }
 import std.optional {
   Absent,
@@ -185,8 +185,8 @@ fn match_positional_arms(match_node: Node) -> List<Node> {
   match match_node.kind {
     ComputationNode { behavior: Match } =>
       match list_tail(xs: node_positional_child_targets(node: match_node)) {
-        TailFound { tail: arms } => arms
-        TailAbsent => Empty
+        Present { value: arms } => arms
+        Absent => Empty
       }
     TypeNode { connective: _ } => Empty
     ComputationNode { behavior: _ } => Empty

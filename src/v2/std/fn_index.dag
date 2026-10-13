@@ -1,9 +1,11 @@
 module v2.std.fn_index
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.algebra { list_append, list_snoc_item, Cons, Empty, HeadAbsent, HeadFound, TailAbsent, TailFound, contains, fold_list, list_head, list_reverse, list_tail }
+import std.algebra { list_append, list_snoc_item, Cons, Empty, contains, fold_list, list_head, list_reverse, list_tail }
 import v2.std.collection { Absent, Map, Present, empty_map, map_insert, map_lookup, optional_absent, optional_present }
 import v2.std.compilers.body_lowering {
   ApplicationHeadFound,
@@ -155,8 +157,8 @@ fn decl_named_in_module(
 
 fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
   match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => empty_fn_arrow_decl_list
+    Present { value: t } => t
+    Absent => empty_fn_arrow_decl_list
   }
 }
 
@@ -440,8 +442,8 @@ fn call_reachable_decls_go(
   refusals: List<Diagnostic>
 ) -> CallReach {
   match list_head(xs: seeds) {
-    HeadAbsent => CallReach { reached: list_reverse(xs: reached_reversed), refusals: refusals }
-    HeadFound { value: seed } =>
+    Absent => CallReach { reached: list_reverse(xs: reached_reversed), refusals: refusals }
+    Present { value: seed } =>
       let rest = tail_decls(xs: seeds)
       match map_lookup(m: seen, key: seed.qualified_name) {
         Present { value: _ } =>
@@ -475,8 +477,8 @@ fn call_reachable_decls_go(
           )
           call_reachable_decls_go(
             seeds: match list_head(xs: callee_decls) {
-              HeadAbsent => rest
-              HeadFound { value: _ } => list_append(left: rest, right: callee_decls)
+              Absent => rest
+              Present { value: _ } => list_append(left: rest, right: callee_decls)
             },
             terminal_callee_symbols: terminal_callee_symbols,
             closure_modules: closure_modules,

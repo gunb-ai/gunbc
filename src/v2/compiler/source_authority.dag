@@ -24,7 +24,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.std.compilers.lexing { IdentContinueChar, IdentStartChar, TokenStream }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim, HeadAbsent, HeadFound, fold_list, is_empty, length, list_find_first, list_head, list_map, list_reverse, skip }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim, fold_list, is_empty, length, list_find_first, list_head, list_map, list_reverse, skip }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
@@ -1459,8 +1459,8 @@ type ModuleFileDerivation
 
 fn storage_namespace_root_for(layout: SourceStorageLayout, namespace: String) -> Optional<StorageNamespaceRoot> {
   match list_head(xs: filter(xs: layout.namespace_roots, predicate: fn(r) { r.namespace == namespace })) {
-    HeadFound { value: root } => optional_present(value: root)
-    HeadAbsent => optional_absent()
+    Present { value: root } => optional_present(value: root)
+    Absent => optional_absent()
   }
 }
 
@@ -1490,8 +1490,8 @@ fn module_name_has_non_identifier_segment(segments: List<String>) -> Bool {
 
 fn segment_or_empty(segments: List<String>, at: Int) -> String {
   match list_head(xs: skip(xs: segments, n: at)) {
-    HeadFound { value: segment } => segment
-    HeadAbsent => ""
+    Present { value: segment } => segment
+    Absent => ""
   }
 }
 
@@ -1550,8 +1550,8 @@ fn module_name_for_file(layout: SourceStorageLayout, file: ModuleFileRef) -> Mod
       r.elides_namespace && source_root_ref_label(tree: r.tree) == source_root_ref_label(tree: file.tree)
     })
     match list_head(xs: elided) {
-      HeadFound { value: root } => ModuleNameDerived { name: concat(root.namespace, concat(".", dotted)) }
-      HeadAbsent => ModuleNameDerived { name: dotted }
+      Present { value: root } => ModuleNameDerived { name: concat(root.namespace, concat(".", dotted)) }
+      Absent => ModuleNameDerived { name: dotted }
     }
   }
 }
@@ -1658,8 +1658,8 @@ fn reference_next_read(
   candidates: List<String>
 ) -> ReferenceNextRead {
   match list_head(xs: candidates) {
-    HeadAbsent => ReferenceNextReadNone { reference: reference }
-    HeadFound { value: candidate } =>
+    Absent => ReferenceNextReadNone { reference: reference }
+    Present { value: candidate } =>
       match module_file(layout: layout, name: candidate) {
         ModuleFileDerived { file: file } =>
           reference_next_read_derived(from_tree: from_tree, from_module: from_module, module: candidate, file: file, rest: skip(xs: candidates, n: 1))
@@ -1829,8 +1829,8 @@ fn take_segments_from(segments: List<String>, n: Int, acc: List<String>) -> List
     acc
   } else {
     match list_head(xs: segments) {
-      HeadAbsent => acc
-      HeadFound { value: segment } =>
+      Absent => acc
+      Present { value: segment } =>
         take_segments_from(segments: skip(xs: segments, n: 1), n: n - 1, acc: list_snoc_item(xs: acc, item: segment))
     }
   }
