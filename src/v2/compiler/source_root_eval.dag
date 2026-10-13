@@ -269,6 +269,7 @@ import v2.compiler.parse {
   parse,
   parse_module_prepared_seeded,
   prepare_grammar,
+  ParseArtifact,
   PreparedGrammar,
 }
 import v2.compiler.resolve {
@@ -2545,22 +2546,31 @@ fn native_demand_census_unreadable(
   }
 }
 
+fn native_demand_census_unbound_at_node(reason: Symbol, node: Node) -> Optional<DemandCensusUnboundLocus> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: n } =>
+      if reason == ^resolve_reason_unbound_symbol {
+        optional_present(value: UnboundNamed { name: n })
+      } else {
+        optional_absent()
+      }
+    Absent =>
+      if reason == ^resolve_reason_unbound_symbol {
+        optional_present(value: UnboundShaped { kind: node.kind })
+      } else {
+        optional_absent()
+      }
+  }
+}
+
 fn native_demand_census_unbound_locus(d: NonEmptyDiagnostics) -> Optional<DemandCensusUnboundLocus> {
   let fatal = diagnostics_fatal(d: d)
-  if fatal.reason == ^resolve_reason_unbound_symbol {
-    match fatal.at {
-      NodeLocus { anchor: a } =>
-        match node_atom_identity_optional(node: a.at) {
-          Present { value: n } => optional_present(value: UnboundNamed { name: n })
-          Absent => optional_present(value: UnboundShaped { kind: a.at.kind })
-        }
-      Textual { file: _, extent: _ } => optional_absent()
-      SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
-      InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
-      DeclarationLocus { declaration: _ } => optional_absent()
-    }
-  } else {
-    optional_absent()
+  match fatal.at {
+    NodeLocus { anchor: a } => native_demand_census_unbound_at_node(reason: fatal.reason, node: a.at)
+    Textual { file: _, extent: _ } => optional_absent()
+    SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
+    InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
+    DeclarationLocus { declaration: _ } => optional_absent()
   }
 }
 
@@ -2592,23 +2602,39 @@ fn native_demand_census_read(
             unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtParse, d: d))
           }
         Accepted { value: artifact, diagnostics: _ } =>
-          let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
-          match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
-            Rejected { diagnostics: d } =>
-              NativeDemandCensusFoldState {
-                context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
-                authored: state.authored,
-                file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
-                unreadable: state.unreadable
-              }
-            Accepted { value: scoped, diagnostics: _ } =>
-              NativeDemandCensusFoldState {
-                context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
-                authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
-                file_refused: state.file_refused,
-                unreadable: state.unreadable
-              }
-          }
+          native_demand_census_read_normalized(
+            state: state,
+            read: read,
+            artifact: artifact,
+            module_qn: module_qn,
+            scope: scope
+          )
+      }
+  }
+}
+
+fn native_demand_census_read_normalized(
+  state: NativeDemandCensusFoldState,
+  read: DagSourceReadWitness,
+  artifact: ParseArtifact,
+  module_qn: QualifiedName,
+  scope: Fnv1a64Structural
+) -> NativeDemandCensusFoldState {
+  let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
+  match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+    Rejected { diagnostics: d } =>
+      NativeDemandCensusFoldState {
+        context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
+        authored: state.authored,
+        file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
+        unreadable: state.unreadable
+      }
+    Accepted { value: scoped, diagnostics: _ } =>
+      NativeDemandCensusFoldState {
+        context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
+        authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
+        file_refused: state.file_refused,
+        unreadable: state.unreadable
       }
   }
 }
