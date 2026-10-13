@@ -365,7 +365,7 @@ data conformance_domains: List<ConformanceDomain> = [
     owns: "The key relation: what is identified, in what scope, from what complete canonical preimage, under what equality and collision rules, and whether its declared inputs are complete.",
     boundaries: [
       "Faithfully realizing an admitted identity belongs to materialization / realization.",
-      "Demand identity and the dependency read set are a declared frontier, entering when M1 of [demand-engine-program.md](docs/plans/demand-engine-program.md) lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).",
+      "Demand identity and the dependency read set are a declared frontier, entering when M1 of `gunbc.plans.demand_engine_program` lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).",
     ],
     home_groups: ConformanceHomeGroups {
       first: ConformanceHomeGroup {
