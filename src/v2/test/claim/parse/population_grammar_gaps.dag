@@ -1,26 +1,28 @@
 module v2.test.claim.parse.population_grammar_gaps
 
+import v2.compiler.infer { infer, refinement_declaration_of_node }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
-import v2.std.grammar { parse_production_emitted_identity_optional }
-import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.node_query { declared_field_from_edge }
 import v2.std.text { String }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE FORMS v2'S GRAMMAR REFUSED THAT THE .dag CORPUS WRITES (gunbc.rung_drop population_parse_*), each
-// admitted with the controls that make the admission a reading: the form parses, a malformed neighbour
-// still refuses at the parse door, and where the form has no lowered carrier the module refuses at
-// lowering, located, rather than lowering with the form dropped.
+// Field and io-field where clauses parse and LOWER onto the field type through
+// body_lower_kept_where_clause (the type-variant reader). A malformed neighbour still refuses at parse.
 
-// ---- field refinement: parse, then refuse (the parameter precedent, parameter_refinement) -------------
+data refined_field_source: String = "module probe.gaps\n\ntype T { n: Int where range(min: 0) }\nfn f() -> Int { 1 }\n"
+data refined_io_field_source: String = "module probe.gaps\n\nservice S {\n  operation Op {\n    input { n: Int where range(min: 0) }\n    transport shell { argv: [\"a\"] }\n  }\n}\nfn f() -> Int { 1 }\n"
+data plain_field_source: String = "module probe.gaps\n\ntype T { n: Int }\nfn f() -> Int { 1 }\n"
+data refinement_after_default_red_source: String = "module probe.gaps\n\ntype T { n: Int = 1 where range(min: 0) }\nfn f() -> Int { 1 }\n"
+data refinement_without_predicate_red_source: String = "module probe.gaps\n\ntype T { n: Int where }\nfn f() -> Int { 1 }\n"
 
-data refined_field_source: String = "module probe.gaps\n\ntype T { n: Int where range(min: 0) }\n"
-data refined_io_field_source: String = "module probe.gaps\n\nservice S {\n  operation Op {\n    input { n: Int where range(min: 0) }\n    transport shell { argv: [\"a\"] }\n  }\n}\n"
-data plain_field_source: String = "module probe.gaps\n\ntype T { n: Int }\n"
-data refinement_after_default_red_source: String = "module probe.gaps\n\ntype T { n: Int = 1 where range(min: 0) }\n"
-data refinement_without_predicate_red_source: String = "module probe.gaps\n\ntype T { n: Int where }\n"
+data inline_field_bad_source: String = "module probe.inline_bad\ntype T { n: Int where range(min: 0) }\ndata d: T = T { n: -1 }\nfn f() -> Int { 1 }\n"
+data alias_field_bad_source: String = "module probe.alias_bad\ntype Digits = Int where range(min: 0)\ntype T { n: Digits }\ndata d: T = T { n: -1 }\nfn f() -> Int { 1 }\n"
 
 fn parsed_ok(text: String) -> Bool {
   match conservation_subject_of_text(path: "probe_gaps.dag", text: text).parsed {
@@ -36,37 +38,55 @@ fn normalized_ok(text: String) -> Bool {
   }
 }
 
-fn refused_at_clause(text: String) -> Bool {
+fn field_n_type_is_where_refinement(text: String) -> Bool {
   match conservation_subject_of_text(path: "probe_gaps.dag", text: text).normalized {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      diagnostics_fatal(d: d).reason == ^body_lowering_reason_field_refinement_unmodeled
-        && match diagnostics_fatal(d: d).at {
-             NodeLocus { anchor: a } =>
-               match parse_production_emitted_identity_optional(node: a.at) {
-                 Present { value: id } => id == ^dag_surface_where_refinement_clause
-                 Absent => false
-               }
-             _ => false
-           }
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
+        acc || fold(n.children, init: false, f: fn(a, e) {
+          a || match declared_field_from_edge(e: e) {
+            Absent => false
+            Present { value: field } =>
+              match refinement_declaration_of_node(decl: field.type_node) {
+                Present { value: _ } => true
+                Absent => false
+              }
+          }
+        })
+      })
+  }
+}
+
+fn infer_fatal_reason(src: String) -> Optional<Symbol> {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => Absent
+        Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+      }
   }
 }
 
 fn refined_field_parsed() -> Bool { parsed_ok(text: refined_field_source) }
-fn refined_field_refused() -> Bool { refused_at_clause(text: refined_field_source) }
+fn refined_field_normalized() -> Bool { normalized_ok(text: refined_field_source) }
 fn refined_io_field_parsed() -> Bool { parsed_ok(text: refined_io_field_source) }
-fn refined_io_field_refused() -> Bool { refused_at_clause(text: refined_io_field_source) }
+fn refined_io_field_normalized() -> Bool { normalized_ok(text: refined_io_field_source) }
 fn plain_field_normalized() -> Bool { normalized_ok(text: plain_field_source) }
 fn refinement_after_default_parsed() -> Bool { parsed_ok(text: refinement_after_default_red_source) }
 fn refinement_without_predicate_parsed() -> Bool { parsed_ok(text: refinement_without_predicate_red_source) }
 
 test fn a_refined_field_parses_holds() -> Bool { refined_field_parsed() }
 
-test fn a_refined_field_refuses_at_its_clause_holds() -> Bool { refined_field_refused() }
+test fn a_refined_field_lowers_holds() -> Bool { refined_field_normalized() }
+
+test fn a_refined_field_type_is_the_type_variant_where_conj_holds() -> Bool {
+  field_n_type_is_where_refinement(text: refined_field_source)
+}
 
 test fn a_refined_io_field_parses_holds() -> Bool { refined_io_field_parsed() }
 
-test fn a_refined_io_field_refuses_at_its_clause_holds() -> Bool { refined_io_field_refused() }
+test fn a_refined_io_field_lowers_holds() -> Bool { refined_io_field_normalized() }
 
 test fn an_unrefined_field_still_normalizes_holds() -> Bool { plain_field_normalized() }
 
@@ -76,4 +96,8 @@ test fn a_refinement_after_the_default_still_refuses_at_parse_holds() -> Bool {
 
 test fn a_refinement_without_a_predicate_still_refuses_at_parse_holds() -> Bool {
   refinement_without_predicate_parsed() == false
+}
+
+test fn an_inline_field_refinement_and_a_type_alias_refuse_the_same_violating_literal_holds() -> Bool {
+  infer_fatal_reason(src: inline_field_bad_source) == infer_fatal_reason(src: alias_field_bad_source)
 }

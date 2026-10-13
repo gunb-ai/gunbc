@@ -8,18 +8,20 @@ data refinement_has_no_carrier: RecurringFailureMode = RecurringFailureMode {
   identity: "refinement_has_no_carrier" as NonEmptyStr,
 
   receipts: [
-    "INVALID STATE: a where clause refining the type of a fn parameter (`lifetime_seconds: Int where range(min: 1, max: 3600)`), a record field or an io field (`n: Int where range(min: 0)`), which v1 reads (`v1` `02_parse` `parse_param` / `parse_field`: type, refinement, wire key, default), and v2 has no way to carry the refinement on the lowered binder: the one where-clause reader (`v2.compiler.body_lowering_fold` `body_lower_kept_where_clause`) serves a type variant, and a parameter's or field's type is read by `body_lower_type_expr_lowered_optional`, which keeps the base type and drops the clause.",
-    "HARM: a parameter or field lowered without its refinement admits every value of the base type where the author narrowed it, silently -- the refinement is the binder's contract.",
-    "CONTAINED, NOT SILENT: the grammar parses the refinement in each position (`v2.extdeps.languages.dag` `dag_grammar_typed_param_expr` for a parameter, taken only where a clause is written; `dag_grammar_io_field_decl_expr`, the first slot of the field tail, for a record or io field) and body lowering refuses, located at the clause, with a distinct reason per position: `body_lowering_reason_parameter_refinement_unmodeled` (`body_lower_param_refinement_refusal_optional`, both arms) and `body_lowering_reason_field_refinement_unmodeled` (`body_lower_first_field_refinement_optional` for a record, `body_lower_io_item_step` for an io block). The module refuses at normalize. Before the field case the form did not parse, which refused the module at the parse population without naming the cause.",
-    "RUNG FOUND AT: mitigated (typed, located refusal). CEILING: structurally impossible -- a binder's refinement is part of its lowered type. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a parameter's or field's lowered type carries its where-clause refinement, read through the one where-clause reader type variants use rather than a second one, so neither `body_lowering_reason_parameter_refinement_unmodeled` nor `body_lowering_reason_field_refinement_unmodeled` has a producer.",
+    "INVALID STATE (historical): a where clause refining a fn parameter, record field or io field, which v1 reads, while v2 dropped the clause on the lowered binder because body_lower_kept_where_clause served only a type variant.",
+    "CLIMB RECEIPT: the binder's lowered type IS the type-variant Conj. Fields (body_lower_field_binder_edges, body_lower_io_item_step) and parameters (body_lower_typed_param_optional via body_lower_binder_edge_read) call body_lower_type_with_kept_where, which is body_lower_kept_where_clause plus the same children a type variant stores. body_lowering_reason_field_refinement_unmodeled and body_lowering_reason_parameter_refinement_unmodeled have no producer. infer refinement_declaration reads that Conj inline (refinement_declaration_of_node) as well as via a named alias. Not v2.std.refinement Refined<B>.",
+    "HARM of the remaining class: a predicate on a non-literal is still the sibling gunbc.recurring_failure_mode refinement_predicate_enforced_only_where_the_value_is_a_literal; this row was the missing CARRIER, not that judgment.",
+    "RUNG FOUND AT: structurally guaranteed for the carrier -- a lowered binder cannot omit a written where clause; the former unmodeled refusals are deleted. CEILING for the carrier: structurally impossible (no constructor that drops the clause). NEXT-RUNG TRIGGER for PREDICATE checking stays with refinement_predicate_enforced_only_where_the_value_is_a_literal.",
   ],
 
   evidence: [
     DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_parses_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_refuses_at_its_clause_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.parameter_refinement", decl_name: "a_refined_parameter_lowers_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_parses_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_refuses_at_its_clause_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_lowers_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_field_type_is_the_type_variant_where_conj_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_io_field_parses_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_io_field_refuses_at_its_clause_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "a_refined_io_field_lowers_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.parse.population_grammar_gaps", decl_name: "an_inline_field_refinement_and_a_type_alias_refuse_the_same_violating_literal_holds", field: WholeDeclaration },
   ],
 }

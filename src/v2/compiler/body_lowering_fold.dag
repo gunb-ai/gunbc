@@ -1376,6 +1376,41 @@ fn body_lower_type_variant_children_with_where(
   }
 }
 
+// THE ONE CONJ A WHERE-REFINED TYPE IS, whether the clause was written on a type variant
+// (`type X = Int where range(min: 0)`) or on a binder (`n: Int where range(min: 0)`). The
+// clause is always body_lower_kept_where_clause; no second reader. Empty fields: an inline
+// binder type is not a variant payload.
+fn body_lower_type_with_kept_where(base: Node, where_clause: Node, source: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: body_lower_kept_where_clause(where_clause: where_clause),
+    f: fn(kept) {
+      outcome_accepted(
+        value: node_with_occurrence_id(
+          kind: TypeNode { connective: Conj },
+          children: body_lower_type_variant_children_with_where(
+            base: base,
+            kept_clause: kept,
+            fields: node_with_occurrence_id(
+              kind: TypeNode { connective: Conj },
+              children: [],
+              occurrence_id: source.occurrence_id
+            )
+          ),
+          occurrence_id: source.occurrence_id
+        )
+      )
+    }
+  )
+}
+
+fn body_lower_type_carrying_optional_where(base: Node, clause: Optional<Node>, source: Node) -> Outcome<Node> {
+  match clause {
+    Absent => outcome_accepted(value: base)
+    Present { value: where_clause } =>
+      body_lower_type_with_kept_where(base: base, where_clause: where_clause, source: source)
+  }
+}
+
 // VARIANT AND RECORD FIELDS LOWER HERE, INTO DECLARED FIELD IDENTITIES. The seed's model
 // (v1.compiler.core make_field_node; v1.compiler.parse parse_positional_variant_type_fields)
 // and its v2 home (v2.std.node_query DeclaredField) agree: a field is a Named edge on the
@@ -1426,23 +1461,26 @@ fn body_lower_first_field_wire_key_optional(fields: List<BodyLowerIoItem>) -> Op
   })
 }
 
-// THE FIRST FIELD THAT CARRIES A WHERE REFINEMENT, if any: its clause, where the record refuses.
-fn body_lower_first_field_refinement_optional(fields: List<BodyLowerIoItem>) -> Optional<Node> {
-  fold(fields, init: optional_absent(), f: fn(acc, io) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => io.refinement
-    }
-  })
-}
-
-// Each field's binder, carrying the default its tail holds when it has one.
+// Each field's binder, carrying the default its tail holds when it has one. A where clause on
+// the field is the field's lowered type (body_lower_type_with_kept_where), not a refusal.
 fn body_lower_field_binder_edges(fields: List<BodyLowerIoItem>) -> Outcome<List<Edge>> {
   fold(fields, init: outcome_accepted(value: Empty), f: fn(acc, io) {
     bind_outcome(o: acc, f: fn(edges) {
-      bind_outcome(o: body_lower_binder_edge_read(param: io.field, default: body_lower_io_field_default_optional(tail: io.tail)), f: fn(edge) {
-        outcome_accepted(value: list_snoc_item(xs: edges, item: edge))
-      })
+      bind_outcome(
+        o: body_lower_binder_edge_read(
+          param: BodyLowerTypedParam {
+            binder: io.field.binder,
+            name: io.field.name,
+            type_node: io.field.type_node,
+            default: io.field.default,
+            refinement: io.refinement
+          },
+          default: body_lower_io_field_default_optional(tail: io.tail)
+        ),
+        f: fn(edge) {
+          outcome_accepted(value: list_snoc_item(xs: edges, item: edge))
+        }
+      )
     })
   })
 }
@@ -1493,10 +1531,6 @@ fn body_lower_field_decl_block_payload(block_shell: Node) -> Outcome<Node> {
           match body_lower_field_items_optional(items: items) {
             Absent => refuse
             Present { value: fields } =>
-              match body_lower_first_field_refinement_optional(fields: fields) {
-                Present { value: clause } =>
-                  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_refinement_unmodeled, n: clause))
-                Absent =>
               match body_lower_first_field_wire_key_optional(fields: fields) {
                 Present { value: tail } =>
                   outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_interface_member_unmodeled, n: tail))
@@ -1504,7 +1538,6 @@ fn body_lower_field_decl_block_payload(block_shell: Node) -> Outcome<Node> {
                   bind_outcome(o: body_lower_field_binder_edges(fields: fields), f: fn(edges) {
                     outcome_accepted(value: body_lower_payload_node(edges: edges, source: block_shell))
                   })
-              }
               }
           }
       }
@@ -1651,21 +1684,10 @@ fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
                               d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: pair.left)
                             )
                           Present { value: carrier } =>
-                            bind_outcome(
-                              o: body_lower_kept_where_clause(where_clause: suffixes.left),
-                              f: fn(kept) {
-                                outcome_accepted(
-                                  value: node_with_occurrence_id(
-                                    kind: TypeNode { connective: Conj },
-                                    children: body_lower_type_variant_children_with_where(
-                                      base: carrier,
-                                      kept_clause: kept,
-                                      fields: suffixes.right
-                                    ),
-                                    occurrence_id: shell.occurrence_id
-                                  )
-                                )
-                              }
+                            body_lower_type_with_kept_where(
+                              base: carrier,
+                              where_clause: suffixes.left,
+                              source: shell
                             )
                         }
                       } else {
@@ -2463,6 +2485,7 @@ type BodyLowerTypedParam {
   name: Symbol,
   type_node: Node,
   default: Optional<Node>,
+  refinement: Optional<Node>,
 }
 
 fn body_lower_collect_param_edges(sequence_capture: Node) -> Outcome<List<Edge>> {
@@ -2674,9 +2697,8 @@ fn body_lower_typed_head_optional(capture: Node) -> Optional<BodyLowerTypedHead>
 // dag_grammar_typed_param_expr, left-factored), so what follows the colon is always the pair of the
 // type and the tail. An empty tail is a plain parameter; a tail holding the default production is a
 // defaulted one, its default kept RAW and lowered by body_lower_binder_edge_read, so it reaches the
-// binder (XL-2 PR2c-ii) rather than being refused or dropped. A where-clause refinement is refused
-// before this reader runs (body_lower_param_refinement_refusal_optional), so a tail here carries only
-// a default.
+// binder (XL-2 PR2c-ii) rather than being refused or dropped. A where-clause refinement is the
+// parameter's lowered type (body_lower_type_with_kept_where), the same Conj a type variant uses.
 fn body_lower_typed_param_optional(param_capture: Node) -> Optional<BodyLowerTypedParam> {
   match body_lower_typed_head_optional(capture: param_capture) {
     Absent => Absent
@@ -2692,7 +2714,8 @@ fn body_lower_typed_param_optional(param_capture: Node) -> Optional<BodyLowerTyp
                   binder: head.binder,
                   name: head.name,
                   type_node: type_node,
-                  default: body_lower_find_production_shell_optional(root: type_and_tail.right, emitted: ^dag_surface_default_value)
+                  default: body_lower_find_production_shell_optional(root: type_and_tail.right, emitted: ^dag_surface_default_value),
+                  refinement: body_lower_find_production_shell_optional(root: type_and_tail.right, emitted: ^dag_surface_where_refinement_clause)
                 }
               }
           }
@@ -2710,7 +2733,7 @@ fn body_lower_field_decl_head_optional(capture: Node) -> Optional<BodyLowerTyped
       match body_lower_type_expr_lowered_optional(node: head.after_colon) {
         Absent => Absent
         Present { value: type_node } =>
-          Present { value: BodyLowerTypedParam { binder: head.binder, name: head.name, type_node: type_node, default: Absent } }
+          Present { value: BodyLowerTypedParam { binder: head.binder, name: head.name, type_node: type_node, default: Absent, refinement: Absent } }
       }
   }
 }
@@ -2732,13 +2755,18 @@ fn body_lower_default_value_read(default_shell: Node) -> Outcome<Node> {
 // `default` overrides the parameter's own (a record or io field's default sits in the field's tail,
 // beside the field declaration, not inside it).
 fn body_lower_binder_edge_read(param: BodyLowerTypedParam, default: Optional<Node>) -> Outcome<Edge> {
-  match default {
-    Absent => outcome_accepted(value: binder_edge(name: param.name, type_node: param.type_node))
-    Present { value: default_shell } =>
-      bind_outcome(o: body_lower_default_value_read(default_shell: default_shell), f: fn(value) {
-        outcome_accepted(value: binder_edge_with_default(name: param.name, type_node: param.type_node, default: value))
-      })
-  }
+  bind_outcome(
+    o: body_lower_type_carrying_optional_where(base: param.type_node, clause: param.refinement, source: param.type_node),
+    f: fn(type_node) {
+      match default {
+        Absent => outcome_accepted(value: binder_edge(name: param.name, type_node: type_node))
+        Present { value: default_shell } =>
+          bind_outcome(o: body_lower_default_value_read(default_shell: default_shell), f: fn(value) {
+            outcome_accepted(value: binder_edge_with_default(name: param.name, type_node: type_node, default: value))
+          })
+      }
+    }
+  )
 }
 
 fn body_lower_deep_unwrap_optional(node: Node) -> Node {
@@ -4434,34 +4462,7 @@ fn body_lower_pattern_generics_optional(captured: Node) -> Optional<Node> {
 fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
   match body_lower_pattern_form_refusal_optional(captured: captured) {
     Present { value: refused } => optional_present(value: refused)
-    Absent =>
-      match body_lower_param_list_refusal_optional(captured: captured) {
-        Present { value: refused } => optional_present(value: refused)
-        Absent => body_lower_fn_uses_refusal_optional(captured: captured)
-      }
-  }
-}
-
-// A PARAMETER WHOSE TYPE IS REFINED BY A WHERE CLAUSE REFUSES, LOCATED AT THE CLAUSE. The only
-// reader of a where clause (body_lower_kept_where_clause) serves a type variant; a parameter's type
-// is read by body_lower_type_expr_lowered_optional, which would keep the base type and drop the
-// refinement. So until a parameter's type can carry its refinement the fn refuses
-// (gunbc.recurring_failure_mode refinement_has_no_carrier). The clause is searched only
-// inside this declaration's own param_list.
-// A parameter's DEFAULT is not refused here any more: it lowers onto the parameter's binder
-// (body_lower_typed_param_optional, body_lower_binder_edge_read; XL-2 PR2c-ii).
-fn body_lower_param_list_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
-  match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
-    ParseSubtreeAbsent => optional_absent()
-    ParseSubtreeFound { captured: param_list } => body_lower_param_refinement_refusal_optional(param_list: param_list)
-  }
-}
-
-fn body_lower_param_refinement_refusal_optional(param_list: Node) -> Optional<Outcome<Node>> {
-  match body_lower_find_production_shell_optional(root: param_list, emitted: ^dag_surface_where_refinement_clause) {
-    Absent => optional_absent()
-    Present { value: clause } =>
-      optional_present(value: outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_parameter_refinement_unmodeled, n: clause)))
+    Absent => body_lower_fn_uses_refusal_optional(captured: captured)
   }
 }
 
@@ -11224,16 +11225,25 @@ fn body_lower_io_block(shell: Node) -> Outcome<BodyLowerIoBlock> {
 fn body_lower_io_item_step(a: IoAcc, item: Node) -> Outcome<IoAcc> {
   match body_lower_io_item_optional(item: item) {
     Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: item))
-    Present { value: io } =>
-      match io.refinement {
-        Present { value: clause } => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_refinement_unmodeled, n: clause))
-        Absent => body_lower_io_item_step_unrefined(a: a, item: item, io: io)
-      }
+    Present { value: io } => body_lower_io_item_step_with_type(
+      a: a,
+      item: item,
+      io: io
+    )
   }
 }
 
-fn body_lower_io_item_step_unrefined(a: IoAcc, item: Node, io: BodyLowerIoItem) -> Outcome<IoAcc> {
-  bind_outcome(o: body_lower_binder_edge_read(param: io.field, default: body_lower_io_field_default_optional(tail: io.tail)), f: fn(edge) {
+fn body_lower_io_item_step_with_type(a: IoAcc, item: Node, io: BodyLowerIoItem) -> Outcome<IoAcc> {
+  bind_outcome(o: body_lower_binder_edge_read(
+    param: BodyLowerTypedParam {
+      binder: io.field.binder,
+      name: io.field.name,
+      type_node: io.field.type_node,
+      default: io.field.default,
+      refinement: io.refinement
+    },
+    default: body_lower_io_field_default_optional(tail: io.tail)
+  ), f: fn(edge) {
         if body_lower_io_field_wire_key_present(tail: io.tail) {
           match body_lower_io_field_wire_key_node_optional(tail: io.tail) {
             Present { value: key } =>

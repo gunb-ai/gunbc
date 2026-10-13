@@ -1911,12 +1911,16 @@ type RefinementDeclaration {
 }
 
 fn refinement_declaration(index: SymbolIndex, reference: Node) -> Optional<RefinementDeclaration> {
-  match declaration_reference_path_optional(node: reference) {
-    Absent => Absent
-    Present { value: path } =>
-      match symbol_index_lookup(index: index, qualified_path: path) {
+  match refinement_declaration_of_node(decl: reference) {
+    Present { value: inline } => Present { value: inline }
+    Absent =>
+      match declaration_reference_path_optional(node: reference) {
         Absent => Absent
-        Present { value: decl } => refinement_declaration_of_node(decl: decl)
+        Present { value: path } =>
+          match symbol_index_lookup(index: index, qualified_path: path) {
+            Absent => Absent
+            Present { value: decl } => refinement_declaration_of_node(decl: decl)
+          }
       }
   }
 }
