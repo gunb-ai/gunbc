@@ -1,6 +1,14 @@
 module test.claim.roadmap.roadmap_review_role_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
 import gunbc.roadmap.roadmap_review_role {
   review_verdict_instruction,
   HeadVerdict, ReviewApproved, ReviewChangesRequested, ReviewCannotJudge,
@@ -11,11 +19,10 @@ import gunbc.roadmap.roadmap_review_role {
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
 }
 import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra, review_criterion_identity_text, review_home_text, conformance_criterion_from_domain }
-import std.decl_ref { declaration_ref_display_key }
-import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains, ConformanceDomain, ConformanceHomes, ConformanceHomeGroup, ConformanceHomeGroups, conformance_domain_homes }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key, decl_ref }
+import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains, ConformanceDomain, ConformanceHomeGroup, conformance_domain_homes }
 import gunbc.design_document { expected_design_md, conformance_domain_section }
 import extdeps.languages.markdown { serialize_markdown_source }
-import std.decl_ref { decl_ref }
 import std.markdown { MarkdownDocument }
 import gunbc.roadmap.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentActive, WorkflowSegmentPending }
 import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
@@ -131,10 +138,10 @@ test fn every_conformance_domain_carries_a_label_owns_and_boundary() -> Bool {
     })
 }
 
-fn synthetic_homes(first: String, rest: List<String>) -> ConformanceHomes {
-  ConformanceHomes {
-    first: decl_ref(module_path: "std.types", decl_name: first),
-    rest: map(rest, n => decl_ref(module_path: "std.types", decl_name: n)),
+fn synthetic_homes(head: String, tail: List<String>) -> FreeSemigroup<DeclarationRef> {
+  FreeSemigroup {
+    head: decl_ref(module_path: "std.types", decl_name: head),
+    tail: map(tail, n => decl_ref(module_path: "std.types", decl_name: n)),
   }
 }
 
@@ -146,11 +153,74 @@ fn synthetic_domain(label: String, owns: String) -> ConformanceDomain {
     tells: ["a synthetic tell that exists only in this test"],
     owns: owns,
     boundaries: ["a synthetic boundary"],
-    home_groups: ConformanceHomeGroups {
-      first: ConformanceHomeGroup { label: "Synthetic group", purpose: "exists only in this test", homes: synthetic_homes(first: "Bool", rest: ["Unit"]) },
-      rest: [],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup { label: "Synthetic group", purpose: "exists only in this test", homes: synthetic_homes(head: "Bool", tail: ["Unit"]) },
+      tail: [],
     },
   }
+}
+
+fn empty_homes_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn empty_homes_prelude() -> String {
+  join([
+    "type ProbeHomes { head: Int, tail: List<Int> }\n",
+    "fn take_homes(homes: ProbeHomes) -> Int { 1 }\n",
+  ], "")
+}
+
+// RED: an empty list cannot inhabit the head+tail nonempty shape. The nested census compile
+// cannot import std.algebra here (same NotRunnable as kernel_refinement's FreeSemigroup
+// fixtures on this executor), so the specimen uses the same product shape the production
+// FreeSemigroup<DeclarationRef> field has, without a second production carrier. Differential
+// against the one-element control so shared diagnostics cancel.
+test fn an_empty_conformance_home_list_refuses_inhabitance() -> Bool {
+  let red = empty_homes_blocking_count(source: concat(
+    "module probe.empty_conformance_homes\n",
+    concat(empty_homes_prelude(), "fn probe() -> Int { take_homes(homes: []) }\n"),
+  ))
+  let green = empty_homes_blocking_count(source: concat(
+    "module probe.one_conformance_home\n",
+    concat(
+      empty_homes_prelude(),
+      "fn probe() -> Int { take_homes(homes: ProbeHomes { head: 1, tail: [] }) }\n",
+    ),
+  ))
+  red >= 0 && green >= 0 && red > green
+}
+
+test fn a_one_element_conformance_home_list_renders_as_before() -> Bool {
+  let expected = join([
+    "### one element domain\n\n",
+    "**Owns.** one home is enough\n\n",
+    "**Boundary.** a synthetic boundary\n\n",
+    "**Existing authorities**\n\n",
+    "- **Synthetic group** — exists only in this test\n",
+    "  - `std.types::Bool`\n",
+  ], "")
+  let d = ConformanceDomain {
+    key: "test-one-home",
+    label: "one element domain",
+    question: "Is this a test?",
+    tells: ["a synthetic tell that exists only in this test"],
+    owns: "one home is enough",
+    boundaries: ["a synthetic boundary"],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Synthetic group",
+        purpose: "exists only in this test",
+        homes: synthetic_homes(head: "Bool", tail: []),
+      },
+      tail: [],
+    },
+  }
+  rendered_domain(d: d) == expected
 }
 
 fn rendered_domain(d: ConformanceDomain) -> String {
