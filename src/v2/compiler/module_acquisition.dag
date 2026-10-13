@@ -88,7 +88,7 @@ import v2.std.algebra {
   list_reverse,
   skip
 }
-import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
@@ -782,6 +782,224 @@ fn acquire_closure_of(layout: SourceStorageLayout, bindings: List<SourceRootBind
 
 fn acquire_closure(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, entry: String) -> Acquisition {
   acquire_closure_of(layout: layout, bindings: bindings, entries: [entry])
+}
+
+// ---- the census door: a closure that records where it is blocked ------------------------------
+
+// THE CENSUS ACQUIRES THE SAME CLOSURE THE COMPILER DOES, BUT DOES NOT STOP AT A BLOCK. The compiler's
+// door (acquisition_loop) refuses at the first refusal, because a compiler cannot build past an
+// unreadable member. A census exists to report every such member, so this loop runs the SAME lookup
+// and the SAME verdict step and, where the step refuses at one member or one edge, records the
+// refusal and continues with the rest of the frontier. What a blocked member would have requested is
+// unobserved, and the result says so: CensusAcquisitionBlocked is "acquired this far; behind these,
+// unobserved", never a smaller population presented as closed (docs/plans/census-scoped-run-design.md).
+// The refusal is carried WHOLE -- its arm is its meaning (R3); this door adds no classification of
+// its own beyond whether a refusal is local to one member, local to one edge, or ends the run.
+type CensusBlock
+  = CensusMemberBlock {
+      module: String
+      refusal: AcquisitionRefusal
+      // The bytes the attempted read returned, so the census reports the member from the read
+      // acquisition made and never from a second one (R1).
+      content: String
+      host_directory: String
+      // Every request that reached this member, in arrival order. A diamond onto one malformed
+      // member is one block with two requesters, not two reads (R2).
+      requesters: List<AcquisitionRequest>
+    }
+  | CensusEdgeBlock { refusal: AcquisitionRefusal }
+
+type CensusAcquisition
+  = CensusAcquisitionClosed { entries: List<String>, modules: List<AcquiredModule>, reads: List<String> }
+  | CensusAcquisitionBlocked {
+      entries: List<String>
+      modules: List<AcquiredModule>
+      blocked_first: CensusBlock
+      blocked_rest: List<CensusBlock>
+      reads: List<String>
+    }
+  | CensusAcquisitionRefused { refusal: AcquisitionRefusal }
+
+type CensusAcquisitionState {
+  state: AcquisitionState
+  // Blocked members by name, and every block in the order it was first recorded. The map holds the
+  // block's position in `blocks` so a later requester is appended to the one block it reached.
+  blocked_members: Map<String, Int>
+  blocks: List<CensusBlock>
+}
+
+// Which refusals are local. A refusal that is local to neither (grammar unprepared, entry
+// underivable) ends the census acquisition exactly as it ends the compiler's.
+type CensusBlockLocality
+  = CensusBlockedMember { module: String }
+  | CensusBlockedEdge
+  | CensusBlockNotLocal
+
+fn census_block_locality(refusal: AcquisitionRefusal) -> CensusBlockLocality {
+  match refusal {
+    AcquisitionMemberRefused { module: m, file: _, diagnostics: _ } => CensusBlockedMember { module: m }
+    AcquisitionMemberSitesUnreadable { module: m, file: _ } => CensusBlockedMember { module: m }
+    AcquisitionUnknownModule { request: _ } => CensusBlockedEdge
+    AcquisitionLookupRefused { request: _, lookup: _ } => CensusBlockedEdge
+    AcquisitionTreeUnbound { tree: _, request: _ } => CensusBlockedEdge
+    AcquisitionGrammarUnprepared { diagnostics: _ } => CensusBlockNotLocal
+    AcquisitionEntryUnderivable { entry: _, cause: _ } => CensusBlockNotLocal
+  }
+}
+
+fn census_block_with_requester(block: CensusBlock, request: AcquisitionRequest) -> CensusBlock {
+  match block {
+    CensusMemberBlock { module: m, refusal: r, content: c, host_directory: h, requesters: rs } =>
+      CensusMemberBlock { module: m, refusal: r, content: c, host_directory: h, requesters: list_snoc_item(xs: rs, item: request) }
+    CensusEdgeBlock { refusal: r } => CensusEdgeBlock { refusal: r }
+  }
+}
+
+fn census_blocks_with_requester(blocks: List<CensusBlock>, at: Int, request: AcquisitionRequest) -> List<CensusBlock> {
+  match blocks {
+    Empty => Empty
+    Cons { head: b, tail: rest } =>
+      if at == 0 {
+        Cons { head: census_block_with_requester(block: b, request: request), tail: rest }
+      } else {
+        Cons { head: b, tail: census_blocks_with_requester(blocks: rest, at: at - 1, request: request) }
+      }
+  }
+}
+
+fn census_with_state(acc: CensusAcquisitionState, state: AcquisitionState) -> CensusAcquisitionState {
+  CensusAcquisitionState { state: state, blocked_members: acc.blocked_members, blocks: acc.blocks }
+}
+
+fn census_with_edge_block(acc: CensusAcquisitionState, state: AcquisitionState, refusal: AcquisitionRefusal) -> CensusAcquisitionState {
+  CensusAcquisitionState {
+    state: state,
+    blocked_members: acc.blocked_members,
+    blocks: list_snoc_item(xs: acc.blocks, item: CensusEdgeBlock { refusal: refusal })
+  }
+}
+
+// The member is marked known so a later request reaches it through the lookup's known shortcut --
+// AFTER the lookup's cross-tree check, which therefore still denies a requester whose tree may not
+// import it (R2) -- and is attached to this block instead of being read again.
+fn census_with_member_block(
+  acc: CensusAcquisitionState,
+  state: AcquisitionState,
+  module: String,
+  refusal: AcquisitionRefusal,
+  content: String,
+  host_directory: String,
+  request: AcquisitionRequest
+) -> CensusAcquisitionState {
+  CensusAcquisitionState {
+    state: AcquisitionState {
+      pending: state.pending,
+      modules: state.modules,
+      known: map_insert(m: state.known, key: module, value: true),
+      absent: state.absent,
+      absent_probes: state.absent_probes,
+      reads: state.reads
+    },
+    blocked_members: map_insert(m: acc.blocked_members, key: module, value: length(xs: acc.blocks)),
+    blocks: list_snoc_item(xs: acc.blocks, item: CensusMemberBlock {
+      module: module,
+      refusal: refusal,
+      content: content,
+      host_directory: host_directory,
+      requesters: [request]
+    })
+  }
+}
+
+fn census_acquisition_finished(acc: CensusAcquisitionState, entries: List<String>) -> CensusAcquisition {
+  match acc.blocks {
+    Empty =>
+      CensusAcquisitionClosed { entries: entries, modules: list_reverse(xs: acc.state.modules), reads: list_reverse(xs: acc.state.reads) }
+    Cons { head: first, tail: rest } =>
+      CensusAcquisitionBlocked {
+        entries: entries,
+        modules: list_reverse(xs: acc.state.modules),
+        blocked_first: first,
+        blocked_rest: rest,
+        reads: list_reverse(xs: acc.state.reads)
+      }
+  }
+}
+
+// ONE STEP OF THE CENSUS LOOP: the compiler's lookup, then either the attachment of a requester to a
+// member already blocked, or the compiler's verdict step with its refusal recorded.
+type CensusStep
+  = CensusStepContinued { acc: CensusAcquisitionState }
+  | CensusStepEnded { refusal: AcquisitionRefusal }
+
+fn census_verdict_step(env: AcquisitionEnv, acc: CensusAcquisitionState, request: AcquisitionRequest, looked: CandidateLookup) -> CensusStep {
+  match acquisition_verdict_step(env: env, request: request, looked: looked) {
+    AcquisitionAdvanced { state: next } => CensusStepContinued { acc: census_with_state(acc: acc, state: next) }
+    AcquisitionStepRefused { refusal: refusal, state: stopped } =>
+      match census_block_locality(refusal: refusal) {
+        CensusBlockNotLocal => CensusStepEnded { refusal: refusal }
+        CensusBlockedEdge => CensusStepContinued { acc: census_with_edge_block(acc: acc, state: stopped, refusal: refusal) }
+        CensusBlockedMember { module: m } =>
+          match looked.verdict {
+            CandidateFresh { module: _, file: _, host_directory: directory, content: content } =>
+              CensusStepContinued { acc: census_with_member_block(acc: acc, state: stopped, module: m, refusal: refusal, content: content, host_directory: directory, request: request) }
+            // A member refusal is only produced by admitting a fresh candidate; any other verdict
+            // here is a step this loop does not understand, and it ends the run rather than
+            // recording a block without the read it came from.
+            _ => CensusStepEnded { refusal: refusal }
+          }
+      }
+  }
+}
+
+fn census_acquisition_step(env: AcquisitionEnv, acc: CensusAcquisitionState, request: AcquisitionRequest) -> CensusStep {
+  let looked = acquisition_lookup(env: env, state: acc.state, request: request, candidates: acquisition_candidates(request: request))
+  match looked.verdict {
+    CandidateKnown { module: m } =>
+      match map_lookup(acc.blocked_members, m) {
+        Present { value: at } =>
+          CensusStepContinued {
+            acc: CensusAcquisitionState {
+              state: looked.state,
+              blocked_members: acc.blocked_members,
+              blocks: census_blocks_with_requester(blocks: acc.blocks, at: at, request: request)
+            }
+          }
+        Absent => census_verdict_step(env: env, acc: acc, request: request, looked: looked)
+      }
+    _ => census_verdict_step(env: env, acc: acc, request: request, looked: looked)
+  }
+}
+
+fn census_acquisition_loop(env: AcquisitionEnv, acc: CensusAcquisitionState, entries: List<String>) -> CensusAcquisition {
+  match list_head(xs: acc.state.pending) {
+    HeadAbsent => census_acquisition_finished(acc: acc, entries: entries)
+    HeadFound { value: request } =>
+      match census_acquisition_step(env: env, acc: census_with_state(acc: acc, state: acquisition_popped(state: acc.state)), request: request) {
+        CensusStepEnded { refusal: refusal } => CensusAcquisitionRefused { refusal: refusal }
+        CensusStepContinued { acc: next } => census_acquisition_loop(env: env, acc: next, entries: entries)
+      }
+  }
+}
+
+fn acquire_census_closure_of(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, entries: List<String>) -> CensusAcquisition {
+  match acquisition_env(layout: layout, bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: d } => CensusAcquisitionRefused { refusal: AcquisitionGrammarUnprepared { diagnostics: d } }
+    AcquisitionEnvReady { env: env } =>
+      match acquisition_entry_requests(layout: env.layout, pending: entries, acc: []) {
+        AcquisitionEntriesRefused { refusal: refusal } => CensusAcquisitionRefused { refusal: refusal }
+        AcquisitionEntriesDerived { requests: requests } =>
+          census_acquisition_loop(
+            env: env,
+            acc: CensusAcquisitionState {
+              state: AcquisitionState { pending: requests, modules: [], known: empty_map(), absent: empty_map(), absent_probes: 0, reads: [] },
+              blocked_members: empty_map(),
+              blocks: []
+            },
+            entries: entries
+          )
+      }
+  }
 }
 
 // ---- the acquired set as the compiler's source ingest ----------------------------------------------

@@ -1,0 +1,152 @@
+module v2.test.claim.census_scoped_acquisition
+
+import std.types { Bool, Int, List, String }
+import std.algebra { Cons, Empty }
+import std.optional { Absent, Present }
+import v2.compiler.module_acquisition {
+  AcquiredModule,
+  AcquisitionMemberRefused,
+  AcquisitionRefusal,
+  AcquisitionUnknownModule,
+  CensusAcquisition,
+  CensusBlock,
+  CensusEdgeBlock,
+  CensusMemberBlock,
+  CensusAcquisitionBlocked,
+  CensusAcquisitionClosed,
+  CensusAcquisitionRefused,
+  SourceRootBinding,
+  acquire_census_closure_of
+}
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.source_authority { DagTree, V2Tree }
+
+// THE CENSUS DOOR OVER A PLANTED CLOSURE (fixtures/census_scoped_acquisition, outside every corpus
+// root so its broken member reds nothing else). entry imports ok, broken and a module that does not
+// exist; behind is reachable only through broken; outside is imported by nothing. The compiler's door
+// refuses this closure at its first refusal; the census door must acquire around both blocks, name
+// them, and never report behind or outside -- behind is UNKNOWN, not absent, and only the Blocked arm
+// can say so (docs/plans/census-scoped-run-design.md).
+
+fn planted_bindings() -> List<SourceRootBinding> {
+  [
+    SourceRootBinding { tree: V2Tree, host_directory: "fixtures/census_scoped_acquisition/v2" },
+    SourceRootBinding { tree: DagTree, host_directory: "dag" }
+  ]
+}
+
+fn planted_acquisition() -> CensusAcquisition {
+  acquire_census_closure_of(layout: repository_storage_layout(), bindings: planted_bindings(), entries: ["v2.cs.entry"])
+}
+
+fn acquired_names(modules: List<AcquiredModule>) -> List<String> {
+  list_map(xs: modules, f: fn(m) { m.name })
+}
+
+// The planted members, by name. The fixture's own modules import std, so an acquisition also holds the
+// std closure they reach; the controls count only the planted names, which is the population the
+// fixture decides.
+fn planted_module_names() -> List<String> {
+  ["v2.cs.entry", "v2.cs.ok", "v2.cs.broken", "v2.cs.behind", "v2.cs.outside", "v2.cs.diamond", "v2.cs.left", "v2.cs.right"]
+}
+
+fn planted_acquired_count(modules: List<AcquiredModule>) -> Int {
+  fold_list(xs: modules, empty: 0, cons: fn(n, m) {
+    if names_contain(names: planted_module_names(), name: m.name) { n + 1 } else { n }
+  })
+}
+
+fn names_contain(names: List<String>, name: String) -> Bool {
+  match list_find_first(xs: names, predicate: fn(n) { n == name }) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The member a block names only when its refusal is the front-end arm: a sites-unreadable block is
+// a different fact (R3) and must not satisfy a claim about a member that did not parse.
+fn blocked_member_name(block: CensusBlock) -> String {
+  match block {
+    CensusMemberBlock { module: m, refusal: r, content: _, host_directory: _, requesters: _ } =>
+      match r {
+        AcquisitionMemberRefused { module: _, file: _, diagnostics: _ } => m
+        _ => ""
+      }
+    CensusEdgeBlock { refusal: _ } => ""
+  }
+}
+
+fn blocked_edge_spelling(block: CensusBlock) -> String {
+  match block {
+    CensusEdgeBlock { refusal: r } =>
+      match r {
+        AcquisitionUnknownModule { request: q } => q.spelling
+        _ => ""
+      }
+    CensusMemberBlock { module: _, refusal: _, content: _, host_directory: _, requesters: _ } => ""
+  }
+}
+
+fn block_requester_count(block: CensusBlock) -> Int {
+  match block {
+    CensusMemberBlock { module: _, refusal: _, content: _, host_directory: _, requesters: rs } => length(xs: rs)
+    CensusEdgeBlock { refusal: _ } => 0
+  }
+}
+
+// Positive: exactly entry and ok are acquired.
+test fn the_census_door_acquires_around_a_blocked_member() -> Bool {
+  match planted_acquisition() {
+    CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: _, blocked_rest: _, reads: _ } =>
+      planted_acquired_count(modules: modules) == 2
+        && names_contain(names: acquired_names(modules: modules), name: "v2.cs.entry")
+        && names_contain(names: acquired_names(modules: modules), name: "v2.cs.ok")
+    _ => false
+  }
+}
+
+// The two blocks are both named, one member and one edge, and nothing else is.
+test fn the_census_door_names_every_block_it_acquired_around() -> Bool {
+  match planted_acquisition() {
+    CensusAcquisitionBlocked { entries: _, modules: _, blocked_first: first, blocked_rest: rest, reads: _ } =>
+      let all = Cons { head: first, tail: rest }
+      length(xs: all) == 2
+        && names_contain(names: list_map(xs: all, f: fn(b) { blocked_member_name(block: b) }), name: "v2.cs.broken")
+        && names_contain(names: list_map(xs: all, f: fn(b) { blocked_edge_spelling(block: b) }), name: "v2.cs.missing")
+    _ => false
+  }
+}
+
+// Masking control: what sits behind a blocked member is never acquired -- its existence on disk is
+// not evidence the census may report. Scope control: a module nothing imports is never acquired.
+test fn the_census_door_reports_nothing_behind_a_block_or_outside_the_closure() -> Bool {
+  match planted_acquisition() {
+    CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: _, blocked_rest: _, reads: _ } =>
+      !names_contain(names: acquired_names(modules: modules), name: "v2.cs.behind")
+        && !names_contain(names: acquired_names(modules: modules), name: "v2.cs.outside")
+    _ => false
+  }
+}
+
+// Negative control: a closure with no block is Closed, so the Blocked arm above discriminates and is
+// not the door's only answer.
+test fn a_closure_with_no_block_is_closed() -> Bool {
+  match acquire_census_closure_of(layout: repository_storage_layout(), bindings: planted_bindings(), entries: ["v2.cs.ok"]) {
+    CensusAcquisitionClosed { entries: _, modules: modules, reads: _ } => planted_acquired_count(modules: modules) == 1
+    _ => false
+  }
+}
+
+// Diamond control (R2): left and right both import broken. The census reads broken ONCE and reports
+// ONE block carrying both requesters -- two blocks would double-count a root, one requester would
+// lose the second path that waits on it.
+test fn a_member_reached_twice_is_one_block_with_both_requesters() -> Bool {
+  match acquire_census_closure_of(layout: repository_storage_layout(), bindings: planted_bindings(), entries: ["v2.cs.diamond"]) {
+    CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: first, blocked_rest: rest, reads: _ } =>
+      planted_acquired_count(modules: modules) == 3
+        && length(xs: rest) == 0
+        && blocked_member_name(block: first) == "v2.cs.broken"
+        && block_requester_count(block: first) == 2
+    _ => false
+  }
+}
