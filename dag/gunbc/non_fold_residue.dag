@@ -40,8 +40,6 @@ data nfr_reason_legacy_slice1_bridge: String = "projection over the legacy HostC
 
 data nfr_dissolve_legacy_slice1: DissolutionCondition = unbound_dissolution(description: "the legacy slice-1 result carrier is deleted in favor of the per-unit outcome model and the rows delete")
 
-data nfr_reason_reaper_oracle: String = "two-axis discriminating predicate (occupant by action) with off-variant wildcard arms returning false — the reaper witnesses' oracle, same shape as the structural-equality rows; landed with #7026, surfaced by the scheduled cold falsifier (alert #7032)"
-
 data nfr_reason_namespace_tree_eq: String = "NamespaceTree structural equality residue (nested off-variant wildcard arm returning false), landed unrostered with effect_grant.dag in #6817 and surfaced when a later branch brought the file into the affected set"
 
 data nfr_reason_structural_eq_mint: String = "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor"
@@ -114,10 +112,6 @@ data nfr_dissolve_build_axis_reading_refined_carrier: DissolutionCondition = unb
 data nfr_reason_json_natural_projection: String = "one-variant decode over JsonValue: JsonNumber has its lexeme parsed and round-trip checked as a non-negative Int and the wildcard collapses the other five JSON shapes (null, bool, string, array, object) into option-absence, so a shape mismatch and a malformed number are indistinguishable to the caller — the same absence-collapse shape as the binding_outcome_from_resolution row. Landed with the reference-vocabulary keying cut (#9408, 2026-08-27) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
 data nfr_dissolve_json_natural_projection: DissolutionCondition = unbound_dissolution(description: "typed JSON member decoding lands in the JSON language authority (extdeps.languages.json) with a per-shape refusal carrier, so the envelope reads a natural through a total decode rather than a hand match over JsonValue, and the row deletes with that decoder")
-
-data nfr_reason_process_port_upsert_refusal_split: String = "one-special-variant split over ProcessPortObservation: PortObservationRefused threads the observe-leg reason into an Upsert Refuse decision, and the three non-refused arms (PortAbsent, PortObserved, PortObservedStaleExpected) share one arm that derives the decision from the verdict classify_process_port already computed exhaustively over the same coproduct — the second match re-discriminates a value the first fold has already partitioned. The refused arm and its wildcard landed with the NBD-proxy observe-side read-back (74b9a6e6a5, #8582, 2026-08-19; the fn itself dates from #6171) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_process_port_upsert_refusal_split: DissolutionCondition = unbound_dissolution(description: "classify_process_port returns a carrier that already binds the refusal reason to its verdict (verdict and decision from ONE total fold over ProcessPortObservation), so classify_process_port_upsert no longer re-matches the observation and the row deletes with the second match")
 
 data nfr_reason_acceptance_obligation_partition: String = "front-end-vs-back-end partition over DagStageObligation (eight arms): execute_obligation names the four back-end stages and routes the four front-end obligations through one wildcard StageNotRun/ExecutorUnavailable arm because they execute inside the staged front-end fold; is_front_end_obligation is the subset predicate (off-variant wildcard false); obligation_front_end_depth gives ResolveStage and every back-end obligation one shared depth. Each wildcard is the OTHER half of one partition, so enumerating it would clone one arm four or five times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
@@ -202,11 +196,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_local_tidy,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/compiler/source_authority.dag::discovered_source_refs_digest_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/source_authority.dag::source_ref_content_hash_structural" },
     reason: nfr_reason_content_hash_structural_refusal,
     dissolution: nfr_dissolve_content_hash_structural_refusal,
@@ -282,11 +271,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_owning_fold,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/host/host_hygiene_reaper.dag::action_kills_build_cache_server" },
-    reason: nfr_reason_reaper_oracle,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/std/effect_grant.dag::namespace_tree_eq" },
     reason: nfr_reason_namespace_tree_eq,
     dissolution: nfr_dissolve_derived_equality,
@@ -323,21 +307,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/lens/registry.dag::lens_id_v0_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/unused_parameters.dag::use_relation_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/std/node_minimal.dag::node_superset_field_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq" },
     reason: nfr_reason_structural_eq_mint,
     dissolution: nfr_dissolve_derived_equality,
   },
@@ -415,11 +384,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/scm/repository_envelope.dag::repository_natural_from_json" },
     reason: nfr_reason_json_natural_projection,
     dissolution: nfr_dissolve_json_natural_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/session_lease.dag::classify_process_port_upsert" },
-    reason: nfr_reason_process_port_upsert_refusal_split,
-    dissolution: nfr_dissolve_process_port_upsert_refusal_split,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::execute_obligation" },
