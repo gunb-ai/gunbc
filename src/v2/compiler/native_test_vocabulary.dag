@@ -44,7 +44,7 @@ type NativeTestStage
 // operator read said WHAT refused and never WHERE, and an ambiguous reference reported one
 // symbol where the resolver had named its lookup class and its competing declarations. The
 // verdict now carries the stage's NonEmptyDiagnostics unfolded, for the reason
-// v2.compiler.compile native_module_resolve_verdict already gives at the census grain:
+// v2.compiler.source_root_eval native_module_resolve_verdict already gives at the census grain:
 // summarizing is the CONSUMER's move. The reason every roster keys on is DERIVED --
 // v2.std.diagnostic diagnostics_fatal_reason, the LAST diagnostic, because rejected_with_pending
 // prepends the advisories that rode along -- so a consumer that classifies by reason reads the same symbol
@@ -220,7 +220,7 @@ type NativeTestObservation {
 // row retains no occurrence id: a refused parse's ids are re-minted by the next file, and a retained
 // NodeLocus would resolve to the wrong one.
 // `module` is the module the refused file DECLARES, read from its header line
-// (v2.compiler.compile native_lane_declared_module_name) and parsed once into a QualifiedName, because a refused file never produced a
+// (v2.compiler.source_root_eval native_lane_declared_module_name) and parsed once into a QualifiedName, because a refused file never produced a
 // parsed module node to read it from. It is what lets a module that IMPORTS the refused one be
 // told why its import cannot bind (NativeModuleResolveImportTargetFileRefused), instead of being
 // told only that a name is unbound. Absent means the file declares no module line.

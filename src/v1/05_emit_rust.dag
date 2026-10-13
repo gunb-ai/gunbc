@@ -18798,7 +18798,7 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 }
 
 // The retained eval driver's synchronous boundary binds the existing emitted Filesystem service
-// and invokes the .dag acquisition folds of v2.compiler.compile. Which modules are read, the storage
+// and invokes the .dag acquisition folds of v2.compiler.source_root_eval. Which modules are read, the storage
 // rule that places them, the verification that the read set is the requested closure exactly and every
 // read refusal live in v2.compiler.module_acquisition; no std::fs walk or byte read is authored in
 // this shim. The adjudicating run asks for a CLOSURE (native_lane_acquire); the census verbs ask for
@@ -19322,7 +19322,7 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, b
 // the v1 interpreter, and to hand its printed verdicts back to the seed, which then evaluated the
 // admission authority through the interpreter as well. Both ends were the interpreter, so the
 // lane that exists to prove a pristine v2 process could not run without one. The universe is now
-// derived and the receipt judged INSIDE this binary (the v2.compiler.compile native_lane_* folds), and
+// derived and the receipt judged INSIDE this binary (the v2.compiler.source_root_eval native_lane_* folds), and
 // the only thing the host still supplies is what this process cannot observe of itself: the
 // identities of the seed that emitted it, of the closure and of its own executable, the
 // how the old route's fallback was closed - withdrawn, or absent at that path for the whole
@@ -19363,11 +19363,11 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, b
 //
 // THE PREPARE-REFUSAL FAN-OUT AND THE CONTEXT RECLASSIFICATION are no longer rendered here or
 // performed by the host: both are the same per-module decision and live in the `.dag` fold this
-// main calls (v2.compiler.compile native_lane_module_resolution then native_lane_module_inference),
+// main calls (v2.compiler.source_root_eval native_lane_module_resolution then native_lane_module_inference),
 // so the row count still equals the
 // universe size and every refusal stays located per test identity.
 //
-// FILESYSTEM ACQUISITION is a call into v2.compiler.compile (native_lane_acquire for the lane,
+// FILESYSTEM ACQUISITION is a call into v2.compiler.source_root_eval (native_lane_acquire for the lane,
 // native_lane_census_ingest for the census verbs) with the existing emitted Filesystem handler. The
 // retained main owns neither which modules are read nor traversal nor any byte-read decision, and it
 // never holds a whole-repository ingest: the lane reads the closure its pattern requests, exactly.
@@ -19388,7 +19388,7 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, b
 // first is irreducible.
 //
 // HOST BOUNDARY, retained by cause and not by schedule: argv (`main` reads it and hands it to
-// v2.compiler.compile `native_driver_parse`, which decides the verb, every argv refusal and its
+// v2.compiler.source_root_eval `native_driver_parse`, which decides the verb, every argv refusal and its
 // status; the literal mode comparisons this main used to render are deleted),
 // the executor binding for the modeled source-root acquisition,
 // the clocks (the thread CPU reading behind `cpu_mark`, which the partition is judged on, and the
@@ -19613,8 +19613,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        println!(\"{}\", serde_json::json!(\{ \"accepted_file_advisories\": advised \}));", "\n",
       "    \}", "\n",
       "    // GROUPED BY THE FATAL REASON, BY THE FOLD THAT OWNS THE GROUPING", "\n",
-      "    // (v2.compiler.compile native_census_cause_groups_add); this main only prints the groups.", "\n",
-      "    // Each root carries its closure fan-out (v2.compiler.compile native_census_closure_index);", "\n",
+      "    // (v2.compiler.source_root_eval native_census_cause_groups_add); this main only prints the groups.", "\n",
+      "    // Each root carries its closure fan-out (v2.compiler.source_root_eval native_census_closure_index);", "\n",
       "    // this mode does not resolve, so no root claims an observed resolve refusal.", "\n",
       "    let closure = native_census_closure_index(", "\n",
       "        context.clone(),", "\n",
@@ -19694,7 +19694,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let roster_nanos = span_nanos(roster_started);", "\n",
       "    // THE CAUSE GROUPS START FROM THE FRONT-END REFUSALS -- each a root carrying its closure", "\n",
       "    // fan-out -- and take each module as it is resolved: a cascade member once under its root,", "\n",
-      "    // any other refusal per chain (v2.compiler.compile native_census_cause_groups_add_module).", "\n",
+      "    // any other refusal per chain (v2.compiler.source_root_eval native_census_cause_groups_add_module).", "\n",
       "    let closure = native_census_closure_index(context.clone(), refusal_index.clone(), modules.clone());", "\n",
       "    let mut groups = native_census_cause_groups_from_file_refusals(context.file_refusals.clone(), closure.clone(), true);", "\n",
       "    let mut resolve_total_nanos: u128 = 0;", "\n",
@@ -19761,7 +19761,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    for group in cause_groups.iter() \{", "\n",
       "        println!(\"{}\", serde_json::json!(\{ \"cause_group\": group \}));", "\n",
       "    \}", "\n",
-      "    // THE ROOTS, RANKED BY CLOSURE FAN-OUT (v2.compiler.compile native_census_roots_ranked).", "\n",
+      "    // THE ROOTS, RANKED BY CLOSURE FAN-OUT (v2.compiler.source_root_eval native_census_roots_ranked).", "\n",
       "    let roots = native_census_roots_ranked(cause_groups.clone());", "\n",
       "    for root in roots.iter() \{", "\n",
       "        println!(\"{}\", serde_json::json!(\{ \"census_root\": root \}));", "\n",
@@ -19796,7 +19796,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    );", "\n",
       "\}", "\n",
       "\n",
-      "// THE FOURTH MODE: D13's DEPENDENCY-DEMAND CENSUS (v2.compiler.compile native_demand_census_output).", "\n",
+      "// THE FOURTH MODE: D13's DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output).", "\n",
       "// The fold decides every line and the exit -- 0 held, 1 a census whose rows do not account for", "\n",
       "// every uses fn, 2 no observation -- and this function only reads the ingest, prints and exits.", "\n",
       "fn run_demand_census(source_roots: &[String]) \{", "\n",
@@ -19815,7 +19815,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "", "\n",
       "// THE FIFTH MODE: THE WHOLE TREE, RESOLVED AND INFERRED PER MODULE (`census-infer`).", "\n",
       "//", "\n",
-      "// Every decision is a .dag fold: the per-module step (v2.compiler.compile", "\n",
+      "// Every decision is a .dag fold: the per-module step (v2.compiler.source_root_eval", "\n",
       "// native_census_module_inference), the type-declaration census's contribution from it", "\n",
       "// (native_census_infer_type_contribution), the run it accumulates into and the receipt and", "\n",
       "// terminal that run decides (v2.compiler.type_declaration_use_census). This loop reads the", "\n",
@@ -19848,7 +19848,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());", "\n",
       "    let modules = native_census_modules(ingest.clone());", "\n",
       "    // THE INFER CENSUS'S GROUPS START FROM THE FRONT-END ROOTS, as census-resolve's do, and take each", "\n",
-      "    // module's step through ONE fold (v2.compiler.compile native_census_cause_groups_add_infer_module):", "\n",
+      "    // module's step through ONE fold (v2.compiler.source_root_eval native_census_cause_groups_add_infer_module):", "\n",
       "    // a resolve refusal filed as census-resolve files it, an infer refusal as one Infer-stage row.", "\n",
       "    let closure = native_census_closure_index(context.clone(), refusal_index.clone(), modules.clone());", "\n",
       "    let module_paths = native_census_module_paths(modules.clone());", "\n",
@@ -19892,7 +19892,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        println!(\"{}\", serde_json::json!(\{ \"cause_group\": group \}));", "\n",
       "    \}", "\n",
       "    let roots = native_census_roots_ranked(cause_groups.clone());", "\n",
-      "    // EACH ROOT IS MARKED AGAINST THE NATIVE TEST TARGET'S CLOSURE (v2.compiler.compile", "\n",
+      "    // EACH ROOT IS MARKED AGAINST THE NATIVE TEST TARGET'S CLOSURE (v2.compiler.source_root_eval", "\n",
       "    // native_census_subject_closure): derived from the label, never from a list.", "\n",
       "    let subject = native_census_subject_closure(closure.clone(), modules.clone(), native_census_subject_label());", "\n",
       "    println!(\"{}\", serde_json::json!(\{ \"census_subject\": subject.clone() \}));", "\n",
@@ -20179,7 +20179,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        // this returns the seed unchanged. Not because nothing was minted -- a refused parse", "\n",
       "        // HAS minted ids -- but because ParseExprRejected carries no provenance state, so the", "\n",
       "        // mark the attempt reached is not recoverable. See the precondition on", "\n",
-      "        // v2.compiler.compile native_test_context_absorb.", "\n",
+      "        // v2.compiler.source_root_eval native_test_context_absorb.", "\n",
       "        let file_alloc = program_assembly_parsed_alloc(parsed.clone(), file_seed);", "\n",
       "        let normalize_started = cpu_mark();", "\n",
       "        // NORMALIZE ADVANCES THE ALLOCATOR: lowering allocates every image member an id, so the", "\n",
@@ -20346,7 +20346,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \}", "\n",
       "    let engine_prepare_nanos = native_demand_prepare_nanos(run.clone()).max(0) as u128;", "\n",
       "    let engine_eval_nanos = native_demand_eval_nanos(run.clone()).max(0) as u128;", "\n",
-      "    // OBSERVATION ONLY (v2.compiler.compile native_demand_occurrence_census_lines): the census is its", "\n",
+      "    // OBSERVATION ONLY (v2.compiler.source_root_eval native_demand_occurrence_census_lines): the census is its", "\n",
       "    // own demand kind, so its cost is the engine-reported ExclusiveOccurrenceCensus row, not a host span.", "\n",
       "    let occurrence_census_nanos = native_demand_occurrence_census_nanos(run.clone()).max(0) as u128;", "\n",
       "    prepare_total_nanos += engine_prepare_nanos;", "\n",

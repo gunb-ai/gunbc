@@ -29,7 +29,7 @@ import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags 
 // hand-edit of the generated YAML). The job's subject is the compiler/test EXECUTION ROUTE
 // itself: the emitted-native compiler binary, invoked by explicit path, executing the
 // marked test declarations of the modules it acquires through its own whole-source-root Eval driver
-// (std.compiler_entry SourceRootEvalDriver — the v2.compiler.compile native_test_* fold), and
+// (std.compiler_entry SourceRootEvalDriver — the v2.compiler.source_root_eval native_test_* fold), and
 // reaching a TERMINAL TEST VERDICT per identity. The 32 native-only construct arms are
 // explicitly NOT this proof — they show generated Rust programs ran natively while the claim
 // executor stayed seed-backed; this lane's receipt must show which binary answered, and what

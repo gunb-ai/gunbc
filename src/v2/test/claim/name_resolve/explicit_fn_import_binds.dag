@@ -26,7 +26,7 @@ import extdeps.communication.medium { Lossless, Medium }
 // test importing v2.compiler.tokenize { tokenize } refused `resolve_reason_unbound_symbol @ tokenize`,
 // and the cause was v2.compiler.tokenize's own file, refused by body lowering before it reached the
 // index. The fixtures are SUPPLIED reads run through the real prepare route
-// (v2.compiler.compile native_test_context_from_ingest, native_module_resolve_verdict), so they
+// (v2.compiler.source_root_eval native_test_context_from_ingest, native_module_resolve_verdict), so they
 // discriminate at the route's interface and not through the corpus's current refusal set.
 
 data same_name_decl_source: String = "module v2.test.efib.probe\n\nimport std.types { Bool }\n\nfn probe() -> Bool { true }\n"

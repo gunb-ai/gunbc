@@ -5435,7 +5435,7 @@ fn body_lower_value_read(value: Node) -> Outcome<Node> {
 // this reader for every nested argument, so a call nested d deep is folded on the order of 5^d
 // times. The instrument that re-derives this is the native lane's per-file phase clock: the
 // emitted driver's `adjudicate` (std.compiler_entry SourceRootEvalDriver, absorbed by
-// v2.compiler.compile native_test_context_absorb) prints one row per ingested file carrying
+// v2.compiler.source_root_eval native_test_context_absorb) prints one row per ingested file carrying
 // `normalize_nanos`; sum and sort it over the workload closure, baseline against candidate.
 //
 // A FOLD THAT REFUSES IS THE VALUE'S REFUSAL, AND IT PROPAGATES. It used to hand the value to the

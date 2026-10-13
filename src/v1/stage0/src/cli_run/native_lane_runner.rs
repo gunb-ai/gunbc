@@ -1373,7 +1373,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             continue;
         }
         // A CAUSE GROUP IS RECOGNIZED AND NOT CONSUMED HERE. `census` now prints the same file
-        // refusals grouped by fatal reason (v2.compiler.compile native_census_cause_group_rows);
+        // refusals grouped by fatal reason (v2.compiler.source_root_eval native_census_cause_group_rows);
         // the malformed control reads the per-file row above and owes nothing to the grouping,
         // whose consumer is the census instrument (`//gunbc/instruments:v2-native-census`). A
         // `census_root` row is the same members ranked by closure fan-out

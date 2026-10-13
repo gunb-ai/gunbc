@@ -262,7 +262,7 @@ fn v2_native_frontier_label() -> Label {
 // THE NATIVE CENSUS INSTRUMENT: the emitted compiler's `census-infer` verb over the self-host
 // corpus (census part 2, docs/plans/census-part-2-inference-design.md section 6: the same label,
 // reaching one more stage). Every front-end, resolve and infer refusal is GROUPED BY THE FATAL REASON
-// (v2.compiler.compile native_census_cause_groups_add), with the stage and head kept as member
+// (v2.compiler.source_root_eval native_census_cause_groups_add), with the stage and head kept as member
 // fields. An import cascade is collapsed to its root (census C): each cascaded module is one member
 // under the root's reason. At infer the only cascade is a refused closure provider leading an
 // importer's chain (native_census_infer_cascade). The roots are ranked by closure fan-out
@@ -489,7 +489,7 @@ fn self_host_behavioral_equivalence_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "self-host-behavioral-equivalence" } }
 }
 
-// D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.compile native_demand_census_output, the emitted compiler's
+// D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output, the emitted compiler's
 // `demand-census` verb): one row per fn that authors a `uses` clause, pairing the authored rows with
 // the demand derived over the whole closure and a verdict scoped to the audited vocabulary (Network).
 // Run by name, on no lane: its consumer is the D13 row-deletion change, which executes it at its own
