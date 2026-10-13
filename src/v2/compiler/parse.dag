@@ -88,8 +88,7 @@ import std.optional {
   Optional,
   Present
 }
-import std.algebra { Cons, Empty, list_append, list_snoc_item }
-import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_head, list_reverse, list_tail, unique, zip_eq }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, HeadAbsent, HeadFound, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_head, list_reverse, list_tail, unique, zip_eq }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import v2.extdeps.languages.dag {
   dag_float_literal_node_from_lexeme,
@@ -3086,6 +3085,14 @@ fn lookahead_site_overlaps(
   }
 }
 
+// THE DEEPEST TOKEN PEEK A CHOICE PLAN MAKES BEFORE IT ATTEMPTS AN ALTERNATIVE. A token-prefix plan
+// selects its row by the classes of the next `need` tokens, and a stream with fewer than `need` left
+// rejects the choice outright, so how far past what a parse consumes it may examine is a fact of
+// this number. It is named here, once, so the reader that bounds a production's examination
+// (v2.compiler.grammar_reach) takes the plan's own depth and not a copy of it. The by-token and
+// by-word plans peek one token, a shared-prefix plan none beyond its prefix.
+fn grammar_choice_plan_peek_depth() -> Int { 2 }
+
 fn compile_choice_alts(
   alts: List<PreparedExprFold>,
   nullable_set: List<Symbol>,
@@ -3123,13 +3130,13 @@ fn compile_choice_alts(
                     )
                   }
                 Absent =>
-                  match choice_token_prefix_rows(alts: alts, need: 2) {
+                  match choice_token_prefix_rows(alts: alts, need: grammar_choice_plan_peek_depth()) {
                     Present { value: rows } => ChoiceTokenPrefix { rows: rows }
                     Absent => ordered_backtrack_emit(alts: alts)
                   }
               }
             Absent =>
-              match choice_token_prefix_rows(alts: alts, need: 2) {
+              match choice_token_prefix_rows(alts: alts, need: grammar_choice_plan_peek_depth()) {
                 Present { value: rows } => ChoiceTokenPrefix { rows: rows }
                 Absent => ordered_backtrack_emit(alts: alts)
               }
@@ -4998,23 +5005,63 @@ fn parse_production_prepared_seeded(
   seed: OccurrenceIdAllocator,
   layout: Optional<StreamLayout>
 ) -> Outcome<ParseArtifact> {
-  match parse_token_start_order_violation(tokens: tokens) {
-    Present { value: tok } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: parse_refusal_reason_diagnostic(reason: TokenStartsNotIncreasing, file: tok.file, start: tok.start, end: tok.end)
-        )
-      }
-    Absent =>
-      parse_production_prepared_ordered(
-        tokens: tokens,
-        validated: validated,
-        analysis: analysis,
-        production_name: production_name,
-        seed: seed,
-        layout: layout
-      )
+  match parse_production_run(
+    tokens: tokens,
+    validated: validated,
+    analysis: analysis,
+    production_name: production_name,
+    seed: seed,
+    layout: layout
+  ) {
+    ProductionRunRefused { diagnostics: d } => Rejected { diagnostics: d }
+    ProductionRunParsed { parsed: parsed, production: production, root: root } =>
+      parse_production_unrefused(parsed: parsed, production: production, root: root)
   }
+}
+
+// THE PREFIX DOOR: the same production parse as parse_production_prepared, asked for the longest
+// prefix of the stream the production consumes instead of for the whole stream. The two doors are one
+// parse run (parse_production_run) and differ only in what they owe the tokens the production left:
+// the whole door refuses them (parse_g0_tokens_remain), this one hands back the artifact of what was
+// consumed and leaves them unread. It is generic -- any prepared production, any stream -- and names
+// no production: what a prefix IS is the grammar's, and a caller that needs a fact the grammar puts at
+// the start of a stream (a module's header) reads it here instead of re-deriving where that fact ends.
+//
+// EVERY REFUSAL OF THE WHOLE DOOR THAT IS NOT ABOUT THE TAIL IS STILL A REFUSAL HERE: the token-order
+// check, an unknown production, a refusal recorded anywhere in the run and a production that does not
+// match the stream's start all reject with the diagnostics the whole door gives. Only the leftover
+// tokens differ, so a stream the whole door accepts is accepted here with an artifact equal to its own.
+//
+// THE UNREAD COUNT IS THE DOOR'S, NOT THE CALLER'S. A caller handing this door a stream that is itself
+// a window of a longer one needs to know whether the parse read only inside the window, and what
+// the production left unread is the one fact that answers it. The caller could recompute it as the
+// stream length less a consumed count only by re-deriving where the production ended, which is the
+// second authority on a prefix's end this door exists to remove.
+fn parse_production_prefix_prepared(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
+  production_name: Symbol
+) -> Outcome<ParsePrefix> {
+  match parse_production_run(
+    tokens: tokens,
+    validated: validated,
+    analysis: analysis,
+    production_name: production_name,
+    seed: occurrence_id_allocator_initial(),
+    layout: optional_absent()
+  ) {
+    ProductionRunRefused { diagnostics: d } => Rejected { diagnostics: d }
+    ProductionRunParsed { parsed: parsed, production: production, root: root } =>
+      parse_production_prefix_unrefused(parsed: parsed, production: production, root: root)
+  }
+}
+
+// WHAT THE PREFIX DOOR RETURNS: the artifact of the consumed tokens and the number of tokens of the
+// stream the production left unread.
+type ParsePrefix {
+  artifact: ParseArtifact
+  unread: Int
 }
 
 // A STREAM POSITION IS ITS TOKEN'S START, so the parse admits only a stream whose starts strictly
@@ -5049,6 +5096,14 @@ type ParseStartOrderAcc {
   violation: Optional<Token>
 }
 
+// ONE RUN OF A PRODUCTION OVER A STREAM, before anything is decided about the tokens it left. The
+// whole door (parse_production_prepared_seeded) and the prefix door (parse_production_prefix_prepared)
+// both begin here, so the checks that precede a parse and the refusals recorded during it cannot
+// differ between them.
+type ProductionRun
+  = ProductionRunRefused { diagnostics: NonEmptyDiagnostics }
+  | ProductionRunParsed { parsed: ParseExprResult, production: GrammarProduction, root: GrammarRoot }
+
 // THE ENTRY PRODUCTION IS READ OFF THE PREPARED GRAMMAR, never re-derived per parse: its lookup is
 // the analysis's productions_by_name index and its prepared tree (choice plans, FIRST unions) is the
 // analysis's prepared_exprs row, exactly as every nested nonterminal already reads it
@@ -5056,39 +5111,48 @@ type ParseStartOrderAcc {
 // choice-plan compilation plus the authored-choice overlap residue, which the parse then discarded --
 // and an O(P) non-short-circuiting fold over every production, on EVERY parse, re-deriving a
 // property of the grammar that prepare_grammar already computed once.
-fn parse_production_prepared_ordered(
+fn parse_production_run(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
   analysis: GrammarFirstAnalysis,
   production_name: Symbol,
   seed: OccurrenceIdAllocator,
   layout: Optional<StreamLayout>
-) -> Outcome<ParseArtifact> {
-  let root = validated.root
-  let table = parse_table_for_stream_analyzed(
-    validated: validated,
-    analysis: analysis,
-    layout: layout,
-    all_tokens: tokens
-  )
-  match grammar_lookup_production_indexed(table: table, name: production_name) {
-    Holds { value: production } =>
-      let prov = parse_prov_seeded(seed: seed)
-      let parsed = parse_expr_with_first(
-        expr: parse_table_prepared_expr(table: table, production: production),
-        tokens: tokens,
-        all_tokens: tokens,
-        root: root,
-        table: table,
-        prov: prov
-      )
-      match parse_expr_result_table(result: parsed).refusal {
-        Present { value: refusal } =>
-          Rejected { diagnostics: diagnostics_singleton(d: refusal) }
-        Absent => parse_production_unrefused(parsed: parsed, production: production, root: root)
+) -> ProductionRun {
+  match parse_token_start_order_violation(tokens: tokens) {
+    Present { value: tok } =>
+      ProductionRunRefused {
+        diagnostics: diagnostics_singleton(
+          d: parse_refusal_reason_diagnostic(reason: TokenStartsNotIncreasing, file: tok.file, start: tok.start, end: tok.end)
+        )
       }
-    Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Absent =>
+      let root = validated.root
+      let table = parse_table_for_stream_analyzed(
+        validated: validated,
+        analysis: analysis,
+        layout: layout,
+        all_tokens: tokens
+      )
+      match grammar_lookup_production_indexed(table: table, name: production_name) {
+        Holds { value: production } =>
+          let prov = parse_prov_seeded(seed: seed)
+          let parsed = parse_expr_with_first(
+            expr: parse_table_prepared_expr(table: table, production: production),
+            tokens: tokens,
+            all_tokens: tokens,
+            root: root,
+            table: table,
+            prov: prov
+          )
+          match parse_expr_result_table(result: parsed).refusal {
+            Present { value: refusal } =>
+              ProductionRunRefused { diagnostics: diagnostics_singleton(d: refusal) }
+            Absent => ProductionRunParsed { parsed: parsed, production: production, root: root }
+          }
+        Violates { diagnostic: d } =>
+          ProductionRunRefused { diagnostics: diagnostics_singleton(d: d) }
+      }
   }
 }
 
@@ -5104,13 +5168,8 @@ fn parse_production_unrefused(
   match parsed {
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: final_table } =>
       if is_empty(xs: remaining) {
-        let stamped = parse_wrap_production_captured(
-          production: production,
-          captured: captured,
-          prov: inner_prov
-        )
         Accepted {
-          value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index, alloc: stamped.prov.alloc },
+          value: parse_production_artifact(production: production, captured: captured, prov: inner_prov),
           diagnostics: parse_diags_to_diagnostics(diags: diags)
         }
       } else {
@@ -5121,15 +5180,48 @@ fn parse_production_unrefused(
         }
       }
     ParseExprRejected { diagnostics: diags, table: _ } =>
-      Rejected {
-        diagnostics: parse_diags_to_non_empty(
-          diags: diags,
-          default: parse_e1_syntax_error_diagnostic(
-            at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
-          )
-        )
-      }
+      Rejected { diagnostics: parse_production_rejected(diags: diags, root: root) }
   }
+}
+
+// THE PREFIX READING OF THE SAME RESULT: the artifact of the tokens the production consumed, whatever
+// followed them. The tokens left are not examined, so they are not diagnosed either -- that is the
+// one thing the whole reading above adds.
+fn parse_production_prefix_unrefused(
+  parsed: ParseExprResult,
+  production: GrammarProduction,
+  root: GrammarRoot
+) -> Outcome<ParsePrefix> {
+  match parsed {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: _ } =>
+      Accepted {
+        value: ParsePrefix {
+          artifact: parse_production_artifact(production: production, captured: captured, prov: inner_prov),
+          unread: length(xs: remaining)
+        },
+        diagnostics: parse_diags_to_diagnostics(diags: diags)
+      }
+    ParseExprRejected { diagnostics: diags, table: _ } =>
+      Rejected { diagnostics: parse_production_rejected(diags: diags, root: root) }
+  }
+}
+
+fn parse_production_artifact(
+  production: GrammarProduction,
+  captured: Node,
+  prov: ParseProvenanceState
+) -> ParseArtifact {
+  let stamped = parse_wrap_production_captured(production: production, captured: captured, prov: prov)
+  ParseArtifact { tree: stamped.node, span_index: stamped.prov.index, alloc: stamped.prov.alloc }
+}
+
+fn parse_production_rejected(diags: List<Diagnostic>, root: GrammarRoot) -> NonEmptyDiagnostics {
+  parse_diags_to_non_empty(
+    diags: diags,
+    default: parse_e1_syntax_error_diagnostic(
+      at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
+    )
+  )
 }
 
 fn parse_production(

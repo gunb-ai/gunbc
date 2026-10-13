@@ -19,7 +19,7 @@ import v2.lens.roster_registry {
   roster_registry_standard_holds,
   nonstandard_registrations_from
 }
-import v2.std.algebra { length }
+import std.algebra { length }
 import v2.std.text { String }
 
 

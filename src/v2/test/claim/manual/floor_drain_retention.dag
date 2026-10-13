@@ -22,7 +22,7 @@ import extdeps.cache.materialization {
   CapacityUnitMismatchForRole,
 }
 import extdeps.realization.reconcile_in_process { typed_module_cache_facts }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

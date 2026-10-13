@@ -22,7 +22,7 @@ import v2.compiler.name_resolve { Admission, ResolutionSubject, Import, ImportVi
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { String, Int }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

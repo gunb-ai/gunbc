@@ -38,8 +38,8 @@ import gunbc.instruments.rust_stage0_gates {
   unit_must_run_staged_note,
   should_run_gates_coverage_note
 }
-import v2.std.algebra { length }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.algebra { length }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

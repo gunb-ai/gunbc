@@ -7,7 +7,7 @@ import std.algebra {
 }
 import std.nat { Nat, Zero, Succ, nat_semiring, nat_additive_commutative_monoid }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -20,7 +20,7 @@ import v2.workflow.required_floor {
 import v2.std.integer { Int }
 import v2.std.text { String }
 import std.measure { EvalStepCount, eval_step_count, eval_step_count_value }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Every fixture below is authored in this source; the module reaches nothing outside the
 // substrate inputs.

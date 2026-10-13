@@ -32,7 +32,7 @@ import gunbc.generated_artifact_assessment {
   GeneratedArtifactObserved,
 }
 import std.types { List, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // THIS ENTRY READS THE LIVE HOST TREE, and an earlier revision declared SubstrateInputsOnly while
 // doing it (review 66861). The claims below call `workflow_line()`, which reaches

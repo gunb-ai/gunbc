@@ -5,10 +5,9 @@ import v2.lens.meta_exec_confinement {
   meta_exec_confinement_exception_paths,
   meta_exec_roster_sound
 }
-import v2.std.algebra { is_empty }
-import std.algebra { list_append }
+import std.algebra { list_append, is_empty }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

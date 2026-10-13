@@ -1,6 +1,6 @@
 module test.claim.plans.source_layout_rulings_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr }
 import gunbc.source_layout_rulings {
   SourceLayoutRuling, SourceLayoutRulingId, SourceLayoutDecision,

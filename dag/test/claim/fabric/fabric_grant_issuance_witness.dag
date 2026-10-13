@@ -20,6 +20,7 @@ import product.fabric.work { MaterializedProgram,
   Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
   Shape, HardRequirements, CapacityClass, ControlPlaneCapacity, work_for,
   declared_artifact_obligations,
+ WarmResidencyRequired,
 }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
@@ -40,7 +41,7 @@ import product.fabric.grant_issue {
   derive_grant_key, issue_grant,
 }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { Cons, Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -65,6 +66,7 @@ data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
   capabilities: "linux-x86_64-cargo",
   trust_domain: "gunbc-ci",
   isolation: shared_kernel_sandbox_profile(),
+  revocation: WarmResidencyRequired,
 }
 
 data fixture_contract: WorkContract = WorkContract {

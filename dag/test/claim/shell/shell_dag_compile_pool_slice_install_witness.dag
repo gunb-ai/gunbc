@@ -6,7 +6,7 @@ import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.host.host_disk_reclaim_units { reclaim_service_unit_file }
 import std.materialization_ladder { string_list_contains }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

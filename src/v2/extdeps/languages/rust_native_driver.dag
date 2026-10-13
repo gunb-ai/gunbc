@@ -2,7 +2,7 @@ module v2.extdeps.languages.rust_native_driver
 
 import v2.std.text { String }
 import std.types { List }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 
 // Family-grain dispatcher (std.emit_on_demand witness_family_build_grain_ruling): ONE crate per
 // witness family — the family main is DERIVED from member arm rows (member_id -> i32 result

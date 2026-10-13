@@ -32,7 +32,7 @@ import gunbc.ci.ci_layer_roots { WitnessExclusionRow }
 import std.witness_admission { OfflineLocalRecipe, DiscoverySelection }
 import std.execution_mode { Wet, Hermetic }
 import std.dissolution { unbound_dissolution }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, NonEmptyStr, List, Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,7 +1,7 @@
 module test.claim.machine_intake.machine_intake_bmc_secure_witness
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { AccountRoleAdministrator, RedfishAccountRole }

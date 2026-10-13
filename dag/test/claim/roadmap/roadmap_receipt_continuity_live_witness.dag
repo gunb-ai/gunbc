@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_receipt_continuity_live_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.roadmap.roadmap_authority {
   roadmap_acceptance_history_integrity_holds,
   roadmap_acceptance_history_integrity_verdict_on_authority,

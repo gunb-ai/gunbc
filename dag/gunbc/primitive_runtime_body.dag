@@ -1,0 +1,68 @@
+module gunbc.primitive_runtime_body
+
+import std.primitive_identity {
+  PrimitiveRuntimeBodyCensus,
+  PrimitiveRuntimeBodiesObserved, PrimitiveRuntimeBodyScanRefused,
+  RuntimeBody, EmitHandler,
+  primitive_identity_for_symbol,
+  surface_row,
+  DerivedFromAuthority,
+  PrimitiveSurfaceRow,
+}
+import std.process { ProcessExit }
+import std.types { List, String }
+import std.algebra { trim, skip }
+import std.optional { Absent, Present }
+import std.decl_ref { decl_ref }
+import gunbc.primitive_runtime_body_gate { runtime_body_required_check_census_in }
+import gunbc.rust_item_scan { scan_rust_source, RustFileScanned, RustFileScanRefused }
+import gunbc.rust_item_identity { RustFunction, RustItemIdentity }
+import extdeps.languages.rust.emit { RuntimeFunction }
+
+fn primitive_runtime_item_has_body(item: RustItemIdentity, lines: List<String>) -> Bool {
+  match lines |> skip(item.start_line + item.loc - 2) |> first {
+    Present { value: line } => ends_with(s: trim(s: line), suffix: "}")
+    Absent => false
+  }
+}
+
+fn primitive_runtime_body_rows_for_symbol(
+  registry: List<RuntimeFunction>, symbol: String,
+) -> List<PrimitiveSurfaceRow> {
+  let bridges = registry |> filter(entry => entry.bridge_name == symbol)
+  let identities = if count(bridges) == 0 { [none] } else {
+    bridges |> map(entry => primitive_identity_for_symbol(authority: EmitHandler, authored_symbol: entry.name))
+  }
+  identities |> map(identity => surface_row(
+    authority: RuntimeBody,
+    authored_symbol: symbol,
+    authority_ref: decl_ref(module_path: "v1_rt", decl_name: symbol),
+    primitive: identity,
+    provenance: DerivedFromAuthority,
+  ))
+}
+
+fn primitive_runtime_body_census_in(
+  registry: List<RuntimeFunction>,
+  source: String,
+) -> PrimitiveRuntimeBodyCensus {
+  let lines = split(s: source, delimiter: "\n")
+  match scan_rust_source(repo_path: "v1_rt.rs", content: source) {
+    RustFileScanRefused { repo_path: _, line: line, line_text: text, detail: detail } =>
+      PrimitiveRuntimeBodyScanRefused { line: line, detail: concat(detail, concat(": ", text)) }
+    RustFileScanned { repo_path: _, items: items, macro_regions: _, line_count: _ } =>
+      PrimitiveRuntimeBodiesObserved {
+        rows: items
+          |> filter(item => item.kind == RustFunction && item.enclosing_module == ""
+            && primitive_runtime_item_has_body(item: item, lines: lines))
+          |> flat_map(item => primitive_runtime_body_rows_for_symbol(
+            registry: registry, symbol: item.name as String
+          ))
+      }
+  }
+}
+
+fn runtime_body_required_check_in(registry: List<RuntimeFunction>, source: String) -> ProcessExit {
+  let census = primitive_runtime_body_census_in(registry: registry, source: source)
+  runtime_body_required_check_census_in(registry: registry, census: census)
+}

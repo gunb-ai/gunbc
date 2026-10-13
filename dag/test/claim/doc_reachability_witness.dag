@@ -1,7 +1,7 @@
 module test.claim.doc_reachability_witness
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { PlanRetiresWhen, PlanHasNoRetirement }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.keyed_roster {
   KeyedRosterBuildDuplicateKey,
   KeyedRosterBuilt,

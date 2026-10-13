@@ -5,7 +5,7 @@ import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CensusObserved, CensusNotRunnable,
   CompileDiagnosticCensusRow, census_blocking_rows, census_total_count, census_rows_of_class,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // A SUBSTRATE CHARACTERIZATION MATRIX FOR EXCESS FIELDS ON A PAYLOAD-CARRYING COPRODUCT ARM.
 // THIS FILE IS NOT A WALL AND MUST NOT BE CITED AS ONE.

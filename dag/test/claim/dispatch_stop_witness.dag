@@ -33,7 +33,7 @@ import std.disposition { Disposition, Scaffold, Terminal }
 import std.types { NonEmptyStr }
 import std.upsert_decision { Converged }
 import extdeps.languages.json.emit { serialize_json }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

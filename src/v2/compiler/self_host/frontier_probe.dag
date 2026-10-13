@@ -76,13 +76,12 @@ import v2.compiler.source_authority_read {
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.lens.reference_deps { admission_from_module_root, reference_deps_ingest_source_text }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
   content_hash_eq_structural
 }
-import v2.std.algebra { fold_list, length }
 import v2.std.diagnostic {
   Accepted,
   diagnostics_fatal,

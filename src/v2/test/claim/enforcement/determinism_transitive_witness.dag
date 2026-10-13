@@ -7,8 +7,7 @@ import v2.lens.determinism {
   determinism_transitive_holds
 }
 import v2.lens.module_graph { module_declaration_facts_live }
-import v2.std.algebra { contains, fold_list, length }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, contains, fold_list, length }
 import v2.std.diagnostic { Diagnostic }
 import v2.std.fn_index { FnArrowDecl, FnArrowParam, callees_from_decl, decl_belongs_to_module, fn_arrow_decl_facts_live }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -23,7 +22,7 @@ import v2.std.node {
   TypeNode,
   symbol_intern_lexeme,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String }
 
 // ── the live judgment ─────────────────────────────────────────────────────────────────────────
@@ -69,7 +68,7 @@ import v2.std.text { String }
 // stamp would have left the substrate undeclared while the file claimed the clause was met.
 //
 // UNDECLARED IS NOT THE SAME AS DECLARED-TRUE HERE, even though the two coincide today.
-// v2.std.live_tree records that the selection consumer treats an undeclared entry as ReadsLiveTree,
+// std.live_tree records that the selection consumer treats an undeclared entry as ReadsLiveTree,
 // so an unstamped row would in fact never predict-skip -- the clause's fourth criterion would hold
 // by DEFAULT. It would not hold by DECLARATION, and the criterion is about the declaration: a row
 // relying on a fail-closed default asserts nothing about its own inputs, and the same file records

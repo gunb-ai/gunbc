@@ -1,6 +1,6 @@
 module test.claim.instrument_camera_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
 import gunbc.design.instrument_camera {
   StateOwner, AuthoritativeProgramView, LocalInstrumentState, InstrumentObservation,

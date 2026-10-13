@@ -1,0 +1,171 @@
+module v2.test.claim.parse.record_field_pun
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Hash, content_hash, symbol_lexeme }
+import std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PUNNED FIELD `R { s }` IN A TAGGED RECORD IS THE FIELD `s: s` (v2.extdeps.languages.dag
+// dag_grammar_field_init_pun_expr). The v1 seed admits it, at any depth; v2 parsed only `s: s`, so a
+// record whose nested initializer used the pun stopped at parse_g0_tokens_remain.
+//
+// THE DISCRIMINATING CONTROL IS IDENTITY OF LOWERING, not that the pun parses: each punned spelling
+// and its explicit long form have the same signature and differ only in the body, and they normalize
+// to the SAME tree. A grammar that read the pun as anything else (a dropped field, a field bound to a
+// different name) cannot satisfy it, and the difference controls below show the comparison is not a
+// constant.
+fn normalized_hash(tag: String, text: String) -> Optional<Hash> {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: tree, diagnostics: _ } => Present { value: content_hash(n: tree.root) }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn parse_refusal_reason_of(tag: String, text: String) -> String {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).parsed {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal(d: d).reason)
+  }
+}
+
+fn parsed_ok(tag: String, text: String) -> Bool {
+  parse_refusal_reason_of(tag: tag, text: text) == "ACCEPTED"
+}
+
+fn same_tree(a: Optional<Hash>, b: Optional<Hash>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => x == y
+      }
+  }
+}
+
+fn probe(body: String) -> String {
+  "module probe.pun\n\ntype X {\n  s: Int\n  t: Int\n}\n\ntype W {\n  a: Int\n  b: X\n}\n\nfn f(s: Int, t: Int, u: Int) -> W {\n  " + body + "\n}\n"
+}
+
+fn top_pun_source() -> String { probe(body: "X { s, t }") }
+fn top_long_source() -> String { probe(body: "X { s: s, t: t }") }
+fn mixed_pun_source() -> String { probe(body: "X { s, t: t }") }
+fn nested_pun_source() -> String { probe(body: "W { a: u, b: X { s, t } }") }
+fn nested_long_source() -> String { probe(body: "W { a: u, b: X { s: s, t: t } }") }
+fn other_name_source() -> String { probe(body: "X { s: t, t }") }
+fn dropped_field_source() -> String { probe(body: "X { s }") }
+fn if_block_source() -> String { "module probe.pun\n\nfn f(flag: Bool, x: Int, y: Int) -> Int {\n  if flag { x } else { y }\n}\n" }
+
+test fn a_punned_field_lowers_as_the_explicit_field_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "tp", text: top_pun_source()), b: normalized_hash(tag: "tl", text: top_long_source()))
+}
+
+test fn a_pun_beside_an_explicit_field_lowers_as_the_long_form_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "mp", text: mixed_pun_source()), b: normalized_hash(tag: "ml", text: top_long_source()))
+}
+
+test fn a_nested_punned_field_lowers_as_the_explicit_field_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "np", text: nested_pun_source()), b: normalized_hash(tag: "nl", text: nested_long_source()))
+}
+
+test fn a_pun_is_not_a_field_bound_to_another_name_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "on", text: other_name_source()), b: normalized_hash(tag: "tl2", text: top_long_source())) == false
+}
+
+test fn a_pun_is_not_a_dropped_field_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "df", text: dropped_field_source()), b: normalized_hash(tag: "tp2", text: top_pun_source())) == false
+}
+
+fn then_form_source(record: String) -> String {
+  "module probe.pun\n\ntype X {\n  s: Int\n  t: Int\n}\n\nfn f(c: Bool, s: Int, t: Int, d: X) -> X {\n  if c then " + record + " else d\n}\n"
+}
+
+test fn a_then_branch_record_before_else_is_still_a_record_holds() -> Bool {
+  parsed_ok(tag: "te", text: then_form_source(record: "X { s: s, t: t }"))
+}
+
+test fn a_then_branch_pun_record_of_two_fields_is_a_record_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "tp3", text: then_form_source(record: "X { s, t }")), b: normalized_hash(tag: "tl5", text: then_form_source(record: "X { s: s, t: t }")))
+}
+
+test fn a_block_headed_by_a_value_name_is_still_a_block_holds() -> Bool {
+  parsed_ok(tag: "ifb", text: if_block_source())
+}
+
+// A BLOCK OF SEVERAL BARE NAMES BEFORE `else` IS A BLOCK, NEVER A RECORD (`if flag { x y } else { y }`), while
+// the same two names in a record-only context are two puns. The guard is on the shape, so `X { s t }` as a
+// function body stays the long form.
+fn if_two_names_block_source() -> String { "module probe.pun\n\nfn f(flag: Bool, x: Int, y: Int) -> Int {\n  if flag { x  y } else { y }\n}\n" }
+
+test fn a_block_of_two_value_names_before_else_is_still_a_block_holds() -> Bool {
+  parsed_ok(tag: "ifb2", text: if_two_names_block_source())
+}
+
+test fn two_puns_in_a_record_only_context_lower_as_the_long_form_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "rp2", text: probe(body: "X { s  t }")), b: normalized_hash(tag: "rl2", text: top_long_source()))
+}
+
+// A contextual keyword that IS a referenceable value name puns like any name; `module` heads a declaration
+// only, so `K { module }` is `K { module: module }`.
+fn module_field_source(body: String) -> String {
+  "module probe.pun\n\ntype K {\n  module: Int\n}\n\nfn f(module: Int) -> K {\n  " + body + "\n}\n"
+}
+
+test fn a_contextual_keyword_pun_lowers_as_the_long_form_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "kp", text: module_field_source(body: "K { module }")), b: normalized_hash(tag: "kl", text: module_field_source(body: "K { module: module }")))
+}
+
+// MALFORMED PUNS NEVER LOWER AS A PUN RECORD. A malformed list either refuses at parse with the grammar's
+// own reason (never an acceptance, never the declaration-marker reason, which would locate the defect at
+// the wrong place), or, where the record arm fails and the function body's statement juxtaposition takes
+// `R` and the braces as two statements (a behavior this change neither adds nor widens), the tree it
+// yields is not the long form's: the malformed spelling is never read as the field it resembles.
+fn refused_or_not_a_record(tag: String, body: String) -> Bool {
+  let reason = parse_refusal_reason_of(tag: tag, text: probe(body: body))
+  if reason == "ACCEPTED" {
+    same_tree(a: normalized_hash(tag: tag, text: probe(body: body)), b: normalized_hash(tag: "tl3", text: top_long_source())) == false
+  } else {
+    reason != "parse_declaration_marker_not_test"
+  }
+}
+
+fn refused_at_parse(tag: String, body: String) -> Bool {
+  let reason = parse_refusal_reason_of(tag: tag, text: probe(body: body))
+  (reason != "ACCEPTED") && (reason != "parse_declaration_marker_not_test")
+}
+
+test fn a_keyword_pun_refuses_holds() -> Bool { refused_or_not_a_record(tag: "kw", body: "X { true }") }
+test fn a_keyword_pun_before_a_name_without_a_comma_refuses_holds() -> Bool { refused_or_not_a_record(tag: "kw2", body: "X { true s }") }
+test fn a_literal_pun_refuses_holds() -> Bool { refused_or_not_a_record(tag: "lit", body: "X { 1 }") }
+test fn a_dotted_pun_refuses_holds() -> Bool { refused_or_not_a_record(tag: "dot", body: "X { s.t }") }
+test fn an_unclosed_pun_record_refuses_holds() -> Bool { refused_at_parse(tag: "open", body: "X { s") }
+
+// FIELD LISTS TAKE THEIR COMMAS OPTIONALLY (dag_grammar_comma_list_expr, for every list), so two names with
+// no comma are two puns, the same reading `X { a: 1 b: 2 }` already has -- not one malformed field.
+test fn commas_between_puns_stay_optional_like_every_field_list_holds() -> Bool {
+  same_tree(a: normalized_hash(tag: "nc", text: probe(body: "X { s t }")), b: normalized_hash(tag: "tl4", text: top_long_source()))
+}
+
+// THE END-TO-END REFUSAL, NOT ONLY "NOT A RECORD". `X { true s }` and `X { 1 }` parse as `X` plus a block
+// statement (function-body juxtaposition, which this change neither adds nor widens), so a tree that merely
+// differs from the long form would also pass a silent misread. Through the production assembly route
+// (assemble_program_from_ingest) they are Rejected, while the long form assembles: nothing compiles.
+fn assembly_source(body: String) -> String {
+  "module p\n\ntype X {\n  s: Int\n  t: Int\n}\n\nfn f(s: Int, t: Int, u: Int) -> X {\n  " + body + "\n}\n"
+}
+
+fn assembles(body: String) -> Bool {
+  match tpb_assemble(src: assembly_source(body: body)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn the_long_form_assembles_end_to_end_holds() -> Bool { assembles(body: "X { s: s, t: t }") }
+test fn a_comma_less_keyword_pun_is_rejected_end_to_end_holds() -> Bool { assembles(body: "X { true s }") == false }
+test fn a_literal_pun_is_rejected_end_to_end_holds() -> Bool { assembles(body: "X { 1 }") == false }

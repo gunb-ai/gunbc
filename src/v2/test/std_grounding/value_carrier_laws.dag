@@ -17,7 +17,7 @@ import v2.std.value_carrier {
   variant_name_interning
 }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

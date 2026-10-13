@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.decimal { ExactDecimal }
 import std.measure { hertz, clock_tick_count }
 import std.content_hash { ContentHash }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import gunbc.serving.replica_endpoint_launch { replica_incarnation_unverified_obligation }
 import gunbc.serving.turn_admission {

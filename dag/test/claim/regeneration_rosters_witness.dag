@@ -1,6 +1,6 @@
 module test.claim.regeneration_rosters_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool }
 import gunbc.generated_artifact { artifact_path }
 import gunbc.generated_artifact_registry { committed_generated_artifact_paths }

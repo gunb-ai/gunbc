@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { token_count, byte_size, allocator_block_count, second }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.optional { Present, Absent }
-import v2.std.algebra { length }
+import std.algebra { length }
 import extdeps.nvidia.nccl { NcclTransportIbVerbs }
 import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff, IndexerKvDtypeOmitted, vllm_scheduler_admission_omitted }
 import gunbc.spark.serving_arm { Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4 }

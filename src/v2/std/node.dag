@@ -2,7 +2,7 @@ module v2.std.node
 
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
-import std.algebra { Cons, Empty, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item }
 import std.optional { Present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -164,7 +164,8 @@ type StructuralEdgeLabel
 // body_lower_let_match_binding_arm_continued, its one producer). The Bind's VALUE resolves in the
 // arm's scope and sees the pattern's binders; its BINDER and BODY (the rest of the spine) resolve
 // in the scope enclosing the match, so no pattern binder reaches the rest
-// (v2.compiler.resolve resolve_match_arm_admitted, its one consumer). It adds no behavior kind;
+// (v2.compiler.resolve resolve_match_arm_admitted, and the reference walk of module acquisition through
+// v2.compiler.lexical_scope bind_carries_arm_scope_exit, its two consumers). It adds no behavior kind;
 // a marked Bind anywhere else is a malformed tree.
 //
 // ConstantMemberEdge: A NULLARY ARROW THAT IS A `data` CONSTANT. A named edge (targeting an empty
@@ -945,7 +946,7 @@ fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
 // (type_binder_conj_conforms). A Conj can carry the core marker only as a binder set -- no authored
 // label spells a core marker -- so the Conj arm answers for exactly those. The one classification
 // every reader that walks values through either asks -- v2.compiler.infer (its gather fold and product
-// evidence) and std.kind's roster-kind index -- so no reader keeps its own list of metadata labels.
+// evidence) and v2.std.kind's roster-kind index -- so no reader keeps its own list of metadata labels.
 fn arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
     TypeNode { connective: Arrow } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)
@@ -1545,7 +1546,7 @@ fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
 // Named and SOME Named edge targeting an Atom. That population is not constructs -- it is an authored
 // path before resolution (`fn f() -> T { m.C }`, the spine whose head targets an Atom) and a field
 // projection body (`fn f() -> Symbol { g(x).reason }`, v2.std.node_query field_projection_node,
-// whose field edge targets an Atom). This module cannot name either shape's labels -- v2.std.algebra
+// whose field edge targets an Atom). This module cannot name either shape's labels -- std.algebra
 // and v2.std.node_query own them and import this module -- so the admission is kept unchanged rather
 // than narrowed; narrowing it refused v2.std.diagnostic diagnostics_fatal_reason, measured on the
 // native route. A typed arm per body form would let the classifier say which one it holds; it is a
@@ -3000,4 +3001,32 @@ type Edit {
 }
 type Diff {
   edits: List<Edit>
+}
+
+fn fold_list_node<T>(
+  xs: FreeMonoid<T>,
+  item_node: fn(T) -> Node
+) -> Node {
+  fold_list_right(
+    xs: xs,
+    empty: Node { kind: TypeNode { connective: Conj }, children: [],
+ occurrence_id: OccurrenceSynthetic
+},
+    snoc: fn(tail_node, item) {
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Authored { name: ^fold_list_node_head }, target: item_node(item) },
+          Edge { label: Authored { name: ^fold_list_node_tail }, target: tail_node },
+        ],
+        occurrence_id: OccurrenceSynthetic
+}
+    }
+  )
+}
+
+fn algebra_empty_conj() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [],
+ occurrence_id: OccurrenceSynthetic
+}
 }

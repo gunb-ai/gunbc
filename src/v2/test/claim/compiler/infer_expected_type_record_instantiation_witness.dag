@@ -14,7 +14,7 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }

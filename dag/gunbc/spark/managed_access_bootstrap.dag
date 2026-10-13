@@ -1,7 +1,7 @@
 module gunbc.spark.managed_access_bootstrap
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_posix_accounts {

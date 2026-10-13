@@ -2,7 +2,7 @@ module test.claim.shell.shell_dag_floor_peak_calibration_rows_witness
 
 import std.types { Bool, String, List }
 import v2.workflow.ci_floor_peak_emit { ci_floor_peak_pre_script, ci_floor_peak_post_script }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

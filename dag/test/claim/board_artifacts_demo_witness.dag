@@ -11,7 +11,7 @@ import gunbc.demo.board_artifacts {
   rendering_path,
   rendering_source_or_empty,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
