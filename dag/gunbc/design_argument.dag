@@ -242,17 +242,25 @@ data conformance_domains: List<ConformanceDomain> = [
   ConformanceDomain {
     key: "conformance-compute",
     label: "Fabric / compute",
-    question: "Does the change allocate, place or negotiate resources -- a machine, a serving head, a build slot, a budget -- without inhabiting the corpus's compute and fabric model, and if it departs from that model, does it say why? Compute cells and inference serving are two subjects of this one domain, and they share the PRICED SELECTION FOLD (both reach product.fabric.selection select_supply) while carrying DIFFERENT OCCUPANCY PRODUCERS: serving takes a seat via product.capacity.lease LeaseGrant, which has a term and a release law, linearized by fabric_seat_acquire over an append-only event chain; the compute control plane reserves a cell via product.fabric.execution LeaseIdentity, which carries no timestamp and no expiry, linearized by file_compare_and_set. Selection is shared, occupancy is not -- so a change that widens SELECTION must inhabit the shared fold, while a change to how either subject is HELD is a change to that subject's own producer and may not be written as if one lease algebra covered both.",
+    question: "Does the change allocate, place or negotiate resources -- a machine, a serving head, a build slot, a budget -- without inhabiting the corpus's compute and fabric model, and if it departs from that model, does it say why? Compute cells and inference serving are two subjects of this one domain, and they share the PRICED SELECTION FOLD (both reach product.fabric.selection select_supply) while carrying DIFFERENT OCCUPANCY PRODUCERS: serving takes a seat via product.capacity.lease LeaseGrant, which has a term and a release law, linearized by fabric_seat_acquire over an append-only event chain; the compute control plane reserves a cell via product.fabric.execution LeaseIdentity, which carries no timestamp and no expiry, linearized by file_compare_and_set. Selection is shared, occupancy is not -- so a change that widens SELECTION must inhabit the shared fold, while a change to how either subject is HELD is a change to that subject's own producer and may not be written as if one lease algebra covered both. THE DOMAIN IS ALLOCATION, NOT ONLY ROUTING: a change that acquires, retains, releases, places, admits or recovers a resource must also choose for the affected work's declared objective and the owning policies (work, service, fleet, resource), consume the supply, occupancy and transition evidence that decides whether its action helps that work, and keep the selected target through realization and readback. Using the shared fold while optimising a local target -- winning a bid back, filling a configured count, equalising occupancy, keeping warm state, preferring local hardware -- is the same departure as bypassing it, because the fold then ranks against an objective nobody declared.",
     tells: [
       "a host name, address or port chosen in the change instead of resolved from the fabric",
       "work run in the caller's own process or tree instead of requested as an exact-tree operation from a provider",
       "a capacity or budget literal that the provider's admission already decides",
       "a second SELECTION algebra written beside product.fabric.selection rather than parameterised over the new subject",
-      "a change to how one subject is HELD written as though one lease algebra covered both producers -- serving's termed LeaseGrant and the control plane's timeless LeaseIdentity are separate carriers with separate linearizations"
+      "a change to how one subject is HELD written as though one lease algebra covered both producers -- serving's termed LeaseGrant and the control plane's timeless LeaseIdentity are separate carriers with separate linearizations",
+      "a preference for winning bids, equal occupancy, local hardware, warm state or low latency with no declared objective or owner policy behind it",
+      "a bid limit, count or retry that rises because the last attempt lost, with no declared update law, evidence scope, objective and bound authorizing that response -- a bounded feedback controller whose update law is itself the declared policy is conforming",
+      "an economic comparison that leaves out a known material consequence: setup, reconstruction, contention, retained liability or release",
+      "two choices that draw on one allowance, or whose benefit exists only together (move these sessions AND release that rental), selected separately",
+      "a provider status, a requested action or a dashboard event treated as proof of usable capacity, completed work or a released liability",
+      "a decision that could not see a fact the system holds elsewhere and that decides whether the action helps (a worker waiting on its manager read as waiting on compute)"
     ],
     owns: "Selection, allocation, placement and admission of compute resources. product.capacity and product.fabric are the shared authority, consumed by compute cells and by inference serving.",
     boundaries: [
       "Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).",
+      "Whether a choice is attributable to its objective, constraints, candidates and evidence belongs to the decision / selection domain and std.decision; this row only checks that a resource choice reaches that authority with the work's declared objective rather than a local one.",
+      "Buyer headroom (what a demand will pay minus a supplier's ask) is not margin: product.fabric.contention withdrew that reading, so a matching change may not book it as earned.",
     ],
     home_groups: ConformanceHomeGroups {
       first: ConformanceHomeGroup {
@@ -263,6 +271,8 @@ data conformance_domains: List<ConformanceDomain> = [
           rest: [
             decl_ref(module_path: "product.fabric.work", decl_name: "ExecutionRequirements"),
             decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOperation"),
+            decl_ref(module_path: "product.fabric.contention", decl_name: "select_demand_for_offer"),
+            decl_ref(module_path: "gunbc.ci.ci_runner_target", decl_name: "CiRunnerTarget"),
           ],
         },
       },
@@ -302,9 +312,13 @@ data conformance_domains: List<ConformanceDomain> = [
       "a locally authored candidate-selection result (a chosen/none/needs-more sum, a ranked list, a best-of fold) beside RealizationSelectionResult",
       "a parallel dominance, orientation, interval or evidence-gap representation where std.pareto already carries DominanceVerdict, AxisGoal and AxisGap",
       "a local convention for candidate-field identity, funded-axis identity or policy identity where SelectionReceipt already names them as declaration references",
-      "a new choosing route that neither consumes select_realization nor states, beside itself, why it does not"
+      "a new choosing route that neither consumes select_realization nor states, beside itself, why it does not",
+      "urgency, priority or a deadline weight authored as a local number, queue order or tier rather than as a declared time valuation (a std.measure money rate) on the demand or supply position whose owner holds it",
+      "a declared valuation and an estimated consequence carried in one number, so a new observation can silently rewrite policy -- or a missing estimate read as zero, where zero is a declaration and unknown is not",
+      "one cash consequence counted twice, once as cost and again as urgency (a rental's continuing charge restated as supply urgency)",
+      "a deadline or availability bound priced as a very large valuation instead of held as a hard constraint"
     ],
-    owns: "A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority.",
+    owns: "A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority. Every use case that matches demand with supply or chooses how a demanded result is realized onboards here, through one interface rather than its own scoring: it supplies the required outcome, the owners' objectives and time valuations, the constraints and commitments, and each candidate's consequences as readings on declared axes, then realizes and reads back the selected plan. Fabric allocation, CI runner placement, compute sold beside internal work, standing buy orders matched against a scanned marketplace, and eval realization are named consumers. A rough estimate is an admitted reading with its standing, and improving it does not create a new choosing mechanism.",
     boundaries: [
       "The hard selection laws stay with the section 3d reviewer.",
       "Goal assessment (std.goal_assessment) checks an already chosen state; it is a boundary of this domain, not a member.",
