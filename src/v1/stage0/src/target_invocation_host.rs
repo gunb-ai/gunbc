@@ -1533,9 +1533,7 @@ fn run_native_process_memory(
             Err(cause) => Err(format!("{label_name}: {function} failed: {cause}")),
         }
     };
-    let control_root = std::path::Path::new("target")
-        .join(label_name)
-        .join("control");
+    let control_root = std::path::Path::new(cli_run::MEASURED_SPAWN_DIR).join("control");
     let written = (|| -> Result<std::path::PathBuf, String> {
         let _ = std::fs::remove_dir_all(&control_root);
         let tree = control_root.join(read_str("native_process_memory_control_tree")?);
@@ -1575,10 +1573,17 @@ fn run_native_process_memory(
             .rev()
             .find(|l| l.contains("\"_terminal\""))
             .unwrap_or("");
-        Value::Record {
+        let peak = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_child_maxrss",
+            &[(Some("raw_value".to_string()), Value::Int(r.maxrss_kib))],
+            true,
+        )
+        .map_err(|cause| format!("{label_name}: native_child_maxrss failed: {cause}"))?;
+        Ok::<Value, String>(Value::Record {
             type_name: ctx.sym("NativeChildReading"),
             fields: std::rc::Rc::new(vec![
-                (ctx.sym("maxrss_kib"), Value::Int(r.maxrss_kib)),
+                (ctx.sym("peak"), peak),
                 (
                     ctx.sym("elapsed"),
                     Value::Record {
@@ -1593,8 +1598,13 @@ fn run_native_process_memory(
                 (ctx.sym("signal"), Value::Int(i64::from(r.signal))),
                 (ctx.sym("terminal"), str_value(terminal)),
             ]),
-        }
+        })
     };
+    let (control_reading, workload_reading) =
+        match (reading(&runs.control), reading(&runs.workload)) {
+            (Ok(c), Ok(w)) => (c, w),
+            (Err(cause), _) | (_, Err(cause)) => return unreached(cause),
+        };
     let variant = |type_name: &str, name: &str, fields: Vec<(&str, Value)>| Value::Variant {
         type_name: ctx.sym(type_name),
         variant_name: ctx.sym(name),
@@ -1616,8 +1626,8 @@ fn run_native_process_memory(
             str_value(&input_identity),
         ),
         (Some("envelope".to_string()), str_value(&runs.envelope)),
-        (Some("control".to_string()), reading(&runs.control)),
-        (Some("measured".to_string()), reading(&runs.workload)),
+        (Some("control".to_string()), control_reading),
+        (Some("measured".to_string()), workload_reading),
     ];
     let value = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
@@ -2849,9 +2859,22 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// rather than inside it so the routing tests stay a function of the operand alone.
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
     // THE MEASURED-SPAWN TRAMPOLINE, BEFORE ANY WORK, so this process's address space is still small
-    // (`cli_run::measured_spawn_trampoline`). Entered only by the native process memory producer.
-    if let Some(receipt) = std::env::var_os(cli_run::MEASURED_SPAWN_RECEIPT_ENV) {
-        std::process::exit(cli_run::measured_spawn_trampoline(receipt));
+    // (`cli_run::measured_spawn_trampoline`). Entered only through its reserved operand, which only
+    // the native process memory producer emits; the receipt variable beside any other operand refuses.
+    match cli_run::measured_spawn_route(
+        operand,
+        std::env::var_os(cli_run::MEASURED_SPAWN_RECEIPT_ENV),
+    ) {
+        cli_run::MeasuredSpawnRoute::NotRequested => {}
+        cli_run::MeasuredSpawnRoute::Enter(receipt) => {
+            std::process::exit(cli_run::measured_spawn_trampoline(receipt))
+        }
+        cli_run::MeasuredSpawnRoute::Refuse(message) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message,
+            }
+        }
     }
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --

@@ -95,24 +95,30 @@ fn native_stage_reached_label(s: NativeStageReached) -> String {
   }
 }
 
-// ONE MEASURED CHILD, as the host reaped it. `maxrss_kib` is wait4's ru_maxrss verbatim; `signal` is 0
-// when the child exited, else the terminating signal (then `exit_code` is meaningless).
+// ONE MEASURED CHILD, as the host reaped it. `peak` is wait4's ru_maxrss as extdeps.posix.rusage owns
+// it (the bare kibibyte integer stays on the host's receipt line, as elapsed's nanoseconds do); `signal`
+// is 0 when the child exited, else the terminating signal (then `exit_code` is meaningless).
 type NativeChildReading {
-  maxrss_kib: Int
+  peak: RusageMaxrssObservation
   elapsed: Nanosecond
   exit_code: Int
   signal: Int
   terminal: String
 }
 
+// THE HOST'S ONE ENTRY INTO THE RUSAGE MODEL: wait4's raw ru_maxrss for a reaped child, in the unit the
+// host's kernel reports. The unit is chosen here, not in the host.
+fn native_child_maxrss(raw_value: Int) -> RusageMaxrssObservation {
+  RusageMaxrssObservation { who: RusageChildren, raw_value: raw_value, unit: linux_rusage_maxrss_unit }
+}
+
 // THE PEAK, TYPED SO ABSENCE CANNOT READ AS A QUANTITY (std.realization_measurement). A zero or negative
 // ru_maxrss is not a small process, it is a reading that was not taken.
 fn native_child_peak(r: NativeChildReading) -> ResidencyObservation {
-  let obs = RusageMaxrssObservation { who: RusageChildren, raw_value: r.maxrss_kib, unit: linux_rusage_maxrss_unit }
-  if rusage_maxrss_is_positive(obs: obs) {
-    ResidencyObserved { bytes: rusage_maxrss_bytes(obs: obs) }
+  if rusage_maxrss_is_positive(obs: r.peak) {
+    ResidencyObserved { bytes: rusage_maxrss_bytes(obs: r.peak) }
   } else {
-    ResidencyUnobservable { axis: "peak", reason: "wait4 ru_maxrss=" + to_string(r.maxrss_kib) + " is not a positive reading" }
+    ResidencyUnobservable { axis: "peak", reason: "wait4 ru_maxrss=" + to_string(r.peak.raw_value) + " is not a positive reading" }
   }
 }
 
