@@ -986,8 +986,13 @@ fn verification_evidence_moves_lamp(evidence: VerificationEvidence) -> Bool {
   }
 }
 
+// NOT YET IS NOT NO. A head whose verification window the belt has not selected yet has a subject that
+// is owed, not one that cannot be constructed: verify selects the window when it runs. Folding it into
+// VerificationSubjectUnobserved made the submission project Refused, so verify was never owed and never
+// ran to select it (srv1 lab, 2026-10-12, attempt shell-dag-live-deploy-install-owned/9eebe4d).
 type VerificationSubjectObservation
   = VerificationSubjectObserved { subject: VerificationSubject }
+  | VerificationSubjectAwaitingSelection { head: String }
   | VerificationSubjectUnobserved { reason: String }
 
 type VerificationReceiptFileSource

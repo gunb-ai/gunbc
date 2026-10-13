@@ -1,7 +1,7 @@
 module test.claim.roadmap_workflow_progress_witness_test
 
 import gunbc.roadmap_session_placement { SessionPlacementAbsent }
-import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureAbsent, CaptureNotAttempted }
+import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureAbsent, CaptureNotAttempted, HandoffVerificationStanding, VerificationOutstanding, VerificationStandingRefused }
 import gunbc.roadmap.roadmap_belt_obligation { belt_attempt_obligation_outstanding, CaptureObligation }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
@@ -20,6 +20,7 @@ import gunbc.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
 }
 import gunbc.roadmap_workflow_progress {
+  handoff_verification_standing,
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved,
   review_segment,
   WorkflowAttemptEvidence,
@@ -85,6 +86,7 @@ import gunbc.roadmap_verification_receipt {
   VerificationSubjectObservation,
   VerificationSubjectObserved,
   VerificationSubjectUnobserved,
+  VerificationSubjectAwaitingSelection,
   VerificationReceiptFileSource,
   VerificationReceiptAbsent,
   VerificationReceiptPresent,
@@ -1075,3 +1077,27 @@ test fn an_ended_worker_is_owed_its_capture_until_the_commit_step_settles_it() -
     && !belt_attempt_obligation_outstanding(kind: CaptureObligation, provider: settled.provider, segments: settled.segments)
 }
 
+// NOT YET IS NOT NO (srv1 lab, 2026-10-12, attempt shell-dag-live-deploy-install-owned/9eebe4d). A head
+// whose verification window the belt has not selected yet owes verification; it must not refuse the
+// submission, or verify is never owed and never runs to select the window. RED on lab-dev cf420d9,
+// where the absence was folded into VerificationSubjectUnobserved and projected Refused.
+test fn a_head_awaiting_its_verification_window_owes_verification() -> Bool {
+  match handoff_verification_standing(
+    verification_subject: VerificationSubjectAwaitingSelection { head: "b76a8691ce351ab796db7234f2fa5e1d7804638d" },
+    verification_source: VerificationReceiptAbsent,
+  ) {
+    VerificationOutstanding => true
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL: a subject that genuinely cannot be constructed still refuses.
+test fn an_unconstructible_verification_subject_still_refuses() -> Bool {
+  match handoff_verification_standing(
+    verification_subject: VerificationSubjectUnobserved { reason: "the worktree head could not be observed" },
+    verification_source: VerificationReceiptAbsent,
+  ) {
+    VerificationStandingRefused { reason: _ } => true
+    _ => false
+  }
+}

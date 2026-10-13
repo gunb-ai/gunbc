@@ -327,6 +327,7 @@ import gunbc.roadmap_verification_receipt { verification_file_evidence_for, Veri
   VerificationSubjectObservation,
   VerificationSubjectObserved,
   VerificationSubjectUnobserved,
+  VerificationSubjectAwaitingSelection,
   ValidationExecution,
   VerificationReceipt,
   VerificationReceiptFileSource,
@@ -5125,9 +5126,7 @@ fn belt_verification_subject_from_selection(
     SelectionUnaddressable { cause } =>
       VerificationSubjectUnobserved { reason: cause }
     SelectionAbsent =>
-      VerificationSubjectUnobserved {
-        reason: "the belt has not selected a verification window for this head yet",
-      }
+      VerificationSubjectAwaitingSelection { head: head as String }
     SelectionUnreadable { cause } =>
       VerificationSubjectUnobserved { reason: cause }
     SelectionMalformed { cause } =>
@@ -8934,6 +8933,7 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
             selection: selection,
           ) {
             VerificationSubjectUnobserved { reason: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
+            VerificationSubjectAwaitingSelection { head: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
             VerificationSubjectObserved { subject } =>
               match belt_verify_one_gate(observation: belt_verify_one_receipt_observation_of(
                 evidence: verification_file_evidence_for(
@@ -10414,6 +10414,8 @@ fn belt_publish_admission_for(
       ) {
         VerificationSubjectUnobserved { reason } =>
           PublishWithheld { reason: join(["the verification subject is unobserved: ", reason], "") as NonEmptyStr }
+        VerificationSubjectAwaitingSelection { head: _ } =>
+          PublishWithheld { reason: "the belt has not selected a verification window for this head yet" as NonEmptyStr }
         VerificationSubjectObserved { subject: expected } =>
           match verification_file_evidence_for(expected: expected, source: source) {
             VerificationFileAbsent =>
@@ -11065,6 +11067,12 @@ fn belt_candidate_subject_reading(
       ) {
         VerificationSubjectUnobserved { reason } =>
           CandidateSubjectSettled { verdict: VerificationUnreadable { reason: reason } }
+        VerificationSubjectAwaitingSelection { head: _ } =>
+          CandidateSubjectSettled {
+            verdict: VerificationNotPassed {
+              reason: "the belt has not selected a verification window for this head yet, so no verified candidate exists to integrate",
+            },
+          }
         VerificationSubjectObserved { subject } =>
           CandidateSubjectBound { subject: subject }
       }

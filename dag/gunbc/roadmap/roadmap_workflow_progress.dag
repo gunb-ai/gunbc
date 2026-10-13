@@ -89,6 +89,7 @@ import gunbc.roadmap_verification_receipt {
   VerificationSubjectObservation,
   VerificationSubjectObserved,
   VerificationSubjectUnobserved,
+  VerificationSubjectAwaitingSelection,
   VerificationReceiptFileSource,
   VerificationEvidence,
   VerificationEvidenceForSubject,
@@ -691,6 +692,7 @@ fn handoff_verification_standing(
       VerificationStandingRefused {
         reason: join(["the verification question cannot be constructed for this head: ", reason], ""),
       }
+    VerificationSubjectAwaitingSelection { head: _ } => VerificationOutstanding
     VerificationSubjectObserved { subject } =>
       match verification_file_evidence_for(expected: subject, source: verification_source) {
         VerificationFileAbsent => VerificationOutstanding
@@ -1051,6 +1053,12 @@ fn verification_segment(
       }
     SelectionObserved { head: _, window_identity: _ } =>
       match verification_subject {
+        VerificationSubjectAwaitingSelection { head: _ } =>
+          WorkflowSegment {
+            kind: VerificationWorkflowSegment,
+            state: WorkflowSegmentPending,
+            detail: "the belt has not selected a verification window for this head yet",
+          }
         VerificationSubjectUnobserved { reason } =>
           WorkflowSegment {
             kind: VerificationWorkflowSegment,
