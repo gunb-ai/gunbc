@@ -3,7 +3,7 @@ module product.fabric.demand
 import std.types { NonEmptyStr, Timestamp, Bool, List, Int, brand }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, money_amount_micro, money_amount_micro_count }
+import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, money_amount_micro, money_amount_micro_count, signed_money_amount_micro }
 import extdeps.currency.currency { CurrencyCode }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
 import std.algebra { Cons, Empty }
@@ -201,10 +201,10 @@ fn interpret_demand_objective(objective: DemandObjective, currency: CurrencyCode
   InterpretedDemandObjective {
     profile: objective.profile,
     valuations: [
-      TermValuation { term: term_money.identity, scale_micro: money_amount_micro_count(m: objective.valuations.money) as Int, goal: LowerIsBetter, currency: currency },
-      TermValuation { term: term_delay.identity, scale_micro: money_amount_micro_count(m: objective.valuations.delay) as Int, goal: LowerIsBetter, currency: currency },
-      TermValuation { term: term_interruption.identity, scale_micro: money_amount_micro_count(m: objective.valuations.interruption) as Int, goal: LowerIsBetter, currency: currency },
-      TermValuation { term: term_accepted_work.identity, scale_micro: money_amount_micro_count(m: objective.valuations.accepted_work) as Int, goal: HigherIsBetter, currency: currency },
+      TermValuation { term: term_money.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.money) as Int), goal: LowerIsBetter, currency: currency },
+      TermValuation { term: term_delay.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.delay) as Int), goal: LowerIsBetter, currency: currency },
+      TermValuation { term: term_interruption.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.interruption) as Int), goal: LowerIsBetter, currency: currency },
+      TermValuation { term: term_accepted_work.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.accepted_work) as Int), goal: HigherIsBetter, currency: currency },
     ],
     delay: objective.valuations.delay,
     measure: objective.measure,

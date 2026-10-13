@@ -44,7 +44,7 @@ import product.fabric.demand {
   admission_terms, BuyTerms, fabric_demand_required_term_ids,
   interpret_demand_objective, valued_objective_policy,
 }
-import std.measure { money_amount_micro, money_rate_micros }
+import std.measure { money_amount_micro, money_rate_micros, signed_money_amount_micro }
 import extdeps.currency.currency { Usd, Eur }
 import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -355,7 +355,7 @@ fn delay_bound_to_money_valuations(objective: DemandObjective) -> List<TermValua
 fn with_delay_scale(objective: DemandObjective, scale: Int) -> List<TermValuation> {
   map(interpret_demand_objective(objective: objective, currency: Usd).valuations, v =>
     if declaration_ref_eq(a: v.term, b: term_delay.identity) {
-      TermValuation { term: v.term, scale_micro: scale, goal: v.goal, currency: v.currency }
+      TermValuation { term: v.term, scale_micro: signed_money_amount_micro(count: scale), goal: v.goal, currency: v.currency }
     } else {
       v
     }

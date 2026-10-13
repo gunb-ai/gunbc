@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { OrderedClosedInterval, degenerate_interval, interval_low, interval_high }
 import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_int_add, checked_int_multiply, checked_int_subtract }
+import std.measure { SignedMoneyAmountMicro, signed_money_amount_micro, signed_money_amount_micro_count }
 import std.observation_completeness {
   ObservationCompleteness,
   ObservationComplete,
@@ -740,12 +741,13 @@ type CandidateFieldStanding
 // One row per declared objective term the caller supplies. Completeness against the
 // assessment terms (membership, uniqueness, orientation vs funded Pareto axes) is
 // admit_term_valuations, not a closed record of one domain's units. A zero scale is
-// present, never dropped. scale_micro is Int so a negative is authorable; admission
-// refuses it, because a negative LowerIsBetter scale silently reverses orientation.
-// CONSUMERS: ValuedObjective; product.fabric.demand interpret_demand_objective.
+// present, never dropped. scale_micro is SignedMoneyAmountMicro so a negative is
+// authorable; admission refuses it, because a negative LowerIsBetter scale silently
+// reverses orientation. CONSUMERS: ValuedObjective; product.fabric.demand
+// interpret_demand_objective.
 type TermValuation {
   term: DeclarationRef
-  scale_micro: Int
+  scale_micro: SignedMoneyAmountMicro
   goal: AxisGoal
   currency: CurrencyCode
 }
@@ -1226,12 +1228,12 @@ fn identity_order_pick(survivors: List<DeclarationRef>) -> DeclarationRef? {
 }
 
 type ValuedContribution
-  = ValuedContributionReady { micros: Int }
+  = ValuedContributionReady { micros: SignedMoneyAmountMicro }
   | ValuedContributionNeeds { need: SelectionEvidenceNeed }
   | ValuedContributionRefused { defect: NonEmptyStr }
 
 // CONSUMER: valued_sum / cost_sum.
-fn valued_scale_contribution(entry: ParetoEntry, term: DeclarationRef, scale: Int) -> ValuedContribution {
+fn valued_scale_contribution(entry: ParetoEntry, term: DeclarationRef, scale: SignedMoneyAmountMicro) -> ValuedContribution {
   match reading_for(e: entry, wanted: term) {
     ReadingDuplicated { duplicated_axis: ax } =>
       ValuedContributionNeeds {
@@ -1249,17 +1251,17 @@ fn valued_scale_contribution(entry: ParetoEntry, term: DeclarationRef, scale: In
           },
         }
       } else {
-        match checked_int_multiply(a: interval_low(interval: iv), b: scale) {
+        match checked_int_multiply(a: interval_low(interval: iv), b: signed_money_amount_micro_count(m: scale)) {
           CheckedIntOverflow { cause: _ } =>
             ValuedContributionRefused { defect: "valued-term product overflowed" as NonEmptyStr }
-          CheckedIntReady { value: micros } => ValuedContributionReady { micros: micros }
+          CheckedIntReady { value: micros } => ValuedContributionReady { micros: signed_money_amount_micro(count: micros) }
         }
       }
   }
 }
 
 type ValuedSum
-  = ValuedSumReady { micros: Int }
+  = ValuedSumReady { micros: SignedMoneyAmountMicro }
   | ValuedSumNeeds { needs: List<SelectionEvidenceNeed> }
   | ValuedSumRefused { defects: List<NonEmptyStr> }
 
@@ -1277,9 +1279,9 @@ fn add_valued_contribution(acc: ValuedSum, contribution: ValuedContribution) -> 
         ValuedContributionNeeds { need: n } => ValuedSumNeeds { needs: [n] }
         ValuedContributionRefused { defect: d } => ValuedSumRefused { defects: [d] }
         ValuedContributionReady { micros: add } =>
-          match checked_int_add(a: so_far, b: add) {
+          match checked_int_add(a: signed_money_amount_micro_count(m: so_far), b: signed_money_amount_micro_count(m: add)) {
             CheckedIntOverflow { cause: _ } => ValuedSumRefused { defects: ["valued sum overflowed" as NonEmptyStr] }
-            CheckedIntReady { value: total } => ValuedSumReady { micros: total }
+            CheckedIntReady { value: total } => ValuedSumReady { micros: signed_money_amount_micro(count: total) }
           }
       }
   }
@@ -1290,10 +1292,10 @@ fn negate_contribution(contribution: ValuedContribution) -> ValuedContribution {
     ValuedContributionNeeds { need: n } => ValuedContributionNeeds { need: n }
     ValuedContributionRefused { defect: d } => ValuedContributionRefused { defect: d }
     ValuedContributionReady { micros: m } =>
-      match checked_int_subtract(a: 0, b: m) {
+      match checked_int_subtract(a: 0, b: signed_money_amount_micro_count(m: m)) {
         CheckedIntOverflow { cause: _ } =>
           ValuedContributionRefused { defect: "valued-term product overflowed" as NonEmptyStr }
-        CheckedIntReady { value: n } => ValuedContributionReady { micros: n }
+        CheckedIntReady { value: n } => ValuedContributionReady { micros: signed_money_amount_micro(count: n) }
       }
   }
 }
@@ -1307,7 +1309,7 @@ fn signed_term_contribution(entry: ParetoEntry, valuation: TermValuation) -> Val
 }
 
 fn fold_term_contributions(entry: ParetoEntry, valuations: List<TermValuation>, include: fn(TermValuation) -> Bool) -> ValuedSum {
-  fold(valuations, init: ValuedSumReady { micros: 0 }, f: (acc, tv) =>
+  fold(valuations, init: ValuedSumReady { micros: signed_money_amount_micro(count: 0) }, f: (acc, tv) =>
     if include(tv) {
       add_valued_contribution(acc: acc, contribution: signed_term_contribution(entry: entry, valuation: tv))
     } else {
@@ -1329,8 +1331,8 @@ fn valued_sum(entry: ParetoEntry, valuations: List<TermValuation>) -> ValuedSum 
 }
 
 type ValuedObjectiveScore
-  = NetValueScore { micros: Int }
-  | UnitCostScore { cost: Int, accepted: Int }
+  = NetValueScore { micros: SignedMoneyAmountMicro }
+  | UnitCostScore { cost: SignedMoneyAmountMicro, accepted: Int }
   | UnboundedUnitCost
 
 type ValuedScoreStanding
@@ -1382,11 +1384,11 @@ fn score_valued_entry(entry: ParetoEntry, valuations: List<TermValuation>, measu
   }
 }
 
-fn unit_cost_beats(a_cost: Int, a_work: Int, b_cost: Int, b_work: Int) -> Bool? {
-  match checked_int_multiply(a: a_cost, b: b_work) {
+fn unit_cost_beats(a_cost: SignedMoneyAmountMicro, a_work: Int, b_cost: SignedMoneyAmountMicro, b_work: Int) -> Bool? {
+  match checked_int_multiply(a: signed_money_amount_micro_count(m: a_cost), b: b_work) {
     CheckedIntOverflow { cause: _ } => none
     CheckedIntReady { value: left } =>
-      match checked_int_multiply(a: b_cost, b: a_work) {
+      match checked_int_multiply(a: signed_money_amount_micro_count(m: b_cost), b: a_work) {
         CheckedIntOverflow { cause: _ } => none
         CheckedIntReady { value: right } => Present { value: left < right }
       }
@@ -1398,7 +1400,7 @@ fn score_strictly_better(challenger: ValuedObjectiveScore, incumbent: ValuedObje
     UnboundedUnitCost => Present { value: false }
     NetValueScore { micros: a } =>
       match incumbent {
-        NetValueScore { micros: b } => Present { value: a < b }
+        NetValueScore { micros: b } => Present { value: signed_money_amount_micro_count(m: a) < signed_money_amount_micro_count(m: b) }
         UnitCostScore { cost: _, accepted: _ } => none
         UnboundedUnitCost => Present { value: true }
       }
@@ -1421,7 +1423,7 @@ fn scores_equal(a: ValuedObjectiveScore, b: ValuedObjectiveScore) -> Bool {
       }
     NetValueScore { micros: x } =>
       match b {
-        NetValueScore { micros: y } => x == y
+        NetValueScore { micros: y } => signed_money_amount_micro_count(m: x) == signed_money_amount_micro_count(m: y)
         _ => false
       }
     UnitCostScore { cost: ac, accepted: aw } =>
@@ -1547,7 +1549,7 @@ fn unit_row_defects(valuations: List<TermValuation>, unit: DeclarationRef) -> Li
           HigherIsBetter => []
           LowerIsBetter => ["cost-per-accepted-unit unit term must be HigherIsBetter" as NonEmptyStr]
         },
-        if tv.scale_micro == 1 {
+        if signed_money_amount_micro_count(m: tv.scale_micro) == 1 {
           []
         } else {
           ["cost-per-accepted-unit unit scale_micro must be 1; the denominator is the unit reading" as NonEmptyStr]
@@ -1591,7 +1593,7 @@ fn admit_term_valuations(valuations: List<TermValuation>, terms: List<ObjectiveT
     concat(acc, orientation_defects(pareto_axes: pareto_axes, wanted: tv.term, expected: tv.goal))
   )
   let scales = fold(valuations, init: [], f: (acc, tv) =>
-    if tv.scale_micro < 0 {
+    if signed_money_amount_micro_count(m: tv.scale_micro) < 0 {
       concat(acc, ["valued-objective scale_micro must be nonnegative" as NonEmptyStr])
     } else {
       acc

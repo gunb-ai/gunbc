@@ -1057,6 +1057,20 @@ fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
   measure_count(m)
 }
 
+// Signed money-micros: NetValue subtracts HigherIsBetter terms, and a negative
+// scale must stay authorable so admission can refuse it. MoneyAmountMicro is Nat
+// and cannot carry that sign. CONSUMERS: std.decision TermValuation.scale_micro
+// and the valued-objective contribution/sum/score payloads.
+type SignedMoneyAmountMicro = Measure<Currency, Micro, Int>
+
+fn signed_money_amount_micro(count: Int) -> SignedMoneyAmountMicro {
+  Measure { count: count }
+}
+
+fn signed_money_amount_micro_count(m: SignedMoneyAmountMicro) -> Int {
+  measure_count(m)
+}
+
 // A whole-dollar monetary amount in USD, on the Currency axis at the One scale (cf. MoneyAmountMicro
 // at Micro). Defined here alongside MoneyAmountMicro because a second consumer (extdeps.sec.facts
 // and now extdeps.network.mikrotik_crs812) independently needed the same shape; defining it once
