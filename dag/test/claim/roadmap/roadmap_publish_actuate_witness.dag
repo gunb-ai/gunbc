@@ -5,6 +5,7 @@ import gunbc.roadmap.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
 import gunbc.roadmap.roadmap_publish_actuate {
   pull_request_created_outcome, attempt_branch_refspec, publication_mirror_ref,
 }
+import extdeps.github.github { Repository, github_https_clone_url, github_https_host }
 import extdeps.git {
   git_dir_fetch_source_grant, git_non_bare_git_dir, git_local_fetch_source_grant,
   git_isolated_home_env_argv, git_push_ref_in_repo_argv, git_isolated_home_netrc_path,
@@ -51,4 +52,16 @@ test fn a_resolved_git_dir_grant_does_not_append_dot_git() -> Bool {
 
 test fn the_mirror_ref_is_the_policy_branch() -> Bool {
   publication_mirror_ref(branch: "dispatch/n1-aabc" as NonEmptyStr) == "refs/heads/dispatch/n1-aabc"
+}
+
+test fn the_clone_url_uses_the_netrc_https_host() -> Bool {
+  let repo = Repository {
+    owner: "gunb-ai",
+    name: "gunbc",
+    full_name: "gunb-ai/gunbc",
+    private: false,
+    default_branch: "main",
+  }
+  starts_with(s: github_https_clone_url(repo: repo) as String, prefix: concat("https://", concat(github_https_host as String, "/")))
+    && (github_https_clone_url(repo: repo) as String) == concat("https://", concat(github_https_host as String, "/gunb-ai/gunbc.git"))
 }
