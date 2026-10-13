@@ -1,4 +1,4 @@
-module v2.compiler.type_declaration_use_census
+module gunbc.instruments.type_declaration_use_census
 
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra { fold_list, length }

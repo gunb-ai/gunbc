@@ -4,7 +4,7 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.compiler.type_declaration_use_census {
+import gunbc.instruments.type_declaration_use_census {
   TypeDeclRow, TypeDeclForm, AliasForm, BodylessForm, CoproductForm, RecordForm, RefinementForm,
   TypeRefText, DeclaredRef, KernelRef, NoBase,
   AsSiteRow, AsOperandRead, OperandTyped, OperandTypeUndecided,
@@ -16,7 +16,7 @@ import v2.compiler.body_lowering_fold { NominalOpaqueModifier }
 import std.compiler_entry { NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 
 // THE CLASSIFICATION, AT ITS ONE INTERFACE: per-module rows in, receipt lines and terminal out
-// (v2.compiler.type_declaration_use_census type_census_receipt). The rows are SUPPLIED -- one
+// (gunbc.instruments.type_declaration_use_census type_census_receipt). The rows are SUPPLIED -- one
 // declaration of each class and one cast of each class, as the per-module folds would emit them --
 // because the subject is the join and the classes, not the parse/resolve/infer that produces rows
 // (DESIGN section 3, a witness discriminates at one interface). The pairing obligation is discharged
