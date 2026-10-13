@@ -18,10 +18,10 @@ import std.primitive_projection {
   primitive_map_insert,
   primitive_lookup,
   primitive_projection_row,
+  primitive_projection_roster,
 }
 import std.primitive_identity {
   BuiltinRegistry,
-  primitive_projection_roster,
   DerivedFromAuthority,
   EmitHandler,
   InterpreterDispatch,
@@ -32,21 +32,23 @@ import std.primitive_identity {
   RuntimeRowOnInterpreterDispatch,
   SymbolJoinsDeclaredPrimitive,
   SymbolUndisposed,
-  declaration_and_primitive_are_one_authority,
-  primitive_disposed_surface_symbol_count,
   primitive_identity_eq,
   primitive_map_keys,
   primitive_projection_divergent_row_count,
-  primitive_projection_for_declaration,
   primitive_projection_one_authority_row_count,
   primitive_projection_violation_count,
   primitive_projection_violation_count_in,
-  primitive_runtime_coverage,
   primitive_runtime_coverage_in,
-  primitive_surface_distinct_symbol_count,
   primitive_symbol_disposition,
-  primitive_undisposed_surface_symbol_count,
   surface_row,
+}
+import gunbc.primitive_egress.d0_census {
+  declaration_and_primitive_are_one_authority,
+  primitive_disposed_surface_symbol_count,
+  primitive_projection_for_declaration,
+  primitive_runtime_coverage,
+  primitive_surface_distinct_symbol_count,
+  primitive_undisposed_surface_symbol_count,
 }
 import std.types { Bool, List, String }
 
