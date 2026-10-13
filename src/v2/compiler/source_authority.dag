@@ -75,16 +75,14 @@ import std.content_hash {
   ContentHashEqual,
   Fnv1a64Structural,
   HashFamily,
-  Sha1Family,
   Sha1Hash,
-  Sha256Family,
   Sha256Hash,
-  Sha512Family,
   Sha512Hash,
   as_content_hash_structural,
   compare_content_hash,
   content_hash_atom,
   content_hash_combine_structural,
+  content_hash_family,
   content_hash_of_value,
   serialize_content_hash,
   Fnv1a64
@@ -319,9 +317,9 @@ type SourceRefContentHashStructural
 fn source_ref_content_hash_structural(hash: ContentHash) -> SourceRefContentHashStructural {
   match hash {
     Fnv1a64(structural) => SourceRefContentHashStructuralOk { digest: structural }
-    Sha256Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: Sha256Family }
-    Sha1Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: Sha1Family }
-    Sha512Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: Sha512Family }
+    Sha256Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: content_hash_family(hash: hash) }
+    Sha1Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: content_hash_family(hash: hash) }
+    Sha512Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: content_hash_family(hash: hash) }
   }
 }
 

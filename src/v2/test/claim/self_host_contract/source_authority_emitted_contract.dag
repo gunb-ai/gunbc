@@ -2,19 +2,15 @@ module v2.test.claim.self_host_contract.source_authority_emitted_contract
 
 import std.algebra { Cons, Empty }
 import std.logic { Bool }
-import std.optional { Absent, Present }
 import std.types { NonEmptyStr }
 import std.content_hash {
   ContentHash,
-  Fnv1a64StructuralFamily,
-  HashFamily,
   Sha1Digest,
   Sha1DigestHex,
   Sha1Family,
   Sha256Digest,
   Sha256DigestHex,
   Sha256Family,
-  Sha512Family,
   as_content_hash_cryptographic,
   as_content_hash_sha1,
   content_hash_of_value
@@ -67,24 +63,6 @@ fn sac_ref(path: String, hash: ContentHash) -> SourceRef {
   }
 }
 
-fn sac_is_sha256_family(family: HashFamily) -> Bool {
-  match family {
-    Sha256Family => true
-    Sha1Family => false
-    Sha512Family => false
-    Fnv1a64StructuralFamily => false
-  }
-}
-
-fn sac_is_sha1_family(family: HashFamily) -> Bool {
-  match family {
-    Sha1Family => true
-    Sha256Family => false
-    Sha512Family => false
-    Fnv1a64StructuralFamily => false
-  }
-}
-
 fn sac_positive_structural_digest_holds() -> Bool {
   match source_ref_list_digest_build(
     refs: Cons {
@@ -103,7 +81,7 @@ fn sac_positive_structural_digest_holds() -> Bool {
 fn sac_sha256_refusal_carries_sha256_family() -> Bool {
   match source_ref_content_hash_structural(hash: sac_sha256_hash()) {
     SourceRefContentHashStructuralNonFnv1a64 { family: family } =>
-      sac_is_sha256_family(family: family)
+      if (family == Sha256Family) { true } else { false }
     SourceRefContentHashStructuralOk { digest: _ } => false
   }
 }
@@ -111,7 +89,7 @@ fn sac_sha256_refusal_carries_sha256_family() -> Bool {
 fn sac_sha1_refusal_carries_sha1_family() -> Bool {
   match source_ref_content_hash_structural(hash: sac_sha1_hash()) {
     SourceRefContentHashStructuralNonFnv1a64 { family: family } =>
-      sac_is_sha1_family(family: family)
+      if (family == Sha1Family) { true } else { false }
     SourceRefContentHashStructuralOk { digest: _ } => false
   }
 }
