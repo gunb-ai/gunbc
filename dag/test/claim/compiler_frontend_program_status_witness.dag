@@ -679,33 +679,63 @@ test fn xl2_is_not_derivable_while_the_rehearsal_residual_has_no_producer() -> B
 // THE XL-2 PREREQUISITE PARTITION, AT IDENTITY GRAIN. Delivered and outstanding are decided by
 // each arm's standing, and this pins WHICH arms sit on each side, with the PR each delivery
 // cites -- so flipping an arm's standing, or re-attributing it, reddens a conjunct rather than
-// leaving a label check green. The roster is also checked exact: every arm, each once.
-fn xl2_occurs_once_in_roster(p: Xl2Prerequisite) -> Bool {
+// leaving a label check green. A standing lookup on a constructed variant is not a join: it
+// stays green if that variant is missing from xl2_prerequisites. Each identity check therefore
+// requires the arm occur exactly once on the roster. Completeness is the other direction:
+// every roster member is one of the claimed identities. No numeric roster pin.
+fn xl2_roster_exactly_once(p: Xl2Prerequisite) -> Bool {
   count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1
 }
 
 fn xl2_delivered_by(p: Xl2Prerequisite, pr: Int, merge_sha: String) -> Bool {
-  xl2_occurs_once_in_roster(p: p)
-    && match xl2_prerequisite_standing(p: p) {
-         PrerequisiteDelivered { owner: _, evidence, qualification: _ } => evidence.pr == pr && evidence.merge_sha as String == merge_sha
-         PrerequisiteOutstanding { tracked_by: _, why: _ } => false
-       }
+  xl2_roster_exactly_once(p: p) && match xl2_prerequisite_standing(p: p) {
+    PrerequisiteDelivered { owner: _, evidence, qualification: _ } => evidence.pr == pr && evidence.merge_sha as String == merge_sha
+    PrerequisiteOutstanding { tracked_by: _, why: _ } => false
+  }
 }
 
 fn xl2_outstanding_tracked_by(p: Xl2Prerequisite, decl_name: String) -> Bool {
-  xl2_occurs_once_in_roster(p: p)
-    && match xl2_prerequisite_standing(p: p) {
-         PrerequisiteDelivered { owner: _, evidence: _, qualification: _ } => false
-         PrerequisiteOutstanding { tracked_by, why: _ } => tracked_by.decl_name as String == decl_name
-       }
+  xl2_roster_exactly_once(p: p) && match xl2_prerequisite_standing(p: p) {
+    PrerequisiteDelivered { owner: _, evidence: _, qualification: _ } => false
+    PrerequisiteOutstanding { tracked_by, why: _ } => tracked_by.decl_name as String == decl_name
+  }
 }
 
 fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
   xl2_prerequisite_label(p: p) == xl2_prerequisite_label(p: want)
 }
 
+fn xl2_claimed_partition_member(p: Xl2Prerequisite) -> Bool {
+  xl2_label_is(p: p, want: PlainCallArgumentReferenceVisibility)
+    || xl2_label_is(p: p, want: IfArmCallArgumentReferenceVisibility)
+    || xl2_label_is(p: p, want: BareFieldTypeVisibility)
+    || xl2_label_is(p: p, want: WholeTreeResolveCensus)
+    || xl2_label_is(p: p, want: ResolveOccurrenceCompleteness)
+    || xl2_label_is(p: p, want: OperatorExpressionLoweredWhole)
+    || xl2_label_is(p: p, want: OptionalAccessorLocatedRefusal)
+    || xl2_label_is(p: p, want: MatchOnCallScrutineeNavigation)
+    || xl2_label_is(p: p, want: CompoundCallArgumentValueLowering)
+    || xl2_label_is(p: p, want: StrippedTreeRehearsalComposition)
+    || xl2_label_is(p: p, want: BlockStatementReferenceVisibility)
+    || xl2_label_is(p: p, want: LoweringOccurrenceProjection)
+    || xl2_label_is(p: p, want: ListLiteralElementVisibility)
+    || xl2_label_is(p: p, want: LambdaArgumentValueLowering)
+    || xl2_label_is(p: p, want: CaretSymbolOperandLowering)
+    || xl2_label_is(p: p, want: AsCastOperandLowering)
+    || xl2_label_is(p: p, want: ElseLessIfStatementLowering)
+    || xl2_label_is(p: p, want: WildcardMatchArmResolution)
+    || xl2_label_is(p: p, want: QualifiedFieldTypeVisibility)
+    || xl2_label_is(p: p, want: MatchEveryArmLowered)
+    || xl2_label_is(p: p, want: EnclosingExpressionLoweredWhole)
+    || xl2_label_is(p: p, want: DataInitializerMatchScrutineeLowering)
+    || xl2_label_is(p: p, want: MatchArmStatementBodyLowering)
+    || xl2_label_is(p: p, want: ServiceModuleLowering)
+    || xl2_label_is(p: p, want: UsesClauseCarrier)
+}
+
 test fn xl2_prerequisites_partition_is_an_identity_join() -> Bool {
-  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) + count(xl2_prerequisites_outstanding()) == count(xl2_prerequisites)
+  all(xl2_prerequisites, p => xl2_claimed_partition_member(p: p))
+    && all(xl2_prerequisites, p => xl2_roster_exactly_once(p: p))
     && xl2_delivered_by(p: PlainCallArgumentReferenceVisibility, pr: 12108, merge_sha: "b0d307c31b")
     && xl2_delivered_by(p: BareFieldTypeVisibility, pr: 11574, merge_sha: "b705d17c45")
     && xl2_delivered_by(p: WholeTreeResolveCensus, pr: 11738, merge_sha: "c6b4e7ed2c")
@@ -734,8 +764,6 @@ test fn xl2_prerequisites_partition_is_an_identity_join() -> Bool {
     && all(xl2_prerequisites_outstanding(),
          p => xl2_label_is(p: p, want: ServiceModuleLowering)
            || xl2_label_is(p: p, want: UsesClauseCarrier))
-    && all(xl2_prerequisites,
-         p => count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1)
 }
 
 // THE INVARIANT THE PARTITION MUST NOT MOVE: prerequisites are necessary, not sufficient, so
