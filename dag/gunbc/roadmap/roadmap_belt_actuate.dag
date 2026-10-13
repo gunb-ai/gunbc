@@ -148,6 +148,9 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_spawn_commands_for_launch,
   dispatch_capability_program,
   dispatch_attempt_key,
+  dispatch_attempt_identity_mint,
+  DispatchAttemptMinted,
+  DispatchAttemptIdentityRefused,
   dispatch_attempt_key_path_for_instance,
   dispatch_attempt_admission_path_for_instance,
   dispatch_attempt_launch_path_for_instance,
@@ -2235,10 +2238,20 @@ fn belt_actuate_spawn_for_instance(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
+      match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
+        DispatchAttemptIdentityRefused { detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: "attempt-identity",
+            detail: detail,
+            provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+            launch: launch,
+          }
+        DispatchAttemptMinted { attempt_key: minted_key, ordinal: _ } => {
       let attempt = DispatchAttempt {
         instance: instance,
         node: node,
-        attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
+        attempt_key: minted_key,
       }
       match dispatch_actuator_selection_for_request(
         attempt: attempt,
@@ -2289,6 +2302,8 @@ fn belt_actuate_spawn_for_instance(
             outcome: post_selection,
           )
         }
+      }
+            }
       }
     }
   }
@@ -3024,7 +3039,7 @@ fn belt_actuate_spawn_with_origin(
       }
     BeltAlignmentBindingOk =>
   match belt_resolved_spawn_plan(
-    session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
+    session_uuid: belt_spawn_session_uuid(node_id: node.node as String, attempt_key: attempt_key),
     origin: origin,
     prepared: prepared,
     resolution: resolution,
@@ -3267,11 +3282,21 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
+      match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
+        DispatchAttemptIdentityRefused { detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: "attempt-identity",
+            detail: detail,
+            provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+            launch: launch,
+          }
+        DispatchAttemptMinted { attempt_key: minted_key, ordinal: _ } => {
       match dispatch_harness_attempt_selection(
         attempt: DispatchAttempt {
           instance: instance,
           node: node,
-          attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
+          attempt_key: minted_key,
         },
         sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
       ) {
@@ -3310,6 +3335,8 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
               )
           }
         }
+      }
+            }
       }
     }
   }
@@ -3376,15 +3403,15 @@ data belt_session_uuid_salt: NonEmptyStr = "belt-session-uuid-v1" as NonEmptyStr
 // redispatch fix 2026-07-25): (node_id x the spawn's clock observation) reshaped to RFC-4122 v4;
 // the earlier node-deterministic derivation made every node one-shot at the Claude layer. Reconcile
 // idempotency never keys on it — the node-grain tmux session name is the observation key.
-fn belt_uuid_stamped_id(node_id: String, probed_at: String) -> NonEmptyStr {
-  join([node_id, "\n", probed_at], "") as NonEmptyStr
+fn belt_uuid_stamped_id(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join([node_id, "\n", attempt_key], "") as NonEmptyStr
 }
 
-fn belt_uuid_hex32(node_id: String, probed_at: String) -> String {
+fn belt_uuid_hex32(node_id: String, attempt_key: String) -> String {
   concat(
-    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)).digest as String,
+    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, attempt_key: attempt_key)).digest as String,
     content_hash_combine_structural(
-      left: content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)),
+      left: content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, attempt_key: attempt_key)),
       right: content_hash_atom(value: belt_session_uuid_salt),
     ).digest as String,
   )
@@ -3437,8 +3464,8 @@ fn belt_resolved_spawn_plan(
   )
 }
 
-fn belt_spawn_session_uuid(node_id: String, probed_at: String) -> String {
-  belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id, probed_at: probed_at)))
+fn belt_spawn_session_uuid(node_id: String, attempt_key: String) -> String {
+  belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id, attempt_key: attempt_key)))
 }
 
 fn belt_actuate_spawn_member(m: DispatchMember, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {

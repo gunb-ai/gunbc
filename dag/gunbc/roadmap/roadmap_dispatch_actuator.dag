@@ -131,7 +131,10 @@ import gunbc.provider_standing { ProviderStanding, ProviderStandingUnobserved, T
 import std.claim_evidence { RecordedFactId }
 import extdeps.exec.command { ArgvCommand, LocalExec, argv_words }
 import extdeps.filesystem.filesystem_io
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
+  FilesystemCreateKindUnrecognized, filesystem_create_new,
+}
 import extdeps.shell
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile, PosixShRemoveFileAfterRead }
@@ -1186,17 +1189,62 @@ fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
 
 // Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn
 // was the live receipt): branch and worktree carry an attempt key derived from (node_id x the
-// spawn's clock observation) through std.content_hash; the Claude provider also derives its
-// required session-id from that stamp, while Codex mints its own persisted thread identity and does
-// not yet join it back to the attempt. A stopped attempt's debris therefore never collides with the
-// next spawn, and NOTHING is deleted to make way. The tmux session name deliberately STAYS
-// node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick
-// idempotency are untouched. Same-instant duplicate spawns for one node collide on the attempt key
-// and refuse at the git step, typed. A clock refusal refuses the spawn (step attempt-clock), never
-// an unknown-stamped attempt.
+// attempt's ORDINAL) through std.content_hash; the Claude provider also derives its required
+// session-id from that key, while Codex mints its own persisted thread identity and does not yet
+// join it back to the attempt. A stopped attempt's debris therefore never collides with the next
+// spawn, and NOTHING is deleted to make way. The tmux session name deliberately STAYS node-grain:
+// it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are
+// untouched.
+//
+// THE ORDINAL IS MINTED BY AN EXCLUSIVE DURABLE CREATE, NOT READ FROM THE CLOCK. The key used to be
+// content_hash(node_id x the second-granular probed_at), so two spawns of one node inside one second
+// derived ONE identity and the collision surfaced only at the git step. Now the identity is the
+// outcome of dispatch_attempt_identity_mint: a create-only file under the attempt-state root named
+// by (node, ordinal), whose creation is the claim on that ordinal. Two same-second spawns create two
+// different ordinals, so a same-second duplicate has no spelling; the clock observation is recorded
+// as the file's CONTENT (when it was minted) and is no longer an input to the identity. A clock
+// refusal still refuses the spawn (step attempt-clock), never an unknown-stamped attempt, and a
+// mint the host refuses refuses the spawn (step attempt-identity).
 
-fn dispatch_attempt_key(node_id: RoadmapNodeId, probed_at: String) -> String {
-  content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr).digest as String
+fn dispatch_attempt_key(node_id: RoadmapNodeId, ordinal: Int) -> String {
+  content_hash_atom(value: join([node_id as String, "\nordinal:", to_string(value: ordinal)], "") as NonEmptyStr).digest as String
+}
+
+data dispatch_attempt_identity_prefix: String = "attempt-identity-"
+
+// The ordinal space is bounded so a host that refuses every create ends in a typed refusal, not a loop.
+data dispatch_attempt_ordinal_limit: Int = 4096
+
+fn dispatch_attempt_identity_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, ordinal: Int) -> String {
+  join([
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
+    "/", dispatch_attempt_identity_prefix, node_id as String, "-n", to_string(value: ordinal),
+  ], "")
+}
+
+type DispatchAttemptIdentity
+  = DispatchAttemptMinted { attempt_key: String, ordinal: Int }
+  | DispatchAttemptIdentityRefused { detail: String }
+
+fn dispatch_attempt_identity_mint(instance: HostDashboardInstance, node_id: RoadmapNodeId, minted_at: String) -> DispatchAttemptIdentity {
+  dispatch_attempt_identity_claim(instance: instance, node_id: node_id, minted_at: minted_at, ordinal: 1)
+}
+
+// An occupied ordinal belongs to an earlier attempt and is never read back or overwritten: the next
+// ordinal is claimed. Any other refusal is the host's and ends the mint.
+fn dispatch_attempt_identity_claim(instance: HostDashboardInstance, node_id: RoadmapNodeId, minted_at: String, ordinal: Int) -> DispatchAttemptIdentity {
+  if ordinal > dispatch_attempt_ordinal_limit {
+    DispatchAttemptIdentityRefused { detail: join(["every ordinal up to ", to_string(value: dispatch_attempt_ordinal_limit), " is already claimed for node ", node_id as String], "") }
+  } else {
+    let path = dispatch_attempt_identity_path_for_instance(instance: instance, node_id: node_id, ordinal: ordinal)
+    let write = Filesystem.WriteCreateNew(path: path, content: join(["minted_at: ", minted_at, "\n"], ""))
+    match filesystem_create_new(path: path, success: write.success, error: write.error, error_kind: write.error_kind) {
+      FilesystemCreated { path: _ } => DispatchAttemptMinted { attempt_key: dispatch_attempt_key(node_id: node_id, ordinal: ordinal), ordinal: ordinal }
+      FilesystemCreateTargetOccupied { path: _ } => dispatch_attempt_identity_claim(instance: instance, node_id: node_id, minted_at: minted_at, ordinal: ordinal + 1)
+      FilesystemCreateRefused { path: _, kind: _, error: e } => DispatchAttemptIdentityRefused { detail: join(["the attempt identity could not be created at ", path, ": ", e], "") }
+      FilesystemCreateKindUnrecognized { path: _, observed: _, error: e } => DispatchAttemptIdentityRefused { detail: join(["the attempt identity could not be created at ", path, ": ", e], "") }
+    }
+  }
 }
 
 fn dispatch_worktree_path(node_id: RoadmapNodeId, attempt_key: String) -> String {

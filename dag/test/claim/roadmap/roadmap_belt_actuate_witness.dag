@@ -603,19 +603,19 @@ fn uuid_char(u: String, i: Int) -> String {
 }
 
 test fn witness_uuid_deterministic() -> Bool {
-  let a = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
-  let b = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
+  let a = belt_spawn_session_uuid(node_id: "5-regen-cutover", attempt_key: "feedfacefeedface")
+  let b = belt_spawn_session_uuid(node_id: "5-regen-cutover", attempt_key: "feedfacefeedface")
   a == b
 }
 
 test fn witness_uuid_distinct_nodes() -> Bool {
-  let a = belt_spawn_session_uuid(node_id: "node-a", probed_at: "2026-07-25T20:00:00Z")
-  let b = belt_spawn_session_uuid(node_id: "node-b", probed_at: "2026-07-25T20:00:00Z")
+  let a = belt_spawn_session_uuid(node_id: "node-a", attempt_key: "feedfacefeedface")
+  let b = belt_spawn_session_uuid(node_id: "node-b", attempt_key: "feedfacefeedface")
   !(a == b)
 }
 
 test fn witness_uuid_rfc4122_shape() -> Bool {
-  let u = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
+  let u = belt_spawn_session_uuid(node_id: "5-regen-cutover", attempt_key: "feedfacefeedface")
   string_length(s: u) == 36
     && uuid_char(u: u, i: 8) == "-"
     && uuid_char(u: u, i: 13) == "-"
