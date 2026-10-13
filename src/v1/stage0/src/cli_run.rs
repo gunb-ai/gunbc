@@ -22964,25 +22964,19 @@ fn trim_retained_heap() -> Option<u64> {
     }
 }
 
-/// Peak resident set (high water mark) in bytes, read the PORTABLE way.
+/// This process's OWN peak resident set (high water mark) in bytes.
 ///
-/// Authority: `dag/extdeps/posix/rusage.dag` for the interface, with the unit answered by
-/// `dag/extdeps/linux/rusage.dag` (kibibytes) and `dag/extdeps/darwin/rusage.dag` (bytes).
+/// Authority: `dag/extdeps/posix/rusage.dag` for the interface and `dag/extdeps/linux/rusage.dag`
+/// / `dag/extdeps/darwin/rusage.dag` for the `ru_maxrss` unit (kibibytes / bytes).
 ///
-/// This used to be `proc_status_kb_field("VmHWM")` — a `/proc/self/status` read, which
-/// exists on exactly one kernel family. That made every consumer of peak RSS Linux-only and
-/// produced `VmHWM unavailable on this host` on macOS, a message read as "this platform
-/// cannot report peak residency". It can: POSIX `getrusage(RUSAGE_SELF)` returns the same
-/// quantity in `ru_maxrss` everywhere, and libc was already a dependency. The procfs read
-/// was a TRANSPORT choice, not a capability limit, and mistaking one for the other is what
-/// made the fact look unobservable.
-///
-/// POSIX deliberately leaves `ru_maxrss`'s unit unspecified, so the conversion is per
-/// implementation and permanent — no release reconciles them. Linux reports kibibytes,
-/// Darwin bytes; the Darwin figure was confirmed by execution (a bare python3 reported
-/// 15417344, which is 14.7 MiB read as bytes and an impossible 14.7 GiB read as kibibytes).
-/// Reading a Linux value as bytes would understate peak residency 1024x, in the direction
-/// that looks survivable.
+/// Linux reads `/proc/self/status` VmHWM, NOT `getrusage(RUSAGE_SELF).ru_maxrss`: Linux seeds
+/// `ru_maxrss` at exec from the high-water of the address space the exec replaced, so a process
+/// spawned from a large parent reads the parent's peak. VmHWM belongs to the mm the exec created.
+/// The ledger row is `gunbc.recurring_failure_mode`
+/// `a_child_peak_resident_inherits_the_predecessor_address_space`; the control is
+/// `peak_resident_inheritance_control_tests`. Other hosts keep `getrusage` (the portable call,
+/// with the unit answered per implementation); whether their `ru_maxrss` is inherited across exec
+/// is unverified. Missing readings are `None`, never a fabricated zero.
 pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     // LINUX: THE NEW ADDRESS SPACE'S OWN HIGH-WATER, NOT `ru_maxrss`. Linux seeds a process's
     // `ru_maxrss` at exec from the high-water of the address space it replaces, so a process spawned

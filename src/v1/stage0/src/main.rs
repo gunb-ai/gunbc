@@ -1442,7 +1442,8 @@ fn report_pre_entry_phases(
             "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
             ms(usage.ru_utime),
             ms(usage.ru_stime),
-            cli_run::peak_rss_vhwm_bytes().map_or(0, |b| b / 1024)
+            cli_run::peak_rss_vhwm_bytes()
+                .map_or("refused".to_string(), |b| (b / 1024).to_string())
         );
     }
 }
