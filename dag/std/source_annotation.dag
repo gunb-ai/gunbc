@@ -178,14 +178,16 @@ type AnnotationRegionIndex {
 }
 
 fn annotation_region_index(regions: List<AnnotationRegion>) -> AnnotationRegionIndex {
-  let grouped = fold(regions, init: empty_map(), f: (acc, region) =>
+  let grouped_seed: Map<AnnotationScope, List<AnnotationRegion>> = empty_map()
+  let grouped = fold(regions, init: grouped_seed, f: (acc, region) =>
     let key = region.parent
     match map_lookup(m: acc, key: key) {
       Present { value: siblings } => map_insert(m: acc, key: key, value: list_snoc_item(xs: siblings, item: region))
       Absent => map_insert(m: acc, key: key, value: [region])
     })
+  let children_seed: Map<AnnotationScope, List<AnnotationRegion>> = empty_map()
   AnnotationRegionIndex {
-    children: fold(map_support_keys(m: grouped), init: empty_map(), f: (acc, key) =>
+    children: fold(map_support_keys(m: grouped), init: children_seed, f: (acc, key) =>
       match map_lookup(m: grouped, key: key) {
         Present { value: siblings } => map_insert(m: acc, key: key, value: list_sort_by_key(xs: siblings, key: r => r.extent.start, order: int_total_order))
         Absent => acc

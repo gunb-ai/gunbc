@@ -262,7 +262,8 @@ type MapIntroductionEntry<K, V> {
 }
 
 fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> Map<K, V> {
-  entries |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.key, entry.value))
+  let entries_seed: Map<K, V> = empty_map()
+  entries |> fold(init: entries_seed, f: (acc, entry) => map_insert(acc, entry.key, entry.value))
 }
 
 // MOVED HERE from `v2.std.collection` by the change that split `PartialFunction`. They are the
@@ -794,7 +795,8 @@ fn carrier_spelling_row_present(m: CarrierRowMembership) -> Bool {
 }
 
 fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, AlgebraProfile> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.method_surface) {
         map_insert(inner, spelling.text, carrier.profile)
@@ -804,7 +806,8 @@ fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
 }
 
 fn carrier_container_algebra_rows() -> Map<String, String> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, String> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_algebra_row) {
         map_insert(inner, spelling.text, carrier.name)
@@ -814,7 +817,8 @@ fn carrier_container_algebra_rows() -> Map<String, String> {
 }
 
 fn carrier_container_alias_rows() -> Map<String, String> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, String> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_alias_row) {
         map_insert(inner, spelling.text, carrier.name)
@@ -824,7 +828,8 @@ fn carrier_container_alias_rows() -> Map<String, String> {
 }
 
 fn carrier_container_roster_map() -> Map<String, Bool> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, Bool> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_roster_name) {
         map_insert(inner, spelling.text, true)
@@ -837,7 +842,8 @@ fn carrier_container_roster_map() -> Map<String, Bool> {
 // `FinitePowerSet` is unary because `algebra_type_param_names` says `["T"]`, so a carrier cannot
 // declare an arity that disagrees with its algebra.
 fn carrier_container_arity_rows() -> Map<String, Int> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, Int> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_arity_row) {
         map_insert(inner, spelling.text, algebra_type_param_names(profile: carrier.profile) |> fold(init: 0, f: (n, _) => n + 1))
@@ -918,7 +924,8 @@ fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
 }
 
 fn carrier_container_equality_rows() -> Map<String, Bool> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  let carrier_seed: Map<String, Bool> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_algebra_row) {
         map_insert(inner, spelling.text, algebra_profile_equality_extensional(profile: carrier.profile))
