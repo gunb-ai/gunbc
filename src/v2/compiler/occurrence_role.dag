@@ -1,7 +1,7 @@
 module v2.compiler.occurrence_role
 
 import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_map, list_snoc_item }
 import std.occurrence_identity {
   CallableOccurrence,
   DeclarationRole,
@@ -32,15 +32,13 @@ import v2.extdeps.languages.dag {
   dag_grammar_root,
   dag_named_arg_name_node_optional,
   dag_surface_kw_then_ident_node_from_captured,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional
+  parse_production_captured_child_optional
 }
-import v2.std.algebra { fold_list, length, list_map, list_snoc_item }
 import v2.std.integer { Int }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr }
+import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr, parse_production_emitted_identity_optional }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present }
 
@@ -244,6 +242,7 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_alias_decl, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadKwThenIdent }),
     name_row(production: ^dag_production_field_init, disposition: NameRoleRead { role: ReferenceRole, category: FieldOccurrence, reader: ReadFieldInitLabel }),
     name_row(production: ^dag_production_field_init_string_key, disposition: NamesAreReferences),
+    name_row(production: ^dag_production_field_init_pun, disposition: NamesAreReferences),
     name_row(production: ^dag_production_arg, disposition: NameRoleRead { role: ReferenceRole, category: LexicalValueOccurrence, reader: ReadNamedArgLabel }),
     name_row(production: ^dag_production_field_pattern, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadFieldPatternName }),
     name_row(production: ^dag_production_test_fn_decl, disposition: NamesAreMarkers),

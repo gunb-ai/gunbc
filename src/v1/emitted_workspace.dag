@@ -3,10 +3,10 @@ module v1.compiler.emitted_workspace
 import std.types { Bool, Int, List, String }
 import std.optional { Absent, Optional, Present }
 import v1.std.core { TextFile }
-import extdeps.cargo { CargoDependency }
+import extdeps.rust.cargo { CargoDependency }
 import gunbc.rust_emitted_edge { EmittedEdge }
 import gunbc.rust_emitted_crate { EmittedRustCrate }
-import gunbc.stage0_crate_partition_generated { GeneratedPartitionCrateRow }
+import gunbc.stage0.stage0_crate_partition_generated { GeneratedPartitionCrateRow }
 import v1.compiler.emit_rust {
   emit_emitted_population_manifest,
   emitted_population_manifest_path,

@@ -5,7 +5,7 @@ import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
 }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment,
   WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,

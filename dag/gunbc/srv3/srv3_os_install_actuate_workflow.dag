@@ -1,4 +1,4 @@
-module gunbc.srv3_os_install_actuate_workflow
+module gunbc.srv3.srv3_os_install_actuate_workflow
 
 import std.types { NonEmptyStr, String, List, Int, Bool, Timestamp }
 import std.content_hash { ContentHash, content_hash_of_value }
@@ -37,7 +37,7 @@ import gunbc.workflow_escalation {
   workflow_step_disposition_for_authorization,
   workflow_step_is_runnable,
 }
-import gunbc.srv3_bmc_credential_resolve { srv3_os_install_actuate_credential_intent }
+import gunbc.srv3.srv3_bmc_credential_resolve { srv3_os_install_actuate_credential_intent }
 
 type OsInstallActuateWorkflowStep
   = WorkflowEnsureActuatorToolchain
@@ -51,7 +51,7 @@ type OsInstallActuateWorkflowStep
 
 // The approved override, declared HERE rather than beside the transport, because it is what the
 // operator is being asked to authorize -- the subject of the grant, not a detail of the PATCH that
-// carries it. gunbc.srv3_boot_once_cd imports these rather than re-declaring them.
+// carries it. gunbc.srv3.srv3_boot_once_cd imports these rather than re-declaring them.
 data srv3_boot_cd_target: RedfishBootSourceOverrideTarget = BootTargetCd
 data srv3_boot_cd_enabled: RedfishBootSourceOverrideEnabled = BootOverrideOnce
 data srv3_boot_cd_mode: RedfishBootSourceOverrideMode = BootOverrideModeUefi

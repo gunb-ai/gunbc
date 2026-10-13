@@ -136,7 +136,7 @@ type CapabilityExpectation {
 // The fields are joined by a unit separator rather than a comma or a colon precisely so that no
 // value can forge a boundary: an escalation id containing a comma would otherwise let one envelope
 // serialize identically to a different one, which is a signature collision authored in the data.
-data signing_field_separator: String = from_code_point(cp: 31)
+data signing_field_separator: String = "\u{1f}"
 
 fn approval_capability_signing_input(c: ApprovalCapabilityClaims) -> NonEmptyStr {
   join(

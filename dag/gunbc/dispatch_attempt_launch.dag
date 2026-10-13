@@ -1,0 +1,100 @@
+module gunbc.dispatch_attempt_launch
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import extdeps.llm.cli { ReasoningEffort, ProviderModelSelection }
+import gunbc.dispatch_attempt { DispatchAttempt, dispatch_attempts_agree, dispatch_attempt_label }
+import gunbc.dispatch_credential_snapshot { TakenCredentialSnapshot, taken_credential_snapshot_attempt }
+
+// WHAT A LAUNCHED ATTEMPT IS: an executor that reads no attempt snapshot, with the attempt it runs as;
+// or the snapshot the attempt's preparation TOOK, which carries its attempt and its executor itself
+// (gunbc.dispatch_credential_snapshot TakenCredentialSnapshot). "Without an attempt snapshot" is not
+// "without a credential": codex binds its custody CODEX_HOME in place under its lock, and those
+// obligations stay on its own route (gunbc.roadmap.roadmap_dispatch_actuator codex_observed_inventory); the
+// harness has no vendor credential at all.
+type SnapshotFreeExecutor
+  = CodexWithoutSnapshot
+  | HarnessWithoutSnapshot
+
+type AttemptLaunch
+  = SnapshotFreeLaunch { attempt: DispatchAttempt, executor: SnapshotFreeExecutor }
+  | SnapshotLaunch { snapshot: TakenCredentialSnapshot }
+
+fn attempt_launch_attempt(launch: AttemptLaunch) -> DispatchAttempt {
+  match launch {
+    SnapshotFreeLaunch { attempt, executor: _ } => attempt
+    SnapshotLaunch { snapshot } => taken_credential_snapshot_attempt(snapshot: snapshot)
+  }
+}
+
+// THE PREPARED LAUNCH IS THE ONLY THING A LAUNCH LEG CONSUMES, AND IT IS SEALED. The alternatives above
+// are an ordinary coproduct, which the seed route does not seal (f13), so the seal is on this outer
+// record (record literals are refused outside this file on both routes) and its one mint is
+// admit_callers-confined to the one preparation producer, gunbc.roadmap.roadmap_dispatch_actuator
+// attempt_selection_launching, which every draw goes through. The spawn plan, the provider argv and the
+// belt's discard read the executor, the attempt and the snapshot from this value, so three states
+// that used to be runtime refusals at the spawn have no expression there: a Claude or Cursor launch
+// with no snapshot, a Codex or harness launch holding one, and a launch pairing one attempt's
+// snapshot with another attempt's worktree.
+type PreparedAttemptLaunch sole_constructor {
+  launch: AttemptLaunch
+  effort: ReasoningEffort
+  model: ProviderModelSelection
+  process_fingerprint: NonEmptyStr
+}
+
+type AttemptLaunchPreparation
+  = AttemptLaunchPrepared { prepared: PreparedAttemptLaunch }
+  | AttemptLaunchForAnotherAttempt { reason: NonEmptyStr }
+
+// THE ONE JOIN, AT THE ONE BOUNDARY WHERE TWO INDEPENDENT INPUTS MEET. The belt names the attempt it
+// requested; preparation returns what it prepared. They are compared here, once, and a launch whose
+// attempt is not the requested one refuses rather than being relabelled -- an unrelated snapshot
+// never redefines which work is being launched. Past this mint nothing compares again, because
+// nothing downstream receives a second attempt.
+fn prepare_attempt_launch(
+  requested: DispatchAttempt,
+  launch: AttemptLaunch,
+  effort: ReasoningEffort,
+  model: ProviderModelSelection,
+  process_fingerprint: NonEmptyStr,
+) -> AttemptLaunchPreparation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "attempt_selection_launching"),
+  ]
+{
+  let prepared_for = attempt_launch_attempt(launch: launch)
+  if dispatch_attempts_agree(a: prepared_for, b: requested) {
+    AttemptLaunchPrepared {
+      prepared: PreparedAttemptLaunch { launch: launch, effort: effort, model: model, process_fingerprint: process_fingerprint },
+    }
+  } else {
+    AttemptLaunchForAnotherAttempt {
+      reason: join([
+        "preparation returned a launch for ", dispatch_attempt_label(attempt: prepared_for),
+        ", not for the requested ", dispatch_attempt_label(attempt: requested),
+        "; refusing rather than launching the requested work under another attempt's identity",
+      ], "") as NonEmptyStr,
+    }
+  }
+}
+
+fn prepared_attempt_launch_alternative(prepared: PreparedAttemptLaunch) -> AttemptLaunch {
+  prepared.launch
+}
+
+fn prepared_attempt(prepared: PreparedAttemptLaunch) -> DispatchAttempt {
+  attempt_launch_attempt(launch: prepared.launch)
+}
+
+fn prepared_attempt_effort(prepared: PreparedAttemptLaunch) -> ReasoningEffort {
+  prepared.effort
+}
+
+fn prepared_attempt_model(prepared: PreparedAttemptLaunch) -> ProviderModelSelection {
+  prepared.model
+}
+
+fn prepared_attempt_process_fingerprint(prepared: PreparedAttemptLaunch) -> NonEmptyStr {
+  prepared.process_fingerprint
+}

@@ -11,11 +11,11 @@ import extdeps.bazel.target_pattern {
   TargetPattern, TargetPatternParse, TargetPatternParsed, TargetPatternRefused, parse_target_pattern, render_target_pattern, target_pattern_refusal_text,
 }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_bool, json_array, serialize_json }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
 }
-import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
-import gunbc.roadmap_execution_contract { GitWorkspaceCapability }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
+import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
 import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry }
 import gunbc.compute.work_provider_local {
   ProvideResult, ProvideFresh, ProvideAttached, compute_provide, provide_result_succeeded, provide_result_ending, provide_result_identity, provide_result_document,

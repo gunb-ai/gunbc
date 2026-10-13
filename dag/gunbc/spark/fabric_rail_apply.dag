@@ -8,12 +8,12 @@ import extdeps.exec.command { shell_quote }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
   fleet_openssh_trust_policy_of, known_hosts_materialization_receipt,
 }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
-import gunbc.spark.pair_serving_apply {
+import gunbc.spark.host_privileged_apply {
   SparkPairHostApplyPlan, SparkPairHostApplyOutcome, spark_pair_privileged_leg, spark_pair_host_apply_outcome_line, spark_pair_host_applied,
 }
 import gunbc.spark.fabric_rail_desired { FabricRailDesired, fabric_rail_desired, fabric_rail_netplan_path, fabric_rail_connection_name }

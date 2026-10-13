@@ -2,8 +2,7 @@ module v2.compiler.namespace_graft
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
-import v2.std.algebra { fold_list, fold_list_right, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, fold_list_right, list_reverse }
 import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
@@ -40,7 +39,8 @@ import v2.std.grammar {
   GrammarExprFold,
   GrammarProduction,
   fold_grammar_expr,
-  node_atom_identity_optional
+  node_atom_identity_optional,
+  parse_production_emitted_identity_optional
 }
 import v2.extdeps.languages.dag {
   dag_named_edge,
@@ -56,7 +56,6 @@ import v2.extdeps.languages.dag {
   namespace_graft_spine_body_optional,
   namespace_graft_unwrap_module_working_root,
   parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional,
   parse_subtree_locate_production,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_kw_then_ident_from_captured,
@@ -415,7 +414,7 @@ fn namespace_graft_disposition_from_named_opt(named: Edge?) -> NamespaceGraftUni
 // so references resolve THROUGH it by unique-on-chain lookup (docs/plans/namespace-resolution-design.md
 // section 13). Grafting it as a member named by its binding made the name resolve to its own grafted
 // node instead of its target -- a silent wrong answer (gunbc.recurring_failure_mode
-// alias_declaration_binding_row_not_carried), refused as an interim by gunbc#13375 and carried by this arm; the discriminating control is v2.test.parse.alias_decl_parse
+// alias_declaration_binding_row_not_carried), refused as an interim by gunbc#13375 and carried by this arm; the discriminating control is v2.test.claim.parse.alias_decl_parse
 // alias_decl_fill_lexical_lookup_holds.
 fn namespace_graft_unit_disposition(unit: Node, id: Symbol) -> NamespaceGraftUnitDisposition {
   match id == ^dag_surface_import_decl {

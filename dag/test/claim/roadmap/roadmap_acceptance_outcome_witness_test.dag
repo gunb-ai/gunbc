@@ -2,7 +2,7 @@ module test.claim.roadmap.roadmap_acceptance_outcome_witness_test
 
 import std.types { Bool, String, List }
 import std.optional { Present, Absent }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
   VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment, SubmissionWorkflowSegment,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
@@ -13,7 +13,7 @@ import gunbc.roadmap.roadmap_acceptance_outcome {
   AcceptanceOutcomeRecord, AcceptanceOutcomeDecoded, AcceptanceOutcomeUndecodable,
   acceptance_outcome_of_stages, acceptance_outcome_record_text, acceptance_outcome_decode, acceptance_outcome_key,
 }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderAwaitingAcceptance, ProviderCompleted, ProviderRunning,
 }
 import gunbc.roadmap.roadmap_belt_obligation {

@@ -1,0 +1,108 @@
+module test.claim.roadmap.roadmap_publish_actuate_witness
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import gunbc.roadmap.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
+import gunbc.roadmap.roadmap_publish_actuate {
+  pull_request_created_outcome, attempt_branch_refspec, publication_mirror_ref,
+  captured_sha_push_after_cleanup, CapturedShaPushed, CapturedShaPushRefused,
+  CapturedShaPushNetrcResidueRemains,
+}
+import extdeps.github.github { Repository, github_https_clone_url, github_https_host }
+import extdeps.git {
+  git_dir_fetch_source_grant, git_non_bare_git_dir, git_local_fetch_source_grant,
+  git_isolated_home_env_argv, git_push_ref_in_repo_argv, git_isolated_home_netrc_path,
+  git_config_global_null_env, git_config_nosystem_env, git_terminal_prompt_disabled_env,
+  git_dir_path_from_gitfile, resolve_git_dir_pointer, git_local_fetch_upload_pack_command,
+}
+
+test fn a_created_pull_request_binds_the_receipt() -> Bool {
+  match pull_request_created_outcome(number: 7, html_url: "https://github.com/x/y/pull/7" as NonEmptyStr) {
+    ReceiptBound { pr_number, url, draft } => pr_number == 7 && url as String == "https://github.com/x/y/pull/7" && draft == false
+    _ => false
+  }
+}
+
+test fn the_attempt_refspec_pushes_the_branch_to_its_own_remote_name() -> Bool {
+  attempt_branch_refspec(branch: "dispatch/n1-aabc" as NonEmptyStr) == "dispatch/n1-aabc:refs/heads/dispatch/n1-aabc"
+}
+
+test fn the_push_environment_names_a_private_home_and_not_a_token() -> Bool {
+  let prefix = git_isolated_home_env_argv(home: "/tmp/publication-home" as FilePath)
+  let argv = git_push_ref_in_repo_argv(
+    repo: "/tmp/mirror.git" as FilePath,
+    remote: "https://github.com/gunb-ai/gunbc.git",
+    refspec: "dispatch/n1-aabc:refs/heads/dispatch/n1-aabc",
+    home: "/tmp/publication-home" as FilePath,
+  )
+  prefix == ["env", "HOME=/tmp/publication-home", git_config_global_null_env, git_config_nosystem_env, git_terminal_prompt_disabled_env]
+    && argv == concat(prefix, ["git", "-C", "/tmp/mirror.git", "push", "--quiet", "https://github.com/gunb-ai/gunbc.git", "dispatch/n1-aabc:refs/heads/dispatch/n1-aabc"])
+}
+
+test fn the_isolated_home_holds_netrc_and_not_a_gitconfig() -> Bool {
+  let home = "/tmp/publication-home" as FilePath
+  let netrc = git_isolated_home_netrc_path(home: home)
+  (netrc as String) == "/tmp/publication-home/.netrc"
+    && !string_contains(s: netrc as String, pattern: ".gitconfig")
+    && git_config_nosystem_env == "GIT_CONFIG_NOSYSTEM=1"
+    && git_config_global_null_env == "GIT_CONFIG_GLOBAL=/dev/null"
+}
+
+test fn a_resolved_git_dir_grant_does_not_append_dot_git() -> Bool {
+  let git_dir = "/opt/gunbc/gunbc/.git" as NonEmptyStr
+  git_dir_fetch_source_grant(git_dir: git_dir).path == git_dir
+    && git_local_fetch_source_grant(source: "/opt/gunbc/gunbc" as NonEmptyStr).path == git_non_bare_git_dir(worktree: "/opt/gunbc/gunbc" as NonEmptyStr)
+}
+
+test fn the_mirror_ref_is_the_policy_branch() -> Bool {
+  publication_mirror_ref(branch: "dispatch/n1-aabc" as NonEmptyStr) == "refs/heads/dispatch/n1-aabc"
+}
+
+test fn a_linked_worktree_git_dir_is_read_from_the_gitfile() -> Bool {
+  match git_dir_path_from_gitfile(contents: "gitdir: /opt/gunbc/gunbc/.git/worktrees/n1\n") {
+    Absent => false
+    Present { value: p } =>
+      p == "/opt/gunbc/gunbc/.git/worktrees/n1"
+        && (resolve_git_dir_pointer(worktree: "/wt" as FilePath, pointer: p) as String) == p
+  }
+    && match git_dir_path_from_gitfile(contents: "not a gitdir\n") {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn the_local_fetch_does_not_name_a_home_or_netrc() -> Bool {
+  let cmd = git_local_fetch_upload_pack_command(grant: git_dir_fetch_source_grant(git_dir: "/opt/gunbc/gunbc/.git/worktrees/n1" as NonEmptyStr))
+  !string_contains(s: cmd, pattern: "HOME=")
+    && !string_contains(s: cmd, pattern: "netrc")
+    && string_contains(s: cmd, pattern: "upload-pack")
+}
+
+test fn a_refused_push_still_cleans_when_shred_and_home_succeed() -> Bool {
+  match captured_sha_push_after_cleanup(
+    shredded: true,
+    home_removed: true,
+    result: CapturedShaPushRefused { exit_code: 128, stderr: "rejected" },
+  ) {
+    CapturedShaPushRefused { exit_code, stderr } => exit_code == 128 && stderr == "rejected"
+    _ => false
+  }
+}
+
+test fn a_successful_push_whose_shred_failed_is_residue_not_pushed() -> Bool {
+  match captured_sha_push_after_cleanup(shredded: false, home_removed: true, result: CapturedShaPushed) {
+    CapturedShaPushNetrcResidueRemains { captured_sha_on_remote, exit_code: _, stderr: _ } => captured_sha_on_remote
+    _ => false
+  }
+}
+
+test fn the_clone_url_uses_the_netrc_https_host() -> Bool {
+  let repo = Repository {
+    owner: "gunb-ai",
+    name: "gunbc",
+    full_name: "gunb-ai/gunbc",
+    private: false,
+    default_branch: "main",
+  }
+  starts_with(s: github_https_clone_url(repo: repo) as String, prefix: concat("https://", concat(github_https_host as String, "/")))
+    && (github_https_clone_url(repo: repo) as String) == concat("https://", concat(github_https_host as String, "/gunb-ai/gunbc.git"))
+}

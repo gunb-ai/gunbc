@@ -5,7 +5,8 @@ import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter, Qwen3_8_27bOnVllm,
   harness_unit_model_id, harness_serving_unit_wire,
 }
-import gunbc.spark.group_b_serving_capacity { group_b_restoration_served_alias }
+
+data group_b_restoration_served_alias: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
 
 // ── WHICH MODELS A TURN MAY BE ANSWERED BY, AND WHY THAT IS A SET RATHER THAN A ROW ───────────
 //
@@ -44,7 +45,7 @@ import gunbc.spark.group_b_serving_capacity { group_b_restoration_served_alias }
 // what Zhipu's API answers to; a vLLM deployment advertises the SERVED-MODEL ALIAS its launch was
 // given, which is a route name for that deployment. Both are cited from the authority that owns
 // them -- the model's upstream module, and the profile of the arm converged on the fabric group
-// (gunbc.spark.fabric_serving_assignment) -- so neither is spelled here. This used to cite the retired
+// (retired gunbc.spark.fabric_serving_assignment (deleted #13779)) -- so neither is spelled here. This used to cite the retired
 // exl3 canary's alias, glm-5.3-flash-exl3-canary, while the arm actually answering advertised
 // glm-5.3-flash (observed at 192.168.1.236:30000, 2026-09-18).
 fn serving_admitted_ids(unit: HarnessServingUnit) -> List<NonEmptyStr> {

@@ -4,6 +4,7 @@ import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, Ve
 import std.algebra { Ordering, Less, Equal, Greater, trim }
 import std.integer { NonNegativeInt }
 import std.types { List }
+import std.coercion { unicode_scalar_fold }
 import std.types { NonEmptyStr, String, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -28,9 +29,8 @@ type SemVerConstraint = VersionConstraint
 // outside ASCII digits 48..57, and a leading zero unless the sequence is the single digit 0).
 // An outside module writing `SemVerNumericField { .. }` meets the SoleConstructorViolation
 // refusal at compile time — the witness file holds that probe as an executing negative control
-// plus the via-constructor positive control. The native (stage0) route's modifier-parse gap is
-// a separate known defect, carried by g0_type_decl_modifier_parse_without_sealing_property and
-// cited here, not restated. Comparison and rendering project `.digits`. The emitter lowers this
+// plus the via-constructor positive control. Native v2 refuses a foreign literal through
+// v2.compiler.infer infer_sole_constructor_diags. Comparison and rendering project `.digits`. The emitter lowers this
 // one-field record to a plain alias, so the confinement's rung is BY-SOURCE plus the executing
 // controls — the witness file states the rung honestly.
 type SemVerNumericField sole_constructor {
@@ -332,7 +332,7 @@ fn semver_numeric_run_without_leading_zero(cps: List<Int>) -> Bool {
 
 
 fn semver_label_from_code_points(cps: List<Int>) -> NonEmptyStr {
-  join(cps |> map(cp => from_code_point(cp: cp)), "") as NonEmptyStr
+  unicode_scalar_fold(xs: cps) as NonEmptyStr
 }
 
 // ---- core MAJOR.MINOR.PATCH -----------------------------------------------

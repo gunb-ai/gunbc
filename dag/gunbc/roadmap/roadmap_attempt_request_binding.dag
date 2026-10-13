@@ -1,8 +1,8 @@
 module gunbc.roadmap.roadmap_attempt_request_binding
 
 import std.types { String, Bool, List, NonEmptyStr }
-import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEventEnvelope, RoadmapEventId, roadmap_claim_return_to, roadmap_history_unordered_reason,
 }
@@ -82,7 +82,7 @@ fn request_binding_history_after_snapshot_close(read: CarrierClosed<RoadmapEvent
   }
 }
 
-// THE LAUNCH-TIME COMMIT (gunbc.roadmap_belt_actuate belt_attempt_state_initialize_for_instance,
+// THE LAUNCH-TIME COMMIT (gunbc.roadmap.roadmap_belt_actuate belt_attempt_state_initialize_for_instance,
 // before the worker starts). The request arrives from the dispatch decision; the issue's log is
 // read only when the request names a claim, to establish it; the binding is written create-only.
 // A refusal here fails the launch.

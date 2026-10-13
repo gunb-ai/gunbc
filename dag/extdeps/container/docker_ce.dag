@@ -1,6 +1,8 @@
 module extdeps.container.docker_ce
 
 import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_argv }
+import extdeps.access.posix { FileMode, PermissionBits }
 import extdeps.posix.shell_command_language { posix_single_quote }
 
 import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution, unbound_dissolution }
@@ -75,6 +77,18 @@ data docker_ce_install_dissolution_trigger: DissolutionCondition = retires_disso
   )
 )
 
+// THE KEYRINGS DIRECTORY'S MODE, as the install guide (extdeps_external_authority_anchor) states it:
+// `install -m 0755 -d /etc/apt/keyrings`. It is rendered through extdeps.tools.gnu_coreutils, whose
+// operand states the set-id bits, rather than copied as the guide's four digits.
+data docker_ce_keyrings_directory_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: true, write: false, execute: true },
+  other: PermissionBits { read: true, write: false, execute: true },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
 // Elevate each simple command before shell quoting; pipes and redirections belong to the
 // surrounding shell, so gpg and tee still consume stdin while sudo refuses without prompting.
 fn docker_ce_repo_install_script(repo: DockerCeAptRepo, packages: List<NonEmptyStr>) -> String {
@@ -83,7 +97,7 @@ fn docker_ce_repo_install_script(repo: DockerCeAptRepo, packages: List<NonEmptyS
       "set -e",
       join(
         map(
-          sudo_elevate_argv(command: ["install", "-m", "0755", "-d", "/etc/apt/keyrings"]),
+          sudo_elevate_argv(command: coreutils_install_directory_argv(mode: docker_ce_keyrings_directory_mode, path: "/etc/apt/keyrings")),
           w => posix_single_quote(spelling: w),
         ),
         " ",

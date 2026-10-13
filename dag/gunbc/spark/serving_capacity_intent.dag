@@ -9,7 +9,7 @@ import extdeps.vllm.engine_args {
   KvWatermarkOmitted, KvWatermarkExplicit, vllm_scheduler_admission_omitted, IndexerKvDtypeOmitted, vllm_scheduler_admission_defect,
 }
 import gunbc.spark.serving_arm { ServingLaunchProfile, serving_launch_profile, ModelLaunchPolicy }
-import v2.std.algebra { length }
+import std.algebra { length }
 
 // ── THE SERVICE OBLIGATION IS A SEAT POPULATION, NOT A POOL SIZE ────────────────────────────────
 //
@@ -234,8 +234,8 @@ fn envelope_above_floor(e: SchedulerEnvelope) -> Bool {
 //
 // THE PROFILE CARRIES BOTH SERVICE CLASSES: max_num_seqs is the ceiling, guaranteed_cold_seqs the
 // floor, and scheduler_admission the gate the seats between them depend on -- rendered into the argv
-// by gunbc.spark.serving_arm_launch. READ BACK IS A DECLARED FRONTIER here: its consumer is the relaunch
-// transaction's admission-controls axis (gunbc.spark.serving_relaunch_transaction, through
+// by retired gunbc.spark.serving_arm_launch (deleted #13779). READ BACK IS A DECLARED FRONTIER here: its consumer is the relaunch
+// transaction's admission-controls axis (retired gunbc.spark.serving_relaunch_transaction (deleted #13779), through
 // extdeps.vllm.engine_args vllm_argv_scheduler_admission), which lands in deforking cut 7 (#12986); that
 // landing is the trigger, and until it does no production path compares plan and container on these fields.
 fn profile_for_envelope(

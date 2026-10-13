@@ -30,8 +30,9 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // (`std.witness_admission`) since falsifier.yml was deleted at gunbc#8283, so a row there reads
 // as coverage while executing nowhere. (3) `LocalRepoWetLane` rosters host-effect witnesses whose
 // hermetic route has a gap (`v2.workflow.local_repo_wet_terminal`); a hermetic ingest witness is
-// not its subject. (4) The ingest-gate overlay (`source_root_ingest_gate_admitted_witness`) is a
-// hand-listed closure gate in `v2.workflow.compiler_closure_ingest_transport`, not a lane.
+// not its subject. (4) The ingest-gate overlay (`source_root_ingest_gate_admitted_witness`) was a
+// hand-listed closure gate in `v2.workflow.compiler_closure_ingest_transport` (deleted with the
+// whole-repository ingest-gate family in the source layout cutover C3), not a lane.
 //
 // THE REASON IS LOST-AS-PASSENGER, NOT A NEW CUT: these controls would have joined the substrate
 // long lane, whose executor left with falsifier.yml. Nothing in gunbc#11314 or gunbc#11315 deleted
@@ -62,12 +63,12 @@ data accumulator_copy_positive_controls_off_every_lane: RungDrop = RungDrop {
     temporary: Mitigatable,
     reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml and its FalsifierSubstrateLongLane executor, deleted at 611fd02770 (gunbc#8283)" },
     population: [
-      "v2.test.claim.complexity.accumulator_copy_corpus_path_test a_planted_copied_accumulator_spelled_with_an_arrow_lambda_is_caught",
-      "v2.test.claim.complexity.accumulator_copy_corpus_path_test a_clean_accumulating_fold_spelled_with_an_arrow_lambda_stays_clean",
-      "v2.test.claim.complexity.accumulator_copy_corpus_path_test a_step_nested_inside_an_arrow_step_body_is_not_mistaken_for_the_step",
-      "v2.test.long.accumulator_copy_fold_analysis nested_fold_inside_a_sole_body_fold_is_visible",
-      "v2.test.long.accumulator_copy_fold_analysis a_lambda_in_a_non_step_argument_mints_no_carrier",
-      "v2.test.long.accumulator_copy_fold_analysis an_inline_step_beside_a_decoy_lambda_is_still_caught",
+      "v2.test.claim.complexity.accumulator_copy_corpus_path a_planted_copied_accumulator_spelled_with_an_arrow_lambda_is_caught",
+      "v2.test.claim.complexity.accumulator_copy_corpus_path a_clean_accumulating_fold_spelled_with_an_arrow_lambda_stays_clean",
+      "v2.test.claim.complexity.accumulator_copy_corpus_path a_step_nested_inside_an_arrow_step_body_is_not_mistaken_for_the_step",
+      "v2.test.claim.long.accumulator_copy_fold_analysis nested_fold_inside_a_sole_body_fold_is_visible",
+      "v2.test.claim.long.accumulator_copy_fold_analysis a_lambda_in_a_non_step_argument_mints_no_carrier",
+      "v2.test.claim.long.accumulator_copy_fold_analysis an_inline_step_beside_a_decoy_lambda_is_still_caught",
     ],
     restoration_trigger: "an executing lane with a declared ceiling plans an ingest-reaching hermetic witness: either the per-frame front end is paid once per run so these enroll as test fns on ordinary discovery inside the enrolment margin (the restoration trigger of long_module_changed_witness_cpu_observed_only), or a scheduled substrate-long executor is re-added under the operator agreement gunbc#8283 reserved. Observed at retirement, not asserted: the six population identities are test fns planned by a live cadence and reach PASS on a required or scheduled run, and this row retires in the same change. Passing under claim_batch is the declared state, not the trigger."
   }

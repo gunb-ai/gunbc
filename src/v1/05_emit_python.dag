@@ -92,7 +92,7 @@ import v1.compiler.emit {
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
   escape_json_string, module_to_filename, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent,
-  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
+  to_snake, to_screaming_snake, is_upper,
   sanitize_service_name, capitalize_first, service_var_name,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
   test_function_name,

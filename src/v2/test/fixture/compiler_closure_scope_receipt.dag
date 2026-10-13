@@ -1,7 +1,7 @@
 module v2.test.fixture.compiler_closure_scope_receipt
 
 import std.types { List }
-import v2.std.algebra { length }
+import std.algebra { length }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
@@ -22,7 +22,7 @@ type CompilerClosureScopeReceiptFrontierRow {
 }
 
 data compiler_closure_scoped_module_count_frontier_row: CompilerClosureScopeReceiptFrontierRow = CompilerClosureScopeReceiptFrontierRow {
-  entry_path: "src/v2/compiler/00_compile.dag",
+  entry_path: "src/v2/compiler/compile.dag",
   fact: "v1 load_sources_for_entry scoped compiler-closure module count (src/v2 source root; excludes closure_deep_chain.dag per compiler_closure_excluded_module_path)",
   authority: ScalarReceiptWithdrawn {
     hand_count_at_withdrawal: 65,

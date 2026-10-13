@@ -107,7 +107,7 @@ type DockerInspectMount {
 // reason: extdeps.docker.cli DockerCreateSpec states each of them, and a field a create spec states
 // and a readback cannot see is a field on which a convergence reports agreement it has not
 // established. Measured on the 2026-09-16 capture, the running arm carries `ShmSize: 67108864` while
-// the spec gunbc.spark.serving_arm_launch renders asks for 10737418240 -- a real, live disagreement
+// the spec retired gunbc.spark.serving_arm_launch (deleted #13779) renders asks for 10737418240 -- a real, live disagreement
 // that was invisible to this type in every direction until now.
 //
 // `Mounts` AND NOT `Binds`, because of how extdeps.docker.cli renders a spec's mounts: `--mount

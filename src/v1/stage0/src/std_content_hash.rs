@@ -203,7 +203,7 @@ pub fn content_hash_combine_preimage(
     right: Rc<Fnv1a64Structural>,
 ) -> String {
     v1_rt::concat(
-        v1_rt::concat(left.digest.clone(), v1_rt::from_code_point(0)),
+        v1_rt::concat(left.digest.clone(), "\x00".to_string()),
         right.digest.clone(),
     )
 }

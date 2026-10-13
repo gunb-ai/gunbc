@@ -1,4 +1,4 @@
-module gunbc.mtcollins_memory_change
+module gunbc.host.mtcollins_memory_change
 
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import std.types { Bool, String, NonEmptyStr, List }
@@ -19,16 +19,16 @@ import extdeps.memory.micron {
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
 import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
 import product.host_identity { HostIdentity }
-import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
-import gunbc.memory_configuration {
+import gunbc.host.mtcollins_memory_placement { mtcollins_memory_position }
+import gunbc.host.memory_configuration {
   CatalogMemoryModule,
   MemoryPosition, MemoryPackageEvidence, MemoryDeliveryVariant, PositionedMemoryModule,
   MemoryPlatform, MemoryFirmwareSetting, MemoryConfiguration, MemoryChangeProposal,
   AcquireMemoryUnit, RetainedMemoryUnit, MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
 }
-import gunbc.memory_observation { MemoryCollectorReceipt, MemoryCaptureInterval, MemoryPrintedPartBinding, MemoryEvaluationEvidence, MemoryMixtureFinding, MemoryPrintedPositionBinding, memory_collector_refusal, memory_capture_covers_population, read_verified_memory_capture }
-import gunbc.memory_change_report { MemoryChangeExplanation, explain_memory_change }
-import gunbc.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
+import gunbc.host.memory_observation { MemoryCollectorReceipt, MemoryCaptureInterval, MemoryPrintedPartBinding, MemoryEvaluationEvidence, MemoryMixtureFinding, MemoryPrintedPositionBinding, memory_collector_refusal, memory_capture_covers_population, read_verified_memory_capture }
+import gunbc.host.memory_change_report { MemoryChangeExplanation, explain_memory_change }
+import gunbc.host.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
 
 // The capture is owned by the observing layer. The replay reads its bytes,
 // verifies the committed artifact identity, and joins catalog and layout facts.
@@ -37,7 +37,7 @@ data mtcollins_training_capture_sha256: NonEmptyStr = "e5044f71cde73fe9b2ea1e76c
 // Firmware-emitted captured-cycle marker from the committed Mt. Collins captures.
 data mtcollins_dram_cycle_start: NonEmptyStr = "NOTICE:  DRAM FW version 210525"
 
-data mtcollins_training_capture_source: DeclarationRef = decl_ref(module_path: "gunbc.mtcollins_memory_change", decl_name: "mtcollins_training_capture_path")
+data mtcollins_training_capture_source: DeclarationRef = decl_ref(module_path: "gunbc.host.mtcollins_memory_change", decl_name: "mtcollins_training_capture_path")
 
 data mtcollins_ads_part: DeclarationRef = decl_ref(module_path: "extdeps.memory.micron", decl_name: "mta36ads2g72pz_2g1a1_catalog")
 data mtcollins_hynix_part: DeclarationRef = decl_ref(module_path: "extdeps.memory.sk_hynix", decl_name: "hma82gr7afr4n_vk_catalog")
@@ -75,7 +75,7 @@ fn mtcollins_memory_module(position: MemoryPosition, ads: Bool) -> PositionedMem
 fn mtcollins_witnessed_configuration(roles: List<MtCollinsChannelPopulationRole>) -> MemoryConfiguration {
   MemoryConfiguration {
     platform: MemoryPlatform { host: "mtcollins1" as HostIdentity, board: mt_collins_board_authority,
-      board_part: decl_field_ref(module_path: "gunbc.machine_intake_mtcollins1_access_observation", decl_name: "mtcollins1_identity", field_name: "board"),
+      board_part: decl_field_ref(module_path: "gunbc.machine_intake.mtcollins1_access_observation", decl_name: "mtcollins1_identity", field_name: "board"),
       processor: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q8030_catalog"),
       firmware: "210525", settings: [MemoryFirmwareSetting { name: "ecc_en", value: "00000002" }],
     },

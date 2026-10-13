@@ -1,5 +1,7 @@
 module gunbc.compute.work_provider_local
 
+import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
@@ -39,7 +41,7 @@ import extdeps.linux.cgroup_v2 {
 }
 import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptVerdict, AttemptWorkEnded, AttemptRecovered,
@@ -52,11 +54,11 @@ import gunbc.compute.attempt_lifecycle {
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_slot_read,
   compute_pre_launch_ceiling_seconds,
 }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
 }
-import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
+import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability, GitWorkspaceCapability, CargoCapability, RustcCapability, AttemptStateDirectoryCapability,
 }
 import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size, kibibyte, byte_size_count }
@@ -259,7 +261,7 @@ fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> S
 }
 
 fn compute_ensure_dir(instance: HostDashboardInstance, path: String) -> Bool {
-  match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: instance.repo_root as String, args: ["-d", "-m", "0755", path]) {
+  match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: instance.repo_root as String, args: coreutils_install_directories_arguments(mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse), paths: [path])) {
     ComputeExecOk { stdout: _, stderr: _ } => true
     ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
   }
@@ -427,7 +429,7 @@ fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<Sys
 // WHO OWES THE READ, AND WHY A TRUNCATION CANNOT UNDER-REPORT A PEAK HERE. A truncated stderr is the
 // worst-directed hazard in this mechanism: it makes the number SMALLER -- "Memory peak: 11G" cut to
 // "Memory peak: 1G" parses cleanly as a tenth of the real figure -- and under-reporting is the
-// direction that OOMs. No guard in the parser can catch it (gunbc.machine_intake_host_capture_envelope
+// direction that OOMs. No guard in the parser can catch it (gunbc.machine_intake.host_capture_envelope
 // HostCaptureText: line-wholeness is the CALLER's fact, never inferred from the bytes), so the
 // obligation is NAMED here rather than dropped.
 //
@@ -2056,7 +2058,7 @@ fn compute_provide_produce(
   }
 }
 
-// SLOT FIRST, THEN THE LEDGER (conforming to gunbc.roadmap_session_placement, ruling on #13074). The
+// SLOT FIRST, THEN THE LEDGER (conforming to gunbc.roadmap.roadmap_session_placement, ruling on #13074). The
 // attempt slot names the seat before the seat exists: a crash between the two then leaves an open
 // slot with no reservation -- which recovery settles from the slot alone -- never a held reservation
 // no slot names, which nothing in the corpus can find. A reservation refused after the slot opened

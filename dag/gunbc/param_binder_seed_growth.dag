@@ -2,7 +2,7 @@ module gunbc.param_binder_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
 // Seed-growth obligation for param_name_matches_declared, a pure free function extracted from

@@ -1,11 +1,11 @@
 
-module tools.generated_artifact_gate
+module gunbc.instruments.generated_artifact_gate
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.ci_gate { gate_receipt_failure_detail }
+import gunbc.ci.ci_gate { gate_receipt_failure_detail }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path }
-import gunbc.generated_artifact_registry { committed_generated_artifacts }
+import gunbc.generated_artifact_registry { committed_generated_artifacts, generated_artifact_registry, uncommitted_project_documentation_artifacts }
 import gunbc.generated_artifact_emit {
   ArtifactGenerated,
   ArtifactGenerationRefused,
@@ -14,7 +14,7 @@ import gunbc.generated_artifact_emit {
 import gunbc.generated_artifact_observation {
   observe_generated_artifact_population
 }
-import v2.std.algebra { fold_list, length }
+import std.algebra { fold_list, length }
 import gunbc.ledger_row_coherence { render_ledger_repair_trailers, ledger_row_coherence, artifact_is_ledger, heal_repair_declaration_artifact_path }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
@@ -145,7 +145,7 @@ fn generated_artifact_drift_failure_receipt() -> String {
 // unmeasured one, because it gets cited as the reason a thing is safe to try -- the §4b
 // decoration shape pointed at a resource limit rather than at a check.
 //
-// gunbc.memory_stall_refusal bounds the same runner class from the other two sides: a
+// gunbc.host.memory_stall_refusal bounds the same runner class from the other two sides: a
 // TRUTHFUL budget declaration thrashes without completing, an OVERSTATED one is SIGKILLed at
 // rc=137. With this figure the honest range there is not merely narrow, it is EMPTY, and the
 // remedy is a runner exposing a real cgroup limit rather than any value of the budget
@@ -165,11 +165,10 @@ fn generated_artifact_drift_failure_receipt() -> String {
 // exactly the artifact named removes that class wherever it runs, which is a property of the route
 // and not of the executor -- so it survives the ceiling being fixed, or not being fixed.
 //
-// WHAT MAKES IT A PROJECTION RATHER THAN A FORK. It selects from `committed_generated_artifacts()`
-// -- the same list main_wet folds -- keyed by `artifact_path`, and generates through the same
-// `artifact_generate`. There is no second producer selection and no second roster to drift from,
-// so an artifact reachable by main_wet is reachable here by construction and a new registry row
-// needs no edit in this function. main_wet REMAINS the whole-roster authority.
+// WHAT MAKES IT A PROJECTION RATHER THAN A FORK. It selects from `generated_artifact_registry`
+// keyed by `artifact_path`, and generates through the same `artifact_generate`. main_wet still
+// folds only `committed_generated_artifacts()` -- NotCommitted documentation is written here or
+// by `documentation_wet`, never by restoring those rows to the committed roster.
 //
 // THE UNROSTED ARM REFUSES AND DOES NOT REGENERATE NOTHING QUIETLY. A path the registry does not
 // carry is a typed, located refusal naming the path and the roster size, never exit zero having
@@ -189,7 +188,7 @@ type ArtifactSelection
 
 fn artifact_selection_for_path(path: String) -> ArtifactSelection {
   fold_list(
-    xs: committed_generated_artifacts(),
+    xs: generated_artifact_registry,
     empty: ArtifactSelectionEmpty { matches: 0 },
     cons: fn(acc, a) {
       if artifact_path(a: a) == path {
@@ -208,9 +207,9 @@ fn main_wet_one(path: String) -> ProcessExit {
   match artifact_selection_for_path(path: path) {
     ArtifactSelectionEmpty { matches: _ } => exit_failure(
       reason: concat(
-        concat("GeneratedArtifactPathUnrostered: no committed generated artifact is declared at ", path),
+        concat("GeneratedArtifactPathUnrostered: no generated artifact is declared at ", path),
         concat(
-          concat(" -- gunbc.generated_artifact_registry committed_generated_artifacts carries ", length(xs: committed_generated_artifacts()) as String),
+          concat(" -- gunbc.generated_artifact_registry generated_artifact_registry carries ", length(xs: generated_artifact_registry) as String),
           " row(s), and this path is not one of them; regenerating nothing and reporting success would report a repair that did not happen"
         )
       )
@@ -251,6 +250,27 @@ fn main_wet() -> ProcessExit {
   })
 }
 
+// THE COMPLETING ACTUATOR FOR UNCOMMITTED PROJECT DOCUMENTATION. After those rows left
+// committed_generated_artifacts(), main_wet no longer writes them and docs regen still writes
+// only the docs/-located subset. This fold is the registry remainder: Roadmap, the docs
+// ledgers/onboarding, and every PlanIsAuthorityOnly projection. It uses the same generate-and-
+// write as main_wet; it does not enlarge the committed roster.
+fn documentation_wet() -> ProcessExit {
+  fold(uncommitted_project_documentation_artifacts(), init: ExitSuccess, f: fn(acc, a) {
+    match acc {
+      ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+      ExitSuccess =>
+        match artifact_generate(a: a) {
+          ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
+          ArtifactGenerated { content } => {
+            let w = Filesystem.Write(path: artifact_path(a: a), content: content)
+            if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
+          }
+        }
+    }
+  })
+}
+
 // HEAL MAY COMMIT ONLY A FIXED POINT. The first pass is the actuator: it overwrites every
 // committed projection from this checkout's authorities. The second pass is the same independent
 // observation used by the required drift gate: it reads those bytes, generates every expected
@@ -271,7 +291,7 @@ fn main_wet() -> ProcessExit {
 // regeneration produces.
 //
 // THE STEP IS ORDERED AGAINST THE WRITE, NOT AGAINST A PARTICULAR ENTRY NAME, and that is
-// deliberate: gunbc.ci_spec has already repointed the heal job's regeneration step from
+// deliberate: gunbc.ci.ci_spec has already repointed the heal job's regeneration step from
 // main_wet_verified to main_wet once. A rationale written against whichever entry heal happens to
 // invoke would have quietly become false at that change while still reading as current. What this
 // step requires is only that it run before ANY entry that writes the projections.

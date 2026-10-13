@@ -1,10 +1,10 @@
 module gunbc.plans.dag_v2_defork_audit
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsDerivedMarkdown }
-import gunbc.defork_type_name_census { defork_census_derivation }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
   [
@@ -47,7 +47,7 @@ fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
     p(text: "The machinery to import `dag/` from `src/v2/` is **wired and on**, proven by execution:"),
     ul(items: [
       li(text: "Grounded `source_root` tagging landed (#5473 `source_root: SourceRootRef` on `DagSourceReadWitness`; #5486 grounded cross-tree admission — the QualifiedName-prefix fallback is **deleted**, and `tree_fundamentality_order(V2Tree, DagTree) = MoreFundamental` is derived, not guessed)."),
-      li(text: "`src/v2/compiler/03_name_resolve.dag` no longer carries `FundamentalityUnknown`; `admit_import_entry` calls the grounded `cross_tree_edge_decision`."),
+      li(text: "`src/v2/compiler/name_resolve.dag` no longer carries `FundamentalityUnknown`; `admit_import_entry` calls the grounded `cross_tree_edge_decision`."),
       li(text: "**Activation arbiter witness** (#5506, `src/v2/test/claim/cross_tree_real_ingest_activation_test.dag`) feeds a host-tagged `SourceRootIngest` through the *real* grounding machinery (`program_assembly_fold_ingest` builds the QN→`SourceRootRef` index; `source_root_set_from_ingest` builds the active-root set) and runs the real per-edge decision: v2→dag ⟹ `EdgeCrossAdmitted`, tags-reversed dag→v2 ⟹ `EdgeCrossDenied`. So cross-tree import is **live on main, carrier consumed, no operator flip pending**."),
       li(text: "The source-root admission abs-vs-rel host bug (#5473's `source_root_ref_token_for_path`) that blocked the rust gate is **fixed** (#5504): file paths and `--source-root` values are grounded through `repo_relative_dag_path` before matching, so admission is invocation-independent."),
     ]),
@@ -124,7 +124,7 @@ fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
       li(text: "**Root B — generic-inference keystone + de-fork (THIS lane).** Phased, in order:"),
     ]),
     ol(items: [
-      li(text: "**Keystone (partially landed via #5552):** simple generic-alias instantiation resolves — `type X = FreeMonoid<Symbol>` defines and construct/match/use-site works (proven by `generic_alias_coproduct_instantiation_test.dag`); `qualified_name.dag` is fully dissolved (incl. the v1 seed host-builtins made generic — `free_monoid_symbol_*`). **Still open:** raw variant-matching a value bound from a recursive `Cons.tail` field still fails *\"variant not found in type FreeMonoid\"* (`04_infer` fixpoint gap) — consumers avoid it via the `list_head`/algebra idiom; `catalog.dag` `fold_list`/`ParseTable` still await it. This residue is load-bearing resolver/infer work (`03_resolve`/`04_infer`) — model-before-implement, escalate before touching under any pre-dating brief."),
+      li(text: "**Keystone (partially landed via #5552):** simple generic-alias instantiation resolves — `type X = FreeMonoid<Symbol>` defines and construct/match/use-site works (proven by `generic_alias_coproduct_instantiation.dag`); `qualified_name.dag` is fully dissolved (incl. the v1 seed host-builtins made generic — `free_monoid_symbol_*`). **Still open:** raw variant-matching a value bound from a recursive `Cons.tail` field still fails *\"variant not found in type FreeMonoid\"* (`04_infer` fixpoint gap) — consumers avoid it via the `list_head`/algebra idiom; `catalog.dag` `fold_list`/`ParseTable` still await it. This residue is load-bearing resolver/infer work (`03_resolve`/`04_infer`) — model-before-implement, escalate before touching under any pre-dating brief."),
       li(text: "**Definition unification:** make the coproduct the single authority in `std/algebra.dag`, delete the dag record-of-methods *definition* (re-express its surface as inhabitance), introduce the aliases. Only after the keystone lands (so the aliases compile). jolly-cat's Root A emit-seam should already be in by here — coordinate the `algebra.dag` touch."),
       li(text: "**Repoints** (mechanical once 1–2 land): `nat`/`integer`/`float` (numeric tower `Int = GroupCompletion<Nat>`), `logic`, `effects` (operation-axis ⊕ idempotency-axis grounding), `verification` (entangled with #5428 + `Value::Null` — may stay last). Per the #5511 per-concept census above."),
       li(text: "**Dissolve the 🟡 markers:** `qualified_name.dag` — **DONE** (`QnEmpty/QnCons` → `Empty/Cons`, `qualified_name_eq/for_all/singleton` → FreeMonoid ops + structural `==`, v1 seed bridge made generic); `catalog.dag` `fold_list` still awaits the recursive-tail resolver residue. The self_gen8 3 ignores fold into the def-unification PR — their premise flips from \"stays_unemitted\" to \"expects grounded `List<T>=Vec<T>` emission\" (`node://adhoc-9d2bb9c3-e7b`)."),
@@ -136,7 +136,7 @@ fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
       li(text: "**Stage every file of a rename/collapse together** (the auto-committer atomicity hazard, §3 above)."),
     ]),
     h3(text: "Execution update (#6341, 2026-07-07) — Root B narrowed to shadow-removal; three walls re-map the follow-ons"),
-    p(text: "`#6341` landed the **core of Root B**: the `FreeMonoid`/`Empty`/`Cons` variant-drop shadow is removed — the coproduct now lives once in `dag/std/algebra.dag:111`, `v2.std.algebra` imports it, 158 importers repointed. But implementing the *fuller* Root B (move the ops; unify the definition; promote QualifiedName) surfaced **three walls by-execution** that re-scope the remaining lanes. Full trace + census: **[algebra-grounding-unification-design.md §9](algebra-grounding-unification-design.md)**. Summary for the roadmap:"),
+    p(text: "`#6341` landed the **core of Root B**: the `FreeMonoid`/`Empty`/`Cons` variant-drop shadow is removed — the coproduct now lives once in `dag/std/algebra.dag:111`, `std.algebra` imports it, 158 importers repointed. But implementing the *fuller* Root B (move the ops; unify the definition; promote QualifiedName) surfaced **three walls by-execution** that re-scope the remaining lanes. Full trace + census: **[algebra-grounding-unification-design.md §9](algebra-grounding-unification-design.md)**. Summary for the roadmap:"),
     ul(items: [
       li(text: "**A — reserved-name → builtin dissolution.** `dag/std/algebra.dag`'s templates *declare* the builtin collection-method names (`fold`/`map`/`filter`/`length`/`any`/`contains`/`skip`/…); a `std.*` free fn matching one breaks the whole method table (bare `fold(...)` fails corpus-wide). So the 8 ops `filter`/`length`/`any`/`contains`/`skip`/`is_empty` (+ `non_empty`/`bag_eq`) **cannot** move to `std.*` — they are free-fn duplicates of dag builtins and must *dissolve into* `.filter()`/`.length()` at v2 call sites (a lane, not a rename — a `list_filter` nickname is a §3 violation)."),
       li(text: "**B — Root A is UNOWNED and confirmed load-bearing for the ops.** `src/v1/05_emit_rust.dag` hardcodes `crate::v2_std_algebra::\{freemonoid_empty,fold_list,list_snoc_item\}` for the `String=FreeMonoid<Char>` host bridge — so those 3 ops can't move until Root A relocates them. **jolly-cat (the assigned Root-A owner above) is no longer in the tree** (operator, 2026-07-06); the `String`/`List` alias grounding (§3b.2 above) is blocked until Root A is re-dispatched."),
@@ -147,7 +147,7 @@ fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
 }
 
 data dag_v2_defork_audit_plan: Plan = Plan {
-  projection: PlanProjectsDerivedMarkdown { derive: fn() { defork_census_derivation() } },
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "dag-v2-defork-audit",
   title: "Plan — De-fork `dag/` ↔ `src/v2/` (collapse the duplicated standard library)",
   body: dag_v2_defork_audit_body(),

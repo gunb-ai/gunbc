@@ -1,6 +1,6 @@
-module gunbc.runner_deploy_emit
+module gunbc.runner.runner_deploy_emit
 
-import gunbc.ci_runner_placement {
+import gunbc.ci.ci_runner_placement {
   RunnerDeploymentPlan,
   HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
   HostRunnerDeploymentRefusal,
@@ -32,7 +32,7 @@ import gunbc.session_reservation_policy {
   ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
   session_reservation_bytes,
 }
-import gunbc.ci_fleet { fleet_intent_offers }
+import gunbc.ci.ci_fleet { fleet_intent_offers }
 import gunbc.oomd_install { gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_policy, pressure_is_kill }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime, DirectiveReset }

@@ -106,6 +106,12 @@ type Bool = True | False
 
 type Unit
 
+// THE UNINHABITED TYPE. An arm instantiated at Never has no constructor: the binding declares
+// that arm unreachable for that subject (std.goal_assessment AssessRefusal, an observe that cannot
+// fail). It lives beside Unit, not in v2.std.cardinality, so a dag-tree module may import it
+// (v2.std.cross_tree.import_model: dag may not import v2).
+type Never
+
 type Json
 type Bytes
 
@@ -255,10 +261,10 @@ type NonEmptyStr     = String where string_non_empty
 // seed still enforces literal sites from its own table (v1.compiler.infer
 // decidable_where_string_predicate_holds), which cannot consult a declaration until compile-time
 // evaluation lands (feature:where-refinement-predicate-declaration-authority); until then
-// test.claim.where_refinement_predicate_vocabulary_witness_test executes this body on the table's
+// test.claim.where_refinement_predicate_vocabulary_witness executes this body on the table's
 // probe values so the two cannot drift silently. The same holds for gt_zero, range and
 // std.content_hash lower_hex_*. The spelling is not
-// `non_empty`: that name is v2.std.algebra non_empty<T> (a free monoid's non-emptiness, a different
+// `non_empty`: that name is std.algebra non_empty<T> (a free monoid's non-emptiness, a different
 // domain) and a builtin collection-method name, so a std free fn spelled `non_empty` would be a
 // second meaning for one name (DESIGN section 3) and would break the method table.
 fn string_non_empty(value: String) -> Bool {

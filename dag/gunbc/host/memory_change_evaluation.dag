@@ -1,4 +1,4 @@
-module gunbc.memory_change_evaluation
+module gunbc.host.memory_change_evaluation
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
@@ -6,13 +6,13 @@ import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, Goa
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution, retires_dissolution }
 import std.decl_ref { decl_ref }
-import gunbc.memory_configuration {
+import gunbc.host.memory_configuration {
   MemoryChangeProposal, MemoryConfiguration, MemoryOperatingObligation,
   MemoryPowerOff, MemoryReplacePopulation, MemoryInitialize, MemoryReadbackRequired,
   memory_operating_obligations,
 }
-import gunbc.memory_observation { MemoryEvaluationEvidence }
-import gunbc.memory_configuration_evaluation { MemoryConfigurationAssessment, evaluate_memory_configuration }
+import gunbc.host.memory_observation { MemoryEvaluationEvidence }
+import gunbc.host.memory_configuration_evaluation { MemoryConfigurationAssessment, evaluate_memory_configuration }
 
 // Pure workflow evaluation, not execution. These values have no constructor
 // path to MemoryCollectorReceipt or ConfigurationQualificationReceipt.
@@ -40,12 +40,12 @@ data memory_change_consumer_frontiers: List<FrontierRow> = [
     dissolution: retires_dissolution(ref: decl_ref(module_path: "product.node_power_envelope", decl_name: "PopulationModuleRead")),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.memory_change_evaluation", decl_name: "MemoryChangeAssessment"),
+    ref: decl_ref(module_path: "gunbc.host.memory_change_evaluation", decl_name: "MemoryChangeAssessment"),
     reason: "production-order consumer absent: no order actuator exists in this corpus",
     dissolution: unbound_dissolution(description: "product.memory_order production-order actuator consumes the exact proposal and evidence-bound fulfillment admission before releasing an order"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.memory_change_evaluation", decl_name: "MemoryChangeAssessment"),
+    ref: decl_ref(module_path: "gunbc.host.memory_change_evaluation", decl_name: "MemoryChangeAssessment"),
     reason: "physical-memory convergence consumer absent: software/cgroup convergence cannot confirm DIMM placement",
     dissolution: unbound_dissolution(description: "gunbc.host_memory_converge independently reads actual serials, catalog bindings, connector/socket/controller/slot placement, board, processor, firmware and settings; joins them to this assessed proposal and re-evaluates changed inputs before convergence"),
   ),

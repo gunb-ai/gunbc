@@ -1,5 +1,6 @@
 module v2.test.lens_common.infer_fixture
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
+import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
 import std.optional { optional_absent }
 
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -26,15 +27,14 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, Occurrenc
 import v2.std.node { Authored, ComputationNode, Conj, Edge, Positional, Transform }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, optional_present }
-import v2.std.algebra { list_append, list_map }
-import std.algebra { Cons }
+import std.algebra { Cons, list_append, list_map }
 
 // A HAND-BUILT TREE SUPPLIED AT INFER'S INTERFACE (DESIGN section 3: a witness supplies its input
 // rather than executing the layers beneath it). infer takes resolve's output, which carries the index
 // resolution consulted; a supplied tree was never resolved, so it carries an index holding NO
 // declarations -- the name says so, and a declaration lookup through it finds nothing and refuses.
 fn claim_resolved_tree_without_declarations(root: Node) -> ResolvedTree {
-  ResolvedTree { root: root, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [], member_kinds: no_member_declaration_kinds() }
+  ResolvedTree { root: root, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }
 }
 
 fn claim_atom_node(s: Symbol) -> Node {
@@ -236,7 +236,8 @@ fn claim_resolved_call_tree(
     ),
     lexical_bindings: empty_map(),
     unavailable_providers: [],
-    member_kinds: no_member_declaration_kinds()
+    member_kinds: no_member_declaration_kinds(),
+    type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent()
   }
 }
 
@@ -300,7 +301,8 @@ fn claim_resolved_projection_tree(
     ),
     lexical_bindings: empty_map(),
     unavailable_providers: unavailable,
-    member_kinds: no_member_declaration_kinds()
+    member_kinds: no_member_declaration_kinds(),
+    type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent()
   }
 }
 

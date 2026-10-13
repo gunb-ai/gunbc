@@ -1,8 +1,6 @@
 module gunbc.generated_artifact_merge_driver
 
 import gunbc.shell_bash_runner { bash_escape_double_quote_specials_except_expansion }
-import extdeps.tools.sed { sed_script_arguments }
-import extdeps.posix.shell_command_language { posix_single_quote }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE MERGE DRIVER FOR merge=generated-artifact PATHS, AND WHY IT REFUSES INSTEAD OF ANSWERING
@@ -97,7 +95,7 @@ fn generated_artifact_merge_driver_config_value() -> String {
 }
 
 // THE REGENERATION COMMAND IS A PARAMETER, NOT AN IMPORT, AND THE REASON IS THE ACYCLICITY LAW
-// RATHER THAN TASTE. Its single authority is gunbc.ci_spec generated_artifact_author_regen_command, and
+// RATHER THAN TASTE. Its single authority is gunbc.ci.ci_spec generated_artifact_author_regen_command, and
 // importing it here would close a real cycle: gunbc.generated_artifact reads this module for the
 // artifact path, and ci_spec reaches gunbc.generated_artifact through the heal roster. So the
 // consumer that already sits downstream of both — gunbc.generated_artifact_emit — supplies it, and
@@ -157,51 +155,6 @@ fn generated_artifact_merge_driver_repair_steps(regen_command: String) -> List<S
 // THE EMITTED BYTES ARE UNCHANGED by this lift, which is the point: the recipe a lane pastes is the
 // same recipe, now derived from the expressions instead of restating them.
 
-data generated_artifact_merge_driver_row_identity_extraction_expressions: List<String> = [
-  "s/^- `\\([a-z0-9_]*\\)`.*/\\1/p",
-  "s/^### \\(.*\\) — .*/\\1/p",
-]
-
-fn generated_artifact_merge_driver_row_extractor_function() -> String {
-  join(
-    [
-      "rows() { sed -n ",
-      join(
-        sed_script_arguments(
-          expressions: map(
-            generated_artifact_merge_driver_row_identity_extraction_expressions,
-            e => posix_single_quote(spelling: e)
-          )
-        ),
-        " "
-      ),
-      " | sort; }",
-    ],
-    ""
-  )
-}
-
-fn generated_artifact_merge_driver_dark_row_set_difference_step() -> String {
-  join(
-    [
-      "2. VERIFY BY SET DIFFERENCE THAT NO ROW WENT DARK, never by count. The two projections carry DIFFERENT row identities -- a failure mode is a `slug` bullet, a rung drop is a `### Title — declared ...` heading -- so one extractor must name both, or the check reads zero rows on the file it cannot parse and reports a pass it never measured: ",
-      generated_artifact_merge_driver_row_extractor_function(),
-      "; comm -23 <(git show <base-ref>:$merged_path | rows) <(git show HEAD:$merged_path | rows) MUST BE EMPTY. A count tells you a number moved; only the difference names WHICH rows went dark, and the name is the whole finding",
-    ],
-    ""
-  )
-}
-
-fn generated_artifact_merge_driver_heal_repair_steps() -> List<String> {
-  [
-    "1. take the BASE side's projection verbatim -- git checkout <base-ref> -- $merged_path -- and do NOT stage the bytes sitting in your worktree: those are the OURS side, and staging them commits your rows over the base's, deleting every row the base added since the merge base",
-    generated_artifact_merge_driver_dark_row_set_difference_step(),
-    "3. DO NOT CHECK FOR CONFLICT MARKERS AND CONCLUDE ANYTHING: zero markers is exactly what this driver GUARANTEES on a refusal -- it leaves clean marker-free bytes and marks the path unmerged -- so a marker count reports that the DRIVER worked, never that its SUBJECT is intact. Read the index stages if you want the truth: stage 2 carries your rows and none of the base's, stage 3 the base's and none of yours",
-    "4. finish the authority merge and push the branch; do not regenerate this projection locally",
-    "5. the heal workflow derives it from the merged authorities and uploads it as a sealed candidate, and heal-publish commits that candidate onto the branch as the publishing App; the generated-artifact gate must then agree on that exact head",
-  ]
-}
-
 fn generated_artifact_merge_driver_diagnostic_lines(regen_command: String) -> List<String> {
   concat(
     ["  This path requires author regeneration before the merge can finish:"],
@@ -216,10 +169,6 @@ fn generated_artifact_merge_driver_common_diagnostic_lines() -> List<String> {
     "  Git resolved nothing here. The path is left UNMERGED and the worktree file carries the ours side verbatim — no conflict markers.",
     "  Do NOT resolve these bytes by hand or pretend the provisional bytes are derived. Follow this path's declared repair route:",
   ]
-}
-
-fn emit_heal_path_case_pattern(paths: List<String>) -> String {
-  join(paths, "|")
 }
 
 // THE ECHO IS DOUBLE-QUOTED BECAUSE THESE LINES ARE TEMPLATES: $merged_path must interpolate at
@@ -266,7 +215,7 @@ fn emit_author_regeneration_repair(regen_command: String, indent: String) -> Str
   )
 }
 
-fn expected_generated_artifact_merge_driver_sh(regen_command: String, heal_regenerated_paths: List<String>) -> String {
+fn expected_generated_artifact_merge_driver_sh(regen_command: String) -> String {
   concat(
     concat(
       "#!/usr/bin/env bash\n# GENERATED by dag/gunbc/generated_artifact_merge_driver.dag — DO NOT HAND-EDIT.\n",
@@ -277,26 +226,10 @@ fn expected_generated_artifact_merge_driver_sh(regen_command: String, heal_regen
     ),
     concat(
       emit_driver_lines(lines: generated_artifact_merge_driver_common_diagnostic_lines(), indent: ""),
-      if count(heal_regenerated_paths) == 0 {
-        concat(
-          emit_author_regeneration_repair(regen_command: regen_command, indent: ""),
-          "exit 1\n"
-        )
-      } else {
-        concat(
-          concat(
-            concat("case \"$merged_path\" in\n  ", concat(emit_heal_path_case_pattern(paths: heal_regenerated_paths), ")\n")),
-            concat(
-              emit_driver_lines(lines: generated_artifact_merge_driver_heal_repair_steps(), indent: "    "),
-              "    ;;\n  *)\n"
-            )
-          ),
-          concat(
-            emit_author_regeneration_repair(regen_command: regen_command, indent: "    "),
-            "    ;;\nesac\nexit 1\n"
-          )
-        )
-      }
+      concat(
+        emit_author_regeneration_repair(regen_command: regen_command, indent: ""),
+        "exit 1\n"
+      )
     )
   )
 }

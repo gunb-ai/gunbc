@@ -468,6 +468,8 @@ pub type Hertz = Rc<Measure<Frequency, One, Nat>>;
 
 pub type MegatransfersPerSecond = Rc<Measure<Frequency, Mega, Nat>>;
 
+pub type ClockTickCount = Rc<Measure<Count, One, Nat>>;
+
 pub type HardwareThreadCount = Rc<Measure<Count, One, Nat>>;
 
 pub type HardwareThreadMinute =
@@ -1063,6 +1065,19 @@ pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
     measure_count(m.clone())
 }
 
+pub type SignedMoneyAmountMicro = Rc<Measure<Currency, Micro, i64>>;
+
+pub fn signed_money_amount_micro(count: i64) -> SignedMoneyAmountMicro {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn signed_money_amount_micro_count(m: SignedMoneyAmountMicro) -> i64 {
+    measure_count(m.clone())
+}
+
 pub type UsdWholeDollars = MoneyAmount<One>;
 
 pub fn usd_whole_dollars(count: Nat) -> UsdWholeDollars {
@@ -1096,6 +1111,25 @@ pub struct MoneyRate<P> {
     pub amount: MoneyAmountMicro,
     pub currency: CurrencyCode,
     pub _phantom: std::marker::PhantomData<P>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MoneyAmountRate<P> {
+    pub amount: MoneyAmountMicro,
+    pub _phantom: std::marker::PhantomData<P>,
+}
+
+pub type MoneyAmountPerSecond = Rc<MoneyAmountRate<PerSecond>>;
+
+pub fn money_amount_per_second(count: Nat) -> MoneyAmountPerSecond {
+    Rc::new(MoneyAmountRate {
+        amount: money_amount_micro(count.clone()),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn money_amount_per_second_count(q: MoneyAmountPerSecond) -> Nat {
+    money_amount_micro_count(q.amount.clone())
 }
 
 pub type MoneyPerSecond = Rc<MoneyRate<PerSecond>>;
@@ -1246,6 +1280,17 @@ pub fn hertz(count: Nat) -> Hertz {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
+}
+
+pub fn clock_tick_count(count: Nat) -> ClockTickCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn clock_tick_count_value(t: ClockTickCount) -> Nat {
+    t.count.clone()
 }
 
 pub fn megatransfers_per_second(count: Nat) -> MegatransfersPerSecond {

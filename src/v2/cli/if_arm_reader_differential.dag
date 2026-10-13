@@ -1,7 +1,7 @@
 module v2.cli.if_arm_reader_differential
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse }
 import std.occurrence_identity { occurrence_id_eq }
 import v2.compiler.body_lowering_fold {
   IfRowArms,
@@ -25,12 +25,10 @@ import v2.extdeps.languages.dag {
   dag_lex,
   dag_surface_identity_is_top_level_item,
   dag_surface_kw_then_ident_from_captured,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional
+  parse_production_captured_child_optional
 }
-import v2.std.algebra { fold_list, list_reverse }
 import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, Rejected, Textual, NodeLocus, SourcePortLocus, InvariantPortLocus, DeclarationLocus, ByteRange, WholeFile, bind_outcome, diagnostics_fatal_reason }
-import v2.std.grammar { node_atom_identity_optional }
+import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import std.integer { int_to_decimal_string }
 import v2.std.node { Node, Symbol, is_empty_conj_root, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }

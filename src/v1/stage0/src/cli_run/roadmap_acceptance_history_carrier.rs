@@ -103,7 +103,7 @@ enum JsonHandback {
 
 // Seed duplicate of std.content_hash lower_hex_16 / Fnv1a64StructuralDigestHex refinement.
 // Dissolves when v1_compiler.cli_run roadmap_acceptance_history_carrier hollowing lands
-// (roadmap_acceptance_event_history_jsonl_parser_seed_scaffold in gunbc.roadmap_acceptance_history_carrier).
+// (roadmap_acceptance_event_history_jsonl_parser_seed_scaffold in gunbc.roadmap.roadmap_acceptance_history_carrier).
 fn validate_hex16(digest: &str, field: &str) -> Result<(), String> {
     if digest.len() != 16
         || !digest

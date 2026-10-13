@@ -1,6 +1,6 @@
 module v2.compiler.dependency_demand_census
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length }
 import v2.compiler.body_lowering_fold { body_lower_find_production_shell_optional, body_lower_type_expr_lowered_optional }
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure,
@@ -36,13 +36,11 @@ import v2.extdeps.languages.dag {
   namespace_graft_spine_body_optional,
   dag_surface_kw_then_ident_from_captured,
   dag_surface_module_header_metadata_edge,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional
+  parse_production_captured_child_optional
 }
-import v2.std.algebra { fold_list, is_empty, length }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { grammar_empty_node }
+import v2.std.grammar { grammar_empty_node, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
 import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }

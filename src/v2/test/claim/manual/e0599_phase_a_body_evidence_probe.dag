@@ -1,4 +1,4 @@
-module v2.test.manual.e0599_phase_a_body_evidence_probe
+module v2.test.claim.manual.e0599_phase_a_body_evidence_probe
 
 data e0599pa_anchor: Symbol = ^e0599pa_anchor
 
@@ -110,7 +110,7 @@ fn e0599pa_file_report(path: String) -> List<Int> {
 
 fn e0599pa_site_bearing_paths() -> List<String> {
   [
-    "src/v2/std/algebra.dag",
+    "dag/std/algebra.dag",
     "src/v2/std/diagnostic.dag",
     "src/v2/std/optional.dag",
     "src/v2/std/node.dag",

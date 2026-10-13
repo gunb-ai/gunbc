@@ -11,7 +11,7 @@ import extdeps.uri { Uri, Https, uri_wire }
 // layout, addressing scheme and CLI this repository consumes but does not define.
 //
 // WHY THIS MODULE DID NOT EXIST UNTIL NOW, WHICH IS THE INTERESTING PART. The fleet has been serving
-// weights out of the Hub's cache since 2026-09-03 -- gunbc.spark.pair_serving_realization binds
+// weights out of the Hub's cache since 2026-09-03 -- the retired Spark pair-serving realization bound
 // /home/briansrls/.cache/huggingface/hub into the container at /weights -- and the ONLY piece of the
 // Hub ever modelled was a private helper in that module reconstructing the `models--org--name`
 // folder name. One upstream convention, spelled once, inside a consumer, with no citation. That is
@@ -51,8 +51,8 @@ type HubRepoId {
   path: NonEmptyStr
 }
 
-// THE CACHE DIRECTORY NAME, and this is the row that replaces the private helper in
-// pair_serving_realization. The Hub's rule is that the repo kind and the repo path are joined by
+// THE CACHE DIRECTORY NAME, and this is the row that replaced the private helper that used to live
+// in the retired Spark pair-serving realization. The Hub's rule is that the repo kind and the repo path are joined by
 // `--`, with every `/` inside the path also becoming `--`.
 fn hub_repo_cache_directory_name(repo: HubRepoId) -> NonEmptyStr {
   join([

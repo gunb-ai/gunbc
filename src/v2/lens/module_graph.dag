@@ -7,8 +7,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
-import v2.std.algebra { contains, fold_list, is_empty, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, contains, fold_list, is_empty, list_reverse }
 import v2.std.collection {
   Map,
   empty_map,
@@ -56,12 +55,10 @@ import v2.compiler.resolution_provenance {
 }
 import v2.compiler.source_authority {
   SourceRef,
-  SourceRootArgumentAdmitted,
-  SourceRootArgumentUnrecognized,
   SourceRootIngest,
-  admit_source_root_argument,
   source_ref_for_storage_path
 }
+import v2.cli.repository_layout { repository_tree_of_root_argument }
 import v2.compiler.source_authority_read { source_root_ingest_from_source_refs }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag {
@@ -139,7 +136,7 @@ fn reference_derived_import_resolution_facts_live(
 }
 
 // THE UNION IS NATIVE NOW; the name is retained because gunbc.stage0_partition_closure and
-// gunbc.repo_atlas_projection cite this row by symbol. HISTORY, all measured: #8044 fixed two
+// gunbc.repo.repo_atlas_projection cite this row by symbol. HISTORY, all measured: #8044 fixed two
 // quadratics in the interpreted composition here - a linear membership scan, then a list_snoc_item
 // accumulator - taking it from an OOM at 396s to 173.6-177.6s. The remaining cost was never the host
 // fact production those notes blamed. Per term in one process on the live corpus:
@@ -316,15 +313,15 @@ fn source_refs_from_declared(
                 }
               )
             Present { value: origin } =>
-              match admit_source_root_argument(argument: origin) {
-                SourceRootArgumentAdmitted { tree: tree } =>
+              match repository_tree_of_root_argument(argument: origin) {
+                Present { value: tree } =>
                   outcome_accepted(
                     value: list_snoc_item(
                       xs: refs,
                       item: source_ref_for_storage_path(path: fact.path, source_root: tree)
                     )
                   )
-                SourceRootArgumentUnrecognized { argument: _ } =>
+                Absent =>
                   outcome_rejected(
                     d: Diagnostic {
                       reason: ^declared_module_source_root_undetermined,

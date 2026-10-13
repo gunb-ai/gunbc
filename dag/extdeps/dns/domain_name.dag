@@ -1,5 +1,6 @@
 module extdeps.dns.domain_name
 
+import std.unicode.scalar { ascii_lowercase }
 import std.types { NonEmptyStr, String, List, Bool, Int, brand }
 import std.error_primitives { Result, Ok, Err }
 
@@ -69,13 +70,7 @@ fn fold_dns_case_string_at(s: String, i: Int, acc: String) -> String {
     acc
   } else {
     let ch = char_at(s, i)
-    let cp = code_point_int(ch: ch)
-    let out = if cp >= 65 && cp <= 90 {
-      from_code_point(cp + 32)
-    } else {
-      ch
-    }
-    fold_dns_case_string_at(s: s, i: i + 1, acc: concat(acc, out))
+    fold_dns_case_string_at(s: s, i: i + 1, acc: concat(acc, ascii_lowercase(s: ch)))
   }
 }
 

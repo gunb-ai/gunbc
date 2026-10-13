@@ -1,10 +1,10 @@
-module gunbc.runner_unit
+module gunbc.runner.runner_unit
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.host_identity { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import extdeps.systemd.unit_file {
   SystemdKillMode,
   SystemdExitType,
@@ -19,20 +19,20 @@ data gunbc_runner_unit_scope_disposition: ConstructionMechanism = SingleAuthorit
 // THE OWNED UNIT CONTRACT: WHICH SYSTEMD UNIT A RUNNER SLOT IS, SPELLED ONCE.
 //
 // The mapping slot -> unit name was spelled independently in EIGHT modules. Four concatenated the
-// prefix, an instance name and the suffix directly -- gunbc.runner_lifecycle,
-// gunbc.runner_incarnation, gunbc.runner_host_deploy and gunbc.runner_connectivity_recovery. Two
-// more derived a probe unit the same way for a read-back to sample: gunbc.host_runner_memory_cap_verify
-// and gunbc.host_converge_slice1. gunbc.host_converge spelled the template name, an all-slots glob,
+// prefix, an instance name and the suffix directly -- gunbc.runner.runner_lifecycle,
+// gunbc.runner.runner_incarnation, gunbc.runner.runner_host_deploy and gunbc.runner.runner_connectivity_recovery. Two
+// more derived a probe unit the same way for a read-back to sample: gunbc.host.host_runner_memory_cap_verify
+// and gunbc.host.host_converge_slice1. gunbc.host.host_converge spelled the template name, an all-slots glob,
 // a per-host glob and four drop-in paths with the unit name embedded in each. And
-// gunbc.build_cache_endpoint_observe held a further copy of the prefix in order to parse a slot
+// gunbc.build_cache.build_cache_endpoint_observe held a further copy of the prefix in order to parse a slot
 // index back OUT of an observed cgroup path. Nothing related any of them, so nothing could refuse a
 // disagreement.
 //
-// THIS IS THE SAME DEFECT gunbc.build_cache_instance ALREADY REPAIRED ONE LAYER DOWN, and that
+// THIS IS THE SAME DEFECT gunbc.build_cache.build_cache_instance ALREADY REPAIRED ONE LAYER DOWN, and that
 // repair is the argument for this one. The two-digit index suffix was three implementations, one
 // of which collided every index above 8 onto a single string; the collision was unreachable only
 // because an unrelated width cap happened to be in the way. The suffix now has one home. The unit
-// name built ON TOP of that suffix did not, and gunbc.runner_connectivity_recovery
+// name built ON TOP of that suffix did not, and gunbc.runner.runner_connectivity_recovery
 // recovery_runner_slot_unit_name proves the fork was live rather than theoretical: it re-derived
 // the zero-pad by hand instead of consuming the repaired authority, so the de-fork below is not a
 // tidy-up of identical code, it is the removal of a second implementation of a rule that has
@@ -60,7 +60,7 @@ fn runner_unit_dropin_path(file_name: NonEmptyStr) -> NonEmptyStr {
 
 // THE REGISTRATION NAME AND THE UNIT NAME ARE THE SAME INSTANCE READ AT TWO BOUNDARIES -- GitHub's
 // runner namespace and systemd's instance namespace -- and that is precisely why they must be
-// derived from one function. gunbc.runner_incarnation carries both on one record, and a record
+// derived from one function. gunbc.runner.runner_incarnation carries both on one record, and a record
 // whose two fields are independently spelled can hold a pair that disagrees.
 fn runner_registration_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
   runner_slot_instance_name(slot: slot) as NonEmptyStr
@@ -88,7 +88,7 @@ fn runner_host_slots_unit_glob(host: HostIdentity) -> NonEmptyStr {
 
 // READING THE CONTRACT BACKWARDS IS THE SAME CONTRACT, NOT A SECOND ONE.
 //
-// gunbc.build_cache_endpoint_observe needs the inverse -- given a unit name observed in a cgroup
+// gunbc.build_cache.build_cache_endpoint_observe needs the inverse -- given a unit name observed in a cgroup
 // path, which slot is it -- and held its own copy of the prefix to do it. That copy is the reason
 // the inverse belongs here: a parser built on an independently spelled prefix stops agreeing with
 // the renderer the moment either moves, and the failure is silent, because an unrecognised name
@@ -141,7 +141,7 @@ fn runner_unit_name_round_trips(slot: RunnerSlotIdentity) -> Bool {
 // THE PROCESS-LIFECYCLE PROPERTIES OF THE TEMPLATE
 // ---------------------------------------------------------------------------
 
-// gunbc.host_converge OWNS FOUR RESOURCE DROP-INS FOR THIS TEMPLATE AND NO PROCESS-LIFECYCLE
+// gunbc.host.host_converge OWNS FOUR RESOURCE DROP-INS FOR THIS TEMPLATE AND NO PROCESS-LIFECYCLE
 // PROPERTY, WHICH IS WHY A HAND-DEPLOYED KillMode= COULD NOT BE SEEN BY ANYTHING.
 //
 // Width, swap, high and tasks are all converged: each is a declared value, an installed drop-in and
@@ -252,7 +252,7 @@ fn lifecycle_intent_stops_finished_incarnation(intent: RunnerUnitLifecycleIntent
 // shows every slot stopped at 06:36:58 with its in-flight Runner.Worker left running and a new
 // listener taking a new job into the same directory thirteen seconds later. So srv4-03's detached
 // generations at NRestarts=0 are what an externally issued restart looks like, not a contradiction
-// of one. gunbc.runner_host_file_converge carries both halves of the repair -- this intent as a
+// of one. gunbc.runner.runner_host_file_converge carries both halves of the repair -- this intent as a
 // drop-in, and a needrestart deferral so the upgrade stops issuing the restart.
 //
 // THE DECLARED INTENT DOES NOT DEPEND ON THAT CHAIN, WHICH IS WHY THE RETRACTION DOES NOT MOVE IT.

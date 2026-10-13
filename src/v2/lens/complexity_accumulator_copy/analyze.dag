@@ -3,6 +3,7 @@ module v2.lens.complexity_accumulator_copy.analyze
 import std.types { List }
 import std.optional { Absent, Optional, Present }
 import v2.std.integer { Int }
+import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.node { Node, Symbol }
 import v2.extdeps.languages.dag { ParseSubtreeAbsent }
 
@@ -40,7 +41,7 @@ fn capture_list_prepend(item: Node, xs: List<Node>) -> List<Node> {
 }
 
 fn collect_direct_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<Node> {
-  match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: n) {
+  match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } =>
       if id == emitted {
         match v2.extdeps.languages.dag.parse_production_captured_child_optional(node: n) {
@@ -60,7 +61,7 @@ fn collect_direct_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<No
 }
 
 fn primary_expr_capture(node: Node) -> Optional<Node> {
-  match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: node) {
+  match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
       if id == ^dag_surface_primary_expr {
         v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node)
@@ -72,7 +73,7 @@ fn primary_expr_capture(node: Node) -> Optional<Node> {
 }
 
 fn postfix_expr_capture(node: Node) -> Optional<Node> {
-  match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: node) {
+  match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
       if id == ^dag_surface_postfix_expr {
         v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node)
@@ -199,8 +200,8 @@ fn port_reading(arg_capture: Node) -> v2.lens.complexity_accumulator_copy.PortRe
 }
 
 fn call_port_readings(call_capture: Node) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
-  v2.std.algebra.list_map(
-    xs: v2.std.algebra.list_reverse(
+  std.algebra.list_map(
+    xs: std.algebra.list_reverse(
       xs: collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: std.algebra.Empty)
     ),
     f: fn(arg) { port_reading(arg_capture: arg) }
@@ -217,7 +218,7 @@ fn append_findings(fresh: List<v2.lens.complexity_accumulator_copy.Finding>, acc
 }
 
 fn let_expr_capture(node: Node) -> Optional<Node> {
-  match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: node) {
+  match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
       if id == ^dag_surface_let_expr {
         v2.extdeps.languages.dag.parse_production_captured_child_optional(node: node)
@@ -393,7 +394,7 @@ fn analyze_let_spine(
 }
 
 fn resolved_port_readings(call_capture: Node, bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
-  v2.std.algebra.list_map(
+  std.algebra.list_map(
     xs: call_port_readings(call_capture: call_capture),
     f: fn(reading) { v2.lens.complexity_accumulator_copy.resolve_port_reading(reading: reading, bindings: bindings) }
   )
@@ -428,8 +429,8 @@ fn projection_method_call_optional(cap: Node) -> Optional<Symbol> {
 }
 
 fn projection_arg_port_readings(repeat_elem: Node) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
-  v2.std.algebra.list_map(
-    xs: v2.std.algebra.list_reverse(
+  std.algebra.list_map(
+    xs: std.algebra.list_reverse(
       xs: collect_direct_captures(
         n: v2.compiler.body_lowering_fold.body_lower_postfix_projection_call_suffix_capture(repeat_elem: repeat_elem),
         emitted: ^dag_surface_arg,
@@ -475,7 +476,7 @@ fn projection_call_port_readings(cap: Node) -> List<v2.lens.complexity_accumulat
 }
 
 fn resolved_projection_call_port_readings(cap: Node, bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
-  v2.std.algebra.list_map(
+  std.algebra.list_map(
     xs: projection_call_port_readings(cap: cap),
     f: fn(reading) { v2.lens.complexity_accumulator_copy.resolve_port_reading(reading: reading, bindings: bindings) }
   )
@@ -605,7 +606,7 @@ fn lowered_arg_port_reading(arg: Node) -> v2.lens.complexity_accumulator_copy.Po
 // actuals are the call's edges and not only its positional children -- reading positional children alone
 // saw no port on `list_append(left: x, right: acc)` and the copied port went missing on every planted copy.
 fn lowered_transform_actuals(node: Node) -> List<Edge> {
-  v2.std.algebra.list_reverse(xs: fold(node.children, init: LoweredActualsWalk { saw_operator: false, reversed: std.algebra.Empty }, f: fn(acc, e) {
+  std.algebra.list_reverse(xs: fold(node.children, init: LoweredActualsWalk { saw_operator: false, reversed: std.algebra.Empty }, f: fn(acc, e) {
     if acc.saw_operator {
       LoweredActualsWalk { saw_operator: true, reversed: Cons { head: e, tail: acc.reversed } }
     } else {
@@ -627,7 +628,7 @@ type LoweredActualsWalk {
 
 // Every actual's port reading, in authored order, by the same prepend-then-reverse walk.
 fn lowered_actual_port_readings(actuals: List<Edge>) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
-  v2.std.algebra.list_reverse(xs: fold(actuals, init: std.algebra.Empty, f: fn(acc, e) {
+  std.algebra.list_reverse(xs: fold(actuals, init: std.algebra.Empty, f: fn(acc, e) {
     Cons { head: lowered_arg_port_reading(arg: e.target), tail: acc }
   }))
 }
@@ -649,7 +650,7 @@ fn lowered_transform_port_readings(node: Node, combiner: Symbol) -> List<v2.lens
           match v2.std.arrow_signature.application_binding_plan(arrow: arrow, actuals: actuals) {
             v2.std.arrow_signature.ApplicationBindingRefused { reason: _, at: _ } => std.algebra.Empty
             v2.std.arrow_signature.ApplicationBound { slots: slots } =>
-              v2.std.algebra.list_map(xs: slots, f: fn(slot) {
+              std.algebra.list_map(xs: slots, f: fn(slot) {
                 match v2.std.collection.list_at_optional(xs: actuals, index: slot.actual_index) {
                   Present { value: e } => lowered_arg_port_reading(arg: e.target)
                   Absent => v2.lens.complexity_accumulator_copy.PortMissing
@@ -663,7 +664,7 @@ fn lowered_transform_port_readings(node: Node, combiner: Symbol) -> List<v2.lens
 }
 
 fn resolved_lowered_transform_port_readings(node: Node, combiner: Symbol, bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>) -> List<v2.lens.complexity_accumulator_copy.PortReading> {
-  v2.std.algebra.list_map(
+  std.algebra.list_map(
     xs: lowered_transform_port_readings(node: node, combiner: combiner),
     f: fn(reading) { v2.lens.complexity_accumulator_copy.resolve_port_reading(reading: reading, bindings: bindings) }
   )
@@ -813,7 +814,7 @@ fn analyze_absent_primary_expr(
         Absent =>
           let here = if iterating {
             if v2.lens.complexity_accumulator_copy.any_port_carries_carrier(
-              ports: v2.std.algebra.list_map(
+              ports: std.algebra.list_map(
                 xs: lowered_actual_port_readings(actuals: lowered_transform_actuals(node: node)),
                 f: fn(reading) { v2.lens.complexity_accumulator_copy.resolve_port_reading(reading: reading, bindings: bindings) }
               ),

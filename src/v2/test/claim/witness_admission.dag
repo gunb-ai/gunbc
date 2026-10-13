@@ -1,0 +1,241 @@
+module v2.test.claim.witness_admission
+
+import v2.workflow.witness_admission {
+  witness_consumer_cadence_for_row,
+  witness_has_executing_consumer_for_row,
+  witness_execution_standing_for_live_row,
+  witness_admission_explicit_consumer_manifest,
+  witness_admission_manifest_covers_row
+}
+import std.witness_admission {
+  FalsifierSubstrateLongLane,
+  WitnessConsumerCadence,
+  WitnessExecutionStanding,
+  DeclaredCadenceUnrealized,
+  BinWitnessWet,
+  QuarantineProbeExpectRed,
+  OfflineLocalRecipe,
+  FalsifierSelfHostWet,
+  DiscoverySelection,
+  NoConsumer
+}
+import std.algebra { length }
+import gunbc.ci.ci_layer_roots { known_red_probe_roster }
+import v2.std.text { String }
+
+data normalize_entry: String = "dag/test/claim/self_host_03_normalize_behavioral_witness.dag"
+data normalize_fn: String = "self_host_03_normalize_behavioral_receipt_holds"
+
+// 2026-07-25 review #7199: SelfEmitted wet bindings that red on assemble are Wet expect_red
+// quarantine (falsifier_self_host_wet_known_red_entries). 03_normalize's behavioral receipt
+// consumer is QuarantineProbeExpectRed via the explicit roster (takes priority); the file-grain
+// exclusion stays OfflineLocalRecipe so sibling declared_source_refs_complete_holds is not orphaned
+// (english_emit_add pattern). Dissolve-on: local wet greens → known-red entry deletes →
+// SelfHostWetReceiptBinding restores.
+
+data synthetic_orphan_entry: String = "dag/test/claim/synthetic_orphan_admission_witness.dag"
+data synthetic_orphan_fn: String = "synthetic_orphan_no_consumer_holds"
+
+test fn witness_03_normalize_wet_known_red_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: normalize_entry,
+    function: normalize_fn,
+    excluded_from_discovery: true
+  ) {
+    QuarantineProbeExpectRed => true
+    _ => false
+  }
+}
+
+test fn witness_03_normalize_wet_known_red_manifest_covers_holds() -> Bool {
+  witness_admission_manifest_covers_row(entry: normalize_entry, function: normalize_fn)
+}
+
+test fn witness_synthetic_orphan_has_no_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: synthetic_orphan_entry,
+    function: synthetic_orphan_fn,
+    excluded_from_discovery: true
+  ) {
+    NoConsumer => true
+    _ => false
+  }
+}
+
+test fn witness_synthetic_orphan_admission_red_holds() -> Bool {
+  !witness_has_executing_consumer_for_row(
+    entry: synthetic_orphan_entry,
+    function: synthetic_orphan_fn
+  )
+}
+
+// The known-red roster is consumed as QuarantineProbeExpectRed for every member it carries, read from
+// the roster rather than pinned to one row: the pinned english_emit_add row left the roster with
+// gunbc#12651 (it passes), and a pin outlives its membership. The roster must be nonempty, or the
+// all-members arm is vacuous.
+test fn witness_known_red_probe_consumer_holds() -> Bool {
+  let roster = known_red_probe_roster()
+  (length(xs: roster) > 0)
+    && !any(xs: roster, predicate: fn(w) {
+      match witness_consumer_cadence_for_row(entry: w.entry, function: w.function, excluded_from_discovery: true) {
+        QuarantineProbeExpectRed => false
+        _ => true
+      }
+    })
+}
+
+// The discriminating side: a row that LEFT the roster (gunbc#12651) no longer classifies as an
+// expected-red probe, so the arm above is decided by roster membership and not by the entry path.
+test fn witness_dequarantined_row_is_not_an_expected_red_probe_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/manual/english_emit_add.dag",
+    function: "english_emit_add_ingest_round_trip_holds",
+    excluded_from_discovery: true
+  ) {
+    QuarantineProbeExpectRed => false
+    _ => true
+  }
+}
+
+test fn witness_field_access_wet_falsifier_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness.dag",
+    function: "emit_on_demand_field_access_grain_keys_differ_holds",
+    excluded_from_discovery: true
+  ) {
+    OfflineLocalRecipe => true
+    _ => false
+  }
+}
+
+// Rehomed from FalsifierSelfHostWet to LocalRepoWetLane as part of this PR's
+// rehoming of the self-host behavioral receipts off a dead cadence (falsifier.yml
+// deleted at 611fd02770/#8283). LocalRepoWetLane is scheduled and executing.
+// Authority: ci_layer_roots.dag exclusion row for
+// self_host_logic_behavioral_witness.dag.
+test fn witness_self_host_logic_local_repo_wet_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/self_host_logic_behavioral_witness.dag",
+    function: "self_host_logic_behavioral_receipt_holds",
+    excluded_from_discovery: true
+  ) {
+    LocalRepoWetLane => true
+    _ => false
+  }
+}
+
+test fn witness_namespace_import_closure_falsifier_wet_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/namespace_import_closure_witness.dag",
+    function: "namespace_import_closure_receipt_holds",
+    excluded_from_discovery: true
+  ) {
+    FalsifierSelfHostWet => true
+    _ => false
+  }
+}
+
+test fn witness_dispatch_bijection_real_roster_falsifier_wet_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/interpreter_dispatch_bijection_real_roster_witness.dag",
+    function: "interpreter_dispatch_bijection_real_roster_red_holds",
+    excluded_from_discovery: true
+  ) {
+    FalsifierSelfHostWet => true
+    _ => false
+  }
+}
+
+// POLARITY FLIPPED, not weakened or deleted (dashboard node adhoc-1eb1a9f9-ad9). Before
+// 611fd02770/#8283 deleted falsifier.yml, this identity's cadence (FalsifierSubstrateLongLane) had
+// a real scheduled route and witness_has_executing_consumer_for_row held. That route is gone with
+// no replacement executor, so witness_execution_standing_for_live_row now derives
+// DeclaredCadenceUnrealized for this exact identity rather than WitnessHasExecutingConsumer. The
+// identity is inside the derived population witness_cadence_has_scheduled_route names as
+// unrealized, not beside it: this test certifies the honest gap, not the coverage claim that
+// stopped being true at 611fd02770.
+
+test fn witness_infer_transform_add_vertical_substrate_long_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness.dag",
+    function: "infer_transform_add_vertical_witness_holds",
+    excluded_from_discovery: true
+  ) {
+    FalsifierSubstrateLongLane => true
+    _ => false
+  }
+    && match witness_execution_standing_for_live_row(
+      entry: "src/v2/test/claim/long/infer_transform_binary_infix_witness.dag",
+      function: "infer_transform_add_vertical_witness_holds"
+    ) {
+      DeclaredCadenceUnrealized { cadence: _, entry: _, function: _ } => true
+      _ => false
+    }
+}
+
+test fn witness_complement_wet_falsifier_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness.dag",
+    function: "emit_on_demand_complement_grain_keys_differ_holds",
+    excluded_from_discovery: true
+  ) {
+    OfflineLocalRecipe => true
+    _ => false
+  }
+}
+
+test fn witness_offline_execution_lane_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/execution/synthetic_optin_exec_witness_test.dag",
+    function: "synthetic_optin_exec_witness",
+    excluded_from_discovery: true
+  ) {
+    OfflineLocalRecipe => true
+    _ => false
+  }
+}
+
+test fn witness_discovery_row_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/long/effect_reach.dag",
+    function: "effect_reach_path_data_init_derived_host_reading_holds",
+    excluded_from_discovery: false
+  ) {
+    DiscoverySelection => true
+    _ => false
+  }
+}
+
+test fn witness_bin_wet_live_rust_observation_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/stage0_rust_host_observation_live_witness.dag",
+    function: "live_rust_observation_matches_actions_subject",
+    excluded_from_discovery: true
+  ) {
+    BinWitnessWet => true
+    _ => false
+  }
+}
+
+test fn witness_substrate_long_lane_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "dag/test/claim/long/dissolution_census_witness.dag",
+    function: "census_counters_exhaustively_partition_the_rows",
+    excluded_from_discovery: true
+  ) {
+    FalsifierSubstrateLongLane => true
+    _ => false
+  }
+}
+
+test fn witness_substrate_long_lane_manifest_covers_holds() -> Bool {
+  witness_admission_manifest_covers_row(
+    entry: "dag/test/claim/long/dissolution_census_witness.dag",
+    function: "census_counters_exhaustively_partition_the_rows"
+  )
+}
+
+test fn witness_explicit_manifest_nonempty_holds() -> Bool {
+  length(xs: witness_admission_explicit_consumer_manifest()) > 0
+}
+

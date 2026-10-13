@@ -21,8 +21,7 @@ import v2.std.compilers.target_model {
 }
 import extdeps.communication.medium { Medium }
 import v2.std.collection { Absent, Present, list_at_optional, map_get_checked }
-import v2.std.algebra { contains, fold_list, FreeMonoid }
-import std.algebra { Cons, Empty, list_append, list_snoc_item }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, contains, fold_list, FreeMonoid }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -43,7 +42,8 @@ import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_b
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_arrow_body_child, named_child_lookup }
-import v2.extdeps.languages.dag { namespace_graft_node_is_module_body, parse_production_emitted_identity_optional }
+import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
+import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
@@ -548,7 +548,7 @@ fn emit_produced_module_step(
 // CONS-LIST SPELLING of a string rather than the native one: `==` and `concat` still behave, which
 // is why every golden over this fold stayed green for as long as goldens were all that read it --
 // but a builtin that requires a native string REFUSES it. Measured 2026-09-10 as `split expects a
-// string, got Variant` from v2.test.self_host.stage0_production_target's two contains-controls,
+// string, got Variant` from v2.test.claim.self_host.stage0_production_target's two contains-controls,
 // the first consumers to read this fold's output through `split`. Nothing on the production door
 // reached this fold until the door started routing every nonempty population through it, so the
 // defect was latent rather than new, and the equality-only readers could never have found it.

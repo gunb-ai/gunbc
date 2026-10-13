@@ -34,7 +34,7 @@ data python_language_further_authority_1: ExternalAuthority = ExternalAuthority 
 // is one place, gunbc.language_target_registry runtime_checker_subject_note, and this carrier
 // should never have carried a second, contradicting copy of it. The row's module path is
 // extdeps.python; the extdeps.python.interpreter this sentence used to name is not a module at all
-// — it was the file path dag/extdeps/python/python.dag transcribed as a module path, one of three
+// — it was the file path dag/extdeps/python.dag transcribed as a module path, one of three
 // such phantoms corrected in the registry's census_path_resolution_note, so the stale sentence was
 // handing a reader both the wrong join fact and a module that does not exist.
 

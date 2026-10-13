@@ -1,7 +1,7 @@
-module gunbc.fabric_storage_client
+module gunbc.fabric.fabric_storage_client
 
-import gunbc.fabric_storage_state_auth_io { fabric_state_signed_request }
-import gunbc.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
+import gunbc.fabric.fabric_storage_state_auth_io { fabric_state_signed_request }
+import gunbc.fabric.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
 
 import std.types { String, NonEmptyStr, Int, List }
 import std.nat { Nat }
@@ -16,11 +16,11 @@ import std.fabric_storage {
   FabricPut, FabricPutRefused, FabricHeadRead, FabricHeadReadRefused,
   FabricHeadAdvance, FabricHeadAdvanceRefused, FabricClosureRead, FabricClosureRefused,
 }
-import gunbc.fabric_storage_wire {
+import gunbc.fabric.fabric_storage_wire {
   fabric_storage_unwire_head, fabric_storage_unwire_put, fabric_storage_unwire_advance, fabric_storage_unwire_closure,
   FabricIdentityRead, FabricIdentityUnproxied, FabricIdentityReadRefused, fabric_storage_unwire_identity,
 }
-import gunbc.fabric_storage_file_store {
+import gunbc.fabric.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
 
@@ -37,7 +37,7 @@ import gunbc.fabric_storage_file_store {
 //                             claim or instrument uses over its own temp root. Since 2026-09-27 the
 //                             placed host's writers reach the placed store only through the door
 //                             (operator ruling relayed by proud-deer-538), so every write to it passes
-//                             one admission (gunbc.fabric_storage_serve).
+//                             one admission (gunbc.fabric.fabric_storage_serve).
 //
 // There is no fallback between them: a call that cannot reach its door answers
 // FabricStoreUnreachable and the caller refuses -- it never reads a local copy.

@@ -1,17 +1,15 @@
-module gunbc.machine_intake_ampere_nvparam_console_observation
+module gunbc.machine_intake.ampere_nvparam_console_observation
 
-import v2.std.algebra { list_reverse }
-import std.algebra { Cons }
+import std.algebra { Cons, list_reverse, trim }
 import std.measure { byte_size_count }
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
-import std.algebra { trim }
 import std.optional { Present }
 import extdeps.numeric.base16 { base16_word_value }
 import extdeps.ampere.nvparam {
   NvParamRegion, NvPreboot, NvManufacturing, NvUser, NvBoard,
   NvParamKey, NvParamKeyReading, NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_index, nvparam_key_in, nvparam_key_text, nvparam_size, nvparam_region_start, nvparam_region_max,
 }
-import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_line }
+import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_console_line }
 
 // THE NVPARAM DUMP A BOOT PRINTS, READ INTO NAMED SETTINGS. The firmware's PrintNVRAM
 // (edk2-platforms@2170c80c Silicon/Ampere/AmpereAltraPkg/Drivers/DebugInfoPei/DebugInfoPei.c) walks

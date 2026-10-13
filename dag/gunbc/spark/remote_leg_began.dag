@@ -1,8 +1,7 @@
 module gunbc.spark.remote_leg_began
 
 import std.types { String, Bool, List }
-import std.algebra { trim }
-import v2.std.algebra { length }
+import std.algebra { trim, length }
 
 // THE IN-BAND BEGAN-LINE, ONE PROTOCOL FOR EVERY PRIVILEGED SPARK LEG. extdeps.ssh.session
 // ssh_client_error_exit_status says why ssh's 255 alone does not establish that nothing ran, and
@@ -13,13 +12,13 @@ import v2.std.algebra { length }
 // WHAT ITS ABSENCE DOES NOT ESTABLISH. The line and the command travel in one unacknowledged stream: a
 // path can go dark after the remote shell wrote the line, or after the command started, before the line
 // reaches the client. So "no began-line and ssh exited 255" means the start was UNOBSERVED, not that
-// nothing ran. The consumers state what they do with that residue: gunbc.spark.pair_serving_apply
-// retries only idempotent legs; gunbc.spark.model_snapshot_materialize reads it as LegBeginUnobserved,
-// projected to ArgvLegMayHaveRun. A two-phase protocol (acknowledge before the command is sent) is the
-// next rung, after which a never-began reading is supportable.
+// nothing ran. The consumers state what they do with that residue: gunbc.spark.host_privileged_apply
+// (extracted from the retired pair-serving apply) and gunbc.spark.model_snapshot_materialize read it
+// as LegBeginUnobserved, projected to ArgvLegMayHaveRun. A two-phase protocol (acknowledge before the
+// command is sent) is the next rung, after which a never-began reading is supportable.
 //
-// It was two protocols with two marker strings (gunbc.spark.pair_serving_apply and
-// gunbc.spark.model_snapshot_materialize); this is the one home both consume.
+// It was two protocols with two marker strings (retired pair_serving_apply and
+// gunbc.spark.model_snapshot_materialize); this is the one home remaining consumers use.
 data remote_leg_began_word: String = "gunbc-privileged-leg-began"
 
 fn remote_leg_began_payload_line() -> String {

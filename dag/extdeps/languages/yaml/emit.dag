@@ -9,7 +9,7 @@ import extdeps.languages.yaml.types {
 }
 import extdeps.languages.yaml.ingest {
   yaml_string_reads_back_plain, yaml_string_reads_back_as_plain_key, yaml_resolve_plain,
-  yaml_contains_refused_character, yaml_first_refused_character, yaml_refused_character_reason,
+  yaml_first_refused, yaml_refused_character_reason,
   yaml_line_containing, yaml_source_lines
 }
 import std.layout {
@@ -321,14 +321,13 @@ fn emit_yaml(v: YamlValue) -> YamlEmitResult {
 }
 
 fn yaml_emitted_text(text: String) -> YamlEmitResult {
-  if yaml_contains_refused_character(text: text) {
-    let cp = yaml_first_refused_character(text: text)
-    YamlEmitRefused {
-      path: join(["line ", to_string(yaml_line_containing(lines: yaml_source_lines(src: text), pattern: from_code_point(cp: cp), index: 0)), " of the emitted text"], ""),
-      reason: yaml_refused_character_reason(cp: cp),
-    }
-  } else {
-    EmittedYaml { text: text }
+  match yaml_first_refused(text: text) {
+    Present { value: r } =>
+      YamlEmitRefused {
+        path: join(["line ", to_string(yaml_line_containing(lines: yaml_source_lines(src: text), pattern: r.spelled, index: 0)), " of the emitted text"], ""),
+        reason: yaml_refused_character_reason(cp: r.cp),
+      }
+    Absent => EmittedYaml { text: text }
   }
 }
 

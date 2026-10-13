@@ -11,7 +11,7 @@ import extdeps.access.posix {
 }
 import std.effect_grant { Verb, Read, Write, Execute, verb_eq }
 import gunbc.ownership { Ownership, Owned }
-import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 
 // A host directory the fleet owns, carried as WHO NEEDS WHAT rather than as a mode. The mode is
 // DERIVED (managed_directory_permissions below), which is the whole point: gunbc.live_deploy.emit's
@@ -29,7 +29,7 @@ import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 // defined, self-tested, and consumed by nothing — it is named on the inert-carrier roster
 // (v2.lens.inert_carrier) for exactly that reason, and this module is the live consumer that takes
 // it off, the same way RbacPolicy came off when extdeps/bmc/access.dag started using it. Principals
-// are PosixUser rows from the closed gunbc.fleet_posix_accounts roster. Lifecycle is
+// are PosixUser rows from the closed gunbc.fleet.fleet_posix_accounts roster. Lifecycle is
 // gunbc.ownership.Ownership. The only thing this module adds is the JOIN.\n\nCLASS ASSIGNMENT IS
 // DERIVED, NOT DECLARED, which is what stops the dependent list from being the answer written
 // twice: a dependent lands in the owner, group, or other class by comparing its uid and gid against
@@ -51,7 +51,7 @@ import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 // established by evidence rather than by assumption, and that a blanket re-derivation is a host
 // behaviour change disguised as a refactor. What it did not do is say WHERE the constant lives, so
 // each directory kept its own: gunbc.auth.approval_ntfy_converge declared the octal "0750" for the
-// ntfy state and config directories, and gunbc.host_credential_custody_converge declared "0750" and
+// ntfy state and config directories, and gunbc.fleet.host_credential_custody_converge declared "0750" and
 // "0700" again for the custody rows -- one of which ensures THE SAME DIRECTORY as the ntfy config
 // member. Two converges asserting a mode on one directory would flap it on every run, and the
 // repair reached for was a witness holding the two strings equal, which is §5's validation standing
@@ -365,7 +365,7 @@ fn srv1_dashboard_service_principal() -> PosixUser {
 // instance existed.\n\nOwner and dependents genuinely do not vary — every instance's attempt state
 // is written and read by that instance's own service user, so the derivation of the mode is
 // unchanged and this is not a loosening. Only the placement moves to a parameter, which is the axis
-// #7456 established as the one that varies.\n\nsrv1_attempt_state_directory (gunbc.host_layout) is
+// #7456 established as the one that varies.\n\nsrv1_attempt_state_directory (gunbc.host.host_layout) is
 // the production placement of the general row rather than a second definition, so there is still
 // exactly one statement of what the directory requires.
 

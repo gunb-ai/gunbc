@@ -620,7 +620,7 @@ pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, Str
         let mut findings: Vec<JoinFinding> = Vec::new();
         let roster_record = index_get(index, enrolled.roster_module);
         let fixture_home = match roster_record {
-            Some(record) => module_is_fixture_carrier(&record.module_path, &record.rel_path),
+            Some(record) => module_is_fixture_carrier(&record.module_path),
             // Undecidable without the module, and the absence is itself refused below; treat it
             // as production so a missing control roster cannot be quietly excused.
             None => false,
@@ -634,9 +634,10 @@ pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, Str
         let (declared, excluded): (
             Vec<&crate::coproduct_reflection::DataDeclTypeRow>,
             Vec<&crate::coproduct_reflection::DataDeclTypeRow>,
-        ) = of_type.iter().copied().partition(|row| {
-            module_is_fixture_carrier(&row.module_path, &row.rel_path) == fixture_home
-        });
+        ) = of_type
+            .iter()
+            .copied()
+            .partition(|row| module_is_fixture_carrier(&row.module_path) == fixture_home);
 
         let rostered: BTreeSet<(String, String)> = match roster_record {
             None => {

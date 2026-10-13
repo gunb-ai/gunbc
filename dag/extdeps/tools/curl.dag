@@ -3,10 +3,9 @@ module extdeps.tools.curl
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of, Unit }
-import std.algebra { trim }
+import std.algebra { trim, Less, Equal, Greater }
 import std.resources { Network }
 import std.measure { Second, second, second_count, Microsecond, microsecond, microsecond_count }
-import std.algebra { Less, Equal, Greater }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_core_of_dotted, semver_minimum_of_constraint }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.version { VersionConstraint }
@@ -15,7 +14,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutUnconditional, PutIfAbsent, PutIfMatch }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { apt_bin_dir, package_curl }
+import extdeps.package_managers.apt { apt_bin_dir, package_curl }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -97,7 +96,7 @@ fn curl_download_command(url: String, destination: String) -> ArgvCommand {
   argv_command(program: curl_program(), arguments: ["-fsL", "-o", destination, url])
 }
 
-// THE BMCWEB SESSION LOGIN the srv3 install path runs (gunbc.host_effect_realize
+// THE BMCWEB SESSION LOGIN the srv3 install path runs (gunbc.host.host_effect_realize
 // Srv3BmcwebSessionLogin): POST the JSON login body FROM A FILE (--data @file) and write the
 // response to a file. The credential never reaches argv: the body path does, the password bytes
 // stay in the file the caller's materialization bracket owns (the same bracket/argv split
@@ -225,7 +224,7 @@ fn curl_aws_sigv4_s3_provider(region: NonEmptyStr) -> String {
 // THE STATUS IS STILL REPORTED, ON STDOUT, so the caller can tell 404 from 403 without parsing
 // stderr prose: -w '%{http_code}' prints the three digits after the transfer, and prints 000 when
 // no HTTP status was ever received (connect failure, timeout), which is how a caller separates
-// "the store answered" from "nothing answered" -- the distinction gunbc.fabric_m0_commit's
+// "the store answered" from "nothing answered" -- the distinction gunbc.fabric.fabric_m0_commit's
 // CommitTransportOutcome exists to keep.
 //
 // THE CONDITIONAL WRITE IS A PARAMETER, NOT A DEFAULT. If-None-Match: * turns the PUT into
@@ -809,7 +808,7 @@ fn curl_ascii_lower_from(s: String, i: Int, acc: String) -> String {
   } else {
     let c = char_at(s, i)
     let cp = code_point(c)
-    curl_ascii_lower_from(s: s, i: i + 1, acc: concat(acc, if cp >= 65 && cp <= 90 { from_code_point(cp: cp + 32) } else { c }))
+    curl_ascii_lower_from(s: s, i: i + 1, acc: concat(acc, if cp >= 65 && cp <= 90 { substring(s: "abcdefghijklmnopqrstuvwxyz", start: cp - 65, end: cp - 64) } else { c }))
   }
 }
 

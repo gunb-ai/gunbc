@@ -1,7 +1,7 @@
-module gunbc.ci_runner_placement
+module gunbc.ci.ci_runner_placement
 
-import gunbc.ci_fleet { ComputeOffer }
-import gunbc.fleet_intent { compute_host_primary_cpu }
+import gunbc.ci.ci_fleet { ComputeOffer }
+import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
 import product.host_identity { HostIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
 import std.types { Int, List, String, Bool }
@@ -9,9 +9,9 @@ import std.disposition { Disposition, Terminal }
 import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text, gunbc_runner_slice_cap_for_width, host_runner_pool_charge }
-import gunbc.runner_slot_desired { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
+import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.runner.runner_slot_allocation { HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text, gunbc_runner_slice_cap_for_width, host_runner_pool_charge }
+import gunbc.runner.runner_slot_desired { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
   SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,
@@ -21,7 +21,7 @@ import gunbc.session_reservation_policy {
 import gunbc.session_admission_policy {
   gunbc_session_admission_policy, SessionAdmissionDeclared, SessionAdmissionUnestablished,
 }
-import gunbc.fleet_host_budget {
+import gunbc.fleet.fleet_host_budget {
   host_allocation_verdict,
   HostAllocationVerdict,
   HostAllocationConserves,
@@ -37,7 +37,7 @@ import gunbc.fleet_host_budget {
   compile_pool_bytes_for,
   gunbc_compile_pool_placement,
 }
-import gunbc.fabric_control_plane_charge {
+import gunbc.fabric.fabric_control_plane_charge {
   host_fabric_control_plane_claim_under,
   fabric_control_plane_placement,
   FabricControlPlanePlacement,
@@ -50,7 +50,7 @@ import extdeps.jobserver {
   JobserverAbsent,
 }
 import extdeps.cpu { cpu_facts_threads }
-import gunbc.ci_floor_measurement {
+import gunbc.ci.ci_floor_measurement {
   SessionOperatingPoint,
   SessionOperatingPointSet,
   SessionOperatingPointUnset,
@@ -60,7 +60,7 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_per_session_peak_samples,
   gunbc_ci_runner_cgroup_memory_cap,
 }
-import gunbc.host_memory_observation {
+import gunbc.host.host_memory_observation {
   HostUsableRam,
   HostUsableRamMeasured,
   HostUsableRamConservativeLowerBound,
@@ -70,7 +70,7 @@ import gunbc.host_memory_observation {
   HostFixedOverheadAllowance,
   HostFixedOverheadUnmeasured,
 }
-import gunbc.ci_fleet { fleet_intent_offers }
+import gunbc.ci.ci_fleet { fleet_intent_offers }
 
 type WorkloadClass
   = BatchLatencyTolerant
@@ -110,7 +110,7 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 // ("there is no CPU demand - the processes we run are single core"): a slot carries CPUWeight only
 // and no CPUQuota, which is the state the hosts run in today, and a 100% quota at the policy of
 // one core per slot would throttle the parallel link/codegen phases of a job that is otherwise
-// single-core. The arm is read from gunbc.runner_slot_allocation's cpu_quota, never derived from
+// single-core. The arm is read from gunbc.runner.runner_slot_allocation's cpu_quota, never derived from
 // cores_per_slot here: width admission and the per-slot ceiling are two facts of one row, and
 // deriving one from the other is what bound the fleet at a tenfold over-reservation.
 // Pinning each slot to a pairwise-disjoint SET of named CPUs is a stronger contract again, and
@@ -120,7 +120,7 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 // NoCpuCeiling IS NOT THE "ADMISSION WITHOUT CONFINEMENT" ARM THIS TYPE ONCE REPLACED. That arm
 // derived a width from cores_per_slot and then told the host nothing, so the units ran unconfined
 // while the model believed them confined. NoCpuCeiling realizes as an affirmative `CPUQuota=`
-// reset on every unit (gunbc.host_converge runner_cpu_boundary_knobs), so the model and the host
+// reset on every unit (gunbc.host.host_converge runner_cpu_boundary_knobs), so the model and the host
 // agree that there is no ceiling; a unit that once carried one is converged back to none.
 // THE PINNING CONTRACT HAS NO CONSTRUCTOR, AND THAT IS THE POINT RATHER THAN AN OMISSION.
 //
@@ -293,7 +293,7 @@ fn resolve_session_slice(mode: SessionReservationMode) -> SessionSliceResolution
   }
 }
 
-data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet_host_budget). Soundness is host_allocation_verdict (node_conserves over runner_pool + session_pool + fixed_overhead + headroom + the control-plane charge <= host RAM), consumed as a coproduct so an unmeasured resident reports a measurement to take rather than a capacity deficit; it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is charged from host_session_slice_resolution, and the REFUSAL lives in the accumulator that matches it (accumulate_conservation_deployment sets unsound_reason on SessionSliceUnsized), and host_session_slice_bytes is DELETED. That projection was total and mapped SessionSliceUnsized to byte_size(0); the clause above it claimed the zero was 'safe only under its current caller' while an external caller in test.claim.host_allocation_conservation was already spending it as a grounded charge, so the stated safety condition was false when it was written. It is deleted rather than kept behind a stronger warning, because the warning had already failed once: every consumer now matches host_session_slice_resolution and carries its own refusal arm for the unsized case. THE CLAUSE BEFORE THAT read 'the uniform 1 GiB demand class shared with the ctrl session dashboard', and both halves were false: the ctrl dashboard's per-container cap was a transcribed 31.27 GiB literal, 31x the figure claimed to be shared (since deleted -- it had no consumer in the budget tree), and the 1 GiB figure named a gunbc.fleet_host_budget literal with no derivation and no citation, since deleted. A sentence asserting that two carriers hold one class, where neither carrier claims a relation to the other, is the invented entailment that made an unsourced number look sourced." }
+data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet.fleet_host_budget). Soundness is host_allocation_verdict (node_conserves over runner_pool + session_pool + fixed_overhead + headroom + the control-plane charge <= host RAM), consumed as a coproduct so an unmeasured resident reports a measurement to take rather than a capacity deficit; it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is charged from host_session_slice_resolution, and the REFUSAL lives in the accumulator that matches it (accumulate_conservation_deployment sets unsound_reason on SessionSliceUnsized), and host_session_slice_bytes is DELETED. That projection was total and mapped SessionSliceUnsized to byte_size(0); the clause above it claimed the zero was 'safe only under its current caller' while an external caller in test.claim.host.host_allocation_conservation was already spending it as a grounded charge, so the stated safety condition was false when it was written. It is deleted rather than kept behind a stronger warning, because the warning had already failed once: every consumer now matches host_session_slice_resolution and carries its own refusal arm for the unsized case. THE CLAUSE BEFORE THAT read 'the uniform 1 GiB demand class shared with the ctrl session dashboard', and both halves were false: the ctrl dashboard's per-container cap was a transcribed 31.27 GiB literal, 31x the figure claimed to be shared (since deleted -- it had no consumer in the budget tree), and the 1 GiB figure named a gunbc.fleet.fleet_host_budget literal with no derivation and no citation, since deleted. A sentence asserting that two carriers hold one class, where neither carrier claims a relation to the other, is the invented entailment that made an unsourced number look sourced." }
 
 fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   match o {
@@ -314,7 +314,7 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
     HostFixedOverheadAllowance { bytes: b, reason: _ } => HostOverheadResolved { bytes: b }
     HostFixedOverheadUnmeasured =>
       HostOverheadUnresolved {
-        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.host_memory_observation gunbc_ci_host_fixed_overhead_for. Host: ", host)
+        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.host.host_memory_observation gunbc_ci_host_fixed_overhead_for. Host: ", host)
       }
   }
 }
@@ -356,7 +356,7 @@ fn conservation_host_deployment(offer: ComputeOffer, slots: Int, build_tokens: H
 // and the correction is recorded because the proxy came within one cleanup of causing the bug this
 // charge exists to prevent.
 //
-// The original derivation asked whether gunbc.build_cache_instance listed an
+// The original derivation asked whether gunbc.build_cache.build_cache_instance listed an
 // InteractiveSessionCompiles instance for the host. That correlated with session residency and
 // nothing more. When ctrl-sccache.service was deleted from srv1 and srv2 on 2026-08-06 as provably
 // dead — 29MB in 45 days, zero connections, zero writes in a week, because containers cache to
@@ -436,7 +436,7 @@ fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResoluti
 
 // CONSERVATION IS CHECKED AGAINST OS-USABLE RAM, NOT THE DIMM TOTAL. compute_host_ram_bytes_total
 // sums the populated modules -- nominal capacity -- while the OS sees less after firmware and
-// kernel reservations, and gunbc.ci_fleet fleet_host_memory_nominal_vs_usable_note exists
+// kernel reservations, and gunbc.ci.ci_fleet fleet_host_memory_nominal_vs_usable_note exists
 // specifically to say these are two facts that must not be conflated. The margin decides admissions
 // rather than being academic: at the 128 GiB nominal / 125 GiB usable population this fleet carried
 // until 2026-08-22, an eighth 14 GiB slot summed to 125.6 GiB, which PASSED against nominal and
@@ -464,7 +464,7 @@ fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResoluti
 // NOW CLOSED ON ALL FOUR HOSTS AND THIS PARAGRAPH'S PREVIOUS REVISION WAS STALE RATHER THAN
 // WRONG-AT-THE-TIME. It read that srv1 and srv2 had taken no such read and that their rows remained
 // conservative lower bounds; both took ordinary /proc/meminfo reads over SSH on 2026-08-23, so
-// gunbc.host_memory_observation now carries HostUsableRamMeasured for every host and
+// gunbc.host.host_memory_observation now carries HostUsableRamMeasured for every host and
 // gunbc_ci_conservative_lower_bound_retired_note records the borrowed bound's deletion. The
 // correction matters beyond tidiness: a reader sizing srv1 against the retired 125 GiB figure would
 // under-admit a host with about four times that much, and a reader who believed the bound was still
@@ -477,7 +477,7 @@ fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResoluti
 // WHAT THE PER-HOST GRAIN RESTS ON is therefore still not this trigger, and the heterogeneity does
 // not retroactively justify the grain. It is that this wall folded over per-host offers and then
 // read RAM from a synthetic machine outside that fold, and that an unclassified host borrowed
-// rather than refused -- see gunbc.host_memory_observation gunbc_ci_host_usable_ram_kind_note. A
+// rather than refused -- see gunbc.host.host_memory_observation gunbc_ci_host_usable_ram_kind_note. A
 // per-host fact belonged at per-host grain when the hosts were identical; it merely became visible
 // when they stopped being.
 
@@ -500,7 +500,7 @@ fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsabl
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => HostUsableRamResolved { bytes: b }
     HostUsableRamUnmeasured =>
       HostUsableRamUnresolved {
-        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.host_memory_observation gunbc_ci_host_usable_ram_for. Host: ", host)
+        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.host.host_memory_observation gunbc_ci_host_usable_ram_for. Host: ", host)
       }
   }
 }
@@ -542,7 +542,7 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
 // WHAT IS STILL OPEN, so the next reader does not mistake this for the whole class: main's
 // host_memory_denominator keys on session_reservation_bytes alone, which is one of the five inputs
 // host_runner_memory_envelope_resolution folds. A host whose FIXED OVERHEAD or USABLE RAM is unread
-// -- the srv5 case gunbc.host_memory_observation exists to make expressible -- still passes the
+// -- the srv5 case gunbc.host.host_memory_observation exists to make expressible -- still passes the
 // denominator check and divides an envelope the Int shim flattened to zero.
 //
 // IT IS A STATED FRONTIER, NOT A DANGLING FOLD (review 69200, DESIGN 3c). An earlier revision of
@@ -595,7 +595,7 @@ fn session_slice_of(f: HostWidthFacts) -> HostSessionSliceResolution {
 }
 
 // ONE HOST'S STANDING FROM ITS OFFER AND A SUPPLIED FACTS RECORD. host_deployment_standing supplies
-// gunbc.runner_slot_allocation host_width_facts, the production producer; a witness may supply a
+// gunbc.runner.runner_slot_allocation host_width_facts, the production producer; a witness may supply a
 // record directly, and then the whole standing -- width, conservation, jobserver -- is a function
 // of values it chose. The control-plane claim is the one input still read here, because it is
 // evaluated under the placement argument rather than the default placement the record holds.

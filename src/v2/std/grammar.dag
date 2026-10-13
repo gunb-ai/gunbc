@@ -3,8 +3,7 @@ module v2.std.grammar
 import std.types { List }
 import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, list_append, list_snoc_item }
-import v2.std.algebra { is_empty, fold_list, fold_list_node, zip_eq, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, is_empty, fold_list, zip_eq, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -53,6 +52,7 @@ import v2.std.node {
   TypeNode,
   StructuralLabel,
   symbol_intern_lexeme,
+  fold_list_node
 }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.compilers.target_model {
@@ -3822,4 +3822,16 @@ fn grammar_emit_parse_tree(root: GrammarRoot, tree: ParseTree) -> Outcome<List<G
       }
     }
   )
+}
+
+// THE PRODUCTION A PARSED NODE IS, read off its production-identity edge (the node
+// v2.compiler.parse parse_wrap_production_captured builds); Absent for any node that is not a
+// production wrapper. Shared by the .dag language's surface readers and the parser's annotation
+// region roster, which both key on "is this a production".
+fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
+  match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
+    NamedChildFound { target: id_node } => node_atom_identity_optional(node: id_node)
+    NamedChildMissing => Absent
+    NamedChildAmbiguous => Absent
+  }
 }

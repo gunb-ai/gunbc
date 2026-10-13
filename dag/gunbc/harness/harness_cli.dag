@@ -3,13 +3,13 @@ module gunbc.harness.harness_cli
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.nat { Nat, nat_range_inclusive }
 import std.checked_arithmetic { checked_int_to_nat }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import product.capacity.event_chain { PartitionId }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
 import gunbc.harness.harness_reasoning_wire { HarnessReasoningLevel, ReasoningMaximum, harness_reasoning_level_wire }
 import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
-import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count }
+import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count, money_amount_micro }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
@@ -43,6 +43,8 @@ import gunbc.harness.harness_seat { harness_turn_request, harness_seat_pointer_o
   ServingModelRequirement, AnyAdmittedModel,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, QuiescenceRequired, GrantIdentity }
+import product.fabric.demand { AdmissionTerms, BuyTerms, DemandObjective, admission_terms, debt_payoff_objective }
+import extdeps.currency.currency { Usd }
 import gunbc.serving.serving_front_door {
   ServingSeatPermit, SeatPermitMinted, SeatPermitNotMinted, serving_seat_permit_claims, mint_serving_seat_permit,
 }
@@ -347,10 +349,27 @@ type HarnessSeatWait {
   waits: Int
 }
 
+// Stated CLI policy: batch belt turns do not value delay. A per-invocation flag is a
+// declared frontier — gunbc run --function has no --arg for this field.
+data harness_cli_demand_objective: DemandObjective = debt_payoff_objective
+
 // The seat request every belt-spawned role makes; the waiting fold asks it once up front and once
 // after each announced interval.
+fn harness_cli_admission() -> AdmissionTerms {
+  admission_terms(
+    buy: BuyTerms {
+      budget_account: "harness-cli",
+      currency: Usd,
+      reservation_price: money_amount_micro(count: 0),
+      maximum_buy_order: money_amount_micro(count: 0),
+    },
+    deadline: none,
+    objective: harness_cli_demand_objective,
+  )
+}
+
 fn harness_bind_belt_seat(role: String, system_prompt: String, brief: String, actor: NonEmptyStr, attempt: NonEmptyStr) -> HarnessSeatBinding {
-  harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: role, shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: actor, attempt: attempt, policy: harness_seat_policy, session: none)
+  harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: role, shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: actor, attempt: attempt, policy: harness_seat_policy, session: none, admission: harness_cli_admission())
 }
 
 fn harness_bind_seat_waiting(
@@ -498,7 +517,7 @@ fn harness_place_cli(request: String, attempt: String, receipt: String) -> Proce
 
 fn harness_place_for(request: String, attempt: String, receipt: String) -> ProcessExit {
   let caller = fabric_service_principal()
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: InteractiveQualitySensitive, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: ["place", request], actor: principal_ref_label(p: caller) as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy, session: none)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: InteractiveQualitySensitive, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: ["place", request], actor: principal_ref_label(p: caller) as NonEmptyStr, attempt: attempt as NonEmptyStr, policy: harness_seat_policy, session: none, admission: harness_cli_admission())
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -616,7 +635,7 @@ fn harness_release_admitted(partition: String, reference: String, grant: String,
 // bypass that only a diagnostic uses is still a bypass, and it is the one most likely to be run
 // while something else is in flight.
 fn harness_probe_cli() -> ProcessExit {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt), actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy, session: none)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt), actor: "probe" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe"), policy: harness_seat_policy, session: none, admission: harness_cli_admission())
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -701,13 +720,13 @@ fn harness_worker_system_prompt_at(worktree: String, repo_root: String, gunbc_pr
 // each step, so the total wall bound grows with the count rather than being replaced by it.
 data harness_worker_step_budget: Int = harness_round_budget_steps
 
-// THE SEAT THIS PROCESS BOUND, NAMED FOR THE PER-ATTEMPT METERING (gunbc.roadmap_attempt_metering).
+// THE SEAT THIS PROCESS BOUND, NAMED FOR THE PER-ATTEMPT METERING (gunbc.roadmap.roadmap_attempt_metering).
 // A turn whose seat cannot be named does not run: the seat is released and the process exits with
 // the write's cause, because metering an unnamed seat would leave its held time unattributable.
 // AN OPERATOR-ROUTE BINDING HOLDS NO FLEET SEAT BY CONSTRUCTION (gunbc.harness.harness_operator_route;
 // operator ruling 2026-10-11), so there is no seat to name and none to leave unattributed: it is its own
 // arm, not an unwritten pointer. DECLARED GAP: its held time is not attributed to the route -- the
-// metering reader (gunbc.roadmap_attempt_metering) reads it as pointer-absent, the same reading as a
+// metering reader (gunbc.roadmap.roadmap_attempt_metering) reads it as pointer-absent, the same reading as a
 // pointer never written. A seat-bearing binding whose pointer is absent still refuses.
 type HarnessSeatPointerWrite
   = HarnessSeatPointerWritten
@@ -768,7 +787,7 @@ fn harness_worker_supervision(chain_fingerprint: String, check_prompt: String, c
 // satisfies the node is decided by the belt's pinned verification against the attempt head, which
 // is the separation DCH-2 requires and the reason there is nothing here that inspects the diff.
 // THE ATTEMPT IDENTITY ARRIVES MINTED, because it is consumed as a PATH SEGMENT by the fleet ssh
-// context (gunbc.fleet_known_hosts_anchor fleet_ssh_attempt_identity refuses anything that is not
+// context (gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_attempt_identity refuses anything that is not
 // a safe segment) as well as by the seat ledger. Building it here from the worktree and events
 // paths -- both absolute -- made every bind on a host that needs the fleet context fail before any
 // ssh leg: measured 2026-09-16 on srv2, "attempt identity ... is not a safe path segment". The
@@ -1007,7 +1026,7 @@ fn harness_auditor_cli(
 // AND THE REPORTING FORM TAKES IT TOO. Two entries reached one turn; a seat on one of them is a wall
 // with a door beside it.
 fn harness_probe_report() -> String {
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt), actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy, session: none)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt), actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy, session: none, admission: harness_cli_admission())
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => join(["harness probe refused before the turn: ", detail, "\n"], "")
     BindingPending { detail } => join(["harness probe is pending placement: ", detail, "\n"], "")

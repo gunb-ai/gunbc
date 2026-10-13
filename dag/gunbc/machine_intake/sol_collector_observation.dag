@@ -1,11 +1,11 @@
-module gunbc.machine_intake_sol_collector_observation
+module gunbc.machine_intake.sol_collector_observation
 
 import std.types { Int }
 import std.measure { Second }
 
 // ATTEMPT OBSERVATION: what one SOL collector covered and received. Platform capability
 // (what an implementation can provide: SolAbsent | SolPresentSilent | SolPresentEmitting,
-// SEL, OEM-decode, and the other PreOs axes) is gunbc.machine_intake_pre_os_observation_capabilities
+// SEL, OEM-decode, and the other PreOs axes) is gunbc.machine_intake.pre_os_observation_capabilities
 // on gunbc#11110. This module does not mint that file.
 //
 // Coverage exists only after session activation is acknowledged. SolCoverageComplete cannot

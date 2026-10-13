@@ -8,6 +8,7 @@ import extdeps.github.app {
   GitHubAppPermission,
   GitHubPermissionAxis,
   ContentsAxis,
+  PullRequestsAxis,
   WorkflowsAxis,
   ActionsAxis,
   MetadataAxis,
@@ -16,7 +17,7 @@ import extdeps.github.app {
   AppAccessWrite
 }
 import extdeps.github.github { Repository }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -120,6 +121,11 @@ fn workflow_projection_paths(paths: List<RepositoryPath>) -> List<RepositoryPath
 
 data contents_write: GitHubAppPermission = GitHubAppPermission {
   name: ContentsAxis,
+  access: AppAccessWrite
+}
+
+data pull_requests_write: GitHubAppPermission = GitHubAppPermission {
+  name: PullRequestsAxis,
   access: AppAccessWrite
 }
 

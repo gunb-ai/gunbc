@@ -1,4 +1,4 @@
-module gunbc.bmc_fan_program_capture
+module gunbc.bmc.bmc_fan_program_capture
 
 import std.types { EpochMs, Int, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
@@ -124,7 +124,7 @@ type CapturedFanProgram {
 // measured by anything this lane had access to - the figures were derived from fan speeds by a
 // rule that was never written down, and then reported as observations.
 //
-// AND THIS MODULE'S OWN SIBLING ALREADY REFUTED THEM. gunbc.fleet_fan_acoustic_evidence establishes
+// AND THIS MODULE'S OWN SIBLING ALREADY REFUTED THEM. gunbc.fleet.fleet_fan_acoustic_evidence establishes
 // that the fleet's chassis fans return FanAcousticUnderdetermined at published_level_count 0 - they
 // cannot ground an acoustic law at all - and the ARCTIC catalog explicitly REFUSES to convert a
 // sone figure into a dBA anchor for exactly this reason. So one half of this PR proved the quantity

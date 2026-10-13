@@ -1,7 +1,6 @@
-module gunbc.roadmap_publish_observe
+module gunbc.roadmap.roadmap_publish_observe
 
-import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha }
-import std.credentials { CredentialSource }
+import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha, Secret }
 import extdeps.git
 import extdeps.git {
   AdvertisedRef,
@@ -9,7 +8,7 @@ import extdeps.git {
   scan_advertised_refs,
   advertised_ref_branch_name,
 }
-import gunbc.roadmap_publish {
+import gunbc.roadmap.roadmap_publish {
   RemoteBranch,
   RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
   RemoteBranchReadFailure,
@@ -28,13 +27,13 @@ import extdeps.github.pulls { PullRequestState, Open }
 import extdeps.github.rate_limits { github_core_rate_limit }
 import extdeps.tools.hostname
 import std.algebra { trim }
-import gunbc.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused, fabric_quota_lease, QuotaSettle, QuotaSettled, QuotaSettleRefused, fabric_quota_settle }
+import gunbc.fabric.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused, fabric_quota_lease, QuotaSettle, QuotaSettled, QuotaSettleRefused, fabric_quota_settle }
 import extdeps.transports.rest {
   RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
 
 // THIS IS THE HALF THAT TOUCHES THE NETWORK, SEPARATED FROM THE HALF THAT JUDGES.
-// gunbc.roadmap_publish adjudicates observations a caller already holds, which is what makes every
+// gunbc.roadmap.roadmap_publish adjudicates observations a caller already holds, which is what makes every
 // one of its arms reachable from constructed values in a witness. That property is worth keeping,
 // so the reading lives here instead: this module calls the transport, decides what was learned, and
 // hands back an ordinary value. The split is the reason the refusal arms are constructible at all -
@@ -235,7 +234,7 @@ data open_state_is_supplied_not_defaulted_note: String ="THE STATE IS PASSED, NO
 // transport would push the ignorance-as-answer conflation back into every other producer.
 
 type PublicationCredentialSource
-  = CredentialSourceConfigured { source: CredentialSource }
+  = CredentialSourceConfigured { token: Secret }
   | CredentialSourceAbsent { reason: String }
 
 fn observe_pull_requests(
@@ -250,7 +249,7 @@ fn observe_pull_requests(
           reason: reason,
         },
       }
-    CredentialSourceConfigured { source } => {
+    CredentialSourceConfigured { token } => {
       let host = os.Hostname.ReadShort()
       let lease = fabric_quota_lease(short_hostname: if host.success { trim(s: host.value) } else { "" }, limit: github_core_rate_limit, amount: 1, actor: "belt:publish-observe" as NonEmptyStr, term_seconds: 120)
       match lease {
@@ -258,7 +257,7 @@ fn observe_pull_requests(
         QuotaLeaseRefused { detail: d } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: d } }
         QuotaLeased { grant: _, partition: _, store: _, limit: _ } => {
       let result = github.Pulls.List(
-        auth_token: source,
+        auth_token: token,
         owner: repo.owner,
         repo: repo.name,
         state: Open,

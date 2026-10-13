@@ -1,8 +1,7 @@
 module v2.workflow.wet_evidence
 
 import std.types { List }
-import v2.std.algebra { contains, fold_list, length }
-import std.algebra { list_append }
+import std.algebra { list_append, contains, fold_list, length }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
@@ -181,7 +180,7 @@ type WetScheduledClaim {
 // verdict, so the executor reads it BEFORE invoking the claim and records which one it read.
 //
 // The arms name premises, not probes. How a premise is read back is realized where its authority
-// lives (`gunbc.wet_host_premise_readback`), so this vocabulary stays free of the runner modules
+// lives (`gunbc.runner.wet_host_premise_readback`), so this vocabulary stays free of the runner modules
 // and the join below can be validated against supplied readings.
 type WetHostPremise
   = RunnerBrowserToolchainReadyForJobUser {}
