@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
-import std.algebra { list_head, list_tail }
+import std.algebra { list_head, skip }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_posix_accounts {
@@ -556,10 +556,7 @@ fn list_head_of_effects(effects: List<SparkBootstrapEffect>) -> SparkBootstrapEf
 }
 
 fn list_tail_of_effects(effects: List<SparkBootstrapEffect>) -> List<SparkBootstrapEffect> {
-  match list_tail(effects) {
-    Present { value: t } => t
-    Absent => []
-  }
+  skip(xs: effects, n: 1)
 }
 
 fn spark_bootstrap_effect_label(effect: SparkBootstrapEffect) -> String {

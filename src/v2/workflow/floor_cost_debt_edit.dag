@@ -3,7 +3,7 @@ module v2.workflow.floor_cost_debt_edit
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.compilers.lexing { LexRules, Token, token_stream_all }
-import std.algebra { Cons, Empty, contains, list_head, list_tail, list_reverse }
+import std.algebra { Cons, Empty, contains, list_head, list_reverse, skip }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
@@ -314,10 +314,7 @@ fn removal_walk_aligned_step(w: RemovalWalk, b: Token) -> RemovalWalk {
       Present { value: h } => removal_tokens_equal(a: h, b: b)
     }
     if head_matches {
-      let rest = match list_tail(xs: cleared.head) {
-        Absent => []
-        Present { value: t } => t
-      }
+      let rest = skip(xs: cleared.head, n: 1)
       RemovalWalk { head: rest, phase: WalkAligned {}, removed: cleared.removed, prev_kept: optional_present(value: b.class), follower_pending: false, call_path: cleared.call_path, call_dotted: cleared.call_dotted, removed_calls: cleared.removed_calls }
     } else if b.class == ^dag_token_and_and {
       removal_walk_with_phase(w: cleared, phase: WalkAfterAndAnd {})

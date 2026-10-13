@@ -2771,10 +2771,7 @@ fn infer_type_head_and_args(t: Node) -> InferTypeHeadArgs {
       match list_at_optional(xs: targets, index: 0) {
         Absent => InferTypeHeadArgs { head: t, args: Empty }
         Present { value: head } =>
-          match list_tail(xs: targets) {
-            Present { value: args } => InferTypeHeadArgs { head: head, args: args }
-            Absent => InferTypeHeadArgs { head: head, args: Empty }
-          }
+          InferTypeHeadArgs { head: head, args: skip(xs: targets, n: 1) }
       }
     TypeNode { connective: _ } => InferTypeHeadArgs { head: t, args: Empty }
     ComputationNode { behavior: _ } => InferTypeHeadArgs { head: t, args: Empty }
@@ -3486,10 +3483,7 @@ fn infer_unify_transform_operand_types(
 }
 
 fn infer_transform_argument_targets(node: Node) -> List<Node> {
-  match list_tail(xs: node_positional_child_targets(node: node)) {
-    Absent => Empty
-    Present { value: t } => t
-  }
+  skip(xs: node_positional_child_targets(node: node), n: 1)
 }
 
 fn infer_operator_arrow(operator: Node) -> Optional<Node> {
