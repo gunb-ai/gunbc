@@ -27,6 +27,7 @@ fn ct_module_header() -> String {
   concat(
     "#[cfg(test)]\n",
     "mod compiler_tests {\n",
+    "    // heal-route repro: compiler_tests.rs drift on origin/main\n",
     "    use im::HashMap;\n",
     "    use crate::v1_compiler_tokenize::tokenize;\n\n")
 }
