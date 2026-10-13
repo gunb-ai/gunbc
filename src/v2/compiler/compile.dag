@@ -2515,7 +2515,7 @@ fn native_lane_population_unformable_identity(population: List<String>) -> Optio
         Absent =>
           match native_route_label_in_package(
             package_text: native_route_module_package_text(module_qn: name),
-            declaration: "any_declaration"
+            declaration: native_route_module_probe_declaration
           ) {
             LabelRefused { cause: cause } =>
               optional_present(value: concat(concat(name, ": "), label_refusal_text(r: cause)))

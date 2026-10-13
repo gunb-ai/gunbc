@@ -11,7 +11,7 @@ import gunbc.witness.v2_native_route {
   NativeRouteTestIdentity, native_route_identity_qualified, native_route_identities_unique,
   native_route_identity_member,
   native_route_module_in_boundary, native_route_identity_in_boundary,
-  native_route_identity_label, native_route_default_pattern,
+  native_route_identity_label, native_route_default_pattern, native_route_module_probe_declaration,
   NativeRouteReference, FloorExpectedPass, FloorExpectedRed, FloorRouteGapRefusal,
   native_route_reference_for,
   NativeRouteMemberRow,
@@ -277,7 +277,7 @@ fn pattern_admits(text: String, module_qn: String, declaration: String) -> Bool 
 // runs every marked declaration of the tree. A default that stopped at `v2.test` would be the
 // location predicate again, dropping marked tests that live elsewhere in `v2`.
 fn default_admits(module_qn: String) -> Bool {
-  match native_route_identity_label(module_qn: module_qn, declaration: "any_declaration") {
+  match native_route_identity_label(module_qn: module_qn, declaration: native_route_module_probe_declaration) {
     LabelRefused { cause: _ } => false
     LabelParsed { label: label } =>
       target_pattern_matches(pattern: native_route_default_pattern(), target: label)
