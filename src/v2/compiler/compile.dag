@@ -2446,16 +2446,44 @@ fn native_lane_universe_selected(
   native_lane_universe_of_facts(facts: native_lane_source_facts(modules: modules), population: population, pattern: pattern)
 }
 
+// A POPULATION NAME WHOSE DUMMY LABEL CANNOT BE FORMED is still a located identity of the namespace
+// listing. Filtering it out of native_lane_candidate_entries (so it is not acquired) must not drop
+// the refusal: DESIGN section 5, a LabelRefused that is no longer admitted is counted, never silent.
+fn native_lane_population_unformable_identity(population: List<String>) -> Optional<String> {
+  fold_list(
+    xs: population,
+    empty: optional_absent(),
+    cons: fn(found, name) {
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          match native_route_label_in_package(
+            package_text: native_route_module_package_text(module_qn: name),
+            declaration: "any_declaration"
+          ) {
+            LabelRefused { cause: _ } => optional_present(value: name)
+            LabelParsed { label: _ } => optional_absent()
+          }
+      }
+    }
+  )
+}
+
 fn native_lane_universe_of_facts(
   facts: List<NativeLaneSourceFacts>,
   population: List<String>,
   pattern: TargetPattern
 ) -> Outcome<NativeLaneUniverse> {
-  match native_lane_label_universe(facts: facts) {
-    NativeLaneLabelRefused { identity: identity } =>
+  match native_lane_population_unformable_identity(population: population) {
+    Present { value: identity } =>
       native_lane_refused(reason: ^native_lane_identity_label_refused, detail: identity)
-    NativeLaneLabeled { sources: sources } =>
-      native_lane_universe_after_labels(pattern: pattern, facts: facts, population: population, sources: sources)
+    Absent =>
+      match native_lane_label_universe(facts: facts) {
+        NativeLaneLabelRefused { identity: identity } =>
+          native_lane_refused(reason: ^native_lane_identity_label_refused, detail: identity)
+        NativeLaneLabeled { sources: sources } =>
+          native_lane_universe_after_labels(pattern: pattern, facts: facts, population: population, sources: sources)
+      }
   }
 }
 
@@ -2731,8 +2759,9 @@ fn native_lane_pattern_probe_declaration(pattern: TargetPattern) -> String {
 // correspondence (native_route_label_in_package) and the same matcher (target_pattern_matches), applied
 // to the module's package with the declaration the pattern itself names. A label that cannot be formed
 // is NOT an entry: admitting it would acquire a module this pattern cannot name (DESIGN section 5,
-// fail-closed). The label-level universe fold still refuses that spelling if it appears as a
-// declaration identity; this check must not widen the request set to reach it.
+// fail-closed). The name remaining in the population listing still refuses
+// `native_lane_identity_label_refused` (native_lane_population_unformable_identity); this check
+// must not widen the request set to reach it.
 fn native_lane_pattern_admits_module(pattern: TargetPattern, module_qn: String) -> Bool {
   match native_route_label_in_package(
     package_text: native_route_module_package_text(module_qn: module_qn),
@@ -2805,14 +2834,19 @@ fn native_lane_acquire_listed(
   population: List<String>,
   pattern: TargetPattern
 ) -> Outcome<NativeLaneAcquisition> {
-  native_lane_acquire_verified(
-    verified: acquire_verified(
-      layout: repository_storage_layout(),
-      bindings: bindings,
-      entries: native_lane_candidate_entries(pattern: pattern, population: population)
-    ),
-    population: population
-  )
+  match native_lane_population_unformable_identity(population: population) {
+    Present { value: identity } =>
+      native_lane_refused(reason: ^native_lane_identity_label_refused, detail: identity)
+    Absent =>
+      native_lane_acquire_verified(
+        verified: acquire_verified(
+          layout: repository_storage_layout(),
+          bindings: bindings,
+          entries: native_lane_candidate_entries(pattern: pattern, population: population)
+        ),
+        population: population
+      )
+  }
 }
 
 fn native_lane_acquire_bound(bindings: List<SourceRootBinding>, pattern: TargetPattern) -> Outcome<NativeLaneAcquisition> {
