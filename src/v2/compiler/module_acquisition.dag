@@ -70,7 +70,6 @@ import v2.compiler.source_authority {
   reference_after_probe,
   reference_next_read,
   reference_prefixes,
-  segment_count,
   source_root_ref_label,
   text_set_has,
   text_set_of
@@ -88,12 +87,12 @@ import v2.std.algebra {
   list_reverse,
   skip
 }
-import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_contains_key, map_insert, map_lookup }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.qualified_name { qualified_name_init, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
 
@@ -106,8 +105,11 @@ import extdeps.communication.medium { Lossless, Medium }
 // enumerations of the layout; they are never a side effect of compiling one entry.
 //
 // WHAT IS REQUESTABLE. An import names a module exactly. A qualified reference of two or more
-// segments names a module and a member, split by the storage lookup's longest-prefix probe. A BARE
-// NAME IS NOT REQUESTABLE (R1): nothing here derives a module from one, so a bare name that no import
+// spine segments (the QualifiedName list, not a string split on `.`) names a module and a member,
+// split by the storage lookup's longest-prefix probe. A String literal is never a module reference:
+// its payload is one interned atom even when the lexeme contains dots, so identity strings and
+// DeclarationRef.module_path data do not drive acquisition. A BARE NAME IS NOT REQUESTABLE (R1):
+// nothing here derives a module from one, so a bare name that no import
 // or local declaration binds reaches the resolver unbound and refuses there, naming the spelling.
 // A qualified spelling that names no module requests nothing -- it may be a member access on a
 // local, which the resolver judges -- while an import or entry that names no module refuses at once.
@@ -402,8 +404,20 @@ fn acquisition_probe_candidate(
 
 // ---- reading what a member asks for -------------------------------------------------------------
 
-fn acquisition_spelling_is_qualified(spelling: String) -> Bool {
-  segment_count(segments: split(s: spelling, delimiter: ".")) >= 2
+// A CODE-POSITION QUALIFIED NAME IS A SPINE OF TWO OR MORE SEGMENTS, not a string that happens to
+// contain dots. Flattening the spine and splitting the lexeme again treats a single interned
+// string-literal payload (`"test.claim.spark.foo"` as one atom) as a module reference, which is
+// how identity strings drove acquisition. A bare name (one segment) is not requestable (R1), even
+// when that segment's lexeme contains `.`.
+fn acquisition_qn_names_a_module(qn: QualifiedName) -> Bool {
+  match qn {
+    Empty => false
+    Cons { head: _, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: _, tail: _ } => true
+      }
+  }
 }
 
 fn acquisition_import_texts(rows: List<Import>) -> List<String> {
@@ -451,7 +465,7 @@ fn acquisition_head_is_candidate_module(head: SiteHeadBinding) -> Bool {
 
 fn acquisition_seen_site(acc: AcquisitionSeen, scoped: ScopedReferenceSite) -> AcquisitionSeen {
   let text = qualified_name_to_dotted_string(qn: scoped.site.spelling)
-  if acquisition_head_is_candidate_module(head: scoped.head) && acquisition_spelling_is_qualified(spelling: text) && !text_set_has(set: acc.seen, name: text) {
+  if acquisition_head_is_candidate_module(head: scoped.head) && acquisition_qn_names_a_module(qn: scoped.site.spelling) && !text_set_has(set: acc.seen, name: text) {
     AcquisitionSeen {
       order: list_snoc_item(xs: acc.order, item: text),
       seen: map_insert(m: acc.seen, key: text, value: true)
@@ -824,10 +838,18 @@ fn acquisition_ingest(modules: List<AcquiredModule>) -> SourceRootIngest {
 // A pure verdict over a completed acquisition's receipt. The requested set is recomputed from the
 // entries and from the requests each acquired member recorded, independently of the probes that
 // produced the reads, and the two are compared at identity grain: every read names a member of the
-// closure, no file is read twice, every member was read, every member is named by an entry or by a
-// request (a reference request names every prefix of its spelling, because the lookup splits a
-// reference by probing prefixes), and every exact request (an entry or an import) names a member.
-// A qualified reference that names no module is not an exact request; it was never owed a read.
+// closure, no file is read twice, every member was read, every member is REACHED from the entries along
+// the requests, and every exact request (an entry or an import) names a member. A qualified reference
+// that names no module is not an exact request; it was never owed a read.
+//
+// REACHED, NOT NAMED. A member that some other member's request names is requested only if the module
+// making that request is itself requested; a union over every member's requests would certify a cycle
+// no entry reaches (A requests B and B requests A), a module that requests itself, and a chain whose only
+// head is unreachable. The set is therefore a traversal rooted at the entries. A request selects the
+// module the lookup would have read for it: an exact request its spelling, a qualified reference the
+// LONGEST of its prefixes that is a member (the lookup probes longest-first and reads the first file
+// present, so a longer prefix that is a member would have been the one read, and a shorter member prefix
+// is justified only by some other request).
 type AcquisitionExactness
   = AcquisitionExact
   | AcquisitionReadWithoutMember { key: String }
@@ -836,18 +858,64 @@ type AcquisitionExactness
   | AcquisitionReadNotRequested { module: String }
   | AcquisitionRequestedNotRead { spelling: String, from_module: String }
 
-fn acquisition_request_name_into(set: Map<String, Bool>, request: AcquisitionRequest) -> Map<String, Bool> {
+fn acquisition_request_selects(request: AcquisitionRequest, members: Map<String, AcquiredModule>) -> Optional<String> {
   if acquisition_request_exact(request: request) {
-    map_insert(m: set, key: request.spelling, value: true)
+    optional_present(value: request.spelling)
   } else {
-    fold_list(xs: reference_prefixes(reference: request.spelling), empty: set, cons: fn(acc, name) { map_insert(m: acc, key: name, value: true) })
+    list_find_first(
+      xs: reference_prefixes(reference: request.spelling),
+      predicate: fn(name) { map_contains_key(m: members, key: name) }
+    )
   }
 }
 
-fn acquisition_requested_names(entries: List<String>, modules: List<AcquiredModule>) -> Map<String, Bool> {
-  fold_list(xs: modules, empty: text_set_of(names: entries), cons: fn(acc, member) {
-    fold_list(xs: member.requests, empty: acc, cons: fn(inner, request) { acquisition_request_name_into(set: inner, request: request) })
+// The traversal's state: every name reached so far, and the reached names whose requests are still to be
+// read (a stack, so a push costs the size of the push).
+type AcquisitionReach {
+  reached: Map<String, Bool>
+  pending: List<String>
+}
+
+fn acquisition_reach_visit(reach: AcquisitionReach, name: String) -> AcquisitionReach {
+  if text_set_has(set: reach.reached, name: name) {
+    reach
+  } else {
+    AcquisitionReach { reached: map_insert(m: reach.reached, key: name, value: true), pending: Cons { head: name, tail: reach.pending } }
+  }
+}
+
+fn acquisition_reach_requests(members: Map<String, AcquiredModule>, requests: List<AcquisitionRequest>, reach: AcquisitionReach) -> AcquisitionReach {
+  fold_list(xs: requests, empty: reach, cons: fn(acc, request) {
+    match acquisition_request_selects(request: request, members: members) {
+      Present { value: name } => acquisition_reach_visit(reach: acc, name: name)
+      Absent => acc
+    }
   })
+}
+
+fn acquisition_reach_go(members: Map<String, AcquiredModule>, reach: AcquisitionReach) -> Map<String, Bool> {
+  match list_head(xs: reach.pending) {
+    HeadAbsent => reach.reached
+    HeadFound { value: name } => {
+      let rest = AcquisitionReach { reached: reach.reached, pending: skip(xs: reach.pending, n: 1) }
+      match map_lookup(m: members, key: name) {
+        Absent => acquisition_reach_go(members: members, reach: rest)
+        Present { value: member } =>
+          acquisition_reach_go(members: members, reach: acquisition_reach_requests(members: members, requests: member.requests, reach: rest))
+      }
+    }
+  }
+}
+
+// Every name the entries reach through the members' requests. A name that is not a member is reached and
+// expands to nothing; whether an exact request owed it a read is acquisition_exactness_requests' question.
+fn acquisition_reached(entries: List<String>, modules: List<AcquiredModule>) -> Map<String, Bool> {
+  acquisition_reach_go(
+    members: fold_list(xs: modules, empty: empty_map(), cons: fn(acc, member) { map_insert(m: acc, key: member.name, value: member) }),
+    reach: fold_list(xs: entries, empty: AcquisitionReach { reached: empty_map(), pending: [] }, cons: fn(acc, entry) {
+      acquisition_reach_visit(reach: acc, name: entry)
+    })
+  )
 }
 
 fn acquisition_first_duplicate(pending: List<String>, seen: Map<String, Bool>) -> Optional<String> {
@@ -887,8 +955,8 @@ fn acquisition_exactness_requests(entries: List<String>, modules: List<AcquiredM
 }
 
 fn acquisition_exactness_named(entries: List<String>, modules: List<AcquiredModule>) -> AcquisitionExactness {
-  let requested = acquisition_requested_names(entries: entries, modules: modules)
-  match list_find_first(xs: modules, predicate: fn(member) { !text_set_has(set: requested, name: member.name) }) {
+  let reached = acquisition_reached(entries: entries, modules: modules)
+  match list_find_first(xs: modules, predicate: fn(member) { !text_set_has(set: reached, name: member.name) }) {
     Present { value: unrequested } => AcquisitionReadNotRequested { module: unrequested.name }
     Absent =>
       acquisition_exactness_requests(entries: entries, modules: modules, names: text_set_of(names: list_map(xs: modules, f: fn(m) { m.name })))
@@ -976,7 +1044,7 @@ fn acquisition_exactness_text(verdict: AcquisitionExactness) -> String {
     AcquisitionReadWithoutMember { key: key } => concat("file ", key, " was read and is not a member of the closure")
     AcquisitionReadTwice { key: key } => concat("file ", key, " was read twice")
     AcquisitionMemberNotRead { key: key } => concat("closure member ", key, " was never read")
-    AcquisitionReadNotRequested { module: name } => concat("module ", name, " was read and no entry or request names it")
+    AcquisitionReadNotRequested { module: name } => concat("module ", name, " was read and no entry reaches it through the requests")
     AcquisitionRequestedNotRead { spelling: spelling, from_module: from } =>
       concat(spelling, " (requested by ", from, ") names a module that was never read")
   }
