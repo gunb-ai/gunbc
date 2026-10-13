@@ -17663,7 +17663,16 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                         pattern: Rc::new(MatchPattern::Wildcard),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
-                        err: std::option::Option::None,
+                        err: Some(parse_error(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "pattern binder '".to_string(),
+                                    kw_text.clone(),
+                                ),
+                                "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier".to_string(),
+                            ),
+                            span.clone(),
+                        )),
                     }),
                 }
             }
