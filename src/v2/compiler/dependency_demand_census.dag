@@ -616,9 +616,9 @@ fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) ->
 // ═══ THE ROW AND ITS VERDICT ═══════════════════════════════════════════════════════════════════
 
 // Why a uses fn's demand was not observed: the fn's file refused in the front end even with the clause
-// rewritten, the module refused at resolution for a reason other than the uses alias (the alias is
-// bound to the resource declaration before resolve), the fn's own name could not be read,
-// or an authored type did not resolve.
+// elided, the module refused at resolution (including a body that still names an elided uses alias),
+// the fn's own name could not be read, an authored type did not resolve, or the uses aliases were
+// duplicate or unreadable.
 type DemandCensusUnboundLocus
   = UnboundNamed { name: Symbol }
   | UnboundShaped { kind: NodeKind }
