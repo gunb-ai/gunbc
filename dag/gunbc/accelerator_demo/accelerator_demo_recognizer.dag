@@ -1,4 +1,4 @@
-module gunbc.accelerator_demo_recognizer
+module gunbc.accelerator_demo.accelerator_demo_recognizer
 
 
 fn recognize_accelerator_program(program: AcceleratorDemoProgram) -> AcceleratorRecognitionOutcome {
@@ -16,18 +16,18 @@ fn recognize_accelerator_program_with_contract(
 ) -> AcceleratorRecognitionOutcome {
   match program {
     PureElementwiseMap { ops: ops } =>
-      if gunbc.accelerator_demo_program.pure_elementwise_ops_shape_recognizable(ops: ops) {
-        gunbc.accelerator_demo_plan.recognize_with_contract(
+      if gunbc.accelerator_demo.accelerator_demo_program.pure_elementwise_ops_shape_recognizable(ops: ops) {
+        gunbc.accelerator_demo.accelerator_demo_plan.recognize_with_contract(
           contract: contract,
           insist_on_fma_fused_kernel: insist_on_fma_fused_kernel
         )
       } else {
-        gunbc.accelerator_demo_plan.Refused { reason: NotElementwisePure }
+        gunbc.accelerator_demo.accelerator_demo_plan.Refused { reason: NotElementwisePure }
       }
     EffectfulElementwiseMap { ops: _ } =>
-      gunbc.accelerator_demo_plan.Refused { reason: CarriesEffects }
+      gunbc.accelerator_demo.accelerator_demo_plan.Refused { reason: CarriesEffects }
     DataDependentGatherMap { ops: _ } =>
-      gunbc.accelerator_demo_plan.Refused { reason: NotElementwisePure }
+      gunbc.accelerator_demo.accelerator_demo_plan.Refused { reason: NotElementwisePure }
   }
 }
 

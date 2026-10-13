@@ -16,34 +16,34 @@ import gunbc.generated_workflow_provenance {
   GeneratedWorkflowProvenanceHeaderProduced,
   GeneratedWorkflowProvenanceHeaderNotApplicable,
 }
-import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
-import gunbc.runner_microvm_shakedown_workflow { expected_microvm_shakedown_yml, MicrovmShakedownWorkflowGenerated, MicrovmShakedownWorkflowGenerationRefused }
-import gunbc.instrument_dispatch_workflow { expected_instrument_dispatch_yml, InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused }
+import gunbc.fleet.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
+import gunbc.runner.runner_microvm_shakedown_workflow { expected_microvm_shakedown_yml, MicrovmShakedownWorkflowGenerated, MicrovmShakedownWorkflowGenerationRefused }
+import gunbc.instruments.instrument_dispatch_workflow { expected_instrument_dispatch_yml, InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused }
 import gunbc.heal_workflow { expected_heal_workflow_yml, HealWorkflowGenerated, HealWorkflowGenerationRefused }
 import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
-import gunbc.branch_run_grant_broker_workflow { expected_branch_run_grant_broker_workflow_yml, BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused }
-import gunbc.witness_floor_workflow { WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
-import gunbc.compiler_gate_workflow { expected_compiler_gate_yml }
-import gunbc.ci_yaml_validate { ci_yml_parses }
+import gunbc.fleet.branch_run_grant_broker_workflow { expected_branch_run_grant_broker_workflow_yml, BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused }
+import gunbc.witness.witness_floor_workflow { WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
+import gunbc.witness.compiler_gate_workflow { expected_compiler_gate_yml }
+import gunbc.ci.ci_yaml_validate { ci_yml_parses }
 import gunbc.tier_o_artifact_emit { tier_o_unadorned_body, TierOArtifactProduced, TierOArtifactRefused, TierOArtifactNotTierO }
 import gunbc.seed_build_artifact_emit { seed_build_artifact_body, SeedBuildArtifactProduced, SeedBuildArtifactRefused, SeedBuildArtifactNotSeedBuild }
 import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
-import gunbc.roadmap_authority { expected_roadmap_md }
+import gunbc.roadmap.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
 import gunbc.design_ledgers { expected_design_failure_modes_md, expected_design_rung_drops_md }
 import gunbc.contributor_onboarding_path { expected_contributor_onboarding_md }
-import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
-import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
-import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
+import gunbc.runner.runner_deploy_emit { expected_runner_deploy_manifest }
+import gunbc.githooks.githooks_pre_push_emit { expected_githooks_pre_push_sh }
+import gunbc.githooks.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
 import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge_driver_sh }
-import gunbc.ci_spec { generated_artifact_author_regen_command }
+import gunbc.ci.ci_spec { generated_artifact_author_regen_command }
 import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
-import gunbc.runner_host_grants {
+import gunbc.runner.runner_host_grants {
   runner_host_refused_sudoers_content, runner_host_sudoers_content }
-import gunbc.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.plan { plan_generation, PlanGenerated, PlanGenerationRefused }
-import gunbc.fci1_bounded_execution_context_emit {
+import gunbc.fabric.fci1_bounded_execution_context_emit {
   expected_fci1_bounded_execution_context_env,
   Fci1BoundedExecutionContextEmitted,
   Fci1BoundedExecutionContextEmissionRefused,

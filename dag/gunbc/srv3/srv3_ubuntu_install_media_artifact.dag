@@ -1,4 +1,4 @@
-module gunbc.srv3_ubuntu_install_media_artifact
+module gunbc.srv3.srv3_ubuntu_install_media_artifact
 
 import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,

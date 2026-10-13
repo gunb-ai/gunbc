@@ -1,4 +1,4 @@
-module v2.test.loop_linear_bound.rung_0_to_2_three_targets
+module v2.test.claim.loop_linear_bound.rung_0_to_2_three_targets
 
 data phase4_loop_linear_bound_rung_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^phase4_loop_linear_bound_rung_subject_symbol } },

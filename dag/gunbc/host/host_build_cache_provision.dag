@@ -1,4 +1,4 @@
-module gunbc.host_build_cache_provision
+module gunbc.host.host_build_cache_provision
 
 import std.types { String, NonEmptyStr, Bool }
 import std.cache_identity { CacheInterfaceId }
@@ -6,14 +6,14 @@ import std.disposition { ConstructionMechanism, Disposition, Scaffold, SingleAut
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, exit_failure }
 import extdeps.cache.sccache { sccache_local_id }
-import gunbc.host_build_cache_catalog_gate {
+import gunbc.host.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
   ProvisionBuildCacheCatalogRealizable,
   ProvisionBuildCacheCatalogRefused,
 }
-import gunbc.host_effect { HostEffect, EnsureBuildCacheInstance }
-import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
-import gunbc.build_cache_instance { ci_cache_instance }
+import gunbc.host.host_effect { HostEffect, EnsureBuildCacheInstance }
+import gunbc.host.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
+import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import product.host_identity { HostIdentity }
 
 // NAMING HAZARD, RECORD BEFORE TOUCHING EITHER FILE. This module (host_build_cache_provision.dag)
@@ -32,11 +32,11 @@ import product.host_identity { HostIdentity }
 // candidate and then, the same day, corrected to the opposite disposition -- an unconsumed
 // authority naming itself as the fix for a live incident class, which must be wired rather than
 // deleted. IT IS WIRED AS OF 2026-08-21, AND IT NO LONGER LIVES HERE -- it moved to
-// gunbc.build_cache_provision_verdict, because wiring it meant gunbc.host_effect_realize had to
-// call it and this module's import of gunbc.host_toolchain_ensure would have closed a cycle through
-// that module. The zero no longer reproduces: gunbc.host_effect_realize build_cache_ensure_step
+// gunbc.build_cache.build_cache_provision_verdict, because wiring it meant gunbc.host.host_effect_realize had to
+// call it and this module's import of gunbc.host.host_toolchain_ensure would have closed a cycle through
+// that module. The zero no longer reproduces: gunbc.host.host_effect_realize build_cache_ensure_step
 // folds provision_build_cache_verdict over the endpoint re-observed AFTER its ensure shell ran, so
-// the fold is the POSTCONDITION on the provisioning path while gunbc.build_cache_ensure
+// the fold is the POSTCONDITION on the provisioning path while gunbc.build_cache.build_cache_ensure
 // admit_ensure_build_cache_instance is the precondition. The sentence is rewritten rather than
 // annotated because a stale 'zero callers' claim in a naming-hazard warning is the exact
 // false-negative this note exists to prevent, pointed the other way.
@@ -48,7 +48,7 @@ data host_build_cache_provision_scope_disposition: ConstructionMechanism = Singl
 data host_build_cache_provision_realize_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect_realize",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "realize_provision_build_cache",
     field: WholeDeclaration,
   }
@@ -76,7 +76,7 @@ fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
       dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
-      m == "gunbc.host_effect_realize" && n == "realize_provision_build_cache"
+      m == "gunbc.host.host_effect_realize" && n == "realize_provision_build_cache"
     Terminal { reason: _ } => false
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
     Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false

@@ -1,4 +1,4 @@
-module synthetic.parse_mechanism.elseif_k32
+module v2.test.fixture.parse_mechanism.elseif_k32
 
 
 fn else_if_chain(x: std.nat.Nat) -> std.nat.Nat {

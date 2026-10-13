@@ -1,4 +1,4 @@
-module gunbc.runner_microvm_lifecycle
+module gunbc.runner.runner_microvm_lifecycle
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.optional { Present, Absent }
@@ -9,21 +9,21 @@ import product.fabric.sanitation {
   NoSurvivingProcesses, CgroupEmpty, MountsRemoved, SlotNetworkQuiescent, SlotScopedNetwork,
   WritableLayersDeleted, SecretsRemoved, cell_readiness_after,
 }
-import gunbc.fabric_cell_converge { fabric_cell_slice_name }
-import gunbc.runner_microvm { RunnerGuestImage }
-import gunbc.runner_guest_image { guest_console_observation_labels, guest_booted_observation_label, runner_listening_observation_label }
-import gunbc.runner_microvm_attempt {
+import gunbc.fabric.fabric_cell_converge { fabric_cell_slice_name }
+import gunbc.runner.runner_microvm { RunnerGuestImage }
+import gunbc.runner.runner_guest_image { guest_console_observation_labels, guest_booted_observation_label, runner_listening_observation_label }
+import gunbc.runner.runner_microvm_attempt {
   MicroVmAttempt, runner_microvm_attempt_unit_name, runner_microvm_attempt_dir,
   runner_microvm_attempt_jail_base,
 }
-import gunbc.runner_attempt_launch { AttemptGround, GroundClear, GroundOccupied }
-import gunbc.build_cache_instance { runner_slot_identity_equal, runner_slot_instance_name }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_attempt_launch { AttemptGround, GroundClear, GroundOccupied }
+import gunbc.build_cache.build_cache_instance { runner_slot_identity_equal, runner_slot_instance_name }
+import gunbc.runner.runner_microvm_network {
   BoundSlotNetworkReadback, SlotNetworkReadback, SlotNetworkConfirmed, SlotNetworkRefuted,
   SlotNetworkUnobservable, slot_network_fact_label,
   bound_slot_network_readback_slot, bound_slot_network_readback_result,
 }
-import gunbc.runner_microvm_cell_readiness {
+import gunbc.runner.runner_microvm_cell_readiness {
   CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired,
   CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled, WriteUnattributedResidue,
   MicroVmWorkload, microvm_workload_same, InFlightAttempt, CellBoundAttempt, AttemptCellBinding, AttemptBoundToCell, AttemptCellMismatch,
@@ -34,17 +34,17 @@ data runner_microvm_lifecycle_disposition: ConstructionMechanism = SingleAuthori
 
 // THE HOST-SIDE PER-ATTEMPT LIFECYCLE CONTROLLER, AS THE DECISIONS IT MAKES.
 //
-// gunbc.runner_microvm names the topology VmmUnderLifecycleController: a controller is the slot
+// gunbc.runner.runner_microvm names the topology VmmUnderLifecycleController: a controller is the slot
 // unit's MainPID, the VMM runs beneath it, and the unit's intent (ExitType=main with
 // KillMode=control-group, gunbc#11662) makes systemd's stop reach the whole cgroup once the
 // controller exits. This module is what the controller decides at each step, from what it has
 // observed; the realization that performs the steps consumes these decisions and adds none.
 //
 // DECLARED FRONTIER (DESIGN 3c). In this change the module's only executing consumer is its witness;
-// no production entry calls it yet. NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize, the
+// no production entry calls it yet. NAMED CONSUMER: gunbc.runner.runner_microvm_lifecycle_realize, the
 // controller that runs as the slot unit's MainPID and calls controller_start, advance_bring_up,
 // stop_request_admission and settle_teardown, reading and writing the store through
-// gunbc.runner_microvm_cell_readiness apply_cell_readiness_write. It is the next change in the
+// gunbc.runner.runner_microvm_cell_readiness apply_cell_readiness_write. It is the next change in the
 // adhoc-3faa2033-f8f lane. TRIGGER: that module lands with srv1 transient-unit receipts for the
 // modeled REDs (SIGTERM-ignoring child, double-fork, unkillable task, failed cgroup read, stale stop,
 // background process after success). SUFFICIENT FOR retiring this paragraph. NOT satisfied by that
@@ -104,7 +104,7 @@ fn in_flight_attempt_of_identity(identity: AttemptIdentity) -> InFlightAttempt {
   }
 }
 
-// The cell axis is joined by gunbc.runner_microvm_cell_readiness bind_attempt_to_cell, the same
+// The cell axis is joined by gunbc.runner.runner_microvm_cell_readiness bind_attempt_to_cell, the same
 // binder the store uses at read, so the controller and the store cannot disagree about what "this
 // attempt's cell" means.
 fn bind_identity_to_admission(cell: CellId, generation: Int, identity: AttemptIdentity) -> CellBinding {
@@ -119,7 +119,7 @@ fn bind_identity_to_admission(cell: CellId, generation: Int, identity: AttemptId
 }
 
 // THE CONTROLLER STARTS ONLY FROM AN ADMITTED CELL, AND ITS FIRST DURABLE ACT IS THE IN-FLIGHT
-// RECORD. The admission is gunbc.runner_microvm_cell_readiness's; the controller does not re-derive
+// RECORD. The admission is gunbc.runner.runner_microvm_cell_readiness's; the controller does not re-derive
 // it. CellRecoveryRequired is not a refusal to do nothing: it is the instruction to run the terminal
 // path for the attempt that never settled, before any new attempt is prepared.
 type ControllerStart
@@ -129,12 +129,12 @@ type ControllerStart
   | StartRefused { admission: CellIncarnationAdmission }
   | StartBindingRefused { binding: CellBinding }
 
-// THE GROUND IS gunbc.runner_attempt_launch's AttemptGround, the host's own check for prior attempt
+// THE GROUND IS gunbc.runner.runner_attempt_launch's AttemptGround, the host's own check for prior attempt
 // resources, and it outranks an admitting record: a store that says Ready over a cell whose jail or
 // attempt directory is still present is a store that missed something, and the answer is a
 // quarantine, not a launch onto the residue. The residue names no attempt the store knows, so the
 // controller does not invent one: it records WriteUnattributedResidue at the generation that was
-// about to run, which can only quarantine (gunbc.runner_microvm_cell_readiness). Both arms act only
+// about to run, which can only quarantine (gunbc.runner.runner_microvm_cell_readiness). Both arms act only
 // on a bound identity, so the quarantine lands on the cell that was admitted AND identified.
 fn controller_start(
   admission: CellIncarnationAdmission,
@@ -325,7 +325,7 @@ type ResourceReadback
 //
 // THE SLOT NETWORK RESULT IS CONSUMED AS THE BOUND READBACK, NEVER AS A BARE VERDICT.
 //
-// gunbc.runner_microvm_network slot_network_readback returns a sealed BoundSlotNetworkReadback: the
+// gunbc.runner.runner_microvm_network slot_network_readback returns a sealed BoundSlotNetworkReadback: the
 // subject it was taken for travels with the result whatever the verdict. Unwrapping the result at the
 // boundary and passing the verdict on would put the attempt's network fact back where every other
 // subject was before the join -- a value that could have been read for any slot. So the bound

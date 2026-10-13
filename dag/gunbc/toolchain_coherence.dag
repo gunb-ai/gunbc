@@ -10,7 +10,7 @@ import std.content_hash {
   compare_content_hash,
 }
 import extdeps.realization.emit_on_demand_host { ObservedToolIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import std.optional { Present, Absent }
 import std.disposition { Disposition, Terminal }
 

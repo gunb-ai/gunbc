@@ -1,4 +1,4 @@
-module gunbc.runner_microvm_host_ready
+module gunbc.runner.runner_microvm_host_ready
 
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { String, NonEmptyStr, Bool, List, FilePath }
@@ -7,7 +7,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.posix.test_utility { test_exists_command, test_writable_command, test_executable_command }
-import gunbc.runner_microvm_footprint_probe {
+import gunbc.runner.runner_microvm_footprint_probe {
   FootprintInstrument, GnuTimeMaxRss, SystemdMemoryPeak, CgroupMemoryPeak,
   InstrumentObservation, InstrumentPresent, InstrumentAbsent, InstrumentUnreadable,
   InstrumentStanding, instrument_standing_text,
@@ -20,7 +20,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.gnu_coreutils { cp_command }
-import gunbc.verified_archive_install {
+import gunbc.host.verified_archive_install {
   verified_archive_install, ArchiveSha256,
   ArchiveInstalled, ArchiveFetchRefused, ArchiveDigestMismatched, ArchiveDigestUnverified, ArchiveInstallRefused,
 }
@@ -39,17 +39,17 @@ import extdeps.tools.coreutils_stat {
   PathOwnershipObservation, PathOwnershipObserved, PathOwnershipUnobservable, coreutils_stat_path_ownership,
   PathModeObservation, PathModeObserved, PathModeUnobservable, coreutils_stat_path_mode,
 }
-import gunbc.host_effect { LocalShell }
+import gunbc.host.host_effect { LocalShell }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
 }
 import product.host_identity { HostIdentity }
-import gunbc.runner_host_deploy {
+import gunbc.runner.runner_host_deploy {
   RunnerHostSpec, RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for,
 }
 
-// THE HOST HALF OF THE RUNNER MICRO-VM, OBSERVED BEFORE ANYTHING IS BUILT ON IT. gunbc.runner_microvm
+// THE HOST HALF OF THE RUNNER MICRO-VM, OBSERVED BEFORE ANYTHING IS BUILT ON IT. gunbc.runner.runner_microvm
 // models what a runner guest is and admits a VM config; nothing had ever asked a host whether it
 // could run one. Two facts decide that: the KVM device exists and the executor may write to it, and
 // the cited Firecracker release is installed and answers `--version` with the modeled version. This
@@ -137,7 +137,7 @@ type FirecrackerBinaryStanding
 // WHETHER THIS HOST CAN BE MEASURED IS PART OF WHETHER IT CAN SERVE, and that is why this sits in
 // the host standing rather than in a probe of its own.
 //
-// gunbc.runner_microvm admits no guest today: its realization reserve is ReserveUnmodeled, because
+// gunbc.runner.runner_microvm admits no guest today: its realization reserve is ReserveUnmodeled, because
 // no VMM resident footprint is a cited quantity and inventing one would be a fabricated plausible
 // output. The quantity has to be OBSERVED on a host before it can be declared, so the instrument
 // that could observe it is a readiness fact exactly like /dev/kvm is -- a host that can boot a guest
@@ -152,7 +152,7 @@ type FirecrackerBinaryStanding
 // them: it requires the process to still exist, so a guest that powers itself off can be missed
 // entirely, and a missed sample under-reports -- the wrong direction for a value that will become a
 // safety reserve.
-// ONE ROW PER INSTRUMENT, KEYED BY THE SINGLE ENUMERATION in gunbc.runner_microvm_footprint_probe.
+// ONE ROW PER INSTRUMENT, KEYED BY THE SINGLE ENUMERATION in gunbc.runner.runner_microvm_footprint_probe.
 // This used to be one Bool per instrument declared here, which made the instrument set editable in
 // two places (DESIGN 3), and it carried systemd as a raw version line that the renderer
 // re-interpreted -- so an unreadable systemd and an old systemd were the same value.
@@ -359,7 +359,7 @@ fn firecracker_install_commands(root: String, rel: FirecrackerRelease, scratch: 
 
 // THE SUBJECT IS THE HOST THE PROCESS IS RUNNING ON, AND IT IS RESOLVED RATHER THAN PASSED. The
 // mode is host-pinned by the workflow, so "which host" is not a parameter of the operation but its
-// subject (gunbc.fleet_converge_workflow says the same about the two micro-VM modes). The executor
+// subject (gunbc.fleet.fleet_converge_workflow says the same about the two micro-VM modes). The executor
 // login whose grant is applied and read back comes from the roster row for that host, never from a
 // literal here: a second spelling of "ghrunner" in this module would be a grant applied to one
 // account and authorized for another.

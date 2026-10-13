@@ -26,8 +26,8 @@ import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
   PoolFolded, PoolFoldRefused, pool_fold,
 }
-import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.fabric_event_log {
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_event_log {
   PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition, event_log_refusal_wire,
   GrantRedemption, GrantRedemptionAdmitted, GrantRedemptionRefused, GrantRedemptionContended, GrantRedemptionStoreRefused,
   fabric_grant_redeem, fabric_grant_use_end, grant_redemption_wire, RedemptionReadAt, RedemptionReadRefused, fabric_redemption_read,
@@ -60,7 +60,7 @@ import gunbc.harness.harness_seat {
 //
 // AND A PERMIT FORWARDS ONE REQUEST AT A TIME. Checking that a seat is held is a read, and a read
 // admits any number of concurrent requests on one seat; so forwarding is a TRANSITION on the seat's
-// redemption chain (product.capacity.redemption, realized by gunbc.fabric_event_log
+// redemption chain (product.capacity.redemption, realized by gunbc.fabric.fabric_event_log
 // fabric_grant_redeem): Unredeemed -> InFlight { request, proxy } by compare-and-set, ended by the door
 // at stream end (front_door_stream_end), and recovered after a door's death only on observed
 // quiescence (front_door_recover). While a request is in flight the seat's release is the door's.
@@ -369,7 +369,7 @@ fn seat_grant_currency_on_store(store: FabricStorageBinding, pool: HarnessSeatPo
 }
 
 // THE REDEMPTION, AS THE DOOR SEES IT: the outcome of trying to move this seat from Unredeemed to
-// InFlight on its redemption chain (product.capacity.redemption, realized by gunbc.fabric_event_log
+// InFlight on its redemption chain (product.capacity.redemption, realized by gunbc.fabric.fabric_event_log
 // fabric_grant_redeem). Only Redeemed forwards.
 type FrontDoorRedemption
   = DoorRedeemed

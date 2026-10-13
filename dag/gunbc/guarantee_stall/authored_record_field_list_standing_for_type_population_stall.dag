@@ -31,8 +31,8 @@ data authored_record_field_list_standing_for_type_population_stall: GuaranteeSta
   },
   population: BoundedPopulation {
     members: [
-      "gunbc.machine_intake_bmc_secure bmc_account_state_observation_same",
-      "gunbc.machine_intake_bmc_secure controller_clock_reading_same",
+      "gunbc.machine_intake.bmc_secure bmc_account_state_observation_same",
+      "gunbc.machine_intake.bmc_secure controller_clock_reading_same",
     ],
   },
   next_rung_trigger: climbs_when(capability: "a value-layer read of a record's declared fields with their types, sufficient to refuse an unhandled field or an unhandled Optional at this join, checked by field identity and declared type never by count; OR gunbc#13488 making structural == value-exact over Optionals, after which observation_with_controller_clock blanking and controller_clock_reading_same are deleted. A count of fields, a comment claiming completeness, or a second authored list is not this capability"),

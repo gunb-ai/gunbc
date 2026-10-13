@@ -19,7 +19,7 @@ import gunbc.design.instrument_physical {
   compose_displacement, admit_composed_displacement, focal_attraction_headroom_px,
   DisplacementAdmitted, DisplacementOverBudget, EnclosureCharacterReachesResponseTravel,
 }
-import gunbc.roadmap_program_view {
+import gunbc.roadmap.roadmap_program_view {
   V1DeletionProgramView, FinishLineView, FrontView, RemainingShape,
   ConstraintView, ConstraintKind, ImplementationConstraint, ContractConstraint,
   NonAgentWorkConstraint,
@@ -232,9 +232,9 @@ data audition_intensities: List<AuditionIntensity> = [AuditionRestrained, Auditi
 
 // THE CAMERA READS THE WORLD V0 ALREADY DERIVED, and the previous revision of this module did not —
 // which is the defect worth recording rather than quietly fixing. It answered Status and Remaining
-// out of gunbc.v1_deletion_plan's authored rows, and answered Why with a typed ReadingUnavailable
+// out of gunbc.v1.v1_deletion_plan's authored rows, and answered Why with a typed ReadingUnavailable
 // carrying the cause 'no rationale carrier exists for a v1 finish line'. That cause was FALSE when
-// it was written. gunbc.roadmap_program_view was already on this branch's base and its own header
+// it was written. gunbc.roadmap.roadmap_program_view was already on this branch's base and its own header
 // says the camera layers are deliberately absent because THAT module is the world the cameras look
 // at; ConstraintView exists precisely to answer why-is-this-taking-so-long without inventing
 // rationale prose. So the refusal was not the honest fail-closed arm its note claimed — it was the
@@ -255,7 +255,7 @@ data audition_intensities: List<AuditionIntensity> = [AuditionRestrained, Auditi
 // constraint's own subject. Evidence is deliberately NOT answered from these carriers: acceptance
 // here comes from RoadmapAcceptanceReceipt rows, but the verification-receipt join that would let a
 // camera show WHY a receipt was granted is test-only until the belt wiring lands, and
-// gunbc.roadmap_program_view says so itself. That is a real absence with a named trigger, so
+// gunbc.roadmap.roadmap_program_view says so itself. That is a real absence with a named trigger, so
 // Evidence refuses — and it is the one place in this module where a refusal is the correct answer
 // rather than a search nobody performed.
 
@@ -269,7 +269,7 @@ type ProgramReading
   | ReadingFront { key: String, name: String, closed: Bool, gates_accepted: Int, gates_total: Int }
   | ReadingUnavailable { mode: String, subject_key: String, cause: String }
 
-data evidence_grain_cause: String = "the verification-receipt join is test-only until the belt wiring seam lands (gunbc.roadmap_program_view records the same gap), so a camera can read THAT a node was accepted but not the evidence behind the receipt"
+data evidence_grain_cause: String = "the verification-receipt join is test-only until the belt wiring seam lands (gunbc.roadmap.roadmap_program_view records the same gap), so a camera can read THAT a node was accepted but not the evidence behind the receipt"
 
 data accepted_subject_has_no_constraint_reason: String = "the subject is accepted, so its closure holds no unresolved constraint — this is an answer, not a missing carrier"
 

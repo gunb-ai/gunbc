@@ -89,7 +89,7 @@ import extdeps.git.plumbing {
 import extdeps.toolchain.types { TargetTriple, ToolchainRequirement }
 import extdeps.rust.target_triple { parse_rust_target_triple }
 import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved }
-import extdeps.cargo {
+import extdeps.rust.cargo {
   CargoTarget, Lib, Bin, CargoTest, Example, Bench,
   CargoEnvironmentVariable, CargoTargetDirEnv, cargo_environment_variable_name,
 }
@@ -98,7 +98,7 @@ import std.algebra { trim }
 
 // THE PRODUCER, AND IT IS THE LIVE PATH RATHER THAN A WITNESS. This module is invoked through `gunbc run`, so the first consumer of the identity carriers is the ordinary CLI surface -- a witness suite proving the same functions in isolation would not have established that anything is ever actually built or retrieved.
 //
-// EVERY HOST PATH ARRIVES AS A PARAMETER. The store root is supplied by the caller, never spelled here: on srv1 the deploy supplies the gunbc.host_layout row, and a local run supplies a scratch directory. A literal here would be the layout-admission defect this vertical was explicitly told not to repeat, and it would also make the producer untestable anywhere but one host.
+// EVERY HOST PATH ARRIVES AS A PARAMETER. The store root is supplied by the caller, never spelled here: on srv1 the deploy supplies the gunbc.host.host_layout row, and a local run supplies a scratch directory. A literal here would be the layout-admission defect this vertical was explicitly told not to repeat, and it would also make the producer untestable anywhere but one host.
 //
 // THE ORDER IS THE CONTRACT. Look for an existing artifact first, and only if none exists take the lease and build -- so a subject already produced never builds again, which is the product sentence this service exists to satisfy. The lease is taken with git's exact-value ref update, whose create-only form refuses when the ref already exists, so two callers racing the same subject cannot both become producers.
 // THE MODELED TRANSITION AND THE REAL ONE, kept honestly apart. gunbc.devboot.lease derives the lease DECISION from the upstream object store's pure transition model, whose exact-old form covers advancing a ref that already exists and returns LeaseCreateNotModeled for the absent case.

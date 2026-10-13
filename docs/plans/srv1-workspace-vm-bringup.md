@@ -302,7 +302,7 @@ fences. This fixes the normal start overlap; recovery-path aggregate memory has
 not been measured. No live commissioning OOM is claimed.
 
 The manual transport experiment used `export_executor` from
-`dag/test/claim/workspace_commissioning_executor_witness_test.dag` and the local
+`dag/test/claim/workspace_commissioning_executor_witness.dag` and the local
 `target/srv1-bringup-evidence/executor-bind-order-controls.py` driver against
 `target/workspace-commissioning-executor.sh`. The Python driver is local dev
 tooling, excluded from the committed substrate by `gunbc.repo_workspace`; these
@@ -430,7 +430,7 @@ they cannot become a reason to upgrade. A successful count on a backported kerne
 needs no package lookup. A successful nonzero count establishes capability but
 still fails the unchanged sanitation census.
 
-The host policy in `gunbc.host_kernel_dependency` selects the Ubuntu provider;
+The host policy in `gunbc.host.host_kernel_dependency` selects the Ubuntu provider;
 VM code does not select a version. Readback binds the proposal to host, source
 revision, interface, running release and boot identity. It checks the distribution,
 architecture, installed package identities, exact available candidate and a
@@ -444,7 +444,7 @@ simulation and continuation. It cannot mint a commissioning credential or initia
 readiness. Generic slot apply remains `AwaitingCapability` because a slot request
 alone does not authorize interruption of the shared host.
 
-`gunbc.host_kernel_dependency_apply` now supplies the administrator maintenance
+`gunbc.host.host_kernel_dependency_apply` now supplies the administrator maintenance
 path for that exact canonical dependency. Its drain entry puts runtime masks on
 observed runner instances without stopping them, allowing their one current job
 to finish. Installation and activation require every instance inhibited, stopped,

@@ -1,4 +1,4 @@
-module gunbc.fleet_generation_publication
+module gunbc.fleet.fleet_generation_publication
 
 import std.types { String, NonEmptyStr, Int, Bool }
 import std.algebra { trim }

@@ -1,4 +1,4 @@
-module v2.test.manual.json_number_integer_lexeme_anchor
+module v2.test.claim.manual.json_number_integer_lexeme_anchor
 
 
 data json_anchor_integer_zero: JsonNumberIntegerLexemeWitness = JsonNumberIntegerZeroWitness

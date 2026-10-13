@@ -16,14 +16,14 @@ fn exit_failure(reason: String) -> ProcessExit {
 }
 
 // Claim-surface inhabitance of ExitSuccess. Sequencers match ProcessExit; they do not ask this for a Bool.
-// This and tools.emit_host_gate emit_host_verdict_narration_scaffold were two consequences of one gap:
-// the claim surface is Bool-typed. That gap's capability is stated at tools.emit_host_gate
+// This and gunbc.instruments.emit_host_gate emit_host_verdict_narration_scaffold were two consequences of one gap:
+// the claim surface is Bool-typed. That gap's capability is stated at gunbc.instruments.emit_host_gate
 // emit_host_verdict_narration_dissolution_trigger, and retires both; this predicate is not separately rostered.
 //
 // 2026-09-13 (gentle-gull-238), HALF RETIRED: the claim path now carries typed refusal reasons to
 // the executor surface (cli_run.rs `ClaimOutcome::ExitFailure`, printed on the claim_batch FAIL
 // row and published as the terminal ledger's detail under the "exit-failure" tag), so the
-// narration scaffold half is DELETED — gate-class claims read tools.emit_host_gate's ExitFailure
+// narration scaffold half is DELETED — gate-class claims read gunbc.instruments.emit_host_gate's ExitFailure
 // reason directly. This predicate remains for the OTHER half: the Bool wrapper witnesses
 // (floor_effect_gate_witness <gate>_passes) still flatten a ProcessExit to a Bool for a claim
 // surface that predates typed reasons, and their declared receipt path is the

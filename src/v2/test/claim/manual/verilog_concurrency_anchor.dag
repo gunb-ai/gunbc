@@ -1,4 +1,4 @@
-module v2.test.manual.verilog_concurrency_anchor
+module v2.test.claim.manual.verilog_concurrency_anchor
 
 
 type verilog_anchor_module = VerilogModule

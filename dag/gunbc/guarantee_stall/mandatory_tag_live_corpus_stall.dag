@@ -9,6 +9,6 @@ data mandatory_tag_live_corpus_stall: GuaranteeStall = GuaranteeStall {
   current: OutsideTheLadder,
   ceiling: MechanicallyPreventable,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness_test.corpus_live_clean_tree_wall_holds", tail: Empty {} } },
+  population: BoundedPopulation { members: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness.corpus_live_clean_tree_wall_holds", tail: Empty {} } },
   next_rung_trigger: climbs_when(capability: "the derived mandatory-tag violation population is empty")
 }

@@ -1,4 +1,4 @@
-module gunbc.host_identity_knob
+module gunbc.host.host_identity_knob
 
 import product.host_identity { HostIdentity }
 

@@ -1,7 +1,7 @@
-module tools.emit_host_gate
+module gunbc.instruments.emit_host_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.emit_host_transport {
+import gunbc.instruments.emit_host_transport {
   run_rust_smoke,
   run_python_smoke,
   run_go_smoke,

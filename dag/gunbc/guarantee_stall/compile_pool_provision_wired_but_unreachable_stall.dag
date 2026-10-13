@@ -19,9 +19,9 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 //
 // WHY THE BLOCKER IS AWAITS-ONE-GROUNDING AND NOT UNBUILT. The operator ruled 2026-10-04 that this
 // lane is OLD and will be reorganized under fabric compute: compile pool is a capacity class under
-// the DESIGN 3b fabric/compute row (gunbc.fabric_executor_class CapacityClassAdmission,
-// gunbc.compute.work_provider_local ComputeLayout, gunbc.fabric_control_plane CellReservation),
-// whose real consumer is gunbc.ci_runner_placement -- whose CompilePoolInRunnerSlots arm refuses to
+// the DESIGN 3b fabric/compute row (gunbc.fabric.fabric_executor_class CapacityClassAdmission,
+// gunbc.compute.work_provider_local ComputeLayout, gunbc.fabric.fabric_control_plane CellReservation),
+// whose real consumer is gunbc.ci.ci_runner_placement -- whose CompilePoolInRunnerSlots arm refuses to
 // emit a quota today. The lane is a frozen X pending that reorganization: DESIGN 3's
 // replacement-migration rule forbids new investment in it, which is why the DP-M2 lane proposed --
 // and the operator declined -- a parameterized install site and a wet integration receipt for it.
@@ -46,11 +46,11 @@ data compile_pool_provision_wired_but_unreachable_stall: GuaranteeStall = Guaran
     grounding: "The operator's 2026-10-04 ruling froze this lane pending its reorganization under fabric compute; no investment (parameterized sites, wet receipts, new dispatch routes) is permitted in it until then.",
   },
   population: BoundedPopulation { members: [
-    "gunbc.host_compile_pool_provision.provision_compile_pool",
+    "gunbc.host.host_compile_pool_provision.provision_compile_pool",
     "gunbc.host.host_toolchain_ensure CompilePool arm",
     "gunbc.host.host_effect_realize.realize_ensure_compile_pool_slice",
     "gunbc.host.host_effect_realize.compile_pool_slice_install_step",
-    "gunbc.ci_runner_placement CompilePoolInRunnerSlots refusal to emit a quota",
+    "gunbc.ci.ci_runner_placement CompilePoolInRunnerSlots refusal to emit a quota",
   ] },
   next_rung_trigger: climbs_when(capability: "compile-pool capacity is admitted as a fabric capacity class and charged in the host allocation, at which point provision_compile_pool either gains that admission as its caller or is deleted."),
 }
