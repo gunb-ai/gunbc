@@ -1,10 +1,10 @@
 module v2.compiler.infer
 
-import std.types { List }
+import std.types { List, Map }
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-import std.algebra { Cons, Empty, FreeMonoid, contains, TailAbsent, TailFound, length, list_map, list_snoc_item, list_tail, skip, zip_map }
+import std.algebra { Cons, Empty, FreeMonoid, contains, TailAbsent, TailFound, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -78,13 +78,7 @@ import v2.std.optional_layers {
   wrap_type_node_occupancy
 }
 import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
-import v2.std.collection {
-  Map,
-  empty_map,
-  list_at_optional,
-  map_insert,
-  map_lookup
-}
+
 import std.optional {
   Absent,
   Optional,

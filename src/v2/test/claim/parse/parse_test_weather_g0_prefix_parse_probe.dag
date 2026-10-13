@@ -1,7 +1,7 @@
 module v2.test.claim.parse.parse_test_weather_g0_prefix_parse_probe
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, empty_map }
 import v2.compiler.parse { parse_module }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
   dag_float_literal_node_from_lexeme,
   dag_language_model
 }
-import v2.std.collection { empty_map }
+
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.diagnostic {
   Accepted,

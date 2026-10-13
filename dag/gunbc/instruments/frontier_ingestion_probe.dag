@@ -315,7 +315,6 @@ type MemberObservation {
 data frontier_roster: List<FrontierMember> = [
   FrontierMember { label: ^entry, path: "src/v2/test/claim/manual/cross_tree_constructor_binding.dag" },
   FrontierMember { label: ^primitives, path: "dag/std/primitives.dag" },
-  FrontierMember { label: ^collection, path: "src/v2/std/collection.dag" },
   FrontierMember { label: ^witness, path: "src/v2/std/witness.dag" },
   FrontierMember { label: ^types, path: "dag/std/types.dag" },
   FrontierMember { label: ^node, path: "src/v2/std/node.dag" },

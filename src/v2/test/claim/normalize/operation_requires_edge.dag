@@ -6,12 +6,12 @@ import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, empty_cano
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.declaration_marker { test_code_index_empty }
-import v2.std.collection { empty_map }
+
 import v2.std.resolution_policy { NamespaceOnlyY }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.std.qualified_name { declaration_reference_node }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, empty_map }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_surface_edge }
 import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }

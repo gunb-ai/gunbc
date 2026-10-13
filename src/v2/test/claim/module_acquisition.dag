@@ -79,8 +79,8 @@ import v2.compiler.source_authority {
   reference_next_read,
   reference_prefixes
 }
-import std.algebra { HeadAbsent, HeadFound, length, list_head, list_map }
-import v2.std.collection { empty_map, map_insert }
+import std.algebra { HeadAbsent, HeadFound, length, list_head, list_map, empty_map, map_insert }
+
 import v2.std.cross_tree.import_model {
   CrossTreeFromTreeNotInRootSet,
   CrossTreeFundamentalityUnknownFailClosed,

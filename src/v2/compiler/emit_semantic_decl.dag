@@ -1,6 +1,6 @@
 module v2.compiler.emit_semantic_decl
 
-import std.types { List }
+import std.types { List, Map }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
 import v2.std.compilers.semantic_decl_emission {
@@ -11,7 +11,8 @@ import v2.std.compilers.semantic_decl_emission {
   target_semantic_enum_surface_from_coproduct,
   target_semantic_struct_surface_from_record
 }
-import v2.std.collection { Absent, Map, Present, empty_map, map_get_checked }
+import std.optional { Absent, Present }
+import v2.std.witness { map_get_checked }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -38,7 +39,7 @@ import v2.std.diagnostic {
 import v2.std.node { Atom, Disj, Conj, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
-import std.algebra { Empty, contains }
+import std.algebra { Empty, contains, empty_map }
 
 fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {

@@ -3,12 +3,8 @@ module v2.compiler.symbol_index_fill
 import v2.std.service_realization_labels { realization_root_label }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.algebra { Empty, FreeMonoid, list_append, list_snoc_item, fold_list, is_empty, length }
-import v2.std.collection {
-  Map,
-  empty_map,
-  map_insert
-}
+import std.algebra { Empty, FreeMonoid, list_append, list_snoc_item, fold_list, is_empty, length, empty_map, map_insert }
+
 import v2.std.node_query { binder_node_parts }
 import std.optional {
   Absent,
@@ -62,7 +58,7 @@ import v2.extdeps.languages.dag {
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.compiler.primitive_authority { primitive_authority_row_is_contract_declaration }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view, type_param_names }
-import std.types { List }
+import std.types { List, Map }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

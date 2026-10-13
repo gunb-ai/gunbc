@@ -1,9 +1,9 @@
 module gunbc.instruments.layout_witness_join
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, Map }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -14,7 +14,7 @@ import extdeps.filesystem.filesystem_io {
 import gunbc.ci.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
-import std.algebra { Cons, HeadAbsent, HeadFound, list_find_first, list_head, skip }
+import std.algebra { Cons, HeadAbsent, HeadFound, list_find_first, list_head, skip, empty_map, map_insert, map_lookup }
 import v2.cli.repository_layout { repository_tree_directory, repository_storage_layout }
 import v2.compiler.module_acquisition {
   AcquisitionEnv,

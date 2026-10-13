@@ -24,9 +24,7 @@ import std.content_hash { Fnv1a64StructuralDigestHex }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
-import v2.std.collection {
-  map_get_checked
-}
+import v2.std.witness { map_get_checked }
 import std.optional {
   Absent,
   Optional,

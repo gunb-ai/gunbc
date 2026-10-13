@@ -12,7 +12,7 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.collection { list_at_optional }
+import std.algebra { list_at_optional }
 
 // OPTIONAL-LAYER DEPTH IS std.nat Nat (Zero = required / no wrappers). A two-arm
 // Required | CardOptional sum is Zero | Succ under another name (DESIGN §2/#3). gunbc#13488's

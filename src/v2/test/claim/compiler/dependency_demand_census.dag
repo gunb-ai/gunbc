@@ -27,7 +27,7 @@ import v2.compiler.dependency_demand_census {
   RowTypeUnresolved
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.collection { List }
+
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal }
@@ -58,7 +58,7 @@ data ddc_resources_source: String = "module std.resources\n\nresource Network {\
 
 data ddc_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires Network\n  }\n  operation Exec {\n    requires opaque\n  }\n}\n"
 
-data ddc_app_source: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n\nfn transitive(p: Bool) -> Bool uses net: Network {\n  restates(p: p)\n}\n\nfn over_claims(p: Bool) -> Bool uses net: Network {\n  p\n}\n\nfn opaque_reach(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Exec()\n  p\n}\n\nfn fs_only(p: Bool) -> Bool uses fs: std.resources.Filesystem {\n  let r = std.resources.Filesystem.read()\n  p\n}\n\nfn mixed(p: Bool) -> Bool uses net: Network, fs: std.resources.Filesystem {\n  let r = t.http.H.Get()\n  let s = std.resources.Filesystem.read()\n  p\n}\n"
+data ddc_app_source: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool, List }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n\nfn transitive(p: Bool) -> Bool uses net: Network {\n  restates(p: p)\n}\n\nfn over_claims(p: Bool) -> Bool uses net: Network {\n  p\n}\n\nfn opaque_reach(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Exec()\n  p\n}\n\nfn fs_only(p: Bool) -> Bool uses fs: std.resources.Filesystem {\n  let r = std.resources.Filesystem.read()\n  p\n}\n\nfn mixed(p: Bool) -> Bool uses net: Network, fs: std.resources.Filesystem {\n  let r = t.http.H.Get()\n  let s = std.resources.Filesystem.read()\n  p\n}\n"
 
 // A CALL THROUGH A FUNCTION VALUE, beside a direct Network call that would otherwise make the fn Equal.
 // Its own module, so a refusal here cannot hide the other fns.

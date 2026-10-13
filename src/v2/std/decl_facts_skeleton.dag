@@ -12,7 +12,7 @@ import std.algebra {
   list_head,
   list_reverse
 }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.decl_index { DeclFact }
 import v2.std.node { Edge, Authored, StructuralLabel, Node, NodeFold, Positional, TypeNode, Atom, Symbol, fold_node, labeled_named_is, edge_label_of, symbol_lexeme, EdgeLabel }
 

@@ -5,8 +5,8 @@ import std.content_hash { ContentHash }
 import std.integer { PositiveInt }
 import std.measure { Minute, minute }
 import std.optional { Optional, Present, Absent }
-import v2.std.collection { list_at_optional }
-import std.algebra { list_head, HeadFound, HeadAbsent }
+
+import std.algebra { list_head, HeadFound, HeadAbsent, list_at_optional }
 import std.claim_evidence {
   Claim,
   EvidenceAdmissionPolicy,

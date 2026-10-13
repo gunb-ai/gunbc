@@ -2,8 +2,8 @@ module v2.extdeps.languages.bash_build
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { list_head, HeadFound, HeadAbsent }
-import v2.std.collection { Present, list_at_optional }
+import std.algebra { list_head, HeadFound, HeadAbsent, list_at_optional }
+import std.optional { Present }
 import v2.std.node {
   Atom,
   Conj,

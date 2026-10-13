@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_authority
 
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, Map }
 import gunbc.roadmap.roadmap_authority {
   declared_roadmap_nodes,
   declared_roadmap_edges,
@@ -70,7 +70,7 @@ import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap.roadmap_emit { node_is_superseded, signoff_suffix_inlines, line_inlines }
 import std.markdown { MarkdownInline, TextInline, ParagraphBlock }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_subtree_fixture_ids }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.roadmap.roadmap_model {
   RoadmapNode,
   RoadmapEdge,

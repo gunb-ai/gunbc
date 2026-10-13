@@ -20,9 +20,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import std.algebra { Cons, Empty, HeadAbsent, HeadFound, TailAbsent, TailFound, list_head, list_tail }
+import std.algebra { Cons, Empty, HeadAbsent, HeadFound, TailAbsent, TailFound, list_head, list_tail, list_at_optional }
 import v2.std.text { string_all_chars_in, string_any_char_in, string_contains_char }
-import v2.std.collection { list_at_optional }
+
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.effect_plan {
   Call,

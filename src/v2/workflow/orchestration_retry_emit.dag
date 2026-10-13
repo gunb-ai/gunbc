@@ -35,9 +35,7 @@ import v2.std.orchestration {
   TeeTo
 }
 import std.algebra { FreeMonoid, list_head, HeadFound, HeadAbsent }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

@@ -1,6 +1,6 @@
 module v2.test.claim.execution.emit_host_loop_equals_eval
 
-import std.types { List }
+import std.types { List, Map }
 import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,
   table_fixture_loop_wrong_value_arrow_with_body
@@ -26,10 +26,7 @@ import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
 import v2.extdeps.languages.rust_fixtures { rust_loop_target_model_staging }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection {
-  Map,
-  list_at_optional
-}
+import std.algebra { list_at_optional }
 import std.optional {
   Optional,
   Present,

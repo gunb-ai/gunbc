@@ -1,6 +1,6 @@
 module v2.std.compilers.target_model
 
-import std.types { List }
+import std.types { List, Map }
 
 import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -27,17 +27,14 @@ import std.algebra {
   fold_list_right,
   is_empty,
   length,
-  list_tail
-}
-import v2.std.text { String, string_replace }
-import v2.std.collection {
-  Map,
+  list_tail,
   empty_map,
   list_at_optional,
-  map_get_checked,
   map_insert,
   map_lookup
 }
+import v2.std.text { String, string_replace }
+
 import std.optional {
   Absent,
   Optional,
@@ -170,7 +167,8 @@ import v2.std.node {
   fold_list_node
 }
 import v2.std.witness {
-  StructuralPropertyWitness
+  StructuralPropertyWitness,
+  map_get_checked
 }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query {

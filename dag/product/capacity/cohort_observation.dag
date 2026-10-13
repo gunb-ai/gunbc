@@ -6,7 +6,7 @@ import std.measure { ObservationInstant, InstantOrder, InstantBefore, InstantSam
 import std.interval { OrderedClosedInterval, IntervalReady, IntervalRefused, closed_interval, interval_low, interval_high }
 import std.list { first_duplicate_by_key }
 import std.observation { OccurrenceId }
-import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 
 // A CONCURRENT COHORT IS N SEATS SHOWN TO HAVE BEEN ACTIVE AT ONCE, NOT N RUNS THAT HAPPENED NEARBY.
 //

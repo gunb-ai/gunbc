@@ -7,7 +7,7 @@ import v2.lens.common.construction_justification {
 }
 import std.disposition { RealizationDispatch }
 import std.algebra { Empty, list_snoc_item, fold_list, list_tail, length, TailFound, TailAbsent }
-import v2.std.collection { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.std.node {

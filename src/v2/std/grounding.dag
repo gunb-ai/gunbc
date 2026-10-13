@@ -1,7 +1,7 @@
 module v2.std.grounding
 
 import std.types { Map }
-import v2.std.collection { empty_map, map_insert }
+import std.algebra { empty_map, map_insert }
 import v2.std.compilers.target_model { FunctionBoundarySite, TargetModel }
 import v2.std.diagnostic {
   Accepted,

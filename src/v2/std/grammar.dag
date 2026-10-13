@@ -1,17 +1,10 @@
 module v2.std.grammar
 
-import std.types { List }
+import std.types { List, Map }
 import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, is_empty, fold_list, zip_eq, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
-import v2.std.collection {
-  Map,
-  PointwisePower,
-  empty_map,
-  list_nth,
-  map_insert,
-  map_lookup
-}
+import std.algebra { Cons, Empty, list_append, list_snoc_item, is_empty, fold_list, zip_eq, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, PointwisePower, empty_map, map_insert, map_lookup }
+
 import std.optional {
   Absent,
   Present,
@@ -40,7 +33,7 @@ import v2.std.node_query {
   named_child_lookup
 }
 import v2.std.compilers.lexing { LexRules }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.witness { Holds, Violates, Witness, list_nth }
 import v2.std.node {
   Atom,
   Conj,

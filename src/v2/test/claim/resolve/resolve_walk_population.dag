@@ -1,7 +1,7 @@
 module v2.test.claim.resolve.resolve_walk_population
 
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
-import std.algebra { Cons, Empty, fold_list, length }
+import std.algebra { Cons, Empty, fold_list, length, empty_map }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
   NotDeclaring,
@@ -18,7 +18,7 @@ import v2.compiler.resolve {
   scope_from_namespace
 }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { empty_map }
+
 import v2.std.diagnostic {
   Accepted,
   DeclarationLocus,

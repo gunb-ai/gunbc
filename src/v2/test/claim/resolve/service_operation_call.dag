@@ -1,13 +1,13 @@
 module v2.test.claim.resolve.service_operation_call
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, empty_map }
 import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, scope_from_namespace }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_surface_edge, namespace_graft_namespace_body_node }
 import v2.std.arrow_signature { declared_signature }
 import std.types { List }
-import v2.std.collection { empty_map }
+
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

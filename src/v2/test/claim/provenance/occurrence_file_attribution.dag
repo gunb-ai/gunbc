@@ -12,7 +12,7 @@ import v2.compiler.program_assembly {
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { list_at_optional }
+
 import v2.std.artifact { Artifact, SourceFile }
 import v2.cli.compile_cli {
   CliEmitClosure,
@@ -30,7 +30,7 @@ import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Diagnostics, Externa
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with, list_at_optional }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }

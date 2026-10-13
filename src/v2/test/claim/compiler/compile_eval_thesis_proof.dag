@@ -14,7 +14,7 @@ import v2.extdeps.runtimes.v2_evaluator {
   v2_eval_unit_literal_pin
 }
 import extdeps.communication.medium { Lossless, Lossy, Medium }
-import v2.std.collection { Map }
+import std.types { Map }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node }

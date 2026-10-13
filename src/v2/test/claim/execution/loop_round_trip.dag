@@ -19,9 +19,7 @@ import v2.std.cardinality {
   TerminationProof,
   termination_proof_witness_for_node
 }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

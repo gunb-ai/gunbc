@@ -1,7 +1,7 @@
 module v2.test.claim.parameter_reference
 
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, FreeMonoid, PartialFunction, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, PartialFunction, list_snoc_item, empty_map, map_insert }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -42,8 +42,8 @@ import v2.extdeps.runtimes.v2_evaluator {
 }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import std.types { List }
-import v2.std.collection { Map, empty_map, map_insert }
+import std.types { List, Map }
+
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
