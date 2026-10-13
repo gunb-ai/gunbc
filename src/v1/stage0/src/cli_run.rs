@@ -30445,6 +30445,27 @@ mod nfr_tests {
     }
 
     #[test]
+    fn nfr_frontier_reader_accepts_std_extdeps_exception_host() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"dag/std/effects.dag::key_source_eq\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        let triples = super::non_fold_residue_triples_from_module_source_with(
+            "dag/gunbc/non_fold_residue.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        );
+        assert_eq!(
+            triples
+                .iter()
+                .map(super::nfr_identity_join_line)
+                .collect::<Vec<_>>(),
+            vec!["dag/std/effects.dag::key_source_eq\tr\td".to_string()],
+            "the stated std/extdeps exception host may name those seven files"
+        );
+    }
+
+    #[test]
     fn nfr_frontier_reader_skips_comment_or_string_mention_without_a_decl() {
         let comment = "module m\n// data non_fold_residue_frontier: List<FrontierRow> = []\n";
         assert!(
@@ -30466,6 +30487,20 @@ mod nfr_tests {
             )
             .is_empty(),
             "a similarly-named data decl must be skipped, not refused"
+        );
+        let comment_then_decl = "module m\n\
+             // `data non_fold_residue_frontier: List<FrontierRow>` in a comment\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"m.dag::f\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        assert_eq!(
+            super::non_fold_residue_units_from_module_source_with(
+                "m.dag",
+                comment_then_decl,
+                super::NfrHomeCheck::Require,
+            ),
+            vec!["m.dag::f".to_string()],
+            "a comment mention must not hide a later real decl"
         );
     }
 }

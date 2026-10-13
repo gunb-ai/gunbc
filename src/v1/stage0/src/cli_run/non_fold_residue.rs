@@ -105,6 +105,25 @@ pub(crate) fn nfr_identity_join_line(t: &NfrFrontierTriple) -> String {
     format!("{}\t{}\t{}", t.path, t.reason, t.dissolution)
 }
 
+/// The seven std/extdeps subjects may not import this module, and their shared reason
+/// and dissolution idents may not move into std. Their rows live in
+/// `dag/gunbc/non_fold_residue.dag` as a stated exception to co-location-at-home.
+const NFR_STD_EXTDEPS_EXCEPTION_HOST: &str = "dag/gunbc/non_fold_residue.dag";
+const NFR_STD_EXTDEPS_EXCEPTION_PREFIXES: &[&str] = &[
+    "dag/extdeps/git.dag",
+    "dag/extdeps/languages/markdown.dag",
+    "dag/extdeps/linux/proc_self_cgroup.dag",
+    "dag/extdeps/tools/ldd.dag",
+    "dag/std/effect_grant.dag",
+    "dag/std/effects.dag",
+    "dag/std/occurrence_binding_candidates.dag",
+];
+
+fn nfr_std_extdeps_home_exception(host: &str, path_prefix: &str) -> bool {
+    host == NFR_STD_EXTDEPS_EXCEPTION_HOST
+        && NFR_STD_EXTDEPS_EXCEPTION_PREFIXES.contains(&path_prefix)
+}
+
 fn nfr_expr_ident(
     value: std::rc::Rc<crate::v1_std_core::Node>,
     source_indices: std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
@@ -152,48 +171,56 @@ pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
 /// three FrontierRow records.
 fn nfr_frontier_list_source(content: &str) -> Option<String> {
     // Byte-scan is a SUPERSET prefilter. Only a real data item (line starting `data
-    // non_fold_residue_frontier:`) is a decl; a comment or string mention is skipped.
+    // non_fold_residue_frontier:`) is a decl; a comment or string mention is skipped
+    // and the scan continues to a later item-position hit.
     let needle = "data non_fold_residue_frontier:";
-    let start = content.find(needle)?;
-    // A mention inside a comment or string is not at item position; require the line trim.
-    let line_start = content[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
-    if !content[line_start..start].trim().is_empty() {
-        return None;
-    }
-    let after = &content[start..];
-    let bracket = after.find('[')?;
-    let bytes = after.as_bytes();
-    let mut depth = 0i32;
-    let mut in_string = false;
-    let mut i = bracket;
-    while i < bytes.len() {
-        let b = bytes[i];
-        if in_string {
-            if b == b'\\' {
-                i += 2;
-                continue;
-            }
-            if b == b'"' {
-                in_string = false;
-            }
-            i += 1;
+    let mut search_from = 0usize;
+    while let Some(rel) = content[search_from..].find(needle) {
+        let start = search_from + rel;
+        let line_start = content[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        if !content[line_start..start].trim().is_empty() {
+            search_from = start + needle.len();
             continue;
         }
-        match b {
-            b'"' => in_string = true,
-            b'[' => depth += 1,
-            b']' => {
-                depth -= 1;
-                if depth == 0 {
-                    let literal = &after[bracket..=i];
-                    return Some(format!(
-                        "module nfr_frontier_slice\n\ndata non_fold_residue_frontier: List<FrontierRow> = {literal}\n"
-                    ));
+        let after = &content[start..];
+        let Some(bracket) = after.find('[') else {
+            search_from = start + needle.len();
+            continue;
+        };
+        let bytes = after.as_bytes();
+        let mut depth = 0i32;
+        let mut in_string = false;
+        let mut i = bracket;
+        while i < bytes.len() {
+            let b = bytes[i];
+            if in_string {
+                if b == b'\\' {
+                    i += 2;
+                    continue;
                 }
+                if b == b'"' {
+                    in_string = false;
+                }
+                i += 1;
+                continue;
             }
-            _ => {}
+            match b {
+                b'"' => in_string = true,
+                b'[' => depth += 1,
+                b']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let literal = &after[bracket..=i];
+                        return Some(format!(
+                            "module nfr_frontier_slice\n\ndata non_fold_residue_frontier: List<FrontierRow> = {literal}\n"
+                        ));
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
         }
-        i += 1;
+        search_from = start + needle.len();
     }
     None
 }
@@ -365,7 +392,9 @@ fn non_fold_residue_units_from_parse_source(
             });
             if home == NfrHomeCheck::Require {
                 let prefix = path.split("::").next().unwrap_or("");
-                if prefix != module_rel_path {
+                if prefix != module_rel_path
+                    && !nfr_std_extdeps_home_exception(module_rel_path, prefix)
+                {
                     panic!(
                         "nfr frontier reader: row path {path:?} in {module_rel_path} is not at \
                          home (subject file prefix {prefix:?} must equal the hosting module \
