@@ -1,5 +1,6 @@
 module v1.compiler.emit_rust
 
+import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
@@ -289,7 +290,7 @@ import v1.compiler.languages {
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
   escape_json_string, module_to_filename, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent,
-  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
+  to_snake, to_screaming_snake, is_upper,
   sanitize_service_name, capitalize_first, service_var_name, to_pascal,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
   test_function_name,
@@ -16729,7 +16730,7 @@ fn emit_rest_http_method(transport: Node, source_indices: Map<String, NewlineInd
     Present { value: m } => match m.inferred {
       Present { value: Resolved { node: _ } } =>
         let method_name = expr_var_name_at(texpr: m, source_indices: source_indices)
-        method_name |> chars |> map(ch => to_lower_char(ch: ch)) |> join(separator: "")
+        ascii_lowercase(s: method_name)
       _ =>
 
         concat("compile_error!(\"transport method type not resolved\")")

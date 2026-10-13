@@ -23578,15 +23578,24 @@ macro_rules! v1_builtin_arms {
                     .max(0)
                     .min(len)
                     .max(start);
-                let s: String = cps
-                    .skip(start as usize)
-                    .take((end - start) as usize)
-                    .iter()
-                    .filter_map(|v| match v {
-                        Value::Int(cp) => char::from_u32(*cp as u32),
-                        _ => None,
-                    })
-                    .collect();
+                let mut s = String::new();
+                for v in cps.skip(start as usize).take((end - start) as usize).iter() {
+                    match v {
+                        Value::Int(cp) => match u32::try_from(*cp).ok().and_then(char::from_u32) {
+                            Some(ch) => s.push(ch),
+                            None => {
+                                return Err(InterpError::TypeError {
+                                    msg: format!("chars_to_string: {cp} is not a Unicode scalar value: runtime representation-invariant violation; refusing to drop or substitute it"),
+                                });
+                            }
+                        },
+                        _ => {
+                            return Err(InterpError::TypeError {
+                                msg: "chars_to_string: element is not an Int code point".to_string(),
+                            });
+                        }
+                    }
+                }
                 Ok(Some(str_value(s)))
             },
 
@@ -23858,12 +23867,6 @@ macro_rules! v1_builtin_arms {
                 let s = expect_str($positional.first().copied(), "code_point")?;
                 let cp = s.chars().next().map(|c| c as i64).unwrap_or(0);
                 Ok(Some(Value::Int(cp)))
-            },
-
-            arm "free_call.from_code_point" { "from_code_point" } => {
-                let cp = expect_int($positional.first().copied(), "from_code_point")?;
-                let c = char::from_u32(cp as u32).unwrap_or('\0');
-                Ok(Some(str_value(c.to_string())))
             },
 
             arm "free_call.is_xid_start" { "is_xid_start" } => {

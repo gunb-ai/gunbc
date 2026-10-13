@@ -90,7 +90,7 @@ fn git_refusal_detail(operation: String, stderr: String) -> String {
 
 fn rust_paths_from_nul(raw: String) -> List<String> {
   filter(
-    xs: split(s: raw, delimiter: from_code_point(0)),
+    xs: split(s: raw, delimiter: "\u{0}"),
     predicate: fn(path) {
       let n = string_length(s: path)
       n >= 3 && substring(s: path, start: n - 3, end: n) == ".rs"

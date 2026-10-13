@@ -123,12 +123,12 @@ fn run_window() -> Int {
 }
 
 fn sentinel() -> String {
-  from_code_point(57344)
+  "\u{e000}"
 }
 
 // Brackets the index of a pinned literal while the passes run, so no pass reads inside it.
 fn pin_mark() -> String {
-  from_code_point(57345)
+  "\u{e001}"
 }
 
 fn bool_map_of(names: List<String>) -> Map<String, Bool> {
