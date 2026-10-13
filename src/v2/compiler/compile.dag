@@ -189,8 +189,15 @@ import v2.compiler.dependency_demand_census {
   DemandCensusAuthoredReading,
   DemandCensusModuleStanding,
   DemandCensusReport,
+  DemandCensusUnboundLocus,
+  DemandCensusUnreadable,
+  DemandCensusUnreadableStage,
+  UnboundNamed,
+  UnboundShaped,
   DemandModuleResolveRefused,
   DemandModuleResolved,
+  UnreadableAtParse,
+  UnreadableAtTokenize,
   demand_census_authored_readings,
   demand_census_exit,
   demand_census_lines,
@@ -217,7 +224,7 @@ import v2.compiler.resolve {
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
 import v2.std.staging { then_outcome }
 import v2.std.compilers.lexing { TokenStream }
-import v2.std.grammar { ParseTree }
+import v2.std.grammar { ParseTree, node_atom_identity_optional }
 import v2.std.language_model { LanguageModel }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel }
@@ -261,6 +268,7 @@ import v2.std.diagnostic {
   InvariantPortLocus,
   DeclarationLocus,
   declaration_locus,
+  diagnostics_fatal,
   diagnostics_fatal_reason,
   invariant_port_locus,
   Rejected,
@@ -270,10 +278,9 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
-  outcome_with_diagnostics,
-  diagnostics_fatal
+  outcome_with_diagnostics
 }
-import v2.std.node { Arrow, Atom, ComputationNode, Edge, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
+import v2.std.node { Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Node, NodeFold, NodeKind, Occupancy, Positional, Symbol, Transform, TypeNode, Value, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
 import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -3383,7 +3390,8 @@ fn native_lane_identity_row(
 // root index -- so in the production context a uses fn's module is absent, and so are the
 // operations and fns it declares. A census that stripped one module at a time would read every edge
 // into such a module as outside the closure. So this route folds the whole ingest once with the
-// clause elided (v2.compiler.dependency_demand_census demand_census_strip, between parse and
+// the uses clause elided (aliases are not rewritten; resolve does not model the clause)
+// (v2.compiler.dependency_demand_census demand_census_strip, between parse and
 // normalize) and absorbs each root through the SAME native_test_context_absorb the production fold
 // uses: the only difference from native_test_context_fold_step is the strip, which is why that step
 // is entered phase by phase here rather than through program_assembly_read_to_normalized_root_seeded.
@@ -3397,11 +3405,42 @@ type NativeDemandCensusFoldState {
   context: NativeTestContextFoldState
   authored: List<AuthoredUsesFunction>
   file_refused: List<AuthoredUsesFunction>
-  unreadable: Int
+  unreadable: List<DemandCensusUnreadable>
 }
 
 fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<AuthoredUsesFunction>) -> List<AuthoredUsesFunction> {
   fold_list(xs: ys, empty: xs, cons: fn(acc, y) { list_snoc_item(xs: acc, item: y) })
+}
+
+fn native_demand_census_unreadable(
+  read: DagSourceReadWitness,
+  stage: DemandCensusUnreadableStage,
+  d: NonEmptyDiagnostics
+) -> DemandCensusUnreadable {
+  DemandCensusUnreadable {
+    file_path: read.artifact.file_path,
+    stage: stage,
+    reason: diagnostics_fatal_reason(d: d)
+  }
+}
+
+fn native_demand_census_unbound_locus(d: NonEmptyDiagnostics) -> Optional<DemandCensusUnboundLocus> {
+  let fatal = diagnostics_fatal(d: d)
+  if fatal.reason == ^resolve_reason_unbound_symbol {
+    match fatal.at {
+      NodeLocus { anchor: a } =>
+        match node_atom_identity_optional(node: a.at) {
+          Present { value: n } => optional_present(value: UnboundNamed { name: n })
+          Absent => optional_present(value: UnboundShaped { kind: a.at.kind })
+        }
+      Textual { file: _, extent: _ } => optional_absent()
+      SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
+      InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
+      DeclarationLocus { declaration: _ } => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
 }
 
 fn native_demand_census_read(
@@ -3414,35 +3453,40 @@ fn native_demand_census_read(
     Present { value: qn } => qn
     Absent => Empty
   }
-  match bind_outcome(
-    o: program_assembly_phase_tokenize(read: read, lex: front.lex),
-    f: fn(tokens) {
-      parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, seed: state.context.alloc)
-    }
-  ) {
+  match program_assembly_phase_tokenize(read: read, lex: front.lex) {
     Rejected { diagnostics: d } =>
       NativeDemandCensusFoldState {
         context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
         authored: state.authored,
         file_refused: state.file_refused,
-        unreadable: state.unreadable + 1
+        unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtTokenize, d: d))
       }
-    Accepted { value: artifact, diagnostics: _ } =>
-      let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
-      match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, seed: state.context.alloc) {
         Rejected { diagnostics: d } =>
           NativeDemandCensusFoldState {
-            context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
             authored: state.authored,
-            file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
-            unreadable: state.unreadable
-          }
-        Accepted { value: scoped, diagnostics: _ } =>
-          NativeDemandCensusFoldState {
-            context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
-            authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
             file_refused: state.file_refused,
-            unreadable: state.unreadable
+            unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtParse, d: d))
+          }
+        Accepted { value: artifact, diagnostics: _ } =>
+          let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
+          match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+            Rejected { diagnostics: d } =>
+              NativeDemandCensusFoldState {
+                context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
+                authored: state.authored,
+                file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
+                unreadable: state.unreadable
+              }
+            Accepted { value: scoped, diagnostics: _ } =>
+              NativeDemandCensusFoldState {
+                context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
+                authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
+                file_refused: state.file_refused,
+                unreadable: state.unreadable
+              }
           }
       }
   }
@@ -3484,13 +3528,17 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
       let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
       let step = native_test_resolve_module(context: w.context, module: module_qn)
       match step.resolved {
-        Rejected { diagnostics: _ } =>
+        Rejected { diagnostics: d } =>
           NativeDemandCensusWalk {
             context: step.context,
             functions: w.functions,
             operations: w.operations,
             audited: w.audited,
-            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused { authored: mine })
+            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused {
+              authored: mine,
+              first_reason: diagnostics_fatal_reason(d: d),
+              first_unbound: native_demand_census_unbound_locus(d: d)
+            })
           }
         Accepted { value: resolved, diagnostics: _ } =>
           let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
@@ -3517,7 +3565,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensus
     bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
       let folded = fold_list(
         xs: ingest,
-        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: 0 },
+        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty },
         cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
       )
       let walked = fold_list(
@@ -3539,7 +3587,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensus
         standings: walked.standings,
         file_refused: folded.file_refused,
         file_refusals: length(xs: folded.context.file_refusals),
-        unreadable_files: folded.unreadable
+        unreadable: folded.unreadable
       ))
     })
   })

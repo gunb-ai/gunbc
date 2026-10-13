@@ -3221,15 +3221,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "demand-d13-dependency-demand",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
           headline: "Dependencies derived from bodies, bound at the composition root",
-          boundary: "D13: a DependencyDemand carrier produced once by resolution, plus composition-root binding. Cut (c) landed (#11993, #12125). The type does not exist on main.",
+          boundary: "D13: DependencyDemand lives in v2.compiler.dependency_demand, produced once over resolved references keyed by resource declaration identity (native_demand_census_report). Cut (c) landed (#11993, #12125). This slice owns that producer and the census route. The census elides the uses clause; it does not rewrite aliases. A body that names a uses alias stays unobserved until resolve models the clause. UsesClauseCarrier refusal stays. Composition-root binding and production-resolve attachment are the next slice.",
           displaced_cost: "Authored uses rows restate dependencies the bodies already declare.",
-          first_slice: "Design the DependencyDemand carrier.",
-          red_control: "An authored uses row restating a derivable dependency refuses; an unbound demanded subject refuses at the root.",
-          out_of_scope: "Scheduling.",
-          handback: "The carrier landed with its refusals."
-        ), on: "2026-09-30", note: "Not yet centered: carrier design.")),
+          first_slice: "Own the existing producer; run the census at this head; do not delete corpus uses rows; keep the clause refusal.",
+          red_control: "A service call declared requires none does not derive Network; a uses clause still refuses at lowering; a Network row whose derived demand does not name Network is not deleted.",
+          out_of_scope: "Scheduling. Production resolve attachment. Composition-root provider binding. Binding uses aliases in resolve.",
+          handback: "Whole-tree census refused; no held observation and no corpus deletions"
+        ), on: "2026-09-30", note: "Not yet centered: carrier design."), on: "2026-10-13", note: "The type exists on main as v2.compiler.dependency_demand; the 2026-09-30 boundary was stale."), on: "2026-10-13", note: "Census-only alias rewrite removed; no deletion or held observation.")),
       parent: in_project(project: "demand-engine", contribution: "D13 derives dependencies from bodies and binds them at the composition root, which native admission needs."),
     ),
     roadmap_node(
