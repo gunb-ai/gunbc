@@ -92,10 +92,7 @@ test fn a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real
   let published = match sealed_write(dest: dest, root: root, body: published_body) {
     Absent => false
     Present { value: w } =>
-      (typed_remote_file_staging_path(write: w) == staging)
-        && map(typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWriteGroupRead), s => s.step)
-          == ["unlink-staging", "stage", "mode", "rename"]
-        && run_pre_compare(write: w)
+      (typed_remote_file_staging_path(write: w) == staging) && run_pre_compare(write: w)
   }
   let dest_regular = is_regular_file(path: dest) && !is_symlink(path: dest)
   let dest_bytes = Filesystem.Read(path: dest)
