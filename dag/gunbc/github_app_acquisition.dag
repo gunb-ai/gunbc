@@ -24,7 +24,7 @@ import std.upsert_decision {
 }
 import std.algebra { trim }
 import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }

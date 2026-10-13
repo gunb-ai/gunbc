@@ -1,4 +1,4 @@
-module gunbc.fleet_observation_collector_supervision
+module gunbc.fleet_observation.collector_supervision
 
 import std.types { Bool, Int, NonEmptyStr }
 import std.nat { Nat }
@@ -22,8 +22,8 @@ import std.process_termination {
 }
 
 // SUPERVISING THE PROCESS THAT DOES THE COLLECTING. The bytes are
-// gunbc.fleet_observation_capture_chunk and the published fact is
-// gunbc.fleet_observation_observation_envelope; this module answers only what happened to the
+// gunbc.fleet_observation.capture_chunk and the published fact is
+// gunbc.fleet_observation.observation_envelope; this module answers only what happened to the
 // CHILD, and it exists because three replacement collectors failed here in three different ways on
 // one day and each failure was read as a successful observation.
 //
@@ -186,7 +186,7 @@ type SupervisionCoverage
   | WindowNotCoveredSupervision { disposition: SupervisionDisposition }
 
 // DECLARED FRONTIER, WITH ITS TRIGGER (DESIGN section 3c). CONSUMER: the coverage answer in
-// gunbc.fleet_observation_observation_envelope -- a chunk whose supervision did not cover the window
+// gunbc.fleet_observation.observation_envelope -- a chunk whose supervision did not cover the window
 // must not license a negative observation about the source, which is the same law one module over
 // applied to the process rather than to the bytes. TRIGGER, STATED AS THE CAPABILITY: the envelope's
 // source_byte_fact taking a supervision coverage alongside its durability and continuity evidence,

@@ -6,7 +6,6 @@ import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.placement_supply { SiteIdentity }
 import product.host_identity { HostIdentity, host_identity_eq }
-import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey }
 import product.fabric.provider_route {
   ProviderRoute, CompliancePostureRevision, ProviderRouteFacts,
   ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated,
@@ -15,8 +14,8 @@ import product.fabric.provider_route {
   PermittedJurisdictionsEnumerated, JurisdictionDropEnrollment,
 }
 import product.fabric.provider_admission {
-  RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
-  DispositionStanding, DispositionNotEngaged, admit_provider_use,
+  RouteScopeSanction,
+  DispositionStanding, DispositionNotEngaged,
 }
 import gunbc.spark.fabric_switch_observed { fabric_lane_observations }
 import gunbc.spark.vllm_observed {
@@ -29,13 +28,17 @@ import extdeps.vllm.usage_stats {
   vllm_usage_stats_reporting, vllm_usage_stats_assignment_disables,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
-import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
-import gunbc.spark.vllm_serving_launch {
-  EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
-}
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
-import gunbc.fleet_physical_inventory { operator_site }
-import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.fleet.fleet_physical_inventory { operator_site }
+import gunbc.fleet.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+
+type RetiredServingEndpoint { endpoint: NonEmptyStr }
+
+type RetiredIncarnationObservation { container_env: List<String> }
+
+type EndpointIncarnationStanding
+  = EndpointIncarnationObserved { observation: RetiredIncarnationObservation }
+  | EndpointIncarnationUnobserved { obligation: NonEmptyStr }
 
 // ── WHY A SERVING ROUTE EXISTS AT ALL NOW, AND WHAT KIND OF FACT IT RESTS ON ──────────────────
 //
@@ -55,7 +58,7 @@ import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, oper
 // no reader has to take this paragraph's word for which one they are holding.
 //
 // THE SITE IS NOT MINTED HERE, AND THAT IS THE SECOND HALF OF THE POINT. The operator's premises
-// already have one authority -- gunbc.fleet_physical_inventory operator_site -- and
+// already have one authority -- gunbc.fleet.fleet_physical_inventory operator_site -- and
 // gunbc.fleet_site_locale records that minting a second SiteIdentity for this exact place was
 // already done once and reverted as the section 3 nickname failure. So the allocation is keyed on
 // that identity rather than on a new one.
@@ -70,8 +73,7 @@ import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, oper
 // site identity, which belongs in the private fleet records and not in this repository.
 //
 // THE NEARBY NAME THAT IS NOT THIS ONE:
-// gunbc.spark.serving_deployment_selection serving_topology_region is a Pareto DecisionRegion -- a
-// region of a decision field, not a place a machine sits.
+// a Pareto DecisionRegion is a region of a decision field, not a place a machine sits.
 
 // SCOPED TO THE UNITS, NOT TO THE RACK. "Outside the rack" is a per-asset residence fact that
 // product.placement_supply RackResidence owns; what this row states is the SITE, which is the fact
@@ -96,7 +98,7 @@ data spark_fleet_site_allocation: SparkFleetSiteAllocation = SparkFleetSiteAlloc
   allocation: OperatorAllocation {
     decided_by: "operator (2026-09-11): 'srv5, 6, and all the sparks sit outside the rack right now, but in my NYC home'",
     decided_on: "2026-09-11",
-    basis: "The operator asserts that every Spark unit sits at his NYC home, outside the rack, as of this date. This is an ATTRIBUTABLE ASSERTION and not a measurement: for hardware the operator owns and holds there is no third party to observe the site, so no observer can exist and none is claimed. IT IS KEYED ON THE SITE IDENTITY THE CORPUS ALREADY CARRIES -- gunbc.fleet_physical_inventory operator_site, whose civil zone gunbc.fleet_site_locale records as America/New_York -- rather than introducing a second name for one place. WHAT IS NOT ESTABLISHED, asked and answered on the same date: the operator BELIEVES operator-lab is his NYC apartment and does not know it, so the join between that site identity and the home named in the assertion is a belief and is not confirmed here. Confirming it means tagging an address to this site identity, which belongs in the private fleet records rather than this repository. It is explicitly NOT a colocation facility: no row of extdeps.colo.interserver or any other extdeps.colo operator describes where these units sit. RIGHT NOW is part of the assertion -- the units are expected to move into the rack later, and that move is a NEW allocation row carrying its own date, never an edit to this one.",
+    basis: "The operator asserts that every Spark unit sits at his NYC home, outside the rack, as of this date. This is an ATTRIBUTABLE ASSERTION and not a measurement: for hardware the operator owns and holds there is no third party to observe the site, so no observer can exist and none is claimed. IT IS KEYED ON THE SITE IDENTITY THE CORPUS ALREADY CARRIES -- gunbc.fleet.fleet_physical_inventory operator_site, whose civil zone gunbc.fleet_site_locale records as America/New_York -- rather than introducing a second name for one place. WHAT IS NOT ESTABLISHED, asked and answered on the same date: the operator BELIEVES operator-lab is his NYC apartment and does not know it, so the join between that site identity and the home named in the assertion is a belief and is not confirmed here. Confirming it means tagging an address to this site identity, which belongs in the private fleet records rather than this repository. It is explicitly NOT a colocation facility: no row of extdeps.colo.interserver or any other extdeps.colo operator describes where these units sit. RIGHT NOW is part of the assertion -- the units are expected to move into the rack later, and that move is a NEW allocation row carrying its own date, never an edit to this one.",
   },
 }
 
@@ -139,11 +141,13 @@ data gunbc_first_party_serving_provider: FirstPartyServingAuthority = FirstParty
   basis: "For self-hosted Spark serving the provider is gunbc itself: the units are operator-owned, they sit at the operator's own site, and the engine is run by us. This is the same principal gunbc.harness.harness_seat already passes as the fabric principal, so the route names the party that is actually serving rather than an upstream vendor whose software happens to be running.",
 }
 
-// THE SERVICE IS THE DEPLOYMENT WE ALREADY DECLARE, cited rather than re-coined: the thing being
-// offered on this route is the Spark pair serving deployment, whose single authority is
-// gunbc.spark.pair_serving_desired. A fresh service anchor beside it would be a second name for it.
+// THE SERVICE ANCHOR IS DISPOSAL, NOT AN OFFERED DEPLOYMENT. Pair serving is retired
+// (gunbc.spark.pair_serving_desired deleted #13779). Posture consumers still need a service
+// DeclarationRef on ProviderRoute; the live authority for what those Spark units are now is
+// gunbc.spark.dgx_procurement dgx_spark_disposed_units. A fresh service name beside that would
+// be a second name for the sold rack.
 fn spark_first_party_service_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.spark.pair_serving_desired", decl_name: "spark_pair_serving_desired")
+  decl_ref(module_path: "gunbc.spark.dgx_procurement", decl_name: "dgx_spark_disposed_units")
 }
 
 fn spark_first_party_provider_ref() -> DeclarationRef {
@@ -178,10 +182,13 @@ fn spark_first_party_route() -> ProviderRoute {
 // staleness_condition field, and the sentence here claimed "every consumer of this row reads this",
 // which was false: nothing folded it (review 64033). It was a comment moved into a NonEmptyStr slot
 // so that it could be described as executed, which is the §4c shape exactly -- and worse than an
-// annotation, because an annotation does not claim to be read. The field is deleted; what enforces
-// "for now" is spark_first_party_posture's revision, the roster row bound to it, and the RED in
-// test.claim.spark.spark_first_party_serving_witness_test that drives a superseded revision through
-// admit_provider_use and requires PostureRevisionStale.
+// annotation, because an annotation does not claim to be read. The field is deleted. The Spark
+// first-party admission witness that drove a superseded revision through admit_provider_use
+// (`spark_first_party_serving_witness_test`) was deleted with the sold serving path (#13779).
+// Live consumers of this module are posture *types* (`runner_fleet_ci_posture`,
+// `workspace_demo_preparation_policy`) and `spark_first_party_posture` via
+// `test.claim.fabric.jurisdiction_drop_accounting_witness`. There is no remaining
+// `harness_admit_bound_offer` and no remaining caller of `spark_first_party_admission`.
 //
 // THE REMAINING FIELDS ARE NOT IN THAT CLASS AND ARE KEPT. They are the evidence an auditor reaches
 // by following a DeclarationRef out of the permit -- what the route serves, whose material it
@@ -444,8 +451,8 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // ── THE ROUTE FACTS ARE ABOUT THE REALIZATION THAT ANSWERED, NOT ABOUT A DECLARATION ─────────
 //
 // THE DEFECT THIS REPLACES, stated because it was mine and it was latent rather than theoretical.
-// The telemetry fold read gunbc.spark.pair_serving_realization's container environment over the
-// GLOBAL fabric lane roster, and the service reference named gunbc.spark.pair_serving_desired --
+// The telemetry fold read the retired Spark pair-serving realization's container environment over the
+// GLOBAL fabric lane roster, and the service reference named the retired pair_serving_desired --
 // neither of which takes the launch being offered. So a native GLM launch, whose actual environment
 // nobody here models, would have inherited pair-serving's DESIRED answer and been admitted on route
 // facts describing a different deployment. The operator-routed review of #11083 names the repair:
@@ -474,7 +481,7 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 // THE ENDPOINT AND THE INCARNATION ARE THE SERVICE HALF'S EVIDENCE. The endpoint is the process the
 // route answered on; the incarnation standing says whether anything observed which engine launch that
 // process belongs to. The production caller, gunbc.harness.harness_seat harness_serving_realization,
-// takes that standing from gunbc.spark.serving_incarnation_observe -- the producer that binds the
+// takes that standing from retired gunbc.spark.serving_incarnation_observe (deleted #13779) -- the producer that binds the
 // answering endpoint to an engine launch over the fleet key session -- so it carries
 // EndpointIncarnationObserved on a bind that observed and EndpointIncarnationUnobserved (with the
 // specific cause) on one that did not. Only
@@ -483,7 +490,7 @@ fn spark_first_party_downstream() -> DownstreamProviderPopulation {
 type SparkServingRealization {
   hosts: List<HostIdentity>
   readback: VllmModelsRouteReadbackStanding
-  endpoint: VllmEndpointProcessLaunch
+  endpoint: RetiredServingEndpoint
   incarnation: EndpointIncarnationStanding
   declared_model_path: String?
 }
@@ -507,8 +514,7 @@ fn spark_realization_hosts_without_lanes(realization: SparkServingRealization) -
 // WHAT IS LAUNCH-BOUND IS WHAT THE PROCESS ITSELF REPORTED. gunbc.spark.vllm_observed's models-route
 // readback carries the configured_model_path the running engine answered with, and the realization
 // carries the path the GROUP'S launch is declared to serve, derived from its pinned snapshot by the
-// group's own serving authority (gunbc.spark.serving_group_launch: the pair-serving realization for
-// group A, the native arm's for group B). Those two agreeing is evidence ABOUT THE PROCESS rather
+// group's own serving authority (retired Spark serving_group_launch). Those two agreeing is evidence ABOUT THE PROCESS rather
 // than about our intent for it: a different engine serving a different checkpoint answers with a
 // different path, and a readback this repository could not decode answers with none at all.
 //
@@ -581,14 +587,14 @@ data spark_serving_usage_stats_unread_obligation: NonEmptyStr = "gunbc.spark.fir
 // refusal asks for is a re-assessment of the route, not a smaller repair: a reporter carrying
 // request material is route material leaving the site, which is the premise the first-party posture
 // rests on.
-data spark_usage_stats_carrying_request_material_obligation: NonEmptyStr = "extdeps.vllm.usage_stats vllm_usage_stats_reporting now reports CarriesRequestMaterial at its cited source revision, so vLLM's usage-stats reporter no longer carries only host, build and engine configuration. The first-party posture rests on route material staying on site and this is route material leaving it, so the route's telemetry path is unresolved and provider-use admission refuses as ProviderRouteFactsIncomplete. The remedy is NOT to edit the declared launch environment: this module no longer reads gunbc.spark.pair_serving_realization spark_pair_container_env at all, so setting VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 there changes what the launch is declared to do and changes nothing this decision consults. What resolves the route is evidence of the effective telemetry configuration of the process that answered (spark_serving_usage_stats_declared_environment_obligation); the alternative is to re-assess the posture with the operator, whose 2026-09-11 ruling admitted this path ON the condition that the payload stay metadata-only. Neither remedy makes the telemetry path Absent while the environment is declared rather than read: see spark_serving_usage_stats_declared_environment_obligation."
+data spark_usage_stats_carrying_request_material_obligation: NonEmptyStr = "extdeps.vllm.usage_stats vllm_usage_stats_reporting now reports CarriesRequestMaterial at its cited source revision, so vLLM's usage-stats reporter no longer carries only host, build and engine configuration. The first-party posture rests on route material staying on site and this is route material leaving it, so the route's telemetry path is unresolved and provider-use admission refuses as ProviderRouteFactsIncomplete. The remedy is NOT to edit the declared launch environment: this module no longer reads retired gunbc.spark.pair_serving_realization (deleted #13779) spark_pair_container_env at all, so setting VLLM_NO_USAGE_STATS=1 or DO_NOT_TRACK=1 there changes what the launch is declared to do and changes nothing this decision consults. What resolves the route is evidence of the effective telemetry configuration of the process that answered (spark_serving_usage_stats_declared_environment_obligation); the alternative is to re-assess the posture with the operator, whose 2026-09-11 ruling admitted this path ON the condition that the payload stay metadata-only. Neither remedy makes the telemetry path Absent while the environment is declared rather than read: see spark_serving_usage_stats_declared_environment_obligation."
 
 // WHY NO ARM OF THIS STANDING MAY LOCATE A PROVIDER PATH, WHICH IS A REPAIR OF THIS PR'S OWN
 // DEFECT RATHER THAN OF INHERITED CODE. Until this change the metadata-only arm produced
 // ProviderPathLocated, and product.fabric.provider_route first_unresolved_obligation counts a
 // Located path as RESOLVED -- so a route whose reported model path matched the declared one, on a
 // fully lane-covered host population, ADMITTED. The environment that answer rested on is
-// gunbc.spark.pair_serving_realization spark_pair_container_env, which is the environment a
+// retired gunbc.spark.pair_serving_realization (deleted #13779) spark_pair_container_env, which is the environment a
 // container is CREATED WITH: a construction, not a reading of a running process. So admission was
 // resting on an environment nobody observed THIS deployment to have, which is the fabricated
 // evidence this module exists to refuse.
@@ -829,51 +835,8 @@ fn spark_first_party_route_facts(realization: SparkServingRealization) -> Provid
   }
 }
 
-// ── THE SCOPE AND THE ADMISSION ───────────────────────────────────────────────────────────────
-//
-// The demand and the work are PARAMETERS, never literals here. admit_provider_use seals them into
-// the permit and product.fabric.selection compares the permit against the demand and work the
-// candidate is being bound for, so a work key transcribed beside the call would refuse every real
-// placement -- and, worse, would be a work identity this module invented.
-fn spark_first_party_use_scope<P>(
-  demand: FabricIdentity<P, DemandKey>,
-  work: FabricIdentity<P, WorkKey>,
-) -> ProviderUseScope<P> {
-  ProviderUseScope {
-    demand: demand,
-    work: work,
-    customer_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_customer_profile"),
-    data_handling_profile: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_own_data_handling_profile"),
-    agreement: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_operator_owned_hardware_agreement"),
-    prohibited_use_disposition: spark_prohibited_use_disposition(),
-    sanctions_disposition: spark_sanctions_disposition(),
-    export_disposition: spark_export_disposition(),
-  }
-}
-
-// THE SCOPE IS A PARAMETER RATHER THAN BUILT INSIDE, which is what makes the refusal path
-// executable: a caller bringing a scope this posture does not sanction -- another customer profile,
-// another data class -- reaches the same producer and is refused by it, instead of the refusal being
-// a state only a fixture could construct.
-//
-// CONSUMED. The production consumer is gunbc.harness.harness_seat harness_admit_bound_offer, which
-// calls this with spark_first_party_use_scope over the turn subject's Demand and Work id -- both
-// constructed once by harness_turn_subject before candidate enumeration -- and hands the result to
-// product.fabric.selection bind_candidate as its admission. Only CandidateBound becomes a harness
-// candidate; a refusal here surfaces as OfferNotAdmittedForUse carrying this producer's
-// refusal_reason unchanged.
-// test.claim.spark.spark_first_party_serving_witness_test exercises both arms directly.
-fn spark_first_party_admission<P>(
-  realization: SparkServingRealization,
-  scope: ProviderUseScope<P>,
-  offer: FabricIdentity<P, OfferKey>,
-) -> ProviderUseAdmission<P> {
-  admit_provider_use(
-    roster: spark_first_party_sanction_roster(),
-    facts: spark_first_party_route_facts(realization: realization),
-    active: spark_first_party_posture,
-    scope: scope,
-    offer: offer,
-    decision_receipt: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_first_party_use_posture"),
-  )
-}
+// Spark first-party *seat admission* retired with the sold serving path (#13779).
+// `spark_first_party_admission` / `spark_first_party_use_scope` had no remaining caller
+// (`harness_admit_bound_offer` does not exist; the inhabitance witness was deleted).
+// FRONTIER: rented first-party seats admit through `gunbc.harness.harness_seat` `harness_bind_seat`
+// / `gunbc.serving.*`, not by restoring a Spark realization admission. Posture types stay.

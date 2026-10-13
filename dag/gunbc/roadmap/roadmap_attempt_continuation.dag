@@ -1,11 +1,11 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
-import gunbc.roadmap_nesting { RoadmapMembership }
+import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import gunbc.roadmap_model { RoadmapEdge }
+import gunbc.roadmap.roadmap_model { RoadmapEdge }
 import gunbc.roadmap.roadmap_submission {
-  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
+  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
 }
 import gunbc.roadmap.roadmap_supervisor {
@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_supervisor {
   SupervisorVerdictObservation, SupervisorVerdictAbsent, SupervisorVerdictBound, SupervisorVerdictUnreadable,
   SupervisorTarget, SupervisorEscalation, supervisor_target_for,
 }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment,
   WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
@@ -149,6 +149,13 @@ fn continuation_from_capture(prior: PriorAttemptFacts, prior_turn: ContinuationT
           "the submission capture for the prior attempt ", prior.attempt_key,
           " cannot be established: ", reason,
           ", so whether its branch holds a declared candidate is unknown and the decision does not guess",
+        ], ""),
+      }
+    CaptureNotAttempted { reason } =>
+      ContinuationRefused {
+        reason: join([
+          "the prior attempt ", prior.attempt_key, " has ended but its capture is still owed (", reason,
+          "), so whether its branch holds a declared candidate is not yet read and the decision waits for the capture",
         ], ""),
       }
     CaptureAbsent =>

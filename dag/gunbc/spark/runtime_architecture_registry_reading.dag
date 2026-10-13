@@ -1517,7 +1517,7 @@ data xomoxcc_dgx_spark_sglang_registry_reading: ArchitectureRegistryReading = Ar
 
 // THE IMAGE THIS FLEET BUILT FROM SOURCE, READ THE SAME WAY AS THE PUBLISHED ONES. It was built on
 // spark-a3ee from vllm-project/vllm 07b75534651a0dd584c6f3be75d8c62fb8426397 by the modeled build in
-// gunbc.spark.vllm_runtime_image_build, and the same ModelRegistry call was made inside it.
+// retired gunbc.spark.vllm_runtime_image_build (deleted #13779), and the same ModelRegistry call was made inside it.
 //
 // ITS REFERENCE IS A CONFIG DIGEST WITH NO REPOSITORY PATH, because this image was never pushed: it
 // exists in one daemon's local store under the build tag gunbc-vllm-dsv41-gb10:be277a5fc9425631, and
@@ -1921,7 +1921,7 @@ data gunbc_vllm_dsv41_gb10_registry_reading: ArchitectureRegistryReading = Archi
 }
 
 // THE PUBLISHED ROUTE-A IMAGE, probed on srv9 by fleet-converge 34643985099
-// (gunbc.spark.v41_runtime_image_probe v41_published_image_probe_ci_wet). The observation is keyed on
+// (retired gunbc.spark.v41_runtime_image_probe (deleted #13779) v41_published_image_probe_ci_wet). The observation is keyed on
 // the pull pin that was inside the container, frozen here the same way every dump freezes its
 // digest: a later edit of v41_published_arm64_digest must fail the join, not inherit this answer.
 // Inspect's config id is a different hash and stays a named readback, not this field.
@@ -1931,7 +1931,7 @@ data v41_published_arm64_architecture_asked: ArchitectureObservation = Architect
   image_reference: "vllm/vllm-openai@sha256:d84a123255b822fc22508635218000187221794f59c0694c33b0650d1e377d58" as NonEmptyStr,
   host: srv9_gb10_host,
   observed_at: "2026-09-11T20:41:03Z" as NonEmptyStr,
-  instrument: "fleet-converge 34643985099, gunbc.spark.v41_runtime_image_probe inside docker run --gpus all --entrypoint python3; VERDICT architecture-registered=present for DeepseekV41ForCausalLM. Same config id re-read by fleet-converge 34646650317 (inspect JSON, no --format)." as NonEmptyStr,
+  instrument: "fleet-converge 34643985099, retired gunbc.spark.v41_runtime_image_probe (deleted #13779) inside docker run --gpus all --entrypoint python3; VERDICT architecture-registered=present for DeepseekV41ForCausalLM. Same config id re-read by fleet-converge 34646650317 (inspect JSON, no --format)." as NonEmptyStr,
   architecture: deepseek_v4_1_flash_architecture_class,
   present: true,
 }
@@ -1941,7 +1941,7 @@ data v41_published_arm64_architecture_asked: ArchitectureObservation = Architect
 // THIS IS THE LANE-BUILT DERIVED IMAGE THAT REPLACED THE NoPE ONE ON 2026-09-17, and until these two
 // rows it had no reading at all: the arm's runtime row still pinned the NoPE content id it was built
 // as on 2026-09-13, so every consumer of that row described an image that had stopped serving.
-// Found by an exact-match refusal in gunbc.spark.serving_fit_projection, whose report was keyed by
+// Found by an exact-match refusal in retired gunbc.spark.serving_fit_projection (deleted #13779), whose report was keyed by
 // this tag while the row pinned sha256:41366caf...; `docker images` on the head then showed two
 // repositories, gunbc-vllm-glm53-nope-gb10 (41366caf, 09-13) and gunbc-vllm-glm53-gb10 (c7d63d15,
 // 09-17), and the four running containers' .Image is the latter.

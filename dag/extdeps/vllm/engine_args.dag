@@ -99,7 +99,7 @@ fn vllm_memory_request_argv(r: VllmMemoryRequest) -> List<String> {
 //
 // AND TRAILING ZEROS ARE TRIMMED, WHICH IS NOT COSMETIC. A zero-padded `0.8200` is numerically the
 // `0.82` the pair route has always sent, but it is not the same BYTES -- and the running engine's
-// observed launch line (gunbc.spark.pair_serving_observed) carries `0.82`. Convergence compares
+// observed launch line (retired gunbc.spark.pair_serving_observed (deleted #13779)) carries `0.82`. Convergence compares
 // rendered argv against running argv, so padding would have manufactured a drift against a healthy
 // server and asked for a restart to fix a difference nobody made. The minimal decimal renders 8200 as
 // `0.82` and 9112 as `0.9112`: existing lines keep their bytes, and the new precision costs nothing
@@ -145,6 +145,13 @@ fn vllm_memory_request_key(r: VllmMemoryRequest) -> String {
       Present { value: b } => join(["kvbytes:", to_string(byte_size_count(b: b))], "")
     },
   ], "")
+}
+
+// The `vllm serve <model>` command head: the CLI subcommand and its positional model argument are
+// vLLM's own interface, so the spelling lives here and not in each launching layer.
+// Consumer: gunbc.serving.rented_replica rented_replica_launch.
+fn vllm_serve_argv(model: String) -> List<String> {
+  ["vllm", "serve", model]
 }
 
 fn vllm_prefix_caching_argv(r: VllmPrefixCachingRequest) -> List<String> {
@@ -256,9 +263,8 @@ fn vllm_modality_argv(r: VllmModalityRequest) -> List<String> {
 // argument it sent, not the behaviour it got.
 // fp8_ds_mla is the DeepSeek MLA-specific fp8 KV layout; read back from the srv6 front door on
 // 2026-09-03 (gunbc.spark.vllm_observed) and the operator's pair tuple.
-// NVFP4 JOINED THE REQUEST VOCABULARY WHEN THE SELECTOR'S OWN KV VOCABULARY WAS DELETED
-// (gunbc.spark.serving_deployment_selection's KvLayoutPolicy carried a `KvFp4Layout` rendering "fp4",
-// which is not a value upstream accepts). The canonical spellings are upstream's: CacheDType at
+// NVFP4 JOINED THE REQUEST VOCABULARY WHEN A SELECTOR-SIDE KV SPELLING THAT RENDERED "fp4" WAS
+// DELETED (that rendering is not a value upstream accepts). The canonical spellings are upstream's: CacheDType at
 // revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/cache.py) lists both "nvfp4" and
 // "nvfp4_ds_mla". Whether a runtime, backend and device ADMIT either is a capability question with
 // its own refusals, never a property of the spelling.
@@ -380,7 +386,7 @@ fn vllm_argv_indexer_kv_dtype(argv: List<String>) -> VllmIndexerKvDtypeRead {
 
 // ── WHETHER A DRAFT MODEL WAS PROPOSING TOKENS, WHICH IS A MEASUREMENT AXIS ────────────────────
 //
-// WHY THIS IS MODELLED HERE RATHER THAN BESIDE A MEASUREMENT. gunbc.spark.prefill_batch_sweep states
+// WHY THIS IS MODELLED HERE RATHER THAN BESIDE A MEASUREMENT. retired gunbc.spark.prefill_batch_sweep (deleted #13779) states
 // the consequence in its own prose: "a budget measurement taken with speculation OFF does not
 // describe a product served with it ON" -- draft tokens consume the same batch budget, and a step
 // that accepts a BURST instead of exactly one decode token has a different felt cadence at the same
@@ -479,7 +485,7 @@ data vllm_negative_dcp_with_sliding_window: VllmVerifiedNegative = VllmVerifiedN
 // larger batch buys no throughput". Both halves have now been measured, and the row was wrong in
 // its LOCATION before it was wrong in its content.
 //
-// WHAT THE MEASUREMENT SAID (gunbc.spark.prefill_batch_sweep, four launches, 2026-09-07). "It
+// WHAT THE MEASUREMENT SAID (retired gunbc.spark.prefill_batch_sweep (deleted #13779), four launches, 2026-09-07). "It
 // reduces the KV pool" is TRUE and was never the objection: 11,767,856 tokens at 2048 against
 // 5,836,755 at 16384. "A larger batch buys no throughput" is NEARLY true -- 7.5% across an 8x
 // range -- but the ground offered for it was not: it was inferred from average RoCE link
@@ -492,7 +498,7 @@ data vllm_negative_dcp_with_sliding_window: VllmVerifiedNegative = VllmVerifiedN
 // PRODUCT decision that trades interactive latency against prefill throughput against KV capacity.
 // extdeps owns the argument's SHAPE; the policy belongs to the consumer, and modelling it here was
 // the layer inversion DESIGN section 3 names. The measured trade and the standing decision live at
-// gunbc.spark.prefill_batch_sweep, and the upstream resolution that currently supplies the value in
+// retired gunbc.spark.prefill_batch_sweep (deleted #13779), and the upstream resolution that currently supplies the value in
 // the flag's absence lives at extdeps.vllm.batch_defaults.
 //
 // The `VllmDiscouragedArg` type goes with it: it had exactly one row, and a general "arguments we
@@ -763,7 +769,7 @@ fn vllm_scheduler_admission_key(r: VllmSchedulerAdmissionRequest) -> String {
 //
 // The inverse of the renderer above, so a plan and a container can be compared on these fields
 // rather than assumed equal. DECLARED FRONTIER: in this change only the scheduler-envelope witness calls
-// these readers; their production consumer is gunbc.spark.serving_relaunch_transaction's admission-controls
+// these readers; their production consumer is retired gunbc.spark.serving_relaunch_transaction (deleted #13779)'s admission-controls
 // axis, which lands in deforking cut 7 (#12986), and that landing is the trigger. Both spellings of the boolean present at once, or either repeated, is a
 // mis-assembled argv and refuses rather than taking argparse's last-wins answer.
 type VllmFullInputAdmissionRead

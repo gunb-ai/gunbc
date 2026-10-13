@@ -1,13 +1,13 @@
-module gunbc.fabric_cell_host_root
+module gunbc.fabric.fabric_cell_host_root
 
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.optional { Optional, Present }
 import product.host_identity { HostIdentity }
 import gunbc.ownership { Ownership, Owned, Ensured }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fabric_cell_converge { fabric_cell_base_dir }
-import gunbc.fabric_cell_subject {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric.fabric_cell_converge { fabric_cell_base_dir }
+import gunbc.fabric.fabric_cell_subject {
   FabricCellResourceSubject,
   FabricCellHostScope,
   fabric_cell_subject_ownership,
@@ -25,7 +25,7 @@ import gunbc.membership_reconcile {
 
 data fabric_cell_host_root_authority_disposition: ConstructionMechanism = SingleAuthority
 
-// THE SUBJECT AND ITS OWNERSHIP PROJECTION LIVE IN gunbc.fabric_cell_subject, upstream of both
+// THE SUBJECT AND ITS OWNERSHIP PROJECTION LIVE IN gunbc.fabric.fabric_cell_subject, upstream of both
 // cell families, so that one total match serves the slot-scoped family and this one without either
 // importing the other. See that module for why the subject is not a spelling of FabricCellNamespace.
 
@@ -106,7 +106,7 @@ fn fabric_cell_host_reconcile(
 }
 
 // NO EffectsOrRefusal SURFACE IS EXPOSED HERE, AND THAT IS MEASURED RATHER THAN FORGOTTEN.
-// gunbc.fabric_cell_converge emits no effects at all -- no membership_effects, no EffectsOrRefusal
+// gunbc.fabric.fabric_cell_converge emits no effects at all -- no membership_effects, no EffectsOrRefusal
 // -- and both runner_lifecycle and fleet_converge_plan record in their own words that the fabric
 // family's host-effect realization is absent. An effects surface here would be the first in the
 // subsystem and would have no consumer, which section 6 prices as experimental residue. The plan

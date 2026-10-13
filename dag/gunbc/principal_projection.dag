@@ -163,7 +163,7 @@ type HumanPrincipalMint
 fn mint_human_principal_from_verdict(verdict: OidcIdTokenVerdict) -> HumanPrincipalMint
   admit_callers: [
     decl_ref(module_path: "gunbc.auth.session", decl_name: "mint_authenticated_session"),
-    decl_ref(module_path: "test.claim.principal_projection_witness_test", decl_name: "witness_mint_human_principal"),
+    decl_ref(module_path: "test.claim.principal_projection_witness", decl_name: "witness_mint_human_principal"),
   ]
 {
   match verdict {
@@ -197,7 +197,7 @@ type VerifiedOidcProfileSnapshotProjection
 
 fn observe_verified_oidc_profile(verdict: OidcIdTokenVerdict) -> VerifiedOidcProfileSnapshotProjection
   admit_callers: [
-    decl_ref(module_path: "test.claim.principal_projection_witness_test", decl_name: "witness_observe_verified_oidc_profile"),
+    decl_ref(module_path: "test.claim.principal_projection_witness", decl_name: "witness_observe_verified_oidc_profile"),
   ]
 {
   match verdict {

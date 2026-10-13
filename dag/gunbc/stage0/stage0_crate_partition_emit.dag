@@ -1,4 +1,4 @@
-module gunbc.stage0_crate_partition_emit
+module gunbc.stage0.stage0_crate_partition_emit
 
 import gunbc.crate_partition { Stage0EmitCoreCrate, Stage0FoundationCrate, Stage0LayeredCoreCrate, Stage0PartitionCrateRow }
 
@@ -63,7 +63,7 @@ fn render_partition_crate_rows_items(rows: List<Stage0PartitionCrateRow>) -> Str
 fn expected_stage0_crate_partition_generated_dag() -> String {
   let rows = stage0_partition_crate_rows()
   concat(
-    "module gunbc.stage0_crate_partition_generated\n\n",
+    "module gunbc.stage0.stage0_crate_partition_generated\n\n",
     "import std.types { Bool, List, String }\n\n",
     "type GeneratedPartitionCrateKind\n",
     "  = GeneratedFoundationCrate\n",

@@ -179,7 +179,7 @@ Whether a loop *may* run in parallel is a fact about its graph. Whether it *does
 
 ## 9. Where the change lands
 
-Everything is v2. v1 is under `gunbc.v1_maintenance_standing` `v1_seed_standing`: semantics frozen, maintenance only for the v2 self-host program, so loop forms are not added to v1. v1 already reserves `for`/`in` and has an unused `for x in coll` path (`src/v1/02_parse.dag` `parse_for` → `ExprForEach`, emitted through the `emit_for_each` arm of `src/v1/05_emit.dag`) with no bound and no termination check, and zero corpus uses. Do not revive it.
+Everything is v2. v1 is under `gunbc.v1.v1_maintenance_standing` `v1_seed_standing`: semantics frozen, maintenance only for the v2 self-host program, so loop forms are not added to v1. v1 already reserves `for`/`in` and has an unused `for x in coll` path (`src/v1/02_parse.dag` `parse_for` → `ExprForEach`, emitted through the `emit_for_each` arm of `src/v1/05_emit.dag`) with no bound and no termination check, and zero corpus uses. Do not revive it.
 
 | piece | where |
 | --- | --- |

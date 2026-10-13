@@ -20,7 +20,7 @@ import extdeps.github.actions_runs {
   run_conclusion_wire,
   workflow_run_settlement
 }
-import gunbc.witness_floor_workflow {
+import gunbc.witness.witness_floor_workflow {
   WitnessFloorConcurrencyPolicy,
   PendingReplacementPolicy,
   ReplaceExistingPending,
@@ -64,7 +64,7 @@ import gunbc.witness_floor_workflow {
 // cancellation CANNOT be a supersession no matter what else is observed -- and a push run is
 // therefore structurally incapable of the benign explanation.
 //
-// The policy comes from gunbc.witness_floor_workflow, which owns the value the workflow actually
+// The policy comes from gunbc.witness.witness_floor_workflow, which owns the value the workflow actually
 // emits. Restating it here would be a second spelling of one fact that nothing relates back to the
 // emitted YAML, so a change to the workflow would silently leave this classifier answering for a
 // configuration that no longer exists.

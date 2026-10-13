@@ -12,7 +12,7 @@ import gunbc.emit_copy_qualification_fixture_gen {
   CleanSubject, PlantRedundantShareClone, PlantHiddenDeepCopy, PlantRedundantDeepClone,
   DisconnectCounter, PlantCopiedAccumulator
 }
-import tools.emit_copy_qualification_transport {
+import gunbc.instruments.emit_copy_qualification_transport {
   run_shard_with_receipt, shard_all_qualified, verdicts_all_refuse_with,
   emitted_prelude_grounds_structural_sequence
 }

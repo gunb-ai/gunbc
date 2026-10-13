@@ -1,4 +1,4 @@
-module tools.seed_growth_change_population
+module gunbc.instruments.seed_growth_change_population
 
 import extdeps.git.inspect
 import gunbc.rust_item_host_observation {
@@ -12,7 +12,7 @@ import gunbc.rust_item_host_observation {
 }
 import gunbc.rust_item_identity { rust_item_identity_key }
 import gunbc.seed_growth_admission { seed_growth_unjustified_additions }
-import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.repo.repo_identity { gunbc_merge_target_ref }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { List, String }
 import v2.std.algebra { fold_list, length }

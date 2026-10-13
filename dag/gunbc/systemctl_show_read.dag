@@ -5,9 +5,9 @@ import std.algebra { trim }
 import std.types { String, NonEmptyStr, List }
 import extdeps.systemd.systemctl { systemctl_show_property_argv, systemctl_show_load_state_argv }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
-import gunbc.host_effect { HostEffectTransport }
+import gunbc.host.host_effect { HostEffectTransport }
 import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
-import gunbc.host_operation_exec {
+import gunbc.host.host_operation_exec {
   HostOperationObserved,
   HostOperationRefused,
   host_operation_exec,
@@ -106,7 +106,7 @@ fn systemctl_show_property_operation_argv_matches_transport(
 // the discriminator, so it is read first and the limits are read only under a loaded unit.
 // It shares the transport dispatch, though, and that is the whole repair here: the block below was
 // authored against an API generation that never existed in this tree -- four names resolving nowhere
-// -- and it is rewired onto the one total entry point gunbc.host_operation_exec already exposes
+// -- and it is rewired onto the one total entry point gunbc.host.host_operation_exec already exposes
 // rather than re-minting per-transport read helpers. The four arms live there once (DESIGN section 3:
 // the dispatch that selects a realization is itself realization), so this module carries the decoder
 // and nothing else, exactly as systemctl_show_property_read above does.

@@ -1,4 +1,4 @@
-module v2.test.impossible_bug.suboptimal_complexity
+module v2.test.claim.impossible_bug.suboptimal_complexity
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic {

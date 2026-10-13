@@ -37,7 +37,7 @@ data external_mechanism_asserted_under_a_correct_conclusion: RecurringFailureMod
 
     "SPECIMEN (cool-koi-623, 2026-09-03).",
 
-    "`gunbc.rung_drop` `floor_cut_heal` and the annotation above `gunbc.ci_spec` `gunbc_ci_heal_commit_push_script` both said an Actions-credential push starts no workflow run, GitHub suppressing that edge to stop a job triggering itself, and concluded that heal must exit nonzero rather than speak for a head nothing judged.",
+    "`gunbc.rung_drop` `floor_cut_heal` and the annotation above `gunbc.ci.ci_spec` `gunbc_ci_heal_commit_push_script` both said an Actions-credential push starts no workflow run, GitHub suppressing that edge to stop a job triggering itself, and concluded that heal must exit nonzero rather than speak for a head nothing judged.",
 
     "The rung_drop row carries the correction; the ci_spec annotation still carries the refuted sentence AT THE TIME THIS ROW IS FILED, because that carrier is held by a concurrent lane and a second lane editing one premise from its own verdict is how one fact acquires two authorities -- recorded here as an observation rather than repaired here.",
 

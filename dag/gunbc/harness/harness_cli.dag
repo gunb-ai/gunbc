@@ -3,7 +3,7 @@ module gunbc.harness.harness_cli
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.nat { Nat, nat_range_inclusive }
 import std.checked_arithmetic { checked_int_to_nat }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import product.capacity.event_chain { PartitionId }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
 import gunbc.harness.harness_reasoning_wire { HarnessReasoningLevel, ReasoningMaximum, harness_reasoning_level_wire }
@@ -49,7 +49,7 @@ import gunbc.serving.serving_front_door {
 }
 import gunbc.auth.request_authentication { fabric_service_principal }
 import gunbc.principal_projection { principal_ref_label }
-import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
+import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch }
 import extdeps.tools.hostname
 import extdeps.filesystem.filesystem_io
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -374,7 +374,7 @@ fn harness_bind_seat_waiting(
           }
         }
         HarnessSeatRefused { detail: _ } => acc
-        HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => acc
+        HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => acc
         HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => acc
         HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => acc
       },
@@ -502,12 +502,12 @@ fn harness_place_for(request: String, attempt: String, receipt: String) -> Proce
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant, partition, ceiling: bound_ceiling, group_wire, launch, store: _, model: bound_model, unit: _, class: bound_class, seat: bound_seat } => {
+    HarnessSeatBound { url, grant, partition, ceiling: bound_ceiling, replica_wire, launch, store: _, model: bound_model, unit: _, class: bound_class, seat: bound_seat } => {
       let capability = harness_release_capability(partition: partition, ceiling: bound_ceiling, grant: grant)
-      let claims = serving_seat_permit_claims(group_wire: group_wire, partition: partition, class: bound_class, seat: bound_seat, grant: grant, caller: caller)
+      let claims = serving_seat_permit_claims(replica_wire: replica_wire, partition: partition, class: bound_class, seat: bound_seat, grant: grant, caller: caller)
       match mint_serving_seat_permit(claims: claims) {
         SeatPermitNotMinted { detail: why } => harness_place_receipt_failed(binding: binding, cause: join(["the seat was granted but no front-door permit could be minted for it: ", why], ""))
-        SeatPermitMinted { permit: permit } => harness_place_receipt(binding: binding, url: url, group_wire: group_wire, bound_model: bound_model, launch: launch, capability: capability, grant: grant, permit: permit, receipt: receipt)
+        SeatPermitMinted { permit: permit } => harness_place_receipt(binding: binding, url: url, replica_wire: replica_wire, bound_model: bound_model, launch: launch, capability: capability, grant: grant, permit: permit, receipt: receipt)
       }
     }
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } =>
@@ -521,11 +521,11 @@ fn harness_place_for(request: String, attempt: String, receipt: String) -> Proce
 // the permit is what the serving group's front door (gunbc.serving.serving_front_door) admits a
 // request on. Its fields are the claims the tag was computed over, printed once, so a caller
 // presents exactly what was signed and never re-derives a claim of its own.
-fn harness_place_receipt(binding: HarnessSeatBinding, url: String, group_wire: String, bound_model: NonEmptyStr, launch: VllmEndpointProcessLaunch, capability: HarnessReleaseCapability, grant: LeaseGrant, permit: ServingSeatPermit, receipt: String) -> ProcessExit {
+fn harness_place_receipt(binding: HarnessSeatBinding, url: String, replica_wire: String, bound_model: NonEmptyStr, launch: ReplicaEndpointLaunch, capability: HarnessReleaseCapability, grant: LeaseGrant, permit: ServingSeatPermit, receipt: String) -> ProcessExit {
   let p = permit.claims
   let line = join([
     "url=", url,
-    " group=", group_wire,
+    " replica=", replica_wire,
     " model=", bound_model as String,
     " partition=", capability.partition as String,
     " endpoint_process=", launch.process_start_field as String,
@@ -701,13 +701,13 @@ fn harness_worker_system_prompt_at(worktree: String, repo_root: String, gunbc_pr
 // each step, so the total wall bound grows with the count rather than being replaced by it.
 data harness_worker_step_budget: Int = harness_round_budget_steps
 
-// THE SEAT THIS PROCESS BOUND, NAMED FOR THE PER-ATTEMPT METERING (gunbc.roadmap_attempt_metering).
+// THE SEAT THIS PROCESS BOUND, NAMED FOR THE PER-ATTEMPT METERING (gunbc.roadmap.roadmap_attempt_metering).
 // A turn whose seat cannot be named does not run: the seat is released and the process exits with
 // the write's cause, because metering an unnamed seat would leave its held time unattributable.
 // AN OPERATOR-ROUTE BINDING HOLDS NO FLEET SEAT BY CONSTRUCTION (gunbc.harness.harness_operator_route;
 // operator ruling 2026-10-11), so there is no seat to name and none to leave unattributed: it is its own
 // arm, not an unwritten pointer. DECLARED GAP: its held time is not attributed to the route -- the
-// metering reader (gunbc.roadmap_attempt_metering) reads it as pointer-absent, the same reading as a
+// metering reader (gunbc.roadmap.roadmap_attempt_metering) reads it as pointer-absent, the same reading as a
 // pointer never written. A seat-bearing binding whose pointer is absent still refuses.
 type HarnessSeatPointerWrite
   = HarnessSeatPointerWritten
@@ -722,7 +722,7 @@ fn harness_seat_pointer_persist(events_path: String, binding: HarnessSeatBinding
     }
     Absent => match binding {
       HarnessOperatorBound { url: u, model: _, unit: _, header_dir: _, header_file: _ } => HarnessSeatPointerNotApplicable { route: u as String }
-      HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => HarnessSeatPointerUnwritten { detail: "the binding holds no seat to name" }
+      HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => HarnessSeatPointerUnwritten { detail: "the binding holds no seat to name" }
       HarnessSeatRefused { detail: _ } => HarnessSeatPointerUnwritten { detail: "the binding holds no seat to name" }
       HarnessSeatPending { detail: _ } => HarnessSeatPointerUnwritten { detail: "the binding holds no seat to name" }
       HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HarnessSeatPointerUnwritten { detail: "the binding holds no seat to name" }
@@ -749,7 +749,7 @@ fn harness_seat_pointer_refused_exit(binding: HarnessSeatBinding, detail: String
 // satisfies the node is decided by the belt's pinned verification against the attempt head, which
 // is the separation DCH-2 requires and the reason there is nothing here that inspects the diff.
 // THE ATTEMPT IDENTITY ARRIVES MINTED, because it is consumed as a PATH SEGMENT by the fleet ssh
-// context (gunbc.fleet_known_hosts_anchor fleet_ssh_attempt_identity refuses anything that is not
+// context (gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_attempt_identity refuses anything that is not
 // a safe segment) as well as by the seat ledger. Building it here from the worktree and events
 // paths -- both absolute -- made every bind on a host that needs the fleet context fail before any
 // ssh leg: measured 2026-09-16 on srv2, "attempt identity ... is not a safe path segment". The
@@ -1108,7 +1108,7 @@ fn harness_binding_answer(binding: HarnessSeatBinding) -> HarnessBindingAnswer {
   match binding {
     HarnessSeatRefused { detail: d } => BindingRefused { detail: d }
     HarnessSeatPending { detail: d } => BindingPending { detail: d }
-    HarnessSeatBound { url: u, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: m, unit: un, class: _, seat: _ } =>
+    HarnessSeatBound { url: u, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: m, unit: un, class: _, seat: _ } =>
       BindingReady { backend: HarnessBoundBackend { url: u, model: m, unit: un, reasoning: harness_reasoning_mode, access: BackendAdmittedBySeat } }
     HarnessHostedBound { url: u, model: m, unit: un, level: l, access: a } =>
       BindingReady { backend: HarnessBoundBackend { url: u, model: m, unit: un, reasoning: l, access: harness_hosted_backend_access(access: a) } }
@@ -1128,7 +1128,7 @@ fn harness_binding_answer(binding: HarnessSeatBinding) -> HarnessBindingAnswer {
 fn harness_hosted_route_receipt(binding: HarnessSeatBinding) -> String? {
   match binding {
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: a } => Present { value: harness_hosted_access_wire(access: a) }
-    HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => none
+    HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => none
     HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => none
     HarnessSeatPending { detail: _ } => none
     HarnessSeatRefused { detail: _ } => none

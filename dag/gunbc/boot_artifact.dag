@@ -7,7 +7,7 @@ import extdeps.toolchain.types { Architecture, X86_64, Aarch64, X86, Arm, Armv7,
 // THE ARTIFACT IS ITS OWN AUTHORITY, NOT A FACT ABOUT DELIVERY. It lived inside
 // gunbc.boot_artifact_delivery while delivery was its only consumer, which read
 // as a fact about how it is delivered rather than what it is. It now has a
-// second consumer -- nonce issuance in gunbc.machine_intake_receipt, which must
+// second consumer -- nonce issuance in gunbc.machine_intake.receipt, which must
 // bind the artifact it minted a token for -- and the two cannot both reach it
 // from the delivery module, because delivery already imports the receipt layer
 // and the import graph's one structural law is acyclicity (DESIGN section 4).

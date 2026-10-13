@@ -1,4 +1,4 @@
-module gunbc.fleet_lifecycle_observation
+module gunbc.fleet.fleet_lifecycle_observation
 
 import std.types { NonEmptyStr, String, List, Int, Bool, brand }
 import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }

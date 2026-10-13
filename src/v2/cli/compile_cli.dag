@@ -5,17 +5,33 @@ import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.self_host.closure_emission {
-  closure_census_refusals_json,
   closure_emission_first_refusal,
   closure_emission_json,
   closure_emission_refused_count,
   emit_closure_from_ingest_located
 }
-import v2.compiler.source_authority {
-  SourceRootIngest,
-  SourceRootIngestFromFilesBuilt,
-  SourceRootIngestFromFilesUnrecognizedRoot,
-  source_root_ingest_from_files
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.compiler.module_acquisition {
+  AcquisitionNotVerified,
+  AcquisitionVerified,
+  BoundModulesListed,
+  BoundModulesRefused,
+  SourceRootBinding,
+  VerifiedAcquisition,
+  acquire_verified,
+  acquisition_ingest,
+  enumerate_bound_modules
+}
+import v2.cli.population_verbs { PopulationReport, check_layout, parse_population }
+import v2.cli.repository_layout { repository_storage_layout }
+import gunbc.source_layout_namespaces { layout_namespaces }
+import v2.cli.source_root_bindings {
+  SourceRootBindings,
+  SourceRootsBound,
+  SourceRootsDuplicated,
+  SourceRootsUnrecognized,
+  source_root_bindings,
+  source_root_bindings_refusal_text
 }
 import v2.cli.if_arm_reader_differential {
   IardCensus,
@@ -24,7 +40,6 @@ import v2.cli.if_arm_reader_differential {
   if_arm_reader_differential,
   if_arm_reader_differential_text
 }
-import gunbc.source_root_read { source_root_read, SourceRootFilesRead, SourceRootFilesRefused }
 import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.languages.swift { swift_target_model }
@@ -72,16 +87,26 @@ import v2.std.text { String }
 // population is something this entry does rather than a side effect of being bigger.
 //
 // The native entry binds extdeps.filesystem.filesystem_io Filesystem, whose operations already
-// emit through v1.compiler.emit_rust emit_file_call. gunbc.source_root_read owns the traversal,
-// sorts the observed paths, and reads them through FilesystemExactRead. Neither an unsuccessful
-// listing nor a failed read can become an empty ingest. The legacy free filesystem_read helper
-// is not this door's transport: its content-only contract cannot carry a typed read refusal.
+// emit through v1.compiler.emit_rust emit_file_call. v2.compiler.module_acquisition owns the
+// acquisition: it reads the entry module at the file the storage layout stores it, parses it,
+// reads each module that file requests, and repeats, so the closure is the requested modules and
+// no directory is walked. Every read is an exact read through FilesystemExactRead, and neither an
+// absent file nor a failed read can become a smaller closure. The legacy free filesystem_read
+// helper is not this door's transport: its content-only contract cannot carry a typed read refusal.
 //
-// v2_cli_main is the one entry fold: parse before acquisition, acquire exactly the plan's roots,
-// then compile. The rendered main binds the handler, supplies argv, writes the returned text,
-// and realizes ProcessExit. Pure parse/run witnesses remain useful, and walk_cli_door executes
-// the built CLI with accepting, parse-refusal, missing-root and unreadable-source controls.
-// That instrument is operator-invoked; it is not a required CI phase.
+// v2_cli_main is the one entry fold: parse before acquisition, bind the plan's roots to the
+// governed trees they are, acquire the entry's closure through them, verify that the read set is
+// exactly that closure, then compile. The rendered main binds the handler, supplies argv, writes
+// the returned text, and realizes ProcessExit. Pure parse/run witnesses remain useful, and walk_cli_door executes
+// the built CLI with accepting, parse-refusal, missing-root and unreadable-source controls, in the
+// `gunbc test //gunbc/instruments:v2-native-cli` step of the required `witnesses` job.
+//
+// THE TWO POPULATION VERBS, `check-layout` AND `parse-population`, ARE THE SAME DOOR FOR A DIFFERENT
+// SUBJECT. Compiling reads the closure an entry requests and nothing else; a job whose subject is the
+// whole population -- is every governed file where the storage rule puts it, does every governed
+// module parse -- is an explicit enumeration of the layout and never a side effect of compiling an
+// entry. They take source roots and no entry, they acquire no closure, and v2.cli.population_verbs
+// owns what each does; this module owns only the argv that selects one and the status it maps to.
 //
 // This removes the filesystem portion of source_root_eval_driver_seed_growth. It does not retire
 // that row: the eval driver's remaining host facts and orchestration are separate obligations.
@@ -148,6 +173,48 @@ fn cli_emit_target_roster_text() -> String {
 type CliVerb
   = CliEmitClosure { entry: String, source_roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliIfArmReaderDifferential { source_roots: FreeMonoid<String> }
+  | CliCheckLayout { source_roots: FreeMonoid<String> }
+  | CliParsePopulation { source_roots: FreeMonoid<String> }
+
+// THE VERBS WHOSE ONLY OPTION IS --source-root. They parse identically and differ in spelling, usage
+// and the verb they select, so the parser carries which of them it is walking instead of one pair of
+// states per verb.
+type CliRootsVerb
+  = CliRootsDifferential
+  | CliRootsCheckLayout
+  | CliRootsParsePopulation
+
+data cli_roots_verbs: List<CliRootsVerb> = [CliRootsDifferential, CliRootsCheckLayout, CliRootsParsePopulation]
+
+fn cli_roots_verb_spelling(kind: CliRootsVerb) -> String {
+  match kind {
+    CliRootsDifferential => cli_verb_if_arm_reader_differential
+    CliRootsCheckLayout => cli_verb_check_layout
+    CliRootsParsePopulation => cli_verb_parse_population
+  }
+}
+
+fn cli_roots_verb_usage(kind: CliRootsVerb) -> String {
+  concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+}
+
+fn cli_roots_verb_of_spelling(spelling: String) -> Optional<CliRootsVerb> {
+  fold_list(
+    xs: cli_roots_verbs,
+    empty: optional_absent(),
+    cons: fn(acc, kind) {
+      if cli_roots_verb_spelling(kind: kind) == spelling { optional_present(value: kind) } else { acc }
+    }
+  )
+}
+
+fn cli_roots_verb_selected(kind: CliRootsVerb, roots: FreeMonoid<String>) -> CliVerb {
+  match kind {
+    CliRootsDifferential => CliIfArmReaderDifferential { source_roots: roots }
+    CliRootsCheckLayout => CliCheckLayout { source_roots: roots }
+    CliRootsParsePopulation => CliParsePopulation { source_roots: roots }
+  }
+}
 
 // A PLAN IS PARSED OR IT IS REFUSED, and the refusal carries its own reason symbol rather than a
 // rendered sentence, so the host renders it once and a witness can discriminate on the CAUSE. A
@@ -169,8 +236,8 @@ type CliParseState
   | CliParseSeekRootValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekEntryValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekTargetValue { entry: String, roots: FreeMonoid<String> }
-  | CliParseSeekDifferentialOption { roots: FreeMonoid<String> }
-  | CliParseSeekDifferentialRootValue { roots: FreeMonoid<String> }
+  | CliParseSeekRootsOption { kind: CliRootsVerb, roots: FreeMonoid<String> }
+  | CliParseSeekRootsValue { kind: CliRootsVerb, roots: FreeMonoid<String> }
   | CliParseFailed { reason: Symbol, detail: String }
 
 data cli_option_source_root: String = "--source-root"
@@ -186,9 +253,14 @@ data cli_verb_emit: String = "emit"
 // (v2.compiler.compile). It takes source roots only, and is deleted with its module.
 data cli_verb_if_arm_reader_differential: String = "if-arm-reader-differential"
 
-data cli_usage: String = "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]... [--target <target>]"
+// THE WHOLE-POPULATION VERBS (v2.cli.population_verbs). `check-layout` holds when every `.dag` file
+// under the bound trees is stored where the module it declares is named to be; `parse-population`
+// holds when every module the declared namespace rows store under them parses.
+data cli_verb_check_layout: String = "check-layout"
 
-data cli_differential_usage: String = "usage: <binary> if-arm-reader-differential --source-root <dir> [--source-root <dir>]..."
+data cli_verb_parse_population: String = "parse-population"
+
+data cli_usage: String = "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]... [--target <target>]"
 
 fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
   match state {
@@ -197,31 +269,33 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
     CliParseSeekVerb =>
       if arg == cli_verb_emit {
         CliParseSeekOption { entry: "", roots: Empty, target: cli_default_emit_target }
-      } else if arg == cli_verb_if_arm_reader_differential {
-        CliParseSeekDifferentialOption { roots: Empty }
       } else {
-        CliParseFailed {
-          reason: ^cli_unknown_verb,
-          detail: concat(concat("unknown verb ", arg), concat(" -- ", cli_usage))
+        match cli_roots_verb_of_spelling(spelling: arg) {
+          Present { value: kind } => CliParseSeekRootsOption { kind: kind, roots: Empty }
+          Absent =>
+            CliParseFailed {
+              reason: ^cli_unknown_verb,
+              detail: concat(concat("unknown verb ", arg), concat(" -- ", cli_usage))
+            }
         }
       }
-    CliParseSeekDifferentialOption { roots: roots } =>
+    CliParseSeekRootsOption { kind: kind, roots: roots } =>
       if arg == cli_option_source_root {
-        CliParseSeekDifferentialRootValue { roots: roots }
+        CliParseSeekRootsValue { kind: kind, roots: roots }
       } else {
         CliParseFailed {
           reason: ^cli_unknown_option,
-          detail: concat(concat("unknown option ", arg), concat(" -- ", cli_differential_usage))
+          detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
         }
       }
-    CliParseSeekDifferentialRootValue { roots: roots } =>
+    CliParseSeekRootsValue { kind: kind, roots: roots } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
           reason: ^cli_source_root_missing_value,
           detail: concat(cli_option_source_root, " takes a directory, and an option followed it")
         }
       } else {
-        CliParseSeekDifferentialOption { roots: Cons { head: arg, tail: roots } }
+        CliParseSeekRootsOption { kind: kind, roots: Cons { head: arg, tail: roots } }
       }
     CliParseSeekRootValue { entry: entry, roots: roots, target: target } =>
       if cli_arg_is_option(arg: arg) {
@@ -305,19 +379,19 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
         reason: ^cli_target_missing_value,
         detail: concat(cli_option_target, " takes a target name, and none followed it")
       }
-    CliParseSeekDifferentialRootValue { roots: _ } =>
+    CliParseSeekRootsValue { kind: _, roots: _ } =>
       CliPlanRefused {
         reason: ^cli_source_root_missing_value,
         detail: concat(cli_option_source_root, " takes a directory, and none followed it")
       }
-    CliParseSeekDifferentialOption { roots: roots } =>
+    CliParseSeekRootsOption { kind: kind, roots: roots } =>
       if length(xs: roots) == 0 {
         CliPlanRefused {
           reason: ^cli_no_source_root,
-          detail: concat("if-arm-reader-differential needs at least one source root -- ", cli_differential_usage)
+          detail: concat(cli_roots_verb_spelling(kind: kind), " needs at least one source root -- ", cli_roots_verb_usage(kind: kind))
         }
       } else {
-        CliPlanParsed { verb: CliIfArmReaderDifferential { source_roots: list_reverse(xs: roots) } }
+        CliPlanParsed { verb: cli_roots_verb_selected(kind: kind, roots: list_reverse(xs: roots)) }
       }
     CliParseSeekOption { entry: entry, roots: roots, target: target } =>
       if length(xs: roots) == 0 {
@@ -357,6 +431,8 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
       match verb {
         CliEmitClosure { entry: _, source_roots: roots, target: _ } => roots
         CliIfArmReaderDifferential { source_roots: roots } => roots
+        CliCheckLayout { source_roots: roots } => roots
+        CliParsePopulation { source_roots: roots } => roots
       }
   }
 }
@@ -364,9 +440,8 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
 type CliRunOutcome
   = CliEmitted { text: String, closure_size: Int, refused_count: Int, refusal_detail: String }
   | CliRunRefused { reason: Symbol, detail: String }
-  | CliCensusRefused { reason: Symbol, detail: String, text: String }
   | CliUsageRefused { reason: Symbol, detail: String }
-  | CliDifferentialReported { text: String, observed: Bool, detail: String }
+  | CliPopulationReported { text: String, held: Bool, detail: String }
 
 // THE REFUSAL PRINTS ITS CAUSE, AND FOR ONE GENERATION IT DID NOT. The rejected arm already
 // CARRIED `d.head.reason` (now the FATAL reason -- the head was the first advisory that happened
@@ -415,6 +490,8 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
           } else {
             cli_if_arm_reader_differential_outcome(census: if_arm_reader_differential(ingest: ingest))
           }
+        CliCheckLayout { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_check_layout)
+        CliParsePopulation { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_parse_population)
         CliEmitClosure { entry: entry, source_roots: _, target: target } =>
           if length(xs: ingest) == 0 {
             CliRunRefused {
@@ -440,23 +517,30 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
                   }
                 }
               Rejected { diagnostics: d } =>
-                match emitted.census_refusals {
-                  Empty =>
-                    CliRunRefused {
-                      reason: diagnostics_fatal_reason(d: d),
-                      detail: v2_cli_refusal_detail(d: d, spans: emitted.spans)
-                    }
-                  Cons { head: _, tail: _ } =>
-                    CliCensusRefused {
-                      reason: diagnostics_fatal_reason(d: d),
-                      detail: v2_cli_refusal_detail(d: d, spans: emitted.spans),
-                      text: closure_census_refusals_json(refusals: emitted.census_refusals, spans: emitted.spans)
-                    }
+                CliRunRefused {
+                  reason: diagnostics_fatal_reason(d: d),
+                  detail: v2_cli_refusal_detail(d: d, spans: emitted.spans)
                 }
             }
           }
       }
   }
+}
+
+// A POPULATION VERB IS CALLED ONLY AFTER ITS ROOTS ARE BOUND, AND ACQUIRES NO CLOSURE, so it has no
+// ingest to run over. Reaching it through the closure fold is a refusal that names the verb, not an
+// empty-population answer.
+fn cli_verb_takes_no_ingest(verb: String) -> CliRunOutcome {
+  CliRunRefused {
+    reason: ^cli_population_verb_takes_no_ingest,
+    detail: concat(verb, " reads the bound trees itself and takes no acquired closure; it cannot run over an ingest")
+  }
+}
+
+// WHAT A POPULATION VERB REPORTS: the located lines are the text, the verdict is whether it held, and
+// the detail is the one sentence the process status carries.
+fn cli_population_reported(report: PopulationReport) -> CliRunOutcome {
+  CliPopulationReported { text: report.text, held: report.held, detail: report.detail }
 }
 
 // THE DIFFERENTIAL'S STATUS IS WHETHER THE POPULATION WAS WHOLLY OBSERVED, NEVER HOW MANY SITES
@@ -466,15 +550,15 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
 fn cli_if_arm_reader_differential_outcome(census: IardCensus) -> CliRunOutcome {
   match census {
     IardGrammarUnprepared { reason: _ } =>
-      CliDifferentialReported {
+      CliPopulationReported {
         text: if_arm_reader_differential_text(c: census),
-        observed: false,
+        held: false,
         detail: "the grammar did not prepare; no site was observed"
       }
     IardCensusTaken { tally: t } =>
-      CliDifferentialReported {
+      CliPopulationReported {
         text: if_arm_reader_differential_text(c: census),
-        observed: t.files_refused == 0,
+        held: t.files_refused == 0,
         detail: "some files did not parse; their sites are unobserved (see file_refused rows)"
       }
   }
@@ -521,11 +605,10 @@ fn v2_cli_exit(outcome: CliRunOutcome) -> ProcessExit {
         exit_failure(reason: detail)
       }
     CliRunRefused { reason: _, detail: detail } => exit_failure(reason: detail)
-    CliCensusRefused { reason: _, detail: detail, text: _ } => exit_failure(reason: detail)
     CliUsageRefused { reason: _, detail: detail } =>
       ExitFailure { code: exit_code_misuse, reason: detail }
-    CliDifferentialReported { text: _, observed: observed, detail: detail } =>
-      if observed { ExitSuccess } else { exit_failure(reason: detail) }
+    CliPopulationReported { text: _, held: held, detail: detail } =>
+      if held { ExitSuccess } else { exit_failure(reason: detail) }
   }
 }
 
@@ -533,9 +616,69 @@ fn v2_cli_outcome_text(outcome: CliRunOutcome) -> String {
   match outcome {
     CliEmitted { text: text, closure_size: _, refused_count: _, refusal_detail: _ } => text
     CliRunRefused { reason: _, detail: _ } => ""
-    CliCensusRefused { reason: _, detail: _, text: text } => text
     CliUsageRefused { reason: _, detail: _ } => ""
-    CliDifferentialReported { text: text, observed: _, detail: _ } => text
+    CliPopulationReported { text: text, held: _, detail: _ } => text
+  }
+}
+
+// THE ACQUISITION IS VERIFIED BEFORE ANYTHING READS IT: a closure whose read set is not exactly the
+// requested closure (v2.compiler.module_acquisition acquire_verified) is a refusal, never a smaller or
+// larger program. The pure fold below sees the ingest of the verified members and nothing else.
+fn cli_run_verified(plan: CliPlan, verified: VerifiedAcquisition) -> CliRunOutcome {
+  match verified {
+    AcquisitionNotVerified { reason: reason, cause: cause } =>
+      CliRunRefused { reason: reason, detail: concat("the source roots did not yield an exact closure: ", cause) }
+    AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } =>
+      v2_cli_run(plan: plan, ingest: acquisition_ingest(modules: modules))
+  }
+}
+
+// WHAT EACH VERB ACQUIRES. `emit` acquires the closure of its entry. The differential's subject is a
+// population, so it names the population explicitly -- every module the layout stores in the bound
+// trees -- and acquires the closure of that list; nothing is walked as a side effect of compiling.
+// The two population verbs acquire no closure at all: their subject is the population itself, and
+// v2.cli.population_verbs reads it.
+fn cli_run_acquired(plan: CliPlan, bindings: List<SourceRootBinding>, entries: List<String>) -> CliRunOutcome {
+  cli_run_verified(
+    plan: plan,
+    verified: acquire_verified(layout: repository_storage_layout(), bindings: bindings, entries: entries)
+  )
+}
+
+fn cli_run_differential(plan: CliPlan, bindings: List<SourceRootBinding>) -> CliRunOutcome {
+  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces()) {
+    BoundModulesListed { modules: modules } => cli_run_acquired(plan: plan, bindings: bindings, entries: modules)
+    BoundModulesRefused { subject: subject, cause: cause } =>
+      CliRunRefused {
+        reason: ^cli_population_unlisted,
+        detail: concat("could not enumerate the modules of ", subject, ": ", cause)
+      }
+  }
+}
+
+fn cli_run_bound(plan: CliPlan, verb: CliVerb, bindings: List<SourceRootBinding>) -> CliRunOutcome {
+  match verb {
+    CliEmitClosure { entry: entry, source_roots: _, target: _ } =>
+      cli_run_acquired(plan: plan, bindings: bindings, entries: [entry])
+    CliIfArmReaderDifferential { source_roots: _ } => cli_run_differential(plan: plan, bindings: bindings)
+    CliCheckLayout { source_roots: _ } => cli_population_reported(report: check_layout(bindings: bindings))
+    CliParsePopulation { source_roots: _ } => cli_population_reported(report: parse_population(bindings: bindings))
+  }
+}
+
+fn cli_run_roots(plan: CliPlan, verb: CliVerb, roots: SourceRootBindings) -> CliRunOutcome {
+  match roots {
+    SourceRootsUnrecognized { argument: _ } =>
+      CliUsageRefused {
+        reason: ^cli_source_root_unrecognized,
+        detail: source_root_bindings_refusal_text(bindings: roots)
+      }
+    SourceRootsDuplicated { argument: _ } =>
+      CliUsageRefused {
+        reason: ^cli_source_root_duplicated,
+        detail: source_root_bindings_refusal_text(bindings: roots)
+      }
+    SourceRootsBound { bindings: bindings } => cli_run_bound(plan: plan, verb: verb, bindings: bindings)
   }
 }
 
@@ -545,26 +688,7 @@ fn v2_cli_main(argv: FreeMonoid<String>) -> CliRunOutcome {
   let plan = v2_cli_parse(argv: argv)
   match plan {
     CliPlanRefused { reason: reason, detail: detail } => CliUsageRefused { reason: reason, detail: detail }
-    CliPlanParsed { verb: _ } => match source_root_read(roots: v2_cli_plan_source_roots(plan: plan)) {
-      SourceRootFilesRead { files: files } =>
-        match source_root_ingest_from_files(files: files) {
-          SourceRootIngestFromFilesBuilt { ingest: ingest } =>
-            v2_cli_run(plan: plan, ingest: ingest)
-          SourceRootIngestFromFilesUnrecognizedRoot { argument: argument, path: path } =>
-            CliUsageRefused {
-              reason: ^cli_source_root_unrecognized,
-              detail: concat(
-                "source root is not a dag or src/v2 tree: ",
-                argument,
-                " (file ",
-                path,
-                ")"
-              )
-            }
-        }
-      SourceRootFilesRefused { path: path, kind: kind, cause: cause } =>
-        CliUsageRefused { reason: ^cli_source_root_read_refused,
-          detail: concat("could not read source root at ", path, " [", kind, "]: ", cause) }
-    }
+    CliPlanParsed { verb: verb } =>
+      cli_run_roots(plan: plan, verb: verb, roots: source_root_bindings(roots: v2_cli_plan_source_roots(plan: plan)))
   }
 }

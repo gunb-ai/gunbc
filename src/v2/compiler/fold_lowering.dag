@@ -6,8 +6,7 @@ import v2.extdeps.languages.dag {
   dag_call_positional_arg_value_optional,
   dag_kernel_value_type_first,
   dag_lex_token_symbol,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional
+  parse_production_captured_child_optional
 }
 import v2.std.text { String }
 import std.optional {
@@ -44,7 +43,7 @@ import std.algebra {
   template_step_position
 }
 import v2.std.compilers.body_lowering { lower_bind }
-import v2.std.grammar { node_atom_identity_optional }
+import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.collection { list_at_optional }
 import v2.std.node {
@@ -227,7 +226,7 @@ fn collection_step_slot_name(form: CollectionRosterForm) -> Symbol {
 //
 // filter and any were the v2.std.algebra declarations of those names; they are RETIRED onto these rows
 // (calm-boar-904, ruling B': the roster row is the one typing authority for a collection operation), the
-// declarations deleted and their imports dropped by tools.source_reference_repoint's retire-member mode.
+// declarations deleted and their imports dropped by gunbc.instruments.source_reference_repoint's retire-member mode.
 // WHAT IS NOT HERE, BY NAME: flat_map (its step is
 // itself a fold over the callback's result) and sort_by (ShapeSortBody, not an iterate body). Their rows
 // are named in std.algebra and their calls stay unrealized; gunbc.recurring_failure_mode

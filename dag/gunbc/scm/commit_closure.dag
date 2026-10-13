@@ -80,7 +80,7 @@ module gunbc.scm.commit_closure
 // DISSOLVE-ON, CORRECTED 2026-09-21 (gunbc#11996) -- THE SECOND ROW CARRYING THIS TRIGGER. It read
 // "a computing cryptographic digest reachable from .dag", the same artifact-shaped condition
 // gunbc.scm.object_store carried, and that condition is NOW SATISFIED: extdeps.crypto.sha2 computes
-// FIPS 180-4 SHA-256 in the substrate, witnessed by test.claim.sha256_fips_witness_test (the
+// FIPS 180-4 SHA-256 in the substrate, witnessed by test.claim.sha256_fips_witness (the
 // COMPUTATION; no mint over it survives that change, and both the mint and its binding were
 // withdrawn on measurement). Read literally this row retires today while ObjectId is still fnv1a64 and the sentence
 // above -- that this is not an adversarial commitment -- is still exactly true. A trigger naming

@@ -30,7 +30,7 @@ data glm_5_3_flash_model_id: NonEmptyStr = "zai-org/GLM-5.3-Flash" as NonEmptySt
 // glm_5_3_architecture_class is for the full model. Every Flash checkpoint row -- native and each
 // quantization of it -- reads THIS declaration rather than a spelling of its own. It is the sole entry of
 // `architectures` in the native checkpoint's config.json (the GLM4V-pattern multimodal wrapper, so the
-// engine builds the visual tower; gunbc.spark.arm_memory_experiment_observed
+// engine builds the visual tower; retired gunbc.spark.arm_memory_experiment_observed (deleted #13779)
 // glm_checkpoint_projection_visual_bytes prices that tower from the same reading).
 data glm_5_3_flash_architecture_class: NonEmptyStr = "Glm5NextForConditionalGeneration" as NonEmptyStr
 

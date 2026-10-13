@@ -1,0 +1,62 @@
+module gunbc.serving.replica_endpoint_launch
+
+import std.types { Bool, String, NonEmptyStr }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { identity_frame }
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
+
+// ONE ENDPOINT PROCESS ON ONE REPLICA IS ONE SUBJECT, AND THE REPLICA IS NOT IT. A replica outlives
+// arbitrarily many engine processes, so every capacity, queue, readiness and prefix-cache reading is
+// joined on the process that exported it, never on the replica alone: a restart is the event that
+// invalidates each outstanding observation, and an identity that cannot name its process cannot be
+// fenced against one. This is the replica-keyed home of the identity the Spark serving group used to
+// carry (former Spark endpoint-process launch identity; that module is deleted with the sold path).
+//
+// THE VALUE IS THE EXPORTED PROCESS-START FIELD, BYTE FOR BYTE, AND IS NEVER PARSED. The only
+// operation on it is equality between two readings of one endpoint. It identifies the process that
+// EXPORTS the metrics endpoint, not the engine core or its workers, so the facts allowed to join
+// through it are the queue and readiness readings taken from that same endpoint and the offer
+// identity that carries them. It is not provenance either: an unchanged start time says nothing about
+// the image, weights or flags (DECLARED FRONTIER, DESIGN 3c: the replica incarnation check that joins
+// this subject to the launched unit is the next vertical, and the warm-trace qualification cannot run
+// before it lands, because recovery and restart cases depend on detecting a replaced launch).
+type ReplicaEndpointLaunch sole_constructor {
+  replica: RentedReplicaIdentity
+  endpoint: NonEmptyStr
+  process_start_field: NonEmptyStr
+}
+
+fn replica_endpoint_launch(replica: RentedReplicaIdentity, endpoint: NonEmptyStr, process_start_field: NonEmptyStr) -> ReplicaEndpointLaunch {
+  ReplicaEndpointLaunch { replica: replica, endpoint: endpoint, process_start_field: process_start_field }
+}
+
+// EVERY FIELD PARTICIPATES, each length-framed: the replica wire, the endpoint the reading came from
+// and the launch discriminator are free strings, so a delimiter join would let two different launches
+// share a key.
+fn replica_endpoint_launch_key(launch: ReplicaEndpointLaunch) -> NonEmptyStr {
+  concat(
+    identity_frame(label: "replica", value: rented_replica_wire(id: launch.replica)),
+    concat(
+      identity_frame(label: "endpoint", value: launch.endpoint as String),
+      identity_frame(label: "process-start", value: launch.process_start_field as String)),
+  ) as NonEmptyStr
+}
+
+fn replica_endpoint_launch_is(launch: ReplicaEndpointLaunch, other: ReplicaEndpointLaunch) -> Bool {
+  (replica_endpoint_launch_key(launch: launch) as String) == (replica_endpoint_launch_key(launch: other) as String)
+}
+
+// AN UNREADABLE LAUNCH IS NOT A LAUNCH: a replica whose process could not be read cannot be offered,
+// and the alternative would be an offer keyed on the replica, which is the identity this replaces.
+type ReplicaLaunchObservation
+  = ReplicaLaunchObserved { launch: ReplicaEndpointLaunch, receipt: ObservationReceiptRef }
+  | ReplicaLaunchUnobserved { replica: RentedReplicaIdentity, obligation: NonEmptyStr }
+
+// UNTIL THE INCARNATION CHECK LANDS, A LAUNCH IDENTITY IS A CLAIM, NOT A READING. Two readings with the
+// same process-start field are one endpoint process, which says nothing about the image, weights or
+// flags behind it, so a per-turn judgement that the owner's cache was reused, or that its launch was
+// replaced, would rest on an identity nothing verified. The residency of an owner matched only by this
+// identity therefore reads UNREAD, which pins the session to its owner and never calls it warm.
+// DECLARED FRONTIER (DESIGN 3c): the replica incarnation check lands with the warm-trace vertical and
+// BEFORE its qualification run; it replaces this obligation with the verified-launch judgement.
+data replica_incarnation_unverified_obligation: NonEmptyStr = "the owner launch is identified only by the endpoint's process-start field; no replica incarnation check has verified it, so reuse and replacement are not judged and the session stays pinned" as NonEmptyStr

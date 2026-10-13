@@ -30,17 +30,17 @@ import gunbc.spark.host_effect_quiescence {
   HostEffectResidueSpec, HostQuiescenceEvidence, HostQuiescence, HostQuiet, HostResidue, HostQuiescenceUnread, ArgvRun, ArgvRan, ArgvLegDidNotRun, observe_host_effect_quiescence,
   ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, ClaimantStanding, parse_claimant_standing,
 }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 
-import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host }
 import product.capacity.event_chain { EventId, PartitionId }
 import std.measure { Second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, spark_serving_arm_host_claims }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
 import gunbc.spark.serving_subject {
@@ -52,7 +52,7 @@ import gunbc.spark.serving_subject {
 // WHICH OF THEM A GIVEN SERVING SUBJECT MAY THEREFORE USE.
 //
 // WHY THIS EXISTS, AND WHY IT IS A SAFETY REPAIR RATHER THAN A REFINEMENT.
-// gunbc.spark.serving_deployment_selection carried the fleet as `host_count: 8` and screened a
+// The retired Spark serving selector carried the fleet as `host_count: 8` and screened a
 // candidate with `hosts_consumed(c) <= fleet.host_count`. A scalar cannot tell eight free hosts from
 // eight of which five are spoken for -- and five of these eight WERE spoken for: the four hosts of the
 // one claimed serving group, and the host the GLM canary is placed on -- so the one screen whose whole
@@ -67,7 +67,7 @@ import gunbc.spark.serving_subject {
 // forbids -- the copy that goes stale while the original moves. So the inputs are inhabited rather
 // than transcribed: the unit population is gunbc.spark.dgx_procurement's reserved identities; the
 // standing role commitments are gunbc.spark.cell_role's assignments; the hosts of the serving groups
-// this repository actually claims are gunbc.spark.pair_serving_desired's groups read through
+// this repository actually claims are retired gunbc.spark.pair_serving_desired (deleted #13779)'s groups read through
 // gunbc.spark.fabric_switch_observed's observed cage membership; the placed serving arms are
 // gunbc.spark.serving_arm_placement's claims; the held reservations are
 // gunbc.spark.llama_cpp_rpc_observed's undischarged internal-participant hosts; and the rulings that
@@ -75,7 +75,7 @@ import gunbc.spark.serving_subject {
 // owns one fact and one only: that those JOIN, and how.
 //
 // AND THE JOIN ALREADY EXISTED, WHICH IS THE OTHER HALF OF WHY THIS FILE IS HERE.
-// gunbc.spark.vllm_runtime_image_build had authored `spark_build_host_excluded` /
+// retired gunbc.spark.vllm_runtime_image_build (deleted #13779) had authored `spark_build_host_excluded` /
 // `admissible_spark_build_hosts` -- the same subtraction over two of the same authorities, to answer
 // where a container build may run. A second consumer arriving with the same question is precisely the
 // moment the fold stops being one module's private helper. So the fold moved here at its root, the
@@ -94,8 +94,9 @@ import gunbc.spark.serving_subject {
 // what lets the pair unit on group A see its own four hosts as available while everyone else sees
 // them as taken, and it is where a DECLARED cause enters: the operator's ruling that group B is
 // GLM's reserves srv9-srv12 for the canary's subject for SERVING, and for serving only. Its
-// projection is `spark_serving_admissible_hosts`, consumed by gunbc.spark.serving_deployment_selection
-// as the candidate domain and the fit. The scope difference is deliberate and is argued on the
+// projection is `spark_serving_admissible_hosts`, consumed by this module's live admission seam
+// (`admit_host_held_by_subject`) and by test.claim.spark.spark_host_commitment_witness_test.
+// The scope difference is deliberate and is argued on the
 // reservation row itself: a ruling about which model a cage serves says nothing about where a
 // container may be built, so widening it would refuse the build lanes for a reason the ruling never
 // gave.
@@ -174,7 +175,7 @@ import gunbc.spark.serving_subject {
 //
 // THE LINE IS NAMED FOR WHAT IT IS, AND IT IS NOT "OBSERVED VERSUS DECLARED". A first cut called the
 // outer arms Observed and Declared, and the parent lane caught that the name was false for half the
-// members: a claimed serving group is gunbc.spark.pair_serving_desired's DESIRED state, and a cell
+// members: a claimed serving group is retired gunbc.spark.pair_serving_desired (deleted #13779)'s DESIRED state, and a cell
 // role is an operator decision recorded in gunbc.spark.cell_role -- neither is an observation of the
 // host. Only the RPC reservation is observation-minted, and the arm placement is an authored row.
 // What the four actually share is that the AUTHORITY OWNING THE FACT HOLDS A STANDING ON THE HOST --
@@ -773,9 +774,9 @@ fn spark_host_commitment_wire(c: SparkHostCommitment) -> NonEmptyStr {
 
 // THE ONE ADMISSION SEAM, BECAUSE THREE EFFECTFUL ROOTS WERE EACH ASKING IN THEIR OWN WORDS.
 //
-// THE SHAPE THIS REPLACES: gunbc.spark.vllm_runtime_image_build owned a typed `admit_spark_build_host`
+// THE SHAPE THIS REPLACES: retired gunbc.spark.vllm_runtime_image_build (deleted #13779) owned a typed `admit_spark_build_host`
 // that exactly one of its two entries called; the other entry, and the published-image probe in
-// gunbc.spark.v41_runtime_image_probe, each re-wrote the guard as a bare `if !uncommitted` with their
+// retired gunbc.spark.v41_runtime_image_probe (deleted #13779), each re-wrote the guard as a bare `if !uncommitted` with their
 // own refusal sentence. Three roots, one of them typed, and the witness exercised only the typed one
 // -- so a regression in either open-coded guard left the suite green while an effect ran on a claimed
 // host. The seam belongs to the authority that owns the commitment fact rather than to whichever lane

@@ -33,7 +33,7 @@ type JitAdmissionAxis
 // materially different check needs a different name). X's checker read a blob a host FETCHED and
 // asked whether it was nonempty and fresh. There is no fetch now: the credential is minted on the
 // host by gunbc.github_effect_perform under an RS256 App JWT signed with the controller's key, and
-// gunbc.runner_attempt_launch admit_jit_credential admits it only from that performance's delivered
+// gunbc.runner.runner_attempt_launch admit_jit_credential admits it only from that performance's delivered
 // arm, bound to the attempt, within the byte floor and ceiling. SIGNATURE is therefore the App path
 // (GitHub minted it for our authenticated App; the blob is opaque and carries none for a host to
 // check); EXPIRY is freshness by construction -- minted in the attempt that stages it, immediately
