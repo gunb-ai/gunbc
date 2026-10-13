@@ -18,5 +18,6 @@ data char_brand_admits_any_int: RecurringFailureMode = RecurringFailureMode {
   evidence: [
     DeclarationRef { module_path: "std.types", decl_name: "Char", field: WholeDeclaration },
     DeclarationRef { module_path: "std.unicode.scalar", decl_name: "from_code_point", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.compilers.target_model", decl_name: "target_value_expression_char_unicode_scalar", field: WholeDeclaration },
   ],
 }
