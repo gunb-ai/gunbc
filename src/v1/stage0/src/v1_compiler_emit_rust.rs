@@ -1051,6 +1051,14 @@ pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
             ),
             "}\n".to_string(),
         ))
+    } else if (name.clone() == "string_contains".to_string()) {
+        Some(v1_rt::concat(
+            v1_rt::concat(
+                "pub fn string_contains(s: String, pattern: String) -> bool {\n".to_string(),
+                "    v1_rt::string_contains(&s, pattern)\n".to_string(),
+            ),
+            "}\n".to_string(),
+        ))
     } else {
         std::option::Option::None
     }

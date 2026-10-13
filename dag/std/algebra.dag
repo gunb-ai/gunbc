@@ -1194,6 +1194,17 @@ fn trim(s: String) -> String {
   if s == s { pure_dag_seam_unreachable_string() } else { pure_dag_seam_unreachable_string() }
 }
 
+// Substring search on kernel host text (`std.types` String / v1 `&str`), not on
+// `v2.std.text` `String` = `FreeMonoid<Char>`. Both arguments are already host text, so there is
+// no UnicodeScalarSequenceUnfold crossing. Distinct from FreeMonoid `contains` (element membership
+// of one Char). Contract: std.primitives string_contains_contract. Runtime bridge exists
+// (`rt_function_registry` string_contains → v1_rt::string_contains), so this is a HostRealizedSeam
+// self-call, not a modeled fold. Native emit: rust_host_string_op_fn_emit. Import
+// std.algebra { string_contains }; bare string_contains is the same Class B pool coincidence as trim.
+fn string_contains(s: String, pattern: String) -> Bool {
+  string_contains(s: s, pattern: pattern)
+}
+
 type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool

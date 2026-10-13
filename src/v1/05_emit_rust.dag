@@ -743,15 +743,22 @@ fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
 // (the E0599 .chars()/.split() class on the self-host closure). A fn definition's realization
 // follows its operands' representation: a structural-carrier declaration emits its own declared
 // body through ordinary emission, which already routes list_head/list_tail/is_empty/fold_list to
-// crate::v2_std_algebra. The one arm kept is `trim`, a host-String-on-host-String bridge
-// (std.algebra trim, kernel text both sides) with no structural operand in play; it is retained
-// as-is rather than widened, and dissolves when fn-body realization is keyed on declaration
-// identity rather than name (the same trigger checkpoint_table_bypasses_identity_note records).
+// crate::v2_std_algebra. The kept class is host-String-on-host-String kernel ops
+// (std.algebra trim / string_contains, kernel text both sides) with no structural FreeMonoid
+// operand in play; it is retained rather than widened onto v2.std.text, and dissolves when
+// fn-body realization is keyed on declaration identity rather than name (the same trigger
+// checkpoint_table_bypasses_identity_note records).
 fn rust_host_string_op_fn_emit(name: String) -> String? {
   if name == "trim" {
     Present { value: concat(
       "pub fn trim(s: String) -> String {\n",
       "    v1_rt::trim(s)\n",
+      "}\n"
+    ) }
+  } else if name == "string_contains" {
+    Present { value: concat(
+      "pub fn string_contains(s: String, pattern: String) -> bool {\n",
+      "    v1_rt::string_contains(&s, pattern)\n",
       "}\n"
     ) }
   } else {
