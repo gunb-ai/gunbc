@@ -3183,7 +3183,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             std::fs::copy(f, std_dir.join(f.file_name().unwrap()))
                 .map_err(|e| format!("profile copy: {e}"))?;
         }
-        if std::env::var_os("PROFILE_PERF").is_some() {
+        if std::env::var_os("PROFILE_PERF").is_some() && false {
             let data = scratch.join("perf.data");
             let st = Command::new("perf")
                 .args(["record", "-F", "149", "--call-graph", "dwarf,24576", "-o"])
@@ -3223,7 +3223,14 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             r.status,
             r.stdout.lines().count()
         );
+        eprintln!("PROFILE stdout-digest {:x}", {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            r.stdout.hash(&mut h);
+            h.finish()
+        });
     }
+    return Err("PROFILE done".to_string());
     let t_layout = std::time::Instant::now();
     let layout_live = run_cli_door(binary, &population_argv("check-layout", &live))?;
     eprintln!(

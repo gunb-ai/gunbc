@@ -350,7 +350,11 @@ fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationP
 }
 
 fn population_parse_go(env: AcquisitionEnv, pending: List<String>, tally: PopulationParse) -> PopulationParse {
-  fold_list(xs: pending, empty: tally, cons: fn(acc, name) { population_parse_member(env: env, name: name, tally: acc) })
+  match list_head(xs: pending) {
+    HeadAbsent => tally
+    HeadFound { value: name } =>
+      population_parse_go(env: env, pending: skip(xs: pending, n: 1), tally: population_parse_member(env: env, name: name, tally: tally))
+  }
 }
 
 // THE DECLARED REFUSALS THE WALK NEVER JUDGED, one located line each, in declaration order. A module
