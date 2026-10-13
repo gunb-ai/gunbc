@@ -1,0 +1,69 @@
+module v2.test.claim.host_language_transport_script.lens_unit.transport_script_position
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data path_dag: String = "dag/gunbc/instruments/dag_compile_clean_transport.dag"
+data path_emit: String = "dag/gunbc/instruments/emit_host_transport.dag"
+data fn_clean: String = "run_clean_tree_compile"
+data fn_go: String = "run_go_smoke"
+data fn_bad: String = "run_bad_literal_smoke"
+
+data fact_computed: TransportScriptPositionFact = TransportScriptPositionFact {
+  path: path_dag,
+  function: fn_clean,
+  shape: ComputedApplication
+}
+
+data fact_bare_literal: TransportScriptPositionFact = TransportScriptPositionFact {
+  path: path_emit,
+  function: fn_bad,
+  shape: BareStringLiteral
+}
+
+data fact_let_bound: TransportScriptPositionFact = TransportScriptPositionFact {
+  path: path_emit,
+  function: fn_go,
+  shape: LetBoundStringLiteral
+}
+
+data fact_interp_literals: TransportScriptPositionFact = TransportScriptPositionFact {
+  path: path_emit,
+  function: fn_bad,
+  shape: StringInterpLiteralsOnly
+}
+
+test fn witness_computed_green() -> Bool {
+  transport_script_literal_ban_holds(facts: [fact_computed])
+}
+
+test fn witness_bare_literal_red() -> Bool {
+  !transport_script_literal_ban_holds(facts: [fact_bare_literal])
+    && transport_script_literal_violation_count(facts: [fact_bare_literal]) == 1
+}
+
+test fn witness_let_bound_red() -> Bool {
+  !transport_script_literal_ban_holds(facts: [fact_let_bound])
+}
+
+test fn witness_interp_literals_red() -> Bool {
+  !transport_script_literal_ban_holds(facts: [fact_interp_literals])
+}
+
+test fn witness_lens_verdict_holds_on_computed() -> Bool {
+  match transport_script_lens_verdict(facts: [fact_computed]) {
+    Holds => true
+    Violation { diagnostic: _ } => false
+    NotApplicable { diagnostic: _ } => false
+    Unrealized { diagnostic: _ } => false
+  }
+}
+
+test fn witness_lens_verdict_violation_on_bare_literal() -> Bool {
+  match transport_script_lens_verdict(facts: [fact_bare_literal]) {
+    Violation { diagnostic: _ } => true
+    Holds => false
+    NotApplicable { diagnostic: _ } => false
+    Unrealized { diagnostic: _ } => false
+  }
+}
+

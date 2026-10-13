@@ -1,10 +1,10 @@
-module gunbc.roadmap_allocation_location
+module gunbc.roadmap.roadmap_allocation_location
 
 import std.types { String }
 
 data allocation_page_path: String = "/allocations"
 
-// The allocation routes, read by both the route table (gunbc.roadmap_serve roadmap_serve_own_route_specs)
+// The allocation routes, read by both the route table (gunbc.roadmap.roadmap_serve roadmap_serve_own_route_specs)
 // and the browser client that calls them, so a moved path moves both. Create
 // is a POST to the page path; one allocation is the item prefix plus its WorkspaceAllocationId, a
 // single path segment by that type's own law, and its release is that item path plus the suffix.

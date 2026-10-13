@@ -1,4 +1,4 @@
-module gunbc.fleet_health
+module gunbc.fleet.fleet_health
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.algebra { trim }
@@ -20,8 +20,8 @@ import std.goal_assessment {
 }
 import v2.std.algebra { non_empty_to_list }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_intent { ComputeHost, fleet_intent_known_hosts }
-import gunbc.fleet_fan_tach_expectation {
+import gunbc.fleet.fleet_intent { ComputeHost, fleet_intent_known_hosts }
+import gunbc.fleet.fleet_fan_tach_expectation {
   HostFanTachExpectationAbsent,
   HostFanTachExpectationDuplicate,
   HostFanTachExpectationEstablished,
@@ -45,14 +45,14 @@ import product.host_health {
   assess_fleet_health,
   host_health_goal,
 }
-import gunbc.fleet_health_observe { BmcTelemetryProfile, observe_host_health }
-import gunbc.bmc_custody_read {
+import gunbc.fleet.fleet_health_observe { BmcTelemetryProfile, observe_host_health }
+import gunbc.bmc.bmc_custody_read {
   CustodyCredentialAbsent,
   CustodyCredentialHeld,
   CustodyCredentialUnreadable,
   bmc_custody_credential,
 }
-import gunbc.bmc_health_reader { bmc_health_reader_secret_id, bmc_health_reader_username }
+import gunbc.bmc.bmc_health_reader { bmc_health_reader_secret_id, bmc_health_reader_username }
 import gunbc.auth.access_token_source {
   AccessTokenEnsureRefused,
   AccessTokenReady,
@@ -83,7 +83,7 @@ import extdeps.boards.asrock_rack {
 // HEALTH-1, and the input seam for it is already HostHealthGoal.baseline.
 
 // THE SAMPLING POLICY, declared once. Five samples per window, and a fan is healthy when at least
-// three of them read rotation: the dated 20-sample specimens (gunbc.fleet_fan_tach_observation) show
+// three of them read rotation: the dated 20-sample specimens (gunbc.fleet.fleet_fan_tach_observation) show
 // healthy fans reading zero 1-4 times in 20 and srv1's degraded ones 11 and 16, so a 60% floor
 // separates them, and this is that floor at five samples.
 data fleet_health_samples: Nat = 5

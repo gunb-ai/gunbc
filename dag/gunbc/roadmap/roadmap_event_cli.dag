@@ -4,8 +4,8 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_dashboard_instance { dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown }
 import gunbc.principal_projection { principal_ref_parse_label }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, Claimed, Released, Progress, Blocked, HandedBack,

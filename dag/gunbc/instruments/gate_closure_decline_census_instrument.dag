@@ -1,9 +1,9 @@
-module tools.gate_closure_decline_census_instrument
+module gunbc.instruments.gate_closure_decline_census_instrument
 
 import extdeps.filesystem.filesystem_io
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { String }
-import gunbc.witness_floor_workflow { required_floor_disposition_path }
+import gunbc.witness.witness_floor_workflow { required_floor_disposition_path }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.gate_closure_decline_census {
   gate_closure_decline_census_lines,

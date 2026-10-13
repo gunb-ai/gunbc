@@ -1,4 +1,4 @@
-module gunbc.bmc_fan_program_syntax_boundary_witness
+module gunbc.bmc.bmc_fan_program_syntax_boundary_witness
 
 import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, String }

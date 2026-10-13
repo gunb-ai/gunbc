@@ -44,7 +44,7 @@ import v2.std.witness {
 // that CoreNode and Node are the same type. Deleting the v2.* argument-type exemption over the
 // corpus left 67 blocking diagnostics, and 48 of them -- 72% -- were this one duplicate, as
 // `expected Primitive(CoreNode), got Product(Node)` and its reverse across 05_eval.dag,
-// self_host_fixed_point_test.dag, 00_compile.dag and this file.
+// self_host_fixed_point.dag, 00_compile.dag and this file.
 //
 // TO BE EXACT ABOUT WHAT THIS DOES AND DOES NOT FIX: it removes this SPECIMEN, not the class. A
 // name legitimately declared in two modules is still unadjudicable, and that is gunbc#8879's
@@ -81,7 +81,7 @@ type SourceModels {
 //
 // Function and test identities under this module still read `self_host_*` while gating
 // staleness. Renaming them is the remaining half and is blocked, not deferred by taste:
-// `gunbc.witness_deferral_freeze` enumerates
+// `gunbc.witness.witness_deferral_freeze` enumerates
 // `self_host_fixed_point_validate_accepts_matching_regen_bytes` and
 // `self_host_fixed_point_validate_rejects_perturbed_regen_bytes` at identity grain, and
 // a frozen row the tree no longer carries refuses. A rename is a removal plus an

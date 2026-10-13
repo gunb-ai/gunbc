@@ -40,7 +40,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 //
 // Debian bookworm main carries prusa-slicer, cura-engine, slic3r and slic3r-prusa for arm64. Any of
 // them installs in one apt transaction. None of them can drive the machines this repository
-// actually owns: extdeps.printing.bambu_lab_a1_mini is a Bambu Lab printer, gunbc.fleet_printer_access
+// actually owns: extdeps.printing.bambu_lab_a1_mini is a Bambu Lab printer, gunbc.fleet.fleet_printer_access
 // models it in LAN Mode with an MQTT control channel and an FTPS file channel, and that firmware
 // consumes a sliced Bambu project file. A generic slicer's g-code is not that artifact. Choosing the
 // easy install would have produced a toolchain that runs end to end and emits something the printer

@@ -217,7 +217,7 @@ data instrument_output_read_as_subject_content: RecurringFailureMode = Recurring
 
     "Collapsing those two is the same substitution this row names, performed on the word EVIDENCE instead of on a set.",
 
-    "**THE CEILING IS 4 AND IT IS DEMONSTRATED IN THIS REPOSITORY TODAY, WHICH IS WHY IT IS NOT ASPIRATION.** `gunbc.diff_baseline`'s `DiffBaseline` arm `ExactReplayBoundary` carries `observed_relation: GitObservedMergeBase` beside its base and head object identities, produced by `gunbc.git_diff_change_window`, consumed through `v2.workflow.floor_diff_observe`, with enrolled witnesses in `dag/test/claim/diff_baseline_witness_test.dag`.",
+    "**THE CEILING IS 4 AND IT IS DEMONSTRATED IN THIS REPOSITORY TODAY, WHICH IS WHY IT IS NOT ASPIRATION.** `gunbc.diff_baseline`'s `DiffBaseline` arm `ExactReplayBoundary` carries `observed_relation: GitObservedMergeBase` beside its base and head object identities, produced by `gunbc.git_diff_change_window`, consumed through `v2.workflow.floor_diff_observe`, with enrolled witnesses in `dag/test/claim/diff_baseline_witness.dag`.",
 
     "Its own note states the rule: the comparison is direct two-dot and NOT triple-dot BECAUSE THE PRODUCER ALREADY CLAIMS THE MERGE-BASE BOUNDARY.",
 

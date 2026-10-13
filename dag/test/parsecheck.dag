@@ -3,11 +3,11 @@ import std.types { Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.memory.samsung { m393a8g40d40_crb0q_catalog }
 import extdeps.memory.cisco_ucs { ucs_mr_1x648ru_a }
-import gunbc.fleet_intent { srv1_memory_population, srv3_memory_population, srv4_memory_population }
-import gunbc.fleet_physical_inventory { fleet_dimm_verdicts, fleet_dimm_expectations }
-import gunbc.host_memory_qualification { srv2_failed_64gib_population_standing }
-import gunbc.host_memory_observation { gunbc_ci_srv3_memtotal_measured }
-import gunbc.runner_disk_reclaim {
+import gunbc.fleet.fleet_intent { srv1_memory_population, srv3_memory_population, srv4_memory_population }
+import gunbc.fleet.fleet_physical_inventory { fleet_dimm_verdicts, fleet_dimm_expectations }
+import gunbc.host.host_memory_qualification { srv2_failed_64gib_population_standing }
+import gunbc.host.host_memory_observation { gunbc_ci_srv3_memtotal_measured }
+import gunbc.runner.runner_disk_reclaim {
   admit_reclaim_operation, reclaim_admission_proceeds, reclaim_operations,
   operation_requires_idle_slot, repack_admits_pack_count, review_ref_should_be_dropped,
   SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved,

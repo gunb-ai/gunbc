@@ -1,9 +1,9 @@
-module gunbc.roadmap_model
+module gunbc.roadmap.roadmap_model
 
 import std.types { NonEmptyStr, brand }
 import std.content_hash { Fnv1a64Structural }
 import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
-import gunbc.roadmap_status {
+import gunbc.roadmap.roadmap_status {
   RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift,
   node_title, item_description, item_exit_criterion,
   TicketFields, line_ticket,
@@ -13,9 +13,9 @@ import gunbc.roadmap_status {
   HandbackNotDelivered, HandbackDelivered,
   red_control_evidence_satisfied, handback_evidence_satisfied,
 }
-import gunbc.roadmap_execution_contract { WorkItemExecutionContract }
+import gunbc.roadmap.roadmap_execution_contract { WorkItemExecutionContract }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import gunbc.roadmap_sizing {
+import gunbc.roadmap.roadmap_sizing {
   SizingSubject, SizingSubjectId, NodeSizingDerivation, derive_task_sizing,
 }
 
@@ -43,7 +43,7 @@ type Acceptance
 // intricacy/volume guess at how big it is. The first three are facts an author genuinely holds when
 // declaring a row; the fourth is a measurement, and an author's ordinal guess is not one. Size is
 // therefore no longer a field here at all: it is derived from the row's own facts by
-// gunbc.roadmap_sizing, which owns Intricacy, Volume and NodeSizing and hands consumers a typed
+// gunbc.roadmap.roadmap_sizing, which owns Intricacy, Volume and NodeSizing and hands consumers a typed
 // derivation rather than a stored answer. Keeping the four bundled meant a row could not declare
 // where it runs without also declaring how big it is, and every consumer that wanted only the repo
 // had to destructure a size it never read.
@@ -64,10 +64,10 @@ type WorkItemDispatch
 // parent is where the node sits in the functional decomposition: MemberOf names the project this
 // node's work advances and argues why (the contribution belongs to the edge, so it rides with the
 // child that states it); AdmittedRoot is the top, and the admitted roots are exactly the rows that
-// carry it; Closes is the lineage of a DERIVED closing-contract task, set by gunbc.roadmap_authority
+// carry it; Closes is the lineage of a DERIVED closing-contract task, set by gunbc.roadmap.roadmap_authority
 // closing_contract_task_for when it mints the task, so its chain is its target's. One field is one
 // parent: two owners for one level has no constructor, which retires the former keyed roster
-// (gunbc.roadmap_nesting roadmap_memberships) and its ambiguity refusals with it.
+// (gunbc.roadmap.roadmap_nesting roadmap_memberships) and its ambiguity refusals with it.
 type NodeParent
   = MemberOf { project: String, contribution: NonEmptyStr }
   | AdmittedRoot
@@ -87,7 +87,7 @@ type RoadmapNode {
 }
 
 // THE ROADMAP'S ADAPTER ONTO THE TASK SIZER, and the only place a RoadmapNode meets it. The
-// deriver's subject is a task (gunbc.roadmap_sizing SizingSubject) precisely so that a plan item in
+// deriver's subject is a task (gunbc.roadmap.roadmap_sizing SizingSubject) precisely so that a plan item in
 // another repository can be sized by the same authority; a roadmap node is one kind of task, so it
 // projects into the subject here rather than the sizer reaching back into the roadmap.
 // THE SUBJECT IS THE DURABLE IDENTITY, NOT THE SLUG. roadmap_node_identity_law in this module

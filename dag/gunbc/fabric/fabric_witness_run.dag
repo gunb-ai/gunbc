@@ -1,4 +1,4 @@
-module gunbc.fabric_witness_run
+module gunbc.fabric.fabric_witness_run
 
 import std.types { NonEmptyStr }
 import extdeps.currency.currency { CurrencyCode, Usd }
@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.envelope { ResourceEnvelope }
-import gunbc.floor_demand { floor_execution_requirements }
+import gunbc.floor.floor_demand { floor_execution_requirements }
 import product.fabric.identity {
   FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
   fabric_identity_eq,
@@ -37,8 +37,8 @@ import gunbc.action_use_admission { checkout_action, setup_rust_action }
 import extdeps.github.action_release { ActionRelease }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_home_isolation_script, ci_pin_rustup_default_script }
 import gunbc.claim_executor_cli { claim_executor_command, claim_executor_program }
-import gunbc.repo_self_build { repo_self_build_all_bins_command }
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.repo.repo_self_build { repo_self_build_all_bins_command }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import std.types { String, List }
 import std.algebra { Cons, Empty }
 
@@ -345,7 +345,7 @@ fn required_witnesses_build_frozen_identity_wire(
 // live tree: the run command is a lane word away from NULLARY, there is no grant anywhere on the
 // workflow path, and of the ten functions in this module exactly ONE has a production consumer
 // outside it -- `required_ci_lane_command`, through its two lane bindings, imported by
-// gunbc.witness_floor_workflow to render a shell word. Work contract, execution requirements,
+// gunbc.witness.witness_floor_workflow to render a shell word. Work contract, execution requirements,
 // offer fungibility, affordability, buy terms, admission terms, satisfaction requirement and
 // grant duration have ZERO.
 //
@@ -414,7 +414,7 @@ fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
   }
 }
 
-// THE SOURCE ROOTS ARE NOT THIS MODULE'S FACT. gunbc.ci_layer_roots witness_layer_roots is the
+// THE SOURCE ROOTS ARE NOT THIS MODULE'S FACT. gunbc.ci.ci_layer_roots witness_layer_roots is the
 // authority -- the live workflow already folds it into its --source-root flags -- so a list here
 // was a fork of it, the violation one level above the one review 53848 caught. Consumed, not
 // redeclared.
@@ -443,7 +443,7 @@ fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
 // phase's precondition to another step's verdict -- which phases a lane owns is an exhaustive
 // match in the binary, so re-routing the roster is never a YAML edit. That is the surviving half
 // of the 2026-08-20 consolidation directive; the half the split supersedes is stated in
-// `gunbc.witness_floor_workflow`.
+// `gunbc.witness.witness_floor_workflow`.
 //
 // WHY THIS PARTITION. `build` is the EMISSION lane -- regen compares the emitted stage0 mirrors
 // against what is committed, and v2-emission compiles a v2 entry to Rust; both ask "does the

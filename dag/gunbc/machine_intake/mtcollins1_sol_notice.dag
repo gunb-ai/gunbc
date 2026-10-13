@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_sol_notice
+module gunbc.machine_intake.mtcollins1_sol_notice
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.algebra { trim }
 import std.measure { second, second_count }
@@ -8,8 +8,8 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.github.log_annotations { LogAnnotation, AnnotationError, AnnotationWarning, log_annotation_message_line }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.actions_run_binding { actions_variable_trimmed }
-import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker }
-import gunbc.machine_intake_mtcollins1_boot_run {
+import gunbc.machine_intake.sol_hold { sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker }
+import gunbc.machine_intake.mtcollins1_boot_run {
   mtcollins1_boot_sol_capture_path_env, mtcollins1_sol_incident_path, mtcollins1_sol_client_diagnostic_path,
   mtcollins1_sol_workflow_events_path, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_delivery_suffix,
   mtcollins1_boot_sol_pid_path_env, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance,
@@ -21,9 +21,9 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 // is blocked in an SMpro pass, the attach, the handoff or a BMC read, so the step starts THIS fold as a
 // second `gunbc run`, beside the boot, before the collector is launched. It polls once a second and
 // publishes two facts other authorities establish:
-//   (1) THE COLLECTOR'S EXIT, as the hold's supervisor recorded it (gunbc.machine_intake_sol_hold
+//   (1) THE COLLECTOR'S EXIT, as the hold's supervisor recorded it (gunbc.machine_intake.sol_hold
 //       sol_hold_exit_record_prefix: status and instant), with the last act this run had RECORDED
-//       requesting (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_workflow_event_prefix) at
+//       requesting (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_sol_workflow_event_prefix) at
 //       requested strength -- a preceding request is not proven to be the cause;
 //   (2) THE CLASSIFIED INCIDENT the boot's watch freezes (mtcollins1_sol_loss_freeze, renamed into
 //       place whole, so it is never read half-written).

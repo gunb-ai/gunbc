@@ -24,7 +24,7 @@ type UpsertClassification<P> {
 // that wants the word in a receipt or a JSON document would otherwise re-spell it per site — and a
 // re-spelling is a second representation of a closed sum (DESIGN 3). Callers keep the DECISION on
 // their records and project here at the emit boundary; they do not store the label. Added for
-// gunbc.roadmap_dispatch_environment's capability receipt (review 44078).
+// gunbc.roadmap.roadmap_dispatch_environment's capability receipt (review 44078).
 
 fn upsert_decision_label<P>(decision: UpsertDecision<P>) -> String {
   match decision {

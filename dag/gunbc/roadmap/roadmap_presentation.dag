@@ -1,7 +1,7 @@
-module gunbc.roadmap_presentation
+module gunbc.roadmap.roadmap_presentation
 
-import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
-import gunbc.roadmap_issue_status {
+import gunbc.roadmap.roadmap_nesting { RoadmapMembership, roadmap_memberships }
+import gunbc.roadmap.roadmap_issue_status {
   IssueDisplayStatus, DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked,
   DisplayReturned, DisplayDone, DisplaySuperseded, DisplayUnknown,
   issue_display_status_label, issue_display_status_sort_rank,
@@ -17,38 +17,38 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, IssueAssignmentProjection,
   NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeReadyForReview, NodeForked, NodeHistoryIncomplete,
 }
-import gunbc.roadmap_model {
+import gunbc.roadmap.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
   roadmap_primary_parent,
   RoadmapParent, TopLevel, UnderParent,
   WorkItemDispatch, NotDispatchable, Dispatchable,
   node_sizing_derivation,
 }
-import gunbc.roadmap_sizing {
+import gunbc.roadmap.roadmap_sizing {
   NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   intricacy_label, volume_label,
 }
-import gunbc.roadmap_status {
+import gunbc.roadmap.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
   item_superseded_by, item_is_done, signoff_accepts,
   line_ticket, TicketFields, TicketUpdate,
 }
-import gunbc.roadmap_spawner {
+import gunbc.roadmap.roadmap_spawner {
   node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
   ReadinessGraph, readiness_graph, node_readiness_in_graph,
 }
-import gunbc.roadmap_launch_admission {
+import gunbc.roadmap.roadmap_launch_admission {
   LaunchCause, Operator, LaunchIdentity, launch_cause_label,
   LaunchHostStanding, LaunchGraphStanding,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
   launch_admission, launch_admission_label, launch_admission_reason,
 }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   provider_execution_activity,
   ProviderEventsRefused, ProviderAwaitingSeat }
 import gunbc.auth.profile_projection { PrincipalProfile }
-import gunbc.roadmap_fleet_components { spark_host_component_paths }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_fleet_components { spark_host_component_paths }
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentKind, WorkflowSegment, WorkflowSegmentState,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
@@ -59,8 +59,8 @@ import gunbc.roadmap_workflow_stage {
   workflow_segment_kind_label,
   workflow_segment_state_key, workflow_segment_detail_bounded, workflow_segment_detail_entries,
 }
-import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
-import gunbc.roadmap_workflow_command {
+import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap.roadmap_workflow_command {
   legacy_attempt_supersedable_label,
   attempt_key_short_form,
 }
@@ -197,7 +197,7 @@ type WorkAttemptFacts
 // Availability and priority are ORTHOGONAL axes (the A1 recon's 'ten equally loud pills' defect):
 // that an operation is legally available says nothing about how loudly it renders. Availability is
 // a fact about the admission contract — for dispatch it is the projection of
-// gunbc.roadmap_launch_admission, the same decision POST /dispatch and the belt tick consume
+// gunbc.roadmap.roadmap_launch_admission, the same decision POST /dispatch and the belt tick consume
 // (RLM-1), so the page can never claim a launch the route would refuse; priority is a presentation
 // decision this seam owns. The renderer derives prominence from BOTH; availability never implies
 // visual primacy. AvailableAsOverride is GONE: the manual out-of-order dispatch it named (a
@@ -240,8 +240,8 @@ type ActionView {
 
 // In roadmap context, workflow means the work item's lifecycle; compiler and CI execution workflow
 // stays under v2.workflow. The ruling names seven independent facts, each owned by its existing
-// typed authority: Ready by gunbc.roadmap_spawner.node_is_spawnable; Live by
-// gunbc.roadmap_dispatch_actuator.DispatchLiveSession keyed through the node-grain tmux session
+// typed authority: Ready by gunbc.roadmap.roadmap_spawner.node_is_spawnable; Live by
+// gunbc.roadmap.roadmap_dispatch_actuator.DispatchLiveSession keyed through the node-grain tmux session
 // name; Attempted by dispatch_attempt_refs keyed through the attempt branch; Proposed and Landed by
 // extdeps.github.pulls.PullRequest observations once the missing typed binding exists; Done by
 // RoadmapNode.signoff; Superseded by SupersededLine.by. This note records the join ruling only —
@@ -317,7 +317,7 @@ type WorkScheduling
   | SchedulingSuperseded
 
 // A page projects every row's readiness over one graph, so it indexes the graph once
-// (gunbc.roadmap_spawner readiness_graph) and each row's answer is lookups. The page's readiness
+// (gunbc.roadmap.roadmap_spawner readiness_graph) and each row's answer is lookups. The page's readiness
 // walks lineage over the rendered graph itself: the projected graph carries every open project, so
 // a member's parent walk resolves inside it, and a planted fixture graph is its own universe. The
 // single-row forms below index the graph for the one row they answer.
@@ -1220,7 +1220,7 @@ fn activity_summary_line(a: ActivityView) -> String {
 // the one-line state classifies from the decided arm and attention (a completed attempt is done; a
 // refused arm or an anomalous — failed-segment — attempt is error-refusal; everything else is
 // neutral). The vocabulary names an EXEC class for command execution, which NO line on the page
-// produces today: the typed source exists (gunbc.roadmap_provider_events ProviderItemActivity) but the
+// produces today: the typed source exists (gunbc.roadmap.roadmap_provider_events ProviderItemActivity) but the
 // provider fold flattens it into the current-activity string, and the honest thread —
 // ProviderRunning carrying the typed item — touches nine modules; it is the named trigger for the
 // day a tool-call line lands, so exec is declared here and deliberately unproduced rather than
@@ -2102,7 +2102,7 @@ fn closed_lifecycle_display_status(l: WorkLifecycle) -> IssueDisplayStatus {
 // A DECLARED NODE THE PLAN OMITS has no row, so no readiness, standing or activity is defined for
 // it. Its lifecycle still is: its own line and signoff decide it exactly as they do for a plan row
 // (work_lifecycle), and a node the acceptance authority lists as accepted
-// (gunbc.roadmap_authority frontier_sets_projection `accepted`, the reason the plan omits it) is
+// (gunbc.roadmap.roadmap_authority frontier_sets_projection `accepted`, the reason the plan omits it) is
 // done. A superseded line stays superseded: acceptance does not reopen that question.
 fn omitted_node_lifecycle(rn: RoadmapNode, merged: List<Int>, accepted: Bool) -> WorkLifecycle {
   match work_lifecycle(rn: rn, merged: merged) {
@@ -2121,7 +2121,7 @@ fn omitted_node_display_status(rn: RoadmapNode, merged: List<Int>, accepted: Boo
   if work_lifecycle_is_closed(l: lifecycle) { shown } else { none }
 }
 
-// The displayed status is a typed value (gunbc.roadmap_issue_status IssueDisplayStatus); the word
+// The displayed status is a typed value (gunbc.roadmap.roadmap_issue_status IssueDisplayStatus); the word
 // and the sort rank are read from it. The last arm reads the scheduling position directly, so
 // every row lands on a member of the vocabulary: the former catch-all word "Open" was reachable
 // only by a scheduling position this match now names.

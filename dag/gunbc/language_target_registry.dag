@@ -110,7 +110,7 @@ import std.language_target_identity {
 
 // Target-bearing surfaces enumerated from six declared authorities: (1) StdLanguageCatalogue —
 // std.languages Language rows; (2) TargetModelDeclaration — committed TargetModel-bearing language
-// modules; (3) EmitHostExecution — tools.emit_host_transport per-language smoke fns; (4)
+// modules; (3) EmitHostExecution — gunbc.instruments.emit_host_transport per-language smoke fns; (4)
 // TargetVocabulary — the confined module list and prefix list
 // v2.lens.realization_vocabulary_containment enforces; (5) RuntimeChecker — external toolchains a
 // support claim would execute against; (6) LegacyFrontier —
@@ -566,12 +566,12 @@ data std_language_catalogue_rows: List<LanguageTargetSurfaceRow> = [
 // this census row records.
 
 data emit_host_execution_rows: List<LanguageTargetSurfaceRow> = [
-  identified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_rust_smoke", subject: rust_language_subject_ref),
-  identified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_python_smoke", subject: python_language_subject_ref),
-  identified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_go_smoke", subject: go_language_subject_ref),
-  identified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_ts_smoke", subject: typescript_language_subject_ref),
-  identified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_c_smoke", subject: c_language_subject_ref),
-  identified_decl_row(authority: EmitHostExecution, module_path: "tools.emit_host_transport", decl_name: "run_node_http_serve_smoke", subject: ecmascript_language_subject_ref),
+  identified_decl_row(authority: EmitHostExecution, module_path: "gunbc.instruments.emit_host_transport", decl_name: "run_rust_smoke", subject: rust_language_subject_ref),
+  identified_decl_row(authority: EmitHostExecution, module_path: "gunbc.instruments.emit_host_transport", decl_name: "run_python_smoke", subject: python_language_subject_ref),
+  identified_decl_row(authority: EmitHostExecution, module_path: "gunbc.instruments.emit_host_transport", decl_name: "run_go_smoke", subject: go_language_subject_ref),
+  identified_decl_row(authority: EmitHostExecution, module_path: "gunbc.instruments.emit_host_transport", decl_name: "run_ts_smoke", subject: typescript_language_subject_ref),
+  identified_decl_row(authority: EmitHostExecution, module_path: "gunbc.instruments.emit_host_transport", decl_name: "run_c_smoke", subject: c_language_subject_ref),
+  identified_decl_row(authority: EmitHostExecution, module_path: "gunbc.instruments.emit_host_transport", decl_name: "run_node_http_serve_smoke", subject: ecmascript_language_subject_ref),
 ]
 
 // extdeps.languages.react_jsx joins the JSX subject. The module path names two things — React, a
@@ -619,7 +619,7 @@ data target_model_declaration_rows: List<LanguageTargetSurfaceRow> = [
 // an apparently-accounted-for row. SWEEPING THE WHOLE CENSUS RATHER THAN THE ONE CITED ROW FOUND
 // TWO MORE, both older and both the same root cause: extdeps.rust.cargo and
 // extdeps.python.interpreter are FILE PATHS transcribed as module paths (dag/extdeps/rust/cargo.dag
-// and dag/extdeps/python/python.dag), but the modules those files declare are extdeps.cargo and
+// and dag/extdeps/python.dag), but the modules those files declare are extdeps.rust.cargo and
 // extdeps.python. That is DESIGN section 3's 'paths are discriminators, not gospel' violated in the
 // direction that is hardest to see — a module path that LOOKS derived from a real file. They are
 // corrected to the real modules and, per surface_locus_grain_note, moved to MODULE grain rather
@@ -650,7 +650,7 @@ data target_model_declaration_rows: List<LanguageTargetSurfaceRow> = [
 // stopped the unidentified population reaching zero for a reason that was never real.
 
 data runtime_checker_rows: List<LanguageTargetSurfaceRow> = [
-  identified_module_row(authority: RuntimeChecker, module_path: "extdeps.cargo", subject: rust_language_subject_ref),
+  identified_module_row(authority: RuntimeChecker, module_path: "extdeps.rust.cargo", subject: rust_language_subject_ref),
   identified_module_row(authority: RuntimeChecker, module_path: "extdeps.python", subject: python_language_subject_ref),
 ]
 

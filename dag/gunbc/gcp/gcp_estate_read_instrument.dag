@@ -1,4 +1,4 @@
-module gunbc.gcp_estate_read_instrument
+module gunbc.gcp.gcp_estate_read_instrument
 
 import std.types { String, NonEmptyStr, List, Bool }
 import std.human_intervention {
@@ -7,8 +7,8 @@ import std.human_intervention {
   FleetOnce,
   NoDischargeSiteModeled,
 }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.gcp_estate_observation {
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.gcp.gcp_estate_observation {
   operator_audit_observed_at,
   github_pool_id,
   github_actions_pool_id,

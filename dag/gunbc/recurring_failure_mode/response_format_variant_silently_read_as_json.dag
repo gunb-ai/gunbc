@@ -11,7 +11,7 @@ data response_format_variant_silently_read_as_json: RecurringFailureMode = Recur
 
     "DISCRIMINATING PROBE, 2026-10-04, live against api.github.com on gunb-ai/gunbc#13225 with the PR-diff Accept header: two operations identical except for the spelling. `response_format: Text` answered RestBodyUndecodable { status: 200, cause: JSON body did not decode: expected value at line 1 column 1 }; `response_format: \"Text\"` answered RestOk with 2,964 diff lines. Found while modeling extdeps.github.workflow_runs DownloadJobLogsForWorkflowRun, whose first live read failed the same way.",
 
-    "HERMETIC RED, now enrolled: test.claim.rest_exchange_replay_test a_text_response_format_reads_a_plain_body_as_text replays a plain-text 200 through dispatch_rest for an operation spelled `response_format: Text` (test.fixture.rest_exchange_replay_probe TextBody); before the fix it answered RestBodyUndecodable. an_unrecognized_response_format_refuses_rather_than_defaulting_to_json is the other side: any spelling that is not a WireFormat variant refuses with a located message instead of defaulting.",
+    "HERMETIC RED, now enrolled: test.claim.rest_exchange_replay a_text_response_format_reads_a_plain_body_as_text replays a plain-text 200 through dispatch_rest for an operation spelled `response_format: Text` (test.fixture.rest_exchange_replay_probe TextBody); before the fix it answered RestBodyUndecodable. an_unrecognized_response_format_refuses_rather_than_defaulting_to_json is the other side: any spelling that is not a WireFormat variant refuses with a located message instead of defaulting.",
 
     "THE FIX MADE ONE READING, NOT A SECOND ONE: the interpreter now reads the property through the same v1.std.core transport_response_format and authored_name_at the emitter uses, accepts Text and Json, keeps absent as Json, and refuses anything else.",
 
@@ -24,8 +24,8 @@ data response_format_variant_silently_read_as_json: RecurringFailureMode = Recur
     "NEXT-RUNG TRIGGER, A CAPABILITY: the transport property is decoded as std.serialization WireFormat at parse, once, and both the interpreter and v1.compiler.emit_rust consume that decoded value -- sufficient that a spelling which is not a variant is refused at the declaration and the two realizations cannot read one declaration two ways.",
   ],
   evidence: [
-    DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "a_text_response_format_reads_a_plain_body_as_text", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "an_unrecognized_response_format_refuses_rather_than_defaulting_to_json", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_exchange_replay", decl_name: "a_text_response_format_reads_a_plain_body_as_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_exchange_replay", decl_name: "an_unrecognized_response_format_refuses_rather_than_defaulting_to_json", field: WholeDeclaration },
     DeclarationRef { module_path: "std.serialization", decl_name: "WireFormat", field: WholeDeclaration },
   ],
 }

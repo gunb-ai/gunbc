@@ -1,14 +1,14 @@
-module tools.emit_subject_clean_ratchet
+module gunbc.instruments.emit_subject_clean_ratchet
 
 import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import tools.dag_compile_clean_shard_roster {
+import gunbc.instruments.dag_compile_clean_shard_roster {
   CompileCleanShardEntryDiscovered,
   CompileCleanShardEntryDiscoveryDuplicatePath,
   compile_clean_shard_entry_discovery
 }
-import tools.emission_entry_instrument {
+import gunbc.instruments.emission_entry_instrument {
   EmissionMeasurement,
   EmissionMeasurementSubject,
   EmissionSubjectCarried,

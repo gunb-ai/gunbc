@@ -1,9 +1,9 @@
-module gunbc.roadmap_view_preference_store
+module gunbc.roadmap.roadmap_view_preference_store
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
-import gunbc.roadmap_view_preferences { IssueViewPreferences, issue_view_preferences_json, issue_view_preferences_of }
+import gunbc.roadmap.roadmap_view_preferences { IssueViewPreferences, issue_view_preferences_json, issue_view_preferences_of }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.languages.json.emit { serialize_json }

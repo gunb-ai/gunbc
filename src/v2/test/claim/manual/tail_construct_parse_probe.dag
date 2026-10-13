@@ -1,4 +1,4 @@
-module v2.test.manual.tail_construct_parse_probe
+module v2.test.claim.manual.tail_construct_parse_probe
 
 import extdeps.filesystem.filesystem_io
 import v2.compiler.normalize { normalize }
@@ -11,7 +11,7 @@ import v2.compiler.tokenize { tokenize }
 // resolved and typechecked with the rest of src/v2, where their deliberately-unbound helper calls are
 // out-of-scope errors and their repeated local type name collides with the lens type it was copied from.
 // A probe that leaves its subject typechecked is a different subject. Same precedent as the .txt fixture
-// v2.test.manual.parse_mechanism_probe already reads.
+// v2.test.claim.manual.parse_mechanism_probe already reads.
 data tcp_subject: Symbol = ^tail_construct_probe_subject
 
 fn tcp_cause(source_text: String) -> Symbol {
@@ -169,7 +169,7 @@ fn tcp_corpus_sample_established_count() -> Int {
     tcp_established_at(path: "src/v2/lens/application_serializer.dag") +
     tcp_established_at(path: "src/v2/lens/complexity.dag") +
     tcp_established_at(path: "src/v2/lens/complexity_accumulator_copy.dag") +
-    tcp_established_at(path: "src/v2/test/complexity_accumulator_copy_test.dag") +
+    tcp_established_at(path: "src/v2/test/lens_complexity_accumulator_copy.dag") +
     tcp_established_at(path: "dag/std/abi.dag") +
     tcp_established_at(path: "dag/std/access.dag") +
     tcp_established_at(path: "dag/std/affine_space.dag") +
@@ -180,12 +180,12 @@ fn tcp_corpus_sample_established_count() -> Int {
     tcp_established_at(path: "dag/std/artifact_store_scratch_grant.dag") +
     tcp_established_at(path: "dag/std/attribution.dag") +
     tcp_established_at(path: "dag/std/authorization_profile.dag") +
-    tcp_established_at(path: "src/v2/compiler/00_compile.dag") +
-    tcp_established_at(path: "src/v2/compiler/01_tokenize.dag") +
-    tcp_established_at(path: "src/v2/compiler/02_parse.dag") +
-    tcp_established_at(path: "src/v2/compiler/03_body_producer.dag") +
-    tcp_established_at(path: "src/v2/compiler/03_ingest.dag") +
-    tcp_established_at(path: "src/v2/compiler/03_name_resolve.dag") +
+    tcp_established_at(path: "src/v2/compiler/compile.dag") +
+    tcp_established_at(path: "src/v2/compiler/tokenize.dag") +
+    tcp_established_at(path: "src/v2/compiler/parse.dag") +
+    tcp_established_at(path: "src/v2/compiler/body_producer.dag") +
+    tcp_established_at(path: "src/v2/compiler/ingest.dag") +
+    tcp_established_at(path: "src/v2/compiler/name_resolve.dag") +
     0
 }
 

@@ -2,10 +2,10 @@ module gunbc.scm.scm_wet_execution_receipt
 
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.types { CommitSha, Int, NonEmptyStr, Timestamp }
-import gunbc.roadmap_model { RoadmapNodeIdentity }
+import gunbc.roadmap.roadmap_model { RoadmapNodeIdentity }
 import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 
-// THE WET EXECUTION OF tools.scm_acceptance, AS EVIDENCE UNDER A NODE THAT STAYS OPEN.
+// THE WET EXECUTION OF gunbc.instruments.scm_acceptance, AS EVIDENCE UNDER A NODE THAT STAYS OPEN.
 //
 // gunbc.open_node_partial_evidence carries what every such subject shares. This module carries what
 // only a WET HOST EXECUTION has, and the split is not tidiness: the native-witness inhabitant cites
@@ -42,7 +42,7 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // being rebuilt back -- A then B then A across sixty-one minutes -- reads as equal endpoints while
 // child processes in the middle may have spent B. Absence of mid-run replacement is not recoverable
 // from two samples, so no arm here names it. The continuity that IS established for the CHILD binary
-// lives in the instrument: tools.scm_acceptance retains an attempt-owned copy and re-observes its
+// lives in the instrument: gunbc.instruments.scm_acceptance retains an attempt-owned copy and re-observes its
 // digest through scm_acceptance_binary_standing before scenarios are spent, which is the authority
 // for that question and must not be shadowed by a weaker one here. Found by external review.
 //
@@ -132,7 +132,7 @@ fn scm_acceptance_wet_execution_receipt() -> ScmWetExecutionReceipt {
       landed_merge_commit: "c48dc494dbc16dbf05a0766cb34a3a45040247fe",
       evaluated_head: "e4209456be8b470335b6438683617e526aa88a71",
       executed_evidence: decl_ref(
-        module_path: "tools.scm_acceptance",
+        module_path: "gunbc.instruments.scm_acceptance",
         decl_name: "scm_acceptance",
       ),
     },

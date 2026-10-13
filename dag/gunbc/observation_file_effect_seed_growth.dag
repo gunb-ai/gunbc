@@ -14,12 +14,12 @@ import std.types { List }
 //
 // WHAT THIS ROW DOES AND DOES NOT CLAIM. It makes the added declarations citable by the
 // join gunbc.seed_growth_admission already runs, so the roster-coverage instrument
-// (tools.seed_growth_change_population) stops refusing on this change. It does not claim
+// (gunbc.instruments.seed_growth_change_population) stops refusing on this change. It does not claim
 // the copy is free: the copy IS the debt, and the trigger below is what ends it. It also
 // does not claim the roster is complete in general -- hand_authored_declarations is an
 // authored obligation roster, and gunbc.seed_growth records why a helper nobody listed
 // stays invisible until the completeness join exists.
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 

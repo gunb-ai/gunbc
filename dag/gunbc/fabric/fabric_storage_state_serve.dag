@@ -1,12 +1,12 @@
-module gunbc.fabric_storage_state_serve
+module gunbc.fabric.fabric_storage_state_serve
 
 import std.types { String }
 import extdeps.http.server { ServeWireResponse }
-import gunbc.fabric_storage_file_store { FabricStorageFileRoot }
-import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix }
-import gunbc.fabric_storage_protocol { fabric_storage_respond, text_response }
-import gunbc.fabric_storage_state_auth { FabricStateRequestVerified, FabricStateRequestRefused }
-import gunbc.fabric_storage_state_auth_io { fabric_state_verified_request }
+import gunbc.fabric.fabric_storage_file_store { FabricStorageFileRoot }
+import gunbc.fabric.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix }
+import gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }
+import gunbc.fabric.fabric_storage_state_auth { FabricStateRequestVerified, FabricStateRequestRefused }
+import gunbc.fabric.fabric_storage_state_auth_io { fabric_state_verified_request }
 
 // No unauthenticated route reaches this namespace. Exact original requests are authenticated
 // before dispatch to the same four storage operations used by the legacy namespace.
