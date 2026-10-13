@@ -43,7 +43,9 @@ import extdeps.bazel.target_pattern {
 // THE UNIVERSE IS A PARAMETER, NOT A ROW THIS MODULE REACHES FOR, for the same reason
 // `route_target_invocation_in` takes its index: folding the lane's own rows in here would leave
 // this function checkable only against a transcription of them, which is the change detector
-// DESIGN's oracle rule rejects. The production caller supplies `native_route_default_pattern`.
+// DESIGN's oracle rule rejects. The production caller is the seed's `test_verb`, which supplies the
+// pattern it parses from the constant `gunbc.native_route_seed_boundary_emit` renders from
+// `native_route_default_pattern`, so the seed holds no spelling of the universe of its own.
 //
 // THE REFUSAL IS THE AUTHORITY'S OWN CAUSE, CARRIED TYPED. `PatternNotAbsolute` and
 // `PatternAllTargetsUnsupported` have different remedies from each other and from every

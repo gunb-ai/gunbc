@@ -2145,11 +2145,21 @@ data native_driver_verb_demand_census: String = "demand-census"
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
-data native_driver_adjudicate_needs_pattern: String = "REFUSED: adjudicate takes a target pattern after the host facts file and before the source roots"
+data native_driver_adjudicate_needs_pattern: String = "REFUSED: adjudicate --pattern takes a target pattern as the next word"
+
+// THE PATTERN IS AN OPTION AND NOT AN OPERAND, SO THAT ABSENCE HAS A MEANING OF ITS OWN: the
+// compiler's route boundary, `gunbc.witness.v2_native_route` `native_route_default_pattern`. The
+// caller that wants the lane's whole universe says nothing, and the one value it would have said is
+// read here, from the declaration that owns it, rather than spelled again by every caller (the seed
+// used to hand-mirror it and pass it on every spawn; that mirror was a second authority for the
+// boundary). A caller that wants a focused run, `gunbc test <operand>`, names its own pattern and
+// the authority still parses it. The flag is recognised only immediately after the facts path, so a
+// source root is never mistaken for it once roots have begun.
+data native_driver_pattern_flag: String = "--pattern"
 
 // THE PATTERN OPERAND IS PARSED BY ITS AUTHORITY, AND A BAD ONE IS A COMMAND-LINE REFUSAL. The text
 // goes to `extdeps.bazel.target_pattern` `parse_target_pattern` unchanged; its typed cause is
@@ -2173,7 +2183,8 @@ type NativeDriverParseState
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
   | DriverDemandCensusRoots { roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
-  | DriverAdjudicateSeekPattern { facts_path: String }
+  | DriverAdjudicateOptions { facts_path: String }
+  | DriverAdjudicateSeekPatternValue { facts_path: String }
   | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
   | DriverParseRefused { reason: Symbol, detail: String }
 
@@ -2217,8 +2228,18 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
     DriverDemandCensusRoots { roots: roots } =>
       DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
-      DriverAdjudicateSeekPattern { facts_path: word }
-    DriverAdjudicateSeekPattern { facts_path: facts_path } =>
+      DriverAdjudicateOptions { facts_path: word }
+    DriverAdjudicateOptions { facts_path: facts_path } =>
+      if word == native_driver_pattern_flag {
+        DriverAdjudicateSeekPatternValue { facts_path: facts_path }
+      } else {
+        DriverAdjudicateRoots {
+          facts_path: facts_path,
+          pattern: native_route_default_pattern(),
+          roots: [word]
+        }
+      }
+    DriverAdjudicateSeekPatternValue { facts_path: facts_path } =>
       match parse_target_pattern(text: word) {
         TargetPatternRefused { cause: cause } =>
           DriverParseRefused {
@@ -2237,9 +2258,12 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
   }
 }
 
-// THE TWO STATES THAT ARE INCOMPLETE RATHER THAN EMPTY. Reaching the end still seeking a verb means
-// argv was empty; still seeking a facts path means `adjudicate` was the last word. Both are
-// refusals the rendered main raised inline, and both are raised here with its exact message.
+// THE STATES THAT ARE INCOMPLETE RATHER THAN EMPTY. Reaching the end still seeking a verb means
+// argv was empty; still seeking a facts path means `adjudicate` was the last word; still seeking a
+// pattern value means `--pattern` was. The first two are refusals the rendered main raised inline
+// and are raised here with its exact message; the third is the one new way to be incomplete, and a
+// flag with nothing after it refuses rather than falling back to the default, because a caller
+// that named a pattern and lost it must not be answered for a different population.
 fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan {
   match state {
     DriverParseRefused { reason: reason, detail: detail } =>
@@ -2262,7 +2286,15 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
     DriverDemandCensusRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
-    DriverAdjudicateSeekPattern { facts_path: _ } =>
+    DriverAdjudicateOptions { facts_path: facts_path } =>
+      NativeDriverPlanned {
+        verb: NativeDriverAdjudicate {
+          facts_path: facts_path,
+          pattern: native_route_default_pattern(),
+          source_roots: []
+        }
+      }
+    DriverAdjudicateSeekPatternValue { facts_path: _ } =>
       NativeDriverPlanRefused {
         reason: ^native_driver_adjudicate_without_pattern,
         detail: native_driver_adjudicate_needs_pattern

@@ -9,7 +9,7 @@ import gunbc.seed_build_artifact_emit { seed_build_artifacts }
 import gunbc.heal_publication_boundary { heal_stage0_mirror_directory, path_is_stage0_mirror }
 import gunbc.heal_candidate { heal_candidate_produce_declaring, DeclarationFromDriftedPaths, observe_drift_population, proposable_paths_of, DriftPopulationObserved, DriftPopulationRefused }
 
-// THE STAGE0 CANDIDATE: the mirrors the seed's own regeneration round installed, plus the eleven
+// THE STAGE0 CANDIDATE: the mirrors the seed's own regeneration round installed, plus the
 // artifacts the seed build reads. The population is OBSERVED, as gunbc.heal_candidate says of its
 // own: every `.rs` directly in the mirror directory and every seed-build artifact is compared with
 // the checked-out head, and a path is in the candidate exactly when its bytes differ. A file the

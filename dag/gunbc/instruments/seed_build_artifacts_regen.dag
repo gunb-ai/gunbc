@@ -9,7 +9,7 @@ import gunbc.seed_build_artifact_emit {
   SeedBuildArtifactProduced, SeedBuildArtifactRefused, SeedBuildArtifactNotSeedBuild
 }
 
-// WRITE THE ELEVEN SEED-BUILD ARTIFACTS AND READ EACH BACK, WITHOUT THE REGISTRY'S CLOSURE.
+// WRITE THE SEED-BUILD ARTIFACTS AND READ EACH BACK, WITHOUT THE REGISTRY'S CLOSURE.
 // gunbc.generated_artifact_gate main_wet folds the whole registry and so loads every producer; this
 // entry folds gunbc.seed_build_artifact_emit seed_build_artifacts, whose producers need none of that.
 // The first artifact that refuses, fails to write, or reads back different bytes stops the fold with

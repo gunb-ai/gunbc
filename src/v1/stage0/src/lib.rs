@@ -874,6 +874,7 @@ pub mod evaluation_budget_consequence_generated;
 pub mod gunbc_file_transport_generated;
 pub mod memory_governor;
 pub mod module_path_index;
+pub mod native_route_seed_boundary_generated;
 pub mod process_group;
 pub mod recorded_fixture;
 pub mod release_locus_seed_constants_generated;
