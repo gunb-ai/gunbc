@@ -1,7 +1,9 @@
 module test.claim.generated_artifact_assessment
 
-import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, SeedRetentionFrontierGeneratedRsArtifact, artifact_path, artifact_directory, artifact_name }
-import gunbc.generated_artifact { artifact_is_committed }
+import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, SeedRetentionFrontierGeneratedRsArtifact, PlanArtifact, ContributorOnboardingArtifact, artifact_path, artifact_directory, artifact_name, artifact_eq }
+import gunbc.generated_artifact { artifact_is_committed, artifact_is_project_documentation, artifact_is_commit_required_project_documentation }
+import gunbc.generated_artifact_registry { generated_artifact_registry, uncommitted_project_documentation_artifacts }
+import gunbc.plans.source_layout_authority { source_layout_authority_plan }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
@@ -31,6 +33,29 @@ test fn documentation_projections_except_design_are_not_committed() -> Bool {
   !artifact_is_committed(a: DesignFailureModesArtifact)
     && !artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
+}
+
+// IDENTITY JOIN OVER THE LIVE REGISTRY, NOT THREE SPOT-CHECKS. A PlanProjectsCommittedMarkdown
+// row added after the cutover (source-layout-authority after #13783) is invisible to the
+// three-literal claim above and still CommitRequired { ProjectDocumentation }. This fold fails
+// unless DesignArtifact is the only such row.
+test fn commit_required_project_documentation_is_only_design() -> Bool {
+  let rows = filter(generated_artifact_registry, a => artifact_is_commit_required_project_documentation(a: a))
+  any(rows, a => artifact_eq(a: a, b: DesignArtifact))
+    && fold(rows, init: true, f: fn(acc, a) { acc && artifact_eq(a: a, b: DesignArtifact) })
+}
+
+// documentation_wet folds this population. Design stays out; Roadmap, onboarding, and the
+// source-layout plan (flipped off PlanProjectsCommittedMarkdown) stay in; Gitignore is not
+// documentation.
+test fn documentation_wet_population_is_uncommitted_project_documentation() -> Bool {
+  let pop = uncommitted_project_documentation_artifacts()
+  !any(pop, a => artifact_eq(a: a, b: DesignArtifact))
+    && any(pop, a => artifact_eq(a: a, b: RoadmapArtifact))
+    && any(pop, a => artifact_eq(a: a, b: ContributorOnboardingArtifact))
+    && any(pop, a => artifact_eq(a: a, b: PlanArtifact { plan: source_layout_authority_plan }))
+    && !any(pop, a => artifact_eq(a: a, b: GitignoreArtifact))
+    && fold(pop, init: true, f: fn(acc, a) { acc && artifact_is_project_documentation(a: a) && !artifact_is_committed(a: a) })
 }
 
 // EVERY FIXTURE HERE IS AUTHORED, INPUT AND EXPECTATION BOTH. The production population is never

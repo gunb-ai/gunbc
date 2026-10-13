@@ -1,7 +1,7 @@
 module gunbc.plans.source_layout_authority
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownListItem, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote, hr }
 import std.types { String, NonEmptyStr }
@@ -250,7 +250,7 @@ fn source_layout_authority_body() -> List<MarkdownBlock> {
 }
 
 data source_layout_authority_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
   slug: "source-layout-authority",
   title: "Source layout authority: one storage rule, a name-only compiler, and the end of whole-tree ingestion",
   body: source_layout_authority_body(),

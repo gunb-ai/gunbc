@@ -265,6 +265,74 @@ fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
   }
 }
 
+// THE DOCUMENTATION FAMILY IS THE VARIANT SET, NOT THE COMMIT POLICY. CommitRequired vs
+// NotCommitted answers whether a checkout must carry the bytes; this predicate answers whether
+// the artifact's only declared consumer is ProjectDocumentation. The two must stay independent
+// so a new PlanProjectsCommittedMarkdown row cannot hide from the "only Design stays committed"
+// join by also being absent from a hand-written family list.
+fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
+  match a {
+    RoadmapArtifact => true
+    DesignArtifact => true
+    DesignFailureModesArtifact => true
+    DesignRungDropsArtifact => true
+    ContributorOnboardingArtifact => true
+    PlanArtifact { plan: _ } => true
+    WitnessFloorYamlArtifact => false
+    FleetConvergeYamlArtifact => false
+    MicrovmShakedownYamlArtifact => false
+    InstrumentDispatchYamlArtifact => false
+    HealWorkflowYamlArtifact => false
+    HealPublisherWorkflowYamlArtifact => false
+    DriftWatchWorkflowYamlArtifact => false
+    BranchRunGrantBrokerWorkflowYamlArtifact => false
+    GitignoreArtifact => false
+    GitattributesArtifact => false
+    CargoConfigArtifact => false
+    GithooksPrePushArtifact => false
+    GithooksPreCommitArtifact => false
+    GeneratedArtifactMergeDriverArtifact => false
+    RunnerDeployArtifact => false
+    Stage0CrateLayoutGeneratedDagArtifact => false
+    Stage0CrateLayoutGeneratedRsArtifact => false
+    Stage0CratePartitionGeneratedDagArtifact => false
+    Stage0ExecutableAssemblyGeneratedDagArtifact => false
+    Stage0LinkedPartitionCratesArtifact => false
+    SeedRetentionFrontierGeneratedRsArtifact => false
+    V1InterpreterDispatchGeneratedRsArtifact => false
+    EvaluationBudgetConsequenceGeneratedRsArtifact => false
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => false
+    FileTransportRealizationGeneratedRsArtifact => false
+    Fci1BoundedExecutionContextArtifact => false
+    AutoinstallUserDataArtifact { spec: _ } => false
+    RunnerHostSudoersArtifact { host: _ } => false
+    CouponCadQueryProgramArtifact => false
+    WholeCorpusCompileMeasuredRootDemandsArtifact => false
+    ApprovalDeviceVectorsArtifact => false
+    ApproveIosProjectYmlArtifact => false
+    ApproveIosProtocolSwiftArtifact => false
+    ApproveIosWireSwiftArtifact => false
+    ApproveIosProtocolVectorTestsSwiftArtifact => false
+  }
+}
+
+fn artifact_is_commit_required_project_documentation(a: GeneratedArtifact) -> Bool {
+  match artifact_commit_policy(a: a) {
+    CommitRequired { consumer } => match consumer {
+      ProjectDocumentation => true
+      GitProtocol => false
+      CargoToolchain => false
+      GithubActionsWorkflow => false
+      HostReconciler => false
+      CompilerRunInput => false
+      CrossLanguageClientTest => false
+      XcodeProjectGenerator => false
+      SwiftCompiler => false
+    }
+    NotCommitted => false
+  }
+}
+
 // Disposition authority (reference only; do not fork the lifecycle here):
 // gunbc.non_fold_residue.non_fold_residue_frontier enrolls
 // dag/gunbc/generated_artifact.dag::artifact_eq with the typed nfr_reason_land_red_era reason and
