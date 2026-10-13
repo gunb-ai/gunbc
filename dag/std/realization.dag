@@ -73,9 +73,9 @@ fn independence_from_effect_shapes(left: EffectShape<KeySource>, right: EffectSh
     UpsertEffect { key_source: lk } => match right {
       ReadEffect => Unknown
       UpsertEffect { key_source: rk } =>
-        if lk == rk { Dependent } else { Independent }
+        if (lk == rk) { Dependent } else { Independent }
       DeleteEffect { key_source: rk } =>
-        if lk == rk { Dependent } else { Independent }
+        if (lk == rk) { Dependent } else { Independent }
       CreateEffect { cause: _ } => Unknown
       AppendEffect => Unknown
       ExecuteEffect => Unknown
@@ -83,9 +83,9 @@ fn independence_from_effect_shapes(left: EffectShape<KeySource>, right: EffectSh
     DeleteEffect { key_source: lk } => match right {
       ReadEffect => Unknown
       UpsertEffect { key_source: rk } =>
-        if lk == rk { Dependent } else { Independent }
+        if (lk == rk) { Dependent } else { Independent }
       DeleteEffect { key_source: rk } =>
-        if lk == rk { Dependent } else { Independent }
+        if (lk == rk) { Dependent } else { Independent }
       CreateEffect { cause: _ } => Unknown
       AppendEffect => Unknown
       ExecuteEffect => Unknown

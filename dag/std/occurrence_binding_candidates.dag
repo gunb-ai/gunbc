@@ -298,7 +298,7 @@ fn declaration_exposure_fold_step(
     Absent =>
       match map_get(build.exposure_by_occurrence, row.occurrence.value) {
         Present { value: existing } =>
-          if existing == row.exposure {
+          if (existing == row.exposure) {
             build
           } else {
             DeclarationExposureIndexBuild {

@@ -61,7 +61,7 @@ fn tree_coverage(closures: List<BoundaryClosure>, tree: NamespaceTree) -> TreeCo
     f: (acc, c) => match acc {
       Covered { grade: g } => acc
       Uncovered =>
-        if c.tree == tree {
+        if (c.tree == tree) {
           Covered { grade: c.grade }
         } else {
           Uncovered

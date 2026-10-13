@@ -2,7 +2,7 @@ module test.claim.frame_boundary_witness
 
 import std.types { Bool, String, List }
 import std.effect_grant {
-  NamespaceTree, FilesystemPathTree, UriTree, ProcTree, ServiceOpTree,
+  NamespaceTree, FilesystemPathTree, UriTree, ProcTree, ServiceOpTree, CodeNameTree,
   LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,
 }
 import std.frame_boundary {
@@ -127,8 +127,10 @@ test fn namespace_tree_derived_eq_red_and_positive_holds() -> Bool {
     && !(UriTree == ProcTree)
     && !(FilesystemPathTree == ProcTree)
     && !(ServiceOpTree { service: "ipmi" } == ServiceOpTree { service: "redfish" })
+    && !(CodeNameTree == FilesystemPathTree)
     && (FilesystemPathTree == FilesystemPathTree)
     && (UriTree == UriTree)
     && (ProcTree == ProcTree)
     && (ServiceOpTree { service: "ipmi" } == ServiceOpTree { service: "ipmi" })
+    && (CodeNameTree == CodeNameTree)
 }
