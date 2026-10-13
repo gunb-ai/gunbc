@@ -75,6 +75,10 @@ type RealizationMeasureEffect
       subject: ContentHash
       work_shape: String
     }
+  | ObserveAllocationAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
 
 // THE OBSERVATION, TYPED SO ABSENCE CANNOT READ AS A QUANTITY. A residency reading either holds a
 // byte count or names why it could not be taken; there is no arm carrying a number the realization
@@ -82,6 +86,34 @@ type RealizationMeasureEffect
 type ResidencyObservation
   = ResidencyObserved { bytes: ByteSize }
   | ResidencyUnobservable { axis: String, reason: String }
+
+// THE ALLOCATION COUNTERS ARE A FOURTH FACT, and the one residency cannot stand in for. Residency
+// answers what the process HOLDS at a boundary; a record rebuilt per step frees the old record as it
+// allocates the new one, so residency stays flat while the allocator is called once per step. The
+// cost of that pattern is the CALLS, so the observation is the monotone count of allocator
+// operations (alloc, alloc_zeroed and realloc each count once) and the monotone sum of bytes those
+// operations requested (a realloc counts its new size). Both only grow, so a span is the difference
+// of two readings; neither is a live size.
+//
+// WHAT IS NOT OBSERVED, stated rather than defaulted: a global allocator sees neither Rc retain
+// counts nor whether a persistent collection copied a shared chunk or mutated a unique one. A
+// copy-on-write is visible only as the allocation it causes, so no field here claims it; a reading
+// of it needs a hook inside the collection, and until one exists that axis is unobserved, not zero.
+//
+// The demand is a resource, not a flag: an entry that `uses` AllocationCounter is the entry whose
+// emitted binary carries the counting allocator, and no other binary does (v1.compiler.emit_rust
+// NativeEffectRealizationAdmission, the claim route's denominator). A binary without it reads
+// AllocationUnobservable -- the process refuses rather than report zero.
+resource AllocationCounter {
+  kind: Observation
+  mode: Read
+  acquire { hermetic }
+  release {}
+}
+
+type AllocationObservation
+  = AllocationObserved { operations: Int, bytes_requested: Int }
+  | AllocationUnobservable { axis: String, reason: String }
 
 fn residency_observed_bytes(o: ResidencyObservation) -> ByteSize? {
   match o {
@@ -142,6 +174,12 @@ type NativeResidencySample {
 // driver's std.compiler_entry native_driver_cost_account) is judged on CPU, and elapsed stays an
 // observation beside it. A host without the clock REFUSES; substituting the monotonic reading would
 // hand the verdict back to host load.
+
+// ObserveAllocationAtSubject realization seam: observed_allocation_operations(boundary) and
+// observed_allocation_bytes(boundary) read the monotone counters of the counting global allocator an
+// AllocationCounter-demanding native entry is built with (see AllocationCounter). The label plays
+// observed_monotonic_nanos's anti-memoization role and is never identity material. A process whose
+// allocator is not the counting one REFUSES; zero is a reading and absence is not.
 
 // HAND-RUST GATE explicit deferral. The observed_monotonic_nanos Instant bridge in
 // v1_interpreter.rs is a bounded seed-retained realization of this modeled ObserveElapsedAtSubject
