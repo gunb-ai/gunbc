@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, Int, List, brand }
 import std.nat { Nat, Zero, Succ }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
-import v2.std.algebra { length }
+import std.algebra { length }
 import product.fabric.execution { ReservationRef }
 import product.fabric.budget { MoneyAccount, fence_admits }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }

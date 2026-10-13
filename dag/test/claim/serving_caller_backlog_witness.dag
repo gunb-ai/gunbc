@@ -1,8 +1,8 @@
-module test.claim.serving_caller_backlog_witness_test
+module test.claim.serving_caller_backlog_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.nat { Nat }
-import v2.std.algebra { length }
+import std.algebra { length }
 import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd }
 import extdeps.accounting.budget { Appropriation }

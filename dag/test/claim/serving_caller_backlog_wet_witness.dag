@@ -25,7 +25,7 @@ import gunbc.serving.caller_backlog {
   RecoveryEvent, RecoveryProbe, RecoveryRequest,
 }
 import std.nat { Nat }
-import v2.std.algebra { length }
+import std.algebra { length }
 import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd }
 import extdeps.accounting.budget { Appropriation }

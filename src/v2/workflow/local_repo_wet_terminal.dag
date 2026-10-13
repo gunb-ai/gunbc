@@ -1532,19 +1532,19 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "persist_then_resume_reads_the_slot_not_memory_by_real_execution" },
-      entry: "dag/test/claim/serving_caller_backlog_wet_witness_test.dag",
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
       function: "persist_then_resume_reads_the_slot_not_memory_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "persist_cancel_and_commit_resume_as_terminal_by_real_execution" },
-      entry: "dag/test/claim/serving_caller_backlog_wet_witness_test.dag",
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
       function: "persist_cancel_and_commit_resume_as_terminal_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "persist_recovery_history_survives_resume_by_real_execution" },
-      entry: "dag/test/claim/serving_caller_backlog_wet_witness_test.dag",
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
       function: "persist_recovery_history_survives_resume_by_real_execution",
       expectation: ExpectedToHold {}
     },
