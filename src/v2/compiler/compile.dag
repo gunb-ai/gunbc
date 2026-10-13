@@ -3425,23 +3425,6 @@ fn native_demand_census_unreadable(
   }
 }
 
-fn native_demand_census_kind_sym(k: NodeKind) -> Symbol {
-  match k {
-    TypeNode { connective: Atom { identity: _ } } => symbol_intern_lexeme(lexeme: "atom")
-    TypeNode { connective: Conj } => symbol_intern_lexeme(lexeme: "conj")
-    TypeNode { connective: Disj } => symbol_intern_lexeme(lexeme: "disj")
-    TypeNode { connective: Arrow } => symbol_intern_lexeme(lexeme: "arrow")
-    TypeNode { connective: Occupancy } => symbol_intern_lexeme(lexeme: "occupancy")
-    TypeNode { connective: Instantiation } => symbol_intern_lexeme(lexeme: "instantiation")
-    ComputationNode { behavior: Value } => symbol_intern_lexeme(lexeme: "value")
-    ComputationNode { behavior: Transform } => symbol_intern_lexeme(lexeme: "transform")
-    ComputationNode { behavior: Branch } => symbol_intern_lexeme(lexeme: "branch")
-    ComputationNode { behavior: Loop } => symbol_intern_lexeme(lexeme: "loop")
-    ComputationNode { behavior: Bind } => symbol_intern_lexeme(lexeme: "bind")
-    ComputationNode { behavior: Match } => symbol_intern_lexeme(lexeme: "match")
-  }
-}
-
 fn native_demand_census_unbound_locus(d: NonEmptyDiagnostics) -> Optional<DemandCensusUnboundLocus> {
   let fatal = diagnostics_fatal(d: d)
   if fatal.reason == ^resolve_reason_unbound_symbol {
@@ -3449,7 +3432,7 @@ fn native_demand_census_unbound_locus(d: NonEmptyDiagnostics) -> Optional<Demand
       NodeLocus { anchor: a } =>
         match node_atom_identity_optional(node: a.at) {
           Present { value: n } => optional_present(value: UnboundNamed { name: n })
-          Absent => optional_present(value: UnboundShaped { kind: native_demand_census_kind_sym(k: a.at.kind) })
+          Absent => optional_present(value: UnboundShaped { kind: a.at.kind })
         }
       Textual { file: _, extent: _ } => optional_absent()
       SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()

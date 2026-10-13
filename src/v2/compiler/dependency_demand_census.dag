@@ -58,7 +58,7 @@ import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.grammar { grammar_empty_node, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
 import std.types { Bool }
-import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_lowered_from, node_rebuild, symbol_lexeme }
+import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_lowered_from, node_rebuild, symbol_lexeme }
 import v2.std.provenance { node_occurrence_id_optional }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
@@ -850,7 +850,7 @@ fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) ->
 // or an authored type did not resolve.
 type DemandCensusUnboundLocus
   = UnboundNamed { name: Symbol }
-  | UnboundShaped { kind: Symbol }
+  | UnboundShaped { kind: NodeKind }
 
 type DemandCensusUnobserved
   = UnobservedFileRefused
@@ -1310,29 +1310,86 @@ fn demand_census_resolve_refused_bucket_line(b: DemandCensusResolveRefusedBucket
   ])
 }
 
+fn demand_census_node_kind_word(k: NodeKind) -> String {
+  match k {
+    TypeNode { connective: Atom { identity: _ } } => "atom"
+    TypeNode { connective: Conj } => "conj"
+    TypeNode { connective: Disj } => "disj"
+    TypeNode { connective: Arrow } => "arrow"
+    TypeNode { connective: Occupancy } => "occupancy"
+    TypeNode { connective: Instantiation } => "instantiation"
+    ComputationNode { behavior: Value } => "value"
+    ComputationNode { behavior: Transform } => "transform"
+    ComputationNode { behavior: Branch } => "branch"
+    ComputationNode { behavior: Loop } => "loop"
+    ComputationNode { behavior: Bind } => "bind"
+    ComputationNode { behavior: Match } => "match"
+  }
+}
+
+fn demand_census_unbound_site_word(loc: DemandCensusUnboundLocus) -> String {
+  match loc {
+    UnboundNamed { name: n } => symbol_lexeme(sym: n)
+    UnboundShaped { kind: k } => demand_census_node_kind_word(k: k)
+  }
+}
+
 fn demand_census_unbound_site_text(u: Optional<DemandCensusUnboundLocus>) -> String {
   match u {
     Absent => "unbound_locus="
     Present { value: loc } =>
       match loc {
         UnboundNamed { name: n } => demand_census_text(parts: ["unbound_name=", symbol_lexeme(sym: n)])
-        UnboundShaped { kind: k } => demand_census_text(parts: ["unbound_kind=", symbol_lexeme(sym: k)])
+        UnboundShaped { kind: k } => demand_census_text(parts: ["unbound_kind=", demand_census_node_kind_word(k: k)])
       }
   }
 }
 
-fn demand_census_unbound_locus_site(loc: DemandCensusUnboundLocus) -> Symbol {
-  match loc {
-    UnboundNamed { name: n } => n
-    UnboundShaped { kind: k } => k
+type DemandCensusUnboundBucket {
+  site: DemandCensusUnboundLocus
+  functions: Int
+  examples: List<QualifiedName>
+}
+
+fn demand_census_unbound_locus_eq(a: DemandCensusUnboundLocus, b: DemandCensusUnboundLocus) -> Bool {
+  match a {
+    UnboundNamed { name: na } =>
+      match b {
+        UnboundNamed { name: nb } => na == nb
+        UnboundShaped { kind: _ } => false
+      }
+    UnboundShaped { kind: ka } =>
+      match b {
+        UnboundNamed { name: _ } => false
+        UnboundShaped { kind: kb } => ka == kb
+      }
   }
 }
 
-fn demand_census_unbound_buckets(rows: List<DemandCensusRow>) -> List<DemandCensusResolveRefusedBucket> {
+fn demand_census_add_to_unbound_buckets(buckets: List<DemandCensusUnboundBucket>, site: DemandCensusUnboundLocus, module: QualifiedName) -> List<DemandCensusUnboundBucket> {
+  let found = fold_list(xs: buckets, empty: false, cons: fn(any, b) { any || demand_census_unbound_locus_eq(a: b.site, b: site) })
+  if found {
+    fold_list(xs: buckets, empty: Empty, cons: fn(acc, b) {
+      if demand_census_unbound_locus_eq(a: b.site, b: site) {
+        list_snoc_item(xs: acc, item: DemandCensusUnboundBucket {
+          site: b.site,
+          functions: b.functions + 1,
+          examples: demand_census_add_example(examples: b.examples, module: module)
+        })
+      } else {
+        list_snoc_item(xs: acc, item: b)
+      }
+    })
+  } else {
+    list_snoc_item(xs: buckets, item: DemandCensusUnboundBucket { site: site, functions: 1, examples: [module] })
+  }
+}
+
+fn demand_census_unbound_buckets(rows: List<DemandCensusRow>) -> List<DemandCensusUnboundBucket> {
   fold_list(xs: rows, empty: Empty, cons: fn(acc, row) {
     match row.verdict {
       CensusUnobserved { reason: UnobservedModuleResolveRefused { first_reason: _, first_unbound: Present { value: loc } } } =>
-        demand_census_add_to_buckets(buckets: acc, reason: demand_census_unbound_locus_site(loc: loc), module: qualified_name_init(qn: row.function))
+        demand_census_add_to_unbound_buckets(buckets: acc, site: loc, module: qualified_name_init(qn: row.function))
       CensusUnobserved { reason: _ } => acc
       CensusEqual => acc
       CensusMismatch { authored: _, derived: _ } => acc
@@ -1341,9 +1398,9 @@ fn demand_census_unbound_buckets(rows: List<DemandCensusRow>) -> List<DemandCens
   })
 }
 
-fn demand_census_unbound_bucket_line(b: DemandCensusResolveRefusedBucket) -> String {
+fn demand_census_unbound_bucket_line(b: DemandCensusUnboundBucket) -> String {
   demand_census_text(parts: [
-    "[demand-census-unbound] site=", symbol_lexeme(sym: b.reason),
+    "[demand-census-unbound] site=", demand_census_unbound_site_word(loc: b.site),
     " functions=", to_string(b.functions),
     " examples=", demand_census_paths_text(paths: b.examples)
   ])
