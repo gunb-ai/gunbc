@@ -5,14 +5,6 @@ import std.import_statement { ImportStripCoordinateSegment }
 import extdeps.git.object_store { GitObjectId }
 import extdeps.communication.medium { Lossless, Medium }
 import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
-import gunbc.namespace_cut.namespace_step0_subject_collector {
-  Step0SubjectCollected,
-  Step0SubjectCollectionRefused,
-  Step0SubjectMember,
-  Step0SubjectPinRefusal,
-  Step0SubjectVector,
-  collect_step0_subject_vector_at
-}
 import gunbc.namespace_cut.namespace_step0_strip_producer {
   Step0SourceStripped,
   Step0SourceStripRefused,
@@ -161,8 +153,17 @@ data xl2_excluded_populations: List<Xl2ExcludedPopulation> = [
   HeaderSegmentsNotRefusalSites
 ]
 
+// WHY THE BASE WAS NOT OBSERVED. The subject is bytes the producer's prep materialized, so every
+// semantic fact about it is computed here from those bytes (transport verified, not trusted): the
+// tree id is re-derived and compared with the id the prep claimed, and a mismatch is a refusal, not
+// a run over a different tree.
+type Xl2BaseUnobservedCause
+  = Xl2RevisionIdentityUnreadable { hex: String }
+  | Xl2SubjectTreeIdMismatch { claimed: String, derived: String }
+  | Xl2SubjectMemberUnreadable { path: String, reason: String }
+
 type Xl2RehearsalRun
-  = Xl2RehearsalBaseUnobserved { cause: Step0SubjectPinRefusal }
+  = Xl2RehearsalBaseUnobserved { cause: Xl2BaseUnobservedCause }
   | Xl2RehearsalContextRefused { source_commit: GitObjectId, diagnostics: NonEmptyDiagnostics }
   | Xl2RehearsalObserved {
       source_commit: GitObjectId
@@ -357,17 +358,6 @@ fn xl2_completeness(unobserved: List<Xl2UnobservedScope>) -> Xl2CensusCompletene
   }
 }
 
-fn xl2_member_source(member: Step0SubjectMember) -> FixtureSource {
-  FixtureSource { path: member.path, content: member.content }
-}
-
-// THE COMPOSITION OVER A SUPPLIED EXACT-BASE VECTOR. The vector's sole constructor is the
-// object-store collector, so what arrives here is a pinned tree, never an authored population.
-fn xl2_rehearse_vector(vector: Step0SubjectVector) -> Xl2RehearsalRun {
-  let strip = xl2_strip_members(sources: fold(vector.members, init: [], f: fn(acc, m) { acc |> list_push(xl2_member_source(member: m)) }))
-  xl2_rehearse_stripped(source_commit: vector.source_commit, source_tree: vector.source_tree, supplied: strip)
-}
-
 fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, supplied: Xl2Strip) -> Xl2RehearsalRun {
   let strip = xl2_admit_unique_paths(strip: supplied)
   let ingest = xl2_stripped_ingest(members: strip.members)
@@ -385,29 +375,5 @@ fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, s
         excluded: xl2_excluded_populations
       }
     }
-  }
-}
-
-// THE ENTRY: the exact base is pinned by the ref the collector resolves, in the same dispatch.
-// DECLARED FRONTIER, NOT EXECUTED IN THIS CHANGE. Consumer: the XL-2 rehearsal run whose receipt is
-// the RehearsalInstrumentDelivered StageDeliveryReceipt read by gunbc.compiler_frontend_program_status
-// xl2_stage_standing. Its first trigger, P1 and P4 delivered (gunbc#12108, gunbc#12116), HAS FIRED.
-// Execution is deferred by the namespace-cut manager's ruling of 2026-09-23 to ONE further
-// state: gunbc.compiler_frontend_program_status xl2_prerequisites_outstanding empty. Until then every
-// run can only answer refusals already known, so a whole-tree run today buys nothing.
-// The run itself is a one-shot `gunbc run --function` on a host with an enforceable cgroup limit
-// (never a shared session container; the whole-tree resolve is tens of GB), receipt on the delivering
-// change. Until then the stages below the collector execute in test.claim.namespace_xl2_rehearsal_census,
-// and the collector's live half carries the route deficit its own module states.
-// NO INHABITANCE CLAIM OVER A PINNED FIXTURE, AND WHY: the collector's subject IS the repository's
-// tree at the ref, and gunbc.namespace_cut.namespace_step0_subject_collector states that a mocked revision would let
-// a collector reading the WRONG tree pass -- the one defect it exists to make unrepresentable. So
-// the collector-to-census link executes for the first time in the one-shot run above, whose trigger
-// is the same state, and that run's receipt is the link's executing evidence (DESIGN section 3c: a
-// declared frontier, consumer and trigger named).
-fn run_xl2_rehearsal_at(ref: String) -> Xl2RehearsalRun {
-  match collect_step0_subject_vector_at(ref: ref) {
-    Step0SubjectCollectionRefused { cause: cause } => Xl2RehearsalBaseUnobserved { cause: cause }
-    Step0SubjectCollected { vector: vector } => xl2_rehearse_vector(vector: vector)
   }
 }
