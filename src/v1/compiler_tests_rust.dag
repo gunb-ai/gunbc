@@ -2396,11 +2396,14 @@ fn ct_std_nat_realization_agreement_test() -> String {
 // THE EMITTED NAT OPERATORS REFUSE OVERFLOW, AS THE INTERPRETER DOES. std.nat Nat is declared
 // inductively and grounded to the kernel integer, so its type reference has no checkpoint of its
 // own; v1.compiler.emit_rust expr_realizes_as_refusing_int must still route its operators through
-// the refusing helpers. The subject is the seed's own emitted std.nat nat_mul, a Nat product
-// through v1_rt::int_mul -- still in the emit set without a phantom std.effects import of
-// realization_schedule. The discriminator is the refusal TEXT, not the panic: this crate builds
-// with overflow-checks on, so a raw `*` also panics, with rustc's text; the emitted crate's
-// release profile wraps instead. Positive control: an in-range product is the integer it denotes.
+// the refusing helpers. The subject is the seed's own emitted std.nat nat_mul (`a * b` in
+// dag/std/nat.dag, `v1_rt::int_mul(a.clone(), b.clone())` in std_nat.rs) -- still in the emit
+// set without a phantom std.effects import of realization_schedule. The operands are nat_mul's
+// parameters, not a nested call result: the old runnable_batch_clamp_ms subject (`second_count
+// (overhead) * 1000`) left the emit set with that module. The enrolled RED is the helper's
+// refusal TEXT, not the panic and not that retired infix shape: this crate builds with
+// overflow-checks on, so a raw `*` also panics, with rustc's text; the emitted crate's release
+// profile wraps instead. Positive control: an in-range product is the integer it denotes.
 fn ct_std_nat_operators_refuse_overflow_test() -> String {
   concat(
     "    #[test]\n",
