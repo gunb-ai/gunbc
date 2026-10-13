@@ -3,9 +3,9 @@ module gunbc.systemctl_is_active_read
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, List, Bool }
-import gunbc.host_effect { HostEffectTransport }
+import gunbc.host.host_effect { HostEffectTransport }
 import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
-import gunbc.host_operation_exec {
+import gunbc.host.host_operation_exec {
   HostOperationObserved,
   HostOperationRefused,
   host_operation_exec,
@@ -28,7 +28,7 @@ fn unit_is_active_capture_from_result(state: String, active: Bool) -> UnitIsActi
 
 // THE READ SAYS WHERE AND WHAT, NEVER HOW. The four transport arms that used to live here -- local
 // call, ssh argv, fleet argv, emit refusal -- are gone: they were this file's copy of a dispatch that
-// belongs in the realization layer, and gunbc.host_operation_exec now owns it once for every seam.
+// belongs in the realization layer, and gunbc.host.host_operation_exec now owns it once for every seam.
 // What remains is this file's real content: the decoder that turns one observation into a typed capture.
 fn systemctl_is_active_read(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitIsActiveCapture {
   match host_operation_exec(transport: transport, operation: SystemctlIsActive { unit: unit }) {
@@ -40,7 +40,7 @@ fn systemctl_is_active_read(transport: HostEffectTransport, unit: NonEmptyStr) -
 }
 
 // THE OPERATION'S IDENTITY IS NO LONGER SPELLED HERE. The path/service/operation rows and the argv
-// materializer that read them moved to gunbc.host_operation_exec, where the identity is DERIVED from
+// materializer that read them moved to gunbc.host.host_operation_exec, where the identity is DERIVED from
 // the operation rather than stored beside it -- keeping a copy here would have left the same
 // operation named in two files, the section 3 fork this cut exists to close. This witness
 // materializes through the same derivation the read executes, so it cannot pass against an identity

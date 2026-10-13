@@ -114,10 +114,6 @@ data sym_lit_4_name: String = "4"
 data sym_lit_1_name: String = "1"
 data sym_add: Symbol = ^add
 
-fn path_is_test_dag(path: String) -> Bool {
-  string_contains(s: path, pattern: "_test.dag")
-}
-
 fn pos_edge(target: Node) -> Edge {
   Edge { label: Positional, target: target }
 }
@@ -541,7 +537,7 @@ fn dual_rep_test_file_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
 }
 
 fn decl_belongs_to_dual_rep_module_ref(decl: FnArrowDecl, fact: DualRepModuleRef) -> Bool {
-  path_is_test_dag(path: fact.path)
+  decl.test_marked
     && qualified_name_in_module(qname: decl.qualified_name, module: fact.module)
 }
 
@@ -608,19 +604,15 @@ fn dual_rep_module_scans_from_decls(
     xs: modules,
     empty: empty_dual_rep_module_scans,
     cons: fn(acc, fact) {
-      if path_is_test_dag(path: fact.path) {
-        let scan = dual_rep_module_scan_for_fact(
-          fact: fact,
-          decls: decls,
-          data_init_decls: data_init_decls
-        )
-        if is_empty(xs: scan.fns) {
-          acc
-        } else {
-          list_snoc_item(xs: acc, item: scan)
-        }
-      } else {
+      let scan = dual_rep_module_scan_for_fact(
+        fact: fact,
+        decls: decls,
+        data_init_decls: data_init_decls
+      )
+      if is_empty(xs: scan.fns) {
         acc
+      } else {
+        list_snoc_item(xs: acc, item: scan)
       }
     }
   )
@@ -639,7 +631,7 @@ fn dual_rep_module_scans_from_fn_index(
 
 fn synthetic_same_symbol_scan() -> DualRepModuleScan {
   DualRepModuleScan {
-    path: "synthetic/same_symbol_test.dag",
+    path: "synthetic/same_symbol.dag",
     module: "synthetic.same_symbol_test",
     data_inits: empty_dual_rep_data_inits,
     fns: [
@@ -654,7 +646,7 @@ fn synthetic_same_symbol_scan() -> DualRepModuleScan {
 
 fn synthetic_literal_mirror_scan() -> DualRepModuleScan {
   DualRepModuleScan {
-    path: "synthetic/literal_mirror_test.dag",
+    path: "synthetic/literal_mirror.dag",
     module: "synthetic.literal_mirror_test",
     data_inits: [
       DualRepDataInit {
@@ -674,7 +666,7 @@ fn synthetic_literal_mirror_scan() -> DualRepModuleScan {
 
 fn synthetic_bool_literal_mirror_scan() -> DualRepModuleScan {
   DualRepModuleScan {
-    path: "synthetic/bool_literal_mirror_test.dag",
+    path: "synthetic/bool_literal_mirror.dag",
     module: "synthetic.bool_literal_mirror_test",
     data_inits: [
       DualRepDataInit {
@@ -697,7 +689,7 @@ fn synthetic_bool_literal_mirror_scan() -> DualRepModuleScan {
 
 fn synthetic_independent_oracle_scan() -> DualRepModuleScan {
   DualRepModuleScan {
-    path: "synthetic/oracle_test.dag",
+    path: "synthetic/oracle.dag",
     module: "synthetic.oracle_test",
     data_inits: empty_dual_rep_data_inits,
     fns: [
@@ -715,7 +707,7 @@ fn synthetic_independent_oracle_scan() -> DualRepModuleScan {
 
 fn synthetic_body_mirror_scan() -> DualRepModuleScan {
   DualRepModuleScan {
-    path: "synthetic/body_mirror_test.dag",
+    path: "synthetic/body_mirror.dag",
     module: "synthetic.body_mirror_test",
     data_inits: empty_dual_rep_data_inits,
     fns: [
@@ -743,7 +735,7 @@ fn synthetic_body_mirror_scan() -> DualRepModuleScan {
 
 fn synthetic_distinct_symbol_scan() -> DualRepModuleScan {
   DualRepModuleScan {
-    path: "synthetic/distinct_test.dag",
+    path: "synthetic/distinct.dag",
     module: "synthetic.distinct_test",
     data_inits: empty_dual_rep_data_inits,
     fns: [
@@ -758,7 +750,7 @@ fn synthetic_distinct_symbol_scan() -> DualRepModuleScan {
 
 fn parse_path_helper_tautology_scan() -> DualRepModuleScan {
   DualRepModuleScan {
-    path: "synthetic/parse_path_helper_tautology_test.dag",
+    path: "synthetic/parse_path_helper_tautology.dag",
     module: "synthetic.parse_path_helper_tautology_test",
     data_inits: empty_dual_rep_data_inits,
     fns: [

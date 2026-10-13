@@ -1,4 +1,4 @@
-module gunbc.fleet_plan_artifact_location
+module gunbc.fleet.fleet_plan_artifact_location
 import std.types { String }
 
 data fleet_converge_plan_artifact_dir: String = "/tmp/fleet-converge-plan"

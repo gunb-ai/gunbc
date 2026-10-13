@@ -1,16 +1,16 @@
-module gunbc.build_cache_provision_verdict
+module gunbc.build_cache.build_cache_provision_verdict
 
 import std.types { String, NonEmptyStr, Bool }
 import std.cache_identity { CacheInterfaceId }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
-import gunbc.host_build_cache_catalog_gate {
+import gunbc.host.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
   ProvisionBuildCacheCatalogRealizable,
   ProvisionBuildCacheCatalogRefused,
 }
-import gunbc.host_layout { gunbc_managed_compile_pool_slice }
-import gunbc.build_cache_instance {
+import gunbc.host.host_layout { gunbc_managed_compile_pool_slice }
+import gunbc.build_cache.build_cache_instance {
   RunnerSlotLifecycle,
   DesiredRunnerSlot,
   BuildCacheServerPlacement,
@@ -27,21 +27,21 @@ data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = Si
 
 // THE ARMS ARE BuildCacheProvisionConverged / BuildCacheProvisionRefused BECAUSE THE BARE SPELLING
 // WAS A HOMONYM, and it refused the moment the fold entered a closure that already held the other
-// one. gunbc.host_codex_runtime_provision_verdict's CodexRuntimeProvisionVerdict declares
+// one. gunbc.host.host_codex_runtime_provision_verdict's CodexRuntimeProvisionVerdict declares
 // ProvisionConverged and ProvisionRefused; this fold declared the same two names over a different
 // type, which was invisible while nothing imported both and became four refusals in
-// gunbc.host_effect_realize the moment the wiring made it import both. Neither pair is generic
+// gunbc.host.host_effect_realize the moment the wiring made it import both. Neither pair is generic
 // across the two verdicts -- one carries an executable and a version line, the other a catalog id
 // and a stats line -- so the shared spelling was never carrying a shared concept (DESIGN section
-// 3). gunbc.build_cache_ensure build_cache_ensure_is_converged carries the same repair for the same
+// 3). gunbc.build_cache.build_cache_ensure build_cache_ensure_is_converged carries the same repair for the same
 // reason and records the larger defect it exposes: reference binding that changes as a function of
 // which unrelated modules a build happens to load. Renaming the declarations removes the class
 // where disambiguating each reference would only treat the occurrence.
 
-// THE FOLD MOVED HERE OUT OF gunbc.host_build_cache_provision, AND THE REASON IS ACYCLICITY RATHER
+// THE FOLD MOVED HERE OUT OF gunbc.host.host_build_cache_provision, AND THE REASON IS ACYCLICITY RATHER
 // THAN TASTE (2026-08-21). Wiring the fold as the provisioning postcondition means
-// gunbc.host_effect_realize must call it; host_build_cache_provision imports
-// gunbc.host_toolchain_ensure, which imports host_effect_realize, so the import would have closed a
+// gunbc.host.host_effect_realize must call it; host_build_cache_provision imports
+// gunbc.host.host_toolchain_ensure, which imports host_effect_realize, so the import would have closed a
 // cycle -- and acyclicity is the import graph's one structural law (DESIGN section 3). Splitting
 // the fold from the effect-constructor module removes the cycle without weakening either: what
 // stayed behind is the effect construction and the legacy provision entry point, and what came here
@@ -65,7 +65,7 @@ data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = Si
 // DaemonPathShadowed observation), not decided by the provisioning shell. Its LIVE observation is
 // STAGED, not emitted: per the shell→dag census this module's script side is an A5 `decompose` row
 // that must not grow its emitted shell surface, so the `command -v sccache` resolve waits for the
-// typed-argv dissolve-on (gunbc.host_effect_realize build_cache_provision_shell_script_dissolution_trigger) rather than landing as hand-shell now (review 42343). The model
+// typed-argv dissolve-on (gunbc.host.host_effect_realize build_cache_provision_shell_script_dissolution_trigger) rather than landing as hand-shell now (review 42343). The model
 // carries the state and its refusal today; only the live producer is deferred.
 
 // A stats read-back CANNOT see whether the daemon it just talked to is supervised — and this is not
@@ -107,7 +107,7 @@ data build_cache_provision_verdict_scope_disposition: ConstructionMechanism = Si
 // conflation, and it fabricates a plausible BuildCacheProvisionConverged over a host whose compiles
 // are being throttled and killed.
 
-// BuildCacheServerPlacement is IMPORTED from gunbc.build_cache_instance, not declared here. It used
+// BuildCacheServerPlacement is IMPORTED from gunbc.build_cache.build_cache_instance, not declared here. It used
 // to be declared in this module with three arms (ServerUnitOwned | ServerLazySpawned |
 // ServerPlacementUnknown). It moved because placement is derived from an observation of a DEPLOYED
 // INSTANCE and this fold is a consumer of it; leaving a copy here would be two definitions of

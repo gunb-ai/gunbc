@@ -23,7 +23,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //
 // THE SLICE HALF OF THIS FILING IS DISCHARGED, AND WHAT REPLACED IT IS NOT WHAT THE ROW PREDICTED.
 //
-// AS FILED, the two slice directives took NonEmptyStr and gunbc.build_cache_unit
+// AS FILED, the two slice directives took NonEmptyStr and gunbc.build_cache.build_cache_unit
 // compile_pool_slice_unit_file spent its ByteSize at exactly two lines --
 // to_string(byte_size_count(b: sized)) -- so the magnitude was modeled all the way down to the
 // constructor argument and flattened there. Both of those lines are gone: the mint takes the
@@ -58,7 +58,7 @@ data systemd_directive_value_grain_scope: ConstructionMechanism = SingleAuthorit
 // directive type holding the variable NAME and its VALUE as two fields would make the name a thing
 // the tree can be asked about; fused, the name is a substring nobody can join on.
 //
-// WHAT THE FUSION IS HIDING, MEASURED ON THIS TREE RATHER THAN ASSERTED. gunbc.build_cache_unit
+// WHAT THE FUSION IS HIDING, MEASURED ON THIS TREE RATHER THAN ASSERTED. gunbc.build_cache.build_cache_unit
 // constructs eight Environment directives for one upstream tool's variables. THREE of them route
 // through extdeps.cache.sccache functions built from modeled name rows -- sccache_start_server_env_var,
 // sccache_no_daemon_env_var, sccache_idle_timeout_env_var. The other FIVE spell the upstream
@@ -91,7 +91,7 @@ type BuildCacheEnvironmentVariable {
 // regression.
 //
 // RUNG, DECLARED (DESIGN section 4b): MITIGATABLE. This roster is hand-authored, so a ninth
-// Environment directive added to gunbc.build_cache_unit compiles clean and is simply absent here --
+// Environment directive added to gunbc.build_cache.build_cache_unit compiles clean and is simply absent here --
 // the same enumeration limit gunbc.systemd_property_directive_overlap declares over its own member
 // list, and for the same reason: a `.dag` source module cannot enumerate the constructor sites of a
 // directive type. NEXT-RUNG TRIGGER is also the same: a variant- or construction-site enumeration

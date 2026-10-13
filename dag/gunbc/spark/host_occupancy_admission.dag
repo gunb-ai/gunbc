@@ -4,7 +4,7 @@ import gunbc.spark.deliberate_unit_start { deliberate_unit_start_leg }
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.measure { Kibibyte }
 import product.host_identity { HostIdentity }
-import gunbc.host_operation_exec { SystemctlStop, SystemctlStart }
+import gunbc.host.host_operation_exec { SystemctlStop, SystemctlStart }
 import gunbc.compute.host_occupancy {
   HostOccupant, ServingUnitActive, GpuComputeProcess,
   HostOccupancyReading, HostOccupancyRead, HostOccupancyUnread,

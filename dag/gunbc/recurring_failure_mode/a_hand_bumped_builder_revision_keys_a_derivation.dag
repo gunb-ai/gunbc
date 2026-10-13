@@ -11,7 +11,7 @@ data a_hand_bumped_builder_revision_keys_a_derivation: RecurringFailureMode = Re
 
     "HARM: silent. Nothing refuses and nothing is mislabelled at the image level -- the bytes are a real build of those inputs -- but they are not the build the current builder would produce, so a builder fix (for example to the boot structure the replay preserves) does not reach an image that was already recorded. DESIGN section 4b places silent wrongness outside the ladder.",
 
-    "SPECIMEN, found in review 68615 on gunbc#11731: gunbc.seeded_install_media_policy seeded_install_media_builder_revision keys extdeps.provisioning.ubuntu_seeded_install_media seeded_install_media_build_key, and the row's own annotation stated that a missed bump is caught by nothing downstream.",
+    "SPECIMEN, found in review 68615 on gunbc#11731: gunbc.provisioning.seeded_install_media_policy seeded_install_media_builder_revision keys extdeps.provisioning.ubuntu_seeded_install_media seeded_install_media_build_key, and the row's own annotation stated that a missed bump is caught by nothing downstream.",
 
     "RUNG FOUND AT: below mitigation -- review diligence only. The class is DECIDABLE and GROUNDED: the builder is a set of declarations whose Node trees already carry v2.std.node content_hash, so the revision is derivable rather than authored. ATTAINABLE CEILING: structurally impossible -- no authored revision field exists; the key's builder component IS the content hash of the builder's declaration closure.",
 

@@ -1,4 +1,4 @@
-module gunbc.host_swap_backing
+module gunbc.host.host_swap_backing
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.measure { ByteSize, byte_size, byte_size_count }
@@ -6,16 +6,16 @@ import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, I
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.tools.free { SwapStats }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.host_phase_status { observation_verdict_eq }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.host.host_phase_status { observation_verdict_eq }
 import gunbc.readback_independence { readback_evidence_verdict, proc_swaps_read_probe }
 import product.host_identity { HostIdentity }
 
 // THE host swap-BACKING axis, and it exists because the corpus already converges a swap CAP over a
-// resource whose existence nothing models. gunbc.runner_slot_allocation declares memory_swap_max =
-// 34359738368 (32 GiB) per runner slot; gunbc.host_converge drives it onto every host as
+// resource whose existence nothing models. gunbc.runner.runner_slot_allocation declares memory_swap_max =
+// 34359738368 (32 GiB) per runner slot; gunbc.host.host_converge drives it onto every host as
 // MemorySwapMax through the per-slot drop-in at gunbc_runner_per_slot_swap_dropin_path, and
-// gunbc.runner_unit_live_read reads it back and reports Converged when the cgroup property matches.
+// gunbc.runner.runner_unit_live_read reads it back and reports Converged when the cgroup property matches.
 // Every one of those steps is correct in isolation and the composition still proves nothing,
 // because MemorySwapMax is a CEILING: systemd accepts it, reports it, and matches it byte-for-byte
 // on a host with zero swap devices. The knob converges green over a resource that does not exist.
@@ -50,7 +50,7 @@ fn host_swap_backing_requirement() -> SwapBackingRequirement {
     SwapBackingRequired {
       min_total: cap,
       requiring_declaration: DeclarationRef {
-        module_path: "gunbc.runner_slot_desired",
+        module_path: "gunbc.runner.runner_slot_desired",
         decl_name: "gunbc_runner_slot_desired",
         field: WholeDeclaration,
       },
@@ -101,7 +101,7 @@ fn host_swap_backing_verdict(
 }
 
 // THE load-bearing conjunct of this module, and the reason it is not a free-floating swap model: it
-// changes what an EXISTING converged knob is allowed to claim. gunbc.runner_unit_live_read already
+// changes what an EXISTING converged knob is allowed to claim. gunbc.runner.runner_unit_live_read already
 // produces a verdict for the per-slot MemorySwapMax cap. That verdict is a fact about the cgroup
 // property and is imported here unchanged; what this fold adds is the qualification that a cap
 // verdict carries information only when its backing is observed Converged. Every other backing
@@ -175,7 +175,7 @@ fn swap_cap_verdict_gate_accepts(
 data host_swap_backing_observed_producer_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }

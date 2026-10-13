@@ -95,12 +95,12 @@ import gunbc.merge_admission {
 // could read it. Across the forty most recently merged pull requests, six had no `witnesses` run
 // that completed successfully on their own head before `merged_at`.
 //
-// THE RULESET IS CONVERGED AND THAT IS THE POINT. `gunbc.repo_ruleset` `desired_ruleset_rules`
+// THE RULESET IS CONVERGED AND THAT IS THE POINT. `gunbc.repo.repo_ruleset` `desired_ruleset_rules`
 // reads back from ruleset 16178731 with no divergence at all -- active, default-branch-scoped, one
 // required context, no bypass visible to the reading token. So this is not drift to reconcile: the
 // DESIRED state admits the merge, because GitHub's required-status-checks rule decides on the
 // check runs that have REPORTED at the instant of the merge call and a context that has not
-// reported is `expected` rather than `failing`. `gunbc.repo_ruleset` `observe_repo_ruleset` already
+// reported is `expected` rather than `failing`. `gunbc.repo.repo_ruleset` `observe_repo_ruleset` already
 // refuses exactly this narrow one level down -- a ruleset that could not be read is not a ruleset
 // with no rules -- and the same narrow is open one level up, where an unreported required context
 // is not a required context that passed.
@@ -160,7 +160,7 @@ import gunbc.merge_admission {
 //
 // THE REMEDY IS THE ONE ALREADY NAMED AND IT IS NOT A NEW GATE. A merge queue closes this by
 // construction -- nothing merges without the queue's own run on the queued ref -- and it is the
-// same construction `gunbc.repo_ruleset` `desired_strict_required_status_checks_policy` already
+// same construction `gunbc.repo.repo_ruleset` `desired_strict_required_status_checks_policy` already
 // records as the reason strict is false. Measured today: zero `merge_group` runs exist for
 // `witnesses.yml`, so the queue is not configured.
 //

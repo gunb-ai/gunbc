@@ -7,7 +7,7 @@ import std.optional { Present }
 import std.list { list_member }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, Unclaimed }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.fleet_host_identity { operator_host_mtjade1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire }
 import gunbc.auth.authorization_pattern_selection {
   StandingDestructiveAuthorization, StandingRulingInterlock,
@@ -114,7 +114,7 @@ fn standing_grant_scope_matches(g: StandingOperatorGrant, scope: StandingGrantSc
 // secret names: operator sign-off msg_f03558d1.
 // THE BMCSECURE ARM PROMOTES ONLY THIS GRAIN. A supplied InterlockPending with any other
 // obligation, or InterlockedBy a foreign hold, stays as written so grant_discharges still
-// refuses those mutants (test.claim.machine_intake_arrival_converge_witness
+// refuses those mutants (test.claim.machine_intake.machine_intake_arrival_converge_witness
 // w_bmc_secure_apply_pending_interlock_refuses_at_discharge).
 data mtjade1_grant_grain_pending_obligation: NonEmptyStr = "grant grain names no hold; landed arms name holds via standing_grant_arm_interlock; J6 boot remains pending until managed_host_boot" as NonEmptyStr
 
@@ -137,7 +137,7 @@ fn standing_grant_arm_interlock(g: StandingOperatorGrant, e: StandingGrantEffect
     StandingArmLaunch => g.ruling.interlock
     StandingHostEffectRecover => g.ruling.interlock
     StandingJadeArrivalArchive => InterlockedBy {
-      hold: decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+      hold: decl_ref(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
     }
     StandingJadeFirmwareQualification => InterlockPending {
       obligation: "firmware qualification writer is not in converge_mtjade1_arrival_prefix; discharge only when that writer runs under ArrivalArchiveSlotHeld from arrival_archive_slot_acquire" as NonEmptyStr,
@@ -147,7 +147,7 @@ fn standing_grant_arm_interlock(g: StandingOperatorGrant, e: StandingGrantEffect
         InterlockPending { obligation: o } =>
           if (o as String) == (mtjade1_grant_grain_pending_obligation as String) {
             InterlockedBy {
-              hold: decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply"),
+              hold: decl_ref(module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "admit_rotation_apply"),
             }
           } else {
             InterlockPending { obligation: o }

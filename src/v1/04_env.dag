@@ -1238,7 +1238,7 @@ fn declaration_substitution_basis(n: Node, env: TypeEnv, generic_names: List<Str
 // Armed only by compile_dag_diagnostic_census for the nested synthetic compile (N1a). Default false
 // = production fail-open. Zero production gates consult this. No .dag body can flip it.
 
-// MEASUREMENT-ONLY — see gunbc.type_ref_hit_ne_bind_measure
+// MEASUREMENT-ONLY — see gunbc.type_ref_hit_ne_bind_measure.authority
 // type_ref_measure_binding_authority_note. Two arms: bare exact import/local key; qualified
 // self/ancestor containment + symbol_index hit. No same-leaf×span OR-arm.
 
@@ -1292,7 +1292,7 @@ fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitV
 // this module owns unit_variant_index; it moved down from v1.compiler.infer_resolve so the measure could
 // consume it without an import cycle.
 //
-// v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing; instance
+// v1 PURPOSE-TEST ADMISSION (gunbc.v1.v1_maintenance_standing v1_seed_standing; instance
 // DefectRepairDiagnosticsMayMove), recorded beside the change it admits (gunbc#12132). It serves the v2
 // self-host program because two routes of this compiler answered one question oppositely -- the
 // measured compile refused leaves the unmeasured resolve admitted -- and the census that arms the
@@ -1960,7 +1960,7 @@ fn text_representation_by_identity_bounded(n: Node, env: TypeEnv, fuel: Int, vis
 // `T where p` has T's representation -- a refinement narrows which values inhabit a type, it does
 // not change how they are represented. So std.types NonEmptyStr (`String where non_empty`) is host
 // text exactly as String is, and a NonEmptyStr at a code-point formal unfolds or refuses exactly
-// like a String would (test.claim.text_boundary_identity_wall_witness_test's refinement rows).
+// like a String would (test.claim.text_boundary_identity_wall_witness's refinement rows).
 fn is_where_refinement_node(n: Node) -> Bool {
   n.connective == Conj && n.type_annotation != none && (n.children |> count) == 1
 }

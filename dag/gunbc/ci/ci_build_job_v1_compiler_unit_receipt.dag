@@ -1,4 +1,4 @@
-module gunbc.ci_build_job_v1_compiler_unit_receipt
+module gunbc.ci.ci_build_job_v1_compiler_unit_receipt
 
 import std.types { String }
 

@@ -804,7 +804,7 @@ fn observation_no_op_explanation(n: SelectionNoOp) -> NonEmptyStr {
 data observation_heartbeat_period: Millisecond = millisecond(count: 60000)
 
 // The heartbeat cadence is a measured fact of the running system, not a preference: the floor
-// already samples and prints once per minute, and test.claim.observation_lockstep_witness_test
+// already samples and prints once per minute, and test.claim.observation_lockstep_witness
 // reads that period out of the live seed rather than trusting this row. It is stated here because
 // the dwell threshold is derived from it. THE SEED THIS ROW IS GROUNDED IN MOVED, and the sentence
 // naming it was false for as long as nobody looked: the period used to be read out of the floor
@@ -983,7 +983,7 @@ data observation_laws: List<ObservationLaw> = [
 ]
 
 data observation_outcome_predicate_contract: Disposition = Terminal {
-  reason: "Structural coproduct readers over ObservationOutcome and ObservationEventClass (observation_outcome_is_anomaly, observation_outcome_class, observation_event_class, observation_class_density and the density projections) — closed by the declared outcome and class variants, not interim scaffolds. Terminal because the sums are closed by construction and the class roster is censused: a new variant cannot be added without the totality witness naming it. Discriminating corpus: dag/test/claim/observation_model_witness_test.dag, which reds when a class loses its presentation, when Refused and Failed collapse onto one glyph, and when the density authority disagrees with what the presentation projects."
+  reason: "Structural coproduct readers over ObservationOutcome and ObservationEventClass (observation_outcome_is_anomaly, observation_outcome_class, observation_event_class, observation_class_density and the density projections) — closed by the declared outcome and class variants, not interim scaffolds. Terminal because the sums are closed by construction and the class roster is censused: a new variant cannot be added without the totality witness naming it. Discriminating corpus: dag/test/claim/observation_model_witness.dag, which reds when a class loses its presentation, when Refused and Failed collapse onto one glyph, and when the density authority disagrees with what the presentation projects."
 }
 
 data observation_subject_predicate_contract: Disposition = Terminal {

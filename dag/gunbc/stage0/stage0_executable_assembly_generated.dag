@@ -1,4 +1,4 @@
-module gunbc.stage0_executable_assembly_generated
+module gunbc.stage0.stage0_executable_assembly_generated
 
 import std.types { List, String }
 

@@ -1,8 +1,8 @@
-module gunbc.v1_interpreter_opaque_host_call
+module gunbc.v1.v1_interpreter_opaque_host_call
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.v1_interpreter_primitive_surface {
+import gunbc.v1.v1_interpreter_primitive_surface {
   FreeCall,
   InterpreterPrimitiveDispatchArm,
   v1_interpreter_primitive_arms,
@@ -44,7 +44,7 @@ import gunbc.v1_interpreter_primitive_surface {
 // separate finding with its own survey; asserting it here without that survey would repeat, at a
 // wider grain, exactly the unfounded exhaustiveness this module exists to retire.
 data opaque_host_call_criterion_residue_dissolves_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: this module's criterion widens from `reaches a nested .dag compile` to `reaches unbounded opaque host work` once every free_call arm carries a modeled preemption-reachability fact on gunbc.v1_interpreter_primitive_surface InterpreterPrimitiveDispatchArm, derived from the arm's realization rather than authored per roster. Until that field exists the wider population cannot be DERIVED, only re-authored, and a hand roster over a wider criterion is a weaker claim than a hand roster over a narrow one." as NonEmptyStr,
+  description: "dissolve-on: this module's criterion widens from `reaches a nested .dag compile` to `reaches unbounded opaque host work` once every free_call arm carries a modeled preemption-reachability fact on gunbc.v1.v1_interpreter_primitive_surface InterpreterPrimitiveDispatchArm, derived from the arm's realization rather than authored per roster. Until that field exists the wider population cannot be DERIVED, only re-authored, and a hand roster over a wider criterion is a weaker claim than a hand roster over a narrow one." as NonEmptyStr,
 )
 
 // ONE ROW PER ARM, CARRYING THE REALIZATION THAT MAKES IT A MEMBER. `nested_compile_entry` is the
@@ -101,7 +101,7 @@ fn roster_arms_for_identity(identity: NonEmptyStr) -> List<InterpreterPrimitiveD
 }
 
 // THE GROUNDING JOIN, AND IT IS THE WHOLE REASON THIS MODULE SITS BESIDE THE DISPATCH ROSTER
-// RATHER THAN BESIDE THE FLOOR. `gunbc.v1_interpreter_primitive_surface` is the single authority
+// RATHER THAN BESIDE THE FLOOR. `gunbc.v1.v1_interpreter_primitive_surface` is the single authority
 // for the seed's dispatch surface and is drift-gated against the generated lookup tables in
 // `src/v1/stage0/src/v1_interpreter_dispatch_generated.rs`. So an arm identity resolved against
 // that roster is joined, transitively, to the arm the seed actually dispatches -- whereas a bare
@@ -138,7 +138,7 @@ fn nested_compile_reaches_not_free_call() -> List<NonEmptyStr> {
 // column constant, and `EvalBuiltinInnerSite` is a closed coproduct member the emitter already
 // carries.
 //
-// NOTHING FURTHER IS OWED DOWNSTREAM OF THIS. `gunbc.v1_interpreter_dispatch_emit` already groups
+// NOTHING FURTHER IS OWED DOWNSTREAM OF THIS. `gunbc.v1.v1_interpreter_dispatch_emit` already groups
 // by exact dispatch site and REFUSES generation when two arm identities share one
 // `authored_spelling` at that site, with a planted collision control; the primitive-roster
 // acceptance contract independently asserts the FreeCall spelling shadows are empty. Exact-site

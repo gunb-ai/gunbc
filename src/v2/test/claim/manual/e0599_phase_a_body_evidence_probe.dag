@@ -1,4 +1,4 @@
-module v2.test.manual.e0599_phase_a_body_evidence_probe
+module v2.test.claim.manual.e0599_phase_a_body_evidence_probe
 
 data e0599pa_anchor: Symbol = ^e0599pa_anchor
 

@@ -1,4 +1,4 @@
-module gunbc.compiler_gate_workflow
+module gunbc.witness.compiler_gate_workflow
 
 // THE REQUIRED CONTEXT IS ONE JOB (operator ruling 2026-10-09, the v1 withdrawal): "v1 is
 // effectively bankrupt due to memory instability - i want to go back to pure v2 native compiler
@@ -44,7 +44,7 @@ module gunbc.compiler_gate_workflow
 // context of that name and it lives outside the repository, so the job keeps the id; what a
 // success entitles a consumer to conclude changed materially, which is the case
 // gunbc.required_ci_contract_epoch says to bump for. The epoch moved in the change that made this
-// cut, so gunbc.fleet_revision_acceptance cannot admit a revision judged under the old contract as
+// cut, so gunbc.fleet.fleet_revision_acceptance cannot admit a revision judged under the old contract as
 // though it were judged under this one, nor the reverse.
 //
 // THE REQUIRED JOB RUNS ON THE FLEET (operator ruling 2026-09-28: no lane the required context
@@ -76,7 +76,7 @@ import gunbc.action_use_admission {
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused,
   workflow_action_uses_refusal_reason
 }
-import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
+import gunbc.roadmap.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep, StepCapabilityRole, capability_neutral, provides_only, consumes_only,
   workflow_job_capability_closure, capability_closure_is_closed
@@ -85,20 +85,20 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
-import gunbc.witness_floor_workflow {
+import gunbc.witness.witness_floor_workflow {
   witness_floor_workflow_name, witness_floor_triggers, witness_floor_concurrency_group,
   concurrency_of_policy, WitnessFloorConcurrencyPolicy, ReplaceExistingPending,
   SupersedeRunningForEvent, witness_floor_toolchain_step, witness_floor_build_step,
   witness_toolchain_homes_isolated_guard_step, malloc_arena_max_env_key, malloc_arena_max_value,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
-import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.fleet_workflow_steps { ci_cache_cargo_step_under }
-import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
+import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.fleet.fleet_workflow_steps { ci_cache_cargo_step_under }
+import gunbc.ci.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 // The fork clause is heal's authorship; the required job inherited the work it guarded.
 import gunbc.heal_workflow { heal_same_repository_clause }
 import extdeps.exec.command { shell_command_render }
-import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.repo.repo_self_build { repo_self_build_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { ContextAccess, Github, Expression }
 import extdeps.github.log_annotations { emit_line_shell }
@@ -116,17 +116,17 @@ import gunbc.emitted_subject_build_gate {
   native_step_memory_inputs,
   emit_build_memory_envelope_lines
 }
-import gunbc.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership }
 // THE EPOCH TRAVELS IN THESE BYTES. gunbc.required_ci_epoch_observation parses
 // GUNBC_REQUIRED_CI_CONTRACT_EPOCH structurally out of .github/workflows/witnesses.yml AT THE
 // TRIGGERING COMMIT -- the bytes GitHub executed -- so the judging side does not author what it
-// requires, and gunbc.fleet_revision_acceptance will not advance the fleet's desired state without
+// requires, and gunbc.fleet.fleet_revision_acceptance will not advance the fleet's desired state without
 // it. witnesses.yml lost the member at 85c1356300c and fleet-desired has refused every push to main
 // since (8 runs, 2026-09-19T23:50Z onward) with RequiredCiEpochAbsent, against 52 consecutive
 // greens before it.
 import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
 
-// THE HOSTED BUILD PRELUDE. No job of this workflow uses it: gunbc.instrument_dispatch_workflow builds
+// THE HOSTED BUILD PRELUDE. No job of this workflow uses it: gunbc.instruments.instrument_dispatch_workflow builds
 // `gunbc` on a hosted runner through it. It was the whole job of the `compiler` lane the 2026-09-28
 // ruling deleted, and emit-build left it on 2026-10-02 for the fleet head over the same bins.
 data compiler_gate_required_bins: List<String> = ["gunbc"]
@@ -288,11 +288,11 @@ data compiler_gate_emit_build_timeout_minutes: Int = 90
 // native product store and refuses one if bound: the job's claim is that THIS run emitted and
 // built the product, and a restored hit would make that claim false while the step stayed green.
 // AND THE MEMORY ENVELOPE INPUTS (gunbc.emitted_subject_build_gate native_step_memory_inputs,
-// decided by the fleet fact gunbc.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership): every
+// decided by the fleet fact gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership): every
 // step REQUIRES the fleet slot's envelope -- gunbc test refuses a run that no cgroup with a numeric
 // memory.max binds, prints the peak-and-swap receipt at exit and refuses a run that was OOM-killed
 // or charged swap -- and asks for the per-step bind at the trip only where a job owns a bounded
-// cgroup. The slot's own MemoryMax and MemorySwapMax=0 (gunbc.runner_slot_desired) are the fixed
+// cgroup. The slot's own MemoryMax and MemorySwapMax=0 (gunbc.runner.runner_slot_desired) are the fixed
 // hard maximum.
 fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
   RunStep {
@@ -386,9 +386,9 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // THE CARGO CACHE IS ORDINARY CARGO REUSE, which the same ruling leaves in place: the isolation step
 // wipes the job's CARGO_HOME on every run, so without it the seed build downloads the registry and
 // compiles every dependency cold (measured on run 37976254311: 3m38s for `Build the compiler`).
-// gunbc.fleet_workflow_steps ci_cache_cargo_step_under restores exactly the isolated home's
+// gunbc.fleet.fleet_workflow_steps ci_cache_cargo_step_under restores exactly the isolated home's
 // registry index, crate cache and git db plus the workspace `target/`, keyed by the lockfile hash
-// (gunbc.ci_workflow_expressions ci_cache_key_template), and saves them at job end. It caches the
+// (gunbc.ci.ci_workflow_expressions ci_cache_key_template), and saves them at job end. It caches the
 // SEED's build and its dependencies; the two emitted products are built in a private probe root
 // the cache never sees. The condition is Absent: this job builds the seed on every run.
 // THE LANE BUILDS `gunbc` IN ITS OWN CHECKOUT. `gunbc test` refuses a binary whose cargo dep-info it
@@ -440,7 +440,7 @@ fn compiler_gate_emit_build_capability_closure_holds() -> Bool {
 }
 
 // A WRAPPED COMMAND THAT CANNOT BE SERIALIZED RENDERS A REFUSAL MARKER WHERE ITS SCRIPT BELONGS
-// (gunbc.ci_failure_class wrap_command_with_floor_attempt_receipt), and a marker written into the
+// (gunbc.ci.ci_failure_class wrap_command_with_floor_attempt_receipt), and a marker written into the
 // workflow is a step that runs nothing under a name that says it ran. So the lane's wrapped commands
 // -- the seed build and one `gunbc test` per subject -- are an emission conjunct.
 fn compiler_gate_emit_build_scripts_are_renderable() -> Bool {
@@ -522,7 +522,7 @@ fn compiler_gate_merge_path_runs_on_the_fleet() -> Bool {
 // Pending runs are replaced as before; a running PR build is cancelled by the next push. The
 // header says why that was lawful on a hosted runner, and why that reasoning no longer covers the
 // merge path's fleet jobs. The policy arm is the fold's own vocabulary, so the emitted expression is
-// the one gunbc.witness_floor_workflow would emit for this arm.
+// the one gunbc.witness.witness_floor_workflow would emit for this arm.
 data compiler_gate_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
   pending: ReplaceExistingPending,
   running: SupersedeRunningForEvent { event: github_event_name_pull_request }
@@ -543,16 +543,16 @@ data compiler_gate_workflow: Workflow = Workflow {
   jobs: [compiler_gate_required_job()]
 }
 
-data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: the required job's capability closure does not hold, a subject step's script is not renderable, or the required job runs on a hosted runner (compiler_gate_merge_path_runs_on_the_fleet, operator ruling 2026-09-28). No workflow yaml was emitted. Fix the step roles in the job's bound steps, or put the job on gunbc_ci_selected_runner_spec."
+data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.witness.compiler_gate_workflow: the required job's capability closure does not hold, a subject step's script is not renderable, or the required job runs on a hosted runner (compiler_gate_merge_path_runs_on_the_fleet, operator ruling 2026-09-28). No workflow yaml was emitted. Fix the step roles in the job's bound steps, or put the job on gunbc_ci_selected_runner_spec."
 
 fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
   match admit_workflow_action_uses(workflow: compiler_gate_workflow) {
     WorkflowActionUsesRefused { refusals: rs } =>
-      WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.compiler_gate_workflow", refusals: rs) }
+      WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.witness.compiler_gate_workflow", refusals: rs) }
     WorkflowActionUsesAdmitted =>
       match admit_workflow_checkout_refs(workflow: compiler_gate_workflow, declared: [compiler_gate_checkout_ref]) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
-      WitnessFloorGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.compiler_gate_workflow", refusals: crs) }
+      WitnessFloorGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.witness.compiler_gate_workflow", refusals: crs) }
     WorkflowCheckoutRefsAdmitted =>
       match admit_workflow_toolchain_homes(workflow: compiler_gate_workflow) {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
@@ -561,7 +561,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
           if compiler_gate_emit_build_capability_closure_holds() && compiler_gate_emit_build_scripts_are_renderable() && compiler_gate_merge_path_runs_on_the_fleet() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
-              YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.compiler_gate_workflow", path: p, reason: r) }
+              YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness.compiler_gate_workflow", path: p, reason: r) }
             }
           } else {
             WitnessFloorGenerationRefused { reason: compiler_gate_capability_refusal_reason }

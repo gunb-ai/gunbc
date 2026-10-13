@@ -1,4 +1,4 @@
-module gunbc.stage0_crate_layout_generated
+module gunbc.stage0.stage0_crate_layout_generated
 
 import std.types { List, String }
 

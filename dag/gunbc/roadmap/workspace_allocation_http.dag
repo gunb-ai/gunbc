@@ -1,6 +1,6 @@
-module gunbc.workspace_allocation_http
+module gunbc.roadmap.workspace_allocation_http
 
-import gunbc.workspace_allocation_wire { workspace_create_submission, workspace_release_submission }
+import gunbc.roadmap.workspace_allocation_wire { workspace_create_submission, workspace_release_submission }
 
 import std.types { String, NonEmptyStr, Timestamp, Int }
 import std.access { Permit, Deny, access_refusal_reason }
@@ -12,8 +12,8 @@ import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, work
 import gunbc.workspace_allocation { WorkspaceRequest, workspace_profile_parse, workspace_profile_wire }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceRunning, WorkspaceWanted, workspace_phase_wire, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_record_request_at, workspace_request_release_at, WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_allocation_json }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
-import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.roadmap_allocation_location { allocation_page_path, allocation_release_route }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
+import gunbc.roadmap.roadmap_allocation_location { allocation_page_path, allocation_release_route }
 
 // JSON is the allocation wire contract. Identity, image, keys and lease are server policy.
 // Duplicate fields and extra authority-bearing fields refuse before any storage operation.

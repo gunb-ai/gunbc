@@ -1,4 +1,4 @@
-module gunbc.roadmap_attempt_metering
+module gunbc.roadmap.roadmap_attempt_metering
 
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
 import std.algebra { trim }
@@ -26,7 +26,7 @@ import gunbc.harness.harness_throughput {
   RoundObservation, UsageRowIsOurs, UsageRowIsAnotherEvent, UsageRowUnreadable, RoundReadOk, RoundReadUnclocked, RoundReadGap,
   throughput_is_usage_row, round_observation_of,
 }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning, ProviderCompleted, ProviderFailed,
   ProviderBudgetSpent, ProviderEventsRefused, provider_execution_state, parse_codex_jsonl,
 }
@@ -36,17 +36,17 @@ import product.capacity.event_chain {
 import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
 }
-import gunbc.fabric_event_log {
+import gunbc.fabric.fabric_event_log {
   PartitionReadOk, PartitionReadRefused, event_log_read_partition, event_log_read_budget, event_log_refusal_wire,
 }
-import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.fabric.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.harness.harness_seat_pointer {
   HarnessSeatPointer, HarnessSeatPointerDecoded, HarnessSeatPointerUndecodable, harness_seat_pointer_decode,
   harness_seat_pointer_path, harness_seat_pointer_reference_names_owner,
 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
-import gunbc.roadmap_dispatch_actuator {
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_state_path_for_instance, dispatch_attempt_events_path_for_instance,
   dispatch_attempt_review_events_path_for_instance, dispatch_attempt_audit_events_path_for_instance,
   dispatch_attempt_supervisor_events_path_for_instance, dispatch_worker_attempt_identity,
@@ -140,7 +140,7 @@ fn metered_role_decode(v: JsonValue) -> RowDecode<MeteredRole> {
 }
 
 // The events path and the seat owner of a launch are the spawner's own derivations, read from the
-// same functions gunbc.roadmap_dispatch_actuator mints them with -- never from a file the launch wrote.
+// same functions gunbc.roadmap.roadmap_dispatch_actuator mints them with -- never from a file the launch wrote.
 fn metered_role_events_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> String {
   match role {
     MeteredWorker => dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
