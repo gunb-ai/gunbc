@@ -46,7 +46,7 @@ type SugarLowering
   | SugarDropLeadingSeparator {}
 
 // A SUGAR RULE IS KEYED BY A PRODUCTION'S EMITTED IDENTITY AND BY NOTHING ELSE. The key is read
-// through the grammar's production-identity projection (v2.extdeps.languages.dag
+// through the grammar's production-identity projection (v2.std.grammar
 // parse_production_emitted_identity_optional), never from a bare atom: a bare atom is authored
 // text -- an identifier or a caret symbol's name -- and a rule keyed on it rewrote
 // `data x: Int = dag_c3_surface_sugar_fn` into an empty Arrow. The former SurfaceAtomKey arm and
