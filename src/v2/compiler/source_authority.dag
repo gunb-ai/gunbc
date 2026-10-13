@@ -74,6 +74,13 @@ import std.content_hash {
   ContentHashComparison,
   ContentHashEqual,
   Fnv1a64Structural,
+  HashFamily,
+  Sha1Family,
+  Sha1Hash,
+  Sha256Family,
+  Sha256Hash,
+  Sha512Family,
+  Sha512Hash,
   as_content_hash_structural,
   compare_content_hash,
   content_hash_atom,
@@ -307,12 +314,14 @@ fn source_storage_identity_digest(storage: SourceStorageIdentity) -> Fnv1a64Stru
 
 type SourceRefContentHashStructural
   = SourceRefContentHashStructuralOk { digest: Fnv1a64Structural }
-  | SourceRefContentHashStructuralNonFnv1a64
+  | SourceRefContentHashStructuralNonFnv1a64 { family: HashFamily }
 
 fn source_ref_content_hash_structural(hash: ContentHash) -> SourceRefContentHashStructural {
   match hash {
     Fnv1a64(structural) => SourceRefContentHashStructuralOk { digest: structural }
-    _ => SourceRefContentHashStructuralNonFnv1a64
+    Sha256Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: Sha256Family }
+    Sha1Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: Sha1Family }
+    Sha512Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: Sha512Family }
   }
 }
 
@@ -345,7 +354,7 @@ fn source_ref_list_digest_build(refs: List<SourceRef>) -> SourceRefListDigestBui
         SourceRefListDigestNonStructuralRefused { path: _ } => acc
         SourceRefListDigestOk { digest: prior } =>
           match source_ref_content_hash_structural(hash: ref.content_hash) {
-            SourceRefContentHashStructuralNonFnv1a64 =>
+            SourceRefContentHashStructuralNonFnv1a64 { family: _ } =>
               SourceRefListDigestNonStructuralRefused { path: ref.path }
             SourceRefContentHashStructuralOk { digest: structural } =>
               SourceRefListDigestOk {
