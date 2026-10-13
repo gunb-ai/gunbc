@@ -165,6 +165,7 @@ service github.Issues {
   config {
     endpoint: default_api_base
     auth: Bearer
+    auth_input: auth_token
   }
 
   operation ListForRepoRaw {
