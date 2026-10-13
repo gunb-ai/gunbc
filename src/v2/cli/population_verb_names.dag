@@ -1,0 +1,9 @@
+module v2.cli.population_verb_names
+
+import std.types { String }
+
+// THE SPELLING OF THE TWO WHOLE-POPULATION CLI VERBS, one place. v2.cli.compile_cli parses them;
+// gunbc.required_ci_contract_epoch names them as obligations. Putting the strings in compile_cli
+// forced the contract module either to import that closure or to mint a second copy (DESIGN §3).
+data cli_verb_check_layout: String = "check-layout"
+data cli_verb_parse_population: String = "parse-population"

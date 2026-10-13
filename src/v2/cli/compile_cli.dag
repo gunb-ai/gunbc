@@ -23,6 +23,7 @@ import v2.compiler.module_acquisition {
   enumerate_bound_modules
 }
 import v2.cli.population_verbs { PopulationReport, check_layout, parse_population }
+import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population }
 import v2.cli.repository_layout { repository_storage_layout }
 import gunbc.source_layout_namespaces { layout_namespaces }
 import v2.cli.source_root_bindings {
@@ -253,12 +254,11 @@ data cli_verb_emit: String = "emit"
 // (v2.compiler.compile). It takes source roots only, and is deleted with its module.
 data cli_verb_if_arm_reader_differential: String = "if-arm-reader-differential"
 
-// THE WHOLE-POPULATION VERBS (v2.cli.population_verbs). `check-layout` holds when every `.dag` file
-// under the bound trees is stored where the module it declares is named to be; `parse-population`
-// holds when every module the declared namespace rows store under them parses.
-data cli_verb_check_layout: String = "check-layout"
-
-data cli_verb_parse_population: String = "parse-population"
+// THE WHOLE-POPULATION VERBS (v2.cli.population_verbs). Spellings live in
+// v2.cli.population_verb_names so the required-CI contract can name those obligations without
+// importing this CLI closure. `check-layout` holds when every `.dag` file under the bound trees is
+// stored where the module it declares is named to be; `parse-population` holds when every module
+// the declared namespace rows store under them parses.
 
 data cli_usage: String = "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]... [--target <target>]"
 

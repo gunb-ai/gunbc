@@ -6,7 +6,7 @@ import gunbc.required_ci_contract_epoch {
   required_ci_contract_epoch,
   required_ci_contract_epoch_of,
   required_ci_obligation_rows,
-  required_ci_obligation_kind_context,
+  RequiredContextName,
 }
 import std.algebra { Cons }
 
@@ -32,8 +32,10 @@ test fn dropping_an_obligation_row_moves_the_epoch() -> Bool {
 
 test fn the_context_name_is_an_obligation_row() -> Bool {
   any(required_ci_obligation_rows(), row =>
-    (row.kind as String) == (required_ci_obligation_kind_context as String)
-      && (row.key as String) == (required_ci_context_name as String))
+    match row.kind {
+      RequiredContextName => (row.key as String) == (required_ci_context_name as String)
+      _ => false
+    })
 }
 
 test fn a_step_list_string_is_not_an_obligation_key() -> Bool {
