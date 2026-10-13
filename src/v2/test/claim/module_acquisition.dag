@@ -408,6 +408,12 @@ fn subject_body(body: String) -> String {
   concat("module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  ", body, "\n}\n")
 }
 
+// The dag-tree member's body: dag_member_read_under requests module test.subject, and the acquirer asserts
+// that the member declares the module it was asked for, so the text must declare that module too.
+fn dag_subject_body(body: String) -> String {
+  concat("module test.subject\n\nfn subject(x: Bool) -> Bool {\n  ", body, "\n}\n")
+}
+
 test fn local_projection_does_not_read_same_named_module() -> Bool {
   request_verdict_of(content: subject_body(body: "x.y"), spelling: "x.y") == "not-requested"
 }
@@ -593,12 +599,12 @@ test fn a_dag_member_naming_a_v2_module_in_a_match_scrutinee_is_requested_and_de
 // requested and the lookup goes on to read it, and naming a v2-tree module is requested and denied. A reader
 // that classified everything undecided requests nothing and fails both.
 test fn a_dag_member_naming_a_dag_module_is_requested_and_not_denied() -> Bool {
-  dag_request_verdict(content: subject_body(body: "std.logic.and(a: true, b: true)"), spelling: "std.logic.and") == "requested, reads std.logic.and"
-    && dag_denied_requests(content: subject_body(body: "std.logic.and(a: true, b: true)")) == ""
+  dag_request_verdict(content: dag_subject_body(body: "std.logic.and(a: true, b: true)"), spelling: "std.logic.and") == "requested, reads std.logic.and"
+    && dag_denied_requests(content: dag_subject_body(body: "std.logic.and(a: true, b: true)")) == ""
 }
 
 test fn a_dag_member_naming_a_v2_module_is_requested_and_denied() -> Bool {
-  dag_request_verdict(content: subject_body(body: "v2.std.logic.and(a: true, b: true)"), spelling: "v2.std.logic.and") == "requested, denied"
+  dag_request_verdict(content: dag_subject_body(body: "v2.std.logic.and(a: true, b: true)"), spelling: "v2.std.logic.and") == "requested, denied"
 }
 
 // An imported name is undecided too: whether it names a type, a namespace or a value is for the module that
@@ -610,7 +616,7 @@ test fn a_dag_member_whose_import_binds_a_root_name_is_neither_probed_nor_denied
 }
 
 test fn a_dag_member_without_that_import_requests_the_head_as_a_module_and_is_denied() -> Bool {
-  dag_request_verdict(content: subject_body(body: "v2.member"), spelling: "v2.member") == "requested, denied"
+  dag_request_verdict(content: dag_subject_body(body: "v2.member"), spelling: "v2.member") == "requested, denied"
 }
 
 // A loop carrier and an arrow parameter are decided binders, not undecided: they stay a projection, so a
