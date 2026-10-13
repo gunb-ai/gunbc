@@ -391,7 +391,7 @@ fn w_freemonoid_supplemental_enum_hand_written_impls() -> Bool {
       "#[derive(Clone, serde::Serialize, serde::Deserialize)]\n#[serde(bound(serialize = \"T: Clone + serde::Serialize\", deserialize = \"T: Clone + serde::Deserialize<'de>\"))]",
       "impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListTailResultLike<T>",
       "impl<T: Clone + PartialEq> PartialEq for ListTailResultLike<T>",
-      "Self::Present { tail } => f.debug_struct(\"Present\").field(\"tail\", tail).finish(),",
+      "Self::Present { value } => f.debug_struct(\"Present\").field(\"value\", value).finish(),",
       "(Self::Present { value: a_tail }, Self::Present { value: b_tail }) => a_tail == b_tail,"
     ],
     [
