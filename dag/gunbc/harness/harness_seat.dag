@@ -13,6 +13,7 @@ import gunbc.serving.serving_enrollment {
   ServingRouteTurnCeiling, serving_route_turn_ceiling_count, serving_route_endpoint_wire,
 }
 import gunbc.serving.rented_enrollment { rented_cohort_index, rented_enrolled_routes, rented_incarnation_standing }
+import gunbc.serving.rented_host_grant { rented_host_authorizations, RentedHostClockUnread }
 import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch, replica_endpoint_launch_key, replica_incarnation_unverified_obligation }
 import gunbc.serving.replica_incarnation { ReplicaIncarnationStanding, ReplicaIncarnationBound, ReplicaIncarnationUnread }
 import std.optional { Present, Absent }
@@ -896,7 +897,7 @@ fn harness_owner_residency(session: ServingSessionRecord, key: NonEmptyStr, inca
 // enrollment row (gunbc.serving.rented_enrollment) names the host, and a replica with no row, a refused
 // access or an unreadable fact is Unread, which pins the owner and is never warm.
 fn harness_observe_incarnation(endpoint: ServingRouteEndpoint, launch: ReplicaEndpointLaunch, attempt: String) -> ReplicaIncarnationStanding {
-  rented_incarnation_standing(index: rented_cohort_index, endpoint: endpoint, launch: launch, attempt_raw: attempt)
+  rented_incarnation_standing(index: rented_cohort_index, authorizations: rented_host_authorizations, clock: RentedHostClockUnread, endpoint: endpoint, launch: launch, attempt_raw: attempt)
 }
 
 fn harness_candidate_for_key(candidates: List<HarnessCandidate>, key: NonEmptyStr) -> HarnessCandidate? {
