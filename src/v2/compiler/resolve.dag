@@ -1937,9 +1937,10 @@ fn resolve_declared_path_reading(
   }
 }
 
-// ONE CANDIDATE IS THE ANSWER AND SEVERAL ARE AMBIGUOUS. Factored out because both arms above reach it and
-// a second copy of an ambiguity refusal is the duplicated authority DESIGN section 2 prices -- the two arms
-// differ in what they do with an EMPTY candidate list, not in how they read a non-empty one.
+// A QUALIFIED PATH THAT NAMES NO INDEXED CANDIDATE. If a refused provider's module is a prefix of
+// the path, that chain is the cause. Otherwise the path refuses unbound at its own locus — never
+// a last-segment reread (that would accept foo.bar.Int as canonical Int, and would attribute
+// declarer-refused from an unrelated imported leaf).
 fn resolve_reference_path_miss(
   ctx: ResolveContext,
   n: Node,
@@ -1955,19 +1956,18 @@ fn resolve_reference_path_miss(
         )
       }
     Absent =>
-      match qualified_name_last_segment(qn: path) {
-        Present { value: leaf } => resolve_atom_unbound(ctx: ctx, n: n, identity: leaf, pending: pending)
-        Absent =>
-          Rejected {
-            diagnostics: rejected_with_pending(
-              pending: pending,
-              rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
-            )
-          }
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+        )
       }
   }
 }
 
+// ONE CANDIDATE IS THE ANSWER AND SEVERAL ARE AMBIGUOUS. Factored out because both arms above reach it and
+// a second copy of an ambiguity refusal is the duplicated authority DESIGN section 2 prices -- the two arms
+// differ in what they do with an EMPTY candidate list, not in how they read a non-empty one.
 fn resolve_declared_path_candidates(
   ctx: ResolveContext,
   n: Node,
