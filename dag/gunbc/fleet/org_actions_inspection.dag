@@ -1,8 +1,7 @@
 module gunbc.fleet.org_actions_inspection
 
-import std.types { NonEmptyStr, String, Bool, Int, List, Secret }
+import std.types { NonEmptyStr, String, Bool, Int, List, Never, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.cardinality { Never }
 import v2.std.algebra { non_empty_to_list }
 import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,

@@ -1,14 +1,17 @@
 module v2.test.claim.module_acquisition
 
-import std.types { Bool, List }
+import std.types { Bool, List, Map }
 import v2.compiler.module_acquisition {
   AcquireEntry,
   AcquireImportedModule,
   AcquireQualifiedReference,
   AcquiredModule,
+  AcquisitionAdvanced,
   AcquisitionExact,
   AcquisitionExactness,
+  AcquisitionEntryUnderivable,
   AcquisitionEnv,
+  AcquisitionGrammarUnprepared,
   AcquisitionKind,
   AcquisitionMemberNotRead,
   AcquisitionMarkedDeclaration,
@@ -16,6 +19,9 @@ import v2.compiler.module_acquisition {
   AcquisitionMarkersRead,
   AcquisitionMarkersRefused,
   AcquisitionMemberRead,
+  AcquisitionMemberRefused,
+  AcquisitionMemberSitesUnreadable,
+  AcquisitionLookupRefused,
   AcquisitionMemberReadOk,
   AcquisitionMemberReadRefused,
   AcquisitionReadNotRequested,
@@ -23,6 +29,10 @@ import v2.compiler.module_acquisition {
   AcquisitionReadWithoutMember,
   AcquisitionRequest,
   AcquisitionRequestedNotRead,
+  AcquisitionTreeUnbound,
+  AcquisitionUnknownModule,
+  AcquisitionState,
+  AcquisitionStepRefused,
   MemberParseRefused,
   MemberParses,
   NamespaceModules,
@@ -38,6 +48,7 @@ import v2.compiler.module_acquisition {
   acquisition_member_requests,
   acquisition_module_path,
   acquisition_parse,
+  acquisition_step,
   acquisition_test_markers,
   acquisition_refusal_text,
   bound_modules_prepended,
@@ -55,15 +66,29 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority {
   ModuleFileRef,
+  ReferenceModuleLineDisagrees,
+  ReferenceModuleLineMissing,
   ReferenceNextReadDenied,
   ReferenceNextReadFile,
   ReferenceNextReadNone,
   module_file_key,
+  ReferenceCrossTreeDenied,
+  ReferenceRefused,
+  ReferenceResolved,
+  ReferenceUnknownModule,
   reference_next_read,
   reference_prefixes
 }
 import v2.std.algebra { HeadAbsent, HeadFound, length, list_head, list_map }
-import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.collection { empty_map, map_insert }
+import v2.std.cross_tree.import_model {
+  CrossTreeFromTreeNotInRootSet,
+  CrossTreeFundamentalityUnknownFailClosed,
+  CrossTreeToTreeLessFundamental,
+  CrossTreeToTreeNotInRootSet,
+  DagTree,
+  V2Tree,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
@@ -318,6 +343,25 @@ test fn a_well_formed_import_is_requested_and_its_marked_declaration_is_captured
   ) == "read|v2.std.optional|a_claim"
 }
 
+// THE IDENTITY ASSERTED AT ADMIT. The lookup admitted a file because its header agreed with the requested
+// module (v2.compiler.source_authority reference_present); the member the acquirer then parses must declare
+// that same module, and the two reads are different readings of one fact, so a member whose parse declares
+// another module is refused at admit rather than acquired under the name it was asked for. The control is
+// the well-formed member above, which differs from the RED in the module line alone.
+test fn a_member_that_parses_as_another_module_than_the_one_requested_is_refused_at_admit() -> Bool {
+  member_read_of(content: "module v2.test.other\nfn subject() -> Bool { true }\n")
+    == "module v2.test.subject at v2:test/subject.dag parses as module v2.test.other"
+    && member_read_of(content: "module v2.test.subject\nfn subject() -> Bool { true }\n") == "read||"
+}
+
+// A longer or shorter name is another module: agreement is equality of the parsed identity, not a prefix.
+test fn a_member_whose_parsed_module_extends_or_truncates_the_requested_one_is_refused_at_admit() -> Bool {
+  member_read_of(content: "module v2.test.subject.more\nfn subject() -> Bool { true }\n")
+    == "module v2.test.subject at v2:test/subject.dag parses as module v2.test.subject.more"
+    && member_read_of(content: "module v2.test\nfn subject() -> Bool { true }\n")
+      == "module v2.test.subject at v2:test/subject.dag parses as module v2.test"
+}
+
 // ---- which qualified spellings a member requests -------------------------------------------------------------
 //
 // THE SUBJECT IS THE REQUEST LIST acquisition_member_requests HANDS THE ACQUIRER, because the acquirer reads
@@ -387,6 +431,12 @@ fn request_verdict_of(content: String, spelling: String) -> String {
 
 fn subject_body(body: String) -> String {
   concat("module v2.test.subject\n\nfn subject(x: Bool) -> Bool {\n  ", body, "\n}\n")
+}
+
+// The dag-tree member's body: dag_member_read_under requests module test.subject, and the acquirer asserts
+// that the member declares the module it was asked for, so the text must declare that module too.
+fn dag_subject_body(body: String) -> String {
+  concat("module test.subject\n\nfn subject(x: Bool) -> Bool {\n  ", body, "\n}\n")
 }
 
 test fn local_projection_does_not_read_same_named_module() -> Bool {
@@ -587,12 +637,12 @@ test fn a_dag_member_naming_a_v2_module_in_a_match_scrutinee_is_requested_and_de
 // requested and the lookup goes on to read it, and naming a v2-tree module is requested and denied. A reader
 // that classified everything undecided requests nothing and fails both.
 test fn a_dag_member_naming_a_dag_module_is_requested_and_not_denied() -> Bool {
-  dag_request_verdict(content: subject_body(body: "std.logic.and(a: true, b: true)"), spelling: "std.logic.and") == "requested, reads std.logic.and"
-    && dag_denied_requests(content: subject_body(body: "std.logic.and(a: true, b: true)")) == ""
+  dag_request_verdict(content: dag_subject_body(body: "std.logic.and(a: true, b: true)"), spelling: "std.logic.and") == "requested, reads std.logic.and"
+    && dag_denied_requests(content: dag_subject_body(body: "std.logic.and(a: true, b: true)")) == ""
 }
 
 test fn a_dag_member_naming_a_v2_module_is_requested_and_denied() -> Bool {
-  dag_request_verdict(content: subject_body(body: "v2.std.logic.and(a: true, b: true)"), spelling: "v2.std.logic.and") == "requested, denied"
+  dag_request_verdict(content: dag_subject_body(body: "v2.std.logic.and(a: true, b: true)"), spelling: "v2.std.logic.and") == "requested, denied"
 }
 
 // An imported name is undecided too: whether it names a type, a namespace or a value is for the module that
@@ -604,7 +654,7 @@ test fn a_dag_member_whose_import_binds_a_root_name_is_neither_probed_nor_denied
 }
 
 test fn a_dag_member_without_that_import_requests_the_head_as_a_module_and_is_denied() -> Bool {
-  dag_request_verdict(content: subject_body(body: "v2.member"), spelling: "v2.member") == "requested, denied"
+  dag_request_verdict(content: dag_subject_body(body: "v2.member"), spelling: "v2.member") == "requested, denied"
 }
 
 // A loop carrier and an arrow parameter are decided binders, not undecided: they stay a projection, so a
@@ -923,4 +973,118 @@ test fn a_well_formed_member_parses() -> Bool {
 
 test fn a_member_with_an_unclosed_body_is_refused() -> Bool {
   member_parse_text(content: "module v2.test.subject\nfn subject() -> Bool { true\n") == "refused"
+}
+
+fn idle_acquisition_state(known: Map<String, Bool>) -> AcquisitionState {
+  AcquisitionState {
+    pending: [],
+    modules: [],
+    known: known,
+    absent: empty_map(),
+    absent_probes: 0,
+    reads: []
+  }
+}
+
+fn dag_import_of_v2_kind() -> AcquisitionRequest {
+  AcquisitionRequest {
+    from_module: "std.types",
+    from_tree: DagTree {},
+    spelling: "v2.std.kind",
+    kind: AcquireImportedModule
+  }
+}
+
+fn v2_import_of_v2_kind() -> AcquisitionRequest {
+  AcquisitionRequest {
+    from_module: "v2.compiler.compile",
+    from_tree: V2Tree {},
+    spelling: "v2.std.kind",
+    kind: AcquireImportedModule
+  }
+}
+
+// FORMATTING ONLY: the ACQUISITION-REFUSED sentence native_lane_acquire prints. It constructs
+// AcquisitionLookupRefused; it does not submit a request. The production-path pair is
+// a_forbidden_dag_to_v2_acquisition_refuses_without_reading the target and
+// a_permitted_v2_to_v2_acquisition_advances.
+test fn acquisition_lookup_refusal_text_formats_a_dag_to_v2_denial() -> Bool {
+  acquisition_refusal_text(
+    refusal: AcquisitionLookupRefused {
+      request: AcquisitionRequest {
+        from_module: "product.cable_plant_assessment",
+        from_tree: DagTree {},
+        spelling: "v2.std.cardinality",
+        kind: AcquireImportedModule
+      },
+      lookup: ReferenceCrossTreeDenied {
+        module: "v2.std.cardinality",
+        file: ModuleFileRef { tree: V2Tree {}, relative_path: "std/cardinality.dag" },
+        reason: CrossTreeToTreeLessFundamental
+      }
+    }
+  ) == "v2.std.cardinality (requested by product.cable_plant_assessment): module v2.std.cardinality at v2:std/cardinality.dag lies in a tree the requesting tree may not import"
+}
+
+// Discriminator recorded 2026-10-13: rewriting acquisition_verdict_step's CandidateRefusedBy arm
+// to AcquisitionAdvanced kept acquisition_lookup_refusal_text_formats_a_dag_to_v2_denial and
+// lookup_dag_to_v2_reference_is_denied_before_any_read green, and redded this control.
+test fn a_forbidden_dag_to_v2_acquisition_refuses_without_reading() -> Bool {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_step(
+        env: env_for(prepared: prepared, bound: true),
+        state: idle_acquisition_state(known: empty_map()),
+        request: dag_import_of_v2_kind(),
+      ) {
+        AcquisitionStepRefused { refusal: refusal, state: stopped } =>
+          match refusal {
+            AcquisitionLookupRefused { request: request, lookup: lookup } =>
+              request.spelling == "v2.std.kind"
+                && request.from_module == "std.types"
+                && length(xs: stopped.reads) == 0
+                && match lookup {
+                  ReferenceCrossTreeDenied { module: named, file: file, reason: reason } =>
+                    named == "v2.std.kind"
+                      && file.relative_path == "std/kind.dag"
+                      && match reason {
+                        CrossTreeToTreeLessFundamental => true
+                        CrossTreeToTreeNotInRootSet => false
+                        CrossTreeFromTreeNotInRootSet => false
+                        CrossTreeFundamentalityUnknownFailClosed => false
+                      }
+                  ReferenceResolved { module: _, member: _, file: _, content: _ } => false
+                  ReferenceUnknownModule { reference: _ } => false
+                  ReferenceRefused { module: _, file: _, cause: _ } => false
+                  ReferenceModuleLineMissing { module: _, file: _ } => false
+                  ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+                }
+            AcquisitionGrammarUnprepared { diagnostics: _ } => false
+            AcquisitionEntryUnderivable { entry: _, cause: _ } => false
+            AcquisitionTreeUnbound { tree: _, request: _ } => false
+            AcquisitionUnknownModule { request: _ } => false
+            AcquisitionMemberRefused { module: _, file: _, diagnostics: _ } => false
+            AcquisitionMemberSitesUnreadable { module: _, file: _ } => false
+          }
+        AcquisitionAdvanced { state: _ } => false
+      }
+  }
+}
+
+test fn a_permitted_v2_to_v2_acquisition_advances() -> Bool {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_step(
+        env: env_for(prepared: prepared, bound: true),
+        state: idle_acquisition_state(
+          known: map_insert(m: empty_map(), key: "v2.std.kind", value: true),
+        ),
+        request: v2_import_of_v2_kind(),
+      ) {
+        AcquisitionAdvanced { state: _ } => true
+        AcquisitionStepRefused { refusal: _, state: _ } => false
+      }
+  }
 }
