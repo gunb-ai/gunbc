@@ -1,4 +1,4 @@
-module test.claim.native_lane_universe_selection
+module v2.test.claim.native_lane_universe_selection
 
 import std.types { List }
 import extdeps.bazel.target_pattern { TargetPatternParsed, TargetPatternRefused, parse_target_pattern }
@@ -52,9 +52,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (v2.test.claim.module_acquisition). The last section here drives the REAL member reader, so the
 // markers a control selects are the markers the acquirer captures and not values this file made up.
 //
-// NOTE FOR A READER OF THE FLOOR: this file lives in the `dag` tree and imports `v2` modules, a
-// cross-tree edge the dag-to-v2 retarget owns. The controls need nothing from that retarget's refusal
-// population: they supply or read one module each and touch no repository tree.
+// WHERE THIS RUNS. `v2.test.claim.*` is stored under `src/v2`, a floor discovery root
+// (`gunbc.ci.ci_layer_roots` `witness_layer_roots`), and lies inside the native route's boundary
+// (`gunbc.witness.v2_native_route` `native_route_default_pattern`), so both routes address it. Neither is
+// on the required merge path for it: the floor is withdrawn from that path (`gunbc.rung_drop`
+// `v1_required_lanes_withdrawn`) and the native route does not execute this universe on a merge
+// candidate (`gunbc.rung_drop` `v2_native_route_off_the_merge_path`). The controls need nothing from a
+// repository tree: each supplies or reads one module.
 
 fn a_probe(name: String, path: String, markers: List<String>, content: String) -> AcquiredModule {
   AcquiredModule {

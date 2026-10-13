@@ -244,7 +244,7 @@ test fn the_route_boundary_is_the_v2_tree_and_nothing_else() -> Bool {
   && native_route_module_in_boundary(module_qn: "v2.testing.y")
   && native_route_module_in_boundary(module_qn: "v2")
   && !native_route_module_in_boundary(module_qn: "v22.x")
-  && !native_route_module_in_boundary(module_qn: "test.claim.native_lane_universe_selection")
+  && !native_route_module_in_boundary(module_qn: "test.claim.native_route_seed_boundary_witness")
   && !native_route_module_in_boundary(module_qn: "gunbc.witness.v2_native_route")
 }
 
@@ -1555,7 +1555,7 @@ test fn the_control_module_is_requested_once_under_the_default_pattern() -> Bool
 // A name whose dummy label cannot be formed is not an entry, so its bytes are not acquired.
 // That filter is not the counted refusal: native_lane_population_unformable_identity still
 // refuses `native_lane_identity_label_refused` naming the module and the LabelRefusal cause
-// (test.claim.native_lane_universe_selection `an_unformable_population_name_refuses_typed`).
+// (v2.test.claim.native_lane_universe_selection `an_unformable_population_name_refuses_typed`).
 test fn a_label_that_cannot_be_formed_is_not_an_entry() -> Bool {
   entries_text(
     entries: native_lane_candidate_entries(
