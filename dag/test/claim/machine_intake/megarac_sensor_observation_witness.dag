@@ -2,7 +2,7 @@ module test.claim.machine_intake.megarac_sensor_observation_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, SdrTypeLine, sdr_decode_lines }
 import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation { mtcollins1_sdr_capture }

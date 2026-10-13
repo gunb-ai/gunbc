@@ -19,8 +19,7 @@ import v2.extdeps.languages.typescript {
   ts_value_expression_projection,
   ts_fn_add_lex_rules
 }
-import std.algebra { Cons, Empty, list_append }
-import v2.std.algebra { length }
+import std.algebra { Cons, Empty, list_append, length }
 import v2.std.diagnostic {
   Accepted,
   None,
@@ -63,7 +62,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 import v2.std.compilers.lexing { ModeledLexRules }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

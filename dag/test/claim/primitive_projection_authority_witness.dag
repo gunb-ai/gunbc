@@ -18,10 +18,10 @@ import std.primitive_projection {
   primitive_map_insert,
   primitive_lookup,
   primitive_projection_row,
+  primitive_projection_roster,
 }
 import std.primitive_identity {
   BuiltinRegistry,
-  primitive_projection_roster,
   DerivedFromAuthority,
   EmitHandler,
   InterpreterDispatch,
@@ -32,21 +32,23 @@ import std.primitive_identity {
   RuntimeRowOnInterpreterDispatch,
   SymbolJoinsDeclaredPrimitive,
   SymbolUndisposed,
-  declaration_and_primitive_are_one_authority,
-  primitive_disposed_surface_symbol_count,
   primitive_identity_eq,
   primitive_map_keys,
   primitive_projection_divergent_row_count,
-  primitive_projection_for_declaration,
   primitive_projection_one_authority_row_count,
   primitive_projection_violation_count,
   primitive_projection_violation_count_in,
-  primitive_runtime_coverage,
   primitive_runtime_coverage_in,
-  primitive_surface_distinct_symbol_count,
   primitive_symbol_disposition,
-  primitive_undisposed_surface_symbol_count,
   surface_row,
+}
+import gunbc.primitive_egress.d0_census {
+  declaration_and_primitive_are_one_authority,
+  primitive_disposed_surface_symbol_count,
+  primitive_projection_for_declaration,
+  primitive_runtime_coverage,
+  primitive_surface_distinct_symbol_count,
+  primitive_undisposed_surface_symbol_count,
 }
 import std.types { Bool, List, String }
 
@@ -78,7 +80,7 @@ test fn w_host_realized_seam_answers_with_its_fidelity() -> Bool {
 
 test fn w_modeled_projection_answers_with_its_fidelity() -> Bool {
   match primitive_projection_for_declaration(
-    declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "length")
+    declaration: projection_declaration(module_path: "std.algebra", decl_name: "length")
   ) {
     DeclarationProjectsNoPrimitive => false
     DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
@@ -143,7 +145,7 @@ test fn w_list_at_optional_projects_the_get_primitive() -> Bool {
 
 test fn w_a_declaration_on_a_surface_with_no_projection_row_answers_undisposed() -> Bool {
   match primitive_projection_for_declaration(
-    declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "to_upper")
+    declaration: projection_declaration(module_path: "std.algebra", decl_name: "to_upper")
   ) {
     DeclarationProjectsNoPrimitive => false
     DeclarationPrimitiveUndisposed { authored_symbol: sym } => (sym as String) == "to_upper"
@@ -153,7 +155,7 @@ test fn w_a_declaration_on_a_surface_with_no_projection_row_answers_undisposed()
 
 test fn w_undisposed_is_not_one_authority_and_so_never_suppresses() -> Bool {
   !declaration_and_primitive_are_one_authority(
-    declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "to_upper"),
+    declaration: projection_declaration(module_path: "std.algebra", decl_name: "to_upper"),
     primitive: primitive_length,
   )
 }
@@ -171,7 +173,7 @@ test fn w_seam_and_modeled_projections_are_one_authority() -> Bool {
     primitive: primitive_decl_facts,
   )
     && declaration_and_primitive_are_one_authority(
-      declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "length"),
+      declaration: projection_declaration(module_path: "std.algebra", decl_name: "length"),
       primitive: primitive_length,
     )
     && declaration_and_primitive_are_one_authority(
@@ -198,7 +200,7 @@ test fn w_seam_and_modeled_projections_are_one_authority() -> Bool {
 
 test fn w_projection_of_a_different_primitive_is_not_one_authority() -> Bool {
   !declaration_and_primitive_are_one_authority(
-    declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "length"),
+    declaration: projection_declaration(module_path: "std.algebra", decl_name: "length"),
     primitive: primitive_map_insert,
   )
 }
@@ -223,13 +225,13 @@ test fn w_planted_duplicate_projection_for_one_declaration_refuses() -> Bool {
   let planted = [
     primitive_projection_row(
       primitive: primitive_length,
-      module_path: "v2.std.algebra",
+      module_path: "std.algebra",
       decl_name: "length",
       fidelity: ModeledProjection,
     ),
     primitive_projection_row(
       primitive: primitive_map_insert,
-      module_path: "v2.std.algebra",
+      module_path: "std.algebra",
       decl_name: "length",
       fidelity: ModeledProjection,
     ),
@@ -241,7 +243,7 @@ test fn w_detector_admits_a_well_formed_planted_roster() -> Bool {
   let planted = [
     primitive_projection_row(
       primitive: primitive_length,
-      module_path: "v2.std.algebra",
+      module_path: "std.algebra",
       decl_name: "length",
       fidelity: ModeledProjection,
     ),

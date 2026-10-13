@@ -1,7 +1,7 @@
 module v2.std.lens_verdict
 
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.diagnostic {
   ByteRange,
   CorrectionNotModeled,

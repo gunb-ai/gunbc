@@ -1,7 +1,7 @@
 module test.claim.shell.shell_dag_codex_app_server_trip_script_witness
 
 import std.types { Bool, String, List, FilePath }
-import v2.std.algebra { list_flat_map }
+import std.algebra { list_flat_map }
 import v2.std.compilers.cli_surface {
   process_argv_expansion_surface,
   cli_surface_arguments,
@@ -13,7 +13,7 @@ import gunbc.codex_app_server_press {
   codex_press_account_trip_request_lines,
   codex_app_server_initialize_request_line,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

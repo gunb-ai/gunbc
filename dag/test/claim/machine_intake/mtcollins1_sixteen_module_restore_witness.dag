@@ -3,7 +3,7 @@ module test.claim.machine_intake.mtcollins1_sixteen_module_restore_witness
 import std.types { Bool, List, NonEmptyStr, String, list_length }
 import std.process { exit_ok }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation {
   SolCaptureUnderCondition,
   mtcollins1_dram_training_reading,

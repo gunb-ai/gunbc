@@ -10,7 +10,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node_query { find_named_child }
 import v2.std.qualified_name { declaration_reference_path_optional, lexical_reference_label_optional, qualified_name_to_dotted_string }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import std.algebra { Cons, Empty }
 import v2.std.node { ComputationNode, Found, Loop, Node, Symbol, loop_realized_declaration_target, node_subtree_nodes }
@@ -238,7 +238,7 @@ test fn ccr_declared_any_refuses_rather_than_binding_silently() -> Bool {
   ccr_declared_any_refuses()
 }
 
-// (3c) FILTER AND ANY ARE THE ROSTER'S, and the declarations that stood for them in v2.std.algebra are gone:
+// (3c) FILTER AND ANY ARE THE ROSTER'S, and the declarations that stood for them in std.algebra are gone:
 // the head binds the row, with the callback written under the name every caller used (`predicate`). A named
 // function in the predicate slot is a refusal, never a silent lowering: the callback form lowers a function VALUE.
 test fn ccr_filter_head_binds_its_row() -> Bool {

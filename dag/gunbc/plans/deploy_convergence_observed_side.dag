@@ -2,9 +2,10 @@ module gunbc.plans.deploy_convergence_observed_side
 
 import std.dissolution { unbound_dissolution }
 import std.types { List }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn deploy_convergence_observed_side_body() -> List<MarkdownBlock> {
   [
@@ -120,7 +121,7 @@ fn deploy_convergence_observed_side_body() -> List<MarkdownBlock> {
 }
 
 data deploy_convergence_observed_side_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "deploy-convergence-observed-side",
   title: "Deploy convergence: the observed side, and why the obvious repair is a regression",
   body: deploy_convergence_observed_side_body(),

@@ -3,7 +3,7 @@ module test.claim.durable_cas_fabric_storage_real_execution
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set {

@@ -14,7 +14,7 @@ module test.claim.scm.scm_render_witness
 
 import std.types { Bool, String }
 import std.minted_identity { MintedIdAllocator }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.render { Document, RenderCapability }
 import std.symbols { Ascii }
 import extdeps.render.surface { serialize_document, PlainTerminal, GithubActions }

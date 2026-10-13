@@ -46,7 +46,7 @@ import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap.roadmap_event_carrier {
   AllEventsRead, AllEventsReadRefused, CarrierClosed, SnapshotCloseFailed,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

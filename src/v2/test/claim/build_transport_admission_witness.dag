@@ -26,7 +26,7 @@ import v2.compiler.build_transport_admission {
   build_transport_rel_position,
   rel_path_is_workspace_contained,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

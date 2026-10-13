@@ -1,11 +1,11 @@
 module v2.test.claim.projection_dispatch.receiver_disposition
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
 import v2.std.node_query { field_projection_node, field_projection_optional }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty }
 import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

@@ -19,7 +19,7 @@ import gunbc.harness.harness_throughput {
 // carrying 100, 200 and 300 output tokens. Round 1's tokens are excluded because its timestamp
 // marks the END of its own generation, so the numerator is 200+300=500 over an interval of
 // 5000-1000=4000 ms, which is 125.00 tok/s exactly.
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 fn three_clocked_rounds() -> String {
   join([

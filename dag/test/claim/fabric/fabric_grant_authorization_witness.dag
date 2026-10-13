@@ -1,7 +1,7 @@
 module test.claim.fabric.fabric_grant_authorization_witness
 
 import std.types { NonEmptyStr, Bool, List, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // THE FABRIC GRANT FIXTURES ARE IMPORTED, NOT REBUILT. test.claim.fabric.fabric_grant_issuance_witness
 // owns the one construction of an issued grant and the account it fences against; rebuilding
 // either here would be a second answer to "what authorizes this work", and the two would drift

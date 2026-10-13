@@ -1,0 +1,81 @@
+module v2.compiler.module_header
+
+import std.types { List }
+import v2.compiler.parse { PreparedGrammar, PreparedModeled, PreparedVoidGrammar, parse_production_prefix_prepared }
+import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
+import v2.extdeps.languages.dag { qualified_name_from_parsed_module_root }
+import v2.std.compilers.lexing { Token }
+import std.algebra { is_empty }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+// THE ONE READING OF A SOURCE FILE'S DECLARED MODULE: the real lexer over the whole file, once, and the
+// grammar's module_header production over the start of its tokens, through the generic prefix door
+// (v2.compiler.parse parse_production_prefix_prepared). Nothing here recognises a keyword, a name, a
+// delimiter or a line: what is a header, what is trivia and what is a name are the lexer's and the
+// grammar's, so a header spelled with tabs, CRLF, a trailing annotation, split across lines or sharing
+// its line with the first declaration reads exactly as it parses, and a later string or comment that
+// mentions `module` is never reached.
+//
+// WHERE THE HEADER ENDS IS THE PRODUCTION'S, NOT THIS MODULE'S. The prefix door returns the artifact of
+// the tokens the production consumed and leaves the rest unread, so no rule about lines, trivia or
+// stream length stands beside the grammar's. An earlier reading cut the file at the first line that
+// held a token and demanded the production consume that line whole; it refused programs the grammar
+// accepts, which made it a second authority on what a header is.
+//
+// THE EQUIVALENCE THIS READER OWES: whenever the file's full module parse accepts, the name read here
+// is the name v2.extdeps.languages.dag qualified_name_from_module_node reads off that parse
+// (v2.test.claim.module_header). A file that lexes but does not parse as a module still yields its
+// header when the header itself parses, so a layout verdict does not wait on the body being sound. A
+// file the lexer refuses has no token stream to read, so it is Refused with the lexer's own cause --
+// which the full parse would also give.
+//
+// The reader holds the prepared lexer and grammar once per run, exactly as the acquisition and the
+// population jobs hold them: preparing them per file would be the per-file cost the carriers exist
+// to remove.
+type ModuleHeaderReader {
+  lex: PreparedLexRules
+  grammar: PreparedGrammar
+}
+
+type ModuleHeaderRead
+  = ModuleHeaderDeclared { module: String }
+  | ModuleHeaderAbsent
+  | ModuleHeaderRefused { cause: String }
+
+fn module_header_tokens_read(reader: ModuleHeaderReader, tokens: List<Token>) -> ModuleHeaderRead {
+  match reader.grammar {
+    PreparedVoidGrammar => ModuleHeaderRefused { cause: "the prepared grammar is void, so no module header can be parsed" }
+    PreparedModeled { modeled: modeled } =>
+      match parse_production_prefix_prepared(
+        tokens: tokens,
+        validated: modeled.validated,
+        analysis: modeled.analysis,
+        production_name: ^dag_production_module_header
+      ) {
+        Rejected { diagnostics: d } => ModuleHeaderRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }
+        Accepted { value: artifact, diagnostics: _ } =>
+          match qualified_name_from_parsed_module_root(root: artifact.tree) {
+            Rejected { diagnostics: d } => ModuleHeaderRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }
+            Accepted { value: name, diagnostics: _ } => ModuleHeaderDeclared { module: qualified_name_to_dotted_string(qn: name) }
+          }
+      }
+  }
+}
+
+// The module a source file declares. `file` names the file in the diagnostics a refusal carries.
+// Absent only when the file holds no token at all (empty, blank, annotations only); every other
+// failure is Refused with the lexer's or the parse's own cause, never a shorter name.
+fn module_header_read(reader: ModuleHeaderReader, file: String, content: String) -> ModuleHeaderRead {
+  match tokenize_prepared(text: content, file: symbol_intern_lexeme(lexeme: file), prepared: reader.lex) {
+    Rejected { diagnostics: d } => ModuleHeaderRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }
+    Accepted { value: stream, diagnostics: _ } =>
+      if is_empty(xs: stream.all) {
+        ModuleHeaderAbsent
+      } else {
+        module_header_tokens_read(reader: reader, tokens: stream.all)
+      }
+  }
+}

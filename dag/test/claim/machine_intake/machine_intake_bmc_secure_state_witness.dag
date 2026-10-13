@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import std.content_hash { content_hash_of_value }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.types { AccountRoleAdministrator }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }

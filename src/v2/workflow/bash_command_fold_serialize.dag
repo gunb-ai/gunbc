@@ -38,7 +38,7 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_translation_rules_budget_for_row,
   bash_fold_unsupported_variant_diagnostic
 }
-import v2.std.algebra {
+import std.algebra {
   list_head,
   list_tail,
   HeadFound,

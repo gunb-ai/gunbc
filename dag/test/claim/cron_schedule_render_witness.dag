@@ -1,6 +1,6 @@
 module test.claim.cron_schedule_render_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Listed, Ranged, Step, render_cron_field, render_cron_schedule }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

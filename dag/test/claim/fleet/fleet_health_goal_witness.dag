@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
 import gunbc.fleet.fleet_health { fleet_health_goals, host_telemetry_profile }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

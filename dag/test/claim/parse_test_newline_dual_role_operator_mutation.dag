@@ -5,7 +5,7 @@ import v2.std.diagnostic { Outcome }
 import v2.compiler.program_assembly { dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag { dag_grammar }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.grammar {
   AfterLineBreak,
   Choice,

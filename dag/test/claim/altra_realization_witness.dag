@@ -61,7 +61,7 @@ import product.altra_motherboard.placement {
 }
 import product.altra_motherboard.minimal_design { altra_1p_minimum }
 import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

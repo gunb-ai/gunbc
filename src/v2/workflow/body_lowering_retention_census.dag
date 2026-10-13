@@ -4,8 +4,7 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceMinted, Occur
 import std.types { NonEmptyStr, List }
 
 import v2.std.grammar { parse_production_emitted_identity_optional }
-import v2.std.algebra { Empty, fold_list, length }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, Empty, fold_list, length }
 import v2.std.diagnostic {
   DeclarationLocus,
   Diagnostic,

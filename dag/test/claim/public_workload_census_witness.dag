@@ -8,7 +8,7 @@ import extdeps.github.workflow_runs {
   WorkflowJobRun, Completed, Success,
 }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner.runner_label_resolution {
   resolve_runner_label,
   arm_standing,

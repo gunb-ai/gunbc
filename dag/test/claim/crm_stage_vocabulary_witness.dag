@@ -21,7 +21,7 @@ import extdeps.crm.salesforce_opportunity {
 import std.measure { basis_point }
 import std.nat { Nat }
 import std.types { list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -37,7 +37,7 @@ import product.printed_chassis.coupon {
   specimen_fits,
   micrometer_to_millimeter_ceiling,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // NO FALLBACK LADDER. The first draft of this file minted a placeholder LengthLadder for the
 // non-ready arm, which is the absorbing fallback the module under test exists to forbid — every

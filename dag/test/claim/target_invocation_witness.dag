@@ -121,7 +121,7 @@ import gunbc.discovery_census {
   RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
   required_aggregate_from_census,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
 

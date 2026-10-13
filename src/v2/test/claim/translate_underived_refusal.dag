@@ -49,7 +49,7 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason,
   outcome_accepted
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   ComputationNode,
   Conj,
