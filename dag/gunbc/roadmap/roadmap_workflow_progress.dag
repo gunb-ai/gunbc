@@ -188,6 +188,9 @@ import gunbc.roadmap.roadmap_workflow_command {
   legacy_attempt_supersedable_detail,
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_provider_terminal_absorb, nfr_reason_provider_terminal_absorb }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE ATTEMPT'S WORKTREE, OBSERVED RATHER THAN INFERRED. The Workspace segment read complete from the
 // modeled state pointer alone, so an attempt whose worktree was gone still showed its workspace done
@@ -1529,3 +1532,20 @@ fn workflow_attempt_progress_json_value(
     progress: progress,
   ))
 }
+
+data nfr_reason_verification_producer_absent: String = "NOT terminal-state absorption, which is why this row carries its own reason rather than the shared provider one it first landed under: verification_segment has no terminal arm to absorb into, because Verify has no authoritative receipt producer yet. Every arm — including ProviderCompleted — answers WorkflowSegmentPending, so the match selects only the operator-facing detail string and decides no behaviour. Enumerating the remaining provider variants would clone a Pending arm per variant. The Pending-on-agent-success arm is the deliberate DESIGN §5 refusal to fabricate a verification fact from provider evidence, and it is load-bearing until the producer exists."
+
+data nfr_dissolve_verification_producer_absent: DissolutionCondition = unbound_dissolution(description: "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending.")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_workflow_progress.dag::provider_execution_reconcile_process" },
+      reason: nfr_reason_provider_terminal_absorb,
+      dissolution: nfr_dissolve_provider_terminal_absorb,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_workflow_progress.dag::verification_segment" },
+      reason: nfr_reason_verification_producer_absent,
+      dissolution: nfr_dissolve_verification_producer_absent,
+    },
+]

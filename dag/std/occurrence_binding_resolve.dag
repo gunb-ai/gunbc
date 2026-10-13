@@ -35,6 +35,9 @@ import std.occurrence_identity {
   WrongOccurrenceRole,
   occurrence_transport_validate,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 
 // THE one exact name-binding decision for a supplied candidate population. P1 validates transport
 // and exact reference/declaration identities, excludes category-inadmissible declarations, converts
@@ -381,3 +384,13 @@ fn resolve_reference_occurrence_binding(
       )
   }
 }
+
+data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait capability table (nested match on ReprGroundingDeriveElemShape × ReprGroundingDeriveTrait with off-trait wildcard arms returning false) landed with Gate-1 sub-wall #2 predicate scaffold (#7174); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
+      reason: nfr_reason_trait_derive_shape_table,
+      dissolution: unbound_dissolution(description: "DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row"),
+    },
+]

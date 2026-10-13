@@ -6,6 +6,8 @@ import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavail
 import v2.std.node { Arrow, Conj, Node, TypeNode, all_edges_named, all_edges_positional }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.collection { Absent, Present, list_at_optional }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 type ItemKind
   = FnItem
   | TypeItem
@@ -202,3 +204,8 @@ fn decl_facts_count(pool_roots: List<String>) -> Int {
 fn decl_facts_fn_item_count(pool_roots: List<String>) -> Int {
   length(xs: decl_facts_fn_items(facts: decl_facts(pool_roots: pool_roots)))
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "src/v2/std/decl_index.dag::export_signature_declared_arrow" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/std/decl_index.dag::export_signature_declared_facts" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

@@ -8249,19 +8249,27 @@ pub fn run_required_floor(
     // check can only judge a row whose subject module is PREPARED, so the subjects of rows the diff
     // added or deleted become seeds here (read at the floor's own diff base; an unreadable base
     // roster refuses, never narrows the scope).
-    let nfr_row_subjects: Vec<crate::cli_run::NonFoldResidueRowSubject> = match &compile_subject {
-        Some(subject)
-            if subject
-                .touched_modules
-                .iter()
-                .any(|m| m == "gunbc.non_fold_residue") =>
-        {
-            crate::cli_run::non_fold_residue_changed_row_subjects(&floor_base_tree).map_err(
-                |e| format!("REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}"),
-            )?
-        }
-        _ => Vec::new(),
-    };
+    let nfr_row_subjects: Vec<crate::cli_run::NonFoldResidueRowSubject> =
+        match (&compile_subject, &diff_paths) {
+            (Some(_), Some(paths))
+                if paths.iter().any(|p| {
+                    p == NON_FOLD_RESIDUE_AUTHORITY_REL
+                        || (p.ends_with(".dag")
+                            && process_workspace_root().join(p).is_file()
+                            && std::fs::read_to_string(process_workspace_root().join(p))
+                                .map(|c| nfr_content_declares_frontier(&c))
+                                .unwrap_or(false))
+                }) =>
+            {
+                crate::cli_run::non_fold_residue_changed_row_subjects(&floor_base_tree, paths)
+                    .map_err(|e| {
+                        format!(
+                            "REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}"
+                        )
+                    })?
+            }
+            _ => Vec::new(),
+        };
     let nfr_row_subject_modules =
         crate::cli_run::non_fold_residue_row_subject_seeds(&nfr_row_subjects);
     // THE CHECKER IS A DEPENDENCY OF EVERY MODULE IT JUDGES (`v2.workflow.floor_subject_seed`
@@ -8822,7 +8830,7 @@ pub fn run_required_floor(
                     "REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterDiverged unrostered={} \
                      stale={} undetermined={} -- a wildcard arm whose scrutinee's inferred type is a closed \
                      coproduct needs its own row (reason + dissolution) in \
-                     gunbc.non_fold_residue non_fold_residue_frontier, and a row whose site no \
+                     a co-located non_fold_residue_frontier list, and a row whose site no \
                      longer carries one deletes:\n{}",
                     verdict.unrostered.len(),
                     verdict.stale.len(),

@@ -65,6 +65,8 @@ import v2.std.compilers.target_model {
 }
 import v2.std.text { String }
 import std.integer { int_to_decimal_string }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 type FormalTerminal {
   identity: Symbol
@@ -3835,3 +3837,8 @@ fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
     NamedChildAmbiguous => Absent
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "src/v2/std/grammar.dag::grammar_emit_is_empty_conj" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/std/grammar.dag::grammar_emit_sequence" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

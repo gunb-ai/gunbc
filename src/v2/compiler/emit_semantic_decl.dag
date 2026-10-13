@@ -39,6 +39,8 @@ import v2.std.node { Atom, Disj, Conj, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import std.algebra { Empty, contains }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
@@ -228,3 +230,7 @@ fn produced_type_binding_over(target: TargetModel, spellings: Map<Symbol, String
   }
 }
 
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "src/v2/compiler/emit_semantic_decl.dag::produced_type_binding_over" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/compiler/emit_semantic_decl.dag::semantic_decl_type_binding" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

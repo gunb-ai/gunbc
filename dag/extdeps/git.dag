@@ -9,6 +9,8 @@ import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
 import std.algebra { length, skip }
 import std.resources { Network }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -1967,3 +1969,11 @@ fn git_remote_url_observation_of(
     GitRemoteUrlReadRefused { at: at, exit_code: exit_code, stderr: stderr }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/git.dag::git_diff_name_status_pending_after_status" },
+      reason: nfr_reason_land_red_era,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+]

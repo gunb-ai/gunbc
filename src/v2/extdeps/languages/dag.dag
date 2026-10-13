@@ -238,6 +238,8 @@ import v2.extdeps.languages.fidelity {
   FidelityDisposition,
   Modeled
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 data dag_source_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
@@ -8554,3 +8556,8 @@ fn dag_emit_parse_tree_with_root(root: GrammarRoot, tree: Node) -> Outcome<Strin
 fn dag_emit_parse_tree(tree: Node) -> Outcome<String> {
   dag_emit_parse_tree_with_root(root: dag_grammar_root(), tree: tree)
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "src/v2/extdeps/languages/dag.dag::dag_kernel_value_type_binding" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "src/v2/extdeps/languages/dag.dag::namespace_graft_spine_shaped_edge_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

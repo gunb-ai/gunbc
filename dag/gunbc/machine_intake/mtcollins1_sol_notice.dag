@@ -15,6 +15,8 @@ import gunbc.machine_intake.mtcollins1_boot_run {
   mtcollins1_boot_sol_pid_path_env, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance,
   mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_token_env,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // THE SOL NOTICES, AS THEIR OWN PROCESS (operator ruling 2026-09-27: the admitted route is this run's
 // log and step summary -- not ntfy, no new credential). The boot's .dag watch cannot report while it
@@ -436,3 +438,10 @@ fn mtcollins1_sol_notice_wet() -> ProcessExit
     exit_failure(reason: concat("mtcollins1 SOL notice: not every observed notice was delivered on both channels, a source was unreadable, or an owed collector exit was never observed; see ", sol_notice_ledger_path(paths: paths)))
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag::sol_notice_annotation" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag::sol_notice_deliver" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag::sol_notice_observe" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag::sol_notice_pass_saw_exit" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

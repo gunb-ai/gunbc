@@ -57,6 +57,8 @@ import v2.extdeps.languages.swift.syntax {
   SwiftStructDecl, SwiftClassDecl, SwiftEnumDecl, SwiftEnumCaseDecl, SwiftExtensionDecl, SwiftCommentedDecl,
   SwiftSourceFile
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -924,3 +926,7 @@ fn swl_decl(d: SwiftDecl) -> Node {
 fn swl_file(f: SwiftSourceFile) -> Node {
   swl_node(tag: ^swr_k_file, slots: [swl_gapped(items: swl_gap_items(ds: f.declarations, members: false))])
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "src/v2/extdeps/languages/swift/rows.dag::swl_closure_is_inline" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

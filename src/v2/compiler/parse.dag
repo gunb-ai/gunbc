@@ -152,6 +152,8 @@ import v2.std.grammar {
   grammar_named_edge,
   grammar_to_node
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // THE PARSE'S PROVENANCE IS ONE PATH'S STATE. Every backtracking construct restores the whole
 // value on a failed attempt, so the allocator and the span index describe exactly the surviving
@@ -5342,3 +5344,7 @@ fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
       Rejected { diagnostics: r }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "src/v2/compiler/parse.dag::parse_sequence_capture" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

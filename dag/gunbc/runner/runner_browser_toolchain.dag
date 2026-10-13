@@ -84,6 +84,8 @@ import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.systemd.systemctl { systemctl_daemon_reload_command }
 import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, rm_force_command }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
 // CONSUMER READS IT FROM. gunbc.machine_intake.megarac_kvm_still drives the MegaRAC KVM viewer
@@ -1455,3 +1457,13 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
       }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/runner/runner_browser_toolchain.dag::apt_outcome_holds" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/runner/runner_browser_toolchain.dag::libraries_resolved" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/runner/runner_browser_toolchain.dag::runner_browser_toolchain_archive_sha256_of_wet" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/runner/runner_browser_toolchain.dag::runner_browser_toolchain_pool_of" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/runner/runner_browser_toolchain.dag::runner_browser_toolchain_ready" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/runner/runner_browser_toolchain.dag::tree_sha256_wet" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/runner/runner_browser_toolchain.dag::versions_match" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

@@ -9,6 +9,8 @@ import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.proc_pid_stat { ProcPidStatStartTime, StartTimeObserved, proc_pid_stat_start_time }
 import gunbc.machine_intake.sol_hold
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // A BACKGROUND PROCESS THIS RUN STARTED, OWNED BY (pid, start time). The launch publishes
 // "<pid> <starttime>" (proc(5) field 22 at spawn, written to a temporary name and renamed) beside the
@@ -171,3 +173,7 @@ fn owned_release_text(r: OwnedRelease) -> String {
     OwnedReleaseUnresolved { pid: p, standing: st } => concat("RELEASE UNRESOLVED for pid ", concat(p, concat(": ", owned_process_standing_text(s: st))))
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "dag/gunbc/owned_process.dag::owned_process_standing_of" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

@@ -30370,6 +30370,33 @@ mod nfr_tests {
              report the row as having no `subject` field; got: {message}"
         );
     }
+
+    #[test]
+    fn nfr_frontier_reader_refuses_row_not_at_home() {
+        let synthetic = "module other\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r\", dissolution: d }\n\
+             ]\n";
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source_with(
+                "other.dag",
+                synthetic,
+                super::NfrHomeCheck::Require,
+            )
+        }))
+        .expect_err("a row whose subject file is not the hosting module must refuse");
+        let message = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(
+            message.contains("not at home")
+                && message.contains("other.dag")
+                && message.contains("synthetic/a.dag::f"),
+            "the refusal must LOCATE the hosting file and the row path; got: {message}"
+        );
+    }
 }
 
 const LANGUAGES_AUTHORITY_REL: &str = "dag/std/languages.dag";

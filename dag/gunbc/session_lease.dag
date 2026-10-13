@@ -15,6 +15,8 @@ import std.upsert_decision {
   Apply,
   Refuse,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 
 
@@ -127,3 +129,15 @@ fn classify_process_port_upsert(
       }
   }
 }
+
+data nfr_reason_process_port_upsert_refusal_split: String = "one-special-variant split over ProcessPortObservation: PortObservationRefused threads the observe-leg reason into an Upsert Refuse decision, and the three non-refused arms (PortAbsent, PortObserved, PortObservedStaleExpected) share one arm that derives the decision from the verdict classify_process_port already computed exhaustively over the same coproduct — the second match re-discriminates a value the first fold has already partitioned. The refused arm and its wildcard landed with the NBD-proxy observe-side read-back (74b9a6e6a5, #8582, 2026-08-19; the fn itself dates from #6171) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
+
+data nfr_dissolve_process_port_upsert_refusal_split: DissolutionCondition = unbound_dissolution(description: "classify_process_port returns a carrier that already binds the refusal reason to its verdict (verdict and decision from ONE total fold over ProcessPortObservation), so classify_process_port_upsert no longer re-matches the observation and the row deletes with the second match")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/session_lease.dag::classify_process_port_upsert" },
+      reason: nfr_reason_process_port_upsert_refusal_split,
+      dissolution: nfr_dissolve_process_port_upsert_refusal_split,
+    },
+]

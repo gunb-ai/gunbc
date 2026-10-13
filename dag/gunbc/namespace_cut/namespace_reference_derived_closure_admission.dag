@@ -26,6 +26,8 @@ import std.reference_binding_observation {
   UnrelatedLoadedFileObservation,
 }
 import std.types { Bool, FilePath, Int, List, String }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type ReferenceDerivedClosureCapability
   = SameFileEarlierNeighbourVisible
@@ -211,3 +213,15 @@ fn assess_reference_binding_observation(
       }
   }
 }
+
+data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = unbound_dissolution(description: "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
+      reason: nfr_reason_binding_outcome_resolution_wildcard,
+      dissolution: nfr_dissolve_binding_outcome_resolution_wildcard,
+    },
+]

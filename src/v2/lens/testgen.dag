@@ -173,6 +173,8 @@ import v2.std.concept_index {
 import v2.std.node_query {
   coproduct_arm_key_list_from_node
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_derived_equality, nfr_reason_structural_eq_mint }
 
 type TypeConstructionSubject
 
@@ -2484,3 +2486,11 @@ fn bootstrap_claim_generator_for_manual_anchor(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq" },
+      reason: nfr_reason_structural_eq_mint,
+      dissolution: nfr_dissolve_derived_equality,
+    },
+]

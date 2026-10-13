@@ -3,6 +3,8 @@ module gunbc.generated_workflow_provenance
 import std.types { String, List }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact }
 import std.optional { Present, Absent }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // A generated workflow is reviewed at the bytes boundary, where its producing .dag graph is not
 // visible. Keep the provenance in that boundary rather than asking a reviewer to infer it from the
@@ -67,3 +69,15 @@ fn generated_workflow_provenance_header(a: GeneratedArtifact) -> GeneratedWorkfl
       }
   }
 }
+
+data nfr_reason_generated_workflow_provenance_projection: String = "subset projection over GeneratedArtifact: the three workflow artifact identities carry provenance and every non-workflow artifact shares one Absent arm. Enumerating the non-workflow variants would copy a live population beside the generated-artifact commit-policy registry. The production join in generated_artifact_emit refuses GeneratedWorkflowProvenanceHeaderNotApplicable whenever artifact_commit_policy says GithubActionsWorkflow, so omission on a future workflow admission is refused even though the inconsistent pair remains writable in the two authorities. This join does not adjudicate whether a present projected generator agrees with the actual producer; that disagreement class remains open until the projection is fused with generation. Declared when the required nfr_roster_receipt first exercised the new projection on #9954, so the ratchet re-arms with the site."
+
+data nfr_dissolve_generated_workflow_provenance_projection: DissolutionCondition = unbound_dissolution(description: "the generated-artifact registry admission for GithubActionsWorkflow carries provenance fused with its generating dispatch, so the artifact-visible citation is derivable only from the actual producer and neither an omitted nor a disagreeing provenance row is constructible; emission consumes that refined workflow-artifact declaration without projecting from the full GeneratedArtifact coproduct, and this wildcard match deletes with its row")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/generated_workflow_provenance.dag::generated_workflow_provenance" },
+      reason: nfr_reason_generated_workflow_provenance_projection,
+      dissolution: nfr_dissolve_generated_workflow_provenance_projection,
+    },
+]

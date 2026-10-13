@@ -23,6 +23,8 @@ import v2.lens.enforcement.vocab {
 }
 import v2.lens.enforcement.contract { LensContract, EnrollmentDiscoveryReceipt, Cost, lens_id_v0_eq }
 import std.realization_schedule { ScheduleWitnessEntry, schedule_witness_entry_eq }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
 
 type SubjectJudgment
   = BodyJudged { verdict: Witness<SymbolicCost> }
@@ -256,3 +258,11 @@ fn derive_receipt(
     self_application_status: self_application_for(facts: facts, module_prefix: self_module_prefix)
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/lens/enforcement/receipts.dag::consumer_entry_identity_for" },
+      reason: nfr_reason_land_red_era,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+]

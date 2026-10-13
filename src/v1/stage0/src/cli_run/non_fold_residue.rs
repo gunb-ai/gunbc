@@ -83,20 +83,97 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-/// Project the path site keys out of the typed `non_fold_residue_frontier` rows of the
-/// `gunbc.non_fold_residue` authority SOURCE TEXT via the real front-end — the roster's
-/// re-home off this file's former `NON_FOLD_RESIDUE_ROSTER` const (group-of-units ruling,
-/// enrolled in `gunbc.roster_registry`). Per-row reasons and dissolution triggers are
-/// `.dag`-side facts the host does not consume. Fail-closed: a parse error, a missing data
+/// Whether a row's `PathSubject.path` file prefix must equal the file that hosts the decl.
+/// Production discovery Requires it (the co-location invariant). Parser unit tests Skip so they
+/// can name synthetic paths. A base-tree read of the pre-cut central list also Skips, because
+/// those rows were not at home.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NfrHomeCheck {
+    Require,
+    Skip,
+}
+
+pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
+    content.lines().any(|line| {
+        let t = line.trim_start();
+        t.starts_with("data non_fold_residue_frontier:")
+            || t.starts_with("data non_fold_residue_frontier ")
+    })
+}
+
+/// Project the path site keys out of a `non_fold_residue_frontier` list of DIRECT record
+/// literals via the real front-end. Per-row reasons and dissolution triggers are `.dag`-side
+/// facts the host does not consume for the walk. Fail-closed: a parse error, a missing data
 /// def, a non-record element, a missing/non-literal `subject.path` field, a duplicate path,
-/// or an empty roster is a loud panic, never a silent fallback.
+/// an empty list, or (when Required) a row whose path prefix is not this file is a loud panic.
 // 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves with
 // `witness_exclusion_rows_from_module_source` when the host consumes an emitted manifest of
 // the rows (module-binding supply-carrier pattern), and with the scan below into a pure
-// `.dag` Node-tree lens at gunbc#5364.
+// `.dag` Node-tree lens at gunbc#5364. v1 seed-reader change is admissible because it
+// unblocks residue burn-down for the v2 program.
 pub(crate) fn non_fold_residue_units_from_module_source(
     module_rel_path: &str,
     content: &str,
+) -> Vec<String> {
+    non_fold_residue_units_from_module_source_with(module_rel_path, content, NfrHomeCheck::Skip)
+}
+
+/// The list literal only — so discovery does not tokenize a 10k-line subject module to read
+/// three FrontierRow records.
+fn nfr_frontier_list_source(content: &str) -> Option<String> {
+    let needle = "data non_fold_residue_frontier";
+    let start = content.find(needle)?;
+    let after = &content[start..];
+    let bracket = after.find('[')?;
+    let bytes = after.as_bytes();
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut i = bracket;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if b == b'\\' {
+                i += 2;
+                continue;
+            }
+            if b == b'"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+        match b {
+            b'"' => in_string = true,
+            b'[' => depth += 1,
+            b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    let literal = &after[bracket..=i];
+                    return Some(format!(
+                        "module nfr_frontier_slice\n\ndata non_fold_residue_frontier: List<FrontierRow> = {literal}\n"
+                    ));
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+pub(crate) fn non_fold_residue_units_from_module_source_with(
+    module_rel_path: &str,
+    content: &str,
+    home: NfrHomeCheck,
+) -> Vec<String> {
+    let parse_src = nfr_frontier_list_source(content).unwrap_or_else(|| content.to_string());
+    non_fold_residue_units_from_parse_source(module_rel_path, &parse_src, home)
+}
+
+fn non_fold_residue_units_from_parse_source(
+    module_rel_path: &str,
+    content: &str,
+    home: NfrHomeCheck,
 ) -> Vec<String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
 
@@ -214,6 +291,16 @@ pub(crate) fn non_fold_residue_units_from_module_source(
                      `subject` field"
                 )
             });
+            if home == NfrHomeCheck::Require {
+                let prefix = path.split("::").next().unwrap_or("");
+                if prefix != module_rel_path {
+                    panic!(
+                        "nfr frontier reader: row path {path:?} in {module_rel_path} is not at \
+                         home (subject file prefix {prefix:?} must equal the hosting module \
+                         path {module_rel_path:?})"
+                    );
+                }
+            }
             if !seen.insert(path.clone()) {
                 panic!(
                     "nfr frontier reader: duplicate path {path:?} in `{data_name}` of \
@@ -233,17 +320,70 @@ pub(crate) fn non_fold_residue_units_from_module_source(
     panic!("nfr frontier reader: no `data {data_name}` def in {module_rel_path}")
 }
 
+fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
+    let mut acquired: Vec<crate::cli_run::derived_row_roster::AcquiredDag> = Vec::new();
+    collect_dag_files(&root.join("dag"), &mut acquired);
+    collect_dag_files(&root.join("src/v2"), &mut acquired);
+    let mut files = Vec::new();
+    for item in acquired {
+        if item.is_derived() {
+            continue;
+        }
+        let content = item.read().unwrap_or_else(|e| {
+            panic!(
+                "nfr frontier reader: failed to read {}: {e}",
+                item.path().display()
+            )
+        });
+        if !nfr_content_declares_frontier(&content) {
+            continue;
+        }
+        let rel = item
+            .path()
+            .strip_prefix(root)
+            .unwrap_or(item.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        files.push((rel, content));
+    }
+    files
+}
+
+fn nfr_collect_units_from_files(files: &[(String, String)], home: NfrHomeCheck) -> Vec<String> {
+    let mut all = Vec::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    for (rel, content) in files {
+        if !nfr_content_declares_frontier(content) {
+            continue;
+        }
+        let units = non_fold_residue_units_from_module_source_with(rel, content, home);
+        for unit in units {
+            if !seen.insert(unit.clone()) {
+                panic!(
+                    "nfr frontier reader: duplicate path {unit:?} across co-located \
+                     `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` lists (first collision involving \
+                     {rel})"
+                );
+            }
+            all.push(unit);
+        }
+    }
+    all
+}
+
 pub(crate) fn non_fold_residue_roster_entries() -> &'static [String] {
     static ENTRIES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
     ENTRIES.get_or_init(|| {
-        let path = process_workspace_root().join(NON_FOLD_RESIDUE_AUTHORITY_REL);
-        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        let root = process_workspace_root();
+        let files = nfr_workspace_carrier_files(&root);
+        let units = nfr_collect_units_from_files(&files, NfrHomeCheck::Require);
+        if units.is_empty() {
             panic!(
-                "nfr frontier reader: failed to read {}: {e}",
-                path.display()
-            )
-        });
-        non_fold_residue_units_from_module_source(NON_FOLD_RESIDUE_AUTHORITY_REL, &content)
+                "nfr frontier reader: no `data {NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` rows in the \
+                 corpus (fail-closed)"
+            );
+        }
+        units
     })
 }
 
@@ -527,28 +667,111 @@ pub(crate) fn non_fold_residue_classify_row_subject(
     }
 }
 
+fn nfr_git_show(root: &Path, commit: &str, rel: &str) -> Result<Option<String>, String> {
+    let output = std::process::Command::new("git")
+        .args([
+            "-C",
+            &root.to_string_lossy(),
+            "show",
+            &format!("{commit}:{rel}"),
+        ])
+        .output()
+        .map_err(|e| format!("git show {commit}:{rel}: {e}"))?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        if err.contains("does not exist")
+            || err.contains("exists on disk, but not in")
+            || err.contains("bad revision")
+            || err.contains("did not match")
+            || err.contains("Path")
+        {
+            return Ok(None);
+        }
+        // absent path typically: "fatal: path '...' does not exist in '...'"
+        if output.status.code() == Some(128) {
+            return Ok(None);
+        }
+        return Err(format!("git show {commit}:{rel} failed: {err}"));
+    }
+    String::from_utf8(output.stdout)
+        .map(Some)
+        .map_err(|e| format!("git show {commit}:{rel} stdout is not utf-8: {e}"))
+}
+
+fn nfr_units_from_optional_source(
+    rel: &str,
+    content: Option<&str>,
+    home: NfrHomeCheck,
+) -> Vec<String> {
+    match content {
+        Some(c) if nfr_content_declares_frontier(c) => {
+            non_fold_residue_units_from_module_source_with(rel, c, home)
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// The subjects of every roster row the diff added or deleted, read at the floor's resolved diff
-/// base and classified by exact path. Refuses when the base roster cannot be read.
+/// base and classified by exact path. Compares the union of `non_fold_residue_frontier` lists in
+/// changed `.dag` files (plus the pre-cut central vocabulary file, so this PR's own move is an
+/// identity). Refuses when a base file that must be read cannot be.
 pub(crate) fn non_fold_residue_changed_row_subjects(
     base_tree: &crate::cli_run::required_floor_runner::FloorBaseTree,
+    diff_paths: &[String],
 ) -> Result<Vec<NonFoldResidueRowSubject>, String> {
-    let base_rows = match floor_base_file_read(base_tree, NON_FOLD_RESIDUE_AUTHORITY_REL)? {
-        None => Vec::new(),
-        Some(content) => {
-            non_fold_residue_units_from_module_source(NON_FOLD_RESIDUE_AUTHORITY_REL, &content)
-        }
-    };
     let root = process_workspace_root();
-    Ok(
-        non_fold_residue_changed_row_paths(&base_rows, non_fold_residue_roster_entries())
-            .into_iter()
-            .map(|path| {
-                let full = root.join(&path);
-                let read = std::fs::read_to_string(&full).map_err(|e| e.to_string());
-                non_fold_residue_classify_row_subject(&path, full.exists(), read)
-            })
-            .collect(),
-    )
+    let commit = base_tree.commit()?.as_str().to_string();
+    let mut candidates: BTreeSet<String> = diff_paths
+        .iter()
+        .filter(|p| p.ends_with(".dag"))
+        .cloned()
+        .collect();
+    candidates.insert(NON_FOLD_RESIDUE_AUTHORITY_REL.to_string());
+
+    let mut base_files = Vec::new();
+    let mut head_files = Vec::new();
+    for rel in &candidates {
+        let base_content = nfr_git_show(&root, &commit, rel)?;
+        let head_path = root.join(rel);
+        let head_content = if head_path.is_file() {
+            Some(std::fs::read_to_string(&head_path).map_err(|e| e.to_string())?)
+        } else {
+            None
+        };
+        if let Some(c) = base_content {
+            base_files.push((rel.clone(), c));
+        }
+        if let Some(c) = head_content {
+            head_files.push((rel.clone(), c));
+        }
+    }
+
+    let base_home = NfrHomeCheck::Skip;
+    let head_home = NfrHomeCheck::Require;
+    let mut base_rows = Vec::new();
+    let mut seen_base: BTreeSet<String> = BTreeSet::new();
+    for (rel, content) in &base_files {
+        let home = if rel.as_str() == NON_FOLD_RESIDUE_AUTHORITY_REL {
+            base_home
+        } else {
+            NfrHomeCheck::Skip
+        };
+        for unit in nfr_units_from_optional_source(rel, Some(content), home) {
+            if seen_base.insert(unit.clone()) {
+                base_rows.push(unit);
+            }
+        }
+    }
+    let head_rows = nfr_collect_units_from_files(&head_files, head_home);
+
+    Ok(non_fold_residue_changed_row_paths(&base_rows, &head_rows)
+        .into_iter()
+        .map(|path| {
+            let full = root.join(&path);
+            let read = std::fs::read_to_string(&full).map_err(|e| e.to_string());
+            non_fold_residue_classify_row_subject(&path, full.exists(), read)
+        })
+        .collect())
 }
 
 /// The seeds a subject set contributes: the module of every readable, module-declaring subject.

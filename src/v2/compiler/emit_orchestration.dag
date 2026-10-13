@@ -142,6 +142,8 @@ import v2.std.diagnostic {
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node, TypeNode, Conj, Atom, Symbol }
 import v2.std.text { String, string_all_chars_in, string_any_char_in }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 fn orch_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
   optional_absent()
@@ -1436,3 +1438,15 @@ fn orch_emit_pipeline(
     f: fn(c) { outcome_accepted(lossless_source(text: c.text)) }
   )
 }
+
+data nfr_reason_orch_emit: String = "one-special-variant dispatch (ExprCmdSubst to cmdsubst_assign; every other Expr through the uniform spelling path) — enumerating all Expr variants would clone the general arm; landed with the shell-to-dag P2b/P4 slices (#6573), surfaced on the 2026-07-14 nightly cold sweep (masking receipt 9)"
+
+data nfr_dissolve_orch_emit: DissolutionCondition = unbound_dissolution(description: "emit becomes the backward grammar-row fold (DESIGN §4) and the special case dissolves with the orchestration-emit fold migration")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/emit_orchestration.dag::orch_emit_let_step" },
+      reason: nfr_reason_orch_emit,
+      dissolution: nfr_dissolve_orch_emit,
+    },
+]

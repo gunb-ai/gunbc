@@ -12,6 +12,8 @@ import extdeps.llm.cli_lifecycle {
   ClaudeCliProvider,
   CursorCliProvider,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // SHARED CONTRACT for Claude and Cursor dispatch lanes (valiant-stag-845). ProviderReadiness
 // decomposes per provider-control-interface-audit section 10 into six independent axes:
@@ -644,3 +646,25 @@ fn fixture_standing_bundle_claude_profile_present_token_absent() -> ProviderStan
     tool_environment: ToolEnvironmentReady,
   }
 }
+
+data nfr_reason_provider_standing_limit_draw: String = "dispatch-scoped limit relevance folds (match on ProviderLimitDispatchDraw × ProviderLimitSubject and LimitRejected carve-outs with wildcard arms routing off-shape subjects) landed with provider_standing authority #7926; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_provider_standing_limit_draw: DissolutionCondition = unbound_dissolution(description: "cited model-to-native-token joins land per provider gap notes and limit_subject_covers_dispatch_draw becomes a total match — rows delete with that fold")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_subject_covers_dispatch_draw" },
+      reason: nfr_reason_provider_standing_limit_draw,
+      dissolution: nfr_dissolve_provider_standing_limit_draw,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_observation_blocks_dispatch" },
+      reason: nfr_reason_provider_standing_limit_draw,
+      dissolution: nfr_dissolve_provider_standing_limit_draw,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/provider_standing.dag::provider_standing_bundle_is_selection_eligible" },
+      reason: nfr_reason_provider_standing_limit_draw,
+      dissolution: nfr_dissolve_provider_standing_limit_draw,
+    },
+]

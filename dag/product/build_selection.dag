@@ -45,6 +45,8 @@ import product.build_fulfillment {
   NewPurchase,
   OwnedInventory,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE DOMAIN PROJECTOR. std.pareto is the Pareto-assessment spine and knows
 // nothing about hardware; this module is the one place that turns a resolved
@@ -302,3 +304,20 @@ fn build_standing(
     sensitivities: [],
   )
 }
+
+data nfr_reason_build_axis_reading_unreachable_arm: String = "axis-reading projection over CashProjection and ConstructibleCeiling: the Derived arm yields its magnitude and the wildcard answers a zero magnitude for the empty arm (CashNoPurchaseLines is a genuine zero; CeilingUnconstrainedByAnyLine is declared a missing input by ceiling_missing) and for the Refused arm, which candidate_missing_inputs has already declared missing, so the refused reading is construction-unreachable at the only caller (per the in-file note above cash_reading) rather than a fabricated zero. Landed with I-3 inventory-aware build fulfillment (#8543, 2026-08-19) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
+
+data nfr_dissolve_build_axis_reading_refined_carrier: DissolutionCondition = unbound_dissolution(description: "BuildCandidate carries its cash and ceiling on a refined Derived-only carrier once candidate_missing_inputs has admitted it (illegal states unrepresentable at the reading), so the readings match totally over the refined carrier and the unreachable arms delete with their rows")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/product/build_selection.dag::cash_reading" },
+      reason: nfr_reason_build_axis_reading_unreachable_arm,
+      dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/product/build_selection.dag::ceiling_reading" },
+      reason: nfr_reason_build_axis_reading_unreachable_arm,
+      dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
+    },
+]

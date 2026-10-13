@@ -3447,7 +3447,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The deleted rows by path, each match total, and the frontier witness green."
         )),
       dispatch: dispatchable(),
-      execution: bound(contract: gunbc_claim_execution_contract(entry: "dag/test/claim/non_fold_residue_frontier.dag" as FilePath, function: "non_fold_residue_frontier_rows_well_formed_holds" as NonEmptyStr)),
+      execution: bound(contract: gunbc_claim_execution_contract(entry: "dag/test/claim/non_fold_residue_frontier.dag" as FilePath, function: "non_fold_residue_frontier_red_control_duplicate_path_reds" as NonEmptyStr)),
       parent: in_project(project: "dp-m4-closed-matches-total", contribution: "The src/v2/lens mint-era rows are the first bounded batch of wildcard arms to total, in pure-reader code."),
       centering: plan(text: "Target: the 13 nfr_reason_mint_era rows of gunbc.non_fold_residue non_fold_residue_frontier (dag/gunbc/non_fold_residue.dag) whose paths lie under src/v2/lens, and the matches they name. (1) For each row, open the named match, replace the wildcard arm with an arm per remaining variant of the closed coproduct (derive the variants from the type declaration, never from a guess), then delete the row. (2) If a row's wildcard is over an open or foreign type, leave the row and hand it back with the reason. (3) Acceptance: the named test process on dag/test/claim/non_fold_residue_frontier.dag, which must stay green; the stale-row check lives in the seed (nfr_roster_receipt in cli_run.rs), so also report the rows you deleted by path. Do NOT touch rows outside src/v2/lens and do NOT edit cli_run.rs."),
     ),
