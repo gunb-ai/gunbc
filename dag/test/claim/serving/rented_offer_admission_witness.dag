@@ -436,6 +436,28 @@ fn r_coherent(c: HarnessCandidate) -> Bool {
     && (c.launch.endpoint as String) == (serving_route_endpoint_wire(e: c.endpoint) as String)
 }
 
+test fn a_launch_naming_another_endpoint_for_the_same_replica_places_nothing() -> Bool {
+  let b = r_replica_b()
+  let stale = replica_endpoint_launch(replica: b, endpoint: serving_route_endpoint_wire(e: r_endpoint_for(replica: w_replica)), process_start_field: "1789300000.12" as NonEmptyStr)
+  let placed = harness_add_serving_candidate(
+    acc_in: r_empty(),
+    endpoint: r_endpoint_for(replica: b),
+    class: BatchQualityTolerant,
+    launch: stale,
+    engine: r_engine_for(replica: b),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: NoSessionRecord,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: r_derived_sources(replica: b),
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1000,
+  )
+  count(placed.candidates) == 0 && count(placed.notes) == 1
+}
+
 test fn a_launch_naming_another_replica_than_the_endpoint_places_nothing() -> Bool {
   let placed = harness_add_serving_candidate(
     acc_in: r_empty(),

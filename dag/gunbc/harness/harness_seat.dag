@@ -10,7 +10,7 @@ import extdeps.accounting.encumbrance { Held, Expended, Released }
 import extdeps.api_rate_limit { upstream_rate_limit_key }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
-  ServingRouteTurnCeiling, serving_route_turn_ceiling_count,
+  ServingRouteTurnCeiling, serving_route_turn_ceiling_count, serving_route_endpoint_wire,
 }
 import gunbc.serving.rented_enrollment { rented_cohort_index, rented_enrolled_routes, rented_incarnation_standing }
 import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch, replica_endpoint_launch_key, replica_incarnation_unverified_obligation }
@@ -708,15 +708,18 @@ fn harness_add_serving_candidate(
     ceiling: seats,
     receipt: harness_metrics_probe_receipt,
   )
+  let wire = serving_route_endpoint_wire(e: endpoint) as String
   let launch_names_replica = rented_replica_wire(id: launch.replica) == rented_replica_wire(id: replica)
+    && (launch.endpoint as String) == wire
     && (match engine.launch {
-      ReplicaLaunchObserved { launch: seen, receipt: _ } => rented_replica_wire(id: seen.replica) == rented_replica_wire(id: replica)
+      ReplicaLaunchObserved { launch: seen, receipt: _ } =>
+        rented_replica_wire(id: seen.replica) == rented_replica_wire(id: replica) && (seen.endpoint as String) == wire
       ReplicaLaunchUnobserved { replica: _, obligation: _ } => true
     })
   match admission {
     AdmissibleForClass { class: _, receipt: _ } =>
       if !launch_names_replica {
-        harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: "the launch supplied for this candidate names another replica than its endpoint, so it is not the launch of the process this endpoint serves"), retryable: false)
+        harness_no_candidate(acc: acc, note: seat_bind_detail(replica: replica, text: "the launch supplied for this candidate names another replica or another endpoint than the candidate it is supplied for, so it is not the launch of the process this endpoint serves"), retryable: false)
       } else {
       match admit_rented_offer(replica: replica, sources: sources, at: now, requirements: subject.work.requirements, demand: subject.demand, work: subject.work.id) {
         RentedCandidateAdmitted { candidate: c } =>
