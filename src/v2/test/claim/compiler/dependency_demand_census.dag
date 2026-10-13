@@ -286,7 +286,7 @@ test fn a_uses_file_refused_before_authorship_is_an_incomplete_population_RED() 
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
-      (r.unreadable_files == 1)
+      (length(xs: r.unreadable) == 1)
         && (demand_census_exit(r: r) == 2)
         && match r.unreadable {
           Cons { head: u, tail: Empty } =>

@@ -704,14 +704,13 @@ fn demand_census_function_path(authored: AuthoredUsesFunction) -> QualifiedName 
 // `uses_functions` is counted from the strip; `rows` is what the route emitted. They are produced by
 // different folds -- the strip over parse trees, the rows over the module roster -- so their equality
 // is the count-conservation check rather than a restatement of one count.
-// `unreadable_files` counts reads the front end refused BEFORE the strip ran (tokenize or parse): their
+// `unreadable` is the reads the front end refused BEFORE the strip ran (tokenize or parse): their
 // `uses` rows were never read, so they are missing from BOTH sides of the conservation check, and a
 // census with any of them is an INCOMPLETE POPULATION -- no observation, never a holding census
 // (review of gunbc#12992).
 type DemandCensusReport {
   vocabulary: ResourceSet
   unreadable: List<DemandCensusUnreadable>
-  unreadable_files: Int
   uses_functions: Int
   rows: List<DemandCensusRow>
   file_refusals: Int
@@ -726,7 +725,7 @@ fn demand_census_conserved(r: DemandCensusReport) -> Bool {
 // the rows do not account for every uses fn read, 0 when it holds. The incomplete arm is first, so a
 // census missing a file can never report held.
 fn demand_census_exit(r: DemandCensusReport) -> Int {
-  if r.unreadable_files > 0 {
+  if !is_empty(xs: r.unreadable) {
     2
   } else if demand_census_conserved(r: r) {
     0
@@ -891,13 +890,14 @@ fn demand_census_row_line(r: DemandCensusRow) -> String {
     CensusUndecided { cause: c } =>
       demand_census_text(parts: [head, " cause=", demand_census_cause_word(c: c), " at=", qualified_name_to_dotted_string(qn: demand_census_cause_subject(c: c))])
     CensusUnobserved { reason: u } =>
+      let reason_part = demand_census_text(parts: [head, " reason=", demand_census_unobserved_word(u: u)])
       match u {
         UnobservedModuleResolveRefused { first_reason: r } =>
-          demand_census_text(parts: [head, " reason=module_resolve_refused resolve_reason=", symbol_lexeme(sym: r)])
-        UnobservedFileRefused => demand_census_text(parts: [head, " reason=file_refused"])
-        UnobservedFunctionUnnamed => demand_census_text(parts: [head, " reason=function_unnamed"])
-        UnobservedFunctionNotDeclared => demand_census_text(parts: [head, " reason=function_not_declared"])
-        UnobservedAuthoredTypeUnresolved => demand_census_text(parts: [head, " reason=authored_type_unresolved"])
+          demand_census_text(parts: [reason_part, " resolve_reason=", symbol_lexeme(sym: r)])
+        UnobservedFileRefused => reason_part
+        UnobservedFunctionUnnamed => reason_part
+        UnobservedFunctionNotDeclared => reason_part
+        UnobservedAuthoredTypeUnresolved => reason_part
       }
   }
 }
@@ -998,7 +998,7 @@ fn demand_census_lines(r: DemandCensusReport) -> List<String> {
     " unobserved=", to_string(tally.unobserved),
     " deletable_rows=", to_string(demand_census_deletable_rows(r: r)),
     " file_refusals=", to_string(r.file_refusals),
-    " unreadable_files=", to_string(r.unreadable_files),
+    " unreadable_files=", to_string(length(xs: r.unreadable)),
     " resolve_refused_modules=", to_string(r.resolve_refused_modules)
   ])
   let causes = [
@@ -1057,7 +1057,6 @@ fn demand_census_report(
   DemandCensusReport {
     vocabulary: vocabulary,
     unreadable: unreadable,
-    unreadable_files: length(xs: unreadable),
     uses_functions: uses_functions,
     rows: fold_list(xs: file_refused, empty: resolved_rows, cons: fn(a, f) {
       list_snoc_item(xs: a, item: demand_census_row_unobserved(function: demand_census_function_path(authored: f), reason: UnobservedFileRefused))
