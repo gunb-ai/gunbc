@@ -16,8 +16,8 @@ import v2.std.orchestration {
   EscalationLevel,
   ValueSource,
   Expr,
-  EnvBinding,
 }
+import std.env_binding { EnvBinding }
 
 type EffectPlanStep<E>
   = Do { effect: E }
