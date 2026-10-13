@@ -6,6 +6,9 @@ use self::ReferenceDerivedClosureCapability::*;
 use self::ReferenceDerivedClosureScenarioFailure::*;
 use self::ReferenceDerivedClosureTrigger::*;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_occurrence_binding::OccurrenceBindingResult;
 use crate::std_occurrence_binding::OccurrenceBindingResult::{
     OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
@@ -22,6 +25,8 @@ use crate::std_reference_binding_observation::StructuralBindingResolution::Struc
 pub use crate::std_reference_binding_observation::{
     ReferenceBindingObservation, StructuralBindingResolution,
 };
+use crate::std_roster_frontier::FrontierSubject::PathSubject;
+pub use crate::std_roster_frontier::{FrontierRow, FrontierSubject};
 pub use crate::std_types::{Bool, FilePath, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -216,6 +221,39 @@ pub fn assess_reference_binding_observation(
         refused(ReferenceDerivedClosureCapability::UnrelatedLoadedFileExcluded, ReferenceDerivedClosureScenarioFailure::UnrelatedLoadedFileDependencyLeaked)
     },
 }
+}
+
+pub fn nfr_reason_binding_outcome_resolution_wildcard() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn nfr_dissolve_binding_outcome_resolution_wildcard() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            crate::std_dissolution::unbound_dissolution("assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn non_fold_residue_frontier() -> Rc<Vec<Rc<FrontierRow>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<FrontierRow>>> = {
+                Rc::new(vec![Rc::new(FrontierRow {
+        subject: Rc::new(FrontierSubject::PathSubject {
+        path: "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution".to_string(),
+    }),
+        reason: nfr_reason_binding_outcome_resolution_wildcard(),
+        dissolution: nfr_dissolve_binding_outcome_resolution_wildcard(),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<FrontierRow>>>| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

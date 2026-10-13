@@ -68,6 +68,8 @@ pub use crate::std_occurrence_identity::{
     OccurrenceTransportValidation, ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
 pub use crate::std_roster_frontier::declaration_ref_eq;
+use crate::std_roster_frontier::FrontierSubject::PathSubject;
+pub use crate::std_roster_frontier::{FrontierRow, FrontierSubject};
 pub use crate::std_types::{Bool, CommitSha, FilePath, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -3455,6 +3457,45 @@ pub fn section13_module_path_is_symbolic_dissolve_on() -> Rc<DissolutionConditio
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn nfr_dissolve_derived_equality() -> Rc<DissolutionCondition> {
+    thread_local! {
+        static CACHED: Rc<DissolutionCondition> = {
+            crate::std_dissolution::unbound_dissolution("derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+pub fn nfr_reason_structural_eq_mint() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn non_fold_residue_frontier() -> Rc<Vec<Rc<FrontierRow>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<FrontierRow>>> = {
+                Rc::new(vec![Rc::new(FrontierRow {
+        subject: Rc::new(FrontierSubject::PathSubject {
+        path: "dag/std/occurrence_binding_candidates.dag::declaration_exposure_eq".to_string(),
+    }),
+        reason: nfr_reason_structural_eq_mint(),
+        dissolution: nfr_dissolve_derived_equality(),
+    }), Rc::new(FrontierRow {
+        subject: Rc::new(FrontierSubject::PathSubject {
+        path: "dag/std/occurrence_binding_candidates.dag::section13_population_law_id_eq".to_string(),
+    }),
+        reason: nfr_reason_structural_eq_mint(),
+        dissolution: crate::std_dissolution::unbound_dissolution("DISSOLVE-ON: Section13PopulationLawId equality becomes derived from inhabitance (dag/std/algebra, DESIGN §3/§4) and the hand nested-match equality fold deletes with the row".to_string()),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<FrontierRow>>>| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

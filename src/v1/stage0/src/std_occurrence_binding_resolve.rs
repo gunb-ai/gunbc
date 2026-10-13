@@ -4,6 +4,9 @@
 use self::OccurrenceCategoryBindingVerdict::*;
 use self::OccurrenceReferenceBindingOutcome::*;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_occurrence_binding::occurrence_binding_from_candidates;
 use crate::std_occurrence_binding::OccurrenceBindingResult::*;
 pub use crate::std_occurrence_binding::{
@@ -27,6 +30,8 @@ pub use crate::std_occurrence_identity::{
     OccurrenceRole, OccurrenceTransport, OccurrenceTransportRefusal, OccurrenceTransportValidation,
     ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
+use crate::std_roster_frontier::FrontierSubject::PathSubject;
+pub use crate::std_roster_frontier::{FrontierRow, FrontierSubject};
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -379,4 +384,28 @@ pub fn resolve_reference_occurrence_binding(
             supplied_candidates.clone(),
         ),
     }
+}
+
+pub fn nfr_reason_trait_derive_shape_table() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "trait-shape→derive-trait capability table (nested match on ReprGroundingDeriveElemShape × ReprGroundingDeriveTrait with off-trait wildcard arms returning false) landed with Gate-1 sub-wall #2 predicate scaffold (#7174); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn non_fold_residue_frontier() -> Rc<Vec<Rc<FrontierRow>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<FrontierRow>>> = {
+                Rc::new(vec![Rc::new(FrontierRow {
+        subject: Rc::new(FrontierSubject::PathSubject {
+        path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict".to_string(),
+    }),
+        reason: nfr_reason_trait_derive_shape_table(),
+        dissolution: crate::std_dissolution::unbound_dissolution("DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row".to_string()),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<FrontierRow>>>| c.clone())
 }
