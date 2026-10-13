@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.a_prefix_read_unfolds_the_whole_text_on_every_window_attempt
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_prefix_read_unfolds_the_whole_text_on_every_window_attempt: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_prefix_read_unfolds_the_whole_text_on_every_window_attempt" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a reader that needs only the start of a text pays for the whole text. v2.compiler.tokenize tokenize_prefix_prepared stops its WALK at a scalar limit, but its first step is `unicode_scalar_unfold(s: text)` over the WHOLE text, and v2.compiler.module_header module_header_read_window calls it once per window attempt (the window starts at module_header_first_window and doubles until the header production settles). So the unfold is O(file) per attempt while the walk it feeds is O(window): the prefix door made the lex proportional to the header and left the text ingress proportional to the file. A header that settles in the first window still unfolds every scalar of its file.",
+
+    "DISTINGUISHING FACTS. It is not the lex (the walk is windowed) and not the production (the tail is derived once per run by v2.compiler.grammar_reach grammar_production_tail). The unfold is std.coercion unicode_scalar_unfold, the declared host-text to code-point-sequence crossing (DESIGN section 4, ruling `text_crossings_go_through_the_unfold`), and it takes the whole String: there is no declared form of the crossing that yields only the leading scalars. A caller that wants a window therefore has no route that does not materialize the rest, and a knob on the existing unfold would give one name two contracts (DESIGN section 3, meaning fork). DERIVED from the code, NOT measured per verb: the live-roots step prints one line for both `check-layout` and `parse-population`.",
+
+    "MEASURED, the step it sits in: the v2-native-cli step from `population controls - check-layout and parse-population over the live roots` to `live roots - check-layout held`, 2026-10-13. #13866 at adca9d6b (run 38378591395): 907.9 s. Six trees carrying #13842 without #13866: 1030.0 to 1137.6 s (median 1076). Two trees before #13842: 786.5 and 861.9 s. So #13866 recovered about 168 s of the median and the step is about 28 s over the roughly 880 s ceiling, with 46 to 122 s of #13842's cost still present. This row is one named candidate for that remainder (the fold driver over the grammar tables is the other); neither is attributed by a per-verb measurement yet.",
+
+    "HARM: DESIGN section 6, bare minimum cost: a proven cost-shape defect is always fixed regardless of realized n, because n is small here is not time-stable. Here n is every module of the live roots (8317 at the measurement) per verb, in a job that is one required context.",
+
+    "RUNG FOUND AT: mitigatable (the cost is bounded by the file and the answer is correct). ATTAINABLE CEILING for THIS instance: the door's text ingress cannot exceed the window by construction, because a windowed unfold is a distinct declared coercion plan in std.coercion (the leading scalars of the whole unfold, the remainder never materialized) and is the only route the prefix door has. The CLASS, a prefix consumer paying for its whole input, is a cost shape and stays a ratchet: it is observed by the step time, not decided by a wall. NEXT-RUNG TRIGGER, the capability restored: the windowed unfold declared in std.coercion with an inhabitance control that its scalars equal the whole unfold's prefix of the same length, tokenize_prefix_prepared consuming it, and the live-roots step re-measured with the same extraction. Ordered by tidy-ant-251 as its own PR after #13866."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.tokenize", decl_name: "tokenize_prefix_prepared", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.module_header", decl_name: "module_header_read_window", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.coercion", decl_name: "unicode_scalar_unfold", field: WholeDeclaration },
+  ],
+}

@@ -28,7 +28,8 @@ import gunbc.source_root_read {
 }
 import v2.compiler.name_resolve { Import }
 import v2.compiler.normalize { normalize }
-import v2.compiler.module_header { ModuleHeaderReader }
+import v2.compiler.grammar_reach { Reach }
+import v2.compiler.module_header { ModuleHeaderReader, module_header_tail }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
@@ -191,6 +192,7 @@ type AcquisitionEnv {
   bindings: List<SourceRootBinding>
   lex: PreparedLexRules
   grammar: PreparedGrammar
+  header_tail: Reach
 }
 
 // The pending requests are a stack (a member's requests are pushed in front), so a push costs the
@@ -786,20 +788,27 @@ fn acquisition_env(layout: SourceStorageLayout, bindings: List<SourceRootBinding
     Rejected { diagnostics: d } => AcquisitionEnvUnprepared { diagnostics: d }
     Accepted { value: prepared, diagnostics: _ } =>
       AcquisitionEnvReady {
-        env: AcquisitionEnv {
-          layout: layout,
-          bindings: bindings,
-          lex: prepare_lex_rules(rules: dag_language_model().lex),
-          grammar: prepared
-        }
+        env: acquisition_env_over(layout: layout, bindings: bindings, lex: prepare_lex_rules(rules: dag_language_model().lex), grammar: prepared)
       }
   }
+}
+
+// THE ENV OVER A PREPARED LEXER AND GRAMMAR: the one place the header production's tail is derived
+// from the grammar (v2.compiler.module_header module_header_tail), so it is carried once per run and
+// every env built through it holds the tail its own grammar gives.
+fn acquisition_env_over(
+  layout: SourceStorageLayout,
+  bindings: List<SourceRootBinding>,
+  lex: PreparedLexRules,
+  grammar: PreparedGrammar
+) -> AcquisitionEnv {
+  AcquisitionEnv { layout: layout, bindings: bindings, lex: lex, grammar: grammar, header_tail: module_header_tail(grammar: grammar) }
 }
 
 // The header reader over the env's prepared lexer and grammar: the one reading of a file's declared
 // module (v2.compiler.module_header), shared by the lookup's agreement check and the layout verb.
 fn acquisition_header_reader(env: AcquisitionEnv) -> ModuleHeaderReader {
-  ModuleHeaderReader { lex: env.lex, grammar: env.grammar }
+  ModuleHeaderReader { lex: env.lex, grammar: env.grammar, tail: env.header_tail }
 }
 
 // THE DOOR: the closure of the entry modules under the layout, read through the bindings. One

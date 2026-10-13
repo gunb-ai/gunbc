@@ -44,6 +44,7 @@ import v2.compiler.module_acquisition {
   NamespaceWalkListed,
   NamespaceWalkRefused,
   SourceRootBinding,
+  acquisition_env_over,
   acquisition_exactness,
   acquisition_ingest,
   acquisition_member_requests,
@@ -297,12 +298,12 @@ fn member_read_text(read: AcquisitionMemberRead) -> String {
 }
 
 fn member_env(prepared: PreparedGrammar) -> AcquisitionEnv {
-  AcquisitionEnv {
+  acquisition_env_over(
     layout: repository_storage_layout(),
     bindings: [],
     lex: prepare_lex_rules(rules: dag_language_model().lex),
     grammar: prepared
-  }
+  )
 }
 
 fn member_read_of(content: String) -> String {
@@ -408,12 +409,12 @@ fn member_read_under(env: AcquisitionEnv, content: String) -> AcquisitionMemberR
 // storage a lookup would search.
 fn env_for(prepared: PreparedGrammar, bound: Bool) -> AcquisitionEnv {
   if bound {
-    AcquisitionEnv {
+    acquisition_env_over(
       layout: repository_storage_layout(),
       bindings: [SourceRootBinding { tree: V2Tree {}, host_directory: "src/v2" }],
       lex: prepare_lex_rules(rules: dag_language_model().lex),
       grammar: prepared
-    }
+    )
   } else {
     member_env(prepared: prepared)
   }
@@ -954,12 +955,12 @@ fn member_parse_text(content: String) -> String {
     Rejected { diagnostics: _ } => "grammar-unprepared"
     Accepted { value: prepared, diagnostics: _ } =>
       match acquisition_parse(
-        env: AcquisitionEnv {
+        env: acquisition_env_over(
           layout: repository_storage_layout(),
           bindings: [],
           lex: prepare_lex_rules(rules: dag_language_model().lex),
           grammar: prepared
-        },
+        ),
         file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
         content: content
       ) {
