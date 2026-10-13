@@ -14,6 +14,7 @@ import gunbc.witness.v2_native_route {
   native_route_live_control_true_declaration,
   native_route_label_in_package,
   native_route_module_package_text,
+  native_route_package_text_module,
   native_route_default_pattern,
   native_route_universe_member,
   native_route_universe_prefix,
@@ -4388,9 +4389,9 @@ fn native_census_subject_closure(
 }
 
 // THE SUBJECT MODULE A LABEL NAMES, by the one target-pattern authority and the native lane's module ↔
-// package correspondence (gunbc.witness.v2_native_route native_route_module_package_text, read
-// backwards: a package's segments are the module's). Only a package label names one module; a single
-// target or a subtree does not, and says so.
+// package correspondence, read from the package side by its own authority (gunbc.witness.v2_native_route
+// native_route_package_text_module, beside native_route_module_package_text). Only a package label names
+// one module; a single target or a subtree does not, and says so.
 type NativeCensusSubjectModule
   = NativeCensusSubjectModuleNamed { module: String }
   | NativeCensusSubjectModuleUnavailable { reason: Symbol }
@@ -4404,13 +4405,7 @@ fn native_census_subject_module(label: String) -> NativeCensusSubjectModule {
         SingleTarget { label: _ } => NativeCensusSubjectModuleUnavailable { reason: ^native_census_subject_label_names_no_module }
         SubtreeTargets { package: _ } => NativeCensusSubjectModuleUnavailable { reason: ^native_census_subject_label_names_no_module }
         PackageTargets { package: package } =>
-          NativeCensusSubjectModuleNamed {
-            module: fold_list(
-              xs: split(s: render_package(p: package), delimiter: "/"),
-              empty: "",
-              cons: fn(acc, segment) { if acc == "" { segment } else { concat(acc, ".", segment) } }
-            )
-          }
+          NativeCensusSubjectModuleNamed { module: native_route_package_text_module(package_text: render_package(p: package)) }
       }
   }
 }

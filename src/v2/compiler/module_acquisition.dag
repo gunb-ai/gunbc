@@ -838,6 +838,13 @@ type CensusMemberRefusal
   | CensusMemberSitesUnreadable { file: ModuleFileRef }
   | CensusMemberIdentityDisagrees { file: ModuleFileRef, declared: String }
 
+// The three refusals local to one edge, and only those: an edge block cannot hold a member's or a
+// run's refusal (DESIGN 5). Each arm is the AcquisitionRefusal arm of the same name and fields.
+type CensusEdgeRefusal
+  = CensusEdgeUnknownModule { request: AcquisitionRequest }
+  | CensusEdgeLookupRefused { request: AcquisitionRequest, lookup: ReferenceLookup }
+  | CensusEdgeTreeUnbound { tree: String, request: AcquisitionRequest }
+
 type CensusBlock
   = CensusMemberBlock {
       module: String
@@ -850,7 +857,7 @@ type CensusBlock
       // member is one block with two requesters, not two reads (R2).
       requesters: List<AcquisitionRequest>
     }
-  | CensusEdgeBlock { refusal: AcquisitionRefusal }
+  | CensusEdgeBlock { refusal: CensusEdgeRefusal }
 
 type CensusAcquisition
   = CensusAcquisitionClosed { entries: List<String>, modules: List<AcquiredModule>, reads: List<String> }
@@ -878,7 +885,7 @@ type CensusAcquisitionState {
 // underivable) ends the census acquisition exactly as it ends the compiler's.
 type CensusBlockLocality
   = CensusBlockedMember { module: String, refusal: CensusMemberRefusal }
-  | CensusBlockedEdge
+  | CensusBlockedEdge { refusal: CensusEdgeRefusal }
   | CensusBlockNotLocal
 
 fn census_block_locality(refusal: AcquisitionRefusal) -> CensusBlockLocality {
@@ -889,9 +896,9 @@ fn census_block_locality(refusal: AcquisitionRefusal) -> CensusBlockLocality {
       CensusBlockedMember { module: m, refusal: CensusMemberSitesUnreadable { file: f } }
     AcquisitionMemberIdentityDisagrees { module: m, file: f, declared: d } =>
       CensusBlockedMember { module: m, refusal: CensusMemberIdentityDisagrees { file: f, declared: d } }
-    AcquisitionUnknownModule { request: _ } => CensusBlockedEdge
-    AcquisitionLookupRefused { request: _, lookup: _ } => CensusBlockedEdge
-    AcquisitionTreeUnbound { tree: _, request: _ } => CensusBlockedEdge
+    AcquisitionUnknownModule { request: q } => CensusBlockedEdge { refusal: CensusEdgeUnknownModule { request: q } }
+    AcquisitionLookupRefused { request: q, lookup: l } => CensusBlockedEdge { refusal: CensusEdgeLookupRefused { request: q, lookup: l } }
+    AcquisitionTreeUnbound { tree: t, request: q } => CensusBlockedEdge { refusal: CensusEdgeTreeUnbound { tree: t, request: q } }
     AcquisitionGrammarUnprepared { diagnostics: _ } => CensusBlockNotLocal
     AcquisitionEntryUnderivable { entry: _, cause: _ } => CensusBlockNotLocal
   }
@@ -921,7 +928,7 @@ fn census_with_state(acc: CensusAcquisitionState, state: AcquisitionState) -> Ce
   CensusAcquisitionState { state: state, blocked_members: acc.blocked_members, blocks: acc.blocks, block_count: acc.block_count }
 }
 
-fn census_with_edge_block(acc: CensusAcquisitionState, state: AcquisitionState, refusal: AcquisitionRefusal) -> CensusAcquisitionState {
+fn census_with_edge_block(acc: CensusAcquisitionState, state: AcquisitionState, refusal: CensusEdgeRefusal) -> CensusAcquisitionState {
   CensusAcquisitionState {
     state: state,
     blocked_members: acc.blocked_members,
@@ -996,7 +1003,7 @@ fn census_verdict_step(env: AcquisitionEnv, acc: CensusAcquisitionState, request
     AcquisitionStepRefused { refusal: refusal, state: stopped } =>
       match census_block_locality(refusal: refusal) {
         CensusBlockNotLocal => CensusStepEnded { refusal: refusal }
-        CensusBlockedEdge => CensusStepContinued { acc: census_with_edge_block(acc: acc, state: stopped, refusal: refusal) }
+        CensusBlockedEdge { refusal: edge_refusal } => CensusStepContinued { acc: census_with_edge_block(acc: acc, state: stopped, refusal: edge_refusal) }
         CensusBlockedMember { module: m, refusal: member_refusal } =>
           match looked.verdict {
             CandidateFresh { module: _, file: _, host_directory: directory, content: content } =>
