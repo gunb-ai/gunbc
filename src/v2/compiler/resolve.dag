@@ -340,7 +340,7 @@ fn unavailable_provider_for_path(
   path: QualifiedName
 ) -> Optional<ClosureProviderRefusal> {
   match symbol_index_owning_module_of(index: index, path: path) {
-    Present { value: module } => unavailable_provider_for_module(providers: providers, module: module)
+    Present { value: owner } => unavailable_provider_for_module(providers: providers, module: owner)
     Absent => optional_absent()
   }
 }
