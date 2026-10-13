@@ -254,6 +254,7 @@ test fn an_unformable_population_name_refuses_typed() -> Bool {
           d.head.reason == ^native_lane_identity_label_refused
             && (d.tail |> any(fn(x) {
                  string_contains(s: symbol_lexeme(sym: x.reason), pattern: "v2.test.foo..bar")
+                   && string_contains(s: symbol_lexeme(sym: x.reason), pattern: "empty package segment")
                }))
       }
   }

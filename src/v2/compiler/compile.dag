@@ -32,7 +32,7 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_finalize_source_outcomes,
   floor_discovery_walk_state_zero
 }
-import extdeps.bazel.label { Label, LabelParsed, LabelRefused, render_package }
+import extdeps.bazel.label { Label, LabelParsed, LabelRefused, label_refusal_text, render_package }
 import extdeps.bazel.target_pattern {
   TargetPattern, TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
   SingleTarget, PackageTargets, SubtreeTargets,
@@ -2461,7 +2461,8 @@ fn native_lane_population_unformable_identity(population: List<String>) -> Optio
             package_text: native_route_module_package_text(module_qn: name),
             declaration: "any_declaration"
           ) {
-            LabelRefused { cause: _ } => optional_present(value: name)
+            LabelRefused { cause: cause } =>
+              optional_present(value: concat(concat(name, ": "), label_refusal_text(r: cause)))
             LabelParsed { label: _ } => optional_absent()
           }
       }
