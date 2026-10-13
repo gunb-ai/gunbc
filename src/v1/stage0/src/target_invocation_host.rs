@@ -1533,9 +1533,7 @@ fn run_native_process_memory(
             Err(cause) => Err(format!("{label_name}: {function} failed: {cause}")),
         }
     };
-    let control_root = std::path::Path::new("target")
-        .join(label_name)
-        .join("control");
+    let control_root = std::path::Path::new(cli_run::MEASURED_SPAWN_DIR).join("control");
     let written = (|| -> Result<std::path::PathBuf, String> {
         let _ = std::fs::remove_dir_all(&control_root);
         let tree = control_root.join(read_str("native_process_memory_control_tree")?);
@@ -2849,9 +2847,22 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// rather than inside it so the routing tests stay a function of the operand alone.
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
     // THE MEASURED-SPAWN TRAMPOLINE, BEFORE ANY WORK, so this process's address space is still small
-    // (`cli_run::measured_spawn_trampoline`). Entered only by the native process memory producer.
-    if let Some(receipt) = std::env::var_os(cli_run::MEASURED_SPAWN_RECEIPT_ENV) {
-        std::process::exit(cli_run::measured_spawn_trampoline(receipt));
+    // (`cli_run::measured_spawn_trampoline`). Entered only through its reserved operand, which only
+    // the native process memory producer emits; the receipt variable beside any other operand refuses.
+    match cli_run::measured_spawn_route(
+        operand,
+        std::env::var_os(cli_run::MEASURED_SPAWN_RECEIPT_ENV),
+    ) {
+        cli_run::MeasuredSpawnRoute::NotRequested => {}
+        cli_run::MeasuredSpawnRoute::Enter(receipt) => {
+            std::process::exit(cli_run::measured_spawn_trampoline(receipt))
+        }
+        cli_run::MeasuredSpawnRoute::Refuse(message) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message,
+            }
+        }
     }
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
