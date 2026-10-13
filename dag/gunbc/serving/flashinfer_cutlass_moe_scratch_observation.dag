@@ -3,7 +3,7 @@ module gunbc.serving.flashinfer_cutlass_moe_scratch_observation
 import std.types { NonEmptyStr }
 import std.nat { Nat }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { ByteSize, byte_size, BasisPoint, basis_point }
+import std.measure { ByteSize, byte_size, BasisPoint, basis_point, TokenCount, token_count }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog }
@@ -14,24 +14,24 @@ data flashinfer_moe_scratch_read_obligation: NonEmptyStr = "Re-read the pinned v
 // NinferNvfp4 is that engine's artifact quant; ModeloptNvfp4Config is GLM ModelOpt; KvNvfp4 is a
 // KV-cache request. None of those is this scratch figure, so this module does not mint a fourth NVFP4.
 type FlashInferCutlassMoeScratchObservation {
-  max_num_batched_tokens: Nat
+  max_num_batched_tokens: TokenCount
   gpu_memory_utilization: BasisPoint
   tensor_parallel: Nat
   expert_parallel: Bool
   accelerator: GpuModelCatalogRow
   scratch: ByteSize
-  started_at_tokens: Nat
+  started_at_tokens: TokenCount
   standing: CitedFigureStanding
 }
 
 fn flashinfer_cutlass_moe_scratch_observation(
-  max_num_batched_tokens: Nat,
+  max_num_batched_tokens: TokenCount,
   gpu_memory_utilization: BasisPoint,
   tensor_parallel: Nat,
   expert_parallel: Bool,
   accelerator: GpuModelCatalogRow,
   scratch: ByteSize,
-  started_at_tokens: Nat,
+  started_at_tokens: TokenCount,
   standing: CitedFigureStanding,
 ) -> FlashInferCutlassMoeScratchObservation {
   FlashInferCutlassMoeScratchObservation {
@@ -51,12 +51,12 @@ data flash_next_nvfp4_pro6000_tp2_ep_moe_scratch_p4_frontier: DissolutionConditi
 )
 
 data flash_next_nvfp4_pro6000_tp2_ep_moe_scratch: FlashInferCutlassMoeScratchObservation = flashinfer_cutlass_moe_scratch_observation(
-  max_num_batched_tokens: 32768,
+  max_num_batched_tokens: token_count(count: 32768),
   gpu_memory_utilization: basis_point(count: 8500),
   tensor_parallel: 2,
   expert_parallel: true,
   accelerator: nvidia_rtx_pro_6000_workstation_catalog,
   scratch: byte_size(count: 3457466670),
-  started_at_tokens: 8192,
+  started_at_tokens: token_count(count: 8192),
   standing: TranscribedUncited { read_obligation: flashinfer_moe_scratch_read_obligation },
 )

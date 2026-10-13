@@ -5,7 +5,7 @@ import std.types { Bool, List, String }
 import std.optional { Present, Absent }
 import std.measure {
   bandwidth_count, watt_count, byte_size_count, gibibyte, gibibyte_to_byte_size, hardware_thread_count_value,
-  basis_point_count,
+  basis_point_count, token_count_value,
 }
 import extdeps.storage.types { PcieLink, Gen3, Gen4, Gen5 }
 import extdeps.gpu.types { GpuModelCatalogRow, GpuPackageForm, PcieAddInCard, SxmModule, IntegratedComputePackage, gpu_catalog_row_eq, gpu_catalog_bandwidth_count }
@@ -191,10 +191,10 @@ test fn w_flashinfer_moe_scratch_is_pinned_launch_not_a_general_law() -> Bool {
       CitedToAuthority { authority: _ } => false
       ObservedByReceipt { observed: _ } => false
     })
-    && obs.max_num_batched_tokens == 32768
+    && token_count_value(t: obs.max_num_batched_tokens) == 32768
     && obs.tensor_parallel == 2
     && obs.expert_parallel
-    && obs.started_at_tokens == 8192
+    && token_count_value(t: obs.started_at_tokens) == 8192
     && basis_point_count(bp: obs.gpu_memory_utilization) == 8500
     && byte_size_count(b: obs.scratch) == 3457466670
     && !dissolution_is_bound(condition: flash_next_nvfp4_pro6000_tp2_ep_moe_scratch_p4_frontier)
