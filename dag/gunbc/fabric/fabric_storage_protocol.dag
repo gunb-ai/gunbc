@@ -14,7 +14,8 @@ import gunbc.fabric.fabric_storage_file_store {
 import gunbc.fabric.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity, DoorProxied }
 import extdeps.tailscale.identity { tailnet_identity_of }
 
-import std.algebra { skip }
+import v2.std.algebra { skip }
+
 data fabric_storage_closure_bound_cap: Nat = 65536
 
 fn text_response(status: Int, body: String) -> ServeWireResponse {

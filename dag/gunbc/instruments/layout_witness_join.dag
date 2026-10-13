@@ -13,9 +13,9 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
-import v2.std.algebra { HeadAbsent, HeadFound, list_find_first, list_head }
+import v2.std.algebra { HeadAbsent, HeadFound, list_find_first, list_head, skip }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
-import std.algebra { Cons, skip }
+import std.algebra { Cons }
 import v2.cli.repository_layout { repository_tree_directory, repository_storage_layout }
 import v2.compiler.module_acquisition {
   AcquisitionEnv,

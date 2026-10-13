@@ -3,8 +3,7 @@ module extdeps.github.expressions
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Lossless }
-import v2.std.algebra { fold_list, list_head, HeadFound, HeadAbsent, length }
-import std.algebra { skip }
+import v2.std.algebra { fold_list, list_head, skip, HeadFound, HeadAbsent, length }
 import std.types { Bool, List, String, Int }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

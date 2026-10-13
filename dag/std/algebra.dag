@@ -180,17 +180,6 @@ fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   xs |> list_push(item)
 }
 
-fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
-  if n <= 0 {
-    xs
-  } else {
-    match xs {
-      Empty => Empty
-      Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
-    }
-  }
-}
-
 type FreeSemigroup<T> {
   head: T
   tail: FreeMonoid<T>

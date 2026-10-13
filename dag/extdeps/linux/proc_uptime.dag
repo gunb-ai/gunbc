@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { Millisecond, millisecond, milliseconds_per_second }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
-import std.algebra { skip }
+import v2.std.algebra { skip }
 import std.decimal { decimal_digits_only }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

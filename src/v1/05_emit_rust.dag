@@ -11951,7 +11951,7 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
 // own declaration already returns the wrapped level, the caller wraps it a second time, and the
 // emitted program carries a type error no stage located. MEASURED specimen, on the 01_tokenize
 // closure: v2.std.compilers.lexing token_stream_remaining is `skip(xs: stream.all, n: stream.pos)`,
-// a PLAIN CALL to the declared std.algebra skip, which emits as an ordinary declared call and
+// a PLAIN CALL to the declared v2.std.algebra skip, which emits as an ordinary declared call and
 // returns Rc<Vec<Rc<Token>>>; `skip` is also a simple-method template name, so the plain-call site
 // wrapped it again and rustc reported `expected Vector<Rc<Token>>, found Rc<Vector<Rc<Token>>>`.
 // The method roster had no template on that path -- nothing was lowered by it -- so its wrap was

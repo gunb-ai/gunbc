@@ -2,7 +2,7 @@ module v2.test.claim.body_let_annotation
 
 import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
-import std.algebra { Cons, Empty, skip }
+import std.algebra { Cons, Empty }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_artifact, tpb_assemble, tpb_refuses_with }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -41,7 +41,8 @@ import v2.compiler.reference_conservation_admission { conservation_subject_of_te
 import v2.compiler.normalized_tree { admit_normalized_tree }
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.algebra { fold_list, length, list_snoc_item, skip }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: a statement let's type annotation is CARRIED as the v2.std.type_binder

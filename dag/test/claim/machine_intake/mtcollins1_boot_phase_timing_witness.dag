@@ -5,7 +5,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, millisecond_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import std.realization_measurement { time_measure_list_total }
-import std.algebra { skip }
+import v2.std.algebra { skip }
 import std.optional { Present, Absent }
 import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused, proc_uptime_parse, proc_uptime_read }
 import gunbc.machine_intake.oob_boot_handoff { PoweredOn, PowerCycled }
