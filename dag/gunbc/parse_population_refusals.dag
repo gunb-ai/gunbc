@@ -15,19 +15,8 @@ type RefusalClass {
   keys: List<String>
 }
 
-// Nested shorthand record initializers (gunbc.rung_drop population_parse_nested_record_shorthand).
-fn nested_record_shorthand_keys() -> List<String> {
-  [
-    "dag:test/claim/request_authentication_witness.dag"
-  ]
-}
-
+// No class stands: the nested shorthand class (population_parse_nested_record_shorthand) was retired by the capability its trigger names,
+// the tagged-record field pun in v2's grammar (v2.extdeps.languages.dag dag_grammar_field_init_pun_expr).
 fn parse_population_declared_refusal_classes() -> List<RefusalClass> {
-  [
-    RefusalClass {
-      drop: "population_parse_nested_record_shorthand",
-      cause: "parse_g0_tokens_remain",
-      keys: nested_record_shorthand_keys()
-    }
-  ]
+  []
 }
