@@ -6,6 +6,7 @@ import std.error_primitives { Ok, Err }
 import std.unicode.scalar { from_code_point, scalar_of_code_point, not_unicode_scalar_code_point, SurrogateCodePoint, CodePointOutOfRange }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.encoding { utf8_decode_octets }
+import std.coercion { unicode_scalar_fold }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -418,18 +419,9 @@ fn uri_percent_decode_component(value: String) -> UriPercentDecodeComponent {
     UriDecodeText { octets_rev: out } =>
       match utf8_decode_octets(octets: reverse(out)) {
         Absent => UriPercentComponentDecodeRefused { cause: UriPercentDecodeNotUtf8 }
-        Present { value: scalars } =>
-          match fold(scalars, init: Ok { value: "" }, f: (acc, c) => match acc {
-            Err { value: n } => Err { value: n }
-            Ok { value: text } =>
-              match from_code_point(cp: c) {
-                Ok { value: spelled } => Ok { value: concat(text, spelled) }
-                Err { value: n } => Err { value: n }
-              }
-          }) {
-            Ok { value: text } => UriPercentComponentDecoded { value: text }
-            Err { value: n } => UriPercentComponentDecodeRefused { cause: UriPercentDecodeNotUnicodeScalar { cp: not_unicode_scalar_code_point(n: n) } }
-          }
+        // utf8_decode_octets yields List<Char> that passed its own admission, so the total
+        // unfold spells them; no refusal exists to route here (review 79132).
+        Present { value: scalars } => UriPercentComponentDecoded { value: unicode_scalar_fold(xs: scalars) }
       }
   }
 }
