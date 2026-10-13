@@ -8,7 +8,7 @@ import product.fabric.demand { Demand }
 import product.fabric.selection { ResourceBudgetPolicy }
 import product.fabric.supply { GrantDuration }
 import product.fabric.budget { MoneyAccount }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation { WorkspaceRequest }
 import gunbc.workspace_allocation_reservation { WorkspaceDedicatedSupply }
 import gunbc.workspace_allocation_budget { workspace_budget_for_request, WorkspaceBudgetObserved, WorkspaceBudgetUnreadable }

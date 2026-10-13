@@ -1,6 +1,6 @@
-module gunbc.runner_microvm_slot_controller
+module gunbc.runner.runner_microvm_slot_controller
 
-import gunbc.runner_microvm_network_receipt_store { read_network_receipt, NetworkReceiptAbsent, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
+import gunbc.runner.runner_microvm_network_receipt_store { read_network_receipt, NetworkReceiptAbsent, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
 
 import gunbc.workspace_commissioning_executor_fence { workspace_executor_claim_controller, WorkspaceExecutorControllerAdmitted, WorkspaceExecutorControllerRefused }
 
@@ -17,18 +17,18 @@ import gunbc.workspace_commissioning_admission_observe { workspace_observe_commi
 import gunbc.workspace_commissioning { WorkspaceCommissioningReady, WorkspaceCommissioningRefused }
 import gunbc.workspace_commissioning_controller { workspace_commissioning_reconcile, WorkspaceCommissioningComplete, WorkspaceCommissioningReconciliationRefused }
 
-import gunbc.fabric_executor_class { fleet_cell_sanction }
-import gunbc.runner_microvm_ci_admission {
+import gunbc.fabric.fabric_executor_class { fleet_cell_sanction }
+import gunbc.runner.runner_microvm_ci_admission {
   microvm_ci_admission, MicrovmCiLaunchAdmitted, MicrovmCiRecoveryRequired, MicrovmCiAdmissionRefused,
 }
 
 import gunbc.workspace_allocation_lease { workspace_record_expiry }
 
-import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 
 import extdeps.filesystem.filesystem_io { filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized }
 import gunbc.workspace_allocation_launch_directive { workspace_launch_directive_from_text, workspace_launch_directive_matches, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
-import gunbc.runner_microvm_slot_unit { workspace_launch_credential_id }
+import gunbc.runner.runner_microvm_slot_unit { workspace_launch_credential_id }
 
 
 
@@ -36,8 +36,8 @@ import gunbc.clock_read { clock_now_probed_at }
 import gunbc.workspace_allocation_store { WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_settle_unstarted_retirement, WorkspaceDesired, WorkspaceRetired, WorkspaceAcquiring }
 import gunbc.workspace_allocation_acquisition { workspace_apply_recorded_plan }
 import gunbc.workspace_allocation_lifecycle { workspace_complete_teardown, workspace_recover_release }
-import gunbc.runner_attempt_launch { LaunchWithdrawn }
-import gunbc.workspace_microvm { workspace_retirement_identity }
+import gunbc.runner.runner_attempt_launch { LaunchWithdrawn }
+import gunbc.runner.workspace_microvm { workspace_retirement_identity }
 import gunbc.workspace_allocation_policy { workspace_installed_policy, workspace_enrolled_ssh_access }
 import gunbc.workspace_ssh_access { WorkspaceSshFromHost, WorkspaceSshThroughGateway, WorkspaceDirectSsh, WorkspaceGatewaySsh }
 import gunbc.principal_projection { PrincipalRef }
@@ -45,24 +45,24 @@ import gunbc.workspace_allocation_admission { workspace_owner_enrollment, Worksp
 import gunbc.workspace_allocation { WorkspaceReservation }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceReleased, WorkspaceWanted, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable }
 import gunbc.workspace_reservation_record { workspace_reservation_plan_reservation }
-import gunbc.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
-import gunbc.workspace_microvm { bind_workspace_launch, workspace_owner_public_key, WorkspacePublicKeyAdmitted, WorkspacePublicKeyNotAdmitted, WorkspaceLaunchBound, WorkspaceLaunchRefused }
+import gunbc.runner.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
+import gunbc.runner.workspace_microvm { bind_workspace_launch, workspace_owner_public_key, WorkspacePublicKeyAdmitted, WorkspacePublicKeyNotAdmitted, WorkspaceLaunchBound, WorkspaceLaunchRefused }
 import gunbc.workspace_gateway { workspace_fleet_gateway }
-import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, attempt_segment_refusal_text }
-import gunbc.fabric_required_build_cell { observe_required_build_cell_for_identity }
-import gunbc.fabric_control_plane { fabric_cell_allocation_key }
-import gunbc.runner_microvm_cell_readiness { cell_incarnation_admission, CellIncarnationAdmission, CellBoundAttempt, CellRecoveryRequired, CellIncarnationAdmitted, CellWithdrawn, HostWithdrawn }
-import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
-import gunbc.runner_microvm_lifecycle { ControllerLost }
-import gunbc.runner_microvm_lifecycle_realize { run_teardown }
+import gunbc.runner.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, attempt_segment_refusal_text }
+import gunbc.fabric.fabric_required_build_cell { observe_required_build_cell_for_identity }
+import gunbc.fabric.fabric_control_plane { fabric_cell_allocation_key }
+import gunbc.runner.runner_microvm_cell_readiness { cell_incarnation_admission, CellIncarnationAdmission, CellBoundAttempt, CellRecoveryRequired, CellIncarnationAdmitted, CellWithdrawn, HostWithdrawn }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_cell_readiness_store }
+import gunbc.runner.runner_microvm_lifecycle { ControllerLost }
+import gunbc.runner.runner_microvm_lifecycle_realize { run_teardown }
 import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
 
 
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 
-import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload }
-import gunbc.workspace_microvm { WorkspaceLaunchBinding, workspace_attempt_identity, workspace_launch_plan }
-import gunbc.workspace_microvm_access { WorkspaceConnectionReading, WorkspaceConnectionUnavailable, workspace_observe_connection }
+import gunbc.runner.runner_microvm_cell_readiness { GitHubRunnerWorkload }
+import gunbc.runner.workspace_microvm { WorkspaceLaunchBinding, workspace_attempt_identity, workspace_launch_plan }
+import gunbc.runner.workspace_microvm_access { WorkspaceConnectionReading, WorkspaceConnectionUnavailable, workspace_observe_connection }
 import gunbc.workspace_allocation_wait { workspace_await_allocation }
 import gunbc.workspace_allocation_metrics { workspace_capture_runtime_metrics }
 import gunbc.workspace_gateway_store { workspace_current_gateway_connection, WorkspaceGatewayReady, WorkspaceGatewayUnavailable }
@@ -83,46 +83,46 @@ import product.fabric.sanitation { CellId, CellReady, SlotScopedNetwork, cell_re
 import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
 import product.fabric.work { Work }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
-import gunbc.host_effect { LocalShell }
+import gunbc.host.host_effect { LocalShell }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_posix_accounts { fleet_posix_home_directory }
-import gunbc.runner_slot_allocation { fabric_execution_slot_identities }
-import gunbc.runner_host_deploy { RunnerHostSpec }
-import gunbc.runner_microvm_host_ready {
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.runner.runner_host_deploy { RunnerHostSpec }
+import gunbc.runner.runner_microvm_host_ready {
   MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused, MicrovmHostBindingRefusal,
   microvm_host_binding_of, microvm_host_binding_refusal_text, HostObservationFailed,
 }
-import gunbc.runner_microvm_slot_unit {
+import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_env_name, microvm_release_dir_env_name,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
   microvm_slot_controller_receipt_dir, microvm_unit_receipt_path,
 }
-import gunbc.runner_guest_image {
+import gunbc.runner.runner_guest_image {
   runner_guest_image_root, runner_guest_image_path, runner_guest_base_artifact_path, runner_guest_kernel_artifact,
 }
-import gunbc.runner_microvm {
+import gunbc.runner.runner_microvm {
   gunbc_runner_guest_image, RunnerMicroVmShape,
   gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused, runner_microvm_shape_refusal_text,
 }
-import gunbc.runner_microvm_shakedown {
+import gunbc.runner.runner_microvm_shakedown {
   microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer,
 }
-import gunbc.fabric_control_plane { fabric_control_plane_store_root }
-import gunbc.fabric_required_build_cell {
+import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.fabric.fabric_required_build_cell {
   RequiredBuildCellSnapshot, RequiredBuildCellObservation, RequiredBuildCellObserved,
   ReservationAbsent, ReservationUnreadable, ReservationPayloadUndecodable, ReservationPayloadWorkMismatch,
   SelectedOfferCellMismatch, CellSubstrateNotConverged, UnownedCell,
   observe_required_build_cell_wet,
 }
-import gunbc.runner_microvm_attempt {
+import gunbc.runner.runner_microvm_attempt {
   MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned, bind_microvm_to_cell,
 }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
 import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
 import gunbc.fleet.app_control_plane_inspection { gunbai_ci_registration_goal }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
-import gunbc.fleet_runner_connectivity { github_organization_ref }
+import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import gunbc.github_effect_perform {
   JitMintPerformance, perform_organization_jit_mint, JitMintReceived, JitMintAppKeyNotCustodied,
@@ -131,10 +131,10 @@ import gunbc.github_effect_perform {
   mint_controller_installation_token, ControllerTokenMinted, ControllerTokenNotMinted,
   read_runner_groups_with,
 }
-import gunbc.runner_attempt_launch {
+import gunbc.runner.runner_attempt_launch {
   AttemptLaunchPlan, plan_attempt_launch_reservation_authorized, attempt_jail_chroot_root, jail_jit_path,
 }
-import gunbc.runner_group_restriction_observation {
+import gunbc.runner.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved, microvm_shakedown_runner_group_name,
   runner_group_restriction_not_yet_observed, observe_shakedown_runner_group_restriction,
 }
@@ -144,13 +144,13 @@ import gunbc.runner.runner_jit_perform {
   DispatchRefusedRunnerGroupUnrestricted,
   JitCredentialBoundToAttempt, JitCredentialNotDispatched, JitCredentialMintNotCreated,
 }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   ConvergedSlotNetwork, parse_converged_slot_network, ConvergedSlotNetworkParsed, ConvergedSlotNetworkMalformed,
   SlotNetworkSanitationSubject, slot_network_sanitation_subject, SanitationSubjectAdmitted, SanitationSubjectRefused,
   SanitationSubjectRefusal, runner_microvm_converged_receipt_path,
 }
-import gunbc.runner_microvm_lifecycle { AttemptIdentity, guest_bring_up_text }
-import gunbc.runner_microvm_lifecycle_realize {
+import gunbc.runner.runner_microvm_lifecycle { AttemptIdentity, guest_bring_up_text }
+import gunbc.runner.runner_microvm_lifecycle_realize {
   ControllerOutcome, AttemptLaunch, TeardownRun, run_controller, run_controller_with_wait, observe_attempt_ground, teardown_cleanup_text,
   ControllerRefusedAdmission, ControllerRefusedBinding, ControllerQuarantinedUnattributedResidue,
   ControllerStartNotRecorded, ControllerRecovered, ControllerRanAttempt,
@@ -158,16 +158,16 @@ import gunbc.runner_microvm_lifecycle_realize {
 
 data runner_microvm_slot_controller_disposition: ConstructionMechanism = SingleAuthority
 
-// THE PROCESS THE microVM SLOT UNIT EXECS AS ITS MainPID (gunbc.runner_microvm_slot_unit): the one
-// production route into gunbc.runner_microvm_lifecycle_realize run_controller, and the consumer
+// THE PROCESS THE microVM SLOT UNIT EXECS AS ITS MainPID (gunbc.runner.runner_microvm_slot_unit): the one
+// production route into gunbc.runner.runner_microvm_lifecycle_realize run_controller, and the consumer
 // that dissolved its controller_main_pid_consumer_frontier row.
 //
 // WHAT THIS MODULE IS AND IS NOT. It is COMPOSITION and nothing else: every decision it reaches is
 // made by a module that already owned it -- cell admission by the readiness store, the reservation
-// re-read by gunbc.fabric_required_build_cell, cell binding by gunbc.runner_microvm_attempt, the
+// re-read by gunbc.fabric.fabric_required_build_cell, cell binding by gunbc.runner.runner_microvm_attempt, the
 // credential mint by gunbc.runner.runner_jit_perform and gunbc.github_effect_perform, the guest shape
-// by gunbc.runner_microvm, the launch plan by gunbc.runner_attempt_launch, the sanitation subject by
-// gunbc.runner_microvm_network, and the attempt itself by the lifecycle controller. This module
+// by gunbc.runner.runner_microvm, the launch plan by gunbc.runner.runner_attempt_launch, the sanitation subject by
+// gunbc.runner.runner_microvm_network, and the attempt itself by the lifecycle controller. This module
 // obtains each one's INPUTS from the host and hands the outputs down in the order the world
 // requires; it adds no verdict and no second orchestration model (DESIGN section 3, replacement
 // migrations: integrate the landed controller, never stand a second one beside it).
@@ -226,7 +226,7 @@ fn slot_of_instance(instance: String) -> RunnerSlotIdentity? {
 }
 
 // THE MACHINE MUST BE THE SLOT'S HOST, READ FROM THE KERNEL AND JOINED THROUGH THE SAME BINDING THE
-// FLEET-CONVERGE micro-VM MODES USE (gunbc.runner_microvm_host_ready microvm_host_binding_of):
+// FLEET-CONVERGE micro-VM MODES USE (gunbc.runner.runner_microvm_host_ready microvm_host_binding_of):
 // a unit for srv1-13 started on any other machine refuses before reading anything else.
 fn bind_slot_host(slot: RunnerSlotIdentity) -> MicrovmHostBinding {
   match hostname_short_read(transport: LocalShell) {
@@ -257,7 +257,7 @@ fn path_exists(path: String) -> Bool
 
 // THE VMM AND THE JAILER ARE THE LOCUS'S, root-owned and installed beside this binary by the same
 // deploy (gunbc.live_deploy.emit microvm_controller_vmm_install_steps). The job-user copy under
-// the executor's HOME (gunbc.runner_microvm_host_ready) is never read here, which is what this
+// the executor's HOME (gunbc.runner.runner_microvm_host_ready) is never read here, which is what this
 // reference buys: the VMM the controller launches is the locus's, not a binary sitting in the
 // executor's writable HOME. It is NOT a claim that the job user cannot reach the locus -- ghrunner's
 // path-unrestricted sudo install says otherwise on srv1 (gunbc.rung_drop
@@ -272,7 +272,7 @@ fn locus_binaries(release_dir: String) -> LocusBinaries {
   }
 }
 
-// THE GUEST IMAGE SOURCES ARE THE JOB USER'S BUILT IMAGE (gunbc.runner_guest_image, built by the
+// THE GUEST IMAGE SOURCES ARE THE JOB USER'S BUILT IMAGE (gunbc.runner.runner_guest_image, built by the
 // guest_image_converge mode under the executor's HOME) and the cited kernel beside it. STATED
 // RATHER THAN HIDDEN: those files are job-user-writable and the plan copies them into a root-owned
 // jail, so a hostile job on this host could alter the next attempt's guest. This is the trusted-
@@ -290,7 +290,7 @@ fn guest_image_sources(spec: RunnerHostSpec) -> GuestImageSources {
 
 // ── stage 3: the reservation, re-read from the host CAS ─────────────────────────────────────────
 
-// THE DEMAND AND OFFER ARE DERIVED, NOT REMEMBERED (gunbc.runner_microvm_shakedown): the same
+// THE DEMAND AND OFFER ARE DERIVED, NOT REMEMBERED (gunbc.runner.runner_microvm_shakedown): the same
 // authority the placer used, so the hold owner the CAS carries is one this process can name.
 fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
   uses net: Network, fs: Filesystem
@@ -307,7 +307,7 @@ fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
 // ── stage 4: the credential ─────────────────────────────────────────────────────────────────────
 
 // THE CONTROL PLANE IS OBSERVED FROM THIS PROCESS, UNDER THE CONTROLLER'S OWN KEY, EVERY ATTEMPT.
-// gunbc.runner_jit_mint plan_jit_mint admits a mint only under a GitHubAppControlPlaneState that
+// gunbc.runner.runner_jit_mint plan_jit_mint admits a mint only under a GitHubAppControlPlaneState that
 // reports the installation grant, and gunbc.auth.github_app_control_plane_observe
 // observe_github_app_control_plane is the producer that seals it: signer custody (the key's
 // signature accepted by GitHub), the App registration's permissions against the goal, and the
@@ -335,8 +335,8 @@ fn controller_credential_authority() -> GitHubCredentialAuthority {
 }
 
 fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState, runner_group: MicrovmRunnerGroupStanding) -> JitMintDispatch admit_callers: [
-  decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "mint_under_observed_group"),
-  decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
+  decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "mint_under_observed_group"),
+  decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
 ] {
   dispatch_jit_mint(
     subject: microvm_registration_subject(binding: binding),
@@ -355,7 +355,7 @@ fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneSta
 // the installation token minted, the organization's runner groups read with it, the sealed observer
 // run over that reading, and the plan taken again with the observed standing -- which is then the
 // ONLY route to JitMintAuthorized, because no other value of the standing's authorizing arm can be
-// written (gunbc.runner_group_restriction_observation). The same token performs the generate.
+// written (gunbc.runner.runner_group_restriction_observation). The same token performs the generate.
 fn mint_under_observed_group(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState) -> JitMintPerformance
   uses net: Network
 {
@@ -391,9 +391,9 @@ fn mint_attempt_credential(binding: MicroVmCellBinding, state: GitHubAppControlP
 
 // ── stage 5: the slot network receipt, read from its durable host path ──────────────────────────
 
-// THE RECEIPT IS READ FROM ITS DURABLE ROOT-OWNED PATH (gunbc.runner_microvm_network
+// THE RECEIPT IS READ FROM ITS DURABLE ROOT-OWNED PATH (gunbc.runner.runner_microvm_network
 // runner_microvm_converged_receipt_path), PARSED, AND THE SUBJECT DERIVED FROM THE PARSED VALUE --
-// the consumption gunbc.runner_microvm_network's converged_slot_network_parse_consumer_frontier
+// the consumption gunbc.runner.runner_microvm_network's converged_slot_network_parse_consumer_frontier
 // named. The producer is the administrator-edge observe the network lane owns (parent ruling
 // 2026-09-21: never a job-user-writable file that root believes); until it lands every read here
 // is Unreadable, which refuses the attempt BEFORE the mint rather than quarantining a cell after a
@@ -610,7 +610,7 @@ fn slot_controller_receipt_path(instance: String, invocation_id: NonEmptyStr) ->
 fn refusal_text(r: SlotControllerRefusal) -> String {
   match r {
     EnvironmentAbsent { name: n } => join(["EnvironmentAbsent ", n, " -- the unit did not set it, so the controller cannot name its slot or locus"], "")
-    SlotNotAFabricMember { instance: i } => join(["SlotNotAFabricMember ", i, " -- not in gunbc.runner_slot_allocation fabric_execution_slot_identities"], "")
+    SlotNotAFabricMember { instance: i } => join(["SlotNotAFabricMember ", i, " -- not in gunbc.runner.runner_slot_allocation fabric_execution_slot_identities"], "")
     SlotHostBindingRefused { cause: c } => join(["SlotHostBindingRefused ", microvm_host_binding_refusal_text(c: c)], "")
     ReleaseLocusIncomplete { path: p } => join(["ReleaseLocusIncomplete ", p, " is not an executable in the release locus"], "")
     GuestImageIncomplete { path: p } => join(["GuestImageIncomplete ", p, " is absent"], "")
@@ -953,7 +953,7 @@ fn workspace_slot_launch_observed(reservation: WorkspaceReservation, live: Requi
 
 fn workspace_slot_launch_under_exclusion(reservation: WorkspaceReservation, live: RequiredBuildCellSnapshot, subject: SlotNetworkSanitationSubject,
   store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome
-  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "workspace_slot_launch_observed")]
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "workspace_slot_launch_observed")]
 {
   let bins = locus_binaries(release_dir: release_dir)
   if !path_is_executable(path: bins.firecracker) { SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } } }

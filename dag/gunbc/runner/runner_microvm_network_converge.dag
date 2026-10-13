@@ -1,4 +1,4 @@
-module gunbc.runner_microvm_network_converge
+module gunbc.runner.runner_microvm_network_converge
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
@@ -25,15 +25,15 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.shell
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
-import gunbc.runner_host_deploy { RunnerHostDeploy, runner_slot_identities_of }
+import gunbc.runner.runner_host_deploy { RunnerHostDeploy, runner_slot_identities_of }
 import extdeps.network.ipv4 { render_ipv4_address, render_ipv4_prefix }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import product.host_identity { HostIdentity }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, ReadNftRuleset, ReadConntrackExpectations,
   ReadLegacyXtablesRules, ReadUserspaceConntrackHelpers,
 }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   RunnerSlotNetwork, runner_slot_network, runner_slot_host_cidr,
   runner_slot_netdev_text, runner_slot_network_file_text, runner_slot_ipv6_sysctl_text,
   runner_slot_network_install_operations, runner_microvm_host_network_install_operations,
@@ -53,7 +53,7 @@ data runner_microvm_network_converge_disposition: ConstructionMechanism = Single
 // THE CONVERGE INSTALLS WHAT THE MODEL DECLARES AND THEN READS THE HOST, NOT ITS OWN INTENT.
 //
 // Two halves, and the second is the one that earns the receipt. The apply half is ordinary: render
-// each file's bytes from gunbc.runner_microvm_network, stage them, and hand the modeled operations
+// each file's bytes from gunbc.runner.runner_microvm_network, stage them, and hand the modeled operations
 // to the privileged applier. The READ half establishes what the host now IS -- the tap's live
 // disable_ipv6 value, the addresses and routes the kernel holds, the helper standing, and the digest
 // of the ruleset as the kernel lists it. A converge that reported success because its installs
@@ -75,13 +75,13 @@ data runner_microvm_network_converge_disposition: ConstructionMechanism = Single
 //
 // AND THE ROOT IS OUTSIDE THE JOB USER'S TREE, WHICH IS A CORRECTION AND NOT A PREFERENCE. This was
 // /var/lib/gunbc/fleet-converge/microvm-network -- a subdirectory of gunbc_fleet_converge_state_dir,
-// which gunbc.runner_host_grants creates with owner=job. A staged file there is content the job user
+// which gunbc.runner.runner_host_grants creates with owner=job. A staged file there is content the job user
 // can rewrite, and the source of a root-evaluated install being grantee-writable is exactly what
 // review 69104 refused: spelling the source in
 // full narrows nothing when the source is grantee-writable, and neither does moding the leaf, because
 // the job user owns the parent and can replace the leaf between a check and the install. The root is
 // now a sibling of that tree which nothing grants the job user anything beneath, and
-// gunbc.runner_microvm_network_apply verifies EVERY ancestor of it root-only, far-side, before it
+// gunbc.runner.runner_microvm_network_apply verifies EVERY ancestor of it root-only, far-side, before it
 // stages a byte.
 data runner_microvm_staging_dir: NonEmptyStr = "/var/lib/gunbc-microvm-network-stage" as NonEmptyStr
 
@@ -197,7 +197,7 @@ fn microvm_network_readback_operations() -> List<ExecutorPrivilegedOperation> {
 // principal that already runs on the host, and they cannot install or start anything.
 //
 // AND IT STILL CARRIES THE READBACKS ONLY NOW THAT THE MUTATING HALF HAS A PRINCIPAL. That half is
-// gunbc.runner_microvm_network_apply, executing as the host administrator over the fleet SSH edge;
+// gunbc.runner.runner_microvm_network_apply, executing as the host administrator over the fleet SSH edge;
 // that account reaches root through its own non-interactive sudo and needs no line in THIS file,
 // which is the job user's. Adding the install operations here because they are now performed
 // somewhere would grant the job user the exact pair the frontier refuses, on the argument that
@@ -206,10 +206,10 @@ fn microvm_network_granted_operations() -> List<ExecutorPrivilegedOperation> {
   microvm_network_readback_operations()
 }
 
-// THE MUTATIONS EXECUTE UNDER A PRINCIPAL THE JOB USER CANNOT IMPERSONATE: gunbc.runner_microvm_network_apply,
+// THE MUTATIONS EXECUTE UNDER A PRINCIPAL THE JOB USER CANNOT IMPERSONATE: gunbc.runner.runner_microvm_network_apply,
 // as the host administrator over the fleet SSH edge. fleet-converge run 36043010087 (microvm_network_apply,
 // srv1) staged, installed and read the ruleset back under it. The job user's grant roster stays the
-// readbacks only; the pair it still holds from gunbc.ci_deploy_sudoers is rostered at gunbc.rung_drop
+// readbacks only; the pair it still holds from gunbc.ci.ci_deploy_sudoers is rostered at gunbc.rung_drop
 // the_job_user_holds_a_path_unrestricted_root_grant, a separate operator-gated item.
 
 // --- reading the host back ---
@@ -625,7 +625,7 @@ fn host_ruleset_digest_wet(listing: String) -> Sha256FileDigest {
 // conntrack-expectation surfaces are readable only by root, and the job user this process runs as is
 // granted none of them (gunbc-ghrunner.sudoers stays modeled and uninstalled, operator decision
 // 2026-09-22). They are read by the host's ADMINISTRATOR over the fleet SSH edge in
-// gunbc.runner_microvm_network_observe, which cannot live here: gunbc.runner_host_grants consumes this
+// gunbc.runner.runner_microvm_network_observe, which cannot live here: gunbc.runner.runner_host_grants consumes this
 // module's operation fold, and the administrator edge reaches through it. What stays here is every
 // reading an unprivileged principal CAN take -- procfs, ip, uname -- and the fold over all of them.
 type MicrovmPrivilegedReadings {
@@ -849,7 +849,7 @@ fn host_binding_refusal_text(b: HostBinding) -> String {
 
 // EVERY SLOT ON THE HOST HAS A microVM NETWORK, because the microVM path replaces the shared slot
 // rather than sitting beside it. The roster is derived here rather than imported from
-// gunbc.runner_host_grants, which consumes THIS module's operation fold to render its sudoers lines:
+// gunbc.runner.runner_host_grants, which consumes THIS module's operation fold to render its sudoers lines:
 // importing it back would be a cycle, and the slot roster is a fact about the deploy row either way.
 fn runner_microvm_network_slot_identities_of(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> {
   let host = deploy.host_label as HostIdentity

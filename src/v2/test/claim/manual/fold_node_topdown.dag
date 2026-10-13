@@ -1,4 +1,4 @@
-module v2.test.manual.fold_node_topdown
+module v2.test.claim.manual.fold_node_topdown
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node {

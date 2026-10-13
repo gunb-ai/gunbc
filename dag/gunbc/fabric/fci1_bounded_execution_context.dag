@@ -1,4 +1,4 @@
-module gunbc.fci1_bounded_execution_context
+module gunbc.fabric.fci1_bounded_execution_context
 
 import std.types { FilePath, Int, NonEmptyStr }
 import std.measure {
@@ -6,7 +6,7 @@ import std.measure {
   finite_byte_size_count, finite_byte_size_from_byte_size,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import std.optional { Present }
 
 // This is the bound for the instrument process roots, not a claim that the driver is a runner
@@ -32,7 +32,7 @@ type Fci1BoundedExecutionContextBuild
 data fci1_driver_unit: NonEmptyStr = "fci1-bounded-driver.service"
 
 data fci1_runner_envelope_basis: DeclarationRef = DeclarationRef {
-  module_path: "gunbc.runner_slot_desired",
+  module_path: "gunbc.runner.runner_slot_desired",
   decl_name: "gunbc_runner_slot_desired",
   field: WholeDeclaration,
 }

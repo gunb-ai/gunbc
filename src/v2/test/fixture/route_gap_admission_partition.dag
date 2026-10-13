@@ -25,7 +25,7 @@ import v2.workflow.floor_route_gap {
 // the field's declared type -- the same construction route the runner's marshal takes.
 data route_gap_partition_fixture_suppressed: List<FloorRouteGapSuppressedRow> = [
   FloorRouteGapSuppressedRow { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds", ground: OutsideRequiredGate },
-  FloorRouteGapSuppressedRow { identity: "test.claim.parse_test.parse_witness_floor_holds", ground: WithheldCostDebt },
+  FloorRouteGapSuppressedRow { identity: "test.claim.parse.parse_witness_floor_holds", ground: WithheldCostDebt },
   FloorRouteGapSuppressedRow { identity: "test.claim.wet_lane_probe.wet_lane_declared_holds", ground: DeclinedNoCiWetLane },
   FloorRouteGapSuppressedRow { identity: "test.claim.renamed_away_witness_test.old_witness_name", ground: OutsideRequiredGate }
 ]
@@ -41,7 +41,7 @@ fn partition_fixture_declared() -> Map<String, String> {
         key: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds",
         value: "declined_outside_gate_closure",
       ),
-      key: "test.claim.parse_test.parse_witness_floor_holds",
+      key: "test.claim.parse.parse_witness_floor_holds",
       value: "withheld_cost_debt",
     ),
     key: "test.claim.wet_lane_probe.wet_lane_declared_holds",
@@ -51,7 +51,7 @@ fn partition_fixture_declared() -> Map<String, String> {
 
 data route_gap_partition_fixture_expected: List<FloorRouteGapAdmissionRow> = [
   FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_holds", ground: OutsideRequiredGate },
-  FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.parse_test.parse_witness_floor_holds", ground: WithheldCostDebt },
+  FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.parse.parse_witness_floor_holds", ground: WithheldCostDebt },
   FloorRouteGapAdmissionMeasuredRow { identity: "test.claim.wet_lane_probe.wet_lane_declared_holds", ground: DeclinedNoCiWetLane },
   FloorRouteGapAdmissionRefusedRow { identity: "test.claim.renamed_away_witness_test.old_witness_name" }
 ]

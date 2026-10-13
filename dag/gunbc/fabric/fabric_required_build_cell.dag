@@ -1,4 +1,4 @@
-module gunbc.fabric_required_build_cell
+module gunbc.fabric.fabric_required_build_cell
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.content_hash {
@@ -14,16 +14,16 @@ import product.fabric.supply { SupplierOffer }
 import product.fabric.sanitation { CellId }
 import product.host_identity { HostIdentity }
 import gunbc.ownership { Owned }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.durable_cas_file_store { observe_cas_slot_state }
 import gunbc.durable_exclusive_hold_file_store { HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload }
-import gunbc.fabric_control_plane { fabric_cell_allocation_key, fabric_money_reservation_ref, fabric_hold_owner }
-import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
-import gunbc.fabric_cell_observation_admission {
+import gunbc.fabric.fabric_control_plane { fabric_cell_allocation_key, fabric_money_reservation_ref, fabric_hold_owner }
+import gunbc.fabric.fabric_cell_acquire { fabric_cell_probe_wet }
+import gunbc.fabric.fabric_cell_observation_admission {
   FabricCellObservationAdmitted, FabricCellObservationDenied, FabricCellObservationNotApplicable,
   fabric_cell_observation_outcome, fabric_cell_observed_population_members, admit_fabric_cell_probe,
 }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.fabric_cell_converge {
   FabricCellMember, FabricCellRootAddress, FabricCellAttemptRootAddress, FabricCellResourceBoundaryAddress,
   fabric_cell_id_for_slot, fabric_cell_member_key, fabric_cell_member_ownership, fabric_cell_resource_address_equal,
 }

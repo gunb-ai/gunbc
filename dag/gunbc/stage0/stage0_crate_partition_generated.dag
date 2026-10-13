@@ -1,4 +1,4 @@
-module gunbc.stage0_crate_partition_generated
+module gunbc.stage0.stage0_crate_partition_generated
 
 import std.types { Bool, List, String }
 
@@ -49,8 +49,6 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_error_primitives",
         "std_emit_model",
         "std_measure",
-        "std_decimal",
-        "std_render_repeat_string_bootstrap",
         "std_types",
         "std_unicode_types",
         "std_optional",

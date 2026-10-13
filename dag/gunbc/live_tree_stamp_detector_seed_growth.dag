@@ -1,6 +1,6 @@
 module gunbc.live_tree_stamp_detector_seed_growth
 
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // (DESIGN section 4c). Requested by review 62244 on gunbc#10811.
 //
 // THE POPULATION BELOW IS DERIVED, NOT COUNTED. It is the ADDED HAND ITEMS list printed by
-// tools.seed_growth_change_population over origin/main...HEAD. Inline modules are scopes, not
+// gunbc.instruments.seed_growth_change_population over origin/main...HEAD. Inline modules are scopes, not
 // leaves: item_declaration_ref_in folds enclosing_module into each member's module_path, so
 // naming floor_skip_frontier_tests would not cover the members. Tests are in: the policy names
 // exactly two exclusions and neither is the test tree (parse_refusal_location_seed_growth_note).
@@ -47,7 +47,7 @@ data live_tree_stamp_detector_seed_growth_justification: SeedGrowthJustification
     DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "compile_dag_diagnostic_census_is_invisible_to_effect_reach_host_sinks", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.floor_skip_frontier_tests", decl_name: "adding_the_census_marker_would_still_lose_the_conjunction_on_the_remaining_specimen", field: WholeDeclaration },
   ],
-  reason: "WHY RUST IS STILL NEEDED: the subject is witness SOURCE TEXT that may not resolve, scanned the same way parse_entry_live_tree_disposition already scans stamps. The builtin roster that supplies spellings lives in the seed (v1.compiler.method builtin_function_registry). Neither fact is nameable from a dag-only witness that the required floor will execute.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE -- the change serves the v2 self-host program by making the skip-eligible stamp lie an identity-joined, executing fact on the failure-mode row, rather than a count or a hand restamp. No language behavior, compatibility obligation, escape hatch, or public surface is added. Production skip still does not consult this detector.\n\nENUMERATED RATHER THAN COUNTED: the list above is what tools.seed_growth_change_population printed for this branch. Every item is a free function at module scope or inside the existing inline test module, so all are citable; nothing lands in seed_growth_uncitable_item_keys.\n\nDeclared even though no required CI phase invokes the join yet -- seed_growth_forward_freeze_policy_note's own stated rung. The annotation at the helpers is not this row.",
+  reason: "WHY RUST IS STILL NEEDED: the subject is witness SOURCE TEXT that may not resolve, scanned the same way parse_entry_live_tree_disposition already scans stamps. The builtin roster that supplies spellings lives in the seed (v1.compiler.method builtin_function_registry). Neither fact is nameable from a dag-only witness that the required floor will execute.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1.v1_maintenance_standing v1_seed_standing admits by PURPOSE -- the change serves the v2 self-host program by making the skip-eligible stamp lie an identity-joined, executing fact on the failure-mode row, rather than a count or a hand restamp. No language behavior, compatibility obligation, escape hatch, or public surface is added. Production skip still does not consult this detector.\n\nENUMERATED RATHER THAN COUNTED: the list above is what gunbc.instruments.seed_growth_change_population printed for this branch. Every item is a free function at module scope or inside the existing inline test module, so all are citable; nothing lands in seed_growth_uncitable_item_keys.\n\nDeclared even though no required CI phase invokes the join yet -- seed_growth_forward_freeze_policy_note's own stated rung. The annotation at the helpers is not this row.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete these declarations when v2.std.effect_reach call_reachability_live_read_classification is sufficient to construct LiveTreeDisposition from the call closure, so a hand spelling scan has no subject and skip no longer reads a stamp the body can contradict. A roster repair that only adds compile_dag_diagnostic_census to EFFECT_REACH_HOST_SINK_MARKERS does not fire this trigger -- that is the cheaper authoring that still loses the remaining SIO+census specimen. Tests that still discriminate the textual parser may remain only while parse_entry_live_tree_disposition remains the skip authority; they move with it, they do not outlive it.",
   current_boundary: "Confined to v1_compiler.cli_run.floor_skip_frontier_tests. Production skip, reads_live_tree_effective, and entry_qualifies_for_skip_without_resolve do not consult these functions. The scan is fail-open: a live-checkout name that fails the predicate is silent here."

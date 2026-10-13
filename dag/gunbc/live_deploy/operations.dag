@@ -23,7 +23,7 @@ import extdeps.tools.gnu_coreutils {
   coreutils_install_group_flag,
 }
 import extdeps.tools.diffutils { diffutils_cmp_program, diffutils_cmp_silent_flag }
-import gunbc.fleet_posix_accounts { fleet_visudo_binary_path, fleet_cp_binary_path, fleet_mv_binary_path }
+import gunbc.fleet.fleet_posix_accounts { fleet_visudo_binary_path, fleet_cp_binary_path, fleet_mv_binary_path }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.shell_command_text {
   shell_command_intent,

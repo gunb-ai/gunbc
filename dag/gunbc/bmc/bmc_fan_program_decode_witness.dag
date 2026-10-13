@@ -1,4 +1,4 @@
-module gunbc.bmc_fan_program_decode_witness
+module gunbc.bmc.bmc_fan_program_decode_witness
 
 import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -27,7 +27,7 @@ import extdeps.bmc.pid_control_decode {
   ProgramMembersNotConserved,
   decode_program,
 }
-import gunbc.bmc_fan_program_observation {
+import gunbc.bmc.bmc_fan_program_observation {
   ArtifactJsonValueObserved,
   srv3_program_json,
   srv4_program_json,
@@ -36,7 +36,7 @@ import gunbc.bmc_fan_program_observation {
 // THIS WITNESS READS THE COMMITTED CAPTURE ARTIFACTS THROUGH THE SUBSTRATE'S OWN CHECKOUT ROUTE,
 // so it declares the live-tree disposition its observation carrier already declares. It is
 // therefore DECLINED by the floor planner today and does not execute there -- the same standing
-// gunbc.bmc_fan_program_observation carries, and it changes when that planner veto is removed.
+// gunbc.bmc.bmc_fan_program_observation carries, and it changes when that planner veto is removed.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn srv3_programs() -> List<BmcFanControlProgram> {

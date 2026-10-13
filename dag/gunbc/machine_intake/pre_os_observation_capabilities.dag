@@ -1,4 +1,4 @@
-module gunbc.machine_intake_pre_os_observation_capabilities
+module gunbc.machine_intake.pre_os_observation_capabilities
 
 import extdeps.board_authority { BoardAuthorityRef }
 import std.types { Bool, Int, List, NonEmptyStr }
@@ -26,7 +26,7 @@ import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 // erase a demonstrated capability, because the capability points at ITS evidence and not at the
 // latest attempt; and a demonstrated capability certifies no later attempt, because what an
 // attempt covered and received is the per-attempt carrier's subject
-// (gunbc.machine_intake_sol_collector_observation, gunbc#11127), never this profile's.
+// (gunbc.machine_intake.sol_collector_observation, gunbc#11127), never this profile's.
 //
 // SolPresentSilent -- the session activates and a HELD collector receives no host bytes -- is a
 // scoped arm with no instance in this corpus: the one observation that ever populated it was a

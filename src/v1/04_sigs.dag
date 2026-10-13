@@ -340,7 +340,7 @@ fn parent_closure_callable_candidates(env: ResolvedFuncEnv, name: String) -> Lis
 // candidate sites do -- 0/1/many is one authority in this compiler, not a count comparison
 // re-spelled per call site. Position in the list is read ONLY after the count has proven the
 // population is a singleton, which is extraction rather than selection (the rule
-// gunbc.roadmap_publish states for the same move).
+// gunbc.roadmap.roadmap_publish states for the same move).
 //
 // A LONE BUILTIN ANSWERS UNRESOLVED, DELIBERATELY. The builtin has no declared parameter list
 // in this compiler -- `builtin_function_registry` maps a name to a RETURN TYPE -- so a

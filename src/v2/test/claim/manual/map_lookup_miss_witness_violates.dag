@@ -1,0 +1,31 @@
+module v2.test.claim.manual.map_lookup_miss_witness_violates
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+type LookupKey {
+  id: Int
+}
+
+type LookupTable = Map<LookupKey, Int>
+
+fn lookup_table(table: LookupTable, key: LookupKey) -> Optional<Int> {
+  table.lookup(key)
+}
+
+fn one_entry_table() -> LookupTable {
+  map_insert(m: empty_map(), key: LookupKey { id: 1 }, value: 100)
+}
+
+test fn map_miss_is_absent() -> Bool {
+  match lookup_table(table: one_entry_table(), key: LookupKey { id: 2 }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn map_hit_is_present() -> Bool {
+  match lookup_table(table: one_entry_table(), key: LookupKey { id: 1 }) {
+    Present { value: v } => v == 100
+    Absent => false
+  }
+}
+

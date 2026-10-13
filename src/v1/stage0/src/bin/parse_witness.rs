@@ -881,7 +881,7 @@ fn gist_transitive_closure_parse() {
         "dag/extdeps/github/github.dag",
         "dag/extdeps/github/auth.dag",
         "dag/extdeps/github/gists.dag",
-        "dag/extdeps/git/git.dag",
+        "dag/extdeps/git.dag",
         "dag/gunbc/auth/credentials.dag",
     ];
     for path in &files {

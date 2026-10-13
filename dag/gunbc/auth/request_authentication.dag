@@ -175,7 +175,7 @@ type RequestAuthenticationEvidence
 // the same as absence: the standing carries WHICH non-valid arm arrived (a forged cookie, an
 // expired session, an unreadable store), and the authentication decision below refuses with
 // that arm's own remedy rather than collapsing all of them into "no session". AuthAbsent stays
-// the answer to an ABSENT cookie header only — the seam (gunbc.roadmap_serve) parses the wire
+// the answer to an ABSENT cookie header only — the seam (gunbc.roadmap.roadmap_serve) parses the wire
 // cookie, resolves it through the session store, and seats exactly one of these constructors.
 fn request_authentication_evidence_of_standing(standing: SessionCookieStanding) -> RequestAuthenticationEvidence {
   match standing {

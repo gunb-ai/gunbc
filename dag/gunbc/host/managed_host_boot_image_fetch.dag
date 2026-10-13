@@ -1,11 +1,11 @@
-module gunbc.managed_host_boot_image_fetch
+module gunbc.host.managed_host_boot_image_fetch
 
 import std.types { List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.provisioning.ubuntu_install_media { CdimageUbuntuCom, OldReleasesUbuntuCom, ReleasesUbuntuCom, noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_mirror_rows, ubuntu_install_media_mirror_url }
-import gunbc.boot_medium { BootMedium, BootImageExport, stock_installer_boot_medium }
-import gunbc.machine_intake_boot_image_fetch {
+import gunbc.host.boot_medium { BootMedium, BootImageExport, stock_installer_boot_medium }
+import gunbc.machine_intake.boot_image_fetch {
   BootImageAdmitted,
   BootImageDigestMismatchRefused,
   BootImageDigestUnreadable,
@@ -20,7 +20,7 @@ import gunbc.machine_intake_boot_image_fetch {
 }
 
 // FETCHING A MEDIUM INTO ITS EXPORT IS THE MEDIUM'S OWN DATA: the export directory, the image name the
-// published path is composed from (gunbc.machine_intake_boot_image_fetch boot_image_published_path), and
+// published path is composed from (gunbc.machine_intake.boot_image_fetch boot_image_published_path), and
 // the digest the staged bytes must hash to are all read off the BootMedium, so the bytes verified, the
 // file published and the file a controller is later pointed at are one medium's facts. Only WHERE the
 // release is downloaded from is supplied, because a built medium (the census image) is published by
@@ -54,9 +54,9 @@ fn boot_medium_fetch_render(medium: BootMedium, outcome: BootImageFetchOutcome) 
 // than trusted to pair a medium with the host it runs on.
 fn fetch_boot_medium(medium: BootMedium, url: NonEmptyStr) -> ProcessExit
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_boot_medium"),
-    decl_ref(module_path: "gunbc.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_wrong_pin_control"),
-    decl_ref(module_path: "gunbc.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_unowned_export_control"),
+    decl_ref(module_path: "gunbc.host.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_boot_medium"),
+    decl_ref(module_path: "gunbc.host.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_wrong_pin_control"),
+    decl_ref(module_path: "gunbc.host.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_unowned_export_control"),
   ]
 {
   boot_medium_fetch_render(

@@ -1,17 +1,17 @@
-module gunbc.roadmap_closing_contract_authoring
+module gunbc.roadmap.roadmap_closing_contract_authoring
 
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import extdeps.gunbc
 import extdeps.git.inspect
 import extdeps.shell
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   filesystem_read_outcome,
 }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_execution_contract {
   WorkItemExecutionContract,
   ValidationOperation,
   GunbcClaimValidation,
@@ -30,7 +30,7 @@ import gunbc.roadmap_execution_contract {
   contract_closure,
   claim_source_root_args,
 }
-import gunbc.roadmap_validation_oracle {
+import gunbc.roadmap.roadmap_validation_oracle {
   ValidationOracleRef,
   OracleObservation,
   OracleFound,
@@ -46,7 +46,7 @@ import gunbc.roadmap_validation_oracle {
 }
 
 // THE COMPLETION PREDICATE FOR EVERY CLOSING-CONTRACT TASK, PARAMETERIZED BY ITS TARGET.
-// gunbc.roadmap_authority closing_contract_task_naming_correction_note named this construction as
+// gunbc.roadmap.roadmap_authority closing_contract_task_naming_correction_note named this construction as
 // the fix for the gap where a derived closing-contract task carried ExecutionContractUnspecified
 // and dispatch therefore refused the row whose only job is to supply a contract.\n\nWHAT IT
 // DECIDES, each arm with its own remedy: the target is a declared node (else the task names
@@ -57,7 +57,7 @@ import gunbc.roadmap_validation_oracle {
 // closing-contract task whose target is closed by another closing-contract task closes nothing, and
 // the recursion is reachable because the derivation mints one for every unbound startable node);
 // every validation the contract names RESOLVES -- its oracle entry is readable and declares
-// exactly the function named, through gunbc.roadmap_validation_oracle's existing observation rather
+// exactly the function named, through gunbc.roadmap.roadmap_validation_oracle's existing observation rather
 // than a second resolver; and every GunbcClaimValidation the contract names EXECUTES GREEN --
 // closing_contract_execution_verdict spawns the pinned witness as a child claim-run and adjudicates
 // the child's exit, so a witness that cannot resolve, cannot compile, or whose arm returns false
@@ -92,7 +92,7 @@ import gunbc.roadmap_validation_oracle {
 // section 4b forbids.\n\nTHE EXECUTION ARM'S OWN BOUNDARY. Only GunbcClaimValidation oracles are
 // executed: they name an entry file and a function, which is a runnable claim. A CargoTest or
 // CargoFmt validation names no witness function this module can spawn, so those validations are
-// covered by the textual half alone -- the same boundary gunbc.roadmap_validation_oracle already
+// covered by the textual half alone -- the same boundary gunbc.roadmap.roadmap_validation_oracle already
 // declares as OracleNotPinnable, kept rather than re-decided here. The child runs against the git
 // toplevel of the checkout this predicate itself runs in (belt verify's detached attempt worktree,
 // or the operator's own checkout by hand), with the contract's own claim_source_root_args, so the
@@ -100,7 +100,7 @@ import gunbc.roadmap_validation_oracle {
 // subprocess, so closing_contract_authored is claim-runnable only where the interpreter admits real
 // host effects -- belt verify and `gunbc run --claim-run` by hand, never the hermetic discovery
 // batch; the behavioral discrimination witnesses for this arm are enrolled as a wet row in
-// gunbc.ci_layer_roots beside the other exit-status witnesses.
+// gunbc.ci.ci_layer_roots beside the other exit-status witnesses.
 
 type ClosingContractAuthoringVerdict
   = ClosingContractAuthored { target: RoadmapNodeId }

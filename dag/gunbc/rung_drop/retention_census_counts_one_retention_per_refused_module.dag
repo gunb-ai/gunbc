@@ -6,7 +6,8 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 
 // DECLARED 2026-09-24 (MQ-4, gunbc#12234). v2.workflow.body_lowering_retention_census counts
 // wrapper retentions by reading the diagnostics of the closure emit's refusal
-// (v2.workflow.product_receipt_stage product_receipt_candidate_refused). Before MQ-4 every retained
+// (the product receipt stage's candidate-refused path, deleted with the whole-repository ingest-gate
+// family in the source layout cutover C3). Before MQ-4 every retained
 // shell rode that refusal as a pending advisory under body_lowering_reason_wrapper_retained_emitted,
 // so the census could count each one that survived. MQ-4 made retention a typed variant
 // (v2.compiler.body_lowering_fold WrapperRetention) and the normalized-tree door refuses with ONE
@@ -21,8 +22,8 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // compiler_closure_emit_driver -- passes an Outcome whose Rejected arm carries NonEmptyDiagnostics
 // and nothing else. No typed payload survives the first refusal. A normalize entry that returned
 // the pre-door list would have no caller on this route (a dangling declaration), and re-normalizing
-// the closure inside the receipt stage would be a second observation of a second run, which that
-// stage's own contract refuses.
+// the closure inside the consumer would be a second observation of a second run, which the receipt
+// contract that consumer carried refused.
 
 data retention_census_counts_one_retention_per_refused_module_population: List<String> = [
   "v2.workflow.body_lowering_retention_census over the boundary-4 closure refusal: every refused module with two or more wrapper retentions, whose retentions after the first are uncounted",
@@ -40,6 +41,6 @@ data retention_census_counts_one_retention_per_refused_module: RungDrop = RungDr
       carrier: "the per-retention pending advisories (body_lowering_reason_wrapper_retained_emitted) that the normalize refusal carried before MQ-4"
     },
     population: retention_census_counts_one_retention_per_refused_module_population,
-    restoration_trigger: "the refused closure compile delivers each refused module's typed WrapperRetention population to the receipt stage -- a refusal carrier with a typed payload beside its NonEmptyDiagnostics, threaded from normalize through program_assembly and the closure-emit driver -- SUFFICIENT FOR v2.workflow.body_lowering_retention_census to fold every retention of every refused module, so that a module with two retentions counts two. Re-encoding the extra retentions as pending diagnostics does not retire this row; that is the defect MQ-4 removed. Owner: gentle-koi-724 MQ lane, as a later MQ item (the typed refusal payload)."
+    restoration_trigger: "the refused closure compile delivers each refused module's typed WrapperRetention population to the census's consumer -- a refusal carrier with a typed payload beside its NonEmptyDiagnostics, threaded from normalize through program_assembly and the closure-emit driver -- SUFFICIENT FOR v2.workflow.body_lowering_retention_census to fold every retention of every refused module, so that a module with two retentions counts two. Re-encoding the extra retentions as pending diagnostics does not retire this row; that is the defect MQ-4 removed. Owner: gentle-koi-724 MQ lane, as a later MQ item (the typed refusal payload)."
   }
 }

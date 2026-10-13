@@ -1,4 +1,4 @@
-module gunbc.host_effect_plan
+module gunbc.host.host_effect_plan
 
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
 import std.algebra { FreeMonoid, freemonoid_empty }
@@ -10,14 +10,14 @@ import v2.std.algebra {
   TailFound,
   TailAbsent
 }
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   HostEffect,
   HostEffectIntent,
   HostEffectEvidence,
   NodeControlPlane,
   HostEffectTransport,
 }
-import gunbc.host_effect_realize { host_effect_apply }
+import gunbc.host.host_effect_realize { host_effect_apply }
 import std.effects { IdempotencyEvidence }
 import std.realization_reconcile {
   Reconciliation,
