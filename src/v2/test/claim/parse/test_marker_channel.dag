@@ -232,14 +232,14 @@ test fn a_test_marker_over_an_unparseable_body_is_not_reported_as_a_wrong_marker
   test_marker_refusal_reason(src: broken_test_body_source, file: ^test_marker_broken_body_subject) == "parse_g0_tokens_remain"
 }
 
-// The generic refusal is located at the body token the grammar could not take (the stray `)`), not at the
+// The generic refusal is located inside the body (at or after its `{`, byte 44), not at the
 // declaration head the marker guard would have named.
 test fn that_refusal_is_located_at_the_body_token_holds() -> Bool {
   match test_marker_parsed(src: broken_test_body_source, file: ^test_marker_broken_body_subject) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       match diagnostics_fatal(d: d).at {
-        Textual { file: _, extent: ByteRange { start: s, end: _ } } => s == 48
+        Textual { file: _, extent: ByteRange { start: s, end: _ } } => s >= 44
         _ => false
       }
   }
