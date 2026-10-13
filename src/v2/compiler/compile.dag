@@ -2424,11 +2424,12 @@ fn native_lane_universe_module_for_source(
 }
 
 // EVERY CAPTURED MARKER YIELDS EXACTLY ONE ENTRY, OR THE LANE REFUSES. Discovery keys its rows by entry
-// and function and drops a repeat without a word (floor_discovery_append_row), and a declaration name
-// declared twice is refused only at resolve (resolve_reason_member_kind_duplicate_declaration), a
-// stage after this universe is fixed. A marker list that names one declaration twice would therefore
-// reach the receipt as one test whose second declaration nobody ran. It is refused here, where the
-// captured markers are still the captured ones, with the (module, declaration) identity it repeated.
+// and function and drops a repeat without a word (floor_discovery_append_row), so a marker list that
+// names one declaration twice would reach the receipt as one test whose second declaration nobody ran.
+// The acquirer cannot hand the lane such a list: a module declaring one name twice is refused at its
+// member read (namespace_graft_declaration_name_repeated), before any universe exists. This refusal is the
+// universe's own contract over the markers it is SUPPLIED (AcquiredModule.test_markers), so it holds for
+// any other source of AcquiredModule values, and it names the (module, declaration) identity it repeated.
 fn native_lane_duplicate_marker_in(member: AcquiredModule) -> Optional<String> {
   match first_duplicate_by_key(xs: member.test_markers, key: fn(name) { name }) {
     Present { value: name } => optional_present(value: concat(member.name, ".", name))
