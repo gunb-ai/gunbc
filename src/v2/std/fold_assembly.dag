@@ -1,7 +1,4 @@
 module v2.std.fold_assembly
-import std.optional { Absent, Optional, Present }
-
-
 import v2.std.node {
   Node,
   Edge,

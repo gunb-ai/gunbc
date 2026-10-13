@@ -1,7 +1,4 @@
 module gunbc.host.host_effect_plan
-import std.optional { Absent, Optional, Present }
-
-
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
 import std.algebra { Cons, Empty, FreeMonoid }
 import gunbc.host.host_effect {
