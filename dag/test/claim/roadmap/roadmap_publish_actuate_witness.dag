@@ -1,13 +1,14 @@
 module test.claim.roadmap.roadmap_publish_actuate_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
-import v2.std.collection { map_lookup }
-import std.optional { Present, Absent }
 import gunbc.roadmap.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
 import gunbc.roadmap.roadmap_publish_actuate {
-  pull_request_created_outcome, attempt_branch_refspec, publication_push_env, publication_mirror_ref,
+  pull_request_created_outcome, attempt_branch_refspec, publication_mirror_ref,
 }
-import extdeps.git { git_dir_fetch_source_grant, git_non_bare_git_dir, git_local_fetch_source_grant }
+import extdeps.git {
+  git_dir_fetch_source_grant, git_non_bare_git_dir, git_local_fetch_source_grant,
+  git_isolated_home_env_argv, git_push_ref_in_repo_argv,
+}
 
 test fn a_created_pull_request_binds_the_receipt() -> Bool {
   match pull_request_created_outcome(number: 7, html_url: "https://github.com/x/y/pull/7" as NonEmptyStr) {
@@ -21,15 +22,15 @@ test fn the_attempt_refspec_pushes_the_branch_to_its_own_remote_name() -> Bool {
 }
 
 test fn the_push_environment_names_a_private_home_and_not_a_token() -> Bool {
-  let env = publication_push_env(home: "/tmp/publication-home" as FilePath)
-  match map_lookup(m: env, key: "HOME") {
-    Present { value: v } => v == "/tmp/publication-home"
-    Absent => false
-  }
-    && match map_lookup(m: env, key: "GIT_CONFIG_GLOBAL") {
-      Present { value: v } => v == "/dev/null"
-      Absent => false
-    }
+  let prefix = git_isolated_home_env_argv(home: "/tmp/publication-home" as FilePath)
+  let argv = git_push_ref_in_repo_argv(
+    repo: "/tmp/mirror.git" as FilePath,
+    remote: "https://github.com/gunb-ai/gunbc.git",
+    refspec: "dispatch/n1-aabc:refs/heads/dispatch/n1-aabc",
+    home: "/tmp/publication-home" as FilePath,
+  )
+  prefix == ["env", "HOME=/tmp/publication-home", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"]
+    && argv == concat(prefix, ["git", "-C", "/tmp/mirror.git", "push", "--quiet", "https://github.com/gunb-ai/gunbc.git", "dispatch/n1-aabc:refs/heads/dispatch/n1-aabc"])
 }
 
 test fn a_resolved_git_dir_grant_does_not_append_dot_git() -> Bool {

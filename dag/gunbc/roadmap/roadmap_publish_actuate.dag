@@ -1,8 +1,7 @@
 module gunbc.roadmap.roadmap_publish_actuate
 
-import std.types { String, Int, Bool, NonEmptyStr, FilePath, CommitSha, Secret, Map }
+import std.types { String, Int, Bool, NonEmptyStr, FilePath, CommitSha, Secret }
 import std.algebra { trim }
-import v2.std.collection { empty_map, map_insert }
 import extdeps.git
 import extdeps.git { git_dir_fetch_source_grant, git_local_fetch_upload_pack_command }
 import extdeps.git.plumbing { GitWorktreeAt, GitDirectoryAt }
@@ -25,8 +24,8 @@ import gunbc.auth.netrc_binding {
 //
 // THE PUSH OPERATION IS THE INTERFACE; which remote URL and which ref are POLICY parameters
 // (DESIGN §3). The credential never appears in argv or in a URL (gunbc.credential_argv_exposure):
-// it travels in a netrc under a private HOME passed in the push environment and is shredded on
-// every arm.
+// it travels in a netrc under a private HOME. That HOME is an argv `env` prefix on the push
+// (extdeps.git git_isolated_home_env_argv), not a Map the spawn ignores, and is shredded on every arm.
 //
 // THE MIRROR IS HELPER-OWNED. Fetch from the worker checkout happens BEFORE the token is used, so
 // worker-controlled hooks and config cannot run while the publication principal holds the token.
@@ -43,18 +42,6 @@ type CapturedShaPush
 
 fn attempt_branch_refspec(branch: NonEmptyStr) -> String {
   join([branch as String, ":refs/heads/", branch as String], "")
-}
-
-fn publication_push_env(home: FilePath) -> Map<String, String> {
-  map_insert(
-    map_insert(
-      map_insert(empty_map(), "HOME", home as String),
-      "GIT_CONFIG_GLOBAL",
-      "/dev/null",
-    ),
-    "GIT_CONFIG_NOSYSTEM",
-    "1",
-  )
 }
 
 fn pull_request_created_outcome(number: Int, html_url: NonEmptyStr) -> PublicationReceiptOutcome {
@@ -110,7 +97,7 @@ fn push_captured_sha_from_bare_mirror(
           repo: mirror,
           remote: remote as String,
           refspec: attempt_branch_refspec(branch: branch),
-          env: publication_push_env(home: home.path),
+          home: home.path,
         )
         if pushed.exit_code != 0 {
           shred_publication_netrc_then(

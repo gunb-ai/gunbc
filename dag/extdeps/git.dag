@@ -6,12 +6,23 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
 import std.measure { Percent, percent }
-import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, Map, NonEmptyStr, Seconds, Timestamp, Unit }
-import v2.std.collection { empty_map }
+import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
 import std.algebra { length, skip }
 import std.resources { Network }
 
-data git_push_inherit_env: Map<String, String> = empty_map()
+// HOME AND GIT CONFIG ARE ARGV `env` WORDS, not a Map the seed spawn never applies (review 79196).
+// The token stays out of argv: only the private HOME path is named, and netrc lives under that HOME.
+fn git_isolated_home_env_argv(home: FilePath) -> List<String> {
+  ["env", concat("HOME=", home as String), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"]
+}
+
+fn git_push_ref_in_repo_argv(repo: FilePath, remote: String, refspec: String, home: FilePath) -> List<String> {
+  concat(
+    git_isolated_home_env_argv(home: home),
+    ["git", "-C", repo as String, "push", "--quiet", remote, refspec],
+  )
+}
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -1690,13 +1701,13 @@ service git.Core {
 
   operation PushRefInRepo {
     requires opaque
-    input { repo: FilePath, remote: String, refspec: String, env: Map<String, String> = git_push_inherit_env }
+    input { repo: FilePath, remote: String, refspec: String, home: FilePath }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "{remote}", "{refspec}"] }
+    transport shell { argv: [git_push_ref_in_repo_argv(repo: repo, remote: remote, refspec: refspec, home: home)] }
   }
   operation PushRefWithLeaseInRepo {
     requires opaque
