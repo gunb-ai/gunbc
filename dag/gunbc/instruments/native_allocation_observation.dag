@@ -1,0 +1,79 @@
+module gunbc.instruments.native_allocation_observation
+
+import std.types { Bool, Int, List, Map }
+import std.optional { Optional, Present, Absent }
+import v2.std.collection { list_at_optional }
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+import gunbc.emit_state_threading_specimen { SpecCursor, SpecAcc, spec_build, spec_walk_named, spec_summary }
+
+// THE ALLOCATION READING OF THE STATE-THREADING SPECIMEN, taken by a binary that carries the counting
+// allocator BECAUSE this entry `uses` AllocationCounter (std.realization_measurement; the claim route's
+// NativeEffectRealizationAdmission). `gunbc test //gunbc/instruments:native-allocation-observation`
+// emits this closure, builds it and runs it in one process; nothing is interpreted, and a process
+// without the counting allocator refuses rather than reading zero.
+//
+// THE REFERENCE IS A DECLARED FORM, NOT THE RUST MINIMUM. A .dag program cannot author a moved Rust
+// accumulator, so the reference here is the same algorithm threading ONLY the two fields that change
+// (the tokens and the index) and none of the carried ones. It bounds the specimen from below within
+// the substrate; the Rust-level minimum (moves, one Vec) is stated beside the specimen and its
+// distance is what the specimen reading exposes. Judgement is by ORDER ONLY: no operation count is
+// written in this module, so a change of host or collection library cannot move a verdict.
+//
+// The cloning variant is the control that the order discriminates: it copies the whole token list
+// on every step, so it must read ABOVE the reference; a bound that passed it would not be a bound.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type AllocationCase {
+  identity: String
+  held: Bool
+}
+
+fn reference_walk(src: List<Int>) -> Int {
+  let r = src |> fold(init: [], f: (toks, e) => list_push(toks, e))
+  count(r)
+}
+
+fn cloning_walk(src: List<Int>) -> Int {
+  let r = src |> fold(init: [], f: (toks, e) => concat(toks, [e]) |> map(x => x))
+  count(r)
+}
+
+fn allocations_of_specimen(src: List<Int>) -> Int uses counter: AllocationCounter {
+  let before = observed_allocation_operations("specimen")
+  let _ = spec_walk_named(src: src)
+  observed_allocation_operations("specimen") - before
+}
+
+fn allocations_of_reference(src: List<Int>) -> Int uses counter: AllocationCounter {
+  let before = observed_allocation_operations("reference")
+  let _ = reference_walk(src: src)
+  observed_allocation_operations("reference") - before
+}
+
+fn allocations_of_cloning(src: List<Int>) -> Int uses counter: AllocationCounter {
+  let before = observed_allocation_operations("cloning")
+  let _ = cloning_walk(src: src)
+  observed_allocation_operations("cloning") - before
+}
+
+fn allocation_cases() -> List<AllocationCase> uses counter: AllocationCounter {
+  let src = spec_build(n: 2000)
+  let specimen = allocations_of_specimen(src: src)
+  let reference = allocations_of_reference(src: src)
+  let cloning = allocations_of_cloning(src: src)
+  [
+    AllocationCase { identity: "walks_agree", held: spec_walk_named(src: src) == 2000 + 2000 + 7 && reference_walk(src: src) == cloning_walk(src: src) },
+    AllocationCase { identity: "specimen_reads_above_reference", held: specimen > reference },
+    AllocationCase { identity: "cloning_variant_reads_above_reference", held: cloning > reference },
+    AllocationCase { identity: "reference_allocates_at_all", held: reference > 0 }
+  ]
+}
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  let cases = allocation_cases()
+  let roster = "roster walks_agree,specimen_reads_above_reference,cloning_variant_reads_above_reference,reference_allocates_at_all\n"
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
+  NativeClaimReport { stdout: concat(roster, cases |> map(c => concat("case ", concat(c.identity, concat(if c.held { " held" } else { " not_held" }, concat(" observed=", concat(if c.held { "ordered" } else { "unordered" }, "\n")))))) |> join(separator: "")), terminal: terminal }
+}

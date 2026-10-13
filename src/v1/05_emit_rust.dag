@@ -18900,6 +18900,23 @@ fn native_claim_terminal_exit_lines() -> String {
 
 // A transport error out of a bound handler is no observation (2), never a held or not-held case:
 // the report did not finish deciding.
+// THE COUNTING ALLOCATOR IS INSTALLED BY DEMAND AND BY NOTHING ELSE. A native claim entry that `uses`
+// std.realization_measurement AllocationCounter gets that resource bound (the admission above) and,
+// because of that binding, a #[global_allocator] in its own main; a main whose bindings do not carry the
+// resource gets none, and no other driver main renders this text.
+fn native_binds_allocation_counter(bindings: List<NativeEffectBindingText>, crate_name: String) -> Bool {
+  bindings |> any(b => b.type_path == concat(crate_name, "::std_realization_measurement::AllocationCounter"))
+}
+
+fn native_claim_allocator_lines(bindings: List<NativeEffectBindingText>, crate_name: String) -> String {
+  if native_binds_allocation_counter(bindings: bindings, crate_name: crate_name) {
+    concat(
+      "#[global_allocator]", "\n",
+      "static COUNTING_ALLOCATOR: ", crate_name, "::v1_rt::CountingAllocator = ", crate_name, "::v1_rt::CountingAllocator;", "\n",
+      "\n")
+  } else { "" }
+}
+
 fn emit_native_claim_driver_effect_main_rs(crate_name: String, pipeline_mod: String, bindings: List<NativeEffectBindingText>) -> TextFile {
   let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
   let effect_args = bindings |> map(b => b.argument) |> join(separator: ", ")
@@ -18913,6 +18930,7 @@ fn emit_native_claim_driver_effect_main_rs(crate_name: String, pipeline_mod: Str
       "use ", crate_name, "::std_compiler_entry::NativeClaimTerminal;", "\n",
       "use ", crate_name, "::", pipeline_mod, "::native_claim_report;", "\n",
       "\n",
+      native_claim_allocator_lines(bindings: bindings, crate_name: crate_name),
       "#[tokio::main(flavor = \"current_thread\")]", "\n",
       "async fn main() \{", "\n",
       binding_lines,

@@ -445,6 +445,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-allocation-observation"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_allocation_observation.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
