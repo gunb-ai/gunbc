@@ -14,6 +14,7 @@ import gunbc.witness.v2_native_route {
   native_route_live_control_true_declaration,
   native_route_label_in_package,
   native_route_module_package_text,
+  native_route_package_text_module,
   native_route_default_pattern,
   native_route_module_probe_declaration,
   required_v2_native_job_name
@@ -4454,15 +4455,10 @@ fn native_census_subject_closure(
   modules: List<NativeCensusModule>,
   label: String
 ) -> NativeCensusSubjectClosure {
-  match parse_target_pattern(text: label) {
-    TargetPatternRefused { cause: _ } =>
-      NativeCensusSubjectClosureUnavailable { reason: ^native_census_subject_label_refused }
-    TargetPatternParsed { pattern: pattern } =>
-      match pattern {
-        SingleTarget { label: _ } => NativeCensusSubjectClosureUnavailable { reason: ^native_census_subject_label_names_no_module }
-        SubtreeTargets { package: _ } => NativeCensusSubjectClosureUnavailable { reason: ^native_census_subject_label_names_no_module }
-        PackageTargets { package: package } =>
-          match list_find_first(xs: modules, predicate: fn(m) { native_route_module_package_text(module_qn: m.module) == render_package(p: package) }) {
+  match native_census_subject_module(label: label) {
+    NativeCensusSubjectModuleUnavailable { reason: r } => NativeCensusSubjectClosureUnavailable { reason: r }
+    NativeCensusSubjectModuleNamed { module: named } =>
+          match list_find_first(xs: modules, predicate: fn(m) { m.module == named }) {
             Absent => NativeCensusSubjectClosureUnavailable { reason: ^native_census_subject_module_not_censused }
             Present { value: subject } =>
               match index {
@@ -4485,6 +4481,27 @@ fn native_census_subject_closure(
                   }
               }
           }
+  }
+}
+
+// THE SUBJECT MODULE A LABEL NAMES, by the one target-pattern authority and the native lane's module ↔
+// package correspondence, read from the package side by its own authority (gunbc.witness.v2_native_route
+// native_route_package_text_module, beside native_route_module_package_text). Only a package label names
+// one module; a single target or a subtree does not, and says so.
+type NativeCensusSubjectModule
+  = NativeCensusSubjectModuleNamed { module: String }
+  | NativeCensusSubjectModuleUnavailable { reason: Symbol }
+
+fn native_census_subject_module(label: String) -> NativeCensusSubjectModule {
+  match parse_target_pattern(text: label) {
+    TargetPatternRefused { cause: _ } =>
+      NativeCensusSubjectModuleUnavailable { reason: ^native_census_subject_label_refused }
+    TargetPatternParsed { pattern: pattern } =>
+      match pattern {
+        SingleTarget { label: _ } => NativeCensusSubjectModuleUnavailable { reason: ^native_census_subject_label_names_no_module }
+        SubtreeTargets { package: _ } => NativeCensusSubjectModuleUnavailable { reason: ^native_census_subject_label_names_no_module }
+        PackageTargets { package: package } =>
+          NativeCensusSubjectModuleNamed { module: native_route_package_text_module(package_text: render_package(p: package)) }
       }
   }
 }

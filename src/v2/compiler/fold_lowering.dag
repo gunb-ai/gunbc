@@ -239,7 +239,7 @@ fn collection_step_slot_name(form: CollectionRosterForm) -> Symbol {
 //
 // filter and any were the std.algebra declarations of those names; they are RETIRED onto these rows
 // (calm-boar-904, ruling B': the roster row is the one typing authority for a collection operation), the
-// declarations deleted and their imports dropped by gunbc.instruments.source_reference_repoint's retire-member mode.
+// declarations deleted and their imports dropped by v2.workflow.source_reference_repoint's retire-member mode.
 // WHAT IS NOT HERE, BY NAME: flat_map (its step is
 // itself a fold over the callback's result) and sort_by (ShapeSortBody, not an iterate body). Their rows
 // are named in std.algebra and their calls stay unrealized; gunbc.recurring_failure_mode

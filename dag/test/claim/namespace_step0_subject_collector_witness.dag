@@ -279,7 +279,7 @@ test fn only_a_regular_file_blob_is_a_source_a_symlink_and_a_gitlink_are_not() -
 // THE DESTRUCTION CONTROL, ON THE SOURCE-POPULATION AXIS RATHER THAN THE IMPORT-EDGE AXIS. Proving
 // a collector "complete" by showing that removing an IMPORT reds is now known to prove nothing:
 // bare-name resolution across the supplied pool recovers the callee, so the import-edge axis is
-// fail-open by measurement (gunbc.namespace_cut.namespace_step0_strip_producer's own kernel-typed subject
+// fail-open by measurement (v2.workflow.namespace_step0_strip_producer's own kernel-typed subject
 // compiles with every import removed). What global resolution CANNOT recover is a declaration whose
 // SOURCE was never supplied. So the falsifier for a dropped member is: compile the pair, then
 // compile it with one whole module omitted, and require the second to refuse.

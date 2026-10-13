@@ -1447,7 +1447,11 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.normalize.service_realization_lowering",
     claims: [
-      SingleClaimFillDebtClaim { claim: "a_config_only_realization_is_held_off_the_full_route_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_config_only_realization_lowers_on_the_full_route_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_declared_input_hole_lowers_on_argv_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_declared_input_hole_lowers_on_a_transport_list_field_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_undeclared_argv_hole_refuses_located_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "an_undeclared_hole_in_a_transport_list_field_refuses_located_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_unrealizable_realization_refuses_located_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "the_realization_facts_lower_into_the_sibling_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "the_siblings_of_a_shared_prefix_merge_holds", standing: ActiveFillDebt }

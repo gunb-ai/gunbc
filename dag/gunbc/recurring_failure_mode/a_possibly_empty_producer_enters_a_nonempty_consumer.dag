@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_possibly_empty_producer_enters_a_nonempty_consumer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_possibly_empty_producer_enters_a_nonempty_consumer: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_possibly_empty_producer_enters_a_nonempty_consumer" as NonEmptyStr,
+
+  receipts: [
+    "**a possibly-empty producer enters a nonempty consumer** (invalid state: a value whose cardinality lower bound is zero, or unmeasured, reaches a position that requires at least one element. Harm: the operator's canonical seam -- an empty collection into a nonempty consumer -- is a silent wrong answer paid for at runtime or later, DESIGN section 4b's 'floor first, differentiator above it').",
+
+    "Variants that share the cause: a head-and-tail NonEmpty record that restates std.algebra.FreeSemigroup, a validated or nonempty brand constructible without establishing its claimed invariant (a sealed constructor, a type name or an arbitrary predicate callback establishes nothing alone), an operation that preserves a lower bound it can invalidate (filter), and unmeasured cardinality treated as zero or as one.",
+
+    "RECOGNITION RULE: A NONEMPTY CLAIM IS EITHER CONSTRUCTED (FreeSemigroup) OR PROVED AT THE BINDING; A NAME OR A WRAPPER IS NEITHER.",
+
+    "Rung found at: mitigatable / mechanically preventable by individual probes; the in-tree propagation rows are manual value-level specimens. Ceiling: structurally guaranteed for the decidable interval fragment (n..n literals, map preserves, filter floors to 0, concat adds); general refinement predicates stay a ratchet. Next trigger, a capability: binding-level bound propagation judged at a real producer-to-nonempty-consumer seam, delivered by roadmap node `cardinality-vertical-slice` and made Required-blocking by `extended-admission-cardinality`.",
+  ],
+
+  evidence: [],
+}

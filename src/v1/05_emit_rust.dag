@@ -743,15 +743,31 @@ fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
 // (the E0599 .chars()/.split() class on the self-host closure). A fn definition's realization
 // follows its operands' representation: a structural-carrier declaration emits its own declared
 // body through ordinary emission, which already routes list_head/list_tail/is_empty/fold_list to
-// crate::v2_std_algebra. The one arm kept is `trim`, a host-String-on-host-String bridge
-// (std.algebra trim, kernel text both sides) with no structural operand in play; it is retained
-// as-is rather than widened, and dissolves when fn-body realization is keyed on declaration
-// identity rather than name (the same trigger checkpoint_table_bypasses_identity_note records).
-fn rust_host_string_op_fn_emit(name: String) -> String? {
+// crate::v2_std_algebra. `trim` remains the name-keyed residue of that class (not redesigned
+// here). `string_contains` is NOT selected by spelling: emit_fn_def asks this with the
+// declaration's module path, and the bridge fires only when std.primitive_projection has a row
+// for that exact DeclarationRef whose primitive is string_contains. A same-named fn in any
+// other module keeps its authored body. Dissolves when fn-body realization is keyed on
+// declaration identity rather than name for the remaining name-keyed arm (`trim`) — the same
+// trigger checkpoint_table_bypasses_identity_note records.
+fn rust_host_string_contains_bridge_applies(module_path: String, name: String) -> Bool {
+  match primitive_projection_row_for_declaration(declaration: decl_ref(module_path: module_path, decl_name: name)) {
+    Present { value: row } => primitive_identity_runtime_name(identity: row.primitive) == "string_contains"
+    Absent => false
+  }
+}
+
+fn rust_host_string_op_fn_emit(name: String, module_path: String) -> String? {
   if name == "trim" {
     Present { value: concat(
       "pub fn trim(s: String) -> String {\n",
       "    v1_rt::trim(s)\n",
+      "}\n"
+    ) }
+  } else if rust_host_string_contains_bridge_applies(module_path: module_path, name: name) {
+    Present { value: concat(
+      "pub fn ", name, "(s: String, pattern: String) -> bool {\n",
+      "    v1_rt::string_contains(&s, pattern)\n",
       "}\n"
     ) }
   } else {
@@ -9680,7 +9696,7 @@ fn rust_host_seam_is_unrealized(module_path: String, name: String, body: Node, s
 // nullary seam has no by-ref or result-wrapping choice to get wrong.
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  let host_text_op = rust_host_string_op_fn_emit(name: name)
+  let host_text_op = rust_host_string_op_fn_emit(name: name, module_path: scope.module_name)
   if host_text_op != none {
     return match host_text_op {
       Present { value: op_fn } => op_fn
