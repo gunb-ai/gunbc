@@ -249,9 +249,14 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum V2NativeCensusReading {
     RefusalCensus,
-    ScopedRefusalCensus { subject: &'static str },
+    /// `subject` is the bound PACKAGE's segments; rendered as a package pattern only at argv.
+    ScopedRefusalCensus {
+        subject: &'static [&'static str],
+    },
     TypeDeclarationUse,
-    NativeProcessMemory { workload: NativeMeasuredWorkload },
+    NativeProcessMemory {
+        workload: NativeMeasuredWorkload,
+    },
 }
 
 /// `gunbc.instruments.native_process_memory_reading` `NativeCensusVerb`.
@@ -400,7 +405,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("v2-native-census-scoped"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::ScopedRefusalCensus {
-                    subject: "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all",
+                    subject: &[
+                        "v2",
+                        "test",
+                        "claim",
+                        "parse",
+                        "expression_bodied_fn_decl_parse",
+                    ],
                 },
             },
         ),
@@ -920,7 +931,12 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         } => run_v2_native_census(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::ScopedRefusalCensus { subject },
-        } => run_v2_native_census_scoped(subject, &self_host_source_roots()),
+        } => run_v2_native_census_scoped(
+            &render_target_pattern(&TargetPattern::PackageTargets(
+                subject.iter().map(|s| s.to_string()).collect(),
+            )),
+            &self_host_source_roots(),
+        ),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_type_declaration_use_census(&self_host_source_roots()),

@@ -300,7 +300,9 @@ fn v2_native_census_scoped_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-census-scoped" } }
 }
 
-data v2_native_census_scoped_subject: String = "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all"
+fn v2_native_census_scoped_subject() -> PackageName {
+  PackagePath { segments: ["v2", "test", "claim", "parse", "expression_bodied_fn_decl_parse"] }
+}
 
 // THE NOMINAL-TYPE PLAN'S M0 (docs/plans/nominal-type-declaration-plan.md section 2): every type
 // declaration and every `as` site of `dag` + `src/v2`, classified off the RESOLVED and INFERRED trees
@@ -756,7 +758,7 @@ fn native_process_memory_census_binding() -> TargetBinding {
 }
 
 fn v2_native_census_scoped_binding() -> TargetBinding {
-  TargetBinding { target: v2_native_census_scoped_label() producer: V2NativeCensusProducer { reading: ScopedRefusalCensusReading { subject: v2_native_census_scoped_subject } } }
+  TargetBinding { target: v2_native_census_scoped_label() producer: V2NativeCensusProducer { reading: ScopedRefusalCensusReading { subject: v2_native_census_scoped_subject() } } }
 }
 
 fn v2_native_census_binding() -> TargetBinding {
