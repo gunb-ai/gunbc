@@ -30307,7 +30307,11 @@ mod nfr_tests {
                }\n\
              ]\n";
         assert_eq!(
-            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic),
+            super::non_fold_residue_units_from_module_source_with(
+                "synthetic.dag",
+                synthetic,
+                super::NfrHomeCheck::Skip,
+            ),
             vec![
                 "synthetic/a.dag::f".to_string(),
                 "synthetic/b.dag::g".to_string()
@@ -30324,7 +30328,11 @@ mod nfr_tests {
                FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r2\", trigger: TriggerProse { text: \"d2\" } }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+            super::non_fold_residue_units_from_module_source_with(
+                "synthetic.dag",
+                synthetic,
+                super::NfrHomeCheck::Skip,
+            )
         }))
         .is_err();
         assert!(
@@ -30340,7 +30348,11 @@ mod nfr_tests {
                FrontierRow { reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+            super::non_fold_residue_units_from_module_source_with(
+                "synthetic.dag",
+                synthetic,
+                super::NfrHomeCheck::Skip,
+            )
         }))
         .is_err();
         assert!(
@@ -30356,7 +30368,11 @@ mod nfr_tests {
                FrontierRow { subject: PathSubject { }, reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
              ]\n";
         let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+            super::non_fold_residue_units_from_module_source_with(
+                "synthetic.dag",
+                synthetic,
+                super::NfrHomeCheck::Skip,
+            )
         }))
         .expect_err("a PathSubject carrying no `path` field must refuse loudly (fail-closed)");
         let message = refusal

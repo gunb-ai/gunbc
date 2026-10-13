@@ -111,13 +111,6 @@ pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
 // the rows (module-binding supply-carrier pattern), and with the scan below into a pure
 // `.dag` Node-tree lens at gunbc#5364. v1 seed-reader change is admissible because it
 // unblocks residue burn-down for the v2 program.
-pub(crate) fn non_fold_residue_units_from_module_source(
-    module_rel_path: &str,
-    content: &str,
-) -> Vec<String> {
-    non_fold_residue_units_from_module_source_with(module_rel_path, content, NfrHomeCheck::Skip)
-}
-
 /// The list literal only — so discovery does not tokenize a 10k-line subject module to read
 /// three FrontierRow records.
 fn nfr_frontier_list_source(content: &str) -> Option<String> {
