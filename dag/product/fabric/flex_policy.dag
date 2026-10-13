@@ -207,7 +207,7 @@ fn occupancy_sum(occupancy: FlexFleetOccupancy, currency: CurrencyCode) -> FlexO
 
 fn occupy_pending(occupancy: FlexFleetOccupancy, bid: MoneyPerHour) -> FlexFleetOccupancy {
   FlexFleetOccupancy {
-    standing: concat(occupancy.standing, [AcquisitionPending { rate: bid }]),
+    standing: concat([AcquisitionPending { rate: bid }], occupancy.standing),
   }
 }
 
@@ -327,17 +327,22 @@ fn refuse_currency(left: CurrencyCode, right: CurrencyCode) -> FlexBidAdmission 
 }
 
 fn join_attempt_candidates<P>(attempt: FlexBidAttempt<P>) -> FlexCandidateJoin<P> {
-  fold(attempt.candidates, init: FlexCandidatesJoined { candidates: [] }, f: (acc, row) =>
+  match fold(attempt.candidates, init: FlexCandidatesJoined { candidates: [] }, f: (acc, row) =>
     match acc {
       FlexCandidateJoinMismatch { named: n, observed: o } =>
         FlexCandidateJoinMismatch { named: n, observed: o }
       FlexCandidatesJoined { candidates: acc_cs } =>
         if flex_machine_key_eq(left: row.machine, right: attempt.machine) {
-          FlexCandidatesJoined { candidates: concat(acc_cs, [row.candidate]) }
+          FlexCandidatesJoined { candidates: concat([row.candidate], acc_cs) }
         } else {
           FlexCandidateJoinMismatch { named: attempt.machine, observed: row.machine }
         }
-    })
+    }) {
+    FlexCandidateJoinMismatch { named: n, observed: o } =>
+      FlexCandidateJoinMismatch { named: n, observed: o }
+    FlexCandidatesJoined { candidates: acc_cs } =>
+      FlexCandidatesJoined { candidates: reverse(acc_cs) }
+  }
 }
 
 fn selection_names_joined_offer<P>(selected: SelectedOffer<P>, joined: List<CandidateOffer<P>>) -> Bool {
