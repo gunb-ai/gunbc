@@ -989,11 +989,11 @@ test fn effect_plan_bash_empty_fail_fast_plan_is_total() -> Bool {
 
 // The decimal contract walks host text by host operations (length, prefix, slice) plus the alphabet
 // fold, never an Empty/Cons pattern over a kernel String (gunbc.rung_drop text_boundary_identity_wall,
-// match-pattern-over-host-text population). The seed emitted that walk as str indexing and the
-// emitted crate did not build; these rows execute both functions on the inputs where a broken walk
-// and the repaired one differ in verdict: "" and "-" refuse, "0" and "007" (leading zeros) admit,
-// "-5" admits one leading sign, "12a" and "-5x" refuse a non-digit anywhere, "--5" and "+5" refuse
-// a second or a different sign.
+// match-pattern-over-host-text population). These rows are SEMANTIC-PRESERVATION controls over the
+// repaired walk, not a discriminating RED: the interpreter already answered these inputs correctly, and
+// the original defect was the emitted crate's build. Contract: "" and "-" refuse, "0" and "007"
+// (leading zeros) admit, "-5" admits one leading sign, "12a" and "-5x" refuse a non-digit anywhere,
+// "--5" and "+5" refuse a second or a different sign.
 test fn effect_plan_bash_decimal_digits_contract_holds() -> Bool {
   effect_plan_bash_decimal_digits_ok(s: "0")
     && effect_plan_bash_decimal_digits_ok(s: "007")

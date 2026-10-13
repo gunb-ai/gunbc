@@ -38,17 +38,27 @@ type SourceFold<R> {
   is_done: fn(R) -> Bool
 }
 
+fn fold_source_step<R>(acc: R, algebra: SourceFold<R>) -> R {
+  match algebra.is_done(acc) {
+    true => acc
+    false => algebra.step(acc)
+  }
+}
+
+// THE END OF THE SOURCE IS ONE STEP, AFTER THE LAST SCALAR. The scalars of `src` are the fold's fuel
+// (init receives the source, so the algebra reads it itself), and a step that takes a whole lexeme
+// spends one unit of fuel on several scalars. So an algebra whose step on an exhausted source is a
+// DECISION -- the lexer's end-of-input verdict on a mode still open -- has fuel left to reach it only
+// when some earlier step took more than one scalar; on a source of exactly one-scalar steps the fuel
+// ran out on the last scalar and the decision never ran. The last step is therefore taken here, not
+// left to the count, and it is subject to is_done like every other.
 fn fold_source<R>(src: String, algebra: SourceFold<R>) -> R {
-  fold_list(
+  let scalar_steps = fold_list(
     xs: src,
     empty: algebra.init(src),
-    cons: fn(acc, _) {
-      match algebra.is_done(acc) {
-        true => acc
-        false => algebra.step(acc)
-      }
-    }
+    cons: fn(acc, _) { fold_source_step(acc: acc, algebra: algebra) }
   )
+  fold_source_step(acc: scalar_steps, algebra: algebra)
 }
 
 // WHY THE DELIMITER IS A FreeSemigroup AND NOT A String: an empty delimiter names no field
