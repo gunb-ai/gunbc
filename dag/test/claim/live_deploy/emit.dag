@@ -10,6 +10,7 @@ import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text, apply_empty_host_effects, claim_oidc_now }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.filesystem { path_parent_directory }
 import std.os.types { Apt }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_store_root, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
@@ -137,7 +138,6 @@ import gunbc.live_deploy.emit {
   deploy_apply_receipt_steps,
   deploy_receipt_command,
   install_d_shared_mode,
-  path_parent_dir,
   live_deploy_systemd_unit_for,
   deployment_ensure_dependency_script,
   emit_deploy_teardown_dependency_refusal,
@@ -1010,16 +1010,16 @@ test fn twin_apply_creates_its_own_binary_parent_directory_and_not_productions()
 }
 
 // The parent-directory command is DERIVED from the same instance field the binary path is derived
-// from, at the same two calls the emitter makes (path_parent_dir over instance.serve_binary, then
-// install_directory_command). Transcribing `install -d -m 0755 /opt/gunbc/bin` here — which this
-// claim did until the emitter's quoting became the grammar's job — pinned a spelling, not the
-// fact: the discriminating half is the PATH differing between the two instances, and a literal
-// re-states production's path a second time, which is exactly the half-parameterization
-// gunbc.live_deploy.emit path_parent_dir's annotation records the cost of.
+// from, at the same two calls the emitter makes (std.filesystem path_parent_directory over
+// instance.serve_binary, then install_directory_command). Transcribing `install -d -m 0755
+// /opt/gunbc/bin` here — which this claim did until the emitter's quoting became the grammar's job
+// — pinned a spelling, not the fact: the discriminating half is the PATH differing between the two
+// instances, and a literal re-states production's path a second time, which is exactly the
+// half-parameterization that annotation records the cost of.
 fn serve_binary_parent_install_command(instance: HostDashboardInstance) -> String {
   install_directory_command(
     mode: install_d_shared_mode,
-    path: path_parent_dir(path: instance.serve_binary as String),
+    path: path_parent_directory(path: instance.serve_binary as String),
     privileged: true,
   )
 }
