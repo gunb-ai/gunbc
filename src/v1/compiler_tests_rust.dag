@@ -1715,6 +1715,34 @@ fn ct_unbound_reference_to_a_twice_declared_leaf_refuses_test() -> String {
   )
 }
 
+// A declared Optional whose payload node is absent refuses; it never renders `()`.
+fn ct_an_optional_over_a_collection_of_optional_refuses_test() -> String {
+  [
+    "    // AN OPTIONAL WHOSE PAYLOAD TYPE NODE IS ABSENT REFUSES; IT NEVER RENDERS `()`. THE SPECIMEN p_a,\n",
+    "    // `Optional<List<Optional<Int>>>`, left the inner List unstamped and the element leaf childless, so the\n",
+    "    // carrier rendered `Option<Rc<Vec<Option<()>>>>` (measured by merry-moth-118, node adhoc-c3c735c9-3af).\n",
+    "    // THE CONTROL is `List<Optional<Int>>`, which stamps and renders `Option<i64>`.\n",
+    "    // EXPECTED FLIP: when the infer-side stamping of a collection nested under an Optional lands (Manager 1),\n",
+    "    // the specimen must emit `Option<Rc<Vec<Option<i64>>>>` and the red assertion below is retired in that\n",
+    "    // change, which then decides whether this renderer reads `.inferred`.\n",
+    "    #[test]\n",
+    "    fn an_optional_over_a_collection_of_optional_refuses() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let optional = || std::rc::Rc::new(SourceFile { path: \"fixtures/kernel_shadow/optional.dag\".to_string(), content: \"module std.optional\\n\\ntype Optional<T>\\n  = Present { value: T }\\n  | Absent\\n\".to_string() });\n",
+    "        let specimen = |ty: &str| std::rc::Rc::new(SourceFile { path: \"fixtures/optional_payload_refusal/specimen.dag\".to_string(), content: format!(\"module spec.erase\\n\\nimport std.optional \{\{ Optional \}\}\\n\\nfn p_a(o: \{ty}) -> Int \{\{ 0 \}\}\\n\") });\n",
+    "        let emitted = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {\n",
+    "            let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(sources.into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "            result.files.iter().find(|f| f.path.contains(\"spec_erase\")).map(|f| f.content.clone()).unwrap_or_default()\n",
+    "        };\n",
+    "        let red = emitted(vec![optional(), specimen(\"Optional<List<Optional<Int>>>\")]);\n",
+    "        assert!(red.contains(\"compile_error!\") && red.contains(\"optional carrier payload type node absent\") && !red.contains(\"Option<()>\"), \"an absent payload must refuse and never render ():\\n\{red}\");\n",
+    "        let control = emitted(vec![optional(), specimen(\"List<Optional<Int>>\")]);\n",
+    "        assert!(control.contains(\"Option<i64>\") && !control.contains(\"compile_error!\"), \"a collection of Optional without an outer Optional renders its payload:\\n\{control}\");\n",
+    "    }\n",
+    "\n",
+  ] |> join(separator: "")
+}
+
 // A same-leaf declaration in one module does not change what another module emits.
 fn ct_a_coproduct_named_optional_emits_as_its_own_enum_test() -> String {
   [
@@ -1996,6 +2024,7 @@ fn ct_coercion_tests() -> String {
     ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test(),
     ct_unstamped_bare_optional_follows_the_lookup_binding_order_test(),
     ct_a_coproduct_named_optional_emits_as_its_own_enum_test(),
+    ct_an_optional_over_a_collection_of_optional_refuses_test(),
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }

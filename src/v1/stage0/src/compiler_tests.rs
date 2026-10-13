@@ -5520,6 +5520,48 @@ mod compiler_tests {
         assert!(!receipt.contains("LeafAmbiguous:Optional"), "{receipt}");
     }
 
+    // AN OPTIONAL WHOSE PAYLOAD TYPE NODE IS ABSENT REFUSES; IT NEVER RENDERS `()`. THE SPECIMEN p_a,
+    // `Optional<List<Optional<Int>>>`, left the inner List unstamped and the element leaf childless, so the
+    // carrier rendered `Option<Rc<Vec<Option<()>>>>` (measured by merry-moth-118, node adhoc-c3c735c9-3af).
+    // THE CONTROL is `List<Optional<Int>>`, which stamps and renders `Option<i64>`.
+    // EXPECTED FLIP: when the infer-side stamping of a collection nested under an Optional lands (Manager 1),
+    // the specimen must emit `Option<Rc<Vec<Option<i64>>>>` and the red assertion below is retired in that
+    // change, which then decides whether this renderer reads `.inferred`.
+    #[test]
+    fn an_optional_over_a_collection_of_optional_refuses() {
+        use crate::v1_compiler_compile::SourceFile;
+        let optional = || {
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/optional.dag".to_string(), content: "module std.optional\n\ntype Optional<T>\n  = Present { value: T }\n  | Absent\n".to_string() })
+        };
+        let specimen = |ty: &str| {
+            std::rc::Rc::new(SourceFile { path: "fixtures/optional_payload_refusal/specimen.dag".to_string(), content: format!("module spec.erase\n\nimport std.optional {{ Optional }}\n\nfn p_a(o: {ty}) -> Int {{ 0 }}\n") })
+        };
+        let emitted = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {
+            let result = crate::v1_compiler_compile::compile_sources(
+                std::rc::Rc::new(sources.into()),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            );
+            result
+                .files
+                .iter()
+                .find(|f| f.path.contains("spec_erase"))
+                .map(|f| f.content.clone())
+                .unwrap_or_default()
+        };
+        let red = emitted(vec![optional(), specimen("Optional<List<Optional<Int>>>")]);
+        assert!(
+            red.contains("compile_error!")
+                && red.contains("optional carrier payload type node absent")
+                && !red.contains("Option<()>"),
+            "an absent payload must refuse and never render ():\n{red}"
+        );
+        let control = emitted(vec![optional(), specimen("List<Optional<Int>>")]);
+        assert!(
+            control.contains("Option<i64>") && !control.contains("compile_error!"),
+            "a collection of Optional without an outer Optional renders its payload:\n{control}"
+        );
+    }
+
     // A COPRODUCT NAMED Optional EMITS AS ITS OWN ENUM. still-raven-321's fixture,
     // fixtures/native_emission_controls_optional_collision.dag, is a non-kernel declaration that shares
     // the kernel mint's leaf. Host-Option is decided by declaration (v1.compiler.emit_rust
