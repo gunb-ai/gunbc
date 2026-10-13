@@ -17,11 +17,11 @@
 #   counts in one dispatch (capability: a modeled counting-allocator harness producer). Not yet built.
 # Rc clone count is not observable through an allocator; it is read from the emitted source instead.
 set -euo pipefail
-cargo build --release -p v1-compiler --bin gunbc >/dev/null 2>&1
+cargo build --release -p v1-compiler --bin gunbc
 out=/tmp/ecq_state_threading
 rm -rf "$out"
 ./target/release/gunbc compile --source-root dag --source-root src/v2 \
-  --entry dag/gunbc/emit_state_threading_specimen.dag --output-dir "$out" --target rust >/dev/null 2>&1
+  --entry dag/gunbc/emit_state_threading_specimen.dag --output-dir "$out" --target rust
 crate=$(sed -n 's/^name *= *"\(.*\)"/\1/p' "$out/Cargo.toml" | head -1 | tr - _)
 mkdir -p "$out/src/bin"
 cat > "$out/src/bin/runner.rs" <<RS
@@ -90,4 +90,4 @@ fn main() {
     }
 }
 RS
-cd "$out" && cargo run --release --bin runner 2>&1 | grep -v "^warning\|^ *|\|^ *-->\|^ *=\|^$\|Compiling\|Finished\|Running" | tail -40
+cd "$out" && cargo run --release --bin runner 2>&1 | tail -60
