@@ -8930,12 +8930,29 @@ fn infer_sole_constructor_node_diags(
         match construct_tag_path_optional(n: node) {
           Absent => None
           Present { value: path } =>
-            infer_sole_constructor_path_diags(
-              at: node,
-              type_path: path,
-              constructing_module: constructing_module,
-              tree: tree
-            )
+            match infer_coproduct_path_of_variant_arm(index: tree.resolved_declarations, arm_path: path) {
+              Present { value: coproduct } =>
+                infer_sole_constructor_path_diags(
+                  at: node,
+                  type_path: coproduct,
+                  constructing_module: constructing_module,
+                  tree: tree
+                )
+              Absent =>
+                match symbol_index_lookup(index: tree.resolved_declarations, qualified_path: path) {
+                  Present { value: _ } =>
+                    infer_sole_constructor_path_diags(
+                      at: node,
+                      type_path: path,
+                      constructing_module: constructing_module,
+                      tree: tree
+                    )
+                  Absent =>
+                    infer_admission_diags_of([
+                      infer_declaration_identity_unavailable_diagnostic(at: node)
+                    ])
+                }
+            }
         }
     }
   }
