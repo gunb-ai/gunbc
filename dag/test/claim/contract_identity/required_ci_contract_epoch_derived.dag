@@ -11,6 +11,7 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_execution_contract,
 }
 import gunbc.host.memory_envelope { MemoryEnvelopeContract }
+import gunbc.parse_population_refusals { RefusalClass }
 import gunbc.required_ci_contract_epoch {
   required_ci_context_name,
   required_ci_contract_epoch_derivation,
@@ -99,8 +100,29 @@ test fn changing_a_payload_moves_the_epoch() -> Bool {
         }
       RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
       EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
-      SourceLayoutObligation { guarantee: guarantee } => SourceLayoutObligation { guarantee: guarantee }
-      PopulationParseObligation { guarantee: guarantee } => PopulationParseObligation { guarantee: guarantee }
+      SourceLayoutObligation { governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { governed_roots: governed_roots, namespace_roots: namespace_roots }
+      PopulationParseObligation { classes: classes } => PopulationParseObligation { classes: classes }
+    }
+  })
+  match derived_epoch_text(rows: changed) {
+    Present { value: epoch } => epoch != production_epoch_text()
+    Absent => false
+  }
+}
+
+test fn changing_declared_parse_refusals_moves_the_epoch() -> Bool {
+  let changed = list_map(xs: required_ci_obligation_rows(), f: fn(row) {
+    match row {
+      PopulationParseObligation { classes: classes } =>
+        PopulationParseObligation {
+          classes: Cons { head: RefusalClass { drop: "probe", cause: "probe", keys: ["probe"] }, tail: classes }
+        }
+      RequiredContextObligation { name: name } => RequiredContextObligation { name: name }
+      EmittedSubjectObligation { subject: subject } => EmittedSubjectObligation { subject: subject }
+      MemoryEnvelopeObligation { contract: contract } => MemoryEnvelopeObligation { contract: contract }
+      SourceLayoutObligation { governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+        SourceLayoutObligation { governed_roots: governed_roots, namespace_roots: namespace_roots }
     }
   })
   match derived_epoch_text(rows: changed) {
@@ -127,8 +149,8 @@ test fn the_context_name_is_an_obligation_row() -> Bool {
       RequiredContextObligation { name: name } => (name as String) == (required_ci_context_name as String)
       EmittedSubjectObligation { subject: _ } => false
       MemoryEnvelopeObligation { contract: _ } => false
-      SourceLayoutObligation { guarantee: _ } => false
-      PopulationParseObligation { guarantee: _ } => false
+      SourceLayoutObligation { governed_roots: _, namespace_roots: _ } => false
+      PopulationParseObligation { classes: _ } => false
     })
 }
 

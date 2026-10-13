@@ -19,13 +19,12 @@ import gunbc.host.memory_envelope {
   memory_envelope_required_ci_contract,
   memory_envelope_contract_digest,
 }
-import v2.cli.population_verb_names {
-  SourceLayoutCheckGuarantee,
-  PopulationParseGuarantee,
-  source_layout_check_guarantee,
-  population_parse_guarantee,
-  source_layout_check_guarantee_digest,
-  population_parse_guarantee_digest,
+import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
+import gunbc.source_layout {
+  LayoutNamespaceRoot,
+  layout_governed_roots,
+  layout_namespace_roots,
+  layout_tree_directory,
 }
 
 // THE REQUIRED CI CONTRACT'S DECLARED EFFECTIVE EPOCH, in one place, because both sides of the
@@ -41,18 +40,21 @@ import v2.cli.population_verb_names {
 // which is the layer inversion §3 names, and would also make the epoch trivially self-satisfying.
 //
 // WHAT MOVES THIS VALUE. The epoch is a digest of required_ci_obligation_rows after canonicalizing
-// by identity: what a green result entitles a consumer to conclude, plus the required context name.
-// Each row carries a typed semantic payload supplied by the authority that executes it, not an
-// alias (a label spelling, an env var name, a CLI verb). Adding, removing, or changing a payload
-// moves the digest; permuting the authored list does not; a duplicated identity refuses. Do NOT
-// digest the workflow text or the step list -- an internal change (a prelude step, a timeout, a
-// cache key) must not move fleet admission. The residual manual question, now that materiality is
-// the row set, is whether a new step adds an obligation row.
+// by identity. Each payload is a value the executing fold is handed: the required context name, the
+// product-reuse env the subject step emits, the memory contract the envelope verdict reads, the
+// layout policy check_layout is handed, and the declared refusal classes parse_population begins
+// with. Adding, removing, or changing those values moves the digest; permuting the authored list
+// does not; a duplicated identity refuses. Do NOT digest the workflow text or the step list -- an
+// internal change (a prelude step, a timeout, a cache key) must not move fleet admission. Do NOT
+// hash a Bool that names a behaviour the fold does not read: that is a second representation of the
+// fold, and editing it can move the epoch while the realization stays put (§5).
 //
 // THE HONEST RUNG. A cross-epoch admission is MECHANICALLY PREVENTED by the production join that
-// compares this required value against the observed one. Materiality is DERIVED from the obligation
-// rows. What remains diligence is classifying a change as an obligation rather than as the
-// contract's own business.
+// compares this required value against the observed one. Materiality of the hashed VALUES is
+// derived from those executing authorities. Materiality of what the folds DO with those values
+// (the walk, the parse, OOM refusal in the host mirror) remains the folds themselves — declared-
+// version diligence until acceptance can derive contract materiality from the contract's own
+// surface. Classifying a new step as an obligation row is the residual manual question.
 
 // THE REQUIRED CONTEXT NAME, one spelling. gunbc.witness.compiler_gate_workflow's job id,
 // gunbc.witness.witness_floor_workflow_job_id, and gunbc.repo.repo_ruleset desired_required_contexts
@@ -72,8 +74,8 @@ type RequiredCiObligation
   = RequiredContextObligation { name: NonEmptyStr }
   | EmittedSubjectObligation { subject: RequiredCiEmittedSubjectObligation }
   | MemoryEnvelopeObligation { contract: MemoryEnvelopeContract }
-  | SourceLayoutObligation { guarantee: SourceLayoutCheckGuarantee }
-  | PopulationParseObligation { guarantee: PopulationParseGuarantee }
+  | SourceLayoutObligation { governed_roots: List<String>, namespace_roots: List<LayoutNamespaceRoot> }
+  | PopulationParseObligation { classes: List<RefusalClass> }
 
 type RequiredCiCanonicalization
   = RequiredCiCanonical { rows: List<RequiredCiObligation> }
@@ -98,10 +100,41 @@ fn required_ci_obligation_rows() -> List<RequiredCiObligation> {
       }),
       right: [
         MemoryEnvelopeObligation { contract: memory_envelope_required_ci_contract() },
-        SourceLayoutObligation { guarantee: source_layout_check_guarantee },
-        PopulationParseObligation { guarantee: population_parse_guarantee },
+        SourceLayoutObligation {
+          governed_roots: layout_governed_roots(),
+          namespace_roots: layout_namespace_roots(),
+        },
+        PopulationParseObligation { classes: parse_population_declared_refusal_classes() },
       ],
     ),
+  )
+}
+
+fn required_ci_layout_policy_digest(governed_roots: List<String>, namespace_roots: List<LayoutNamespaceRoot>) -> String {
+  concat(
+    concat(join(governed_roots, "\n"), "\n"),
+    join(
+      list_map(xs: namespace_roots, f: fn(root) {
+        join([
+          root.namespace,
+          "\t",
+          layout_tree_directory(tree: root.tree),
+          "\t",
+          if root.elides_namespace { "elides" } else { "keeps" },
+        ], "")
+      }),
+      "\n"
+    )
+  )
+}
+
+fn required_ci_parse_population_digest(classes: List<RefusalClass>) -> String {
+  fold_list(
+    xs: classes,
+    empty: "",
+    cons: fn(acc, c) {
+      concat(acc, join([c.drop, "\t", c.cause, "\t", join(c.keys, ","), "\n"], ""))
+    }
   )
 }
 
@@ -111,8 +144,8 @@ fn required_ci_obligation_identity_text(row: RequiredCiObligation) -> String {
     EmittedSubjectObligation { subject: subject } =>
       concat("emitted_subject_built_and_started\t", emitted_subject_build_label_text(row: subject.row))
     MemoryEnvelopeObligation { contract: _ } => "memory_envelope"
-    SourceLayoutObligation { guarantee: _ } => "source_layout_check"
-    PopulationParseObligation { guarantee: _ } => "population_parse"
+    SourceLayoutObligation { governed_roots: _, namespace_roots: _ } => "source_layout_check"
+    PopulationParseObligation { classes: _ } => "population_parse"
   }
 }
 
@@ -123,10 +156,10 @@ fn required_ci_obligation_payload_digest(row: RequiredCiObligation) -> String {
       emitted_subject_execution_digest(contract: subject.execution)
     MemoryEnvelopeObligation { contract: contract } =>
       memory_envelope_contract_digest(contract: contract)
-    SourceLayoutObligation { guarantee: guarantee } =>
-      source_layout_check_guarantee_digest(guarantee: guarantee)
-    PopulationParseObligation { guarantee: guarantee } =>
-      population_parse_guarantee_digest(guarantee: guarantee)
+    SourceLayoutObligation { governed_roots: governed_roots, namespace_roots: namespace_roots } =>
+      required_ci_layout_policy_digest(governed_roots: governed_roots, namespace_roots: namespace_roots)
+    PopulationParseObligation { classes: classes } =>
+      required_ci_parse_population_digest(classes: classes)
   }
 }
 

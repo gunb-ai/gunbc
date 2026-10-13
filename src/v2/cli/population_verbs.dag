@@ -13,10 +13,6 @@ import gunbc.source_root_read {
   source_root_child_path,
   source_root_walk
 }
-import v2.cli.population_verb_names {
-  source_layout_check_guarantee,
-  population_parse_guarantee,
-}
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.module_acquisition {
   AcquisitionEnv,
@@ -161,14 +157,10 @@ fn layout_report(verdict: LayoutVerdict) -> PopulationReport {
 // refuses the whole check: a layout verdict over a population that silently lost a member would
 // certify a smaller repository.
 fn check_layout(bindings: List<SourceRootBinding>) -> PopulationReport {
-  if source_layout_check_guarantee.physical_walk_of_bound_trees {
-    match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
-      AcquisitionEnvUnprepared { diagnostics: _ } =>
-        PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module header was read" }
-      AcquisitionEnvReady { env: env } => check_layout_prepared(env: env, bindings: bindings)
-    }
-  } else {
-    PopulationReport { text: "", held: false, detail: "source_layout_check_guarantee does not require a physical walk; the walk was not run" }
+  match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: _ } =>
+      PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module header was read" }
+    AcquisitionEnvReady { env: env } => check_layout_prepared(env: env, bindings: bindings)
   }
 }
 
@@ -462,13 +454,9 @@ fn parse_population_prepared(env: AcquisitionEnv) -> PopulationReport {
 }
 
 fn parse_population(bindings: List<SourceRootBinding>) -> PopulationReport {
-  if population_parse_guarantee.parse_every_declared_namespace_module && population_parse_guarantee.meet_declared_refusals {
-    match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
-      AcquisitionEnvUnprepared { diagnostics: _ } =>
-        PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
-      AcquisitionEnvReady { env: env } => parse_population_prepared(env: env)
-    }
-  } else {
-    PopulationReport { text: "", held: false, detail: "population_parse_guarantee does not require a full declared parse; the walk was not run" }
+  match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: _ } =>
+      PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
+    AcquisitionEnvReady { env: env } => parse_population_prepared(env: env)
   }
 }

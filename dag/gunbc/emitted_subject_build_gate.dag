@@ -121,20 +121,14 @@ data native_fault_experiment_run_value: String = "run"
 // cargo's own dependency reuse inside the job's checkout is untouched.
 data native_product_reuse_env_name: String = "GUNBC_NATIVE_PRODUCT_REUSE"
 
-// THE EXECUTION CONTRACT THE REQUIRED SUBJECT STEPS DISCHARGE. Fresh vs restored is a field of this
-// row (so a restored green is a different obligation and moves the epoch), not a second writable
-// policy beside it. The env spelling is a projection of build_fresh. Every field is constructed by
-// the production row and read by the digest and the env projection.
+// THE EXECUTION INPUT THE REQUIRED SUBJECT STEPS PASS. The workflow env is this projection, and
+// the epoch hashes that same value — not Bool names for emit/start the command does not read.
 type EmittedSubjectExecutionContract {
-  emit: Bool
   build_fresh: Bool
-  start: Bool
 }
 
 data emitted_subject_execution_contract: EmittedSubjectExecutionContract = EmittedSubjectExecutionContract {
-  emit: true,
   build_fresh: true,
-  start: true,
 }
 
 fn native_product_reuse_env_value(contract: EmittedSubjectExecutionContract) -> String {
@@ -142,13 +136,7 @@ fn native_product_reuse_env_value(contract: EmittedSubjectExecutionContract) -> 
 }
 
 fn emitted_subject_execution_digest(contract: EmittedSubjectExecutionContract) -> String {
-  join([
-    if contract.emit { "emit" } else { "no_emit" },
-    "\t",
-    if contract.build_fresh { "build_fresh" } else { "build_restored" },
-    "\t",
-    if contract.start { "start" } else { "no_start" },
-  ], "")
+  native_product_reuse_env_value(contract: contract)
 }
 
 data native_product_reuse_fresh_value: String = native_product_reuse_env_value(contract: emitted_subject_execution_contract)

@@ -14,7 +14,10 @@ import gunbc.witness.compiler_gate_workflow {
   compiler_gate_emit_build_notice_lines,
   compiler_gate_emit_build_step
 }
-import gunbc.required_ci_contract_epoch { required_ci_context_name }
+import gunbc.required_ci_contract_epoch {
+  required_ci_context_name,
+  required_ci_emitted_subject_obligations,
+}
 import gunbc.emitted_subject_build_gate {
   NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed, EmittedBuildSignature,
   emit_build_standing_notice_for,
@@ -23,7 +26,7 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_command,
   emitted_subject_build_step_name,
   native_fault_experiment_env_name, native_fault_experiment_skip_value,
-  native_product_reuse_env_name, native_product_reuse_fresh_value,
+  native_product_reuse_env_name, native_product_reuse_env_value, native_product_reuse_fresh_value,
   native_step_memory_bind_env_name, native_step_memory_trip_text, native_step_memory_trip,
   native_step_memory_envelope_env_name, native_step_memory_envelope_slot_value,
   NativeStepMemoryInput, native_step_memory_inputs,
@@ -162,16 +165,16 @@ test fn the_job_capability_closure_holds() -> Bool {
 // step's green means THIS run emitted and built the product. A step lacking the input, or carrying
 // a different value, would let a restored hit satisfy the step.
 test fn every_subject_step_requires_a_fresh_product() -> Bool {
-  all(emitted_subject_build_rows(), row =>
-    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_product_reuse_env_name, value: native_product_reuse_fresh_value))
+  all(required_ci_emitted_subject_obligations(), subject =>
+    step_env_has(step: compiler_gate_emit_build_step(subject: subject), key: native_product_reuse_env_name, value: native_product_reuse_env_value(contract: subject.execution)))
 }
 
 // EVERY SUBJECT STEP REQUIRES THE SLOT'S ENVELOPE, BY VALUE, WHATEVER THE DROP'S STANDING: the
 // input gunbc test reads as "refuse unless a cgroup memory.max binds this step, and refuse an OOM
 // kill or swap inside it". A step without it would run unreceipted inside the slot.
 test fn every_subject_step_requires_the_slot_envelope() -> Bool {
-  all(emitted_subject_build_rows(), row =>
-    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value))
+  all(required_ci_emitted_subject_obligations(), subject =>
+    step_env_has(step: compiler_gate_emit_build_step(subject: subject), key: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value))
 }
 
 fn inputs_carry(inputs: List<NativeStepMemoryInput>, name: String, value: String) -> Bool {
@@ -208,10 +211,10 @@ fn step_env_has_key(step: Step, key: String) -> Bool {
 // would refuse on the fleet just the same; the day the fact flips, every step carries it at the
 // trip.
 test fn the_live_steps_carry_the_bind_iff_a_job_owns_a_bounded_cgroup() -> Bool {
-  let carries = all(emitted_subject_build_rows(), row =>
-    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()))
-  let withholds = all(emitted_subject_build_rows(), row =>
-    step_env_has_key(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name) == false)
+  let carries = all(required_ci_emitted_subject_obligations(), subject =>
+    step_env_has(step: compiler_gate_emit_build_step(subject: subject), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()))
+  let withholds = all(required_ci_emitted_subject_obligations(), subject =>
+    step_env_has_key(step: compiler_gate_emit_build_step(subject: subject), key: native_step_memory_bind_env_name) == false)
   match gunbc_runner_slot_job_cgroup_ownership {
     JobOwnsNoBoundedCgroup { why: _ } => withholds
     JobOwnsBoundedCgroup { staged_by: _ } => carries
@@ -270,7 +273,7 @@ test fn w_RED_the_job_binds_no_native_product_store() -> Bool {
 // native_fault_experiment_off_pull_requests): each step passes the env var, whose expression skips
 // on pull_request and runs otherwise. A step lacking it would run the fault experiment on PRs.
 test fn every_subject_step_passes_the_fault_experiment_input() -> Bool {
-  all(emitted_subject_build_rows(), row => match compiler_gate_emit_build_step(row: row) {
+  all(required_ci_emitted_subject_obligations(), subject => match compiler_gate_emit_build_step(subject: subject) {
     RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       match e {
         Present { value: kvs } => any(kvs, k => k.key == native_fault_experiment_env_name)
