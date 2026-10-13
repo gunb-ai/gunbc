@@ -251,7 +251,7 @@ test fn operator_template_and_policy_are_named_facts() -> Bool {
     && flex_search_type == vast_ai_search_type_bid
     && flex_engine_min_driver(engine: FlexNinfer) == flex_ninfer_min_driver
     && flex_engine_min_driver(engine: FlexVllm) == flex_vllm_min_driver
-    && money_per_hour_cap_is_one_fifty()
+    && money_per_hour_cap_is_one_thirty_four()
     && flex_actuation_mode_default_is_dry()
     && objective_is_cost_per_accepted_unit()
     && money_amount_micro_count(m: flex_delay_unvalued.amount) == 0
@@ -272,8 +272,8 @@ fn machine_key_follows_offer_id() -> Bool {
     == flex_machine_key(account: "vast-account-1", machine: "42").machine
 }
 
-fn money_per_hour_cap_is_one_fifty() -> Bool {
-  money_amount_micro_count(m: flex_trial_fleet_rate_cap.amount) == 1500000
+fn money_per_hour_cap_is_one_thirty_four() -> Bool {
+  money_amount_micro_count(m: flex_trial_fleet_rate_cap.amount) == 1340000
 }
 
 fn flex_actuation_mode_default_is_dry() -> Bool {

@@ -89,7 +89,8 @@ type FlexPolicy {
   // Hard ceiling, not a second bid formula.
   on_demand_fraction: NonzeroNatFraction
   acquisition_horizon: Second
-  // Defence in depth if the Vast account is later split; still required.
+  // Load-bearing isolation from ctrl on the same Vast account: no second account.
+  // Cap occupancy, reconcile, cleanup and release select this label exactly.
   owner: FlexOwnerLabel
   // Write loop. FlexActuationDry is observe/plan/record; Wet is the write loop.
   // Trial and every current constructor are Dry.

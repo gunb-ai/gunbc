@@ -109,8 +109,9 @@ fn flex_vram_class_eq(left: FlexVramClass, right: FlexVramClass) -> Bool {
 type FlexOwnerLabel = NonEmptyStr where brand("FlexOwnerLabel")
 
 // Policy data, not an account nickname: ctrl reserves ctrl-bidder and ctrl-pool on the
-// same Vast account (ctrl PR 2342). Exact match only; the label remains if we later
-// get a separate account.
+// same Vast account (ctrl PR 2342). There is no separate Vast account, so this label is
+// the only isolation between the two bidders. Exact match only for cap, reconcile,
+// cleanup and release.
 data flex_owner_label_gunbc_flex: FlexOwnerLabel = "gunbc-flex"
 
 type FlexWireOwner
