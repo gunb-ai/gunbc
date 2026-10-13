@@ -161,7 +161,7 @@ fn non_world_readable_section_doc() -> Doc {
 
 fn generated_artifacts_section_doc() -> Doc {
   let header = gitignore_section_header(title: "Generated artifacts (gitignored-by-default, derived from generated_artifact_registry)")
-  let rationale = gitignore_comment_line(text: "Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).")
+  let rationale = gitignore_comment_line(text: "Regenerable; not committed. Session-loaded authority stays committed: DESIGN.md.")
   let pattern_docs = map(non_committed_artifacts(), a => doc_line_of(text: generated_artifact_ignore_pattern(a: a)))
   doc_concat(parts: append([header, rationale], items: pattern_docs))
 }
