@@ -1,8 +1,7 @@
 module v2.test.claim.tokenize.lex_mode_stack
 
 import v2.std.text { String }
-import v2.std.algebra { fold_list }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, fold_list }
 import v2.std.compilers.lexing {
   CharClassPattern,
   CharPattern,

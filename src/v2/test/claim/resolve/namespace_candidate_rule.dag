@@ -14,10 +14,9 @@ import v2.compiler.compile {
 }
 import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.algebra { contains, fold_list, for_all, length }
 import v2.std.collection { Map }
 import v2.std.integer { Int }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, for_all, length }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }

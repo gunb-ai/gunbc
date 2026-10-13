@@ -6829,7 +6829,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
     let Value::Record { fields, .. } = &result else {
         return Err(malformed("expected a CrossClaimShareDerivation record"));
     };
-    // The fold's lists may be kernel lists or v2.std.algebra FreeMonoid chains; both decode.
+    // The fold's lists may be kernel lists or std.algebra FreeMonoid chains; both decode.
     let list_of = |name: &str| -> Result<Vec<Value>, String> {
         ctx.field(fields, name)
             .and_then(|v| v1_interpreter::list_value_items(ctx, v))
@@ -18642,7 +18642,7 @@ mod changed_selections_outside_discovery_mirror_tests {
     }
 
     /// A `List<T>` value in either realization the interpreter produces: the host vector, or the
-    /// free-monoid `Cons`/`Empty` chain a `.dag` fold builds (`v2.std.algebra` `list_reverse`
+    /// free-monoid `Cons`/`Empty` chain a `.dag` fold builds (`std.algebra` `list_reverse`
     /// returns one since gunbc#13138). Anything else is not a list and panics with its own name.
     fn list_items(ctx: &v1_interpreter::InterpContext, value: &Value) -> Vec<Value> {
         let mut out = Vec::new();

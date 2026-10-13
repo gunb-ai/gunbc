@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_health
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
-import std.algebra { trim }
+import std.algebra { trim, non_empty_to_list }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.nat { Nat }
@@ -18,7 +18,6 @@ import std.goal_assessment {
   ObservationEstablished,
   ObservationRefused,
 }
-import v2.std.algebra { non_empty_to_list }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_intent { ComputeHost, fleet_intent_known_hosts }
 import gunbc.fleet.fleet_fan_tach_expectation {

@@ -3,7 +3,7 @@ module gunbc.instruments.layout_migration_rewrite
 import std.types { Bool, Int, List, String }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import v2.std.algebra { skip }
+import std.algebra { skip }
 
 // THE REFERENCE REWRITE ENGINE OF THE LAYOUT MIGRATION (gunbc.plans.source_layout_authority, C1).
 // Given the old and new name of every module and the old and new path of every file, it rewrites
@@ -123,12 +123,12 @@ fn run_window() -> Int {
 }
 
 fn sentinel() -> String {
-  from_code_point(57344)
+  "\u{e000}"
 }
 
 // Brackets the index of a pinned literal while the passes run, so no pass reads inside it.
 fn pin_mark() -> String {
-  from_code_point(57345)
+  "\u{e001}"
 }
 
 fn bool_map_of(names: List<String>) -> Map<String, Bool> {

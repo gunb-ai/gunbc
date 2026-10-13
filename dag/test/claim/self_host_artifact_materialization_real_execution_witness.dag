@@ -15,9 +15,8 @@ import v2.compiler.self_host.generation {
   generation_axis_symbol,
   generation_identity_mismatched_axes
 }
-import v2.std.algebra { for_all, length }
 import v2.std.node { symbol_identity_digest }
-import std.algebra { trim }
+import std.algebra { trim, for_all, length }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

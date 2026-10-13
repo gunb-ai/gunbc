@@ -345,7 +345,7 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int, env: ParseEnvironment) ->
     }
   }
 
-  let ch_text = from_code_point(cp: ch)
+  let ch_text = substring(s: source.text, start: pos.pos, end: pos.pos + 1)
   match lookup(single_punct, key: ch_text) {
     Present { value: sh } => emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
     Absent => emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)

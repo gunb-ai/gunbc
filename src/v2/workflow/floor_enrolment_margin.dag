@@ -1,6 +1,6 @@
 module v2.workflow.floor_enrolment_margin
 
-import v2.std.algebra { list_reverse }
+import std.algebra { list_reverse }
 import std.types { List, NonEmptyStr }
 import v2.workflow.required_floor { required_floor_per_subject_cpu_line_ms }
 import v2.workflow.floor_cost_debt_admission {
