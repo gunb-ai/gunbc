@@ -6430,7 +6430,7 @@ type InferConstructRead
 
 fn infer_record_formals(resolved: ResolvedTree, path: QualifiedName, authored: Node) -> InferRecordFormals {
   match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
-    Present { value: resolved } => RecordFormalsResolved { payload: resolved }
+    Present { value: declaration } => RecordFormalsResolved { payload: declaration }
     Absent => RecordFormalsAuthored { payload: authored }
   }
 }
@@ -6679,7 +6679,7 @@ type InferRecordFieldBinding
 fn infer_record_field_binding(node: Node, record: Node, formals: InferRecordFormals) -> InferRecordFieldBinding {
   match infer_formals_from_domain(domain: infer_record_formals_payload(formals: formals)) {
     Absent => RecordPayloadUnread
-    Present { value: formals } =>
+    Present { value: formal_list } =>
       let actuals = construct_field_edges(n: node)
       match infer_record_first_positional_actual(actuals: actuals) {
         Present { value: unnamed } =>
@@ -6692,20 +6692,20 @@ fn infer_record_field_binding(node: Node, record: Node, formals: InferRecordForm
             )
           }
         Absent =>
-          match application_binding_plan_over(labels: list_map(xs: formals, f: infer_formal_identity_key), actuals: actuals) {
+          match application_binding_plan_over(labels: list_map(xs: formal_list, f: infer_formal_identity_key), actuals: actuals) {
             ApplicationBindingRefused { reason: reason, at: at } =>
               RecordFieldsRefused {
                 diagnostic: infer_record_construct_binding_refusal(
                   node: node,
                   record: record,
-                  formals: formals,
+                  formals: formal_list,
                   actuals: actuals,
                   plan_reason: reason,
                   at: at
                 )
               }
             ApplicationBound { slots: slots } =>
-              RecordFieldsBound { pairs: infer_formal_args_by_plan(formals: formals, slots: slots, actuals: actuals) }
+              RecordFieldsBound { pairs: infer_formal_args_by_plan(formals: formal_list, slots: slots, actuals: actuals) }
           }
       }
   }
