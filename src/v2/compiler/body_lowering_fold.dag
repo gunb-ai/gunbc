@@ -1844,7 +1844,11 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
   }
 }
 
-// The operand read of raw parse: a production, a token, or a sequence the parse stamped.
+// The operand read of raw parse: a production, a token, or a sequence the parse stamped. A token is
+// classified by body_lower_atom_node_lowered_optional, the one atom classifier: this reader carried its
+// own copy of that chain without the string-literal arm, so a string literal reached here (a list
+// element, a map key) fell to the int-literal reading and was rebuilt as a bare atom, its decoded value
+// gone -- resolve then refused every string-keyed map (resolve_anonymous_map_key_text_unavailable).
 fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
@@ -1865,24 +1869,8 @@ fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
       }
       }
     Absent =>
-      match dag_node_is_int_literal_atom(node: node) {
-        true => body_lower_operand_ref_read_of(found: body_lower_int_literal_with_magnitude_optional(node: node))
-        false =>
-      match dag_binding_branded_atom_identity(node: node) {
-        Present { value: binding } =>
-          OperandRefLowered { lowered: body_lower_param_ref_atom(source: node, identity: binding) }
-        Absent =>
           match node_atom_identity_optional(node: node) {
-            Present { value: id } =>
-              if dag_lex_token_symbol(sym: id) {
-                if (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false) {
-                  OperandRefLowered { lowered: body_lower_param_ref_atom(source: node, identity: id) }
-                } else {
-                  body_lower_operand_ref_read_of(found: body_lower_int_literal_with_magnitude_optional(node: node))
-                }
-              } else {
-                OperandRefLowered { lowered: body_lower_param_ref_atom(source: node, identity: id) }
-              }
+            Present { value: _ } => body_lower_operand_ref_read_of(found: body_lower_atom_node_lowered_optional(stripped: node))
             Absent =>
               match sugar_sequence_pair_optional(node: node) {
                 Present { value: pair } =>
@@ -1911,8 +1899,6 @@ fn body_lower_operand_raw_read(node: Node) -> OperandRefRead {
                   }
               }
           }
-      }
-  }
   }
 }
 
@@ -3415,12 +3401,12 @@ fn body_lower_try_raw_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                   Absent =>
                         match body_lower_try_fold_loop(node: node) {
                           Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                          Accepted { value: fold_result, diagnostics: fd } =>
+                          Accepted { value: fold_result, diagnostics: loop_d } =>
                             match fold_result {
                               Present { value: lowered } =>
                                 outcome_with_diagnostics(
                                   value: optional_present(value: lowered),
-                                  diagnostics: fd
+                                  diagnostics: loop_d
                                 )
                               Absent =>
                         match body_lower_try_primary_ident_call(node: node) {
@@ -3630,12 +3616,12 @@ fn body_lower_fold_encoding(operands: FoldCallOperands) -> Outcome<Node> {
 // The same assembly with the collection already lowered: a piped fold's receiver is the pipe's left
 // operand, which the operator tower has lowered before it reaches the call.
 fn body_lower_fold_encoding_from(operands: FoldCallOperands, collection: Outcome<Node>) -> Outcome<Node> {
-  bind_outcome(o: collection, f: fn(collection) {
+  bind_outcome(o: collection, f: fn(lowered_collection) {
     bind_outcome(o: body_lower_value_read(value: operands.init), f: fn(init) {
       bind_outcome(o: body_lower_function_value_in_fold(node: operands.step), f: fn(step) {
         outcome_accepted(value: fold_recurrence_encoding(operands: FoldCallOperands {
           head: operands.head,
-          collection: collection,
+          collection: lowered_collection,
           init: init,
           step: step,
           carrier: operands.carrier
@@ -3724,7 +3710,7 @@ fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection:
   let unread: Outcome<Node> = outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_function_value_shape_unread, n: callback_node)
   )
-  bind_outcome(o: collection, f: fn(collection) {
+  bind_outcome(o: collection, f: fn(lowered_collection) {
     match body_lower_function_value_captured_optional(node: callback_node) {
       Absent => unread
       Present { value: capture } =>
@@ -3761,7 +3747,7 @@ fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection:
                             outcome_with_diagnostics(
                               value: fold_recurrence_encoding(operands: FoldCallOperands {
                                 head: operands.head,
-                                collection: collection,
+                                collection: lowered_collection,
                                 init: body_lower_callback_init(realization: operands.realization, source: synthetic),
                                 step: step,
                                 carrier: accumulator

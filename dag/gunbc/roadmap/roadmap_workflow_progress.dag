@@ -33,6 +33,7 @@ import gunbc.roadmap.roadmap_provider_events {
   provider_execution_state_label,
   provider_execution_activity,
   provider_execution_detail,
+  provider_execution_terminality,
   parse_codex_jsonl,
 }
 import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundsUnobserved, throughput_cell_text, harness_throughput_from_ledger, harness_round_ledger_from_events }
@@ -314,15 +315,57 @@ fn admission_receipt_refusal(receipt: String) -> ProviderExecutionState {
   }
 }
 
+// FORCED OUTCOME: what the process evidence forces when the row has not
+// completed — the exit/absent/unobserved refusals that do not depend on which
+// open state the row is in (NotStarted and Working are forced identically).
+// std's Optional carrier applied to this coproduct's inhabitance (A3/A6 house
+// shape): Running forces nothing (none); the other three evidence variants
+// force their refusal. The consumer folds over the carrier (Present/none)
+// instead of re-listing the evidence variants per state class.
+fn provider_execution_process_forced_outcome(process: WorkerProcessEvidence) -> ProviderExecutionState? {
+  match process {
+    WorkerProcessRunning { command: _ } => none
+    WorkerProcessExited { exit_code, last_command: _ } =>
+      Present {
+        value: if exit_code == 0 {
+          ProviderEventsRefused {
+            activity: "provider process exited",
+            detail: "provider process exited 0 without turn.completed, turn.failed, or error",
+          }
+        } else {
+          ProviderFailed {
+            activity: "provider process exited",
+            detail: join([
+              "provider process exited ",
+              to_string(exit_code),
+              " before a terminal provider event",
+            ], ""),
+          }
+        },
+      }
+    WorkerProcessAbsent =>
+      Present {
+        value: ProviderEventsRefused {
+          activity: "provider process absent",
+          detail: "no retained provider pane and no terminal provider event",
+        },
+      }
+    WorkerProcessUnobserved { reason } =>
+      Present {
+        value: ProviderEventsRefused {
+          activity: "process observation refused",
+          detail: reason as String,
+        },
+      }
+  }
+}
+
 fn provider_execution_reconcile_process(
   provider: ProviderExecutionState,
   process: WorkerProcessEvidence,
 ) -> ProviderExecutionState {
-  match provider {
-    ProviderFailed { activity: _, detail: _ } => provider
-    ProviderBudgetSpent { activity: _, detail: _ } => provider
-    ProviderEventsRefused { activity: _, detail: _ } => provider
-    ProviderCompleted { activity } =>
+  match provider_execution_terminality(state: provider) {
+    TerminalityCompleted { activity } =>
       match process {
         WorkerProcessExited { exit_code, last_command: _ } =>
           if exit_code == 0 {
@@ -359,40 +402,17 @@ fn provider_execution_reconcile_process(
             ], ""),
           }
       }
-    _ =>
-      match process {
-        WorkerProcessRunning { command: _ } =>
-          match provider {
-            ProviderNotStarted =>
-              ProviderStarting { activity: "waiting for first provider event" }
-            _ => provider
-          }
-        WorkerProcessExited { exit_code, last_command: _ } =>
-          if exit_code == 0 {
-            ProviderEventsRefused {
-              activity: "provider process exited",
-              detail: "provider process exited 0 without turn.completed, turn.failed, or error",
-            }
-          } else {
-            ProviderFailed {
-              activity: "provider process exited",
-              detail: join([
-                "provider process exited ",
-                to_string(exit_code),
-                " before a terminal provider event",
-              ], ""),
-            }
-          }
-        WorkerProcessAbsent =>
-          ProviderEventsRefused {
-            activity: "provider process absent",
-            detail: "no retained provider pane and no terminal provider event",
-          }
-        WorkerProcessUnobserved { reason } =>
-          ProviderEventsRefused {
-            activity: "process observation refused",
-            detail: reason as String,
-          }
+    TerminalityRefused => provider
+    TerminalityEventsRefused => provider
+    TerminalityNotStarted =>
+      match provider_execution_process_forced_outcome(process: process) {
+        Present { value: forced } => forced
+        none => ProviderStarting { activity: "waiting for first provider event" }
+      }
+    TerminalityWorking =>
+      match provider_execution_process_forced_outcome(process: process) {
+        Present { value: forced } => forced
+        none => provider
       }
   }
 }
