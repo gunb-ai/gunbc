@@ -14,7 +14,9 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_command_with_words,
   bash_build_assign, bash_build_exit, bash_build_or_else, bash_build_command_from_lits,
+  bash_build_and_then,
 }
+import extdeps.tools.stat { stat_program }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -194,5 +196,49 @@ fn posix_sh_export_from_file_then_exec_command(
         ),
       }
     Rejected { diagnostics: _ } => PosixShExportExecEmitRefused { name: name.spelling }
+  }
+}
+
+// SAME OPEN OBJECT FOR METADATA AND BYTES. The wrapper opens `$0` onto stdin; the body stats
+// `/dev/stdin` (that descriptor, GNU `-L`) and cats it. The path is an argv word, never spliced
+// into the program text. Residual after the caller has authenticated the directory: only the
+// publisher can swap the path between an lstat and this open.
+fn posix_sh_receipt_object_body_program() -> Outcome<String> {
+  bash_emit_stmts(statements: [
+    bash_build_and_then(
+      left: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: stat_program().invocation as String),
+        bash_build_word_lit(text: "-L"),
+        bash_build_word_lit(text: "-c"),
+        bash_build_word_lit(text: "%F|%U|%a"),
+        bash_build_word_lit(text: "/dev/stdin"),
+      ]),
+      right: bash_build_command_from_lits(lits: ["cat"]),
+    ),
+  ], set_e: false)
+}
+
+fn posix_sh_receipt_object_program() -> Outcome<String> {
+  match posix_sh_receipt_object_body_program() {
+    Accepted { value: body, diagnostics: d } =>
+      Accepted { value: concat("exec < \"$0\"\n", body), diagnostics: d }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+type PosixShReceiptObjectCommand
+  = PosixShReceiptObjectReady { command: ArgvCommand }
+  | PosixShReceiptObjectEmitRefused
+
+fn posix_sh_receipt_object_command(path: NonEmptyStr) -> PosixShReceiptObjectCommand {
+  match posix_sh_receipt_object_program() {
+    Accepted { value: program, diagnostics: _ } =>
+      PosixShReceiptObjectReady {
+        command: argv_command(
+          program: posix_sh_program(),
+          arguments: ["-c", program, path as String],
+        ),
+      }
+    Rejected { diagnostics: _ } => PosixShReceiptObjectEmitRefused
   }
 }

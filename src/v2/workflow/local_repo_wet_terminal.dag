@@ -1717,6 +1717,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_fleet_numeric_receipt_is_accepted_with_the_fleet_project_id" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_fleet_numeric_receipt_is_accepted_with_the_fleet_project_id",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_foreign_declared_project_refuses_a_fleet_numeric_receipt" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_foreign_declared_project_refuses_a_fleet_numeric_receipt",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_fifo_at_the_receipt_path_refuses_without_waiting" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_fifo_at_the_receipt_path_refuses_without_waiting",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "a_replaced_receipt_does_not_authenticate_held_writable_bytes" },
+      entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
+      function: "a_replaced_receipt_does_not_authenticate_held_writable_bytes",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.filesystem_link_create_new_wet_witness", function: "an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution" },
       entry: "dag/test/claim/filesystem_link_create_new_wet_witness.dag",
       function: "an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution",

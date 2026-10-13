@@ -165,10 +165,10 @@ test fn a_second_publication_over_an_existing_regular_receipt_stays_a_regular_fi
   mk && prior.success && published && dest_regular && dest_bytes.success && dest_bytes.content == published_body && cleaned.success
 }
 
-// PAIRING: the production export planner's wire is the take's input. After plan_host_custody_export
-// and the same typed_remote_file_pre_compare_steps the converge runs, dispatch_credential_snapshot_take
-// must accept that placement. A fixture receipt assembled by the take's own sha256 would not catch a
-// writer/reader convention fork.
+// PAIRING: this claim runs the production export planner and the receipt-publication steps, then the
+// real take. It creates the fixture custody file directly and supplies placement_settled: true. It is
+// not a full remote-converge test. A fixture receipt assembled by the take's own sha256 would not
+// catch a writer/reader convention fork.
 
 fn fx_principal(flag: String) -> String {
   trim(s: shell.Exec.RunArgv(program: "id", arguments: [flag]).stdout)
