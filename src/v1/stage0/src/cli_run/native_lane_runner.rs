@@ -3174,6 +3174,72 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     // THE JOB THE VERBS HAVE ON `witnesses`: both hold over the live governed roots.
     eprintln!("v2-native-cli: population controls — check-layout and parse-population over the live roots");
     let live = [live_dag.as_path(), live_v2.as_path()];
+    // PROFILE-ONLY (crisp-lynx-429, not for merge): time slices of dag/std to split fixed from per-module cost.
+    for n in [167usize] {
+        let slice = scratch.join(format!("profile-slice-{n}")).join("dag");
+        let std_dir = slice.join("std");
+        let _ = std::fs::remove_dir_all(slice.parent().unwrap());
+        std::fs::create_dir_all(&std_dir).map_err(|e| format!("profile mkdir: {e}"))?;
+        let mut files: Vec<_> = std::fs::read_dir(live_dag.join("std"))
+            .map_err(|e| format!("profile read: {e}"))?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "dag"))
+            .collect();
+        files.sort();
+        for f in files.iter().take(n) {
+            std::fs::copy(f, std_dir.join(f.file_name().unwrap()))
+                .map_err(|e| format!("profile copy: {e}"))?;
+        }
+        if std::env::var_os("PROFILE_PERF").is_some() && false {
+            let data = scratch.join("perf.data");
+            let st = Command::new("perf")
+                .args(["record", "-F", "149", "--call-graph", "dwarf,24576", "-o"])
+                .arg(&data)
+                .arg("--")
+                .arg(binary)
+                .args(population_argv("parse-population", &[slice.as_path()]))
+                .output()
+                .map_err(|e| format!("perf record: {e}"))?;
+            eprintln!("PROFILE perf record status={:?}", st.status.code());
+            for sort in [
+                vec!["--no-children", "--sort", "symbol", "--no-inline"],
+                vec!["--children", "--sort", "symbol", "--no-inline"],
+            ] {
+                let rep = Command::new("perf")
+                    .args(["report", "--stdio", "-i"])
+                    .arg(&data)
+                    .args(&sort)
+                    .args(["-g", "none", "--percent-limit", "0.4"])
+                    .output()
+                    .map_err(|e| format!("perf report: {e}"))?;
+                eprintln!(
+                    "PROFILE perf report {sort:?}:\n{}",
+                    String::from_utf8_lossy(&rep.stdout)
+                );
+            }
+            return Err("PROFILE done".to_string());
+        }
+        let t = std::time::Instant::now();
+        let r = run_cli_door(
+            binary,
+            &population_argv("parse-population", &[slice.as_path()]),
+        )?;
+        eprintln!(
+            "PROFILE parse-population slice={n} modules wall_ms={} status={:?} stdout_lines={}",
+            t.elapsed().as_millis(),
+            r.status,
+            r.stdout.lines().count()
+        );
+        eprintln!("PROFILE stdout-digest {:x}", {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            r.stdout.hash(&mut h);
+            h.finish()
+        });
+    }
+    return Err("PROFILE done".to_string());
+    let t_layout = std::time::Instant::now();
     let layout_live = run_cli_door(binary, &population_argv("check-layout", &live))?;
     if layout_live.status != Some(0)
         || !layout_live.stdout.starts_with(POPULATION_LAYOUT_HOLDS_HEAD)
