@@ -6,7 +6,6 @@ import extdeps.languages.json.parse {
   FieldRead,
   JsonDocumentParsed,
   JsonDocumentUnreadable,
-  JsonFieldRead,
   JsonMemberMissing,
   JsonMemberNull,
   JsonMemberPresence,
@@ -16,8 +15,8 @@ import extdeps.languages.json.parse {
   json_member_presence,
   parse_json_document
 }
-import extdeps.languages.json.emit { JsonNull, JsonValue }
-import std.algebra { FreeMonoid, length }
+
+import std.algebra { FreeMonoid, fold_list, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import v2.std.integer { Int }
@@ -74,18 +73,32 @@ fn tag_collection(x: Optional<FreeMonoid<Int>>) -> Int {
   }
 }
 
-fn tag_entries(x: Optional<FreeMonoid<Optional<Int>>>) -> Int {
-  match x {
-    Absent => 60
-    Present { value: xs } => 70 + length(xs: xs)
+fn entry_tag(e: Optional<Int>) -> Int {
+  match e {
+    Absent => 1
+    Present { value: v } => 10 + v
   }
 }
 
-fn json_object_a(text: String) -> JsonValue {
-  match parse_json_document(s: text) {
-    JsonDocumentParsed { value: v } => v
-    JsonDocumentUnreadable { gap: _ } => JsonNull
+fn entries_sum(xs: FreeMonoid<Optional<Int>>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, e) { acc + entry_tag(e: e) })
+}
+
+// THE ENTRY READER ELIMINATES EACH ELEMENT, so an absent entry, a present one and its payload all
+// move the tag; a length-only reader could not see the element erasure a target can introduce.
+fn tag_entries(x: Optional<FreeMonoid<Optional<Int>>>) -> Int {
+  match x {
+    Absent => 60
+    Present { value: xs } => 70 + entries_sum(xs: xs)
   }
+}
+
+fn specimen_present_present_entry() -> Optional<FreeMonoid<Optional<Int>>> {
+  Present { value: [Present { value: 5 }] }
+}
+
+fn specimen_present_mixed_entries() -> Optional<FreeMonoid<Optional<Int>>> {
+  Present { value: [Absent, Present { value: 5 }] }
 }
 
 fn tag_presence(p: JsonMemberPresence) -> Int {
@@ -97,16 +110,32 @@ fn tag_presence(p: JsonMemberPresence) -> Int {
   }
 }
 
-fn tag_field(r: JsonFieldRead<String>) -> Int {
-  match r {
-    FieldAbsent => 90
-    FieldRead { value: _ } => 91
-    FieldMalformed { cause: _ } => 92
+// A fixture that does not parse is its own tag, never a JsonNull stand-in: -1 equals no expected
+// tag, so an unparsable fixture fails every claim that reads it.
+fn unreadable_tag() -> Int { 0 - 1 }
+
+fn tag_presence_text(text: String) -> Int {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => tag_presence(p: json_member_presence(obj: v, key: "a"))
+    JsonDocumentUnreadable { gap: _ } => unreadable_tag()
   }
 }
 
-// THE NINE TAGS, specimen 7 to 9 read through json_member_presence, which keeps wire null apart
-// from a missing member; specimen 9 is a number where a string was asked for.
+// 92 only for the specific cause "a is a number where a string was expected"; any other malformed
+// cause is 93, and a document that did not parse is -1.
+fn tag_field_text(text: String) -> Int {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } =>
+      match json_field_string(obj: v, key: "a") {
+        FieldAbsent => 90
+        FieldRead { value: _ } => 91
+        FieldMalformed { cause: c } =>
+          if c == "a is a number where a string was expected" { 92 } else { 93 }
+      }
+    JsonDocumentUnreadable { gap: _ } => unreadable_tag()
+  }
+}
+
 fn specimen_tags() -> FreeMonoid<Int> {
   [
     tag_flat(x: specimen_absent()),
@@ -115,9 +144,9 @@ fn specimen_tags() -> FreeMonoid<Int> {
     tag_collection(x: specimen_absent_collection()),
     tag_collection(x: specimen_present_empty_collection()),
     tag_entries(x: specimen_present_absent_entries()),
-    tag_presence(p: json_member_presence(obj: json_object_a(text: "{}"), key: "a")),
-    tag_presence(p: json_member_presence(obj: json_object_a(text: "{\"a\":null}"), key: "a")),
-    tag_field(r: json_field_string(obj: json_object_a(text: "{\"a\":5}"), key: "a"))
+    tag_presence_text(text: "{}"),
+    tag_presence_text(text: "{\"a\":null}"),
+    tag_field_text(text: "{\"a\":5}")
   ]
 }
 
@@ -127,10 +156,17 @@ test fn nested_absence_keeps_its_depth() -> Bool {
     && tag_flat(x: specimen_absent()) == 1
 }
 
-test fn absent_collection_is_not_empty_collection_and_entries_keep_their_count() -> Bool {
+test fn absent_collection_is_not_empty_collection() -> Bool {
   tag_collection(x: specimen_absent_collection()) == 40
     && tag_collection(x: specimen_present_empty_collection()) == 50
-    && tag_entries(x: specimen_present_absent_entries()) == 71
+}
+
+// ELEMENT ABSENCE, not length: [Absent] and [Present 5] have one entry each and must read apart, and
+// the payload 5 must be read back from the mixed list.
+test fn entries_keep_element_absence_and_payload() -> Bool {
+  tag_entries(x: specimen_present_absent_entries()) == 71
+    && tag_entries(x: specimen_present_present_entry()) == 85
+    && tag_entries(x: specimen_present_mixed_entries()) == 86
 }
 
 test fn foreign_missing_null_and_invalid_stay_three_answers() -> Bool {
@@ -145,5 +181,5 @@ test fn the_collapsing_readings_differ_from_the_specimens() -> Bool {
   tag_nested(x: Absent) != tag_nested(x: specimen_present_absent())
     && tag_collection(x: Absent) != tag_collection(x: specimen_present_empty_collection())
     && tag_presence(p: JsonMemberMissing) != tag_presence(p: JsonMemberNull)
-    && tag_field(r: json_field_string(obj: json_object_a(text: "{\"a\":null}"), key: "a")) == 90
+    && tag_field_text(text: "{\"a\":null}") == 90
 }
