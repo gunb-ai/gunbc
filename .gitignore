@@ -190,25 +190,43 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /privdag
 
 # --- Generated artifacts (gitignored-by-default, derived from generated_artifact_registry) ---
-# Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).
+# Regenerable; not committed. Session-loaded authority stays committed: DESIGN.md.
+/ROADMAP.md
 /docs/design-failure-modes.md
+/docs/design-rung-drops.md
+/docs/onboarding.md
 /.github/fleet-runner-deploy.manifest
 /manufacturing/hole_diameter_ladder_r1.py
 /provisioning/srv3/user-data
+/docs/plans/dag-v2-defork-audit.md
+/docs/plans/v2-self-hosting.md
 /docs/plans/value-null-split.md
 /docs/plans/ci-merge-freshness.md
 /docs/plans/shell-emission-model.md
 /docs/plans/construction-justification-rule.md
 /docs/plans/interpreter-kernel-d.md
+/docs/plans/inert-layer-lens.md
 /docs/plans/solve-higher-order-design.md
 /docs/plans/self-applying-lenses.md
 /docs/plans/cardinality-refinement.md
+/docs/plans/input-envelope-roadmap.md
 /docs/plans/ci-process-end-to-end.md
 /docs/plans/resolver-type-name-collision-wall.md
+/docs/plans/host-effect-orchestration.md
 /docs/plans/reference-grounding-migration.md
 /docs/plans/typescript-gap-census.md
+/docs/plans/cli-run-hollowing-plan.md
 /docs/plans/structural-quadratic-wall-coverage-audit.md
 /docs/plans/extdeps-modeling-preflight.md
 /docs/plans/v2-complexity-capability-parity.md
+/docs/plans/deploy-convergence-observed-side.md
 /docs/plans/v2-corpus-self-host.md
 /docs/plans/joint-incompatibility-claim-join.md
+/docs/plans/for-while-loop-sugar.md
+/docs/plans/demand-engine-program.md
+/docs/plans/ensure-closure-design.md
+/docs/plans/convergence-coverage-program.md
+/docs/plans/harness-session-lifecycle.md
+/docs/plans/v2-compiler-architecture.md
+/docs/plans/v2-closed-pr-recovery.md
+/docs/plans/source-layout-authority.md

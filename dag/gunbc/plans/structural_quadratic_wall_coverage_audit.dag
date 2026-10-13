@@ -4,6 +4,7 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn structural_quadratic_wall_coverage_audit_body() -> List<MarkdownBlock> {
   [
@@ -57,7 +58,7 @@ fn structural_quadratic_wall_coverage_audit_body() -> List<MarkdownBlock> {
 }
 
 data structural_quadratic_wall_coverage_audit_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "structural-quadratic-wall-coverage-audit",
   title: "Structural-quadratic wall -- coverage audit and execution receipt",
   body: structural_quadratic_wall_coverage_audit_body(),
