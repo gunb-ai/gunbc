@@ -739,11 +739,6 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
             }
           Absent => fallback
         }
-      } else if exp.return_cardinality == CardOptional && owner_name == "Optional" && name == "Absent" {
-        // `Absent` is the empty arm of the Optional its context expects: `Present { value: x }` is
-        // typed as x's optional cardinality (infer of a record literal), so the empty arm takes the
-        // same expected type or an if/match join of the two arms disagrees on the carrier.
-        exp
       } else { fallback }
     Absent => fallback
   }
