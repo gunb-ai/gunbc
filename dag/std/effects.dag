@@ -9,7 +9,7 @@ import extdeps.uri_path {
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
 import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_derived_equality, nfr_reason_structural_eq_mint }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type EffectShape<K>
   = ReadEffect
@@ -357,6 +357,9 @@ type WorkflowEffectConcern {
   reason: String
 }
 
+data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
+
+data nfr_reason_structural_eq_mint: String = "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor"
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "dag/std/effects.dag::key_source_eq" },

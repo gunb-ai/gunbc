@@ -47,7 +47,6 @@ import std.occurrence_binding_resolve {
   OccurrenceReferenceBindingDecided,
   OccurrenceReferenceBindingTransportRefused,
 }
-import gunbc.non_fold_residue { nfr_dissolve_derived_equality, nfr_reason_structural_eq_mint }
 
 // P2a: THE structural candidate producer that hands supplied candidates to
 // std.occurrence_binding_resolve.resolve_reference_occurrence_binding (P1). P1 owns exact-identity
@@ -3024,6 +3023,9 @@ fn section13_population_law_roster_denominator_holds(
 
 data section13_module_path_is_symbolic_dissolve_on: DissolutionCondition = unbound_dissolution(description: "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i")
 
+data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
+
+data nfr_reason_structural_eq_mint: String = "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor"
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::declaration_exposure_eq" },

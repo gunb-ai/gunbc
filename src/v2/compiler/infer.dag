@@ -232,7 +232,7 @@ import v2.std.node_query {
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type AlgebraRef {
   algebra: Node
@@ -9004,6 +9004,9 @@ fn infer_sole_constructor_owner_diags(
   }
 }
 
+data nfr_dissolve_owning_fold: DissolutionCondition = unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
+
+data nfr_reason_typed_census_ca5ed1724b: String = "a top-level wildcard arm over a closed coproduct found by the whole-corpus TYPED census at main ca5ed1724b (#12610's joint landing; nfr_whole_corpus_typed_census, srv1, 2026-10-02). The typed walk keys on the scrutinee's inferred type, so it sees the local-binding, field and call scrutinees the deleted parameter-keyed scan never could; these sites predate the walk and are un-migrated modeling (DESIGN §6), rostered so the ratchet arms at unrostered=0"
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "src/v2/compiler/infer.dag::infer_arrow_declared_return_check" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "src/v2/compiler/infer.dag::infer_declared_binder_scope" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },

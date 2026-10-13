@@ -121,8 +121,15 @@ pub(crate) fn non_fold_residue_units_from_module_source(
 /// The list literal only — so discovery does not tokenize a 10k-line subject module to read
 /// three FrontierRow records.
 fn nfr_frontier_list_source(content: &str) -> Option<String> {
-    let needle = "data non_fold_residue_frontier";
+    // Byte-scan is a SUPERSET prefilter. Only a real data item (line starting `data
+    // non_fold_residue_frontier:`) is a decl; a comment or string mention is skipped.
+    let needle = "data non_fold_residue_frontier:";
     let start = content.find(needle)?;
+    // A mention inside a comment or string is not at item position; require the line trim.
+    let line_start = content[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
+    if !content[line_start..start].trim().is_empty() {
+        return None;
+    }
     let after = &content[start..];
     let bracket = after.find('[')?;
     let bytes = after.as_bytes();
@@ -166,7 +173,11 @@ pub(crate) fn non_fold_residue_units_from_module_source_with(
     content: &str,
     home: NfrHomeCheck,
 ) -> Vec<String> {
-    let parse_src = nfr_frontier_list_source(content).unwrap_or_else(|| content.to_string());
+    let Some(parse_src) = nfr_frontier_list_source(content) else {
+        // Condition 4: a byte-scan hit (comment, string, similarly spelled decl) with no
+        // frontier list is skipped, never refused.
+        return Vec::new();
+    };
     non_fold_residue_units_from_parse_source(module_rel_path, &parse_src, home)
 }
 

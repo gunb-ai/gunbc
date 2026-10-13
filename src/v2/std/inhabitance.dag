@@ -54,7 +54,7 @@ import v2.std.optional_layers {
   type_node_occupancy_read
 }
 import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // WHAT A FORMAL IS DECLARED AS, READ AGAINST ITS OWN ARROW. A formal declared as one of the
 // callee Arrow's type parameters (v2.std.type_binder type_param_names) is a DECLARED TYPE VARIABLE:
@@ -759,6 +759,9 @@ fn application_argument_does_not_inhabit_diagnostic(
   }
 }
 
+data nfr_dissolve_owning_fold: DissolutionCondition = unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
+
+data nfr_reason_typed_census_ca5ed1724b: String = "a top-level wildcard arm over a closed coproduct found by the whole-corpus TYPED census at main ca5ed1724b (#12610's joint landing; nfr_whole_corpus_typed_census, srv1, 2026-10-02). The typed walk keys on the scrutinee's inferred type, so it sees the local-binding, field and call scrutinees the deleted parameter-keyed scan never could; these sites predate the walk and are un-migrated modeling (DESIGN §6), rostered so the ratchet arms at unrostered=0"
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "src/v2/std/inhabitance.dag::inhabitance_node_mentions_type_variable" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "src/v2/std/inhabitance.dag::inhabitance_node_undecidable_reason" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },

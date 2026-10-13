@@ -68,7 +68,7 @@ import std.markdown {
 
 }
 import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -760,6 +760,9 @@ data parse_inline_markdown_minimal_scaffold: Disposition = Scaffold {
   }
 }
 
+data nfr_dissolve_owning_fold: DissolutionCondition = unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
+
+data nfr_reason_land_red_era: String = "landed unrostered while the gate was red during the land-red-with-local-proof era (revoked 2026-07-12); declared so the ratchet re-arms"
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "dag/extdeps/languages/markdown.dag::md_nested" },

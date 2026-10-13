@@ -11,7 +11,7 @@ import std.authorization_profile {
   EffectAuthorizationAction, EffectRequest, effect_access_request,
 }
 import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_derived_equality }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned
 // silent-ibex-417). An effect target is a POSITION in a containment tree that already exists;
@@ -338,6 +338,7 @@ fn envelope_bounded_by(child: Envelope, parent: Envelope) -> Bool {
 
 data nfr_reason_namespace_tree_eq: String = "NamespaceTree structural equality residue (nested off-variant wildcard arm returning false), landed unrostered with effect_grant.dag in #6817 and surfaced when a later branch brought the file into the affected set"
 
+data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "dag/std/effect_grant.dag::namespace_tree_eq" },

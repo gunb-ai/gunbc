@@ -7,7 +7,7 @@ import extdeps.uri { Https, Uri }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { FilePathParts, Int, List, NonEmptyStr, String }
 import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_derived_equality, nfr_reason_structural_eq_mint }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -297,6 +297,9 @@ fn proc_self_cgroup_absolute_path_from_relative(
   concat(proc_self_cgroup_mount_root_text(mount_root: mount_root), relative_path as String)
 }
 
+data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
+
+data nfr_reason_structural_eq_mint: String = "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor"
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "dag/extdeps/linux/proc_self_cgroup.dag::unified_membership_outcome_tag_eq" },

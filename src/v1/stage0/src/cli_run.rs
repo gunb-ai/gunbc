@@ -30397,6 +30397,31 @@ mod nfr_tests {
             "the refusal must LOCATE the hosting file and the row path; got: {message}"
         );
     }
+
+    #[test]
+    fn nfr_frontier_reader_skips_comment_or_string_mention_without_a_decl() {
+        let comment = "module m\n// data non_fold_residue_frontier: List<FrontierRow> = []\n";
+        assert!(
+            super::non_fold_residue_units_from_module_source_with(
+                "m.dag",
+                comment,
+                super::NfrHomeCheck::Require,
+            )
+            .is_empty(),
+            "a comment mention must be skipped, not refused"
+        );
+        let similarly_named = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier_discovery_note: String = \"data non_fold_residue_frontier\"\n";
+        assert!(
+            super::non_fold_residue_units_from_module_source_with(
+                "dag/gunbc/non_fold_residue.dag",
+                similarly_named,
+                super::NfrHomeCheck::Require,
+            )
+            .is_empty(),
+            "a similarly-named data decl must be skipped, not refused"
+        );
+    }
 }
 
 const LANGUAGES_AUTHORITY_REL: &str = "dag/std/languages.dag";
