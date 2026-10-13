@@ -1267,6 +1267,7 @@ fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
       Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
     }
   }
+}
 
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match xs {
