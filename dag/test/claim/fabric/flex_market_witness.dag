@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.measure {
   money_amount_micro, money_amount_micro_count, money_per_hour_micros, second, MoneyPerHour,
-  ByteSize, gibibyte, gibibyte_to_byte_size, byte_size_count,
+  ByteSize, gibibyte, gibibyte_to_byte_size, byte_size, byte_size_count,
 }
 import extdeps.currency.currency { Usd }
 import std.pareto { LowerIsBetter }
@@ -42,7 +42,7 @@ import product.fabric.flex_market {
   FlexBidPriced, FlexBidMarketUnobserved, FlexBidQuoteCurrencyMismatch,
   FlexMedianFound, FlexMedianEmpty, FlexMedianCurrencyMismatch,
   FlexVramClass96, FlexVramClass48, FlexVramClassOther,
-  FlexLevelChosen, FlexLevelExplore,
+  FlexLevelChosen, FlexLevelExplore, FlexLevelNeedsEvidence, FlexLevelSelectionRefused,
   FlexWireOwnerPresent, FlexWireOwnerAbsent,
   FlexOwnerLabel, FlexOurs, FlexForeign, FlexUnlabelled,
   FlexOwnedCard, FlexDestroy, FlexKeep, FlexCleanupOutbid, FlexCleanupStaleLoading,
@@ -50,8 +50,8 @@ import product.fabric.flex_market {
   flex_quoted_bid, flex_class_market_median, flex_choose_bid_level,
   flex_vram_class, flex_ownership, flex_ours_only,
   flex_owner_label_gunbc_flex, flex_card_dead, flex_cleanup_dead, flex_release_admit,
-  flex_held_effective_rate, flex_dollars_per_vram_micro, flex_rank_entry,
-  flex_rank_axes, flex_rank_policy,
+  flex_held_effective_rate, flex_dollars_per_vram, FlexVramHourlyQuoted, FlexVramHourlyZeroCapacity,
+  flex_rank_entry, flex_select_owned_cards,
   FlexRentalSample,
   FlexCardUnitEstablished, FlexCardUnitUnconfirmed, flex_rented_card_fungible, flex_ninfer_qwen_probe,
 }
@@ -144,8 +144,10 @@ fn ended_row(level: FlexBidLevel, serving_s: Nat, bid: Nat) -> FlexRentalSample 
 }
 
 test fn a_class_with_no_samples_tries_three_fifths_first() -> Bool {
-  match flex_choose_bid_level(rows: [], class: FlexVramClass48, rentals_so_far: 0) {
+  match flex_choose_bid_level(rows: [], class: FlexVramClass48, rentals_so_far: 0, quote_currency: Usd) {
     FlexLevelExplore { level: _, best: _ } => false
+    FlexLevelNeedsEvidence => false
+    FlexLevelSelectionRefused => false
     FlexLevelChosen { level: l, samples: n } =>
       match l { FlexBidLevelThreeFifths => n == 0 FlexBidLevelFourFifths => false FlexBidLevelMarket => false }
   }
@@ -163,8 +165,10 @@ test fn after_min_samples_the_cheaper_productive_hour_wins() -> Bool {
     ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
     ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
   ]
-  match flex_choose_bid_level(rows: cheap, class: FlexVramClass48, rentals_so_far: 1) {
+  match flex_choose_bid_level(rows: cheap, class: FlexVramClass48, rentals_so_far: 1, quote_currency: Usd) {
     FlexLevelExplore { level: _, best: _ } => false
+    FlexLevelNeedsEvidence => false
+    FlexLevelSelectionRefused => false
     FlexLevelChosen { level: l, samples: n } =>
       match l { FlexBidLevelThreeFifths => n == 3 FlexBidLevelFourFifths => false FlexBidLevelMarket => false }
   }
@@ -182,8 +186,10 @@ test fn every_fifth_rental_explores_another_level() -> Bool {
     ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
     ended_row(level: FlexBidLevelMarket, serving_s: 3600, bid: 1000000),
   ]
-  match flex_choose_bid_level(rows: cheap, class: FlexVramClass48, rentals_so_far: 5) {
+  match flex_choose_bid_level(rows: cheap, class: FlexVramClass48, rentals_so_far: 5, quote_currency: Usd) {
     FlexLevelChosen { level: _, samples: _ } => false
+    FlexLevelNeedsEvidence => false
+    FlexLevelSelectionRefused => false
     FlexLevelExplore { level: l, best: b } =>
       match b { FlexBidLevelThreeFifths => match l { FlexBidLevelThreeFifths => false FlexBidLevelFourFifths => true FlexBidLevelMarket => true } FlexBidLevelFourFifths => false FlexBidLevelMarket => false }
   }
@@ -304,8 +310,43 @@ test fn a_value_release_waits_for_a_serving_replacement_unless_the_cap_requires_
 test fn a_held_card_is_ranked_at_the_switch_premium() -> Bool {
   let raw = usd_hour(n: 1250000)
   let effective = flex_held_effective_rate(rate: raw, held: true)
-  (flex_dollars_per_vram_micro(rate: effective, vram: gib(n: 48)) < flex_dollars_per_vram_micro(rate: raw, vram: gib(n: 48)))
-    && (money_per_hour_micros(q: effective) == 1000000)
+  match flex_dollars_per_vram(rate: effective, vram: gib(n: 48)) {
+    FlexVramHourlyZeroCapacity => false
+    FlexVramHourlyQuoted { rate: ev } =>
+      match flex_dollars_per_vram(rate: raw, vram: gib(n: 48)) {
+        FlexVramHourlyZeroCapacity => false
+        FlexVramHourlyQuoted { rate: rv } =>
+          (money_amount_micro_count(m: ev.amount) < money_amount_micro_count(m: rv.amount))
+            && (money_per_hour_micros(q: effective) == 1000000)
+      }
+  }
+}
+
+test fn zero_vram_does_not_pretend_to_be_a_rate_per_byte() -> Bool {
+  match flex_dollars_per_vram(rate: usd_hour(n: 1000000), vram: byte_size(count: 0)) {
+    FlexVramHourlyZeroCapacity => true
+    FlexVramHourlyQuoted { rate: _ } => false
+  }
+}
+
+test fn unscored_ended_rentals_need_evidence_instead_of_a_market_default() -> Bool {
+  let short = [
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 300, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 300, bid: 600000),
+    ended_row(level: FlexBidLevelThreeFifths, serving_s: 300, bid: 600000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 300, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 300, bid: 800000),
+    ended_row(level: FlexBidLevelFourFifths, serving_s: 300, bid: 800000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 300, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 300, bid: 1000000),
+    ended_row(level: FlexBidLevelMarket, serving_s: 300, bid: 1000000),
+  ]
+  match flex_choose_bid_level(rows: short, class: FlexVramClass48, rentals_so_far: 1, quote_currency: Usd) {
+    FlexLevelNeedsEvidence => true
+    FlexLevelChosen { level: _, samples: _ } => false
+    FlexLevelExplore { level: _, best: _ } => false
+    FlexLevelSelectionRefused => false
+  }
 }
 
 data id_cheap: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_cheap")
@@ -387,18 +428,12 @@ fn closed_assessment() -> DecisionAssessment {
 test fn ranking_selects_the_held_card_when_the_premium_covers_a_small_price_gap() -> Bool {
   let offer = owned(id: "offer", vram: gib(n: 48), rate: 1100000, held: false, running: false, loading: false, outbid: false, age: 0)
   let held = owned(id: "held", vram: gib(n: 48), rate: 1250000, held: true, running: true, loading: false, outbid: false, age: 0)
-  match select_realization(
-    assessment: closed_assessment(),
-    candidate_field_identity: id_field,
-    field: [
+  match flex_select_owned_cards(
+    entries: [
       flex_rank_entry(id: id_cheap, label: "offer" as NonEmptyStr, card: offer),
       flex_rank_entry(id: id_held, label: "held" as NonEmptyStr, card: held),
     ],
-    axes: flex_rank_axes(),
-    constraints: [],
-    constraint_authority: id_constraints,
-    policy: flex_rank_policy(currency: Usd),
-    evidence_snapshot: id_evidence,
+    currency: Usd,
   ) {
     SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_held)
     _ => false
