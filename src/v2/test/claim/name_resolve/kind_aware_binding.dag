@@ -48,6 +48,10 @@ data kab_data_n_user_source: String = "module v2.test.kab.data_n_user\n\nimport 
 
 data kab_data_n_as_type_source: String = "module v2.test.kab.data_n_as_type\n\nimport v2.test.kab.data_n { n }\nfn h(x: n) -> Int { 1 }\n"
 
+data kab_qual_type_source: String = "module v2.test.kab.qual_type\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Optional }\ntype Unit = U\nfn f(x: v2.test.kab.type_opt.Optional<Unit>) -> Unit { U }\n"
+
+data kab_qual_ctor_source: String = "module v2.test.kab.qual_ctor\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Card, Optional }\nfn g() -> Card { v2.test.kab.card.Optional }\n"
+
 fn kab_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -68,7 +72,9 @@ fn kab_context() -> Outcome<NativeTestContext> {
     kab_read(text: kab_two_types_source, id: ^kab_two_types, path: "src/v2/test/fixture/kab/two_types.dag"),
     kab_read(text: kab_data_n_source, id: ^kab_data_n, path: "src/v2/test/fixture/kab/data_n.dag"),
     kab_read(text: kab_data_n_user_source, id: ^kab_data_n_user, path: "src/v2/test/fixture/kab/data_n_user.dag"),
-    kab_read(text: kab_data_n_as_type_source, id: ^kab_data_n_as_type, path: "src/v2/test/fixture/kab/data_n_as_type.dag")
+    kab_read(text: kab_data_n_as_type_source, id: ^kab_data_n_as_type, path: "src/v2/test/fixture/kab/data_n_as_type.dag"),
+    kab_read(text: kab_qual_type_source, id: ^kab_qual_type, path: "src/v2/test/fixture/kab/qual_type.dag"),
+    kab_read(text: kab_qual_ctor_source, id: ^kab_qual_ctor, path: "src/v2/test/fixture/kab/qual_ctor.dag")
   ])
 }
 
@@ -79,6 +85,8 @@ type KabVerdicts {
   two_types: NativeModuleResolveVerdict
   data_n_user: NativeModuleResolveVerdict
   data_n_as_type: NativeModuleResolveVerdict
+  qual_type: NativeModuleResolveVerdict
+  qual_ctor: NativeModuleResolveVerdict
 }
 
 fn kab_verdicts() -> Optional<KabVerdicts> {
@@ -93,7 +101,9 @@ fn kab_verdicts() -> Optional<KabVerdicts> {
           wrong_kind: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.wrong_kind", path: ^kab_wrong_kind).verdict,
           two_types: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.two_types", path: ^kab_two_types).verdict,
           data_n_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_user", path: ^kab_data_n_user).verdict,
-          data_n_as_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_as_type", path: ^kab_data_n_as_type).verdict
+          data_n_as_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_as_type", path: ^kab_data_n_as_type).verdict,
+          qual_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_type", path: ^kab_qual_type).verdict,
+          qual_ctor: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_ctor", path: ^kab_qual_ctor).verdict
         })
       }
   }
@@ -170,5 +180,21 @@ test fn a_data_value_in_type_position_is_unbound() -> Bool {
   match kab_verdicts() {
     Absent => false
     Present { value: vs } => kab_refuses_with(v: vs.data_n_as_type, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+
+// QUALIFIED PATHS USE THE SAME ELIGIBILITY (resolve_declared_path_reading /
+// symbol_index_lexical_eligible). A dotted type Optional is not ambiguous with the imported variant.
+test fn a_qualified_type_optional_resolves_beside_a_same_spelling_variant() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.qual_type)
+  }
+}
+
+test fn a_qualified_variant_optional_binds_beside_the_type() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.qual_ctor)
   }
 }
