@@ -173,7 +173,12 @@ import v2.std.symbol_index {
   symbol_index_declared_type_params_at,
   symbol_index_declares_primitive_contract_at,
   symbol_index_lookup,
-  symbol_index_renaming_alias_at
+  symbol_index_renaming_alias_at,
+  type_decl_member_shape,
+  type_decl_member_child_walk,
+  TypeDeclChildrenInherited,
+  TypeDeclChildrenTypeOccurrence,
+  TypeDeclChildWalk
 }
 import v2.std.node {
   BinderTypeEdge,
@@ -1037,35 +1042,23 @@ fn resolve_ctx_type_role(ctx: ResolveContext, scope: Scope) -> ResolveContext {
   )
 }
 
-// A MODULE-LEVEL TYPE DECLARATION'S TARGET IS A TYPE POSITION. Applied only at the
+// A MODULE-LEVEL TYPE DECLARATION'S CHILDREN WALK AS TypeOccurrence when
+// type_decl_member_child_walk says so (v2.std.symbol_index, the same TypeDeclMemberShape
+// symbol_index_candidate_category projects lookup kind from). Applied only at the
 // declaration edge (DeclaringAt the module qn): type_decl_view's PlainTypeDecl arm is
 // every non-wrapper node, so using it on every Authored child would walk construct
-// field atoms (`Rec { value: U }`) as TypeOccurrence (DESIGN section 5). Wrappers and
-// record/coproduct members at the module root switch here; TypeBodyEdge / TypeAliasEdge
-// cover generic members and alias RHS. Nested walks inherit the category. Scope is not
-// swapped — a type declaration's <T> lives on `scope` via resolve_type_param_frame.
-fn resolve_type_decl_member_uses_type_role(ctx: ResolveContext, target: Node) -> Bool {
+// field atoms (`Rec { value: U }`) as TypeOccurrence (DESIGN section 5). TypeBodyEdge /
+// TypeAliasEdge cover generic members and alias RHS. Nested walks inherit the category.
+fn resolve_type_decl_member_child_walk(ctx: ResolveContext, target: Node) -> TypeDeclChildWalk {
   match ctx.declaring {
     DeclaringAt { path: path } =>
       if path == ctx.namespace.module_qn {
-        match type_decl_view(target: target) {
-          PlainTypeDecl { member: member } =>
-            match member.kind {
-              TypeNode { connective: Conj } => true
-              TypeNode { connective: Disj } => true
-              TypeNode { connective: Instantiation } => true
-              TypeNode { connective: Occupancy } => true
-              TypeNode { connective: Atom { identity: _ } } => false
-              TypeNode { connective: Arrow } => false
-              ComputationNode { behavior: _ } => false
-            }
-          _ => true
-        }
+        type_decl_member_child_walk(shape: type_decl_member_shape(node: target))
       } else {
-        false
+        TypeDeclChildrenInherited
       }
-    DeclaringInSpine { path: _, body: _ } => false
-    NotDeclaring => false
+    DeclaringInSpine { path: _, body: _ } => TypeDeclChildrenInherited
+    NotDeclaring => TypeDeclChildrenInherited
   }
 }
 
@@ -4322,10 +4315,10 @@ fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
     } else {
       ctx
     }
-    let walk_ctx = if resolve_type_decl_member_uses_type_role(ctx: ctx, target: e.target) {
-      resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
-    } else {
-      child_ctx
+    let walk_ctx = match resolve_type_decl_member_child_walk(ctx: ctx, target: e.target) {
+      TypeDeclChildrenTypeOccurrence =>
+        resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
+      TypeDeclChildrenInherited => child_ctx
     }
     resolve_node_walk(
       ctx: resolve_ctx_with_declaring(ctx: walk_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, e: e)),

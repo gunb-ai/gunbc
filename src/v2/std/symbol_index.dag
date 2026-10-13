@@ -741,6 +741,60 @@ fn symbol_index_lexical_lookup(
   )
 }
 
+// ONE CLASSIFICATION OF A TYPE-DECL VIEW, TWO PROJECTIONS. Lookup kind and "are this node's
+// children type positions" were two arm tables over the same type_decl_view + member.kind
+// (review 79474). They disagreed on Atom: TypeOccurrence as a declaration (a module-level
+// `type T = Name`) vs not a type-child walk (the same Atom shape is a construct field). Those
+// are two projections of one shape, not two facts.
+type TypeDeclMemberShape
+  = TypeDeclShapeRecordOrCoproduct
+  | TypeDeclShapeAliasAtom
+  | TypeDeclShapeCallable
+  | TypeDeclShapeValue
+  | TypeDeclShapeBinderWrapper
+
+type TypeDeclChildWalk
+  = TypeDeclChildrenTypeOccurrence
+  | TypeDeclChildrenInherited
+
+fn type_decl_member_shape(node: Node) -> TypeDeclMemberShape {
+  match type_decl_view(target: node) {
+    GenericTypeDecl { binders: _, member: _ } => TypeDeclShapeBinderWrapper
+    TypeAlias { binders: _, aliased: _ } => TypeDeclShapeBinderWrapper
+    OpaqueTypeDecl { binders: _ } => TypeDeclShapeBinderWrapper
+    PlainTypeDecl { member: member } =>
+      match member.kind {
+        TypeNode { connective: Conj } => TypeDeclShapeRecordOrCoproduct
+        TypeNode { connective: Disj } => TypeDeclShapeRecordOrCoproduct
+        TypeNode { connective: Instantiation } => TypeDeclShapeRecordOrCoproduct
+        TypeNode { connective: Occupancy } => TypeDeclShapeRecordOrCoproduct
+        TypeNode { connective: Atom { identity: _ } } => TypeDeclShapeAliasAtom
+        TypeNode { connective: Arrow } => TypeDeclShapeCallable
+        ComputationNode { behavior: _ } => TypeDeclShapeValue
+      }
+  }
+}
+
+fn type_decl_member_occurrence_category(shape: TypeDeclMemberShape) -> OccurrenceCategory {
+  match shape {
+    TypeDeclShapeRecordOrCoproduct => TypeOccurrence
+    TypeDeclShapeAliasAtom => TypeOccurrence
+    TypeDeclShapeBinderWrapper => TypeOccurrence
+    TypeDeclShapeCallable => CallableOccurrence
+    TypeDeclShapeValue => LexicalValueOccurrence
+  }
+}
+
+fn type_decl_member_child_walk(shape: TypeDeclMemberShape) -> TypeDeclChildWalk {
+  match shape {
+    TypeDeclShapeRecordOrCoproduct => TypeDeclChildrenTypeOccurrence
+    TypeDeclShapeBinderWrapper => TypeDeclChildrenTypeOccurrence
+    TypeDeclShapeAliasAtom => TypeDeclChildrenInherited
+    TypeDeclShapeCallable => TypeDeclChildrenInherited
+    TypeDeclShapeValue => TypeDeclChildrenInherited
+  }
+}
+
 // KIND ELIGIBILITY BEFORE NONE/ONE/MANY. The candidate already carries its declaration node
 // (LexicalBindingCandidate.node); classify that node, never re-lookup the path. Re-asking
 // symbol_index_entry_at could miss and then mint a kind (DESIGN section 5). Payload, resource
@@ -755,21 +809,7 @@ fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBinding
       } else if symbol_index_declares_resource_at(index: index, qualified_path: candidate.path) {
         TypeOccurrence
       } else {
-        match type_decl_view(target: candidate.node) {
-          GenericTypeDecl { binders: _, member: _ } => TypeOccurrence
-          TypeAlias { binders: _, aliased: _ } => TypeOccurrence
-          OpaqueTypeDecl { binders: _ } => TypeOccurrence
-          PlainTypeDecl { member: member } =>
-            match member.kind {
-              TypeNode { connective: Arrow } => CallableOccurrence
-              TypeNode { connective: Atom { identity: _ } } => TypeOccurrence
-              TypeNode { connective: Conj } => TypeOccurrence
-              TypeNode { connective: Disj } => TypeOccurrence
-              TypeNode { connective: Instantiation } => TypeOccurrence
-              TypeNode { connective: Occupancy } => TypeOccurrence
-              ComputationNode { behavior: _ } => LexicalValueOccurrence
-            }
-        }
+        type_decl_member_occurrence_category(shape: type_decl_member_shape(node: candidate.node))
       }
   }
 }
