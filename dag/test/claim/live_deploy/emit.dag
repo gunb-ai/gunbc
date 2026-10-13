@@ -482,12 +482,12 @@ test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
 
 // THE PREAMBLE, READ SEPARATELY, SO AN ABSENCE CLAIM DOES NOT LOSE HALF ITS SUBJECT.
 //
-// `apply_emitted_steps_text` carries the deployment's own steps and not the program FRAME the fold
-// wraps them in. For a PRESENCE claim that costs nothing -- the string it looks for is in a step or
-// it is nowhere. For an ABSENCE claim it is the difference between a wall and a hole: the preamble
-// installs the sudoers drop-in and ensures the publication principal, which is exactly where an
-// elevation regression would land. So the one absence conjunct below that bans a shell elevation
-// reads both halves.
+// `apply_emitted_steps_text` is the compose-mutate half of `apply_intent_fragments`. Decide-only
+// frame comments stay outside it; Mutate preamble is inside it. For a PRESENCE claim that costs
+// nothing -- the string it looks for is in a step or it is nowhere. For an ABSENCE claim the
+// preamble is half the subject: it installs the sudoers drop-in and ensures the publication
+// principal, which is exactly where an elevation regression would land. So the one absence
+// conjunct below that bans a shell elevation still reads the preamble via the compose projection.
 //
 // THE TWO DEPENDENCY CONJUNCTS ASSERT THE COMMANDS AND NO LONGER ASSERT THE CONDITIONAL'S SPELLING.
 //
