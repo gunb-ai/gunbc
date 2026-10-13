@@ -138,7 +138,7 @@ fn flex_ownership(wire: FlexWireOwner, ours: FlexOwnerLabel) -> FlexOwnership {
   match wire {
     FlexWireOwnerAbsent => FlexUnlabelled
     FlexWireOwnerPresent { label: l } =>
-      if l == ours { FlexOurs { owner: l } } else { FlexForeign { label: l } }
+      if (l == ours) { FlexOurs { owner: l } } else { FlexForeign { label: l } }
   }
 }
 
@@ -222,7 +222,7 @@ fn flex_class_market_median(floors: List<MoneyPerHour>) -> FlexMarketMedian {
             sorted,
             init: FlexMedianScan { index: 0, picked: none },
             f: (acc, d) =>
-              if acc.index == target {
+              if (acc.index == target) {
                 FlexMedianScan { index: acc.index + 1, picked: Present { value: d } }
               } else {
                 FlexMedianScan { index: acc.index + 1, picked: acc.picked }

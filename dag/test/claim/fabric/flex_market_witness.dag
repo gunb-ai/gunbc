@@ -1,7 +1,7 @@
 module test.claim.fabric.flex_market_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.measure {
@@ -9,35 +9,9 @@ import std.measure {
   ByteSize, gibibyte, gibibyte_to_byte_size, byte_size, byte_size_count,
 }
 import extdeps.currency.currency { Usd }
-import std.pareto { LowerIsBetter }
-import std.decision {
-  SelectedWithin,
-  select_realization,
-  DecisionVariable,
-  ContextParameter,
-  DecisionConstraint,
-  ObjectiveTerm,
-  ObjectiveMeasure,
-  ChoiceDomain,
-  DecisionSubject,
-  DecisionRegion,
-  VariesAlong,
-  MonotoneDecreasing,
-  ConstraintSatisfied,
-  ParameterBound,
-  DecisionAssessment,
-  PhysicalModelEstablished,
-  CausalModelEstablished,
-  FleetObservedCoupling,
-}
-import product.fabric.demand {
-  term_money, term_delay, term_interruption, term_accepted_work,
-  debt_payoff_objective, fabric_demand_required_term_ids,
-}
-import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import std.decision { SelectedWithin }
 import product.fabric.flex_market {
-  FlexBidLevelThreeFifths, FlexBidLevelFourFifths, FlexBidLevelMarket,
+  FlexBidLevel, FlexBidLevelThreeFifths, FlexBidLevelFourFifths, FlexBidLevelMarket,
   FlexMarketQuoted, FlexMarketUnobserved,
   FlexBidPriced, FlexBidMarketUnobserved, FlexBidQuoteCurrencyMismatch,
   FlexMedianFound, FlexMedianEmpty, FlexMedianCurrencyMismatch,
@@ -46,6 +20,7 @@ import product.fabric.flex_market {
   FlexWireOwnerPresent, FlexWireOwnerAbsent,
   FlexOwnerLabel, FlexOurs, FlexForeign, FlexUnlabelled,
   FlexOwnedCard, FlexDestroy, FlexKeep, FlexCleanupOutbid, FlexCleanupStaleLoading,
+  FlexCleanupNotRunningDropped, FlexCleanupReleasedForValue,
   FlexReleaseNow, FlexReleaseHoldLast, FlexReleaseHoldUntilReplacement,
   flex_quoted_bid, flex_class_market_median, flex_choose_bid_level,
   flex_vram_class, flex_ownership, flex_ours_only,
@@ -149,7 +124,11 @@ test fn a_class_with_no_samples_tries_three_fifths_first() -> Bool {
     FlexLevelNeedsEvidence => false
     FlexLevelSelectionRefused => false
     FlexLevelChosen { level: l, samples: n } =>
-      match l { FlexBidLevelThreeFifths => n == 0 FlexBidLevelFourFifths => false FlexBidLevelMarket => false }
+      match l {
+        FlexBidLevelThreeFifths => n == 0
+        FlexBidLevelFourFifths => false
+        FlexBidLevelMarket => false
+      }
   }
 }
 
@@ -170,7 +149,11 @@ test fn after_min_samples_the_cheaper_productive_hour_wins() -> Bool {
     FlexLevelNeedsEvidence => false
     FlexLevelSelectionRefused => false
     FlexLevelChosen { level: l, samples: n } =>
-      match l { FlexBidLevelThreeFifths => n == 3 FlexBidLevelFourFifths => false FlexBidLevelMarket => false }
+      match l {
+        FlexBidLevelThreeFifths => n == 3
+        FlexBidLevelFourFifths => false
+        FlexBidLevelMarket => false
+      }
   }
 }
 
@@ -211,12 +194,12 @@ test fn unlabelled_and_foreign_cards_are_not_ours() -> Bool {
   let ours = flex_ownership(wire: FlexWireOwnerPresent { label: flex_owner_label_gunbc_flex }, ours: flex_owner_label_gunbc_flex)
   let bidder = flex_ownership(wire: FlexWireOwnerPresent { label: "ctrl-bidder" as FlexOwnerLabel }, ours: flex_owner_label_gunbc_flex)
   let pool = flex_ownership(wire: FlexWireOwnerPresent { label: "ctrl-pool" as FlexOwnerLabel }, ours: flex_owner_label_gunbc_flex)
-  let none = flex_ownership(wire: FlexWireOwnerAbsent, ours: flex_owner_label_gunbc_flex)
+  let unlabeled = flex_ownership(wire: FlexWireOwnerAbsent, ours: flex_owner_label_gunbc_flex)
   flex_ours_only(owner: ours)
     && !flex_ours_only(owner: bidder)
     && !flex_ours_only(owner: pool)
-    && !flex_ours_only(owner: none)
-    && match none { FlexUnlabelled => true FlexOurs { owner: _ } => false FlexForeign { label: _ } => false }
+    && !flex_ours_only(owner: unlabeled)
+    && match unlabeled { FlexUnlabelled => true FlexOurs { owner: _ } => false FlexForeign { label: _ } => false }
 }
 
 fn owned(
@@ -351,79 +334,6 @@ test fn unscored_ended_rentals_need_evidence_instead_of_a_market_default() -> Bo
 
 data id_cheap: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_cheap")
 data id_held: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_held")
-data id_subject: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_subject")
-data id_field: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_field")
-data id_constraints: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_constraints")
-data id_evidence: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_evidence")
-data id_var: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "var_sel")
-data id_constraint_cell: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "constraint_sel")
-data id_param_cell: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "param_sel")
-data id_region: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "region_sel")
-data id_domain: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "domain_sel")
-data id_coupling: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_coupling")
-
-data fixture_physical_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https, locator: "fixture.invalid/flex-market/physical" },
-}
-
-data var_sel: DecisionVariable = DecisionVariable { identity: id_var }
-data constraint_sel: DecisionConstraint = DecisionConstraint { identity: id_constraint_cell }
-data param_sel: ContextParameter = ContextParameter { identity: id_param_cell }
-data region_sel: DecisionRegion = DecisionRegion { identity: id_region }
-data domain_sel: ChoiceDomain = ChoiceDomain { identity: id_domain, variables: [var_sel] }
-
-fn cited_term(id: DeclarationRef) -> ObjectiveTerm {
-  ObjectiveTerm {
-    identity: id,
-    ground: CitedToAuthority { authority: fixture_physical_authority },
-  }
-}
-
-fn closed_assessment() -> DecisionAssessment {
-  let term_ids = fabric_demand_required_term_ids()
-  DecisionAssessment {
-    subject: DecisionSubject {
-      identity: id_subject,
-      question: "which interruptible card to keep or rent" as NonEmptyStr,
-      parameters: [param_sel],
-      constraints: [constraint_sel],
-      objective: ObjectiveMeasure {
-        identity: debt_payoff_objective.profile,
-        goal: LowerIsBetter,
-        terms: map(term_ids, id => cited_term(id: id)),
-      },
-      choice_domain: domain_sel,
-    },
-    sensitivities: map(term_ids, id =>
-      VariesAlong {
-        term: id,
-        variable: id_var,
-        region: region_sel,
-        relation: MonotoneDecreasing,
-        coupling: CitedToAuthority { authority: fixture_physical_authority },
-      }
-    ),
-    constraints: [
-      ConstraintSatisfied { constraint: id_constraint_cell, evidence: "fixture constraint" as NonEmptyStr },
-    ],
-    parameters: [
-      ParameterBound { parameter: id_param_cell, evidence: "fixture parameter" as NonEmptyStr },
-    ],
-    selected_candidate: Absent,
-    term_drops: [],
-    physical_model: PhysicalModelEstablished { terms: term_ids },
-    causal_model: CausalModelEstablished {
-      couplings: map(term_ids, id =>
-        FleetObservedCoupling {
-          receipt: id_coupling,
-          term: id,
-          variable: id_var,
-          subject: id_subject,
-        }
-      ),
-    },
-  }
-}
 
 test fn ranking_selects_the_held_card_when_the_premium_covers_a_small_price_gap() -> Bool {
   let offer = owned(id: "offer", vram: gib(n: 48), rate: 1100000, held: false, running: false, loading: false, outbid: false, age: 0)
