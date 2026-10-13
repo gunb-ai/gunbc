@@ -5,18 +5,17 @@ module v2.test.claim.emitter_unreachable_call_after_total_match
 // emitting it under RUSTFLAGS=-D warnings refuses `unreachable call`.
 // Emitter repair is OUT OF THIS PR. The class is
 // gunbc.recurring_failure_mode.valid_dag_match_arm_emits_unreachable_call.
+// Indexed with the rest of src/v2, so this file must parse; it must not join the emit closure.
 
 import std.types { Int }
 
-type ProbeOutcome {
-  Accepted { value: Int }
-  Rejected { diagnostics: Int }
-}
+type ProbeOutcome
+  = Accepted { value: Int }
+  | Rejected { diagnostics: Int }
 
-type ProbeLocus {
-  NodeLocus { node: Int }
-  Textual { n: Int }
-}
+type ProbeLocus
+  = NodeLocus { node: Int }
+  | Textual { n: Int }
 
 fn probe_tokenize(x: Int) -> ProbeOutcome {
   Accepted { value: x }
@@ -31,8 +30,6 @@ fn probe_normalize(tree: Int) -> ProbeOutcome {
 }
 
 // SHAPE A: nested tokenize -> parse -> let-stripped -> normalize in one Accepted arm.
-// This is the 107b260 native_demand_census_read body that rustc named at
-// v2_compiler_source_root_eval.rs:1041 under self-host run 38430324010 (17d52742).
 fn nested_tokenize_parse_normalize(x: Int) -> Int {
   match probe_tokenize(x: x) {
     Rejected { diagnostics: d } => d
@@ -50,7 +47,6 @@ fn nested_tokenize_parse_normalize(x: Int) -> Int {
 }
 
 // SHAPE B: if-then total match on a Locus coproduct.
-// This is the 107b260 native_demand_census_unbound_locus body (reason gate around match fatal.at).
 fn if_then_match_on_locus(at: ProbeLocus, reason_unbound: Int) -> Int {
   if reason_unbound == 1 {
     match at {
