@@ -6,7 +6,7 @@ import std.process { ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.instruments.native_process_memory_reading {
   NativeChildReading, NativeMeasuredWorkload, NativeCensusWorkload, NativeSelfCompileWorkload,
-  NativeCensusFrontEnd, native_process_memory_standing,
+  NativeCensusFrontEnd, native_process_memory_standing, native_child_maxrss,
 }
 
 // THE READER'S ARMS AT ITS INTERFACE, over SUPPLIED readings (DESIGN section 3, a witness discriminates
@@ -16,7 +16,7 @@ import gunbc.instruments.native_process_memory_reading {
 // The kibibyte figures below are fixture inputs chosen for their order, not measurements.
 
 fn reading(kib: Int, signal: Int) -> NativeChildReading {
-  NativeChildReading { maxrss_kib: kib, elapsed: nanosecond(count: 1), exit_code: 0, signal: signal, terminal: "{\"_terminal\":\"complete\"}" }
+  NativeChildReading { peak: native_child_maxrss(raw_value: kib), elapsed: nanosecond(count: 1), exit_code: 0, signal: signal, terminal: "{\"_terminal\":\"complete\"}" }
 }
 
 fn exit_code_of(r: CliWireResponse) -> Int {

@@ -1573,10 +1573,17 @@ fn run_native_process_memory(
             .rev()
             .find(|l| l.contains("\"_terminal\""))
             .unwrap_or("");
-        Value::Record {
+        let peak = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_child_maxrss",
+            &[(Some("raw_value".to_string()), Value::Int(r.maxrss_kib))],
+            true,
+        )
+        .map_err(|cause| format!("{label_name}: native_child_maxrss failed: {cause}"))?;
+        Ok::<Value, String>(Value::Record {
             type_name: ctx.sym("NativeChildReading"),
             fields: std::rc::Rc::new(vec![
-                (ctx.sym("maxrss_kib"), Value::Int(r.maxrss_kib)),
+                (ctx.sym("peak"), peak),
                 (
                     ctx.sym("elapsed"),
                     Value::Record {
@@ -1591,8 +1598,13 @@ fn run_native_process_memory(
                 (ctx.sym("signal"), Value::Int(i64::from(r.signal))),
                 (ctx.sym("terminal"), str_value(terminal)),
             ]),
-        }
+        })
     };
+    let (control_reading, workload_reading) =
+        match (reading(&runs.control), reading(&runs.workload)) {
+            (Ok(c), Ok(w)) => (c, w),
+            (Err(cause), _) | (_, Err(cause)) => return unreached(cause),
+        };
     let variant = |type_name: &str, name: &str, fields: Vec<(&str, Value)>| Value::Variant {
         type_name: ctx.sym(type_name),
         variant_name: ctx.sym(name),
@@ -1614,8 +1626,8 @@ fn run_native_process_memory(
             str_value(&input_identity),
         ),
         (Some("envelope".to_string()), str_value(&runs.envelope)),
-        (Some("control".to_string()), reading(&runs.control)),
-        (Some("measured".to_string()), reading(&runs.workload)),
+        (Some("control".to_string()), control_reading),
+        (Some("measured".to_string()), workload_reading),
     ];
     let value = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
