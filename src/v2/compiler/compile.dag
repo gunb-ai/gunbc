@@ -38,7 +38,6 @@ import extdeps.bazel.target_pattern {
   parse_target_pattern, target_pattern_matches, target_pattern_refusal_text, render_target_pattern
 }
 import std.integer { int_to_decimal_string }
-import std.list { first_duplicate_by_key }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
 import v2.compiler.infer { InferredTree }
@@ -135,6 +134,7 @@ import v2.compiler.module_acquisition {
   SourceRootBinding,
   VerifiedAcquisition,
   acquire_verified,
+  acquisition_first_duplicate,
   acquisition_ingest,
   acquisition_module_path,
   enumerate_bound_modules,
@@ -2431,7 +2431,7 @@ fn native_lane_universe_module_for_source(
 // universe's own contract over the markers it is SUPPLIED (AcquiredModule.test_markers), so it holds for
 // any other source of AcquiredModule values, and it names the (module, declaration) identity it repeated.
 fn native_lane_duplicate_marker_in(member: AcquiredModule) -> Optional<String> {
-  match first_duplicate_by_key(xs: member.test_markers, key: fn(name) { name }) {
+  match acquisition_first_duplicate(pending: member.test_markers, seen: empty_map()) {
     Present { value: name } => optional_present(value: concat(member.name, ".", name))
     Absent => optional_absent()
   }
