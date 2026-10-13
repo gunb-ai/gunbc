@@ -83,6 +83,56 @@ fn unique_rlib(deps: &Path, name: &str) -> PathBuf {
     matches[0].clone()
 }
 
+fn module_path(root: &Path, m: &str) -> PathBuf {
+    let mut parts = m.split('.');
+    let top = parts.next().unwrap();
+    let mut p = if top == "v2" {
+        root.join("src/v2")
+    } else {
+        root.join("dag").join(top)
+    };
+    for r in parts {
+        p = p.join(r);
+    }
+    p.set_extension("dag");
+    p
+}
+
+/// The import closure of `std.algebra`: the production definition of `List`/`Empty`/`Cons`, which a
+/// one-file specimen cannot resolve.
+fn algebra_closure(root: &Path) -> Vec<Rc<SourceFile>> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut todo = vec!["std.algebra".to_string()];
+    let mut out = Vec::new();
+    while let Some(m) = todo.pop() {
+        if !seen.insert(m.clone()) {
+            continue;
+        }
+        let path = module_path(root, &m);
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in content.lines() {
+            if let Some(rest) = line.strip_prefix("import ") {
+                todo.push(
+                    rest.chars()
+                        .take_while(|c| !c.is_whitespace() && *c != '{')
+                        .collect(),
+                );
+            }
+        }
+        out.push(Rc::new(SourceFile {
+            path: path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+            content,
+        }));
+    }
+    out
+}
+
 fn fn_text<'a>(emitted: &'a str, name: &str) -> &'a str {
     let at = emitted
         .find(&format!("fn {name}("))
@@ -98,16 +148,13 @@ fn fn_text<'a>(emitted: &'a str, name: &str) -> &'a str {
 
 #[test]
 fn cursor_is_taken_exactly_where_the_tail_is_unobservable() {
-    let result = compile_sources(
-        Rc::new(
-            vec![Rc::new(SourceFile {
-                path: "cursor_probe.dag".into(),
-                content: SOURCE.into(),
-            })]
-            .into(),
-        ),
-        RenderTarget::Rust,
-    );
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let mut sources = algebra_closure(&repo);
+    sources.push(Rc::new(SourceFile {
+        path: "cursor_probe.dag".into(),
+        content: SOURCE.into(),
+    }));
+    let result = compile_sources(Rc::new(sources.into_iter().collect()), RenderTarget::Rust);
     let modules: Vec<_> = result
         .files
         .iter()
@@ -117,11 +164,20 @@ fn cursor_is_taken_exactly_where_the_tail_is_unobservable() {
         modules.len(),
         1,
         "emission did not produce the specimen: {:?}",
-        result
-            .diagnostics
-            .iter()
-            .map(|d| diagnostic_to_message(d.diagnostic.clone()))
-            .collect::<Vec<_>>()
+        (
+            result
+                .files
+                .iter()
+                .map(|f| f.path.clone())
+                .collect::<Vec<_>>(),
+            result
+                .diagnostics
+                .iter()
+                .map(|d| diagnostic_to_message(d.diagnostic.clone()))
+                .filter(|m| !m.contains("std.algebra"))
+                .take(8)
+                .collect::<Vec<_>>()
+        )
     );
     let emitted = &modules[0].content;
     for (name, cursor) in [
