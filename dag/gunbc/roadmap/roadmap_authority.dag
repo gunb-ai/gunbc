@@ -6111,7 +6111,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
       line: ticket(t: fields(
         headline: "Redundant presence and nonempty carriers are deleted by complete cohort",
-        boundary: "Consolidate std.constructors Cardinality, v2.std.node_query DeclaredField, v2.std.algebra head and tail results, v2.std.diagnostic and gunbc.design_argument nonempty carriers (including ConformanceHomes and ConformanceHomeGroups where their contracts are only nonempty sequences) into Optional, FreeMonoid and FreeSemigroup. Keep independent cause, progress, policy and foreign-state information; preserve ordering and specialized equality deliberately.",
+        boundary: "Consolidate std.constructors Cardinality, v2.std.node_query DeclaredField, std.algebra head and tail results, v2.std.diagnostic and gunbc.design_argument nonempty carriers (including ConformanceHomes and ConformanceHomeGroups where their contracts are only nonempty sequences) into Optional, FreeMonoid and FreeSemigroup. Keep independent cause, progress, policy and foreign-state information; preserve ordering and specialized equality deliberately.",
         displaced_cost: "Each rival carrier is a meaning fork.",
         first_slice: "The first cohort, including the registry's own hand-written nonempty records.",
         red_control: "A new domain-specific NonEmpty record replacing another keeps this red.",
@@ -6160,15 +6160,15 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       id: "cardinality-vertical-slice",
       owner: "compiler-guarantee",
       carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
         headline: "The operator's seam, end to end: a 0..n producer cannot feed a 1..n consumer",
-        boundary: "One path, not a census: bare List = 0..inf, literal [] = 0..0, nonempty literal = n..n; map preserves, filter floors to 0, concat adds; the interval is an interface fact in InterfaceSummary's contract slot, actual-within-required enforced at function boundaries with a located seam refusal. The seam direction (2026-07-04) and candidate lattice exist; the in-tree fold-propagation rows are manual value-level specimens — binding-level propagation starts here. Construction-wall first candidate: type Refined<B> sole_constructor, which is why the sole-constructor completeness audit is a declared prerequisite edge.",
+        boundary: "One path, not a census: bare List / FreeMonoid = 0..inf, literal [] = 0..0, FreeSemigroup is the nonempty value carrier (1..inf); a nonempty literal is n..n of that carrier; map preserves, filter floors to 0, concat adds; the interval is an interface fact in InterfaceSummary's contract slot, actual-within-required enforced at function boundaries with a located seam refusal. The seam direction (2026-07-04) and candidate lattice exist; the in-tree fold-propagation rows are manual value-level specimens — binding-level propagation starts here. Construction-wall first candidate: type Refined<B> sole_constructor, which is why the sole-constructor completeness audit is a declared prerequisite edge.",
         displaced_cost: "The canonical motivating specimen — simple, structural, explainable without compiler expertise; the first differentiating class an outside reader can verify.",
-        first_slice: "The seam check on explicit intervals (no inference): producer-admits-zero into consumer-requires-nonempty refuses; proven-nonempty control compiles.",
-        red_control: "The census's cardinality probe pair, plus filter-then-require-nonempty refusing unless a stronger proof intervenes.",
+        first_slice: "The seam check on explicit intervals (no inference): producer-admits-zero into a FreeSemigroup consumer refuses; a proven FreeSemigroup control compiles.",
+        red_control: "The census's cardinality probe pair, plus filter-then-require-nonempty (FreeSemigroup consumer) refusing unless a stronger proof intervenes.",
         out_of_scope: "The unwritable-seam construction wall beyond the first candidate; general refinement predicates (undecidable, permanently); width/overflow axes beyond the slice.",
-        handback: "The lattice fragment landed, the seam judgment site, both probe receipts."
-      ), on: "2026-09-24", note: "Moved from the brief at the 100-word re-cut (context, not an obligation): (v2.std.refinement refined_vacuous_stub_pack, the forged Rejected-arm mint this candidate used to reference, is deleted outright — not merely fixed — as of the delete-first replacement in gunbc.std.refinement; the wall question below is unaffected and still open)"), on: "2026-09-30", note: "Not yet centered: vertical slice across infer; lane judgment.")),
+        handback: "The lattice fragment landed, the seam judgment site naming FreeSemigroup as the nonempty carrier, both probe receipts."
+      ), on: "2026-09-24", note: "Moved from the brief at the 100-word re-cut (context, not an obligation): (v2.std.refinement refined_vacuous_stub_pack, the forged Rejected-arm mint this candidate used to reference, is deleted outright — not merely fixed — as of the delete-first replacement in gunbc.std.refinement; the wall question below is unaffected and still open)"), on: "2026-09-30", note: "Not yet centered: vertical slice across infer; lane judgment."), on: "2026-10-13", note: "Named FreeSemigroup as the nonempty value carrier (cardinality-absence ruling 5). Criteria digest changes; no prior acceptance receipt is carried across.")),
       dispatch: dispatchable(),
       parent: in_project(project: "cardinality-absence", contribution: "A 0..n producer cannot feed a 1..n consumer: the program's missing bound model, delivered with its consumer."),
     ),

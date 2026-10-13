@@ -66,6 +66,38 @@ test fn expected_process_on_10809_is_converged_noop() -> Bool {
   }
 }
 
+test fn absent_port_plans_start() -> Bool {
+  match classify_process_port_upsert(
+    scope: nbd_proxy_scope,
+    obs: PortAbsent,
+  ) {
+    UpsertClassification {
+      verdict: Absent,
+      decision: Apply { plan: Start },
+    } => true
+    _ => false
+  }
+}
+
+// RED: the one total fold must thread the observe-leg refusal reason into the decision
+// (Refuse { reason: why }), NOT route the refused arm through decision_for_process_port_verdict.
+// Routing through the verdict would erase the reason and answer with the fixed fallback
+// "port observation refused", so both assertions here fail on that wrong implementation.
+test fn refused_port_observation_threads_its_reason_not_the_fallback() -> Bool {
+  match classify_process_port_upsert(
+    scope: nbd_proxy_scope,
+    obs: PortObservationRefused { reason: "systemctl refused by the observe leg" as NonEmptyStr },
+  ) {
+    UpsertClassification {
+      verdict: UnknownRefused,
+      decision: Refuse { reason: why },
+    } =>
+      why == ("systemctl refused by the observe leg" as NonEmptyStr)
+        && why != ("port observation refused" as NonEmptyStr)
+    _ => false
+  }
+}
+
 test fn outside_namespace_chmod_is_refused() -> Bool {
   let outside = "/etc/passwd" as NonEmptyStr
   !path_within_file_tree_scope(scope: remaster_work_scope, path: outside)
