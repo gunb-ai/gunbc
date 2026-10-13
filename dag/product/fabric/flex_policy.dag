@@ -258,10 +258,6 @@ fn advance_window(window: FlexAcquisitionWindow) -> FlexAcquisitionWindow {
   }
 }
 
-fn flex_price_observation_bound() -> MoneyAmountMicro {
-  money_amount_micro(count: 1000000000000)
-}
-
 type FlexPricedHorizon
   = FlexHorizonPriced { cost: MoneyAmountMicro }
   | FlexHorizonUnobserved
@@ -277,19 +273,20 @@ fn flex_price_candidate(
     inputs: candidate.dispatch,
     requirements: attempt.requirements,
     duration: flex_horizon_duration(policy: policy),
-    maximum_buy_order: flex_price_observation_bound(),
+    maximum_buy_order: money_amount_micro(count: 1000000000000),
     budget_currency: budget_currency,
     delay_valuation: attempt.delay_valuation,
   ) {
     OfferPriced { offer: _, cost: c, basis: _, horizon: _ } =>
       FlexHorizonPriced { cost: selection_liability(c: c) }
+    OfferLiabilityOverBuyOrder { offer: _, liability: observed, maximum: _ } =>
+      FlexHorizonPriced { cost: observed }
     OfferNotPriceable { offer: _, unpriced: _ } => FlexHorizonUnobserved
     OfferNotFungible { offer: _, fungibility: _ } => FlexHorizonUnobserved
     OfferUnavailableForGrant { offer: _, needed: _, available: _ } => FlexHorizonUnobserved
     OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => FlexHorizonUnobserved
     OfferWrongCurrency { offer: _, mismatch: _ } => FlexHorizonUnobserved
     OfferUnaffordable { offer: _, affordability: _ } => FlexHorizonUnobserved
-    OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => FlexHorizonUnobserved
     OfferRevocationNotAdmitted { offer: _ } => FlexHorizonUnobserved
   }
 }
@@ -524,7 +521,7 @@ fn flex_admit_at(
             FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
           EqualCostTieUnresolved { digest: _, cause: _, considered: _ } =>
             FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
-          OfferSelected { candidate: selected, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => {
+          OfferSelected { candidate: selected, cost: selected_cost, basis: _, horizon: _, considered: _, tie_policy: _ } => {
             if !selection_names_joined_offer(selected: selected, joined: joined) {
               FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
             } else {
@@ -537,47 +534,38 @@ fn flex_admit_at(
                   FlexBidRefused { cause: FlexOnDemandReferenceUnobserved }
                 FlexHorizonPriced { cost: on_demand_cost } => {
                   let ceiling = flex_relative_ceiling(policy: policy, on_demand_cost: on_demand_cost)
-                  match flex_price_candidate(
-                    candidate: selected.candidate,
-                    policy: policy,
-                    attempt: attempt,
-                    budget_currency: bid.currency,
-                  ) {
-                    FlexHorizonUnobserved =>
-                      FlexBidRefused { cause: FlexSupplyNotSelected { selection: selection } }
-                    FlexHorizonPriced { cost: projected } =>
-                      if money_amount_micro_count(m: projected) > money_amount_micro_count(m: ceiling) {
-                        FlexBidRefused {
-                          cause: FlexOnDemandRelativeCeilingExceeded {
-                            ceiling: ceiling,
-                            projected: projected,
+                  let projected = selection_liability(c: selected_cost)
+                  if money_amount_micro_count(m: projected) > money_amount_micro_count(m: ceiling) {
+                    FlexBidRefused {
+                      cause: FlexOnDemandRelativeCeilingExceeded {
+                        ceiling: ceiling,
+                        projected: projected,
+                      },
+                    }
+                  } else {
+                    match reserve_money(
+                      a: account,
+                      request: MoneyReservationRequest {
+                        reference: attempt.reservation,
+                        generation: attempt.generation,
+                        maximum_liability: liability,
+                        currency: bid.currency,
+                      },
+                    ) {
+                      MoneyRefused { refusal: r } => FlexBidRefused { cause: FlexMoneyRefused { refusal: r } }
+                      AccountAdvanced { account: next } =>
+                        FlexBidAdmitted {
+                          bid: bid,
+                          selection: selection,
+                          account: next,
+                          occupancy: if append_standing {
+                            occupy_pending(occupancy: occupancy, bid: bid)
+                          } else {
+                            occupancy
                           },
+                          window: advance_window(window: window),
                         }
-                      } else {
-                        match reserve_money(
-                          a: account,
-                          request: MoneyReservationRequest {
-                            reference: attempt.reservation,
-                            generation: attempt.generation,
-                            maximum_liability: liability,
-                            currency: bid.currency,
-                          },
-                        ) {
-                          MoneyRefused { refusal: r } => FlexBidRefused { cause: FlexMoneyRefused { refusal: r } }
-                          AccountAdvanced { account: next } =>
-                            FlexBidAdmitted {
-                              bid: bid,
-                              selection: selection,
-                              account: next,
-                              occupancy: if append_standing {
-                                occupy_pending(occupancy: occupancy, bid: bid)
-                              } else {
-                                occupancy
-                              },
-                              window: advance_window(window: window),
-                            }
-                        }
-                      }
+                    }
                   }
                 }
               }
