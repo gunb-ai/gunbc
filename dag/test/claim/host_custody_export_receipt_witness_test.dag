@@ -29,6 +29,7 @@ import gunbc.fleet.host_credential_custody_converge {
   plan_host_custody_export,
   CustodyExportNotOwed,
   CustodyExportWithheld,
+  CustodyExportUnformable,
   CustodyExportPublication,
   classify_host_custody_export,
   custody_export_after_bytes_landed,
@@ -235,6 +236,27 @@ test fn the_receipt_directory_owner_is_root_not_the_reader() -> Bool {
             && (claude_receipt.reader as String) == "briansrls"
             && (claude_receipt.publisher as String) != (claude_receipt.reader as String)
       }
+  }
+}
+
+test fn an_unformable_owed_digest_refuses_rather_than_withholding() -> Bool {
+  let standing = classify_host_custody_export(
+    plan: CustodyExportUnformable { reason: "placed material digest is not a Sha256DigestHex" },
+    convergence: none,
+    owner_refusal: none,
+    receipt_metadata: none,
+  )
+  match standing {
+    CustodyExportRefused { reason: r } =>
+      string_contains(s: r, pattern: "Sha256DigestHex")
+        && match classify_host_custody_export(
+          plan: CustodyExportWithheld { reason: "placement is not settled" },
+          convergence: none, owner_refusal: none, receipt_metadata: none,
+        ) {
+          CustodyExportWithheldStanding { reason: _ } => true
+          _ => false
+        }
+    _ => false
   }
 }
 
