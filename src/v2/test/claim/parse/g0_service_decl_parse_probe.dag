@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.language_model { LanguageModel }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { well_formed }
+import v2.std.node { Symbol, well_formed }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -253,29 +253,27 @@ test fn plain_type_still_parses_holds() -> Bool {
   parses(src: plain_type_source)
 }
 
-// ROUTE, not only parse. A service now LOWERS at declaration grade (v2.compiler.body_lowering_fold
-// body_lower_service_decl): its interface onto existing connectives, its realization members
-// (transport, config, exit, response, mock_response) set aside, typed and located. Full normalize is
-// what resolution, eval and emission consume, so it refuses a service with a set-aside realization,
-// for that reason rather than for retention; an empty service sets nothing aside and is admitted.
+// ROUTE, not only parse. A service LOWERS at declaration grade. A service-level transport has no
+// operation entry to attach to and refuses located as unread. A config-only service and an empty
+// service admit: their members have carriers (XL-2 3c).
 // This pair was the retention route before the lowering landed; the climb keeps it as the permanent
 // control that normalize discriminates on what a service carries (DESIGN section 4b(4)). The type
 // control is the positive half: a lowered type declaration is the cheapest lowered item.
-fn refused_for_set_aside_realization(ne: NonEmptyDiagnostics) -> Bool {
+fn refused_as(ne: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   fold_list(
     xs: ne.tail,
-    empty: ne.head.reason == ^body_lowering_reason_service_realization_unreachable,
-    cons: fn(found, d) { found || d.reason == ^body_lowering_reason_service_realization_unreachable }
+    empty: ne.head.reason == reason,
+    cons: fn(found, d) { found || d.reason == reason }
   )
 }
 
-fn normalize_refuses_for_set_aside_realization(src: String) -> Bool {
+fn normalize_refuses_as(src: String, reason: Symbol) -> Bool {
   match parse_src(src: src) {
     Rejected { diagnostics: _ } => false
     Accepted { value: a, diagnostics: _ } =>
       match normalize(parse_tree: a.tree) {
         Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: r } => refused_for_set_aside_realization(ne: r)
+        Rejected { diagnostics: r } => refused_as(ne: r, reason: reason)
       }
   }
 }
@@ -300,7 +298,7 @@ data empty_service_source: String = "module m\nservice S {}\n"
 data transport_only_service_source: String = "module m\nservice S {\n  transport shell { argv: [] }\n}\n"
 
 test fn a_service_with_a_transport_is_refused_at_the_normalized_tree_door_holds() -> Bool {
-  normalize_refuses_for_set_aside_realization(src: transport_only_service_source)
+  normalize_refuses_as(src: transport_only_service_source, reason: ^body_lowering_reason_service_member_unread)
 }
 
 test fn an_empty_service_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
@@ -311,6 +309,6 @@ test fn type_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
   normalize_admits(src: plain_type_source)
 }
 
-test fn config_only_service_is_refused_for_its_set_aside_realization_holds() -> Bool {
-  normalize_refuses_for_set_aside_realization(src: config_only_service_source)
+test fn config_only_service_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
+  normalize_admits(src: config_only_service_source)
 }

@@ -30,7 +30,8 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  core_edge_label
+  core_edge_label,
+  host_text_type_node
 }
 import v2.std.node_query { binder_node, construct_node, field_projection_optional }
 import v2.std.type_binder { type_binder_set_children }
@@ -419,6 +420,23 @@ test fn mbt_a_record_scrutinee_refuses_holds() -> Bool {
   mbt_supplied_refuses_with(
     o: mbt_supplied_match(
       scrutinee_type: mbt_ref(segs: [^p, ^ParseArtifact]),
+      arms: mbt_supplied_arms()
+    ),
+    reason: ^infer_match_scrutinee_not_coproduct
+  )
+}
+
+// A HOST-TEXT SCRUTINEE IS NOT A COPRODUCT (DESIGN section 4, ruling
+// text_crossings_go_through_the_unfold). The scrutinee type is the kernel String's own node (v2.std.node
+// host_text_type_node), what `std.types String` resolves to, and the checker refuses with
+// infer_match_scrutinee_not_coproduct. This is a check of the inference interface with a supplied
+// non-coproduct scrutinee type: the arms are mbt_supplied_arms() (Rejected/Accepted), not an Empty/Cons
+// walk, and it is not an end-to-end route fixture over source text. The seed carries no such refusal
+// (gunbc.rung_drop text_boundary_identity_wall, the match-pattern population).
+test fn mbt_a_host_text_scrutinee_refuses_holds() -> Bool {
+  mbt_supplied_refuses_with(
+    o: mbt_supplied_match(
+      scrutinee_type: host_text_type_node(),
       arms: mbt_supplied_arms()
     ),
     reason: ^infer_match_scrutinee_not_coproduct
