@@ -8828,7 +8828,8 @@ fn v1_fn_bounds_by_param(
   set_element_param_names: List<String>,
   static_param_names: List<String>
 ) -> Map<String, List<String>> {
-  let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
+  let bounds_seed: Map<String, List<String>> = empty_map()
+  let with_clone = clone_param_names |> fold(init: bounds_seed, f: (m, n) => map_insert(m, n, ["Clone"]))
   let with_eq = eq_param_names |> fold(init: with_clone, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, ["PartialEq"]))
