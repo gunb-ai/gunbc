@@ -677,7 +677,7 @@ fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTre
       } else if emitted == ^dag_surface_service_decl {
         body_lowered_tree_then(
           t: body_lowered_tree_over(node: n, retained: no_wrapper_retentions()),
-          f: fn(shell) { body_lower_service_decl(shell: shell, admit_set_aside: true) }
+          f: fn(shell) { body_lower_service_decl(shell: shell) }
         )
       } else if emitted == ^dag_surface_resource_decl {
         body_lowered_tree_then(

@@ -455,16 +455,12 @@ test fn two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds() -
 
 // ---- roles are observed whatever normalization does (review 5330814496) -----------------------
 
-// A module that parses and whose normalization refuses BY DESIGN: it holds a service with a transport
-// member, which every route except census grade refuses as
-// body_lowering_reason_service_realization_unreachable (gunbc.recurring_failure_mode
-// service_interface_member_has_no_carrier). An else-less `if` guard was the refusal here until
-// #12713 lowered early-return guards, which made this control lose its subject. Every
-// name-bearing production of the `.dag` grammar is now read, so a live gap no longer exists to observe;
-// the gap is PLANTED AT THE INTERFACE instead: the role table is the real one with its param_list row
+// A module that parses and whose normalization refuses BY DESIGN: it holds a service whose argv is
+// the empty list, which the realization wall refuses as service_realization_argv_refused (ArgvEmpty).
+// An else-less `if` guard was the refusal here until #12713, then the set-aside blanket until XL-2
+// 3c. The gap is PLANTED AT THE INTERFACE: the role table is the real one with its param_list row
 // supplied as NameRoleNotYetRead, and the module's one fn has one parameter list, so an observed role
-// pass counts exactly one not-yet-read node. Before the repair the refusal arm never ran the role
-// producer and reported zero, a gap nobody had observed.
+// pass counts exactly one not-yet-read node.
 data normalization_refused_source: String = "module v2.test.reference_conservation_refused\n\nservice rc.Svc {\n  operation RcOp {\n    transport shell { argv: [] }\n  }\n}\n\nfn rc_plain(n: Int) -> Int { n }\n"
 
 fn planted_param_list_unread_admission() -> NameProductionTableAdmission {
@@ -492,8 +488,8 @@ test fn the_refused_normalization_fixture_refuses_for_the_service_realization_re
   match normalization_refused_subject().normalized {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: ne } =>
-      fold_list(xs: ne.tail, empty: ne.head.reason == ^body_lowering_reason_service_realization_unreachable, cons: fn(found, d) {
-        found || d.reason == ^body_lowering_reason_service_realization_unreachable
+      fold_list(xs: ne.tail, empty: ne.head.reason == ^service_realization_argv_refused, cons: fn(found, d) {
+        found || d.reason == ^service_realization_argv_refused
       })
   }
 }
@@ -536,15 +532,13 @@ test fn a_refused_normalization_carries_its_fatal_reason_located_in_text_holds()
   match refused_normalization_report().normalize_refusal {
     Absent => false
     Present { value: refusal } =>
-      refusal.fatal.reason == ^body_lowering_reason_service_realization_unreachable
-        && string_contains(s: refusal.located, pattern: " bytes 47..54")
+      refusal.fatal.reason == ^service_realization_argv_refused
   }
 }
 
 test fn a_refused_normalization_prints_its_reason_and_locus_on_the_summary_line_holds() -> Bool {
   let line = conservation_summary_line(report: refused_normalization_report())
-  string_contains(s: line, pattern: " refusal=normalize:body_lowering_reason_service_realization_unreachable @ ")
-    && string_contains(s: line, pattern: " bytes 47..54")
+  string_contains(s: line, pattern: " refusal=normalize:service_realization_argv_refused @ ")
 }
 
 test fn an_accepted_module_prints_no_refusal_on_the_summary_line_holds() -> Bool {

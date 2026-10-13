@@ -17,6 +17,8 @@ data service_interface_member_has_no_carrier: RecurringFailureMode = RecurringFa
 
   evidence: [
     DeclarationRef { module_path: "v2.test.claim.normalize.service_declaration_lowering", decl_name: "census_counts_realization_and_unmodeled_interface_apart_holds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.test.claim.normalize.service_declaration_lowering", decl_name: "full_door_refuses_a_service_with_a_set_aside_realization_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.normalize.service_declaration_lowering", decl_name: "full_door_admits_a_service_whose_members_lower_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.normalize.service_realization_lowering", decl_name: "a_declared_input_hole_lowers_on_argv_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.normalize.service_realization_lowering", decl_name: "an_undeclared_argv_hole_refuses_located_holds", field: WholeDeclaration },
   ],
 }

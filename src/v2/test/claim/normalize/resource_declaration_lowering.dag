@@ -338,12 +338,11 @@ test fn default_tail_stream_is_what_tokenize_produces_holds() -> Bool {
 // interface_member_unmodeled pending at the tail -- never as the malformed-entry cause.
 data wire_key_tail_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability c {\n    output { o: Int from \"k\" }\n  }\n}\n"
 
-test fn a_wire_key_tail_refuses_as_a_service_set_aside_RED() -> Bool {
+test fn a_wire_key_tail_refuses_as_a_resource_realization_RED() -> Bool {
   match census_of_stream(tokens: wire_key_tail_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>
-      (diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_realization_unreachable)
-        && carries(ne: r, reason: ^body_lowering_reason_interface_member_unmodeled)
+      (diagnostics_fatal_reason(d: r) == ^body_lowering_reason_resource_capability_realization_unconsumed)
         && !carries(ne: r, reason: ^body_lowering_reason_resource_entry_unread)
   }
 }
