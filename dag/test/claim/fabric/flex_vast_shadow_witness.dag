@@ -6,8 +6,8 @@ import std.nat { Nat }
 import std.decl_ref { decl_ref }
 import std.decimal { ExactDecimal }
 import std.measure {
-  MoneyRate, MoneyPerHour, MoneyAmountMicro, money_amount_micro, money_amount_micro_count,
-  second, hardware_thread_count,
+  MoneyRate, MoneyPerHour, MoneyAmountMicro,   money_amount_micro, money_amount_micro_count,
+  second, hardware_thread_count, byte_size_count, gibibyte, gibibyte_to_byte_size,
 }
 import extdeps.currency.currency { Usd }
 import extdeps.accounting.budget { Appropriation }
@@ -47,7 +47,7 @@ import product.fabric.flex_vast_shadow {
   flex_vast_api_read_grant, flex_host_driver_unread_obligation, flex_delay_unvalued,
   FlexCreateLost, FlexCreateRefused, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
   flex_reconcile_acquisition, flex_may_acquire,
-  flex_qwen_serving_image, flex_qwen_published_tcp_port, flex_qwen_disk_gb, flex_qwen_model_id,
+  flex_qwen_serving_image, flex_qwen_published_tcp_port, flex_qwen_disk, flex_qwen_model_id,
   flex_qwen_reasoning_parser, flex_qwen_tool_call_parser, FlexQwenProbeConfirmed, FlexQwenProbeUnconfirmed,
   flex_rented_card_fungible, flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable,
   FlexWriteBlockedOverCap, FlexWriteWetUnwired, FlexInstanceListRead, FlexInstanceListUnreadable,
@@ -236,10 +236,10 @@ fn inst(id: Int, machine_id: Int) -> VastAiInstance {
 test fn operator_template_and_policy_are_named_facts() -> Bool {
   (flex_qwen_serving_template.image == flex_qwen_serving_image)
     && flex_qwen_serving_template.published_tcp_port == flex_qwen_published_tcp_port
-    && flex_qwen_serving_template.disk_gb == flex_qwen_disk_gb
+    && flex_qwen_serving_template.disk == flex_qwen_disk
     && (flex_qwen_serving_template.model_id == flex_qwen_model_id)
     && flex_qwen_published_tcp_port == 8000
-    && flex_qwen_disk_gb == 32
+    && byte_size_count(b: flex_qwen_disk) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 32)))
     && flex_search_type == vast_ai_search_type_bid
     && flex_engine_min_driver(engine: FlexNinfer) == flex_ninfer_min_driver
     && flex_engine_min_driver(engine: FlexVllm) == flex_vllm_min_driver

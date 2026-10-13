@@ -5,9 +5,11 @@ import std.nat { Nat }
 import std.decl_ref { decl_ref }
 import std.integer { int_to_decimal_string }
 import std.measure {
-  MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate,
-  money_amount_micro, second,
+  MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate, ByteSize,
+  money_amount_micro, second, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  byte_size_count,
 }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.currency.currency { Usd }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
@@ -92,7 +94,7 @@ data flex_objective: DemandObjective = debt_payoff_objective
 
 data flex_qwen_serving_image: NonEmptyStr = "vastai/vllm:v0.30.0-cuda-13.0"
 data flex_qwen_published_tcp_port: Int = 8000
-data flex_qwen_disk_gb: Int = 32
+data flex_qwen_disk: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 32))
 data flex_qwen_model_id: NonEmptyStr = "qwen"
 data flex_qwen_reasoning_parser: NonEmptyStr = "qwen3"
 data flex_qwen_tool_call_parser: NonEmptyStr = "qwen3_coder"
@@ -112,14 +114,14 @@ fn flex_rented_card_fungible(probe: FlexQwenProbeStanding) -> Bool {
 type FlexServingTemplate {
   image: NonEmptyStr
   published_tcp_port: Int
-  disk_gb: Int
+  disk: ByteSize
   model_id: NonEmptyStr
 }
 
 data flex_qwen_serving_template: FlexServingTemplate = FlexServingTemplate {
   image: flex_qwen_serving_image,
   published_tcp_port: flex_qwen_published_tcp_port,
-  disk_gb: flex_qwen_disk_gb,
+  disk: flex_qwen_disk,
   model_id: flex_qwen_model_id,
 }
 
@@ -142,25 +144,32 @@ data flex_host_driver_unread_obligation: NonEmptyStr = "Vast search-offers as mo
 type FlexGpuClass {
   identity: NonEmptyStr
   gpu_name_contains: String?
-  min_vram_mb: Int
+  min_vram: ByteSize
 }
 
 data flex_gpu_class_rtx_5000_48gb: FlexGpuClass = FlexGpuClass {
   identity: "rtx-5000-class-48gb",
   gpu_name_contains: Present { value: "RTX 5000" },
-  min_vram_mb: 49152,
+  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 49152)),
 }
 
 data flex_gpu_class_72gb: FlexGpuClass = FlexGpuClass {
   identity: "72gb-class",
   gpu_name_contains: none,
-  min_vram_mb: 73728,
+  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 73728)),
 }
 
 data flex_gpu_class_rtx_pro_6000_96gb: FlexGpuClass = FlexGpuClass {
   identity: "rtx-pro-6000-blackwell-96gb",
   gpu_name_contains: Present { value: "RTX PRO 6000" },
-  min_vram_mb: 98304,
+  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 98304)),
+}
+
+fn vast_gpu_ram_bytes(gpu_ram_mb: Int) -> ByteSize? {
+  match checked_int_to_nat(n: gpu_ram_mb) {
+    Absent => none
+    Present { value: mb } => Present { value: mebibyte_to_byte_size(m: mebibyte(count: mb)) }
+  }
 }
 
 fn flex_supported_gpu_classes() -> List<FlexGpuClass> {
@@ -175,7 +184,12 @@ fn flex_gpu_name_matches(offer: VastAiOffer, needle: String?) -> Bool {
 }
 
 fn flex_gpu_class_matches(offer: VastAiOffer, class: FlexGpuClass) -> Bool {
-  flex_gpu_name_matches(offer: offer, needle: class.gpu_name_contains) && offer.gpu_ram >= class.min_vram_mb
+  match vast_gpu_ram_bytes(gpu_ram_mb: offer.gpu_ram) {
+    Absent => false
+    Present { value: vram } =>
+      flex_gpu_name_matches(offer: offer, needle: class.gpu_name_contains)
+        && byte_size_count(b: vram) >= byte_size_count(b: class.min_vram)
+  }
 }
 
 fn flex_offer_supported(offer: VastAiOffer) -> Bool {
