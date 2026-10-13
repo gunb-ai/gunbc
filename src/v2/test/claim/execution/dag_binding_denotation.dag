@@ -13,7 +13,7 @@ import v2.extdeps.languages.dag {
   dag_binding_denotation,
   dag_int_type_binding
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int, integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

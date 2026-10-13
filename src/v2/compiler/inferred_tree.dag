@@ -4,13 +4,12 @@ import std.types { List }
 import v2.std.cardinality { TerminationProof }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, PartialFunction }
 import std.optional { Absent, Optional, Present }
 import v2.std.constraints { CanonicalGrounding }
 import v2.std.node { Node }
 import std.optional { Optional, optional_absent }
 import v2.std.witness { Witness }
-import std.algebra { PartialFunction }
 
 // InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
 // produces and consumers hold -- not the pass itself. They lived inside

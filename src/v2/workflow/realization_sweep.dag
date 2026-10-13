@@ -16,7 +16,7 @@ import gunbc.ci.ci_layer_roots { falsifier_substrate_long_lane_rows }
 import v2.compiler.source_authority { SourceRootIngest }
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent }
-import v2.std.algebra { fold_list, length }
+import std.algebra { fold_list, length }
 import v2.std.collection { list_at_optional }
 import std.types { Int, List, String }
 

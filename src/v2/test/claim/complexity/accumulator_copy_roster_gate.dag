@@ -47,7 +47,7 @@ test fn roster_lens_cost_model_zero_suspects_within_ratchet() -> Bool {
 }
 
 test fn roster_std_algebra_zero_suspects_within_ratchet() -> Bool {
-  file_gate(path: "src/v2/std/algebra.dag", refusal_ceiling: 3)
+  file_gate(path: "dag/std/algebra.dag", refusal_ceiling: 3)
 }
 
 // Carrier on the copied (right) port — the same polarity as

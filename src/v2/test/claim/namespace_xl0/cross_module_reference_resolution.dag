@@ -26,7 +26,6 @@ import std.repair_input_origin {
   SourceCarrierCandidate,
   SourceDeclarationCarrier
 }
-import v2.std.algebra { contains, fold_list, length }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
@@ -40,7 +39,7 @@ import v2.std.qualified_name {
   qualified_name_from_dotted_string
 }
 import v2.std.text { String, string_eq }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length }
 import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

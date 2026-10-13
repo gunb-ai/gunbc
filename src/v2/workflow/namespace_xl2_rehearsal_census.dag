@@ -31,8 +31,7 @@ import v2.compiler.resolve { ObservationComplete, ObservationCompleteness, Obser
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.optional { Absent, Present }
-import v2.std.algebra { fold_list }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list }
 
 // XL-2'S REHEARSAL INSTRUMENT: THE CUT EXECUTED IN A THROWAWAY TREE, ITS RESIDUAL OBSERVED ON THE
 // PRODUCTION ROUTE. Every stage is an existing authority composed, not restated: the exact base is

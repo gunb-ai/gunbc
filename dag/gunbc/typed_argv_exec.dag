@@ -1,7 +1,7 @@
 module gunbc.typed_argv_exec
 
 import std.types { String, List, NonEmptyStr }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import extdeps.ssh.session {
   ssh_session_exec_result_from_service,
   ssh_session_exec_portable_words,

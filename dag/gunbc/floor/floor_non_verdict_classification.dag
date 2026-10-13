@@ -2,8 +2,7 @@ module gunbc.floor.floor_non_verdict_classification
 
 import std.types { String, List }
 import v2.std.integer { Int }
-import v2.std.algebra { count_where, fold_list, length }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, count_where, fold_list, length }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 
 // WHY THIS CARRIER EXISTS. v2.workflow.floor_non_verdict carries fifteen identities that the
@@ -141,7 +140,8 @@ data closure_dependent_rows: List<ClassifiedNonVerdictRow> = []
 // carrying raw code points, and canonical_hash_of_connective routed that field into
 // content_hash_atom -> atom_identity_hash, which requires a string, so the hash threw before any
 // assertion ran. Repaired at the PRODUCER by giving character atoms a string identity through
-// from_code_point, with code_point as its inverse on the two decoders. All four now ANSWER: three
+// from_code_point (since gunbc#13378, the typed std.unicode.scalar route; the seed builtin was
+// deleted), with code_point as its inverse on the two decoders. All four now ANSWER: three
 // PASS and bootstrap_footprint_canonical_holds FAILS honestly, so the four left this roster and the
 // three passing ones left floor_expected_red in the same change. The list stays declared rather
 // than deleted because the CAUSE remains constructible -- nothing prevents another producer putting

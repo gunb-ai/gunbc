@@ -6,7 +6,7 @@ import gunbc.fleet.org_actions_standing {
   OrgActionsAgreement, OrgActionsDeviation, RepoAdmissionDiverges, RepoPublicExposureDiverges,
   desired_org_actions_goal, assess_org_actions,
 }
-import v2.std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged }
 
 data grp_private_closed: ObservedGroupAccess = ObservedGroupAccess {

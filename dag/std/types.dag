@@ -264,7 +264,7 @@ type NonEmptyStr     = String where string_non_empty
 // test.claim.where_refinement_predicate_vocabulary_witness executes this body on the table's
 // probe values so the two cannot drift silently. The same holds for gt_zero, range and
 // std.content_hash lower_hex_*. The spelling is not
-// `non_empty`: that name is v2.std.algebra non_empty<T> (a free monoid's non-emptiness, a different
+// `non_empty`: that name is std.algebra non_empty<T> (a free monoid's non-emptiness, a different
 // domain) and a builtin collection-method name, so a std free fn spelled `non_empty` would be a
 // second meaning for one name (DESIGN section 3) and would break the method table.
 fn string_non_empty(value: String) -> Bool {
