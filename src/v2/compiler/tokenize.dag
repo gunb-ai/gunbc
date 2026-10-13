@@ -913,8 +913,41 @@ fn lex_walk_init(src: v2.std.text.String, file: Symbol, prepared: PreparedLexRul
   }
 }
 
-fn lex_walk_is_done(acc: LexWalkAcc) -> Bool {
-  acc.done
+// HOW FAR THE WALK GOES. The whole door lexes the text to its end; the prefix door
+// (tokenize_prefix_prepared) stops the SAME walk at a scalar index. The limit is one more reason for
+// the fold to stop, and it stops nothing else: every step it does take is lex_walk_step, so the tokens
+// of a stopped walk are exactly the leading tokens of the whole lex and a refusal inside the walked
+// part is the whole lex's first refusal.
+type LexWalkLimit
+  = LexWalkWhole
+  | LexWalkUntil { scalars: Int }
+
+// A walk stops at its limit only while input remains: a cursor at the end of the text takes the finish
+// step like the whole walk, so a prefix that reaches the end of the text carries the end-of-input
+// verdict too (an unterminated mode) and is the whole lex, not a stand-in for it.
+fn lex_walk_limit_reached(acc: LexWalkAcc, limit: LexWalkLimit) -> Bool {
+  match limit {
+    LexWalkWhole => false
+    LexWalkUntil { scalars: n } =>
+      if acc.remaining.index >= n {
+        match lex_cursor_empty(cursor: acc.remaining) {
+          true => false
+          false => true
+        }
+      } else {
+        false
+      }
+  }
+}
+
+fn lex_walk_is_done(acc: LexWalkAcc, limit: LexWalkLimit) -> Bool {
+  acc.done || lex_walk_limit_reached(acc: acc, limit: limit)
+}
+
+// Whether the walk ended where the whole lex ends -- it finished, refused, or has no input left --
+// rather than at its limit with input remaining.
+fn lex_walk_reached_end(acc: LexWalkAcc) -> Bool {
+  acc.done || lex_cursor_empty(cursor: acc.remaining)
 }
 
 fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
@@ -1121,10 +1154,10 @@ fn lex_walk_emit_token(acc: LexWalkAcc, class: Symbol, lexeme: v2.std.text.Strin
   }
 }
 
-fn lex_walk_source_algebra(file: Symbol, prepared: PreparedLexRuleSet) -> SourceFold<LexWalkAcc> {
+fn lex_walk_source_algebra(file: Symbol, prepared: PreparedLexRuleSet, limit: LexWalkLimit) -> SourceFold<LexWalkAcc> {
   SourceFold {
     init: fn(src) { lex_walk_init(src: src, file: file, prepared: prepared) },
-    is_done: lex_walk_is_done,
+    is_done: fn(acc) { lex_walk_is_done(acc: acc, limit: limit) },
     step: lex_walk_step
   }
 }
@@ -1144,10 +1177,27 @@ fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet
 }
 
 fn lex_walk_artifact_prepared(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<LexArtifact> {
+  match lex_walk_artifact_limited(source: source, file: file, prepared: prepared, limit: LexWalkWhole) {
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+      v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Accepted { value: walk, diagnostics: ds } =>
+      v2.std.diagnostic.Accepted { value: walk.artifact, diagnostics: ds }
+  }
+}
+
+// THE ARTIFACT OF A WALK, AND WHETHER THAT WALK IS THE WHOLE LEX. `complete` is false only for a walk
+// that a limit stopped with input remaining; every walk under LexWalkWhole is complete, so the whole
+// door and the prefix door are this one function with different limits.
+type LexArtifactWalk {
+  artifact: LexArtifact
+  complete: Bool
+}
+
+fn lex_walk_artifact_limited(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet, limit: LexWalkLimit) -> Outcome<LexArtifactWalk> {
   match prepared.mode_refusal {
     Present { value: refusal } =>
       v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e5_mode_declaration_diagnostic(file: file, refusal: refusal)) }
-    Absent => lex_walk_artifact_walked(source: source, file: file, prepared: prepared)
+    Absent => lex_walk_artifact_walked(source: source, file: file, prepared: prepared, limit: limit)
   }
 }
 
@@ -1159,10 +1209,10 @@ fn lex_walk_mode_fault_diagnostic(file: Symbol, fault: LexWalkModeFault) -> Diag
   }
 }
 
-fn lex_walk_artifact_walked(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<LexArtifact> {
+fn lex_walk_artifact_walked(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet, limit: LexWalkLimit) -> Outcome<LexArtifactWalk> {
   let result = fold_source(
     src: source,
-    algebra: lex_walk_source_algebra(file: file, prepared: prepared)
+    algebra: lex_walk_source_algebra(file: file, prepared: prepared, limit: limit)
   )
   let at = match lex_cursor_empty(cursor: result.remaining) {
     true => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
@@ -1177,10 +1227,13 @@ fn lex_walk_artifact_walked(source: v2.std.text.String, file: Symbol, prepared: 
     }
   } else {
     v2.std.diagnostic.Accepted {
-      value: lex_artifact_new(
-        tokens: token_stream_lexed(all: list_reverse(xs: result.tokens), layout: result.layout),
-        annotations: list_reverse(xs: result.annotations)
-      ),
+      value: LexArtifactWalk {
+        artifact: lex_artifact_new(
+          tokens: token_stream_lexed(all: list_reverse(xs: result.tokens), layout: result.layout),
+          annotations: list_reverse(xs: result.annotations)
+        ),
+        complete: lex_walk_reached_end(acc: result)
+      },
       diagnostics: v2.std.diagnostic.None
     }
   }
@@ -1261,6 +1314,31 @@ fn prepare_lex_rules(rules: LexRules) -> PreparedLexRules {
 }
 
 fn tokenize_prepared(text: String, file: Symbol, prepared: PreparedLexRules) -> Outcome<TokenStream> {
+  match tokenize_prefix_prepared(text: text, file: file, prepared: prepared, limit: LexWalkWhole) {
+    v2.std.diagnostic.Rejected { diagnostics: ds } =>
+      v2.std.diagnostic.Rejected { diagnostics: ds }
+    v2.std.diagnostic.Accepted { value: prefix, diagnostics: ds } =>
+      v2.std.diagnostic.Accepted { value: prefix.stream, diagnostics: ds }
+  }
+}
+
+// THE LEADING TOKENS OF A LEX, AND WHETHER THEY ARE ALL OF IT. `stream` holds the tokens of the text up
+// to the walk's stop and `complete` says the stop was the end of the lex rather than the limit, so a
+// reader that needs only the start of a file (a module's header) can ask for a window and learn whether
+// a longer one could differ.
+type LexPrefix {
+  stream: TokenStream
+  complete: Bool
+}
+
+// THE ONE DOOR OF THE LEX, WHOLE OR PARTIAL. tokenize_prepared is this door under LexWalkWhole, so the
+// text ingress below, the void-rules refusal and the walk are shared rather than restated. Under
+// LexWalkUntil the text is still unfolded and walked from its start with the whole text in view, only
+// stopped at the limit: a token that crosses the limit is lexed whole, never cut at it, so no token of a
+// prefix differs from the same token of the whole lex. A refusal inside the walked part is the whole
+// lex's refusal with its own cause; a refusal beyond it is not seen, which is why a prefix that is not
+// `complete` says nothing about the rest of the text.
+fn tokenize_prefix_prepared(text: String, file: Symbol, prepared: PreparedLexRules, limit: LexWalkLimit) -> Outcome<LexPrefix> {
   let source = unicode_scalar_unfold(s: text)
   let at = Textual {
     file: file,
@@ -1269,12 +1347,20 @@ fn tokenize_prepared(text: String, file: Symbol, prepared: PreparedLexRules) -> 
   match prepared {
     PreparedVoidLexRules =>
       if is_empty(xs: source) {
-        v2.std.diagnostic.Accepted { value: token_stream_empty(), diagnostics: v2.std.diagnostic.None }
+        v2.std.diagnostic.Accepted { value: LexPrefix { stream: token_stream_empty(), complete: true }, diagnostics: v2.std.diagnostic.None }
       } else {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
     PreparedModeledLexRules { root: prepared_set } =>
-      lex_walk_prepared(source: source, file: file, prepared: prepared_set)
+      match lex_walk_artifact_limited(source: source, file: file, prepared: prepared_set, limit: limit) {
+        v2.std.diagnostic.Rejected { diagnostics: ds } =>
+          v2.std.diagnostic.Rejected { diagnostics: ds }
+        v2.std.diagnostic.Accepted { value: walk, diagnostics: ds } =>
+          v2.std.diagnostic.Accepted {
+            value: LexPrefix { stream: lex_artifact_semantic_tokens(artifact: walk.artifact), complete: walk.complete },
+            diagnostics: ds
+          }
+      }
   }
 }
 
