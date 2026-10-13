@@ -66,6 +66,13 @@ fn probe_unit() -> RuntimeValue {
   }
 }
 
+// RuntimeAggregate carries no primitive-discriminant byte.
+fn probe_aggregate() -> RuntimeValue {
+  RuntimeAggregate {
+    value: RuntimeAggregateValue { aggregate_type: probe_node(), fields: [] }
+  }
+}
+
 // RuntimeReference carries no primitive-discriminant byte.
 fn probe_reference() -> RuntimeValue {
   RuntimeReference {
@@ -98,12 +105,14 @@ fn probe_five_second_byte() -> RuntimeValue {
   }
 }
 
-// RED: non-primitive variants and a primitive with fewer than 2 bytes all project to Absent
-// (a match that answered the wrong variant, or that read bytes[1] on them, would fail this).
+// RED: every non-primitive variant (Aggregate / Reference / Closure / Unit — all four named
+// arms) and a primitive with fewer than 2 bytes project to Absent. A match that answered the
+// wrong variant, or that read bytes[1] on any of them, would fail this.
 test fn discriminant_octet_non_primitive_is_absent() -> Bool {
-  runtime_value_discriminant_octet(value: probe_unit()) == Absent
+  runtime_value_discriminant_octet(value: probe_aggregate()) == Absent
     && runtime_value_discriminant_octet(value: probe_reference()) == Absent
     && runtime_value_discriminant_octet(value: probe_closure()) == Absent
+    && runtime_value_discriminant_octet(value: probe_unit()) == Absent
     && runtime_value_discriminant_octet(value: probe_zero_bytes()) == Absent
 }
 
