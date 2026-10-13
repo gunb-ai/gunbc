@@ -20,7 +20,7 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason,
   diagnostics_list_has_reason
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import std.types { Bool }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
