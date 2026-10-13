@@ -36,8 +36,8 @@ import std.algebra { Cons, Empty }
 
 // XL-2'S REHEARSAL INSTRUMENT: THE CUT EXECUTED IN A THROWAWAY TREE, ITS RESIDUAL OBSERVED ON THE
 // PRODUCTION ROUTE. Every stage is an existing authority composed, not restated: the exact base is
-// gunbc.namespace_cut.namespace_step0_subject_collector (every byte read out of the git object store at one pinned
-// revision, a failed read refusing the collection), the cut is the typed import strip through
+// supplied by the caller as (source_commit, source_tree, members); acquiring it from a pinned revision
+// (subject read, tree-id recompute) is the NEXT STOP and is not in this module yet, the cut is the typed import strip through
 // gunbc.namespace_cut.namespace_step0_strip_producer, and the observation is v2.compiler.compile's whole-tree
 // census-resolve (gunbc#11738) over the stripped sources. THE THROWAWAY TREE IS AN INGEST, NOT A
 // DIRECTORY: each stripped member keeps its base path as its artifact path and compilation unit, so
@@ -129,14 +129,10 @@ data xl2_excluded_populations: List<Xl2ExcludedPopulation> = [
   HeaderSegmentsNotRefusalSites
 ]
 
-// WHY THE BASE WAS NOT OBSERVED. The subject is bytes the producer's prep materialized, so every
-// semantic fact about it is computed here from those bytes (transport verified, not trusted): the
-// tree id is re-derived and compared with the id the prep claimed, and a mismatch is a refusal, not
-// a run over a different tree.
+// WHY THE BASE WAS NOT OBSERVED. Only the revision-identity arm is constructed today. The tree-id
+// mismatch and unreadable-member arms return with the subject read that constructs them.
 type Xl2BaseUnobservedCause
   = Xl2RevisionIdentityUnreadable { hex: String }
-  | Xl2SubjectTreeIdMismatch { claimed: String, derived: String }
-  | Xl2SubjectMemberUnreadable { path: String, reason: String }
 
 type Xl2RehearsalRun
   = Xl2RehearsalBaseUnobserved { cause: Xl2BaseUnobservedCause }
