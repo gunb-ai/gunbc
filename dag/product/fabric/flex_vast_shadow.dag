@@ -7,7 +7,7 @@ import std.integer { int_to_decimal_string }
 import std.measure {
   MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate, ByteSize,
   money_amount_micro, second, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
-  byte_size_count,
+  byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
 }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.currency.currency { Usd }
@@ -15,7 +15,8 @@ import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
 import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey,
-  FlexBidAttempt, FlexBidAdmission, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused,
+  FlexBidAttempt, FlexBidAdmission, FlexBidRefused,
+  FlexDecimalConversionRefused,
   FlexActuationMode, FlexActuationDry, FlexActuationWet, flex_policy_actuation,
   flex_floor_buffer, flex_bid_admission,
   PhysicalMachineObservationIdentity, ProviderAccountObservationIdentity,
@@ -25,6 +26,7 @@ import product.fabric.demand { debt_payoff_objective, DemandObjective }
 import product.fabric.budget { MoneyAccount }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiInstance, vast_ai_search_type_bid, vast_ai_search_limit_default,
+  vast_ai_min_bid_money_per_hour,
 }
 import std.rational { NonzeroNatFraction }
 
@@ -39,6 +41,8 @@ data flex_m3_rent_cooldown_starts_at_ask: DissolutionCondition = unbound_dissolu
 data flex_m3_pass_stops_at_first_failure: DissolutionCondition = unbound_dissolution(description: "M3: stop the observation/plan pass at the first failure so the next pass plans from what really happened. TRIGGER: the wet loop refuses to continue after the first typed failure. SUFFICIENT FOR deleting this row.")
 
 data flex_qwen_probe_harness_placement_frontier: DissolutionCondition = unbound_dissolution(description: "M3: wire flex_rented_card_fungible into gunbc.harness.harness_requirement_placement. TRIGGER: placement refuses a rented card whose probe is not FlexQwenProbeConfirmed with qwen3 / qwen3_coder. SUFFICIENT FOR deleting this row. NOT satisfied by declaring the requirement here.")
+
+data flex_wet_create_release_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create/destroy loop consumes FlexCreateStanding, flex_reconcile_acquisition, FlexReleaseStanding, and flex_release_readback. TRIGGER: that loop is the remaining executing route if test.claim.fabric.flex_vast_shadow_witness is deleted. SUFFICIENT FOR deleting this row.")
 
 type FlexWriteDecision
   = FlexWriteHeldDry
@@ -247,33 +251,35 @@ fn flex_shadow_bid(
   occupancy: FlexFleetOccupancy,
   window: FlexAcquisitionWindow,
   account: MoneyAccount,
+  offer: VastAiOffer,
   attempt: FlexBidAttempt<NonEmptyStr>,
-  offer_id: Int,
 ) -> FlexShadowBidReceipt {
-  FlexShadowBidReceipt {
-    offer_id: offer_id,
-    machine: attempt.machine,
-    admission: flex_bid_admission(
-      policy: policy,
-      occupancy: occupancy,
-      window: window,
-      account: account,
-      attempt: attempt,
-    ),
-    actuation: flex_policy_actuation(policy: policy),
-  }
-}
-
-fn flex_shadow_records_admission(receipt: FlexShadowBidReceipt) -> Bool {
-  match receipt.admission {
-    FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => true
-    FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => true
-    FlexBidRefused { cause: _ } => true
+  match vast_ai_min_bid_money_per_hour(offer: offer) {
+    DecimalMoneyPerHourRefused { conversion: c } =>
+      FlexShadowBidReceipt {
+        offer_id: offer.id,
+        machine: attempt.machine,
+        admission: FlexBidRefused { cause: FlexDecimalConversionRefused { conversion: c } },
+        actuation: flex_policy_actuation(policy: policy),
+      }
+    DecimalMoneyPerHourConverted { rate: _ } =>
+      FlexShadowBidReceipt {
+        offer_id: offer.id,
+        machine: attempt.machine,
+        admission: flex_bid_admission(
+          policy: policy,
+          occupancy: occupancy,
+          window: window,
+          account: account,
+          attempt: attempt,
+        ),
+        actuation: flex_policy_actuation(policy: policy),
+      }
   }
 }
 
 type FlexCreateStanding
-  = FlexCreateAnswered { instance_id: Int, machine_id: Int }
+  = FlexCreateAnswered { instance_id: Int, machine_id: Int, ask_id: Int }
   | FlexCreateLost { ask_id: Int, machine_id: Int }
   | FlexCreateRefused { ask_id: Int, machine_id: Int }
 
@@ -299,7 +305,7 @@ fn flex_reconcile_acquisition(
   instances: List<VastAiInstance>,
 ) -> FlexReconcileVerdict {
   match standing {
-    FlexCreateAnswered { instance_id: id, machine_id: mid } =>
+    FlexCreateAnswered { instance_id: id, machine_id: mid, ask_id: _ } =>
       match fold(
         instances,
         init: none,
@@ -414,8 +420,8 @@ fn flex_rental_readback(
       } else {
         match standing {
           FlexCreateLost { ask_id: a, machine_id: m } => FlexRentalPending { ask_id: a, machine_id: m }
-          FlexCreateAnswered { instance_id: _, machine_id: m } =>
-            FlexRentalPending { ask_id: 0, machine_id: m }
+          FlexCreateAnswered { instance_id: _, machine_id: m, ask_id: a } =>
+            FlexRentalPending { ask_id: a, machine_id: m }
           FlexCreateRefused { ask_id: _, machine_id: _ } => FlexRentalGone
         }
       }

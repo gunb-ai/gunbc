@@ -33,8 +33,11 @@ import product.fabric.selection {
   OfferLiabilityOverBuyOrder, OfferRevocationNotAdmitted, selection_liability,
 }
 
-// Fleet interruptible-bid policy. Production consumer of flex_bid_admission is
-// product.fabric.flex_vast_shadow flex_shadow_bid. No create or destroy is declared on that path.
+// Fleet interruptible-bid policy. Adapter: product.fabric.flex_vast_shadow flex_shadow_bid maps a
+// VastAiOffer through vast_ai_min_bid_money_per_hour and calls flex_bid_admission. DECLARED FRONTIER
+// (DESIGN §3c): a non-test executing route that remains if the witness is deleted. TRIGGER: an
+// instrument or wet readonly Search that calls flex_shadow_bid. Until then the executing consumer
+// is test.claim.fabric.flex_vast_shadow_witness. No create or destroy.
 
 data flex_floor_buffer: NonzeroNatFraction = NonzeroNatFraction { num: 1, denom_predecessor: 9 }
 

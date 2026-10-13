@@ -43,7 +43,7 @@ import product.fabric.flex_vast_shadow {
   FlexNinfer, FlexVllm, flex_engine_min_driver,
   flex_gpu_class_rtx_5000_48gb, flex_gpu_class_72gb, flex_gpu_class_rtx_pro_6000_96gb,
   flex_gpu_class_matches, flex_offer_supported, flex_offer_in_shadow_field,
-  flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid, flex_shadow_records_admission,
+  flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
   flex_vast_api_read_grant, flex_host_driver_unread_obligation, flex_delay_unvalued,
   FlexCreateLost, FlexCreateRefused, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
   flex_reconcile_acquisition, flex_may_acquire,
@@ -54,6 +54,7 @@ import product.fabric.flex_vast_shadow {
   flex_rental_readback, FlexRentalHeld, FlexRentalPending, FlexRentalUnknown, FlexRentalGone,
   flex_search_offers_inhabitance_frontier, flex_m3_rent_cooldown_starts_at_ask,
   flex_m3_pass_stops_at_first_failure, flex_qwen_probe_harness_placement_frontier,
+  flex_wet_create_release_consumer_frontier,
   flex_release_readback, FlexReleaseRequested, FlexReleaseLost, FlexReleasePending,
   FlexReleaseConfirmedGone, FlexReleaseUnknown, flex_demand_exceeds_share, flex_record_pass,
 }
@@ -236,7 +237,7 @@ fn inst(id: Int, machine_id: Int) -> VastAiInstance {
 test fn operator_template_and_policy_are_named_facts() -> Bool {
   (flex_qwen_serving_template.image == flex_qwen_serving_image)
     && flex_qwen_serving_template.published_tcp_port == flex_qwen_published_tcp_port
-    && flex_qwen_serving_template.disk == flex_qwen_disk
+    && byte_size_count(b: flex_qwen_serving_template.disk) == byte_size_count(b: flex_qwen_disk)
     && (flex_qwen_serving_template.model_id == flex_qwen_model_id)
     && flex_qwen_published_tcp_port == 8000
     && byte_size_count(b: flex_qwen_disk) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 32)))
@@ -364,6 +365,10 @@ fn frontiers_are_unbound() -> Bool {
       BoundDissolution { trigger: _ } => false
     }
     && match flex_qwen_probe_harness_placement_frontier {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
+    && match flex_wet_create_release_consumer_frontier {
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
     }
@@ -507,16 +512,15 @@ test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
     occupancy: empty_occupancy(),
     window: t_window(remaining: 1),
     account: t_account(),
+    offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true),
     attempt: t_attempt(
       machine: t_machine(id: "42"),
       min_bid: ExactDecimal { units: 1, fraction_digits: 0 },
       quote: usd_hour(amount: money_amount_micro(count: 1100000)),
       key: "offer-42",
     ),
-    offer_id: 7,
   )
-  flex_shadow_records_admission(receipt: receipt)
-    && receipt.offer_id == 7
+  receipt.offer_id == 7
     && match receipt.actuation {
       FlexActuationDry => true
       FlexActuationWet => false
