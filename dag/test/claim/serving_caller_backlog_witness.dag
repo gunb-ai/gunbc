@@ -21,7 +21,7 @@ import gunbc.serving.caller_backlog {
   CallerRecordFound, CallerRecordAbsent, CallerRecordDuplicated,
   RetryComeBack, RetryTerminal,
   empty_caller_backlog,   persist_waiting, snapshot_after_persist, offer_persisted,
-  encode_waiting, decode_waiting, encode_bound_deficit, decode_bound_deficit, recovery_bound_deficit,
+  encode_waiting, decode_waiting, recovery_bound_deficit,
   WaitingWireEncoded, WaitingWireUnencodable,
   resume_from_snapshot, view_after_controller_restart, resume_after_restart,
   waiting_survives_ready_supply, apply_ready_supply, apply_ready_supply_law, offer_against_ready_supply,
@@ -316,41 +316,66 @@ test fn w_encoded_waiting_roundtrips_recovery_history() -> Bool {
 }
 
 test fn w_bound_deficit_decode_refuses_a_negative_count() -> Bool {
-  (match decode_bound_deficit(s: "-1:2") { Absent => true  Present { value: _ } => false })
-    && (match decode_bound_deficit(s: "1:-2") { Absent => true  Present { value: _ } => false })
-    && (match decode_bound_deficit(s: "0:0") {
-      Absent => false
-      Present { value: d } => d.probes_succeeded == 0 && d.requests_failed == 0
+  let negative_probes = "{\"work\":\"logical-work-a\",\"reservation\":\"grant-work-a\",\"generation\":2,\"phase\":{\"kind\":\"recovery_bound_exceeded\",\"probes_succeeded\":-1,\"requests_failed\":2},\"recovery\":[]}" as NonEmptyStr
+  let negative_requests = "{\"work\":\"logical-work-a\",\"reservation\":\"grant-work-a\",\"generation\":2,\"phase\":{\"kind\":\"recovery_bound_exceeded\",\"probes_succeeded\":1,\"requests_failed\":-2},\"recovery\":[]}" as NonEmptyStr
+  let zero = CallerWorkRecord {
+    work: work_a,
+    reservation: reservation_a,
+    generation: 2,
+    phase: WorkRecoveryBoundExceeded { deficit: recovery_bound_deficit(events: [] as List<RecoveryEvent>) },
+    recovery: [] as List<RecoveryEvent>,
+  }
+  (match decode_waiting(payload: negative_probes) { Absent => true  Present { value: _ } => false })
+    && (match decode_waiting(payload: negative_requests) { Absent => true  Present { value: _ } => false })
+    && (match encode_waiting(record: zero) {
+      WaitingWireUnencodable { reason: _ } => false
+      WaitingWireEncoded { payload: p } =>
+        match decode_waiting(payload: p) {
+          Absent => false
+          Present { value: back } =>
+            match back.phase {
+              WorkRecoveryBoundExceeded { deficit: d } => d.probes_succeeded == 0 && d.requests_failed == 0
+              WorkWaiting => false
+              WorkCompleted => false
+              WorkCancelled => false
+            }
+        }
     })
-    && encode_bound_deficit(deficit: recovery_bound_deficit(events: [
-      RecoveryEvent { kind: RecoveryProbe, succeeded: true },
-      RecoveryEvent { kind: RecoveryRequest, succeeded: false },
-    ])) == "1:1"
 }
 
-test fn w_tab_in_work_id_is_unencodable() -> Bool {
-  match encode_waiting(record: CallerWorkRecord {
+test fn w_tab_in_work_id_roundtrips_through_json() -> Bool {
+  let recorded = CallerWorkRecord {
     work: "logical\twork" as LogicalWorkId,
     reservation: reservation_a,
     generation: 2,
     phase: WorkWaiting,
     recovery: [] as List<RecoveryEvent>,
-  }) {
-    WaitingWireEncoded { payload: _ } => false
-    WaitingWireUnencodable { reason: _ } => true
+  }
+  match encode_waiting(record: recorded) {
+    WaitingWireUnencodable { reason: _ } => false
+    WaitingWireEncoded { payload: payload } =>
+      match decode_waiting(payload: payload) {
+        Absent => false
+        Present { value: back } => (back.work as String) == "logical\twork"
+      }
   }
 }
 
-test fn w_tab_in_reservation_is_unencodable() -> Bool {
-  match encode_waiting(record: CallerWorkRecord {
+test fn w_tab_in_reservation_roundtrips_through_json() -> Bool {
+  let recorded = CallerWorkRecord {
     work: work_a,
     reservation: "grant\twork" as ReservationRef,
     generation: 2,
     phase: WorkWaiting,
     recovery: [] as List<RecoveryEvent>,
-  }) {
-    WaitingWireEncoded { payload: _ } => false
-    WaitingWireUnencodable { reason: _ } => true
+  }
+  match encode_waiting(record: recorded) {
+    WaitingWireUnencodable { reason: _ } => false
+    WaitingWireEncoded { payload: payload } =>
+      match decode_waiting(payload: payload) {
+        Absent => false
+        Present { value: back } => (back.reservation as String) == "grant\twork"
+      }
   }
 }
 

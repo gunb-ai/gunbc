@@ -2,9 +2,16 @@ module gunbc.serving.caller_backlog
 
 import std.types { Bool, String, NonEmptyStr, Int, List, brand }
 import std.nat { Nat, Zero, Succ }
-import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
 import std.algebra { length }
+import extdeps.languages.json.emit {
+  JsonValue, JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString,
+  json_array, json_bool, json_int, json_kv, json_object, json_string, serialize_json,
+}
+import extdeps.languages.json.parse {
+  FieldAbsent, FieldMalformed, FieldRead, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_field, json_field_bool, json_field_int, json_field_nat, json_field_string, parse_json_document,
+}
 import product.fabric.execution { ReservationRef }
 import product.fabric.budget { MoneyAccount, fence_admits }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
@@ -204,198 +211,46 @@ fn resume_after_restart(view: ControllerView, work: LogicalWorkId) -> ResumeStan
   resume_from_snapshot(snapshot: view.durable, work: work)
 }
 
-// THE SLOT PAYLOAD IS ONE WIRE FORM. waiting_wire_separator / waiting_wire_field_count,
-// waiting_phase_wire_rows, and waiting_recovery_wire_rows are the productions; encode
-// selects them backward, decode selects the same rows forward. A field that could contain
-// the separator is unencodable — never sanitized, never written — so persist cannot land
-// a turn resume cannot read (the loss PersistBeforeOffer exists to prevent).
+// THE SLOT PAYLOAD IS RFC 8259 JSON. encode_waiting builds a JsonValue for CallerWorkRecord and
+// serialize_json emits it (extdeps.languages.json.emit); decode_waiting parses with
+// parse_json_document (extdeps.languages.json.parse) and reads members through json_field_*.
 // generation here is product.fabric.budget MoneyLease.generation (Int), not
-// std.durable_compare_and_set CasGeneration (the slot's version).
+// std.durable_compare_and_set CasGeneration (the slot's version). Tabs and newlines in work
+// or reservation ids are JSON-escaped, not a private refusal class.
 
-data waiting_wire_separator: String = "\t"
-data waiting_wire_field_count: Int = 6
-data waiting_recovery_separator: String = ","
-
-type WaitingPhaseWireRow {
-  tag: String
-  closed: CallerWorkPhase?
-}
-
-data waiting_phase_wire_rows: List<WaitingPhaseWireRow> = [
-  WaitingPhaseWireRow { tag: "W", closed: Present { value: WorkWaiting } },
-  WaitingPhaseWireRow { tag: "C", closed: Present { value: WorkCompleted } },
-  WaitingPhaseWireRow { tag: "X", closed: Present { value: WorkCancelled } },
-  WaitingPhaseWireRow { tag: "B", closed: none },
-]
-
-type WaitingRecoveryWireRow {
-  token: String
-  event: RecoveryEvent
-}
-
-data waiting_recovery_wire_rows: List<WaitingRecoveryWireRow> = [
-  WaitingRecoveryWireRow { token: "P1", event: RecoveryEvent { kind: RecoveryProbe, succeeded: true } },
-  WaitingRecoveryWireRow { token: "P0", event: RecoveryEvent { kind: RecoveryProbe, succeeded: false } },
-  WaitingRecoveryWireRow { token: "R1", event: RecoveryEvent { kind: RecoveryRequest, succeeded: true } },
-  WaitingRecoveryWireRow { token: "R0", event: RecoveryEvent { kind: RecoveryRequest, succeeded: false } },
-]
-
-fn waiting_wire_field_is_clean(field: String) -> Bool {
-  field != ""
-    && length(field.split(delimiter: waiting_wire_separator)) == 1
-    && length(field.split(delimiter: "\n")) == 1
-}
-
-fn waiting_generation_wire(generation: Int) -> String? {
-  let s = to_string(generation)
-  if !waiting_wire_field_is_clean(field: s) {
-    none
-  } else {
-    match parse_int(s: s) {
-      Absent => none
-      Present { value: back } => if back == generation { Present { value: s } } else { none }
-    }
-  }
-}
-
-fn encode_bound_deficit(deficit: RecoveryBoundDeficit) -> String {
-  concat(to_string(deficit.probes_succeeded as Int), concat(":", to_string(deficit.requests_failed as Int)))
-}
-
-fn decode_bound_deficit(s: String) -> RecoveryBoundDeficit? {
-  let parts = s.split(delimiter: ":")
-  if length(parts) != 2 {
-    none
-  } else {
-    match parts.first() {
-      Absent => none
-      Present { value: probes_s } =>
-        match parts.skip(n: 1).first() {
-          Absent => none
-          Present { value: requests_s } =>
-            match parse_int(s: probes_s) {
-              Absent => none
-              Present { value: probes_i } =>
-                match parse_int(s: requests_s) {
-                  Absent => none
-                  Present { value: requests_i } =>
-                    match checked_int_to_nat(n: probes_i) {
-                      Absent => none
-                      Present { value: probes_succeeded } =>
-                        match checked_int_to_nat(n: requests_i) {
-                          Absent => none
-                          Present { value: requests_failed } =>
-                            Present {
-                              value: RecoveryBoundDeficit {
-                                probes_succeeded: probes_succeeded,
-                                requests_failed: requests_failed,
-                              },
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-  }
-}
-
-fn encode_phase_deficit(phase: CallerWorkPhase) -> String {
+fn encode_phase(phase: CallerWorkPhase) -> JsonValue {
   match phase {
-    WorkWaiting => ""
-    WorkCompleted => ""
-    WorkCancelled => ""
-    WorkRecoveryBoundExceeded { deficit: d } => encode_bound_deficit(deficit: d)
+    WorkWaiting => json_object(members: [json_kv(key: "kind", value: json_string(s: "waiting"))])
+    WorkCompleted => json_object(members: [json_kv(key: "kind", value: json_string(s: "completed"))])
+    WorkCancelled => json_object(members: [json_kv(key: "kind", value: json_string(s: "cancelled"))])
+    WorkRecoveryBoundExceeded { deficit: d } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "recovery_bound_exceeded")),
+        json_kv(key: "probes_succeeded", value: json_int(n: d.probes_succeeded as Int)),
+        json_kv(key: "requests_failed", value: json_int(n: d.requests_failed as Int)),
+      ])
   }
 }
 
-fn waiting_phase_row_covers(row: WaitingPhaseWireRow, phase: CallerWorkPhase, deficit: String) -> Bool {
-  match row.closed {
-    Present { value: p } => p == phase
-    Absent => deficit != ""
+fn encode_recovery_event(event: RecoveryEvent) -> JsonValue {
+  let kind = match event.kind {
+    RecoveryProbe => "probe"
+    RecoveryRequest => "request"
   }
+  json_object(members: [
+    json_kv(key: "kind", value: json_string(s: kind)),
+    json_kv(key: "succeeded", value: json_bool(b: event.succeeded)),
+  ])
 }
 
-fn encode_phase_from_rows(phase: CallerWorkPhase) -> String? {
-  let deficit = encode_phase_deficit(phase: phase)
-  if deficit != "" && !waiting_wire_field_is_clean(field: deficit) {
-    none
-  } else {
-    match filter(waiting_phase_wire_rows, row => waiting_phase_row_covers(row: row, phase: phase, deficit: deficit)).first() {
-      Absent => none
-      Present { value: row } => Present { value: row.tag }
-    }
-  }
-}
-
-fn decode_phase_from_rows(tag: String, deficit: String) -> CallerWorkPhase? {
-  match filter(waiting_phase_wire_rows, row => row.tag == tag).first() {
-    Absent => none
-    Present { value: row } =>
-      match row.closed {
-        Present { value: p } => if deficit == "" { Present { value: p } } else { none }
-        Absent =>
-          match decode_bound_deficit(s: deficit) {
-            Absent => none
-            Present { value: d } => Present { value: WorkRecoveryBoundExceeded { deficit: d } }
-          }
-      }
-  }
-}
-
-fn encode_recovery_event_from_rows(event: RecoveryEvent) -> String? {
-  match filter(waiting_recovery_wire_rows, row => row.event == event).first() {
-    Absent => none
-    Present { value: row } => Present { value: row.token }
-  }
-}
-
-fn decode_recovery_event_from_rows(token: String) -> RecoveryEvent? {
-  match filter(waiting_recovery_wire_rows, row => row.token == token).first() {
-    Absent => none
-    Present { value: row } => Present { value: row.event }
-  }
-}
-
-fn encode_recovery_from_rows(events: List<RecoveryEvent>) -> String? {
-  fold(
-    events,
-    init: Present { value: "" },
-    f: (acc, event) =>
-      match acc {
-        Absent => none
-        Present { value: so_far } =>
-          match encode_recovery_event_from_rows(event: event) {
-            Absent => none
-            Present { value: token } =>
-              if so_far == "" {
-                Present { value: token }
-              } else {
-                Present { value: concat(concat(so_far, waiting_recovery_separator), token) }
-              }
-          }
-      },
-  )
-}
-
-fn decode_recovery_from_rows(s: String) -> List<RecoveryEvent>? {
-  if s == "" {
-    Present { value: [] as List<RecoveryEvent> }
-  } else {
-    fold(
-      s.split(delimiter: waiting_recovery_separator),
-      init: Present { value: [] as List<RecoveryEvent> },
-      f: (acc, token) =>
-        match acc {
-          Absent => none
-          Present { value: xs } =>
-            match decode_recovery_event_from_rows(token: token) {
-              Absent => none
-              Present { value: event } => Present { value: concat(xs, [event]) }
-            }
-        },
-    )
-  }
+fn encode_waiting_value(record: CallerWorkRecord) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "work", value: json_string(s: record.work as String)),
+    json_kv(key: "reservation", value: json_string(s: record.reservation as String)),
+    json_kv(key: "generation", value: json_int(n: record.generation)),
+    json_kv(key: "phase", value: encode_phase(phase: record.phase)),
+    json_kv(key: "recovery", value: json_array(elements: fold(record.recovery, init: [] as List<JsonValue>, f: (acc, e) => concat(acc, [encode_recovery_event(event: e)])))),
+  ])
 }
 
 type WaitingWire
@@ -405,107 +260,186 @@ type WaitingWire
 fn encode_waiting(record: CallerWorkRecord) -> WaitingWire {
   let work_s = record.work as String
   let reservation_s = record.reservation as String
-  if !waiting_wire_field_is_clean(field: work_s) {
-    WaitingWireUnencodable { reason: "logical work id is not a waiting-wire field" as NonEmptyStr }
-  } else if !waiting_wire_field_is_clean(field: reservation_s) {
-    WaitingWireUnencodable { reason: "reservation ref is not a waiting-wire field" as NonEmptyStr }
+  if work_s == "" {
+    WaitingWireUnencodable { reason: "logical work id is empty" as NonEmptyStr }
+  } else if reservation_s == "" {
+    WaitingWireUnencodable { reason: "reservation ref is empty" as NonEmptyStr }
   } else {
-    match waiting_generation_wire(generation: record.generation) {
-      Absent => WaitingWireUnencodable { reason: "lease generation is not a waiting-wire field" as NonEmptyStr }
-      Present { value: generation_s } =>
-        match encode_phase_from_rows(phase: record.phase) {
-          Absent => WaitingWireUnencodable { reason: "phase is not a waiting-wire production" as NonEmptyStr }
-          Present { value: tag } =>
-            match encode_recovery_from_rows(events: record.recovery) {
-              Absent => WaitingWireUnencodable { reason: "recovery history is not a waiting-wire production" as NonEmptyStr }
-              Present { value: recovery_s } =>
-                WaitingWireEncoded {
-                  payload: join([
-                    work_s,
-                    waiting_wire_separator,
-                    reservation_s,
-                    waiting_wire_separator,
-                    generation_s,
-                    waiting_wire_separator,
-                    tag,
-                    waiting_wire_separator,
-                    encode_phase_deficit(phase: record.phase),
-                    waiting_wire_separator,
-                    recovery_s,
-                  ], "") as NonEmptyStr,
-                }
-            }
-        }
+    let text = serialize_json(v: encode_waiting_value(record: record))
+    if text == "" {
+      WaitingWireUnencodable { reason: "json emit produced an empty payload" as NonEmptyStr }
+    } else {
+      WaitingWireEncoded { payload: text as NonEmptyStr }
     }
   }
 }
 
-fn waiting_wire_part(parts: List<String>, n: Int) -> String? {
-  parts.skip(n: n).first()
+fn required_json_string(obj: JsonValue, key: String) -> String? {
+  match json_field_string(obj: obj, key: key) {
+    FieldRead { value: s } => if s == "" { none } else { Present { value: s } }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
 }
 
-fn decode_waiting(payload: NonEmptyStr) -> CallerWorkRecord? {
-  let parts = (payload as String).split(delimiter: waiting_wire_separator)
-  if length(parts) != waiting_wire_field_count {
-    none
-  } else {
-    match waiting_wire_part(parts: parts, n: 0) {
-      Absent => none
-      Present { value: work_s } =>
-        match waiting_wire_part(parts: parts, n: 1) {
+fn required_json_int(obj: JsonValue, key: String) -> Int? {
+  match json_field_int(obj: obj, key: key) {
+    FieldRead { value: n } => Present { value: n }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn required_json_nat(obj: JsonValue, key: String) -> Nat? {
+  match json_field_nat(obj: obj, key: key) {
+    FieldRead { value: n } => Present { value: n }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn required_json_bool(obj: JsonValue, key: String) -> Bool? {
+  match json_field_bool(obj: obj, key: key) {
+    FieldRead { value: b } => Present { value: b }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn required_json_object(obj: JsonValue, key: String) -> JsonValue? {
+  match json_field(obj: obj, key: key) {
+    FieldRead { value: v } =>
+      match v {
+        JsonObject { members: _ } => Present { value: v }
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonArray { elements: _ } => none
+      }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn decode_phase(obj: JsonValue) -> CallerWorkPhase? {
+  match json_field_string(obj: obj, key: "kind") {
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+    FieldRead { value: kind } =>
+      if kind == "waiting" {
+        Present { value: WorkWaiting }
+      } else if kind == "completed" {
+        Present { value: WorkCompleted }
+      } else if kind == "cancelled" {
+        Present { value: WorkCancelled }
+      } else if kind == "recovery_bound_exceeded" {
+        match required_json_nat(obj: obj, key: "probes_succeeded") {
           Absent => none
-          Present { value: reservation_s } =>
-            match waiting_wire_part(parts: parts, n: 2) {
+          Present { value: probes } =>
+            match required_json_nat(obj: obj, key: "requests_failed") {
               Absent => none
-              Present { value: generation_s } =>
-                match waiting_wire_part(parts: parts, n: 3) {
-                  Absent => none
-                  Present { value: tag } =>
-                    match waiting_wire_part(parts: parts, n: 4) {
-                      Absent => none
-                      Present { value: deficit } =>
-                        match waiting_wire_part(parts: parts, n: 5) {
-                          Absent => none
-                          Present { value: recovery_s } =>
-                            if !waiting_wire_field_is_clean(field: work_s) || !waiting_wire_field_is_clean(field: reservation_s) {
-                              none
-                            } else {
-                              match parse_int(s: generation_s) {
-                                Absent => none
-                                Present { value: generation } =>
-                                  match waiting_generation_wire(generation: generation) {
-                                    Absent => none
-                                    Present { value: gen_s } =>
-                                      if gen_s != generation_s {
-                                        none
-                                      } else {
-                                        match decode_phase_from_rows(tag: tag, deficit: deficit) {
-                                          Absent => none
-                                          Present { value: phase } =>
-                                            match decode_recovery_from_rows(s: recovery_s) {
-                                              Absent => none
-                                              Present { value: recovery } =>
-                                                Present {
-                                                  value: CallerWorkRecord {
-                                                    work: work_s as LogicalWorkId,
-                                                    reservation: reservation_s as ReservationRef,
-                                                    generation: generation,
-                                                    phase: phase,
-                                                    recovery: recovery,
-                                                  },
-                                                }
-                                            }
-                                        }
-                                      }
-                                  }
-                              }
-                            }
-                        }
-                    }
+              Present { value: requests } =>
+                Present {
+                  value: WorkRecoveryBoundExceeded {
+                    deficit: RecoveryBoundDeficit { probes_succeeded: probes, requests_failed: requests },
+                  },
                 }
             }
         }
-    }
+      } else {
+        none
+      }
+  }
+}
+
+fn decode_recovery_event(v: JsonValue) -> RecoveryEvent? {
+  match required_json_string(obj: v, key: "kind") {
+    Absent => none
+    Present { value: kind } =>
+      match required_json_bool(obj: v, key: "succeeded") {
+        Absent => none
+        Present { value: succeeded } =>
+          if kind == "probe" {
+            Present { value: RecoveryEvent { kind: RecoveryProbe, succeeded: succeeded } }
+          } else if kind == "request" {
+            Present { value: RecoveryEvent { kind: RecoveryRequest, succeeded: succeeded } }
+          } else {
+            none
+          }
+      }
+  }
+}
+
+fn decode_recovery_events(obj: JsonValue) -> List<RecoveryEvent>? {
+  match json_field(obj: obj, key: "recovery") {
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: es } =>
+          fold(
+            es,
+            init: Present { value: [] as List<RecoveryEvent> },
+            f: (acc, e) =>
+              match acc {
+                Absent => none
+                Present { value: xs } =>
+                  match decode_recovery_event(v: e) {
+                    Absent => none
+                    Present { value: event } => Present { value: concat(xs, [event]) }
+                  }
+              },
+          )
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
+}
+
+fn decode_waiting_value(obj: JsonValue) -> CallerWorkRecord? {
+  match required_json_string(obj: obj, key: "work") {
+    Absent => none
+    Present { value: work_s } =>
+      match required_json_string(obj: obj, key: "reservation") {
+        Absent => none
+        Present { value: reservation_s } =>
+          match required_json_int(obj: obj, key: "generation") {
+            Absent => none
+            Present { value: generation } =>
+              match required_json_object(obj: obj, key: "phase") {
+                Absent => none
+                Present { value: phase_obj } =>
+                  match decode_phase(obj: phase_obj) {
+                    Absent => none
+                    Present { value: phase } =>
+                      match decode_recovery_events(obj: obj) {
+                        Absent => none
+                        Present { value: recovery } =>
+                          Present {
+                            value: CallerWorkRecord {
+                              work: work_s as LogicalWorkId,
+                              reservation: reservation_s as ReservationRef,
+                              generation: generation,
+                              phase: phase,
+                              recovery: recovery,
+                            },
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn decode_waiting(payload: NonEmptyStr) -> CallerWorkRecord? {
+  match parse_json_document(s: payload as String) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: v } => decode_waiting_value(obj: v)
   }
 }
 
