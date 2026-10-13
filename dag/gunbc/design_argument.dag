@@ -250,7 +250,7 @@ data conformance_domains: List<ConformanceDomain> = [
       "a second SELECTION algebra written beside product.fabric.selection rather than parameterised over the new subject",
       "a change to how one subject is HELD written as though one lease algebra covered both producers -- serving's termed LeaseGrant and the control plane's timeless LeaseIdentity are separate carriers with separate linearizations",
       "a preference for winning bids, equal occupancy, local hardware, warm state or low latency with no declared objective or owner policy behind it",
-      "a bid limit, count or retry that rises because the last attempt lost, rather than because the purchasing policy was revised",
+      "a bid limit, count or retry that rises because the last attempt lost, with no declared update law, evidence scope, objective and bound authorizing that response -- a bounded feedback controller whose update law is itself the declared policy is conforming",
       "an economic comparison that leaves out a known material consequence: setup, reconstruction, contention, retained liability or release",
       "two choices that draw on one allowance, or whose benefit exists only together (move these sessions AND release that rental), selected separately",
       "a provider status, a requested action or a dashboard event treated as proof of usable capacity, completed work or a released liability",
