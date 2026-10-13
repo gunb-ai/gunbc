@@ -356,7 +356,7 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     StrippedTreeRehearsalComposition => PrerequisiteDelivered {
       owner: decl_ref(module_path: "test.claim.namespace_xl2_rehearsal_census", decl_name: "xl2_residual_control_is_reported_holds"),
       evidence: Xl2PrerequisiteEvidence { pr: 12097, merge_sha: "1d4fa51a3d" as NonEmptyStr, measured_at: "1d4fa51a3d" as NonEmptyStr },
-      qualification: "delivered at COMPOSITION grain: gunbc.namespace_cut.namespace_xl2_rehearsal_census composes the import strip, the census-resolve observation and the completeness decision, built and exercised through its seven controls in test.claim.namespace_xl2_rehearsal_census. The real exact-base path, gunbc.namespace_cut.namespace_xl2_rehearsal_census run_xl2_rehearsal_at, is NOT executed: no whole-tree rehearsal has run and no residual has been taken, so this is not the rehearsal instrument's delivery." as NonEmptyStr,
+      qualification: "delivered at COMPOSITION grain: v2.workflow.namespace_xl2_rehearsal_census composes the import strip, the census-resolve observation and the completeness decision, built and exercised through its seven controls in test.claim.namespace_xl2_rehearsal_census. The real exact-base path, v2.workflow.namespace_xl2_rehearsal_census run_xl2_rehearsal_at, is NOT executed: no whole-tree rehearsal has run and no residual has been taken, so this is not the rehearsal instrument's delivery." as NonEmptyStr,
     }
     BlockStatementReferenceVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal", decl_name: "a_statement_followed_by_another_in_a_fn_body_refuses_at_normalize"),

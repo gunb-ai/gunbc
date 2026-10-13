@@ -1,4 +1,4 @@
-module gunbc.namespace_cut.namespace_xl2_rehearsal_census
+module v2.workflow.namespace_xl2_rehearsal_census
 
 import std.types { Int, List, String }
 import std.import_statement { ImportStripCoordinateSegment }

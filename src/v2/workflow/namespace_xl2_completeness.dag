@@ -1,12 +1,12 @@
-module gunbc.namespace_cut.namespace_xl2_completeness
+module v2.workflow.namespace_xl2_completeness
 
 import std.types { List }
 import std.algebra { Cons, Empty }
 import gunbc.compiler_frontend_program_status { Xl2Prerequisite, xl2_prerequisites_outstanding }
-import gunbc.namespace_cut.namespace_xl2_rehearsal_census { Xl2UnobservedScope }
+import v2.workflow.namespace_xl2_rehearsal_census { Xl2UnobservedScope }
 
 // THE COMPLETENESS DECISION IS A CONSUMER OF THE REHEARSAL, NOT PART OF ITS PRODUCTION. The producer
-// (gunbc.namespace_cut.namespace_xl2_rehearsal_census) reports what it could not observe; whether that
+// (v2.workflow.namespace_xl2_rehearsal_census) reports what it could not observe; whether that
 // answers the denominator is decided here, against the carrier that owns the outstanding
 // prerequisites (gunbc.compiler_frontend_program_status). Keeping the decision out of the producer
 // keeps that status hub out of the producer's emitted closure -- importing it for one list dragged

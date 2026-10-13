@@ -1,7 +1,7 @@
 module test.claim.namespace_xl2_rehearsal_census
 
 import std.types { Bool, List }
-import gunbc.namespace_cut.namespace_xl2_rehearsal_census {
+import v2.workflow.namespace_xl2_rehearsal_census {
   Xl2MemberPathDuplicated,
   Xl2ModuleObservationIncomplete,
   Xl2RehearsalObserved,
@@ -11,10 +11,10 @@ import gunbc.namespace_cut.namespace_xl2_rehearsal_census {
   HeaderSegmentsNotRefusalSites,
   xl2_strip_members
 }
-import gunbc.namespace_cut.namespace_xl2_completeness {
+import v2.workflow.namespace_xl2_completeness {
   Xl2CompleteArmNotAdmitted, Xl2CensusCompletenessRefused, Xl2PrerequisiteOutstanding, Xl2ScopeUnobserved, xl2_completeness
 }
-import gunbc.namespace_cut.namespace_xl2_rehearsal_controls {
+import v2.workflow.namespace_xl2_rehearsal_controls {
   xl2_clean_control_source, xl2_clean_fixture, xl2_control_rehearse, xl2_control_source,
   xl2_nested_control_source, xl2_provider_fixture, xl2_residual_control_source, xl2_residual_fixture,
   xl2_two_failure_control_source, xl2_unstripped

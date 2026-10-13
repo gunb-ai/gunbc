@@ -394,8 +394,8 @@ fn native_materialization_store_closure_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-materialization-store-closure" } }
 }
 
-// THE XL-2 REHEARSAL, NATIVE: the NativeClaimDriver program gunbc.instruments.xl2_rehearsal_native
-// executes gunbc.namespace_cut.namespace_xl2_rehearsal_census from the emitted closure (the
+// THE XL-2 REHEARSAL, NATIVE: the NativeClaimDriver program v2.workflow.xl2_rehearsal_native
+// executes v2.workflow.namespace_xl2_rehearsal_census from the emitted closure (the
 // interpreter's per-file front end made the whole-tree run unfinishable). A report: its residual is
 // a receipt of the run, never a count transcribed into prose.
 // `gunbc test //gunbc/instruments:xl2-rehearsal-native`.
@@ -404,7 +404,7 @@ fn xl2_rehearsal_native_label() -> Label {
 }
 
 fn xl2_rehearsal_native_entry() -> String {
-  "dag/gunbc/instruments/xl2_rehearsal_native.dag"
+  "src/v2/workflow/xl2_rehearsal_native.dag"
 }
 
 fn native_materialization_store_closure_entry() -> String {

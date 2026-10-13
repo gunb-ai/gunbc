@@ -1,19 +1,19 @@
-module gunbc.instruments.xl2_rehearsal_native
+module v2.workflow.xl2_rehearsal_native
 
 import std.types { Bool, List, String }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
-import gunbc.namespace_cut.namespace_xl2_rehearsal_census {
+import v2.workflow.namespace_xl2_rehearsal_census {
   Xl2RehearsalObserved,
   Xl2RehearsalRun,
   Xl2ResidualChain,
   xl2_strip_members
 }
-import gunbc.namespace_cut.namespace_xl2_rehearsal_controls {
+import v2.workflow.namespace_xl2_rehearsal_controls {
   xl2_clean_fixture, xl2_control_rehearse, xl2_provider_fixture, xl2_residual_fixture, xl2_unstripped
 }
 
 // THE XL-2 REHEARSAL AS A NATIVE CLAIM PROGRAM (std.compiler_entry NativeClaimDriver). The
-// composition under it is gunbc.namespace_cut.namespace_xl2_rehearsal_census, executed from the
+// composition under it is v2.workflow.namespace_xl2_rehearsal_census, executed from the
 // emitted closure rather than interpreted: the interpreter's per-file front end was the binding cost
 // of the whole-tree run, and the native route is two orders of magnitude cheaper per module.
 //
