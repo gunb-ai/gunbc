@@ -2144,7 +2144,7 @@ fn dag_grammar_field_init_expr() -> GrammarExpr {
 // THE PUN `s` IS THE FIELD `s: s`. Its name is the field's label and the reference that supplies the
 // value, so the list helper admits the pun only where no named head reads (a not-predicate over `name :` heading
 // the pun alternative AT THE CHOICE SITE, where the overlap proof reads it, as for the positional argument) and where the name is a referenceable value name
-// (`R { true }` and `R { true s }` would name a value no reference can name, so they refuse like every
+// (`R { true }` and `R { true s }` would name a value no reference can name, so the pun never reads them (the list is not a record; downstream refuses the leftover), like every
 // keyword, whatever follows it; dag_grammar_value_name_unconditional, the same production a reference reads).
 fn dag_grammar_field_init_pun_expr() -> GrammarExpr {
   dag_grammar_value_name_unconditional()
