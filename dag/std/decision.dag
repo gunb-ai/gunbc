@@ -1506,26 +1506,11 @@ fn scan_valued_survivors(
   )
 }
 
-fn axis_goal_eq(a: AxisGoal, b: AxisGoal) -> Bool {
-  match a {
-    LowerIsBetter =>
-      match b {
-        LowerIsBetter => true
-        HigherIsBetter => false
-      }
-    HigherIsBetter =>
-      match b {
-        HigherIsBetter => true
-        LowerIsBetter => false
-      }
-  }
-}
-
 fn orientation_defects(pareto_axes: List<SelectionAxis>, wanted: DeclarationRef, expected: AxisGoal) -> List<NonEmptyStr> {
   match axis_goal_for(axes: pareto_axes, wanted: wanted) {
     Absent => ["valued-objective axis is not a funded Pareto axis" as NonEmptyStr]
     Present { value: g } =>
-      if axis_goal_eq(a: g, b: expected) {
+      if g == expected {
         []
       } else {
         ["valued-objective axis orientation disagrees with the funded Pareto axis" as NonEmptyStr]
