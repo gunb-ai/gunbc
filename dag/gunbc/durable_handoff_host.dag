@@ -77,7 +77,7 @@ type HostSpoolHealth
   | HostSpoolHealthUnobserved { detail: String }
 
 fn host_spool_bound_for(bounds: List<HostSpoolHealthBound>, stage: HostSpoolStage) -> Second? {
-  fold(bounds, init: none, f: (acc, b) => match acc {
+  fold(bounds, init: none as Second?, f: (acc, b) => match acc {
     Present { value: v } => Present { value: v }
     Absent => if host_spool_stage_wire(stage: b.stage) == host_spool_stage_wire(stage: stage) {
       Present { value: b.bound }
@@ -96,7 +96,7 @@ fn host_spool_health_is_stale(e: HostSpoolHealthEntry, bounds: List<HostSpoolHea
 
 fn host_spool_health_judge(entries: List<HostSpoolHealthEntry>, bounds: List<HostSpoolHealthBound>) -> HostSpoolHealth {
   let stale = filter(entries, e => host_spool_health_is_stale(e: e, bounds: bounds))
-  match fold(stale, init: none, f: (acc, e) => match acc {
+  match fold(stale, init: none as HostSpoolHealthEntry?, f: (acc, e) => match acc {
     Absent => Present { value: e }
     Present { value: o } => if second_count(s: e.age) > second_count(s: o.age) { Present { value: e } } else { Present { value: o } }
   }) {
