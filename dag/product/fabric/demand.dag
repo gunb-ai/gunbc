@@ -190,6 +190,20 @@ type DemandObjective {
   measure: ValuedObjectiveMeasure
 }
 
+type AdmissionTerms {
+  deadline: Timestamp?
+  buy: BuyTerms
+  objective: DemandObjective
+}
+
+fn admission_terms(buy: BuyTerms, deadline: Timestamp?, objective: DemandObjective) -> AdmissionTerms {
+  AdmissionTerms {
+    deadline: deadline,
+    buy: buy,
+    objective: objective,
+  }
+}
+
 // THE ONE INTERPRETATION both serving delay and generic ValuedObjective scoring project from.
 // Term identities are the four fabric terms, never a caller-authored remapping. CONSUMERS:
 // demand_delay_valuation; valued_objective_policy; test.claim.fabric.valued_objective_witness.
@@ -201,23 +215,23 @@ type InterpretedDemandObjective {
   currency: CurrencyCode
 }
 
-fn interpret_demand_objective(objective: DemandObjective, currency: CurrencyCode) -> InterpretedDemandObjective {
+fn interpret_demand_objective(terms: AdmissionTerms) -> InterpretedDemandObjective {
   InterpretedDemandObjective {
-    profile: objective.profile,
+    profile: terms.objective.profile,
     valuations: [
-      TermValuation { term: term_money.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.money) as Int), goal: LowerIsBetter },
-      TermValuation { term: term_delay.identity, scale_micro: signed_money_amount_micro(count: money_amount_per_second_count(q: objective.valuations.delay) as Int), goal: LowerIsBetter },
-      TermValuation { term: term_interruption.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.interruption) as Int), goal: LowerIsBetter },
-      TermValuation { term: term_accepted_work.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: objective.valuations.accepted_work) as Int), goal: HigherIsBetter },
+      TermValuation { term: term_money.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: terms.objective.valuations.money) as Int), goal: LowerIsBetter },
+      TermValuation { term: term_delay.identity, scale_micro: signed_money_amount_micro(count: money_amount_per_second_count(q: terms.objective.valuations.delay) as Int), goal: LowerIsBetter },
+      TermValuation { term: term_interruption.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: terms.objective.valuations.interruption) as Int), goal: LowerIsBetter },
+      TermValuation { term: term_accepted_work.identity, scale_micro: signed_money_amount_micro(count: money_amount_micro_count(m: terms.objective.valuations.accepted_work) as Int), goal: HigherIsBetter },
     ],
-    delay: objective.valuations.delay,
-    measure: objective.measure,
-    currency: currency,
+    delay: terms.objective.valuations.delay,
+    measure: terms.objective.measure,
+    currency: terms.buy.currency,
   }
 }
 
-fn valued_objective_policy(objective: DemandObjective, currency: CurrencyCode) -> SelectionPolicy {
-  let interpreted = interpret_demand_objective(objective: objective, currency: currency)
+fn valued_objective_policy(terms: AdmissionTerms) -> SelectionPolicy {
+  let interpreted = interpret_demand_objective(terms: terms)
   ValuedObjective {
     identity: interpreted.profile,
     valuations: interpreted.valuations,
@@ -256,10 +270,11 @@ data latency_sensitive_objective: DemandObjective = DemandObjective {
   measure: NetValue,
 }
 
-fn demand_delay_valuation(objective: DemandObjective, currency: CurrencyCode) -> MoneyPerSecond {
+fn demand_delay_valuation(terms: AdmissionTerms) -> MoneyPerSecond {
+  let interpreted = interpret_demand_objective(terms: terms)
   MoneyRate {
-    amount: interpret_demand_objective(objective: objective, currency: currency).delay.amount,
-    currency: currency,
+    amount: interpreted.delay.amount,
+    currency: interpreted.currency,
   }
 }
 
@@ -278,20 +293,6 @@ fn buy_order_constraint(buy: BuyTerms) -> HardConstraint {
 // call that must refuse an over-cap candidate. Caps are not copied onto DemandObjective.
 fn admission_hard_constraints(terms: AdmissionTerms) -> List<HardConstraint> {
   [buy_order_constraint(buy: terms.buy)]
-}
-
-type AdmissionTerms {
-  deadline: Timestamp?
-  buy: BuyTerms
-  objective: DemandObjective
-}
-
-fn admission_terms(buy: BuyTerms, deadline: Timestamp?, objective: DemandObjective) -> AdmissionTerms {
-  AdmissionTerms {
-    deadline: deadline,
-    buy: buy,
-    objective: objective,
-  }
 }
 
 type Demand<P> {

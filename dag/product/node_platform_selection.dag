@@ -26,7 +26,7 @@ import std.decision {
   CausalModelUnestablished,
   VendorDocumentedCoupling, FleetObservedCoupling,
   CausalCoupling,
-  HardConstraint, DimensionlessConstraint,
+  HardConstraint, NonMoneyConstraint,
   SelectionPolicy,
   SelectionReceipt,
   RealizationSelectionResult,
@@ -231,7 +231,7 @@ fn node_platform_axes() -> List<SelectionAxis> {
 }
 
 fn node_platform_constraints() -> List<HardConstraint> {
-  [HardConstraint { identity: constraint_route_qualified, axis: route_qualified_axis, bound_micro: 1, denomination: DimensionlessConstraint }]
+  [HardConstraint { identity: constraint_route_qualified, axis: route_qualified_axis, bound_micro: 1, denomination: NonMoneyConstraint }]
 }
 
 // ── THE ROUTES ───────────────────────────────────────────────────────────────────────────────

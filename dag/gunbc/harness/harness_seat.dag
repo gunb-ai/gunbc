@@ -520,7 +520,7 @@ type HarnessPricedSelectionInputs {
 
 fn harness_priced_selection_inputs(admission: AdmissionTerms) -> HarnessPricedSelectionInputs {
   HarnessPricedSelectionInputs {
-    delay_valuation: demand_delay_valuation(objective: admission.objective, currency: admission.buy.currency),
+    delay_valuation: demand_delay_valuation(terms: admission),
     maximum_buy_order: admission.buy.maximum_buy_order,
     budget_currency: admission.buy.currency,
     objective_profile: admission.objective.profile,

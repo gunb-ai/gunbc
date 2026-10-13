@@ -14,7 +14,7 @@ import std.decision {
   DecisionSubject,
   DecisionVariable,
   ContextParameter,
-  HardConstraint, DimensionlessConstraint,
+  HardConstraint, NonMoneyConstraint,
   ObjectiveMeasure,
   ObjectiveTerm,
   ParameterBound,
@@ -85,7 +85,7 @@ data rust_fn_type_e0562: DeclarationRef = decl_ref(module_path: rust_fn_type_sel
 data rust_fn_type_constraints_authority: DeclarationRef = decl_ref(module_path: rust_fn_type_selection_module, decl_name: "rust_fn_type_constraints")
 
 data rust_fn_type_constraints: List<HardConstraint> = [
-  HardConstraint { identity: rust_fn_type_e0562, axis: ax_admitted_at_position, bound_micro: 1000000, denomination: DimensionlessConstraint },
+  HardConstraint { identity: rust_fn_type_e0562, axis: ax_admitted_at_position, bound_micro: 1000000, denomination: NonMoneyConstraint },
 ]
 
 data rust_fn_type_evidence_snapshot: DeclarationRef = decl_ref(module_path: "extdeps.languages.rust.function_type_forms", decl_name: "rust_function_type_form_facts")

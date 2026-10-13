@@ -10,7 +10,7 @@ import std.decision {
   VariesAlong, RelationOtherwiseEstablished,
   ConstraintDisposition, ConstraintSatisfied, ParameterDisposition, ParameterBound,
   PhysicalModelEstablished, CausalModelEstablished, FleetObservedCoupling,
-  HardConstraint, DimensionlessConstraint, SelectionPolicy, UniqueSurvivorRequired,
+  HardConstraint, NonMoneyConstraint, SelectionPolicy, UniqueSurvivorRequired,
   RealizationSelectionResult, SelectedWithin, CandidateFieldUnestablished, NoFeasibleRealization,
   SelectionNeedsEvidence, SelectionNeedsPolicy, RealizationSelectionRefused,
   SelectionReceipt, DecisionScope, SelectionEvidenceNeed,
@@ -432,11 +432,11 @@ data constraint_witness_required: DeclarationRef = decl_ref(module_path: "gunbc.
 data constraint_unattended_required: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "constraint_unattended_required")
 
 data authorization_pattern_hard_constraints: List<HardConstraint> = [
-  HardConstraint { identity: authorization_pattern_constraints, axis: ax_surface_fit, bound_micro: 1, denomination: DimensionlessConstraint },
-  HardConstraint { identity: authorization_pattern_constraints, axis: ax_identity_bound, bound_micro: 1, denomination: DimensionlessConstraint },
-  HardConstraint { identity: authorization_pattern_constraints, axis: ax_credential_custody, bound_micro: 1, denomination: DimensionlessConstraint },
-  HardConstraint { identity: constraint_witness_required, axis: ax_witnessed, bound_micro: 1, denomination: DimensionlessConstraint },
-  HardConstraint { identity: constraint_unattended_required, axis: ax_unattended, bound_micro: 1, denomination: DimensionlessConstraint },
+  HardConstraint { identity: authorization_pattern_constraints, axis: ax_surface_fit, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: authorization_pattern_constraints, axis: ax_identity_bound, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: authorization_pattern_constraints, axis: ax_credential_custody, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: constraint_witness_required, axis: ax_witnessed, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: constraint_unattended_required, axis: ax_unattended, bound_micro: 1, denomination: NonMoneyConstraint },
 ]
 
 fn unique_constraint_identities(cs: List<HardConstraint>) -> List<DeclarationRef> {

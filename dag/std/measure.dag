@@ -1105,7 +1105,7 @@ type MoneyRate<P> {
   currency: CurrencyCode
 }
 
-// Currency-free rate: period is the type argument, denomination is supplied by
+// Undenominated rate: period is the type argument, denomination is supplied by
 // the buyer when a MoneyRate is minted. CONSUMERS: product.fabric.demand
 // TermValuations.delay (BuyTerms.currency is stamped in demand_delay_valuation).
 type MoneyAmountRate<P> {

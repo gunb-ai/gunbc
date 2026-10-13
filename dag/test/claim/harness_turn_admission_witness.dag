@@ -179,7 +179,7 @@ fn delay_micros(admission: AdmissionTerms) -> Int {
 // RED: a selector that ignores the demand and always reads latency_sensitive_objective returns
 // the same delay for both profiles. The wall is harness_priced_selection_inputs.
 fn red_hardcoded_latency_delay(_admission: AdmissionTerms) -> Int {
-  money_rate_micros(q: demand_delay_valuation(objective: latency_sensitive_objective, currency: Usd)) as Int
+  money_rate_micros(q: demand_delay_valuation(terms: t_admission(objective: latency_sensitive_objective))) as Int
 }
 
 test fn a_hardcoded_profile_cannot_discriminate_serving_demands() -> Bool {

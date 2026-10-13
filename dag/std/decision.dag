@@ -776,8 +776,10 @@ type SelectionPolicy
       currency: CurrencyCode
     }
 
+// NonMoneyConstraint is the arm that does not require currency agreement; it does
+// not claim the bound is dimensionless.
 type BoundDenomination
-  = DimensionlessConstraint
+  = NonMoneyConstraint
   | MoneyConstraint { currency: CurrencyCode }
 
 type HardConstraint {
@@ -1560,7 +1562,7 @@ fn unit_row_defects(valuations: List<TermValuation>, unit: DeclarationRef) -> Li
 fn money_constraint_defects(constraints: List<HardConstraint>, policy_currency: CurrencyCode) -> List<NonEmptyStr> {
   fold(constraints, init: [], f: (acc, c) =>
     match c.denomination {
-      DimensionlessConstraint => acc
+      NonMoneyConstraint => acc
       MoneyConstraint { currency: cc } =>
         if currency_code_eq(a: cc, b: policy_currency) {
           acc

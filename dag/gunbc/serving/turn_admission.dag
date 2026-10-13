@@ -529,7 +529,7 @@ fn serving_dispatch_inputs<P>(
 }
 
 // Delay valuation is a demand fact. select_supply's delay_valuation is
-// demand_delay_valuation over AdmissionTerms.objective, stamped with buy.currency. This
+// demand_delay_valuation over AdmissionTerms (objective plus buy). This
 // module authors no rate and names no serving default. Today every harness
 // caller (harness_cli_admission, including place and the seat probe) states
 // debt_payoff_objective at its call site.

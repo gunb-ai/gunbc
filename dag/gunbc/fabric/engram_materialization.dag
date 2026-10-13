@@ -20,7 +20,7 @@ import std.materialization_ladder {
 import std.cache_interface { ProviderRetention, CapacityPolicy, CapacityUnobserved }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
-  HardConstraint, DimensionlessConstraint, SelectionPolicy, UniqueSurvivorRequired,
+  HardConstraint, NonMoneyConstraint, SelectionPolicy, UniqueSurvivorRequired,
   SelectionEvidenceNeed, DecisionAssessment, DecisionSubject, DecisionVariable,
   DecisionRegion, ObjectiveTerm, ObjectiveMeasure, ChoiceDomain,
   PhysicalModelUnestablished, CausalModelUnestablished,
@@ -1684,12 +1684,12 @@ data component_route_axes: List<SelectionAxis> = [
 // SIX HARD CONSTRAINTS ON DECLARED AXES, screened before Pareto so an attractive-but-unservable route
 // is excluded rather than ranked. A cheap route the runtime cannot serve must not compete on cost.
 data component_route_constraints: List<HardConstraint> = [
-  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_faithful_realization, bound_micro: 1, denomination: DimensionlessConstraint },
-  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_well_formed, bound_micro: 1, denomination: DimensionlessConstraint },
-  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_integrity, bound_micro: 1, denomination: DimensionlessConstraint },
-  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_verified_integrity, bound_micro: 1, denomination: DimensionlessConstraint },
-  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_nonresident_mechanism, bound_micro: 1, denomination: DimensionlessConstraint },
-  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_runtime_observed, bound_micro: 1, denomination: DimensionlessConstraint },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_faithful_realization, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_well_formed, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_integrity, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_verified_integrity, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_nonresident_mechanism, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: id_route_constraint_authority, axis: ax_route_runtime_observed, bound_micro: 1, denomination: NonMoneyConstraint },
 ]
 
 // ── THE SEVENTH CONSTRAINT IS NOT A CONSTANT, BECAUSE CAPACITY IS A PROPERTY OF THE CANDIDATE ───
@@ -1796,7 +1796,7 @@ fn component_route_constraints_under(budget: ComponentMemoryBudget) -> List<Hard
     identity: id_route_constraint_authority,
     axis: ax_route_per_rank_resident_lower_bound,
     bound_micro: component_budget_bound(budget: budget),
-    denomination: DimensionlessConstraint,
+    denomination: NonMoneyConstraint,
   }])
 }
 
