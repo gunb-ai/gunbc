@@ -3166,7 +3166,41 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     // THE JOB THE VERBS HAVE ON `witnesses`: both hold over the live governed roots.
     eprintln!("v2-native-cli: population controls — check-layout and parse-population over the live roots");
     let live = [live_dag.as_path(), live_v2.as_path()];
+    // PROFILE-ONLY (crisp-lynx-429, not for merge): time slices of dag/std to split fixed from per-module cost.
+    for n in [1usize, 20, 80, 167] {
+        let slice = scratch.join(format!("profile-slice-{n}")).join("dag");
+        let std_dir = slice.join("std");
+        let _ = std::fs::remove_dir_all(slice.parent().unwrap());
+        std::fs::create_dir_all(&std_dir).map_err(|e| format!("profile mkdir: {e}"))?;
+        let mut files: Vec<_> = std::fs::read_dir(live_dag.join("std"))
+            .map_err(|e| format!("profile read: {e}"))?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "dag"))
+            .collect();
+        files.sort();
+        for f in files.iter().take(n) {
+            std::fs::copy(f, std_dir.join(f.file_name().unwrap()))
+                .map_err(|e| format!("profile copy: {e}"))?;
+        }
+        let t = std::time::Instant::now();
+        let r = run_cli_door(
+            binary,
+            &population_argv("parse-population", &[slice.as_path()]),
+        )?;
+        eprintln!(
+            "PROFILE parse-population slice={n} modules wall_ms={} status={:?} stdout_lines={}",
+            t.elapsed().as_millis(),
+            r.status,
+            r.stdout.lines().count()
+        );
+    }
+    let t_layout = std::time::Instant::now();
     let layout_live = run_cli_door(binary, &population_argv("check-layout", &live))?;
+    eprintln!(
+        "PROFILE check-layout live wall_ms={}",
+        t_layout.elapsed().as_millis()
+    );
     if layout_live.status != Some(0)
         || !layout_live.stdout.starts_with(POPULATION_LAYOUT_HOLDS_HEAD)
     {
@@ -3175,7 +3209,12 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             &layout_live,
         ));
     }
+    let t_parse = std::time::Instant::now();
     let parse_live = run_cli_door(binary, &population_argv("parse-population", &live))?;
+    eprintln!(
+        "PROFILE parse-population live wall_ms={}",
+        t_parse.elapsed().as_millis()
+    );
     // THE VERDICT IS THE VERB'S (`v2.cli.population_verbs` `population_parse_report`): a declared refusal
     // the walk did not meet is a located red the verb reports itself, so the list cannot outlive its files
     // there. THIS JOIN IS ONLY REDUNDANT EVIDENCE THAT THE VERB JUDGED THE POPULATION IT NAMES: a held
