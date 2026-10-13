@@ -101,18 +101,27 @@ test fn a_lowered_template_binds_concat_and_infers() -> Bool {
 }
 
 // FRONTIER, V2 EVAL PATH (DESIGN 4b-1, 4b-4): v2.compiler.eval of a call whose body is a lowered
-// template refuses typed and located. The reason is eval_rejected_grounding_not_derived — not a
-// silent concat of host bytes. When the eval concat arm lands, this row flips to the positive
-// control (the produced bytes).
+// template refuses typed and located -- never a silent concat of host bytes. The first node eval
+// cannot represent is the template's first string-literal piece: the v2 evaluator's literal shapes
+// are bool, unit and int (v2.extdeps.runtimes.v2_evaluator v2_eval_is_literal_shaped_node), so a
+// string literal falls to the binding lookup and refuses there as
+// eval_rejected_runtime_binding_lookup_miss. This row pinned eval_rejected_grounding_not_derived
+// until the operand reader kept a string literal's decoded value (v2.compiler.body_lowering_fold
+// body_lower_operand_raw_read): that earlier stop was the bare, valueless piece, not the template.
+// When eval represents text and binds the concat row, this row flips to the positive control (the
+// produced bytes).
 test fn a_lowered_template_refuses_at_v2_eval() -> Bool {
-  stu_eval_f_reason() == ^eval_rejected_grounding_not_derived
+  stu_eval_f_reason() == ^eval_rejected_runtime_binding_lookup_miss
 }
 
 // FRONTIER, EMITTED PATH: v2.compiler.translate of the same inferred tree to rust_target_model
-// refuses typed and located with translate_rejected_grounding_not_derived. It does not emit a host
-// concat of the template's parts. No emitted bytes exist for a claim to execute.
+// refuses typed and located: the module cannot be rendered whole, so it refuses at its body
+// (translate_module_not_a_type_expression) rather than emitting a host concat of the template's
+// parts. No emitted bytes exist for a claim to execute. Like the eval row, this pinned
+// translate_rejected_grounding_not_derived only while the template's literal pieces reached
+// translate without their values.
 test fn a_lowered_template_refuses_at_translate() -> Bool {
-  stu_translate_reason() == ^translate_rejected_grounding_not_derived
+  stu_translate_reason() == ^translate_module_not_a_type_expression
 }
 
 // GREEN: a hole-free string literal still assembles.
