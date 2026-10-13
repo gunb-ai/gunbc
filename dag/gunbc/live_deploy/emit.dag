@@ -169,6 +169,7 @@ import gunbc.live_deploy.spec {
   EnsuredSubject, EnsuredPackage, EnsuredOwnershipMarker, ensured_subject_identity,
   deployment_directory_demands,
   DeploymentArtifactStep,
+  OwnedArtifactKind,
   ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
@@ -1910,14 +1911,14 @@ type HostScriptMutateProjection
   = MutateStepsAdmitted { steps: List<PipelineStep> }
   | MutateRefused { member: NonEmptyStr, cause: String }
 
-fn host_script_refused_decide(f: HostScriptFragment) -> Bool {
-  match f {
-    Decide { member: _, standing: s, steps: _ } => match s {
-      HostScriptRefused { cause: _ } => true
-      HostScriptProceed => false
+fn host_script_refused_sites(fragments: List<HostScriptFragment>) -> List<HostScriptMutateProjection> {
+  flat_map(fragments, f => match f {
+    Decide { member: m, standing: _, steps: _ } => match host_script_fragment_standing(f: f) {
+      HostScriptRefused { cause: c } => [MutateRefused { member: m, cause: c }]
+      HostScriptProceed => []
     }
-    Mutate { member: _, steps: _ } => false
-  }
+    Mutate { member: _, steps: _ } => []
+  })
 }
 
 fn host_script_mutate_projection(fragments: List<HostScriptFragment>) -> HostScriptMutateProjection {
@@ -1930,16 +1931,9 @@ fn host_script_mutate_projection(fragments: List<HostScriptFragment>) -> HostScr
         }),
       }
     HostScriptRefused { cause } =>
-      match first(filter(fragments, host_script_refused_decide)) {
+      match first(host_script_refused_sites(fragments: fragments)) {
+        Present { value: r } => r
         Absent => MutateRefused { member: "host-script" as NonEmptyStr, cause: cause }
-        Present { value: f } => match f {
-          Decide { member: m, standing: HostScriptRefused { cause: c }, steps: _ } =>
-            MutateRefused { member: m, cause: c }
-          Decide { member: m, standing: HostScriptProceed, steps: _ } =>
-            MutateRefused { member: m, cause: cause }
-          Mutate { member: m, steps: _ } =>
-            MutateRefused { member: m, cause: cause }
-        }
       }
   }
 }
@@ -3884,43 +3878,9 @@ fn apply_helper_grant_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan, p
   }
 }
 
-fn spec_has_fabric_storage_apply_step(spec: DeploymentSpec) -> Bool {
+fn spec_has_artifact_kind(spec: DeploymentSpec, kind: OwnedArtifactKind) -> Bool {
   any(spec.steps, st => match st {
-    ArtifactStep { step: art } => match art.kind {
-      FabricStorageServeUnit => true
-      FabricStorageServeMapping => true
-      _ => false
-    }
-    Dependency { step: _ } => false
-  })
-}
-
-fn spec_has_fleet_converge_timer_step(spec: DeploymentSpec) -> Bool {
-  any(spec.steps, st => match st {
-    ArtifactStep { step: art } => match art.kind {
-      FleetConvergeTimerUnit => true
-      _ => false
-    }
-    Dependency { step: _ } => false
-  })
-}
-
-fn spec_has_tailnet_door_step(spec: DeploymentSpec) -> Bool {
-  any(spec.steps, st => match st {
-    ArtifactStep { step: art } => match art.kind {
-      TailnetDoorServeUnit => true
-      _ => false
-    }
-    Dependency { step: _ } => false
-  })
-}
-
-fn spec_has_systemd_unit_step(spec: DeploymentSpec) -> Bool {
-  any(spec.steps, st => match st {
-    ArtifactStep { step: art } => match art.kind {
-      SystemdUnit => true
-      _ => false
-    }
+    ArtifactStep { step: art } => art.kind == kind
     Dependency { step: _ } => false
   })
 }
@@ -3931,7 +3891,7 @@ fn serve_unit_write_fragments(
   oidc_now: Second?,
   principal: GroundedPosixPrincipal,
 ) -> List<HostScriptFragment> {
-  if !(spec_has_systemd_unit_step(spec: spec)) {
+  if !(spec_has_artifact_kind(spec: spec, kind: SystemdUnit)) {
     []
   } else {
   let member = "serve-unit" as NonEmptyStr
@@ -3977,7 +3937,7 @@ fn tailnet_door_admitted_mutate_steps(
 }
 
 fn tailnet_door_fragments(spec: DeploymentSpec, oidc_now: Second?, revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
-  if !(spec_has_tailnet_door_step(spec: spec)) {
+  if !(spec_has_artifact_kind(spec: spec, kind: TailnetDoorServeUnit)) {
     []
   } else {
     match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
@@ -4020,7 +3980,8 @@ fn fabric_storage_admitted_mutate_steps(
 }
 
 fn fabric_storage_fragments(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
-  if !(spec_has_fabric_storage_apply_step(spec: spec)) {
+  if !(spec_has_artifact_kind(spec: spec, kind: FabricStorageServeUnit)
+    || spec_has_artifact_kind(spec: spec, kind: FabricStorageServeMapping)) {
     []
   } else {
     match deployment_fabric_storage_door_socket(spec: spec) {
@@ -4042,7 +4003,7 @@ fn fabric_storage_fragments(spec: DeploymentSpec, revision: ReleaseRevisionBindi
 data fleet_converge_timer_retired_poison: String = "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"
 
 fn fleet_converge_timer_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
-  if spec_has_fleet_converge_timer_step(spec: spec) {
+  if spec_has_artifact_kind(spec: spec, kind: FleetConvergeTimerUnit) {
     host_script_member_refused(
       member: "fleet-converge-timer" as NonEmptyStr,
       cause: "FleetConvergeTimerUnit retired",
@@ -4074,13 +4035,7 @@ fn artifact_apply_fragments(
     FabricStorageServeUnit =>
       fabric_storage_fragments(spec: spec, revision: revision)
     FabricStorageServeMapping =>
-      if spec_has_fabric_storage_apply_step(spec: spec) && any(spec.steps, st => match st {
-        ArtifactStep { step: a } => match a.kind {
-          FabricStorageServeUnit => true
-          _ => false
-        }
-        Dependency { step: _ } => false
-      }) {
+      if spec_has_artifact_kind(spec: spec, kind: FabricStorageServeUnit) {
         []
       } else {
         fabric_storage_fragments(spec: spec, revision: revision)
