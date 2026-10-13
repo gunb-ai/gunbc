@@ -18,7 +18,8 @@ import gunbc.roadmap.roadmap_provider_events {
   ProviderEventsRefused,
   ProviderNotStarted,
   ProviderStarting,
-  provider_execution_is_event_locked,
+  provider_execution_terminality,
+  TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking,
 }
 import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessUnobserved, WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
 import gunbc.roadmap.roadmap_workflow_command {
@@ -1084,11 +1085,11 @@ test fn an_ended_worker_is_owed_its_capture_until_the_commit_step_settles_it() -
 
 
 // THE RECONCILE-ON-PROCESS PARTITION FOLD, WITNESSED. The nfr_dissolve_provider_terminal_absorb
-// rows are gone because provider_execution_reconcile_process now branches on the is_event_locked
-// partition (locked states keep themselves; Completed reconciles through the completed_activity
-// partition; everything else still owes a process judgment, with ProviderNotStarted named by the
-// is_not_started partition); a new state kind must name its side of the partitions here or the
-// fold loses a case.
+// rows are gone because provider_execution_reconcile_process now branches on the
+// provider_execution_terminality partition (the completed class reconciles against process
+// evidence through its class payload; the refused and events-refused classes keep themselves; the
+// not-started and working classes fold over the forced-outcome partition, with the not-started
+// case named); a new state kind must name its class in the classifier, once.
 data witness_processes: List<WorkerProcessEvidence> = [
   WorkerProcessRunning { command: "codex" as NonEmptyStr },
   WorkerProcessExited { exit_code: 0, last_command: "codex" },
@@ -1097,7 +1098,9 @@ data witness_processes: List<WorkerProcessEvidence> = [
   WorkerProcessUnobserved { reason: "no pane" as NonEmptyStr },
 ]
 
-test fn a_reconciled_refused_terminal_state_keeps_itself_under_any_process() -> Bool {
+// The refused and events-refused terminal classes keep themselves under every process — the
+// difference between them (the belt keeps events-refused open) lives in the terminality type.
+test fn a_reconciled_refused_terminal_states_keep_themselves_under_any_process() -> Bool {
   count(
     witness_processes.filter(
       p => provider_execution_reconcile_process(
@@ -1114,12 +1117,15 @@ test fn a_reconciled_refused_terminal_state_keeps_itself_under_any_process() -> 
              ) == ProviderEventsRefused { activity: "Agent complete", detail: "d" },
     ),
   ) == count(witness_processes) && count(witness_processes) == 5
-    && provider_execution_is_event_locked(state: ProviderCompleted { activity: "Agent complete" })
+    && match provider_execution_terminality(state: ProviderCompleted { activity: "Agent complete" }) {
+         TerminalityCompleted { activity } => activity == "Agent complete"
+         _ => false
+       }
 }
 
 test fn a_completed_reconciled_against_an_incompatible_exit_is_a_refusal_named_by_the_raw_activity() -> Bool {
-  // The completed arm reads its RAW stored activity (provider_execution_completed_activity), not
-  // the "Agent complete" label, because the conflict names the completion the exit contradicts.
+  // The completed class reads its RAW stored activity (the class payload), not the "Agent
+  // complete" label, because the conflict names the completion the exit contradicts.
   match provider_execution_reconcile_process(
     provider: ProviderCompleted { activity: "Codex turn complete" },
     process: WorkerProcessExited { exit_code: 3, last_command: "codex" },
@@ -1135,7 +1141,7 @@ test fn a_completed_reconciled_against_an_incompatible_exit_is_a_refusal_named_b
        ) == ProviderCompleted { activity: "Codex turn complete" }
 }
 
-test fn a_non_started_reconciled_against_a_running_pane_names_the_not_started_case() -> Bool {
+test fn a_not_started_reconciled_against_a_running_pane_names_the_not_started_case() -> Bool {
   match provider_execution_reconcile_process(
     provider: ProviderNotStarted,
     process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
@@ -1154,4 +1160,27 @@ test fn a_non_started_reconciled_against_a_running_pane_names_the_not_started_ca
          activity: "provider process exited",
          detail: "provider process exited 0 without turn.completed, turn.failed, or error",
        }
+}
+
+// THE FORCED-OUTCOME PARTITION, WITNESSED: Running forces nothing; the other three evidence
+// variants force their refusal, which the not-started and working classes fold identically over.
+test fn a_process_forced_outcome_partition_names_the_three_forcing_evidence_kinds() -> Bool {
+  match provider_execution_reconcile_process(
+    provider: ProviderRunning { activity: "agent working" },
+    process: WorkerProcessUnobserved { reason: "no pane" as NonEmptyStr },
+  ) {
+    ProviderEventsRefused { activity, detail } => activity == "process observation refused" && detail == "no pane"
+    _ => false
+  }
+    && match provider_execution_reconcile_process(
+         provider: ProviderAwaitingSeat { detail: "waiting for a seat" },
+         process: WorkerProcessExited { exit_code: 2, last_command: "codex" },
+       ) {
+         ProviderFailed { activity, detail } => activity == "provider process exited" && detail.contains("exited 2")
+         _ => false
+       }
+    && provider_execution_reconcile_process(
+         provider: ProviderAwaitingSeat { detail: "waiting for a seat" },
+         process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
+       ) == ProviderAwaitingSeat { detail: "waiting for a seat" }
 }
