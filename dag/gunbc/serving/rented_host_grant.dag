@@ -18,23 +18,16 @@ import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
 // (gunbc.auth.privileged_effect_census rented_host_ssh_effect) whose pattern is SELECTED, not chosen at the
 // call site (gunbc.auth.authorization_pattern_selection select_authorization_pattern yields the operator
 // approval pattern for it). The operator's approval is a std.scoped_authorization ScopedAuthorization over
-// THIS subject: bound to one attempt, expiring, scoped to Execute on this node's position, and carrying
+// THIS subject, which is the whole public RentedHostAccessDeclaration (it holds no private key), host-key trust
+// anchor included: bound to one attempt, expiring, scoped to Execute on this node's position, and carrying
 // an intent hash over the exact subject. The private key is never a value in it; the key stays in the
 // operator's ssh-agent and the grant names only its public fingerprint.
 type RentedHostSubject {
-  node: NonEmptyStr
-  endpoint: NonEmptyStr
-  principal: NonEmptyStr
-  operator_key_fingerprint: NonEmptyStr
+  declaration: RentedHostAccessDeclaration
 }
 
 fn rented_host_subject(declaration: RentedHostAccessDeclaration) -> RentedHostSubject {
-  RentedHostSubject {
-    node: declaration.node,
-    endpoint: declaration.endpoint,
-    principal: declaration.principal,
-    operator_key_fingerprint: declaration.operator_key_fingerprint,
-  }
+  RentedHostSubject { declaration: declaration }
 }
 
 data rented_host_ssh_action: AuthorizedAction = "ssh-exec" as AuthorizedAction
@@ -42,17 +35,22 @@ data rented_host_ssh_action: AuthorizedAction = "ssh-exec" as AuthorizedAction
 fn rented_host_scope(subject: RentedHostSubject) -> AuthorizationScope {
   AuthorizationScope {
     verb: Execute,
-    resource: NamespacePosition { tree: ServiceOpTree { service: "rented-host-ssh" }, path: [subject.node as String] },
+    resource: NamespacePosition { tree: ServiceOpTree { service: "rented-host-ssh" }, path: [subject.declaration.node as String] },
     action: rented_host_ssh_action,
   }
 }
 
 fn rented_host_intent(subject: RentedHostSubject) -> NonEmptyStr {
+  let d = subject.declaration
   join([
-    identity_frame(label: "node", value: subject.node as String),
-    identity_frame(label: "endpoint", value: subject.endpoint as String),
-    identity_frame(label: "principal", value: subject.principal as String),
-    identity_frame(label: "fingerprint", value: subject.operator_key_fingerprint as String),
+    identity_frame(label: "node", value: d.node as String),
+    identity_frame(label: "endpoint", value: d.endpoint as String),
+    identity_frame(label: "principal", value: d.principal as String),
+    identity_frame(label: "fingerprint", value: d.operator_key_fingerprint as String),
+    identity_frame(label: "host_key_endpoint", value: d.host_key.endpoint),
+    identity_frame(label: "host_key_type", value: d.host_key.key_type),
+    identity_frame(label: "host_key_public", value: d.host_key.public_key_base64),
+    identity_frame(label: "host_key_sha256", value: d.host_key.sha256_fingerprint),
   ], "") as NonEmptyStr
 }
 
@@ -61,7 +59,7 @@ fn rented_host_request(escalation_id: NonEmptyStr, subject: RentedHostSubject, a
     escalation_id: escalation_id,
     scopes: [rented_host_scope(subject: subject)],
     subject: subject,
-    purpose: join(["open an operator-key SSH leg to rented node ", subject.node as String, " as ", subject.principal as String], "") as NonEmptyStr,
+    purpose: join(["open an operator-key SSH leg to rented node ", subject.declaration.node as String, " as ", subject.declaration.principal as String], "") as NonEmptyStr,
     attempt: attempt,
     intent_hash: content_hash_of_value(value: rented_host_intent(subject: subject)),
     destructive: false,
@@ -125,7 +123,7 @@ fn rented_host_permit(
         let subject = rented_host_subject(declaration: declaration)
         let held = filter(authorizations, a => rented_host_authorizes_subject(a: a, subject: subject))
         if count(held) == 0 {
-          rented_host_not_permitted(why: "no operator authorization names this node, endpoint, principal and key fingerprint")
+          rented_host_not_permitted(why: "no operator authorization names this node, endpoint, principal, host key and operator key fingerprint")
         } else if count(held) > 1 {
           rented_host_not_permitted(why: "more than one operator authorization names this subject, and order does not choose between them")
         } else {

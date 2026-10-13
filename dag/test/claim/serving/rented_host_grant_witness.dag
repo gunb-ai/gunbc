@@ -6,12 +6,13 @@ import std.scoped_authorization {
   ScopedAuthorization, AuthorizationGranted, AuthorizationPending, OperatorGrant, Unclaimed, AttemptIdentity,
 }
 import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }
 import gunbc.serving.rented_host_grant {
   RentedHostSubject, RentedHostClock, RentedHostClockRead, RentedHostClockUnread,
   RentedHostPermit, RentedHostPermitted, RentedHostNotPermitted,
-  rented_host_subject, rented_host_scope, rented_host_request, rented_host_permit, rented_host_authorizations,
+  rented_host_subject, rented_host_intent, rented_host_scope, rented_host_request, rented_host_permit, rented_host_authorizations,
 }
-import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, rented_host_ssh_effect, Conforms }
+import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, rented_host_ssh_effect, DivergesWithReason }
 import gunbc.auth.authorization_pattern_selection { select_authorization_pattern, PatternSelected, OperatorApprovedCapability }
 import test.claim.serving.rented_enrollment_witness { e_access }
 
@@ -80,6 +81,20 @@ test fn a_grant_for_another_node_refuses() -> Bool {
     host_key: g_decl().host_key, operator_key: g_decl().operator_key, operator_key_fingerprint: g_decl().operator_key_fingerprint,
   }
   g_refused_naming(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: other, attempt_raw: "run-1", clock: g_now()), needle: "no operator authorization")
+}
+
+test fn a_grant_for_another_host_key_refuses() -> Bool {
+  let hk = g_decl().host_key
+  let other_key = KnownHostKeyRow {
+    host: hk.host, endpoint: hk.endpoint, key_type: hk.key_type, public_key_base64: "AAAAdifferenthostkey",
+    sha256_fingerprint: hk.sha256_fingerprint, provenance: hk.provenance,
+  }
+  let other = RentedHostAccessDeclaration {
+    node: g_decl().node, endpoint: g_decl().endpoint, principal: g_decl().principal,
+    host_key: other_key, operator_key: g_decl().operator_key, operator_key_fingerprint: g_decl().operator_key_fingerprint,
+  }
+  g_refused_naming(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: other, attempt_raw: "run-1", clock: g_now()), needle: "no operator authorization")
+    && (rented_host_intent(subject: rented_host_subject(declaration: other)) as String) != (rented_host_intent(subject: rented_host_subject(declaration: g_decl())) as String)
 }
 
 test fn a_grant_for_another_key_fingerprint_refuses() -> Bool {
