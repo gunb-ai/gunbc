@@ -1563,7 +1563,12 @@ fn infer_declaration_reference_facts_indexed(
         Present { value: declared } =>
           match infer_declaration_callable_evidence(declared: declared) {
             Absent =>
-              inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+              match infer_nullary_variant_reference_type(resolved: resolved, path: path, declared: declared) {
+                Present { value: variant_type } =>
+                  inferred_facts_from_derived_type(node: n, derived_type: variant_type, descent: Holds { value: descent_proof })
+                Absent =>
+                  inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+              }
             Present { value: callable } =>
               infer_reference_facts_or_frontier(
                 o: infer_facts_denoting(
@@ -1579,6 +1584,44 @@ fn infer_declaration_reference_facts_indexed(
               )
           }
       }
+}
+
+// A BARE NULLARY VARIANT IS A VALUE OF ITS DECLARING COPRODUCT. Introduction is nominal, so `Empty` is a
+// `FreeMonoid`, not a thing with no type: left underived it entered every declared position as the counted
+// argument_type_not_derived advisory, which is how an empty producer reached a FreeSemigroup position
+// unjudged (gunbc.recurring_failure_mode a_possibly_empty_producer_enters_a_nonempty_consumer). A generic
+// coproduct instantiates at its own binders, so the reference keeps its nominal head and the binders stay
+// open (inhabitance_declaration_heads_differ decides the head, never the arguments).
+fn infer_nullary_variant_reference_type(
+  resolved: ResolvedTree,
+  path: QualifiedName,
+  declared: Node
+) -> Optional<Node> {
+  match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
+    Absent => Absent
+    Present { value: kind } =>
+      match kind {
+        RecordTypePayload => Absent
+        VariantArmPayload =>
+          if length(xs: declared.children) == 0 {
+            let variant_path = qualified_name_init(qn: symbol_index_declaring_path_of(index: resolved.resolved_declarations, target: path))
+            let binders = symbol_index_declared_type_params_at(index: resolved.resolved_declarations, qualified_path: variant_path)
+            infer_record_construct_type(
+              type_path: variant_path,
+              type_params: binders,
+              instances: fold(binders, init: [], f: fn(acc, b) {
+                list_snoc_item(xs: acc, item: TypeVariableInstance {
+                  binder: b,
+                  instance: Node { kind: TypeNode { connective: Atom { identity: b } }, children: [], occurrence_id: OccurrenceSynthetic }
+                })
+              }),
+              decided: true
+            )
+          } else {
+            Absent
+          }
+      }
+  }
 }
 
 // A REFERENCE TO A `data` CONSTANT USES ITS VALUE, so it is typed at the constant's declared type, the
