@@ -250,6 +250,12 @@ fn closure_normalize_loop(
 // other member's full tree is needed to resolve this one. The modifier channel is the CLOSURE's
 // (every member NormalizedTree), not this tree alone: an imported unsealed type is covered as
 // not-sealed, and an imported sealed type still refuses.
+// THE INDEX INFER READS FOR DECLARING PATHS IS THAT SAME CLOSURE. Handing empty_symbol_index()
+// here left unique-variant aliases (std.process.ExitFailure) without their claimants, so
+// infer_variant_arm_construct took qualified_name_init of the alias — the module path — as the
+// coproduct and type_declaration_modifier_row_at looked up std × process, a key no NormalizedTree
+// covers. Uncovered then refused as unread. The members were already filled into symbol_index;
+// that is the cover, not a widen of Uncovered into not-sealed.
 fn closure_resolve_member(
   lm: LanguageModel,
   tree: NormalizedTree,
@@ -272,7 +278,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
+      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
     }
   )
 }

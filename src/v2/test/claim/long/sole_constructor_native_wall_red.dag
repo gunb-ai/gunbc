@@ -10,6 +10,7 @@ module v2.test.claim.long.sole_constructor_native_wall_red
 
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, fold_list }
+import std.optional { Absent, Optional, Present }
 import v2.compiler.infer { infer }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -86,6 +87,22 @@ fn wall_peer_imported_open_emit_text() -> String {
 
 fn wall_subject_imported_open_emit_text() -> String {
   "module bcb\n\nimport aca { DupShape }\n\nfn own() -> DupShape { DupShape { n: 1 } }\n"
+}
+
+fn wall_peer_imported_open_variant_emit_text() -> String {
+  "module aca\n\ntype OpenChoice\n  = OpenA { n: Int }\n  | OpenB { s: String }\n"
+}
+
+fn wall_subject_imported_open_variant_emit_text() -> String {
+  "module bcb\n\nimport aca { OpenChoice, OpenA }\n\nfn own() -> OpenChoice { OpenA { n: 1 } }\n"
+}
+
+fn wall_peer_imported_sealed_variant_emit_text() -> String {
+  "module aca\n\ntype OpenChoice sole_constructor\n  = OpenA { n: Int }\n  | OpenB { s: String }\n\nfn mint() -> OpenChoice { OpenA { n: 0 } }\n"
+}
+
+fn wall_subject_imported_sealed_variant_emit_text() -> String {
+  "module bcb\n\nimport aca { OpenChoice, OpenA }\n\nfn forge() -> OpenChoice { OpenA { n: 999 } }\n"
 }
 
 fn wall_peer_imported_sealed_emit_text() -> String {
@@ -229,6 +246,23 @@ fn wall_emission_all_members_emitted(located: ClosureEmissionLocated) -> Bool {
             ClosureMemberEmitted { module: _, text: _ } => true
             ClosureMemberRefused { module: _, diagnostics: _ } => false
           }
+        }
+      })
+  }
+}
+
+fn wall_emission_first_refused_reason(located: ClosureEmissionLocated) -> Optional<Symbol> {
+  match located.outcome {
+    Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+    Accepted { value: ce, diagnostics: _ } =>
+      fold_list(xs: ce.modules, empty: Absent, cons: fn(found, m) {
+        match found {
+          Present { value: _ } => found
+          Absent =>
+            match m {
+              ClosureMemberEmitted { module: _, text: _ } => found
+              ClosureMemberRefused { module: _, diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+            }
         }
       })
   }
@@ -415,6 +449,30 @@ test fn closure_emission_refuses_imported_sealed_construction_holds() -> Bool {
     located: wall_emit(
       entry: "bcb",
       ingest: wall_two_ingest(subject_src: wall_subject_imported_sealed_emit_text(), peer_src: wall_peer_imported_sealed_emit_text())
+    ),
+    reason: ^infer_reason_sole_constructor_refused
+  )
+}
+
+test fn closure_emission_admits_imported_unsealed_variant_alias_holds() -> Bool {
+  match wall_emission_first_refused_reason(
+    located: wall_emit(
+      entry: "bcb",
+      ingest: wall_two_ingest(subject_src: wall_subject_imported_open_variant_emit_text(), peer_src: wall_peer_imported_open_variant_emit_text())
+    )
+  ) {
+    Absent => true
+    Present { value: reason } =>
+      (reason != ^infer_reason_sole_constructor_modifiers_unreadable)
+        && (reason != ^infer_reason_sole_constructor_refused)
+  }
+}
+
+test fn closure_emission_refuses_imported_sealed_variant_alias_holds() -> Bool {
+  wall_emission_has_reason(
+    located: wall_emit(
+      entry: "bcb",
+      ingest: wall_two_ingest(subject_src: wall_subject_imported_sealed_variant_emit_text(), peer_src: wall_peer_imported_sealed_variant_emit_text())
     ),
     reason: ^infer_reason_sole_constructor_refused
   )
