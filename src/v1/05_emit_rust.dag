@@ -3601,7 +3601,9 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none,
-    expected_type: none
+    expected_type: none,
+    tco_cursor_param: "",
+    tco_cursor_tails: empty_map()
   }
   let registry = typed.item_registry
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
@@ -4297,7 +4299,9 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none,
-    expected_type: none
+    expected_type: none,
+    tco_cursor_param: "",
+    tco_cursor_tails: empty_map()
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -5750,7 +5754,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     fn_generic_param_names: emit_info.fn_generic_param_names,
     fn_type_env: scope.type_env,
     fn_return_type: emit_info.fn_return_type,
-    expected_type: emit_info.expected_type
+    expected_type: emit_info.expected_type,
+    tco_cursor_param: emit_info.tco_cursor_param,
+    tco_cursor_tails: emit_info.tco_cursor_tails
   }
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
     scoped: build_scoped_data_item_index(typed_module: typed_module, data_items: data_items),
@@ -7753,7 +7759,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             fn_generic_param_names: emit_info.fn_generic_param_names,
             fn_type_env: emit_info.fn_type_env,
             fn_return_type: emit_info.fn_return_type,
-            expected_type: emit_info.expected_type
+            expected_type: emit_info.expected_type,
+            tco_cursor_param: emit_info.tco_cursor_param,
+            tco_cursor_tails: emit_info.tco_cursor_tails
           }
 
           let is_effectful = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name(env: env, node: item) }) {
@@ -13512,7 +13520,9 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type,
-              expected_type: emit_info.expected_type
+              expected_type: emit_info.expected_type,
+              tco_cursor_param: emit_info.tco_cursor_param,
+              tco_cursor_tails: emit_info.tco_cursor_tails
             }
           Absent => emit_info
         }
@@ -13546,7 +13556,9 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type,
-              expected_type: emit_info.expected_type
+              expected_type: emit_info.expected_type,
+              tco_cursor_param: emit_info.tco_cursor_param,
+              tco_cursor_tails: emit_info.tco_cursor_tails
             }
           Absent => emit_info
         }
