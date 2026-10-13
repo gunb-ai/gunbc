@@ -67,7 +67,7 @@ const PRODUCT_REUSE_FRESH_VALUE: &str = "fresh";
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
 /// authority is now inside that closure, the binary judges its own receipt.
-const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/compile.dag";
+const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/source_root_eval.dag";
 
 /// THE V2-EXCLUSIVE CLI'S ENTRY, AND WHY IT IS A SECOND CONSTANT RATHER THAN A SECOND ROUTE.
 ///
@@ -1733,7 +1733,7 @@ fn write_host_facts(
 /// module also behave as the seed does on a discriminating corpus, and that half
 /// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
 /// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
-/// refuses today because `v2.compiler.compile` declares `SourceRootEvalDriver`, whose rendered main
+/// refuses today because `v2.compiler.source_root_eval` declares `SourceRootEvalDriver`, whose rendered main
 /// answers `census` and `adjudicate` and has no compile mode at all. That refusal is the honest next
 /// position and belongs in this step when a driver exists that can reach it.
 /// What the self-host generation observed, as the fields a caller renders. Returned rather than
@@ -1954,7 +1954,7 @@ pub struct V2NativeCliHeld {
 /// THE V2-EXCLUSIVE CLI, EMITTED AND BUILT. This is the door the self-host step stops in front of.
 ///
 /// `//gunbc/instruments:self-host` establishes that the seed can emit and build
-/// `v2.compiler.compile`; what it explicitly does NOT establish is the second generation, because
+/// `v2.compiler.source_root_eval`; what it explicitly does NOT establish is the second generation, because
 /// that entry declares `SourceRootEvalDriver`, whose rendered main answers `census` and `adjudicate`
 /// and has no compile mode. `v2.cli.compile_cli` is the entry that does have one, and this producer
 /// is the question "does that door exist as a built binary today" asked the same way its sibling

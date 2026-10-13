@@ -170,7 +170,7 @@ fn compile_clean_diagnostic_census_label() -> Label {
 // module also behave as the seed does on a discriminating corpus, and that half lives in the three
 // behavioral-receipt instruments beside this one. Nor is it the second generation: the BUILT binary
 // emitting the same closure is the v2 -> v2 boundary, and it refuses today because
-// `v2.compiler.compile` declares `SourceRootEvalDriver`, whose rendered main answers `census` and
+// `v2.compiler.source_root_eval` declares `SourceRootEvalDriver`, whose rendered main answers `census` and
 // `adjudicate` and has no compile mode at all. That refusal is the honest next position and belongs
 // in this instrument when a driver can reach it.
 //
@@ -187,7 +187,7 @@ fn self_host_label() -> Label {
 
 // THE V2-EXCLUSIVE CLI INSTRUMENT: THE DOOR THE SELF-HOST STEP STOPS IN FRONT OF.
 //
-// `//gunbc/instruments:self-host` establishes that the seed can emit `v2.compiler.compile` and
+// `//gunbc/instruments:self-host` establishes that the seed can emit `v2.compiler.source_root_eval` and
 // build it clean, and its own row above states what that does NOT establish: the second generation,
 // because that entry declares `SourceRootEvalDriver`, whose rendered main answers `census` and
 // `adjudicate` and has no compile mode. `v2.cli.compile_cli` is the entry that has one -- a
@@ -221,7 +221,7 @@ fn self_host_label() -> Label {
 // The two closures are DIFFERENT rather than nested, and neither contains the other's
 // `compiler_pipeline_entry` declaration -- which is precisely why they can coexist under the
 // emitter's exactly-one rule. They are also close in size, so size is not the argument: the
-// argument is membership. This closure reaches modules `v2.compiler.compile`'s does not,
+// argument is membership. This closure reaches modules `v2.compiler.source_root_eval`'s does not,
 // `v2.extdeps.languages.rust` among them, so a green here and a green there are two facts about
 // two compilations and neither is evidence about the other. One label carrying both would let a
 // regression in either be reported under a name that does not say which.
@@ -234,7 +234,7 @@ fn v2_native_cli_label() -> Label {
 // whose constants test.claim.compiler_gate_emit_build_lane_witness holds against these rows --
 // takes them from here, so a moved subject cannot leave a stale closure reported as covered.
 fn self_host_entry() -> String {
-  "src/v2/compiler/compile.dag"
+  "src/v2/compiler/source_root_eval.dag"
 }
 
 fn v2_native_cli_entry() -> String {
@@ -293,7 +293,7 @@ fn type_declaration_use_census_label() -> Label {
 
 // THE NATIVE PROCESS'S OWN MEMORY (gunbc.instruments.native_process_memory_reading): the emitted v2
 // compiler's `census` verb over the self-host corpus (`dag` + `src/v2`, a superset of the
-// v2.compiler.compile closure, because the census verbs take roots, not an entry), with a one-module
+// v2.compiler.source_root_eval closure, because the census verbs take roots, not an entry), with a one-module
 // control run first. Peak resident bytes and wall time of that ONE child, reaped by wait4, so the seed's
 // emission and cargo's build are outside the reading. A report: its numbers are a receipt and are not
 // transcribed into committed prose or a test (DESIGN sections 5 and 6). Self-compilation is a distinct
@@ -302,7 +302,7 @@ fn native_process_memory_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-process-memory-census" } }
 }
 
-// THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.compile`'s
+// THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.source_root_eval`'s
 // closure, `gunbc.emitted_crate_workspace` `emitted_workspace_plan` partitions it into crate
 // rows from the derived module DAG, the emission's returned edges and the transitive unit
 // dependencies, `v1.compiler.stage0_crates` renders those rows with the one partition renderer,
