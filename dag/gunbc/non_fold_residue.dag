@@ -105,7 +105,6 @@ data nfr_reason_json_natural_projection: String = "one-variant decode over JsonV
 
 data nfr_dissolve_json_natural_projection: DissolutionCondition = unbound_dissolution(description: "typed JSON member decoding lands in the JSON language authority (extdeps.languages.json) with a per-shape refusal carrier, so the envelope reads a natural through a total decode rather than a hand match over JsonValue, and the row deletes with that decoder")
 
-
 data nfr_reason_acceptance_obligation_eq: String = "structural equality over DagStageObligation (obligation_eq): the three claim-carrying arms compare their claim identities through nested matches with off-variant wildcard false arms, and the outer wildcard compares discriminants for the five unit arms — the eq-row class the structural-equality rows above name, landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
 data nfr_reason_acceptance_verdict_append: String = "one-variant append over DagAcceptanceVerdict (three arms): verdict_with_further_rejection extends AcceptanceContractRejected and verdict_with_further_unfinished extends AcceptanceContractIncomplete, each returning the other two verdicts unchanged through one wildcard identity arm. Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
@@ -328,8 +327,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/scm/repository_envelope.dag::repository_natural_from_json" },
     reason: nfr_reason_json_natural_projection,
     dissolution: nfr_dissolve_json_natural_projection,
-  },
-  FrontierRow {
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::obligation_eq" },
