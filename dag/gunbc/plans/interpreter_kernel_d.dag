@@ -4,6 +4,7 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ol, ul, cell, row }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
   [
@@ -43,7 +44,7 @@ fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
 }
 
 data interpreter_kernel_d_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "interpreter-kernel-d",
   title: "HAND kernel D — v1_interpreter pure-eval authority + pinned host-physics",
   body: interpreter_kernel_d_body(),
