@@ -1,0 +1,27 @@
+module gunbc.host_custody_export_receipt
+
+import std.types { NonEmptyStr, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// THE RECEIPT PATH IS DERIVED FROM THE PLACED FILE, ONCE. The later snapshot take imports this
+// leaf rather than gunbc.fleet.host_credential_custody_converge: the path is a function of the custody
+// row's path, and the converge is the publisher, not the naming authority. A second spelling of the
+// suffix beside this function would be a fork the reader could miss.
+//
+// The sibling lives in the same directory as the placed file. For Cursor and Claude that directory
+// is root-owned with operator group traverse (not write), so the reader can open the receipt and
+// cannot replace it through directory permissions. Authority is the host access model being claimed
+// (root versus the operator account), not protection from privileges that model does not constrain.
+
+data host_custody_export_receipt_suffix: String = ".gunbc-export-receipt"
+
+fn host_custody_export_receipt_path(placed_path: NonEmptyStr) -> NonEmptyStr {
+  concat(placed_path as String, host_custody_export_receipt_suffix) as NonEmptyStr
+}
+
+// DESIGN §3c: this writer does not land the snapshot-take reader (#13809 owns
+// dispatch_credential_snapshot). Named later consumer and trigger live here so the path is a
+// declared frontier, not a dangling host artifact.
+data host_custody_export_receipt_reader_frontier: DissolutionCondition = unbound_dissolution(
+  description: "CONSUMED BY A NAMED LATER CHANGE (DESIGN section 3c). Named consumer: gunbc.dispatch_credential_snapshot dispatch_credential_snapshot_take, after gunbc#13809 seals the attempt through the launch. This writer must not import that module. Trigger: that take requires host_custody_export_receipt_path and refuses a missing receipt; no receipt-free fallback. SUFFICIENT FOR: the snapshot take proves which custody generation it copied. Writer-only until then; the operator re-applies custody on srv1 and srv2 between writer and reader." as NonEmptyStr,
+)
