@@ -750,6 +750,16 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "v2.test.claim.self_host.compiler_closure_ingest_boundary_witness.compiler_closure_ingest_boundary_exact_cap_transport_holds" as NonEmptyStr,
     deleted_in: "the whole-repository ingest-gate family deletion (source layout cutover C3, gunbc.plans.source_layout_authority): the exact-cap transport of the whole-tree ingest has no subject once no producer reads the whole tree" as NonEmptyStr
   },
+  WitnessRenamed {
+    previous_identity: "v2.test.v2_native_route.the_universe_is_the_prefix_and_nothing_else" as NonEmptyStr,
+    new_identity: "v2.test.v2_native_route.the_route_boundary_is_the_v2_tree_and_nothing_else" as NonEmptyStr,
+    renamed_in: "the test-marker universe cutover (gunbc.recurring_failure_mode test_identity_restated_as_a_location_predicate_beside_the_marker): the native lane's universe is the marked declarations of the acquired modules and no namespace predicate participates in test identity, so the claim no longer pins a universe prefix; the same subject, the default pattern as the route boundary, is pinned under the boundary's own name" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.v2_native_route.a_foreign_universe_member_is_refused" as NonEmptyStr,
+    new_identity: "v2.test.v2_native_route.a_universe_member_outside_the_route_boundary_is_refused" as NonEmptyStr,
+    renamed_in: "the test-marker universe cutover (gunbc.recurring_failure_mode test_identity_restated_as_a_location_predicate_beside_the_marker): a universe member is foreign to the route when its module lies outside the default pattern's subtree, not when it lacks the retired v2.test prefix; the claim keeps its subject and is named for the boundary it asserts" as NonEmptyStr,
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {

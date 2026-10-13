@@ -28,7 +28,8 @@ import gunbc.source_root_read {
 }
 import v2.compiler.name_resolve { Import }
 import v2.compiler.normalize { normalize }
-import v2.compiler.module_header { ModuleHeaderReader }
+import v2.compiler.grammar_reach { Reach }
+import v2.compiler.module_header { ModuleHeaderReader, module_header_tail }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
@@ -191,6 +192,7 @@ type AcquisitionEnv {
   bindings: List<SourceRootBinding>
   lex: PreparedLexRules
   grammar: PreparedGrammar
+  header_tail: Reach
 }
 
 // The pending requests are a stack (a member's requests are pushed in front), so a push costs the
@@ -786,20 +788,27 @@ fn acquisition_env(layout: SourceStorageLayout, bindings: List<SourceRootBinding
     Rejected { diagnostics: d } => AcquisitionEnvUnprepared { diagnostics: d }
     Accepted { value: prepared, diagnostics: _ } =>
       AcquisitionEnvReady {
-        env: AcquisitionEnv {
-          layout: layout,
-          bindings: bindings,
-          lex: prepare_lex_rules(rules: dag_language_model().lex),
-          grammar: prepared
-        }
+        env: acquisition_env_over(layout: layout, bindings: bindings, lex: prepare_lex_rules(rules: dag_language_model().lex), grammar: prepared)
       }
   }
+}
+
+// THE ENV OVER A PREPARED LEXER AND GRAMMAR: the one place the header production's tail is derived
+// from the grammar (v2.compiler.module_header module_header_tail), so it is carried once per run and
+// every env built through it holds the tail its own grammar gives.
+fn acquisition_env_over(
+  layout: SourceStorageLayout,
+  bindings: List<SourceRootBinding>,
+  lex: PreparedLexRules,
+  grammar: PreparedGrammar
+) -> AcquisitionEnv {
+  AcquisitionEnv { layout: layout, bindings: bindings, lex: lex, grammar: grammar, header_tail: module_header_tail(grammar: grammar) }
 }
 
 // The header reader over the env's prepared lexer and grammar: the one reading of a file's declared
 // module (v2.compiler.module_header), shared by the lookup's agreement check and the layout verb.
 fn acquisition_header_reader(env: AcquisitionEnv) -> ModuleHeaderReader {
-  ModuleHeaderReader { lex: env.lex, grammar: env.grammar }
+  ModuleHeaderReader { lex: env.lex, grammar: env.grammar, tail: env.header_tail }
 }
 
 // THE DOOR: the closure of the entry modules under the layout, read through the bindings. One
@@ -1110,13 +1119,11 @@ fn acquire_verified(layout: SourceStorageLayout, bindings: List<SourceRootBindin
 // ---- enumerating a namespace (a population job's explicit input) ------------------------------------------
 //
 // Compiling an entry never walks a directory. A job whose input IS a population (a census, the
-// population parse, the native lane's candidate test modules) names the namespace it enumerates and
-// gets the module names the storage rule puts under it. A name follows its path under the rule, so the
-// enumeration is the inverse of module_file for one directory; the acquirer's `module` line check then
-// confirms each name when it is requested.
-type NamespaceModules
-  = NamespaceModulesListed { namespace: String, modules: List<String> }
-  | NamespaceModulesRefused { namespace: String, cause: String }
+// population parse, the native lane's candidate modules) is handed the module names the storage rule
+// puts under the namespaces the layout declares (enumerate_bound_modules). A name follows its path under
+// the rule, so the enumeration is the inverse of module_file for one directory; the acquirer's `module`
+// line check then confirms each name when it is requested. The walk below is the one directory observation
+// that enumeration is built from; no caller enumerates a single named namespace.
 
 // What one directory walk observed, before a caller decides what an absent directory means.
 type NamespaceWalk
@@ -1175,32 +1182,6 @@ fn namespace_walk_under(namespace: String, root: String, relative: String) -> Na
     namespace_walk(namespace: namespace, directory: root)
   } else {
     namespace_walk(namespace: namespace, directory: source_root_child_path(directory: root, name: relative))
-  }
-}
-
-// A population job that NAMES one namespace gets its modules, and a named namespace with no directory
-// is a refusal: the caller asked for a population that is not there.
-fn namespace_named_listing(walk: NamespaceWalk) -> NamespaceModules {
-  match walk {
-    NamespaceWalkAbsent { namespace: namespace, directory: directory } =>
-      NamespaceModulesRefused { namespace: namespace, cause: concat(directory, ": the namespace has no directory under its tree") }
-    NamespaceWalkListed { namespace: namespace, modules: modules } => NamespaceModulesListed { namespace: namespace, modules: modules }
-    NamespaceWalkRefused { namespace: namespace, cause: cause } => NamespaceModulesRefused { namespace: namespace, cause: cause }
-  }
-}
-
-fn enumerate_namespace_modules(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, namespace: String) -> NamespaceModules {
-  match module_file(layout: layout, name: concat(namespace, ".x")) {
-    ModuleNameUnderivable { name: _, cause: cause } => NamespaceModulesRefused { namespace: namespace, cause: cause }
-    ModuleFileDerived { file: file } =>
-      match acquisition_host_directory(bindings: bindings, tree: file.tree) {
-        Absent =>
-          NamespaceModulesRefused { namespace: namespace, cause: concat("tree ", source_root_ref_label(tree: file.tree), " is not bound") }
-        Present { value: root } =>
-          namespace_named_listing(
-            walk: namespace_walk_under(namespace: namespace, root: root, relative: namespace_relative_directory(probe_relative_path: file.relative_path))
-          )
-      }
   }
 }
 

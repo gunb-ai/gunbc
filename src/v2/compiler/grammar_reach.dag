@@ -1,0 +1,201 @@
+module v2.compiler.grammar_reach
+
+import std.algebra { Cons, map_lookup }
+import std.optional { Absent, Present }
+import std.types { List, Map }
+import v2.compiler.parse { grammar_choice_plan_peek_depth, symbol_list_contains }
+import v2.std.grammar { AfterLineBreak, Choice, Expect, GrammarExpr, GrammarProduction, InfixTable, LiteralTerminal, Nonterminal, NotPredicate, RefuseOnMatch, Repeat, Sequence, Terminal }
+import v2.std.node { Symbol }
+
+// HOW FAR PAST WHAT A PRODUCTION CONSUMES ITS PARSE LOOKS, derived from the grammar and never
+// guessed. A parse that has accepted a prefix of a stream examined some tokens beyond the ones it
+// consumed: a repeat read one iteration past its last, a choice peeked, a not-predicate looked at
+// the next token. A reader that hands the parse only the start of a longer stream (the module
+// header over the first tokens of a file) may take that parse for the full one exactly when it
+// examined nothing outside what it was handed, and that is decided by this bound: a parse that
+// accepted and left at least `tail` of the handed tokens unread examined only handed tokens, so the
+// longer stream would have given it the same reading.
+//
+// THREE BOUNDS PER EXPRESSION, each over every path the parse can take, with a repeat's unbounded
+// consumption kept apart from its bounded examination:
+//
+//   consumed: tokens an accepted match consumes.
+//   tail: tokens an accepted match examined beyond the ones it consumed.
+//   rejected: tokens a rejected match examined from its start.
+//
+// Sequence adds consumption, takes the larger tail, and a rejection after the left consumed adds
+// the left's consumption to the right's rejected reach. A choice that rejected one alternative
+// before accepting another examined the first's rejected reach beyond what the second consumed,
+// and a plan peeks grammar_choice_plan_peek_depth tokens before it attempts anything. A repeat
+// consumes without bound and ends on one rejected iteration. A not-predicate consumes nothing and
+// examines at least the next token. An operator table and a layout-conditioned match are not
+// derived: they are Unbounded, which the reader refuses and never reads past.
+//
+// A PRODUCTION RE-ENTERED WHILE IT IS BEING EXPANDED IS UNBOUNDED, not a fixpoint: a recursive
+// production's examination is not read off one expansion, and an under-estimate would let a
+// truncated stream be taken for the full one. The expansion is over the grammar's own source
+// expressions (the index the prepared grammar carries), so it holds for every plan the preparation
+// compiles from them, each of which attempts a subset of the source choice's alternatives in order.
+// Descent: `visiting` gains a production on every expansion and a re-entered production stops the
+// walk, so the depth is at most the grammar's production count.
+type Reach
+  = Reaches { tokens: Int }
+  | ReachUnbounded
+
+type ExaminedReach {
+  consumed: Reach
+  tail: Reach
+  rejected: Reach
+}
+
+// THE ENTRY: the tail bound of the named production, expanded through the productions index. A
+// production the index does not hold is the parse's own unresolved-production rejection, which
+// examines nothing.
+fn grammar_production_tail(productions: Map<Symbol, GrammarProduction>, production: Symbol) -> Reach {
+  reach_nonterminal(name: production, productions: productions, visiting: []).tail
+}
+
+fn reach_none() -> Reach { Reaches { tokens: 0 } }
+
+fn reach_add(left: Reach, right: Reach) -> Reach {
+  match left {
+    ReachUnbounded => ReachUnbounded
+    Reaches { tokens: a } =>
+      match right {
+        ReachUnbounded => ReachUnbounded
+        Reaches { tokens: b } => Reaches { tokens: a + b }
+      }
+  }
+}
+
+fn reach_max(left: Reach, right: Reach) -> Reach {
+  match left {
+    ReachUnbounded => ReachUnbounded
+    Reaches { tokens: a } =>
+      match right {
+        ReachUnbounded => ReachUnbounded
+        Reaches { tokens: b } => if a < b { right } else { left }
+      }
+  }
+}
+
+fn reach_is_none(reach: Reach) -> Bool {
+  match reach {
+    ReachUnbounded => false
+    Reaches { tokens: n } => n == 0
+  }
+}
+
+fn examined_reach_unbounded() -> ExaminedReach {
+  ExaminedReach { consumed: ReachUnbounded, tail: ReachUnbounded, rejected: ReachUnbounded }
+}
+
+fn grammar_expr_reach(expr: GrammarExpr, productions: Map<Symbol, GrammarProduction>, visiting: List<Symbol>) -> ExaminedReach {
+  match expr {
+    Terminal { token_class: _, stamp: _ } => reach_of_terminal()
+    LiteralTerminal { token_class: _, lexeme: _ } => reach_of_terminal()
+    Nonterminal { production: name } => reach_nonterminal(name: name, productions: productions, visiting: visiting)
+    Sequence { left: left, right: right } =>
+      reach_of_sequence(
+        left: grammar_expr_reach(expr: left, productions: productions, visiting: visiting),
+        right: grammar_expr_reach(expr: right, productions: productions, visiting: visiting)
+      )
+    Choice { left: left, right: right } =>
+      reach_of_choice(
+        left: grammar_expr_reach(expr: left, productions: productions, visiting: visiting),
+        right: grammar_expr_reach(expr: right, productions: productions, visiting: visiting)
+      )
+    v2.std.grammar.Optional { element: element } =>
+      reach_of_optional(element: grammar_expr_reach(expr: element, productions: productions, visiting: visiting))
+    Repeat { element: element } =>
+      reach_of_repeat(element: grammar_expr_reach(expr: element, productions: productions, visiting: visiting))
+    Expect { element: element, reason: _ } => grammar_expr_reach(expr: element, productions: productions, visiting: visiting)
+    RefuseOnMatch { element: element, reason: _ } =>
+      reach_of_refuse_on_match(element: grammar_expr_reach(expr: element, productions: productions, visiting: visiting))
+    AfterLineBreak { element: _ } => examined_reach_unbounded()
+    NotPredicate { element: element } =>
+      reach_of_not_predicate(element: grammar_expr_reach(expr: element, productions: productions, visiting: visiting))
+    InfixTable { operand: _, continuation_guard: _, operators: _ } => examined_reach_unbounded()
+  }
+}
+
+fn reach_nonterminal(name: Symbol, productions: Map<Symbol, GrammarProduction>, visiting: List<Symbol>) -> ExaminedReach {
+  if symbol_list_contains(xs: visiting, item: name) {
+    examined_reach_unbounded()
+  } else {
+    match map_lookup(m: productions, key: name) {
+      Present { value: production } =>
+        grammar_expr_reach(expr: production.expression, productions: productions, visiting: Cons { head: name, tail: visiting })
+      Absent => ExaminedReach { consumed: reach_none(), tail: reach_none(), rejected: reach_none() }
+    }
+  }
+}
+
+// A terminal looks at the next token and consumes it; with no token left it rejects having looked.
+fn reach_of_terminal() -> ExaminedReach {
+  ExaminedReach { consumed: Reaches { tokens: 1 }, tail: reach_none(), rejected: Reaches { tokens: 1 } }
+}
+
+fn reach_of_sequence(left: ExaminedReach, right: ExaminedReach) -> ExaminedReach {
+  ExaminedReach {
+    consumed: reach_add(left: left.consumed, right: right.consumed),
+    tail: reach_max(left: left.tail, right: right.tail),
+    rejected: reach_max(
+      left: left.rejected,
+      right: reach_max(
+        left: reach_add(left: left.consumed, right: left.tail),
+        right: reach_add(left: left.consumed, right: right.rejected)
+      )
+    )
+  }
+}
+
+fn reach_of_choice(left: ExaminedReach, right: ExaminedReach) -> ExaminedReach {
+  let peek = Reaches { tokens: grammar_choice_plan_peek_depth() }
+  ExaminedReach {
+    consumed: reach_max(left: left.consumed, right: right.consumed),
+    tail: reach_max(left: reach_max(left: left.tail, right: right.tail), right: reach_max(left: left.rejected, right: peek)),
+    rejected: reach_max(left: reach_max(left: left.rejected, right: right.rejected), right: peek)
+  }
+}
+
+// An optional never rejects: its element's rejection is an empty match that examined the element's
+// rejected reach.
+fn reach_of_optional(element: ExaminedReach) -> ExaminedReach {
+  ExaminedReach {
+    consumed: element.consumed,
+    tail: reach_max(left: element.tail, right: element.rejected),
+    rejected: reach_none()
+  }
+}
+
+// A repeat that can consume consumes without bound; it ends on one iteration that rejected, or
+// accepted without moving.
+fn reach_of_repeat(element: ExaminedReach) -> ExaminedReach {
+  ExaminedReach {
+    consumed: if reach_is_none(reach: element.consumed) { reach_none() } else { ReachUnbounded },
+    tail: reach_max(left: element.tail, right: element.rejected),
+    rejected: reach_none()
+  }
+}
+
+// A match that is a refusal never accepts, so it has no consumption or tail; what it examined is
+// what its element did, whether the element matched or not.
+fn reach_of_refuse_on_match(element: ExaminedReach) -> ExaminedReach {
+  ExaminedReach {
+    consumed: reach_none(),
+    tail: reach_none(),
+    rejected: reach_max(left: element.rejected, right: reach_add(left: element.consumed, right: element.tail))
+  }
+}
+
+// A not-predicate accepts when its element fails and rejects when it matches; it asks about the next
+// token whether or not an element is attempted.
+fn reach_of_not_predicate(element: ExaminedReach) -> ExaminedReach {
+  let next = Reaches { tokens: 1 }
+  ExaminedReach {
+    consumed: reach_none(),
+    tail: reach_max(left: element.rejected, right: next),
+    rejected: reach_max(left: reach_add(left: element.consumed, right: element.tail), right: next)
+  }
+}

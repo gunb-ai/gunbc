@@ -1,0 +1,171 @@
+module v2.test.claim.grammar_reach
+
+import std.algebra { empty_map, map_insert }
+import std.types { Bool, Map }
+import v2.compiler.grammar_reach { Reach, ReachUnbounded, Reaches, grammar_production_tail }
+import v2.extdeps.languages.dag { dag_grammar_production }
+import v2.std.grammar {
+  AfterLineBreak,
+  Choice,
+  GrammarExpr,
+  GrammarProduction,
+  Nonterminal,
+  NotPredicate,
+  RefuseOnMatch,
+  Repeat,
+  Sequence,
+  StampClass,
+  Terminal
+}
+import v2.std.integer { Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import v2.std.parse_refusal_reason { KeywordAsPathSegment }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES OF THE EXAMINED-REACH ANALYSIS (v2.compiler.grammar_reach grammar_production_tail). The
+// subject is the analysis, so each control hands it a SUPPLIED production whose tail follows from the
+// rules the analysis states and nothing else, and asserts the number the rules give. The analysis is
+// held to the real grammar elsewhere: v2.test.claim.module_header reads every swept file at every first
+// window against the whole-file reading, and a tail one token too small for the same grammar makes that
+// reading wrong, so the bound a production gets here is the bound its reader is held to.
+//
+// Each case is a production `p` over one terminal class; the expected tail is derived from the rules:
+//   a terminal consumes one token and examines nothing past it;
+//   a not-predicate examines the next token, and the rejected reach of its element;
+//   an optional or a repeat ends on one rejected iteration, so it examines the element's rejected reach;
+//   a choice examines the rejected reach of an alternative it left, and at least the plan's peek depth;
+//   a refusal on match never accepts, so it adds no tail, but a sequence after a consumed prefix still
+//   examines what the refusal looked at when it rejected;
+//   an operator table and a layout-conditioned match are not derived; a production re-entered while it is
+//   being expanded is not derived either.
+
+fn tok() -> GrammarExpr { Terminal { token_class: ^grammar_reach_probe_class, stamp: StampClass } }
+
+fn production_over(expression: GrammarExpr) -> Map<Symbol, GrammarProduction> {
+  map_insert(
+    m: empty_map(),
+    key: ^grammar_reach_probe_p,
+    value: dag_grammar_production(name: ^grammar_reach_probe_p, expression: expression, emitted: ^grammar_reach_probe_p)
+  )
+}
+
+fn two_productions(first: GrammarExpr, second: GrammarExpr) -> Map<Symbol, GrammarProduction> {
+  map_insert(
+    m: production_over(expression: first),
+    key: ^grammar_reach_probe_q,
+    value: dag_grammar_production(name: ^grammar_reach_probe_q, expression: second, emitted: ^grammar_reach_probe_q)
+  )
+}
+
+fn tail_of(expression: GrammarExpr) -> Reach {
+  grammar_production_tail(productions: production_over(expression: expression), production: ^grammar_reach_probe_p)
+}
+
+fn is_tokens(reach: Reach, want: Int) -> Bool {
+  match reach {
+    ReachUnbounded => false
+    Reaches { tokens: n } => n == want
+  }
+}
+
+fn is_unbounded(reach: Reach) -> Bool {
+  match reach {
+    ReachUnbounded => true
+    Reaches { tokens: _ } => false
+  }
+}
+
+test fn a_terminal_or_a_sequence_of_terminals_examines_nothing_past_what_it_consumes() -> Bool {
+  is_tokens(reach: tail_of(expression: tok()), want: 0)
+    && is_tokens(reach: tail_of(expression: Sequence { left: tok(), right: tok() }), want: 0)
+}
+
+test fn a_not_predicate_examines_the_next_token_and_what_its_element_looked_at() -> Bool {
+  is_tokens(reach: tail_of(expression: NotPredicate { element: tok() }), want: 1)
+    && is_tokens(reach: tail_of(expression: Sequence { left: tok(), right: NotPredicate { element: tok() } }), want: 1)
+    && is_tokens(reach: tail_of(expression: NotPredicate { element: Sequence { left: tok(), right: tok() } }), want: 2)
+}
+
+test fn an_optional_or_a_repeat_examines_the_rejected_reach_of_its_element() -> Bool {
+  is_tokens(reach: tail_of(expression: v2.std.grammar.Optional { element: tok() }), want: 1)
+    && is_tokens(reach: tail_of(expression: Repeat { element: tok() }), want: 1)
+    && is_tokens(reach: tail_of(expression: Repeat { element: Sequence { left: tok(), right: tok() } }), want: 2)
+}
+
+test fn a_choice_examines_at_least_the_plans_peek_and_the_rejected_reach_of_a_left_alternative() -> Bool {
+  is_tokens(reach: tail_of(expression: Choice { left: tok(), right: tok() }), want: 2)
+    && is_tokens(
+      reach: tail_of(expression: Choice { left: Sequence { left: tok(), right: Sequence { left: tok(), right: Sequence { left: tok(), right: tok() } } }, right: tok() }),
+      want: 4
+    )
+}
+
+// The shape the module header ends on: after a consumed name, a not-predicate over a dot followed by a
+// refusal on a keyword. The tail is what the lookahead examines past the name: the dot, then the token
+// the refusal asks about.
+test fn a_refusal_after_a_consumed_token_is_examined_when_the_match_rejects() -> Bool {
+  is_tokens(
+    reach: tail_of(
+      expression: Sequence {
+        left: tok(),
+        right: NotPredicate {
+          element: Sequence {
+            left: tok(),
+            right: RefuseOnMatch { element: tok(), reason: KeywordAsPathSegment }
+          }
+        }
+      }
+    ),
+    want: 2
+  )
+}
+
+test fn a_production_is_expanded_through_the_nonterminals_it_names() -> Bool {
+  is_tokens(
+    reach: grammar_production_tail(
+      productions: two_productions(first: Sequence { left: tok(), right: Nonterminal { production: ^grammar_reach_probe_q } }, second: NotPredicate { element: tok() }),
+      production: ^grammar_reach_probe_p
+    ),
+    want: 1
+  )
+}
+
+// A production used twice by siblings is not re-entered: only an ancestor still being expanded is.
+test fn a_production_named_twice_by_siblings_is_bounded() -> Bool {
+  is_tokens(
+    reach: grammar_production_tail(
+      productions: two_productions(
+        first: Sequence { left: Nonterminal { production: ^grammar_reach_probe_q }, right: Nonterminal { production: ^grammar_reach_probe_q } },
+        second: tok()
+      ),
+      production: ^grammar_reach_probe_p
+    ),
+    want: 0
+  )
+}
+
+test fn a_production_that_reaches_itself_is_unbounded() -> Bool {
+  is_unbounded(reach: tail_of(expression: Choice { left: tok(), right: Sequence { left: tok(), right: Nonterminal { production: ^grammar_reach_probe_p } } }))
+    && is_unbounded(
+      reach: grammar_production_tail(
+        productions: two_productions(
+          first: Sequence { left: tok(), right: Nonterminal { production: ^grammar_reach_probe_q } },
+          second: Sequence { left: tok(), right: Nonterminal { production: ^grammar_reach_probe_p } }
+        ),
+        production: ^grammar_reach_probe_p
+      )
+    )
+}
+
+test fn a_layout_conditioned_match_is_unbounded_and_never_a_guess() -> Bool {
+  is_unbounded(reach: tail_of(expression: AfterLineBreak { element: tok() }))
+    && is_unbounded(reach: tail_of(expression: Sequence { left: tok(), right: AfterLineBreak { element: tok() } }))
+}
+
+// A production the index does not hold is the parse's own unresolved-production rejection, which
+// examines nothing, so it adds nothing to a sequence that names it.
+test fn a_production_the_index_does_not_hold_examines_nothing() -> Bool {
+  is_tokens(reach: tail_of(expression: Sequence { left: tok(), right: Nonterminal { production: ^grammar_reach_probe_missing } }), want: 0)
+}

@@ -1,7 +1,11 @@
 module v2.compiler.dependency_demand_census
 
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length, empty_map, map_insert, map_lookup }
-import v2.compiler.body_lowering_fold { body_lower_find_production_shell_optional, body_lower_type_expr_lowered_optional }
+import v2.compiler.body_lowering_fold {
+  body_lower_find_production_shell_optional,
+  body_lower_param_binding_optional,
+  body_lower_type_expr_lowered_optional
+}
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure,
   DemandDerived,
@@ -40,11 +44,13 @@ import v2.extdeps.languages.dag {
 }
 import std.types { List, Map }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { grammar_empty_node, parse_production_emitted_identity_optional }
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.grammar { grammar_empty_node, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
-import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild }
+import std.types { Bool }
+import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
 import v2.std.text { String }
 
@@ -55,13 +61,13 @@ import v2.std.text { String }
 // head, reads Equal (lane ruling: an earlier run's receipt is not evidence for a later tree).
 //
 // THE STRIP IS CENSUS-ONLY AND IT IS NOT A CARRIER. Production lowering refuses every fn with a
-// `uses` clause (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional), so such a fn
-// never resolves and its demand cannot be derived. The census route alone elides the clause from
-// the parse tree -- replacing the clause's production shell with grammar_empty_node, which is
-// exactly what the parser leaves in that optional slot when the clause is absent -- and records the
-// clause beside the tree. The elided tree is consumed inside the census route only (v2.compiler.compile
-// native_demand_census_report), whose result is census rows and never a tree, so nothing it
-// produces can reach infer, eval or emission. The authored rows are therefore never lowered onto
+// `uses` clause (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional). The census
+// route elides the clause shell with grammar_empty_node so normalize does not refuse at the
+// unmodeled clause. It does not rewrite uses aliases onto the resource declaration: that would be
+// a second binder beside resolve, and it is not admitted (DESIGN section 5). Duplicate aliases, or
+// an alias that cannot be read, leave the fn unobserved. A body that names an elided alias is
+// unobserved until resolve models the clause. The stripped tree is consumed inside the census route
+// only (v2.compiler.compile native_demand_census_report). The authored rows are never lowered onto
 // the fn: they are read, judged and reported (operator D13: no carrier for the authored row).
 //
 // THE VERDICT IS SCOPED TO THE AUDITED VOCABULARY (lane ruling). Derived demand is grounded only
@@ -86,10 +92,16 @@ import v2.std.text { String }
 
 // One authored `uses` clause, read from the parse of the fn that carries it. `name` is Absent only
 // when the fn's own name could not be read off the same parse; that fn still gets a census row.
+type UsesAliasBind
+  = UsesAliasBindUnique
+  | UsesAliasBindConflict
+  | UsesAliasBindUnestablished
+
 type AuthoredUsesFunction {
   owner: QualifiedName
   name: Optional<Symbol>
   types: List<Optional<Node>>
+  alias_bind: UsesAliasBind
 }
 
 type DemandCensusStripped {
@@ -119,12 +131,57 @@ fn demand_census_authored_in(acc: List<AuthoredUsesFunction>, node: Node, owner:
             list_snoc_item(xs: acc, item: AuthoredUsesFunction {
               owner: owner,
               name: dag_surface_kw_then_ident_from_captured(captured: captured),
-              types: demand_census_entry_types(clause: clause)
+              types: demand_census_entry_types(clause: clause),
+              alias_bind: demand_census_alias_uniqueness(aliases: demand_census_entry_aliases(clause: clause))
             })
         }
     }
   } else {
     fold(node.children, init: acc, f: fn(a, e) { demand_census_authored_in(acc: a, node: e.target, owner: owner) })
+  }
+}
+
+fn demand_census_entry_aliases(clause: Node) -> List<Optional<Symbol>> {
+  fold_list(xs: demand_census_entry_shells(acc: Empty, node: clause), empty: Empty, cons: fn(acc, entry) {
+    list_snoc_item(xs: acc, item: demand_census_entry_alias(entry: entry))
+  })
+}
+
+fn demand_census_entry_alias(entry: Node) -> Optional<Symbol> {
+  match parse_production_captured_child_optional(node: entry) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Present { value: pair } => body_lower_param_binding_optional(node: pair.left)
+        Absent => body_lower_param_binding_optional(node: captured)
+      }
+  }
+}
+
+type AliasUniqScan
+  = AliasScanUnique { seen: Map<Symbol, Bool> }
+  | AliasScanConflict
+  | AliasScanUnestablished
+
+fn demand_census_alias_uniqueness(aliases: List<Optional<Symbol>>) -> UsesAliasBind {
+  match fold_list(xs: aliases, empty: AliasScanUnique { seen: empty_map() }, cons: fn(acc, a) {
+    match acc {
+      AliasScanConflict => acc
+      AliasScanUnestablished => acc
+      AliasScanUnique { seen: seen } =>
+        match a {
+          Absent => AliasScanUnestablished
+          Present { value: n } =>
+            match map_lookup(m: seen, key: n) {
+              Present { value: _ } => AliasScanConflict
+              Absent => AliasScanUnique { seen: map_insert(m: seen, key: n, value: true) }
+            }
+        }
+    }
+  }) {
+    AliasScanUnique { seen: _ } => UsesAliasBindUnique
+    AliasScanConflict => UsesAliasBindConflict
+    AliasScanUnestablished => UsesAliasBindUnestablished
   }
 }
 
@@ -534,15 +591,33 @@ fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) ->
 // ═══ THE ROW AND ITS VERDICT ═══════════════════════════════════════════════════════════════════
 
 // Why a uses fn's demand was not observed: the fn's file refused in the front end even with the clause
-// elided, the module refused at resolution (an alias the body still uses is unbound once the clause
-// is elided, so this is also where a NON-restatement row lands), the fn's own name could not be read,
-// or an authored type did not resolve.
+// elided, the module refused at resolution (including a body that still names an elided uses alias),
+// the fn's own name could not be read, an authored type did not resolve, or the uses aliases were
+// duplicate or unreadable.
+type DemandCensusUnboundLocus
+  = UnboundNamed { name: Symbol }
+  | UnboundShaped { kind: NodeKind }
+
 type DemandCensusUnobserved
   = UnobservedFileRefused
-  | UnobservedModuleResolveRefused
+  | UnobservedModuleResolveRefused { first_reason: Symbol, first_unbound: Optional<DemandCensusUnboundLocus> }
   | UnobservedFunctionUnnamed
   | UnobservedFunctionNotDeclared
   | UnobservedAuthoredTypeUnresolved
+  | UnobservedAliasConflict
+  | UnobservedAliasUnestablished
+
+// A READ REFUSED BEFORE THE STRIP. Exit 2 names the file and the stage (tokenize vs parse) so an
+// incomplete population is a located refusal, not an unlocated count (DESIGN section 5).
+type DemandCensusUnreadableStage
+  = UnreadableAtTokenize
+  | UnreadableAtParse
+
+type DemandCensusUnreadable {
+  file_path: String
+  stage: DemandCensusUnreadableStage
+  reason: Symbol
+}
 
 type DemandCensusVerdict
   = CensusEqual
@@ -692,13 +767,13 @@ fn demand_census_function_path(authored: AuthoredUsesFunction) -> QualifiedName 
 // `uses_functions` is counted from the strip; `rows` is what the route emitted. They are produced by
 // different folds -- the strip over parse trees, the rows over the module roster -- so their equality
 // is the count-conservation check rather than a restatement of one count.
-// `unreadable_files` counts reads the front end refused BEFORE the strip ran (tokenize or parse): their
+// `unreadable` is the reads the front end refused BEFORE the strip ran (tokenize or parse): their
 // `uses` rows were never read, so they are missing from BOTH sides of the conservation check, and a
 // census with any of them is an INCOMPLETE POPULATION -- no observation, never a holding census
 // (review of gunbc#12992).
 type DemandCensusReport {
   vocabulary: ResourceSet
-  unreadable_files: Int
+  unreadable: List<DemandCensusUnreadable>
   uses_functions: Int
   rows: List<DemandCensusRow>
   file_refusals: Int
@@ -713,7 +788,7 @@ fn demand_census_conserved(r: DemandCensusReport) -> Bool {
 // the rows do not account for every uses fn read, 0 when it holds. The incomplete arm is first, so a
 // census missing a file can never report held.
 fn demand_census_exit(r: DemandCensusReport) -> Int {
-  if r.unreadable_files > 0 {
+  if !is_empty(xs: r.unreadable) {
     2
   } else if demand_census_conserved(r: r) {
     0
@@ -754,10 +829,12 @@ fn demand_census_cause_subject(c: UndecidedCause) -> QualifiedName {
 fn demand_census_unobserved_word(u: DemandCensusUnobserved) -> String {
   match u {
     UnobservedFileRefused => "file_refused"
-    UnobservedModuleResolveRefused => "module_resolve_refused"
+    UnobservedModuleResolveRefused { first_reason: _, first_unbound: _ } => "module_resolve_refused"
     UnobservedFunctionUnnamed => "function_unnamed"
     UnobservedFunctionNotDeclared => "function_not_declared"
     UnobservedAuthoredTypeUnresolved => "authored_type_unresolved"
+    UnobservedAliasConflict => "alias_conflict"
+    UnobservedAliasUnestablished => "alias_unestablished"
   }
 }
 
@@ -877,7 +954,22 @@ fn demand_census_row_line(r: DemandCensusRow) -> String {
     CensusMismatch { authored: _, derived: d } => demand_census_text(parts: [head, " derived_in_vocabulary=", demand_census_paths_text(paths: d)])
     CensusUndecided { cause: c } =>
       demand_census_text(parts: [head, " cause=", demand_census_cause_word(c: c), " at=", qualified_name_to_dotted_string(qn: demand_census_cause_subject(c: c))])
-    CensusUnobserved { reason: u } => demand_census_text(parts: [head, " reason=", demand_census_unobserved_word(u: u)])
+    CensusUnobserved { reason: u } =>
+      let reason_part = demand_census_text(parts: [head, " reason=", demand_census_unobserved_word(u: u)])
+      match u {
+        UnobservedModuleResolveRefused { first_reason: r, first_unbound: u } =>
+          demand_census_text(parts: [
+            reason_part,
+            " resolve_reason=", symbol_lexeme(sym: r),
+            " ", demand_census_unbound_site_text(u: u)
+          ])
+        UnobservedFileRefused => reason_part
+        UnobservedFunctionUnnamed => reason_part
+        UnobservedFunctionNotDeclared => reason_part
+        UnobservedAuthoredTypeUnresolved => reason_part
+        UnobservedAliasConflict => reason_part
+        UnobservedAliasUnestablished => reason_part
+      }
   }
 }
 
@@ -887,6 +979,177 @@ fn demand_census_conserved_word(r: DemandCensusReport) -> String {
 
 fn demand_census_text(parts: List<String>) -> String {
   fold_list(xs: parts, empty: "", cons: fn(acc, p) { concat(acc, p) })
+}
+
+fn demand_census_stage_word(s: DemandCensusUnreadableStage) -> String {
+  match s {
+    UnreadableAtTokenize => "tokenize"
+    UnreadableAtParse => "parse"
+  }
+}
+
+fn demand_census_unreadable_line(u: DemandCensusUnreadable) -> String {
+  demand_census_text(parts: [
+    "[demand-census-unreadable] file=", u.file_path,
+    " stage=", demand_census_stage_word(s: u.stage),
+    " reason=", symbol_lexeme(sym: u.reason)
+  ])
+}
+
+type DemandCensusResolveRefusedBucket {
+  reason: Symbol
+  functions: Int
+  examples: List<QualifiedName>
+}
+
+fn demand_census_bucket_has_example(examples: List<QualifiedName>, module: QualifiedName) -> Bool {
+  fold_list(xs: examples, empty: false, cons: fn(any, e) { any || (e == module) })
+}
+
+fn demand_census_add_example(examples: List<QualifiedName>, module: QualifiedName) -> List<QualifiedName> {
+  if length(xs: examples) >= 2 {
+    examples
+  } else if demand_census_bucket_has_example(examples: examples, module: module) {
+    examples
+  } else {
+    list_snoc_item(xs: examples, item: module)
+  }
+}
+
+fn demand_census_add_to_buckets(buckets: List<DemandCensusResolveRefusedBucket>, reason: Symbol, module: QualifiedName) -> List<DemandCensusResolveRefusedBucket> {
+  let found = fold_list(xs: buckets, empty: false, cons: fn(any, b) { any || (b.reason == reason) })
+  if found {
+    fold_list(xs: buckets, empty: Empty, cons: fn(acc, b) {
+      if b.reason == reason {
+        list_snoc_item(xs: acc, item: DemandCensusResolveRefusedBucket {
+          reason: b.reason,
+          functions: b.functions + 1,
+          examples: demand_census_add_example(examples: b.examples, module: module)
+        })
+      } else {
+        list_snoc_item(xs: acc, item: b)
+      }
+    })
+  } else {
+    list_snoc_item(xs: buckets, item: DemandCensusResolveRefusedBucket { reason: reason, functions: 1, examples: [module] })
+  }
+}
+
+fn demand_census_resolve_refused_buckets(rows: List<DemandCensusRow>) -> List<DemandCensusResolveRefusedBucket> {
+  fold_list(xs: rows, empty: Empty, cons: fn(acc, row) {
+    match row.verdict {
+      CensusUnobserved { reason: UnobservedModuleResolveRefused { first_reason: r, first_unbound: _ } } =>
+        demand_census_add_to_buckets(buckets: acc, reason: r, module: qualified_name_init(qn: row.function))
+      CensusUnobserved { reason: _ } => acc
+      CensusEqual => acc
+      CensusMismatch { authored: _, derived: _ } => acc
+      CensusUndecided { cause: _ } => acc
+    }
+  })
+}
+
+fn demand_census_resolve_refused_bucket_line(b: DemandCensusResolveRefusedBucket) -> String {
+  demand_census_text(parts: [
+    "[demand-census-resolve-refused] reason=", symbol_lexeme(sym: b.reason),
+    " functions=", to_string(b.functions),
+    " examples=", demand_census_paths_text(paths: b.examples)
+  ])
+}
+
+fn demand_census_node_kind_word(k: NodeKind) -> String {
+  match k {
+    TypeNode { connective: Atom { identity: _ } } => "atom"
+    TypeNode { connective: Conj } => "conj"
+    TypeNode { connective: Disj } => "disj"
+    TypeNode { connective: Arrow } => "arrow"
+    TypeNode { connective: Occupancy } => "occupancy"
+    TypeNode { connective: Instantiation } => "instantiation"
+    ComputationNode { behavior: Value } => "value"
+    ComputationNode { behavior: Transform } => "transform"
+    ComputationNode { behavior: Branch } => "branch"
+    ComputationNode { behavior: Loop } => "loop"
+    ComputationNode { behavior: Bind } => "bind"
+    ComputationNode { behavior: Match } => "match"
+  }
+}
+
+fn demand_census_unbound_site_word(loc: DemandCensusUnboundLocus) -> String {
+  match loc {
+    UnboundNamed { name: n } => symbol_lexeme(sym: n)
+    UnboundShaped { kind: k } => demand_census_node_kind_word(k: k)
+  }
+}
+
+fn demand_census_unbound_site_text(u: Optional<DemandCensusUnboundLocus>) -> String {
+  match u {
+    Absent => "unbound_locus="
+    Present { value: loc } =>
+      match loc {
+        UnboundNamed { name: n } => demand_census_text(parts: ["unbound_name=", symbol_lexeme(sym: n)])
+        UnboundShaped { kind: k } => demand_census_text(parts: ["unbound_kind=", demand_census_node_kind_word(k: k)])
+      }
+  }
+}
+
+type DemandCensusUnboundBucket {
+  site: DemandCensusUnboundLocus
+  functions: Int
+  examples: List<QualifiedName>
+}
+
+fn demand_census_unbound_locus_eq(a: DemandCensusUnboundLocus, b: DemandCensusUnboundLocus) -> Bool {
+  match a {
+    UnboundNamed { name: na } =>
+      match b {
+        UnboundNamed { name: nb } => na == nb
+        UnboundShaped { kind: _ } => false
+      }
+    UnboundShaped { kind: ka } =>
+      match b {
+        UnboundNamed { name: _ } => false
+        UnboundShaped { kind: kb } => ka == kb
+      }
+  }
+}
+
+fn demand_census_add_to_unbound_buckets(buckets: List<DemandCensusUnboundBucket>, site: DemandCensusUnboundLocus, module: QualifiedName) -> List<DemandCensusUnboundBucket> {
+  let found = fold_list(xs: buckets, empty: false, cons: fn(any, b) { any || demand_census_unbound_locus_eq(a: b.site, b: site) })
+  if found {
+    fold_list(xs: buckets, empty: Empty, cons: fn(acc, b) {
+      if demand_census_unbound_locus_eq(a: b.site, b: site) {
+        list_snoc_item(xs: acc, item: DemandCensusUnboundBucket {
+          site: b.site,
+          functions: b.functions + 1,
+          examples: demand_census_add_example(examples: b.examples, module: module)
+        })
+      } else {
+        list_snoc_item(xs: acc, item: b)
+      }
+    })
+  } else {
+    list_snoc_item(xs: buckets, item: DemandCensusUnboundBucket { site: site, functions: 1, examples: [module] })
+  }
+}
+
+fn demand_census_unbound_buckets(rows: List<DemandCensusRow>) -> List<DemandCensusUnboundBucket> {
+  fold_list(xs: rows, empty: Empty, cons: fn(acc, row) {
+    match row.verdict {
+      CensusUnobserved { reason: UnobservedModuleResolveRefused { first_reason: _, first_unbound: Present { value: loc } } } =>
+        demand_census_add_to_unbound_buckets(buckets: acc, site: loc, module: qualified_name_init(qn: row.function))
+      CensusUnobserved { reason: _ } => acc
+      CensusEqual => acc
+      CensusMismatch { authored: _, derived: _ } => acc
+      CensusUndecided { cause: _ } => acc
+    }
+  })
+}
+
+fn demand_census_unbound_bucket_line(b: DemandCensusUnboundBucket) -> String {
+  demand_census_text(parts: [
+    "[demand-census-unbound] site=", demand_census_unbound_site_word(loc: b.site),
+    " functions=", to_string(b.functions),
+    " examples=", demand_census_paths_text(paths: b.examples)
+  ])
 }
 
 fn demand_census_lines(r: DemandCensusReport) -> List<String> {
@@ -902,7 +1165,7 @@ fn demand_census_lines(r: DemandCensusReport) -> List<String> {
     " unobserved=", to_string(tally.unobserved),
     " deletable_rows=", to_string(demand_census_deletable_rows(r: r)),
     " file_refusals=", to_string(r.file_refusals),
-    " unreadable_files=", to_string(r.unreadable_files),
+    " unreadable_files=", to_string(length(xs: r.unreadable)),
     " resolve_refused_modules=", to_string(r.resolve_refused_modules)
   ])
   let causes = [
@@ -913,7 +1176,10 @@ fn demand_census_lines(r: DemandCensusReport) -> List<String> {
     demand_census_cause_line(word: "callee_outside_closure", n: tally.callee_outside_closure),
     demand_census_cause_line(word: "did_not_settle", n: tally.did_not_settle)
   ]
-  let with_vocabulary = fold_list(xs: demand_census_out_of_vocabulary_resources(r: r).members, empty: causes, cons: fn(acc, p) { list_snoc_item(xs: acc, item: demand_census_out_of_vocabulary_line(r: r, resource: p)) })
+  let with_unreadable = fold_list(xs: r.unreadable, empty: causes, cons: fn(acc, u) { list_snoc_item(xs: acc, item: demand_census_unreadable_line(u: u)) })
+  let with_reasons = fold_list(xs: demand_census_resolve_refused_buckets(rows: r.rows), empty: with_unreadable, cons: fn(acc, b) { list_snoc_item(xs: acc, item: demand_census_resolve_refused_bucket_line(b: b)) })
+  let with_unbound = fold_list(xs: demand_census_unbound_buckets(rows: r.rows), empty: with_reasons, cons: fn(acc, b) { list_snoc_item(xs: acc, item: demand_census_unbound_bucket_line(b: b)) })
+  let with_vocabulary = fold_list(xs: demand_census_out_of_vocabulary_resources(r: r).members, empty: with_unbound, cons: fn(acc, p) { list_snoc_item(xs: acc, item: demand_census_out_of_vocabulary_line(r: r, resource: p)) })
   fold_list(xs: r.rows, empty: with_vocabulary, cons: fn(acc, row) { list_snoc_item(xs: acc, item: demand_census_row_line(r: row)) })
 }
 
@@ -923,7 +1189,7 @@ fn demand_census_lines(r: DemandCensusReport) -> List<String> {
 // so every one of them becomes exactly one row whatever the standing is.
 type DemandCensusModuleStanding
   = DemandModuleResolved { readings: List<DemandCensusAuthoredReading> }
-  | DemandModuleResolveRefused { authored: List<AuthoredUsesFunction> }
+  | DemandModuleResolveRefused { authored: List<AuthoredUsesFunction>, first_reason: Symbol, first_unbound: Optional<DemandCensusUnboundLocus> }
 
 type DemandCensusAuthoredReading {
   authored: AuthoredUsesFunction
@@ -941,16 +1207,16 @@ fn demand_census_report(
   standings: List<DemandCensusModuleStanding>,
   file_refused: List<AuthoredUsesFunction>,
   file_refusals: Int,
-  unreadable_files: Int
+  unreadable: List<DemandCensusUnreadable>
 ) -> DemandCensusReport {
   let demand_rows = dependency_demand_of(functions: demand_census_normalize_callees(functions: functions, operations: operations), operations: operations)
   let demand = fold_list(xs: demand_rows, empty: empty_map(), cons: fn(m, r) { map_insert(m: m, key: r.function, value: r.demand) })
   let vocabulary = resource_set_of(paths: audited)
   let resolved_rows = fold_list(xs: standings, empty: Empty, cons: fn(acc, s) {
     match s {
-      DemandModuleResolveRefused { authored: fs } =>
+      DemandModuleResolveRefused { authored: fs, first_reason: reason, first_unbound: unbound } =>
         fold_list(xs: fs, empty: acc, cons: fn(a, f) {
-          list_snoc_item(xs: a, item: demand_census_row_unobserved(function: demand_census_function_path(authored: f), reason: UnobservedModuleResolveRefused))
+          list_snoc_item(xs: a, item: demand_census_row_unobserved(function: demand_census_function_path(authored: f), reason: demand_census_alias_or_module_unobserved(authored: f, first_reason: reason, first_unbound: unbound)))
         })
       DemandModuleResolved { readings: rs } =>
         fold_list(xs: rs, empty: acc, cons: fn(a, r) { list_snoc_item(xs: a, item: demand_census_resolved_row(vocabulary: vocabulary, reading: r, demand: demand)) })
@@ -958,7 +1224,7 @@ fn demand_census_report(
   })
   DemandCensusReport {
     vocabulary: vocabulary,
-    unreadable_files: unreadable_files,
+    unreadable: unreadable,
     uses_functions: uses_functions,
     rows: fold_list(xs: file_refused, empty: resolved_rows, cons: fn(a, f) {
       list_snoc_item(xs: a, item: demand_census_row_unobserved(function: demand_census_function_path(authored: f), reason: UnobservedFileRefused))
@@ -966,28 +1232,41 @@ fn demand_census_report(
     file_refusals: file_refusals,
     resolve_refused_modules: fold_list(xs: standings, empty: 0, cons: fn(n, s) {
       match s {
-        DemandModuleResolveRefused { authored: _ } => n + 1
+        DemandModuleResolveRefused { authored: _, first_reason: _, first_unbound: _ } => n + 1
         DemandModuleResolved { readings: _ } => n
       }
     })
   }
 }
 
+fn demand_census_alias_or_module_unobserved(authored: AuthoredUsesFunction, first_reason: Symbol, first_unbound: Optional<DemandCensusUnboundLocus>) -> DemandCensusUnobserved {
+  match authored.alias_bind {
+    UsesAliasBindConflict => UnobservedAliasConflict
+    UsesAliasBindUnestablished => UnobservedAliasUnestablished
+    UsesAliasBindUnique => UnobservedModuleResolveRefused { first_reason: first_reason, first_unbound: first_unbound }
+  }
+}
+
 fn demand_census_resolved_row(vocabulary: ResourceSet, reading: DemandCensusAuthoredReading, demand: Map<QualifiedName, DependencyDemand>) -> DemandCensusRow {
   let path = demand_census_function_path(authored: reading.authored)
-  match reading.authored.name {
-    Absent => demand_census_row_unobserved(function: path, reason: UnobservedFunctionUnnamed)
-    Present { value: _ } =>
-      match map_lookup(m: demand, key: path) {
-        Absent => demand_census_row_unobserved(function: path, reason: UnobservedFunctionNotDeclared)
-        Present { value: d } =>
-          let verdict = demand_census_verdict(vocabulary: vocabulary, readings: reading.readings, demand: d)
-          DemandCensusRow {
-            function: path,
-            authored: reading.readings,
-            standings: demand_census_row_standings(vocabulary: vocabulary, verdict: verdict, readings: reading.readings),
-            verdict: verdict,
-            demand: optional_present(value: d)
+  match reading.authored.alias_bind {
+    UsesAliasBindConflict => demand_census_row_unobserved(function: path, reason: UnobservedAliasConflict)
+    UsesAliasBindUnestablished => demand_census_row_unobserved(function: path, reason: UnobservedAliasUnestablished)
+    UsesAliasBindUnique =>
+      match reading.authored.name {
+        Absent => demand_census_row_unobserved(function: path, reason: UnobservedFunctionUnnamed)
+        Present { value: _ } =>
+          match map_lookup(m: demand, key: path) {
+            Absent => demand_census_row_unobserved(function: path, reason: UnobservedFunctionNotDeclared)
+            Present { value: d } =>
+              let verdict = demand_census_verdict(vocabulary: vocabulary, readings: reading.readings, demand: d)
+              DemandCensusRow {
+                function: path,
+                authored: reading.readings,
+                standings: demand_census_row_standings(vocabulary: vocabulary, verdict: verdict, readings: reading.readings),
+                verdict: verdict,
+                demand: optional_present(value: d)
+              }
           }
       }
   }

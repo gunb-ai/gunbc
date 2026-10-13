@@ -1,18 +1,10 @@
-module gunbc.namespace_cut.namespace_xl2_rehearsal_census
+module v2.workflow.namespace_xl2_rehearsal_census
 
 import std.types { Int, List, String, Map }
 import std.import_statement { ImportStripCoordinateSegment }
 import extdeps.git.object_store { GitObjectId }
 import extdeps.communication.medium { Lossless, Medium }
 import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
-import gunbc.namespace_cut.namespace_step0_subject_collector {
-  Step0SubjectCollected,
-  Step0SubjectCollectionRefused,
-  Step0SubjectMember,
-  Step0SubjectPinRefusal,
-  Step0SubjectVector,
-  collect_step0_subject_vector_at
-}
 import gunbc.namespace_cut.namespace_step0_strip_producer {
   Step0SourceStripped,
   Step0SourceStripRefused,
@@ -30,6 +22,7 @@ import v2.compiler.compile {
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
+import gunbc.namespace_cut.namespace_step0_subject_collector { Step0SubjectPinRefusal }
 import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.artifact { Artifact, SourceFile }
@@ -40,12 +33,11 @@ import v2.std.node { Symbol, symbol_intern_lexeme }
 
 import std.optional { Absent, Present }
 import std.algebra { Cons, Empty, fold_list, empty_map, map_insert, map_lookup }
-import gunbc.compiler_frontend_program_status { Xl2Prerequisite, xl2_prerequisites_outstanding }
 
 // XL-2'S REHEARSAL INSTRUMENT: THE CUT EXECUTED IN A THROWAWAY TREE, ITS RESIDUAL OBSERVED ON THE
 // PRODUCTION ROUTE. Every stage is an existing authority composed, not restated: the exact base is
-// gunbc.namespace_cut.namespace_step0_subject_collector (every byte read out of the git object store at one pinned
-// revision, a failed read refusing the collection), the cut is the typed import strip through
+// supplied by the caller as (source_commit, source_tree, members); acquiring it from a pinned revision
+// (subject read, tree-id recompute) is the NEXT STOP and is not in this module yet, the cut is the typed import strip through
 // gunbc.namespace_cut.namespace_step0_strip_producer, and the observation is v2.compiler.compile's whole-tree
 // census-resolve (gunbc#11738) over the stripped sources. THE THROWAWAY TREE IS AN INGEST, NOT A
 // DIRECTORY: each stripped member keeps its base path as its artifact path and compilation unit, so
@@ -90,29 +82,6 @@ type Xl2UnobservedScope
   | Xl2ModuleObservationIncomplete { module: String, path: Symbol, reason: Symbol }
   | Xl2MemberPathDuplicated { path: Symbol }
   | Xl2BaseJoinMissingFor { module: String, path: Symbol }
-
-// WHY COMPLETENESS IS REFUSED: ONE CAUSE PER OUTSTANDING XL-2 PREREQUISITE. The lowering
-// undercounts that keep this census from being complete are not minted here; their one home is
-// gunbc.compiler_frontend_program_status Xl2Prerequisite, and every arm that carrier types
-// OUTSTANDING heads this roster as its own cause (xl2_prerequisites_outstanding). An arm leaving
-// that list is the only thing that removes its cause, so this module cannot drift from the carrier.
-// They stay REFUSALS rather than excluded populations by the namespace-cut manager's ruling of
-// 2026-09-23: those references depend on imports and XL-5 must rewrite them, so omitting them
-// undercounts the cut's own population.
-// Xl2CompleteArmNotAdmitted is the refusal for the state with NO outstanding prerequisite: the
-// Complete arm is a separate change that must discriminate it by execution, and until it lands no
-// input constructs Xl2CensusComplete.
-type Xl2CompletenessRefusal
-  = Xl2PrerequisiteOutstanding { prerequisite: Xl2Prerequisite }
-  | Xl2ScopeUnobserved { scope: Xl2UnobservedScope }
-  | Xl2CompleteArmNotAdmitted
-
-// COMPLETENESS IS A COPRODUCT, NOT A FLAG BESIDE THE ROWS. Only xl2_completeness decides it, and
-// today that decision has no complete arm at all, so a complete census is unconstructible until the
-// change that admits it adds the arm there.
-type Xl2CensusCompleteness
-  = Xl2CensusComplete
-  | Xl2CensusCompletenessRefused { first: Xl2CompletenessRefusal, rest: List<Xl2CompletenessRefusal> }
 
 // A SEPARATE AXIS: WHICH ROUTE CAN EXECUTE THIS INSTRUMENT. These walls stand between the
 // interpreter route this composition runs on and a native (emitted) requalification of it. They are
@@ -168,7 +137,7 @@ type Xl2RehearsalRun
       source_tree: GitObjectId
       residual: List<Xl2ResidualChain>
       resolved_module_count: Int
-      completeness: Xl2CensusCompleteness
+      unobserved: List<Xl2UnobservedScope>
       native_requalification: List<Xl2NativeRequalificationWall>
       excluded: List<Xl2ExcludedPopulation>
     }
@@ -341,32 +310,6 @@ fn xl2_observe(context: NativeTestContext, ingest: SourceRootIngest, members: Li
   )
 }
 
-// THE ONLY COMPLETENESS DECISION, AND TODAY IT HAS NO COMPLETE ARM. Every outstanding XL-2
-// prerequisite heads the roster in the carrier's order, then every unobserved scope. With neither,
-// the answer is still refused, as Xl2CompleteArmNotAdmitted: Xl2CensusComplete has no constructor
-// anywhere, and the change that adds one adds it here.
-fn xl2_completeness(unobserved: List<Xl2UnobservedScope>) -> Xl2CensusCompleteness {
-  let prerequisites = fold(xl2_prerequisites_outstanding(), init: [], f: fn(acc, p) {
-    acc |> list_push(Xl2PrerequisiteOutstanding { prerequisite: p })
-  })
-  let roster = fold(unobserved, init: prerequisites, f: fn(acc, scope) { acc |> list_push(Xl2ScopeUnobserved { scope: scope }) })
-  match roster {
-    Cons { head: first, tail: rest } => Xl2CensusCompletenessRefused { first: first, rest: rest }
-    Empty => Xl2CensusCompletenessRefused { first: Xl2CompleteArmNotAdmitted, rest: [] }
-  }
-}
-
-fn xl2_member_source(member: Step0SubjectMember) -> FixtureSource {
-  FixtureSource { path: member.path, content: member.content }
-}
-
-// THE COMPOSITION OVER A SUPPLIED EXACT-BASE VECTOR. The vector's sole constructor is the
-// object-store collector, so what arrives here is a pinned tree, never an authored population.
-fn xl2_rehearse_vector(vector: Step0SubjectVector) -> Xl2RehearsalRun {
-  let strip = xl2_strip_members(sources: fold(vector.members, init: [], f: fn(acc, m) { acc |> list_push(xl2_member_source(member: m)) }))
-  xl2_rehearse_stripped(source_commit: vector.source_commit, source_tree: vector.source_tree, supplied: strip)
-}
-
 fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, supplied: Xl2Strip) -> Xl2RehearsalRun {
   let strip = xl2_admit_unique_paths(strip: supplied)
   let ingest = xl2_stripped_ingest(members: strip.members)
@@ -379,34 +322,10 @@ fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, s
         source_tree: source_tree,
         residual: observed.residual,
         resolved_module_count: observed.resolved,
-        completeness: xl2_completeness(unobserved: concat(strip.unobserved, observed.unobserved)),
+        unobserved: concat(strip.unobserved, observed.unobserved),
         native_requalification: xl2_native_requalification_walls,
         excluded: xl2_excluded_populations
       }
     }
-  }
-}
-
-// THE ENTRY: the exact base is pinned by the ref the collector resolves, in the same dispatch.
-// DECLARED FRONTIER, NOT EXECUTED IN THIS CHANGE. Consumer: the XL-2 rehearsal run whose receipt is
-// the RehearsalInstrumentDelivered StageDeliveryReceipt read by gunbc.compiler_frontend_program_status
-// xl2_stage_standing. Its first trigger, P1 and P4 delivered (gunbc#12108, gunbc#12116), HAS FIRED.
-// Execution is deferred by the namespace-cut manager's ruling of 2026-09-23 to ONE further
-// state: gunbc.compiler_frontend_program_status xl2_prerequisites_outstanding empty. Until then every
-// run can only answer refusals already known, so a whole-tree run today buys nothing.
-// The run itself is a one-shot `gunbc run --function` on a host with an enforceable cgroup limit
-// (never a shared session container; the whole-tree resolve is tens of GB), receipt on the delivering
-// change. Until then the stages below the collector execute in test.claim.namespace_xl2_rehearsal_census,
-// and the collector's live half carries the route deficit its own module states.
-// NO INHABITANCE CLAIM OVER A PINNED FIXTURE, AND WHY: the collector's subject IS the repository's
-// tree at the ref, and gunbc.namespace_cut.namespace_step0_subject_collector states that a mocked revision would let
-// a collector reading the WRONG tree pass -- the one defect it exists to make unrepresentable. So
-// the collector-to-census link executes for the first time in the one-shot run above, whose trigger
-// is the same state, and that run's receipt is the link's executing evidence (DESIGN section 3c: a
-// declared frontier, consumer and trigger named).
-fn run_xl2_rehearsal_at(ref: String) -> Xl2RehearsalRun {
-  match collect_step0_subject_vector_at(ref: ref) {
-    Step0SubjectCollectionRefused { cause: cause } => Xl2RehearsalBaseUnobserved { cause: cause }
-    Step0SubjectCollected { vector: vector } => xl2_rehearse_vector(vector: vector)
   }
 }
