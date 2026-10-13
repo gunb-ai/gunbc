@@ -53,6 +53,17 @@ test fn author_regeneration_recipe_passes_source_roots_to_every_claim_executor_c
     && string_contains(s: script, pattern: "--required-regen-fixed-point") == false
 }
 
+// THE HEAL CASE ARM IS DELETED. Its quoting defects (the specimens of
+// printed_remedy_is_mangled_by_the_medium_that_prints_it) had no remaining subject once
+// DesignRungDrops left the committed roster. This file is hermetic discovery; the real-execution
+// module is excluded from that path, so the replacement control lives here and is executed.
+test fn emitted_driver_has_no_empty_heal_case_arm() -> Bool {
+  let script = emitted_driver_script()
+  string_contains(s: script, pattern: "case \"$merged_path\" in") == false
+    && string_contains(s: script, pattern: generated_artifact_author_regen_command)
+    && string_contains(s: script, pattern: "exit 1")
+}
+
 // THE MEDIUM DISPOSITION IS A TYPED, BOUND ROW -- not a comment and not a String of prose. The
 // binding is the whole of it: a Scaffold that names no declaration marks nothing, and a trigger
 // that names the artifact rather than the capability retires while the capability stays dead

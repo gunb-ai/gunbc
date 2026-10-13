@@ -127,15 +127,6 @@ fn witness_refusing_driver_value() -> String {
 
 data witness_retired_take_ours_driver_value: String = "true"
 
-test fn emitted_driver_has_no_empty_heal_case_arm() -> Bool {
-  let script = expected_generated_artifact_merge_driver_sh(
-    regen_command: generated_artifact_author_regen_command
-  )
-  string_contains(s: script, pattern: "case \"$merged_path\" in") == false
-    && string_contains(s: script, pattern: generated_artifact_author_regen_command)
-    && string_contains(s: script, pattern: "exit 1")
-}
-
 test fn divergent_generated_artifact_merge_refuses_by_real_execution() -> Bool {
   let observed = observe_generated_artifact_merge(
     driver_value: witness_refusing_driver_value(),
