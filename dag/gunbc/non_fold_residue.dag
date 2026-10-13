@@ -202,11 +202,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_local_tidy,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/vacuity.dag::vacuity_evidence_eq" },
-    reason: nfr_reason_structural_eq_backfill,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/source_authority.dag::discovered_source_refs_digest_eq" },
     reason: nfr_reason_structural_eq_backfill,
     dissolution: nfr_dissolve_derived_equality,
