@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_program_view_live_corpus_receipt
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap.roadmap_program_view {
   V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused, v1_program_view,
   v1_convergence_fronts,

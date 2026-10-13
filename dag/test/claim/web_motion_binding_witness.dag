@@ -1,6 +1,6 @@
 module test.claim.web_motion_binding_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.w3c.device_orientation_and_motion {

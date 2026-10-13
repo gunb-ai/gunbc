@@ -1,6 +1,6 @@
 module test.claim.transport_field_refusal_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,

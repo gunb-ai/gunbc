@@ -33,7 +33,7 @@ import gunbc.generated_artifact_assessment {
   observation_finding_rendered
 }
 import gunbc.instruments.generated_artifact_gate { unjudged_ledger_refusals }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -6,7 +6,7 @@ import gunbc.instruments.self_host_curated_seed_linked_harness {
   cssl_pass_marker_stem
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 // THE CAUSE-SWAP CONTROL for gunbc.instruments.self_host_curated_seed_linked_harness
 // cssl_fault_run_detected_the_planted_fault. It is an unusual control and the shape is the point:

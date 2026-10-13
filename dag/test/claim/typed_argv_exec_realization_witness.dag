@@ -39,7 +39,7 @@ import gunbc.host.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { Converged, NotConverged, reconciliation_converged }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

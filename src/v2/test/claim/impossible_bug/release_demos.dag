@@ -22,7 +22,7 @@ import v2.test.claim.impossible_bug.idempotency_contract {
 import v2.test.claim.impossible_bug.suboptimal_complexity {
   claim_overcost_against_structural_bound_violates
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

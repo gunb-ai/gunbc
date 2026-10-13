@@ -9,7 +9,7 @@ import v2.std.diagnostic { Diagnostic }
 // import alone. Path patterns are LiteralPath when a string literal is statable in the reachable
 // skeleton, ParamRef when a filesystem_read path argument is a parameter, UnknownPath fail-closed
 // otherwise. Subsumes witness_cost_locality.ambient_read_carrier_modules_v0 at steady state. Lives
-// in v2.std.live_read (not v2.std.live_tree) so the widely-imported disposition module stays
+// in v2.std.live_read (not std.live_tree) so the widely-imported disposition module stays
 // import-free.
 
 type LiveReadCarrierKind

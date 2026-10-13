@@ -3,7 +3,7 @@ module test.claim.corpus_census_allowance_witness
 import v2.std.integer { Int, int_add, int_mul }
 import v2.std.text { String }
 import std.measure { EvalStepCount, eval_step_count, eval_step_count_value }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.workflow.required_floor {
   CorpusCensusMember, CorpusCensusAllowancePolicy, corpus_census_allowance_policy,
   CorpusCensusAllowance, CensusAllowanceDerived, CensusAllowanceRefused,

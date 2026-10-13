@@ -19,7 +19,7 @@ import std.materialization_ladder {
   value_verdict_is_refused_needing_reference,
   verdict_is_refused_no_provider
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

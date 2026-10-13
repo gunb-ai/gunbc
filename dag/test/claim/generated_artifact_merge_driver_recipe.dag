@@ -8,7 +8,7 @@ import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_e
 import gunbc.local_tidy_spec { generated_artifact_merge_driver_emit_scaffold }
 import std.dissolution { dissolution_description }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

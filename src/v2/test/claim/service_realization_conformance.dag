@@ -21,7 +21,7 @@ import v2.std.list_introduction { lower_list_introduction }
 import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, BindingMalformed, DeclaredInputUnbound, DuplicateInputBinding, ExecutablePositionNotLiteral, OperationNotFound, TokenListInStringPosition, UndeclaredInputBound }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent }
 import std.types { List }
 import v2.std.text { String }

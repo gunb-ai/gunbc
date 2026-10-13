@@ -1,7 +1,7 @@
 module test.claim.colo_nj_central_south_census
 
 import std.types { Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.colo.types {
   CabinetDensityClaim, RetailGrainStanding,
   RetailRateStanding, RatesPublished, RatesQuoteOnly,

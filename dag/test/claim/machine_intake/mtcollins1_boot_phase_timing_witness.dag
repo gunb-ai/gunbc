@@ -1,6 +1,6 @@
 module test.claim.machine_intake.mtcollins1_boot_phase_timing_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond, millisecond_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }

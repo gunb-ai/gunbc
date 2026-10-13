@@ -1,7 +1,7 @@
 module test.claim.path_writer_set_witness
 
 import std.types { Bool, Int, List, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.cross_pr_contradiction { HeadRefStale, DiffRefused, DiffEmptyUnderived }
 import gunbc.path_writer_set {
   PathMatchRule,

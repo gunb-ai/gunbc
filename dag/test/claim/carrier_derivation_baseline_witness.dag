@@ -4,7 +4,7 @@ import std.algebra { kernel_algebra_profile }
 import std.types { container_template_algebra_rows, container_template_alias_rows,
   container_type_arity, canonical_container_names }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

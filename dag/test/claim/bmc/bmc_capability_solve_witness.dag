@@ -33,7 +33,7 @@ import extdeps.boards.asrock_rack {
 import gunbc.os_install_mechanism { srv3_firmware_catalog }
 import extdeps.bmc.endpoint { BmcEndpoint, OpenBmc, Redfish }
 import std.types { Bool, list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.firmware.types { firmware_semantic_version }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

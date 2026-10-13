@@ -21,7 +21,7 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_evaluation_frame_active,
   witness_diagnostic_rendered_reason,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.workflow_runs { WorkflowRunList, Completed, Success }
 import test.fixture.rest_exchange_replay_probe
 import extdeps.ietf.http_semantics { GET }

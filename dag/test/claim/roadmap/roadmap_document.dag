@@ -6,7 +6,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Po
 import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

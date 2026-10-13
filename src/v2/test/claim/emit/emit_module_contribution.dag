@@ -14,7 +14,7 @@ import v2.test.claim.execution.emit_host_add_equals_eval { emit_eval_subject_tre
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { Empty, list_append, fold_list }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.emission_provenance {
