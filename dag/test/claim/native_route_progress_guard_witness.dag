@@ -8,14 +8,14 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval,
   NativeRouteTestIdentity
 }
-import gunbc.witness.v2_native_route {
+import v2.workflow.v2_native_route {
   NativeRouteExclusionCause, NativeRouteDivergenceCause,
   NativeEntryResolutionLimit, NativePassedExpectedRed, NativeReturnedOtherVerdict,
   NativeAgreementPass, NativeAgreementExpectedRed,
   NativeExclusion, CompilerFrontierAttributed,
   NativeRouteEmittedBuild
 }
-import gunbc.native_route_progress_guard {
+import v2.workflow.native_route_progress_guard {
   NativeRouteAttainment, AttainRefused, AttainDiverged, AttainAgreed,
   NativeBaselineAttainment, BaselineRefused, BaselineDiverged, BaselineAgreed,
   NativeCauseTransitionDisposition, NativeCauseTransitionRow,

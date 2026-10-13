@@ -1,9 +1,9 @@
 module v2.workflow.native_frontier_debt
 
 import std.types { List }
-import v2.compiler.native_test_vocabulary { NativeTestStage }
+import v2.compiler.native_test_vocabulary { NativeTestStage, NativeRouteTestIdentity }
 import v2.workflow.v2_native_route {
-  NativeRouteTestIdentity, NativeRouteExclusionCause, NativeRouteDivergenceCause
+  NativeRouteExclusionCause, NativeRouteDivergenceCause
 }
 import v2.workflow.native_route_progress_guard { NativeProgressDispositionRow, NativeCauseTransitionRow }
 

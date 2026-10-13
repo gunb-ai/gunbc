@@ -683,7 +683,7 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
 
 // THE PROPOSED ROSTER, AS THE `.dag` MODULE IT WOULD BE. Present for every arm except `Held` and
 // `NotAMeasurement`. The required native-route lane publishes it; it reaches
-// `dag/gunbc/native_frontier_roster.dag` only through a reviewed pull request that carries it. Dispositions and cause transitions are NOT carried forward, because each describes
+// `src/v2/workflow/native_frontier_roster.dag` only through a reviewed pull request that carries it. Dispositions and cause transitions are NOT carried forward, because each describes
 // a transition relative to the rows it was written against: once the roster is re-minted from the
 // run, a disposition for a subject with no row and a transition whose cause no longer moves are
 // both findings in their own right (`DisposedSubjectHasNoBaselineRow`,
