@@ -2,20 +2,9 @@ module v2.compiler.dependency_demand_census
 
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length }
 import v2.compiler.body_lowering_fold {
-  body_lower_call_arg_capture_is_named,
   body_lower_find_production_shell_optional,
-  body_lower_let_in_key_binding_optional,
   body_lower_param_binding_optional,
-  body_lower_postfix_chain_read,
-  body_lower_type_expr_lowered_optional,
-  PostfixCast,
-  PostfixChainBare,
-  PostfixChainFound,
-  PostfixChainNotThisShape,
-  PostfixChainSuffixCarried,
-  PostfixIndex,
-  PostfixProjection,
-  PostfixRecord
+  body_lower_type_expr_lowered_optional
 }
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure,
@@ -59,14 +48,11 @@ import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.grammar { grammar_empty_node, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
 import std.types { Bool }
-import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_lowered_from, node_rebuild, symbol_lexeme }
-import v2.std.provenance { node_occurrence_id_optional }
+import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
 import v2.std.text { String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
 
 // THE DEPENDENCY-DEMAND CENSUS (D13 step b2): for every fn that authors a `uses` clause, the
 // authored rows read from THAT fn's parse, paired with the demand v2.compiler.dependency_demand
@@ -76,14 +62,13 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 //
 // THE STRIP IS CENSUS-ONLY AND IT IS NOT A CARRIER. Production lowering refuses every fn with a
 // `uses` clause (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional). The census
-// route alone rewrites a UNIQUE uses alias to the resource declaration at occurrences established
-// to bind to that alias -- not qualified-member suffixes, binders, declaration names or labels --
-// then replaces the clause shell with grammar_empty_node so normalize does not refuse at the
-// unmodeled clause. Duplicate aliases, or a binding that cannot be established, leave the fn
-// unobserved. An alias-spelling let or parameter binder is Unestablished until stmt_seq scope is
-// modeled (DESIGN section 5: do not rewrite a later sibling as the resource). The rewritten tree is consumed inside the census route only
-// (v2.compiler.compile native_demand_census_report). The authored rows are never lowered onto the
-// fn: they are read, judged and reported (operator D13: no carrier for the authored row).
+// route elides the clause shell with grammar_empty_node so normalize does not refuse at the
+// unmodeled clause. It does not rewrite uses aliases onto the resource declaration: that would be
+// a second binder beside resolve, and it is not admitted (DESIGN section 5). Duplicate aliases, or
+// an alias that cannot be read, leave the fn unobserved. A body that names an elided alias is
+// unobserved until resolve models the clause. The stripped tree is consumed inside the census route
+// only (v2.compiler.compile native_demand_census_report). The authored rows are never lowered onto
+// the fn: they are read, judged and reported (operator D13: no carrier for the authored row).
 //
 // THE VERDICT IS SCOPED TO THE AUDITED VOCABULARY (lane ruling). Derived demand is grounded only
 // for resources some operation was audited to declare, which today is Network. A row naming any
@@ -122,21 +107,6 @@ type AuthoredUsesFunction {
 type DemandCensusStripped {
   tree: Node
   authored: List<AuthoredUsesFunction>
-}
-
-// CENSUS-ONLY ALIAS IMAGE. Resolve has no uses-clause model (production lowering refuses
-// body_lowering_reason_uses_clause_unmodeled), so the census cannot ask it which occurrences bind
-// the alias. This pass is that missing binder, used only to form DependencyDemand for the census
-// verdict. Dissolves when resolve admits the clause: aliases bind on the real path and this rewrite
-// is deleted. Operator sign-off of that admission is required (DESIGN section 5) before any Equal
-// this pass mints licenses a corpus deletion.
-data demand_census_alias_subst_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "v2.compiler.body_lowering_fold",
-    decl_name: "body_lower_fn_uses_refusal_optional",
-    field: WholeDeclaration
-  }
 }
 
 fn demand_census_strip(tree: Node, owner: QualifiedName) -> DemandCensusStripped {
@@ -185,23 +155,7 @@ fn demand_census_rewrite_uses_fn(node: Node, owner: QualifiedName, clause: Node)
     types: demand_census_entry_types(clause: clause),
     alias_bind: demand_census_alias_uniqueness(entries: entries)
   }
-  match authored.alias_bind {
-    UsesAliasBindConflict => DemandCensusRewrite { tree: node, authored: Cons { head: authored, tail: Empty } }
-    UsesAliasBindUnestablished => DemandCensusRewrite { tree: node, authored: Cons { head: authored, tail: Empty } }
-    UsesAliasBindUnique =>
-      let subst = demand_census_subst(node: node, entries: entries, value_pos: true)
-      if subst.established {
-        DemandCensusRewrite { tree: subst.node, authored: Cons { head: authored, tail: Empty } }
-      } else {
-        DemandCensusRewrite {
-          tree: node,
-          authored: Cons {
-            head: AuthoredUsesFunction { owner: authored.owner, name: authored.name, types: authored.types, alias_bind: UsesAliasBindUnestablished },
-            tail: Empty
-          }
-        }
-      }
-  }
+  DemandCensusRewrite { tree: node, authored: Cons { head: authored, tail: Empty } }
 }
 
 type AuthoredUsesEntry {
@@ -229,11 +183,6 @@ fn demand_census_entry_alias(entry: Node) -> Optional<Symbol> {
   }
 }
 
-type DemandCensusSubst {
-  node: Node
-  established: Bool
-}
-
 type AliasUniqScan
   = AliasScanUnique { seen: Map<Symbol, Bool> }
   | AliasScanConflict
@@ -259,216 +208,6 @@ fn demand_census_alias_uniqueness(entries: List<AuthoredUsesEntry>) -> UsesAlias
     AliasScanConflict => UsesAliasBindConflict
     AliasScanUnestablished => UsesAliasBindUnestablished
   }
-}
-
-fn demand_census_alias_named(entries: List<AuthoredUsesEntry>, n: Symbol) -> Bool {
-  fold_list(xs: entries, empty: false, cons: fn(acc, e) {
-    match e.alias {
-      Absent => acc
-      Present { value: a } => acc || (a == n)
-    }
-  })
-}
-
-fn demand_census_tree_binds_alias(node: Node, entries: List<AuthoredUsesEntry>) -> Bool {
-  match body_lower_param_binding_optional(node: node) {
-    Present { value: n } => demand_census_alias_named(entries: entries, n: n)
-    Absent => fold(node.children, init: false, f: fn(acc, e) { acc || demand_census_tree_binds_alias(node: e.target, entries: entries) })
-  }
-}
-
-fn demand_census_same_occurrence(a: Node, b: Node) -> Bool {
-  match node_occurrence_id_optional(node: a) {
-    Absent => false
-    Present { value: ia } =>
-      match node_occurrence_id_optional(node: b) {
-        Absent => false
-        Present { value: ib } => ia == ib
-      }
-  }
-}
-
-fn demand_census_among(node: Node, xs: List<Node>) -> Bool {
-  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || demand_census_same_occurrence(a: node, b: x) })
-}
-
-fn demand_census_postfix_members(node: Node) -> List<Node> {
-  match body_lower_postfix_chain_read(node: node) {
-    PostfixChainBare { segments: xs } => xs
-    PostfixChainFound { steps: steps } =>
-      fold_list(xs: steps, empty: Empty, cons: fn(acc, st) {
-        match st {
-          PostfixProjection { segment: s, call_elem: _ } => list_snoc_item(xs: acc, item: s)
-          PostfixRecord { segment: s, items: _ } => list_snoc_item(xs: acc, item: s)
-          PostfixCast { target: _ } => acc
-          PostfixIndex { items_capture: _, at: _ } => acc
-        }
-      })
-    PostfixChainNotThisShape => Empty
-    PostfixChainSuffixCarried { at: _ } => Empty
-  }
-}
-
-fn demand_census_subst(node: Node, entries: List<AuthoredUsesEntry>, value_pos: Bool) -> DemandCensusSubst {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
-      if id == ^dag_surface_uses_clause {
-        DemandCensusSubst { node: node, established: true }
-      } else if id == ^dag_surface_fn_body {
-        demand_census_subst_children(node: node, entries: entries, value_pos: true)
-      } else if id == ^dag_surface_postfix_expr {
-        demand_census_subst_postfix(node: node, entries: entries)
-      } else if id == ^dag_surface_arg {
-        demand_census_subst_arg(node: node, entries: entries)
-      } else if id == ^dag_surface_field_init {
-        demand_census_subst_labelled(node: node, entries: entries)
-      } else if id == ^dag_surface_let_expr {
-        demand_census_subst_let(node: node, entries: entries)
-      } else if id == ^dag_surface_param_list {
-        if demand_census_tree_binds_alias(node: node, entries: entries) {
-          DemandCensusSubst { node: node, established: false }
-        } else {
-          demand_census_subst_children(node: node, entries: entries, value_pos: true)
-        }
-      } else if id == ^dag_surface_primary_expr {
-        demand_census_subst_children(node: node, entries: entries, value_pos: true)
-      } else if id == ^dag_surface_expr {
-        demand_census_subst_children(node: node, entries: entries, value_pos: true)
-      } else if id == ^dag_surface_stmt {
-        demand_census_subst_children(node: node, entries: entries, value_pos: true)
-      } else if id == ^dag_surface_stmt_seq {
-        demand_census_subst_children(node: node, entries: entries, value_pos: true)
-      } else {
-        demand_census_subst_atom_or_children(node: node, entries: entries, value_pos: value_pos)
-      }
-    Absent => demand_census_subst_atom_or_children(node: node, entries: entries, value_pos: value_pos)
-  }
-}
-
-fn demand_census_subst_let(node: Node, entries: List<AuthoredUsesEntry>) -> DemandCensusSubst {
-  match parse_production_captured_child_optional(node: node) {
-    Absent => DemandCensusSubst { node: node, established: false }
-    Present { value: captured } =>
-      match body_lower_let_in_key_binding_optional(captured: captured) {
-        Absent => DemandCensusSubst { node: node, established: false }
-        Present { value: name } =>
-          if demand_census_alias_named(entries: entries, n: name) {
-            DemandCensusSubst { node: node, established: false }
-          } else {
-            demand_census_subst_labelled(node: node, entries: entries)
-          }
-      }
-  }
-}
-
-fn demand_census_subst_postfix(node: Node, entries: List<AuthoredUsesEntry>) -> DemandCensusSubst {
-  match body_lower_postfix_chain_read(node: node) {
-    PostfixChainNotThisShape => demand_census_subst_children(node: node, entries: entries, value_pos: true)
-    PostfixChainSuffixCarried { at: _ } => DemandCensusSubst { node: node, established: false }
-    PostfixChainBare { segments: _ } => demand_census_subst_postfix_members(node: node, entries: entries)
-    PostfixChainFound { steps: _ } => demand_census_subst_postfix_members(node: node, entries: entries)
-  }
-}
-
-fn demand_census_subst_postfix_members(node: Node, entries: List<AuthoredUsesEntry>) -> DemandCensusSubst {
-  let members = demand_census_postfix_members(node: node)
-  fold(node.children, init: DemandCensusSubst { node: node_rebuild(n: node, children: Empty), established: true }, f: fn(acc, e) {
-    let child = if demand_census_among(node: e.target, xs: members) {
-      DemandCensusSubst { node: e.target, established: true }
-    } else {
-      demand_census_subst(node: e.target, entries: entries, value_pos: true)
-    }
-    DemandCensusSubst {
-      node: node_rebuild(n: acc.node, children: list_snoc_item(xs: acc.node.children, item: Edge { label: e.label, target: child.node })),
-      established: acc.established && child.established
-    }
-  })
-}
-
-fn demand_census_subst_arg(node: Node, entries: List<AuthoredUsesEntry>) -> DemandCensusSubst {
-  if body_lower_call_arg_capture_is_named(arg_capture: node) {
-    demand_census_subst_labelled(node: node, entries: entries)
-  } else {
-    demand_census_subst_children(node: node, entries: entries, value_pos: true)
-  }
-}
-
-fn demand_census_subst_labelled(node: Node, entries: List<AuthoredUsesEntry>) -> DemandCensusSubst {
-  match parse_production_captured_child_optional(node: node) {
-    Absent => demand_census_subst_children(node: node, entries: entries, value_pos: true)
-    Present { value: captured } =>
-      match sugar_sequence_pair_optional(node: captured) {
-        Absent => demand_census_subst_children(node: node, entries: entries, value_pos: true)
-        Present { value: pair } =>
-          demand_census_subst_skip_then_value(node: node, skip: pair.left, entries: entries)
-      }
-  }
-}
-
-fn demand_census_subst_skip_then_value(node: Node, skip: Node, entries: List<AuthoredUsesEntry>) -> DemandCensusSubst {
-  fold(node.children, init: DemandCensusSubst { node: node_rebuild(n: node, children: Empty), established: true }, f: fn(acc, e) {
-    let child = if demand_census_among(node: e.target, xs: Cons { head: skip, tail: Empty }) {
-      DemandCensusSubst { node: e.target, established: true }
-    } else {
-      demand_census_subst(node: e.target, entries: entries, value_pos: true)
-    }
-    DemandCensusSubst {
-      node: node_rebuild(n: acc.node, children: list_snoc_item(xs: acc.node.children, item: Edge { label: e.label, target: child.node })),
-      established: acc.established && child.established
-    }
-  })
-}
-
-fn demand_census_subst_children(node: Node, entries: List<AuthoredUsesEntry>, value_pos: Bool) -> DemandCensusSubst {
-  fold(node.children, init: DemandCensusSubst { node: node_rebuild(n: node, children: Empty), established: true }, f: fn(acc, e) {
-    let child = demand_census_subst(node: e.target, entries: entries, value_pos: value_pos)
-    DemandCensusSubst {
-      node: node_rebuild(n: acc.node, children: list_snoc_item(xs: acc.node.children, item: Edge { label: e.label, target: child.node })),
-      established: acc.established && child.established
-    }
-  })
-}
-
-fn demand_census_subst_atom_or_children(node: Node, entries: List<AuthoredUsesEntry>, value_pos: Bool) -> DemandCensusSubst {
-  match node_atom_identity_optional(node: node) {
-    Present { value: id } =>
-      match demand_census_alias_image(entries: entries, uses_alias: id, source: node) {
-        Absent => demand_census_subst_children(node: node, entries: entries, value_pos: value_pos)
-        Present { value: image } =>
-          if value_pos {
-            DemandCensusSubst { node: image, established: true }
-          } else {
-            DemandCensusSubst { node: node, established: true }
-          }
-      }
-    Absent => demand_census_subst_children(node: node, entries: entries, value_pos: value_pos)
-  }
-}
-
-fn demand_census_alias_image(entries: List<AuthoredUsesEntry>, uses_alias: Symbol, source: Node) -> Optional<Node> {
-  fold_list(xs: entries, empty: optional_absent(), cons: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match e.alias {
-          Absent => optional_absent()
-          Present { value: a } =>
-            if a == uses_alias {
-              match e.type_expr {
-                Absent => optional_absent()
-                Present { value: ty } =>
-                  match body_lower_type_expr_lowered_optional(node: ty) {
-                    Absent => optional_absent()
-                    Present { value: img } =>
-                      optional_present(value: node_lowered_from(kind: img.kind, children: img.children, source: source))
-                  }
-              }
-            } else {
-              optional_absent()
-            }
-        }
-    }
-  })
 }
 
 // One element per authored entry, in authored order: the entry's type_expr shell, or Absent when the

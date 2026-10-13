@@ -14,7 +14,6 @@ import v2.compiler.dependency_demand_census {
   DemandCensusRow,
   DemandCensusVerdict,
   UnobservedAliasConflict,
-  UnobservedAliasUnestablished,
   UnreadableAtParse,
   UnreadableAtTokenize,
   demand_census_conserved,
@@ -57,11 +56,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //                 (a service dependency is not a Network requirement)
 //   fs_only       authors Filesystem and calls a Filesystem capability           -> equal in vocabulary;
 //                 its row is out of vocabulary and counts toward the Filesystem audit
-//   alias_used    its body names the uses alias; the census binds that alias to
-//                 the resource declaration, so derived demand names Network     -> equal
+//   alias_used    its body names the uses alias; resolve does not bind it      -> unobserved
 //   member_collision  calls t.http.H.net (requires none) beside H.Network (requires
 //                 Network); spelling substitution would mint a false Equal     -> mismatch
-//   let_shadows   `let net = p; net` — a local binder, not the uses alias      -> unobserved
+//   let_shadows   `let net = p; net` — a local binder, not the uses alias      -> mismatch
 //   duplicate_alias  two uses entries share the alias; first-match is refused   -> unobserved
 data ddc_resources_source: String = "module std.resources\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n\nresource Filesystem {\n  kind: Capability\n  mode: ReadWrite\n  capability read {}\n}\n"
 
@@ -77,7 +75,9 @@ data ddc_valued_source: String = "module t.valued\n\nimport std.resources { Netw
 // tokenize, so its uses fn is read by nobody and the census population is incomplete.
 data ddc_broken_source: String = "module t.broken\n\nimport std.resources { Network }\n\nfn lost(p: Bool) -> Bool uses net: Network {\n  \"never terminates\n}\n"
 
-data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n\nfn member_collision(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.net()\n  p\n}\n\nfn let_shadows(p: Bool) -> Bool uses net: Network {\n  let net = p\n  net\n}\n\nfn duplicate_alias(p: Bool) -> Bool uses net: Network, net: Network {\n  p\n}\n"
+data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn member_collision(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.net()\n  p\n}\n\nfn let_shadows(p: Bool) -> Bool uses net: Network {\n  let net = p\n  net\n}\n\nfn duplicate_alias(p: Bool) -> Bool uses net: Network, net: Network {\n  p\n}\n"
+
+data ddc_alias_ref_source: String = "module t.alias_ref\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n"
 
 fn ddc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -93,6 +93,7 @@ data ddc_ingest: SourceRootIngest = [
   ddc_read(source: ddc_http_source, id: ^ddc_http_artifact, unit: ^ddc_http_cu, path: "dag/t/http.dag"),
   ddc_read(source: ddc_app_source, id: ^ddc_app_artifact, unit: ^ddc_app_cu, path: "dag/t/app.dag"),
   ddc_read(source: ddc_alias_source, id: ^ddc_alias_artifact, unit: ^ddc_alias_cu, path: "dag/t/aliasing.dag"),
+  ddc_read(source: ddc_alias_ref_source, id: ^ddc_alias_ref_artifact, unit: ^ddc_alias_ref_cu, path: "dag/t/alias_ref.dag"),
   ddc_read(source: ddc_valued_source, id: ^ddc_valued_artifact, unit: ^ddc_valued_cu, path: "dag/t/valued.dag"),
   ddc_read(source: ddc_broken_source, id: ^ddc_broken_artifact, unit: ^ddc_broken_cu, path: "dag/t/broken.dag")
 ]
@@ -186,8 +187,17 @@ test fn reaching_an_opaque_operation_is_undecided_by_that_cause_RED() -> Bool {
   }
 }
 
-test fn a_body_naming_its_uses_alias_is_a_reference_to_the_resource_holds() -> Bool {
-  ddc_is_equal(function: "t.aliasing.alias_used")
+test fn a_body_naming_its_uses_alias_stays_unobserved_until_resolve_binds_it_holds() -> Bool {
+  match ddc_verdict(function: "t.alias_ref.alias_used") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUnobserved { reason: _ } => true
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUndecided { cause: _ } => false
+      }
+  }
 }
 
 test fn a_qualified_member_sharing_the_alias_spelling_is_not_substituted_RED() -> Bool {
@@ -208,11 +218,10 @@ test fn a_let_binder_sharing_the_alias_spelling_is_not_substituted_RED() -> Bool
     Absent => false
     Present { value: v } =>
       match v {
-        CensusUnobserved { reason: UnobservedAliasUnestablished } => true
-        CensusUnobserved { reason: _ } => false
+        CensusMismatch { authored: a, derived: d } => (length(xs: a) == 1) && (length(xs: d) == 0)
         CensusEqual => false
-        CensusMismatch { authored: _, derived: _ } => false
         CensusUndecided { cause: _ } => false
+        CensusUnobserved { reason: _ } => false
       }
   }
 }
@@ -231,14 +240,14 @@ test fn duplicate_uses_aliases_leave_the_fn_unobserved_RED() -> Bool {
   }
 }
 
-// Only the in-vocabulary rows of Equal fns are deletable: the Network rows of restates, transitive,
-// mixed and alias_used. The Filesystem rows of fs_only and mixed are out of vocabulary and count only
+// Only the in-vocabulary rows of Equal fns are deletable: the Network rows of restates, transitive
+// and mixed. The Filesystem rows of fs_only and mixed are out of vocabulary and count only
 // toward that audit.
 test fn only_equal_network_rows_are_deletable_and_filesystem_is_counted_apart_holds() -> Bool {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
-      (demand_census_deletable_rows(r: r) == 4) && (demand_census_out_of_vocabulary_agreeing(r: r, resource: qualified_name_from_dotted_string(dotted: "std.resources.Filesystem")) == 2)
+      (demand_census_deletable_rows(r: r) == 3) && (demand_census_out_of_vocabulary_agreeing(r: r, resource: qualified_name_from_dotted_string(dotted: "std.resources.Filesystem")) == 2)
   }
 }
 

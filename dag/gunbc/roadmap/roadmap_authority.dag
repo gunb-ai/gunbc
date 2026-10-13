@@ -3223,13 +3223,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: updated(t: updated(t: fields(
           headline: "Dependencies derived from bodies, bound at the composition root",
-          boundary: "D13: DependencyDemand lives in v2.compiler.dependency_demand, produced once over resolved references keyed by resource declaration identity (native_demand_census_report). Cut (c) landed (#11993, #12125). This slice owns that producer and the census route. A UNIQUE uses alias may be rewritten only inside that route so demand can be observed; that rewrite is not production resolve and does not license corpus deletions. UsesClauseCarrier refusal stays. Composition-root binding and production-resolve attachment are the next slice.",
+          boundary: "D13: DependencyDemand lives in v2.compiler.dependency_demand, produced once over resolved references keyed by resource declaration identity (native_demand_census_report). Cut (c) landed (#11993, #12125). This slice owns that producer and the census route. The census elides the uses clause; it does not rewrite aliases. A body that names a uses alias stays unobserved until resolve models the clause. UsesClauseCarrier refusal stays. Composition-root binding and production-resolve attachment are the next slice.",
           displaced_cost: "Authored uses rows restate dependencies the bodies already declare.",
           first_slice: "Own the existing producer; run the census at this head; do not delete corpus uses rows; keep the clause refusal.",
           red_control: "A service call declared requires none does not derive Network; a uses clause still refuses at lowering; a Network row whose derived demand does not name Network is not deleted.",
-          out_of_scope: "Scheduling. Production resolve attachment. Composition-root provider binding. Operator admission of the census-only uses-alias rewrite (DESIGN section 5).",
+          out_of_scope: "Scheduling. Production resolve attachment. Composition-root provider binding. Binding uses aliases in resolve.",
           handback: "Whole-tree census refused; no held observation and no corpus deletions"
-        ), on: "2026-09-30", note: "Not yet centered: carrier design."), on: "2026-10-13", note: "The type exists on main as v2.compiler.dependency_demand; the 2026-09-30 boundary was stale."), on: "2026-10-13", note: "Do not report deletion or a held observation; the census-only alias rewrite is unadmitted.")),
+        ), on: "2026-09-30", note: "Not yet centered: carrier design."), on: "2026-10-13", note: "The type exists on main as v2.compiler.dependency_demand; the 2026-09-30 boundary was stale."), on: "2026-10-13", note: "Census-only alias rewrite removed; no deletion or held observation.")),
       parent: in_project(project: "demand-engine", contribution: "D13 derives dependencies from bodies and binds them at the composition root, which native admission needs."),
     ),
     roadmap_node(
