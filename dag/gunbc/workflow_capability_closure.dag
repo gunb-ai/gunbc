@@ -5,8 +5,7 @@ import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability,
   execution_capability_label,
 }
-import v2.std.algebra { fold_list }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, fold_list }
 
 // WHY THIS SITS ABOVE extdeps.github.actions AND NOT INSIDE IT.
 //

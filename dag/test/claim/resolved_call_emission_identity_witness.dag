@@ -47,11 +47,11 @@ test fn w_primitive_bound_empty_map_stays_runtime_bound() -> Bool {
 }
 
 // THE DISCRIMINATING RED, in its first live name. `contains` is both a v1_rt bridge name and an
-// imported v2.std.algebra declaration; before the repair the leaf spelling won and this emitted
+// imported std.algebra declaration; before the repair the leaf spelling won and this emitted
 // the unrelated two-String primitive.
 test fn w_imported_generic_contains_keeps_declared_identity() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.declared_contains_probe\nimport std.types { Int, Bool }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, contains }\nfn int_eq(left: Int, right: Int) -> Bool { left == right }\nfn probe(xs: FreeMonoid<Int>) -> Bool { contains(xs: xs, item: 1, eq: int_eq) }\n",
+    "module test.claim.declared_contains_probe\nimport std.types { Int, Bool }\nimport std.occurrence_identity { OccurrenceId }\nimport std.algebra { FreeMonoid, contains }\nfn int_eq(left: Int, right: Int) -> Bool { left == right }\nfn probe(xs: FreeMonoid<Int>) -> Bool { contains(xs: xs, item: 1, eq: int_eq) }\n",
     "src/test_claim_declared_contains_probe.rs",
     ["crate::v2_std_algebra::contains("],
     ["v1_rt::contains("]

@@ -1,6 +1,6 @@
 module product.cable_plant_assessment
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, Never, NonEmptyStr }
 import std.nat { Nat }
 import extdeps.ethernet.link_mode { LinkMode }
 import product.cable_leg_observation {
@@ -20,8 +20,6 @@ import std.goal_assessment {
   assess_by_deviations_and_unknowns,
   GoalAssessmentRefused,
 }
-import v2.std.cardinality { Never }
-
 // THE INSTALLED CABLE PLANT AS A CONVERGENCE SUBJECT.
 //
 // `product.cable_order_admission` refuses a cable whose per-leg coding is undeclared BEFORE money

@@ -9,7 +9,7 @@ import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
 import std.logic { Bool }
-import v2.std.algebra { fold_list, length }
+import std.algebra { fold_list, length }
 import v2.std.text { String }
 import gunbc.rust_emitted_edge { rust_module_emit_filename }
 import gunbc.instruments.emitted_crate_harness_manifest {

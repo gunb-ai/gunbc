@@ -1,8 +1,7 @@
 module gunbc.runner.wet_host_premise_readback
 
 import std.types { Bool, List }
-import std.algebra { list_append }
-import v2.std.algebra { fold_list }
+import std.algebra { list_append, fold_list }
 import v2.workflow.wet_evidence {
   WetHostPremise, RunnerBrowserToolchainReadyForJobUser, WetPremisedClaim,
   WetHostPremiseReading, WetHostPremiseMet, WetHostPremiseUnmet, wet_host_premise_name,

@@ -4,7 +4,7 @@ import v2.compiler.parse { ParseArtifact, parse_module, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
-import v2.std.algebra { length }
+import std.algebra { length }
 import std.types { List }
 import v2.std.collection { list_at_optional }
 import v2.std.compilers.lexing {

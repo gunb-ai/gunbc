@@ -14,7 +14,7 @@ import v2.compiler.infer {
   inferred_facts_grounding_derived,
   inferred_facts_resolved_type
 }
-import std.algebra { Cons, Empty, list_snoc_item }
+import std.algebra { Cons, Empty, list_snoc_item, fold_list, length }
 import v2.std.type_binder { edge_is_cast_target }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -26,7 +26,6 @@ import v2.std.arrow_signature {
   application_binding_plan,
   arrow_declared_parameter_order
 }
-import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
   Map,

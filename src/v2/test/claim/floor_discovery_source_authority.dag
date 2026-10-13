@@ -8,7 +8,7 @@ import v2.workflow.floor_discovery_source_authority {
   discover_floor_rows_for_source,
   floor_discovery_finalize_source_outcomes
 }
-import v2.std.algebra { length, list_head, HeadFound, HeadAbsent }
+import std.algebra { length, list_head, HeadFound, HeadAbsent }
 import v2.std.collection { fold_list }
 import std.types { Bool, String, List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
