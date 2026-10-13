@@ -6,7 +6,6 @@ import gunbc.serving.session_store { ServingSessionEntry, serving_session_record
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count, MoneyPerSecond, MoneyAmountMicro }
-import std.decl_ref { DeclarationRef }
 import extdeps.accounting.encumbrance { Held, Expended, Released }
 import extdeps.api_rate_limit { upstream_rate_limit_key }
 import gunbc.serving.serving_enrollment {
@@ -515,7 +514,6 @@ type HarnessPricedSelectionInputs {
   delay_valuation: MoneyPerSecond
   maximum_buy_order: MoneyAmountMicro
   budget_currency: CurrencyCode
-  objective_profile: DeclarationRef
 }
 
 fn harness_priced_selection_inputs(admission: AdmissionTerms) -> HarnessPricedSelectionInputs {
@@ -523,7 +521,6 @@ fn harness_priced_selection_inputs(admission: AdmissionTerms) -> HarnessPricedSe
     delay_valuation: demand_delay_valuation(terms: admission),
     maximum_buy_order: admission.buy.maximum_buy_order,
     budget_currency: admission.buy.currency,
-    objective_profile: admission.objective.profile,
   }
 }
 
