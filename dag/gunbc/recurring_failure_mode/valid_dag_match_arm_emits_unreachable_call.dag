@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.valid_dag_match_arm_emits_unreachable_call
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data valid_dag_match_arm_emits_unreachable_call: RecurringFailureMode = RecurringFailureMode {
+  identity: "valid_dag_match_arm_emits_unreachable_call" as NonEmptyStr,
+
+  receipts: [
+    "**VALID .dag whose control flow is a nested tokenize-parse-normalize in one match arm, or an if-then total match on a Locus coproduct, is Accepted by the compiler and the seed rust emitter still writes a Call that rustc ranks unreachable under `-D warnings`** (INVALID STATE: the source is well-typed and total; the emitted crate is not cargo-buildable. HARM: a required self-host step dies at EmittedCompilerBuildFailed naming an emitted file that is not even a committed !merge artifact, so the author is pushed to restructure the .dag -- DESIGN section 5's workaround -- and the emitter deficit disappears from the signal).",
+
+    "TRIGGER INCIDENT, royal-bee-157 / gunbc#13850. After 107b26095e landed native demand-census on v2.compiler.source_root_eval, self-host at 17d5274240 (run 38430324010) and 18dafdaa4d (run 38439044662) refused: error: unreachable call at stage0/src/v2_compiler_source_root_eval.rs:1041:42 (then :1042:42) under policy-unit-6's `-D warnings`. The emitting shapes were (A) match tokenize { Accepted => match parse { Accepted => let stripped = ...; match normalize ... } } and (B) if fatal.reason == ^resolve_reason_unbound_symbol { match fatal.at { NodeLocus ... } } else { optional_absent() }.",
+
+    "THIS PR DOES NOT FIX THE EMITTER. 822d011f78 split the production site so one parse-Accepted arm is a single call (native_demand_census_read_normalized) and unbound_locus is a total match on fatal.at with the reason test inside native_demand_census_unbound_at_node. That split stands as readable control flow, not as allow(unreachable_code). The old shapes are kept as a fixture so the emitter class is not lost: v2.test.claim.emitter_unreachable_call_after_total_match nested_tokenize_parse_normalize and if_then_match_on_locus. That module must not join gunbc.emitted_subject_build_gate until the emitter is repaired; importing it into a native-lane product would recreate the CI red.",
+
+    "DISTINGUISHING FACT: this is not the documented residue at src/v1/05_emit_rust.dag where a diverging panic! at an unrealized seam makes later calls unreachable (a known five-error count on v2-native-cli). Here there is no panic and no missing realization: every arm of the .dag match is inhabited. The Call rustc flags is the continuation the emitter placed after a total match or after a let-in-arm it treated as diverging.",
+
+    "RUNG FOUND AT: 1, mitigatable -- cargo -D warnings is the detector, and authors can rewrite the .dag so the Call is not emitted. CEILING: 3, structurally guaranteed, once the seed emitter (v1.compiler.emit_rust) renders a total match as a total match with no trailing Call. NEXT-RUNG TRIGGER: emitting nested_tokenize_parse_normalize and if_then_match_on_locus into a crate that builds under the same `-D warnings` the self-host gate uses, with no allow(unreachable_code), such that restoring the current emitter rendering reddens that crate. Not satisfied by another source split, and not by fixing the emitter in this invert PR.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. The fixture is the specimen, not a native-lane product; the executing consumer of the defect is the required self-host cargo of gunbc.emitted_subject_build_gate until the emitter climbs.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.emitter_unreachable_call_after_total_match", decl_name: "nested_tokenize_parse_normalize", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.emitter_unreachable_call_after_total_match", decl_name: "if_then_match_on_locus", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.source_root_eval", decl_name: "native_demand_census_read_normalized", field: WholeDeclaration },
+  ],
+}
