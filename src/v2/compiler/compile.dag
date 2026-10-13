@@ -3387,7 +3387,8 @@ fn native_lane_identity_row(
 // root index -- so in the production context a uses fn's module is absent, and so are the
 // operations and fns it declares. A census that stripped one module at a time would read every edge
 // into such a module as outside the closure. So this route folds the whole ingest once with the
-// clause elided (v2.compiler.dependency_demand_census demand_census_strip, between parse and
+// uses aliases bound to their resource declarations then the clause elided
+// (v2.compiler.dependency_demand_census demand_census_strip, between parse and
 // normalize) and absorbs each root through the SAME native_test_context_absorb the production fold
 // uses: the only difference from native_test_context_fold_step is the strip, which is why that step
 // is entered phase by phase here rather than through program_assembly_read_to_normalized_root_seeded.

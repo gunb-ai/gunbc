@@ -1,7 +1,7 @@
 module v2.compiler.dependency_demand_census
 
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length }
-import v2.compiler.body_lowering_fold { body_lower_find_production_shell_optional, body_lower_type_expr_lowered_optional }
+import v2.compiler.body_lowering_fold { body_lower_find_production_shell_optional, body_lower_param_binding_optional, body_lower_type_expr_lowered_optional }
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure,
   DemandDerived,
@@ -40,9 +40,10 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { grammar_empty_node, parse_production_emitted_identity_optional }
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.grammar { grammar_empty_node, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
-import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild, symbol_lexeme }
+import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_lowered_from, node_rebuild, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
@@ -55,14 +56,13 @@ import v2.std.text { String }
 // head, reads Equal (lane ruling: an earlier run's receipt is not evidence for a later tree).
 //
 // THE STRIP IS CENSUS-ONLY AND IT IS NOT A CARRIER. Production lowering refuses every fn with a
-// `uses` clause (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional), so such a fn
-// never resolves and its demand cannot be derived. The census route alone elides the clause from
-// the parse tree -- replacing the clause's production shell with grammar_empty_node, which is
-// exactly what the parser leaves in that optional slot when the clause is absent -- and records the
-// clause beside the tree. The elided tree is consumed inside the census route only (v2.compiler.compile
-// native_demand_census_report), whose result is census rows and never a tree, so nothing it
-// produces can reach infer, eval or emission. The authored rows are therefore never lowered onto
-// the fn: they are read, judged and reported (operator D13: no carrier for the authored row).
+// `uses` clause (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional). The census
+// route alone turns each uses alias into a reference to the resource's declaration identity -- the
+// body's use of the alias is fact kind 1, a capability call under a declared resource -- then
+// replaces the clause shell with grammar_empty_node so normalize does not refuse at the unmodeled
+// clause. The rewritten tree is consumed inside the census route only (v2.compiler.compile
+// native_demand_census_report). The authored rows are never lowered onto the fn: they are read,
+// judged and reported (operator D13: no carrier for the authored row).
 //
 // THE VERDICT IS SCOPED TO THE AUDITED VOCABULARY (lane ruling). Derived demand is grounded only
 // for resources some operation was audited to declare, which today is Network. A row naming any
@@ -102,8 +102,105 @@ fn demand_census_strip(tree: Node, owner: QualifiedName) -> DemandCensusStripped
   if is_empty(xs: authored) {
     DemandCensusStripped { tree: tree, authored: authored }
   } else {
-    DemandCensusStripped { tree: demand_census_elide_uses(node: tree), authored: authored }
+    DemandCensusStripped { tree: demand_census_elide_uses(node: demand_census_bind_aliases(node: tree)), authored: authored }
   }
+}
+
+type AuthoredUsesEntry {
+  alias: Optional<Symbol>
+  type_expr: Optional<Node>
+}
+
+fn demand_census_bind_aliases(node: Node) -> Node {
+  let rebuilt = demand_census_rebuild(node: node, child: fn(c) { demand_census_bind_aliases(node: c) })
+  if dag_node_is_fn_decl(node: rebuilt) {
+    match parse_production_captured_child_optional(node: rebuilt) {
+      Absent => rebuilt
+      Present { value: captured } =>
+        match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
+          Absent => rebuilt
+          Present { value: clause } =>
+            demand_census_subst_aliases(node: rebuilt, entries: demand_census_entries(clause: clause))
+        }
+    }
+  } else {
+    rebuilt
+  }
+}
+
+fn demand_census_entries(clause: Node) -> List<AuthoredUsesEntry> {
+  fold_list(xs: demand_census_entry_shells(acc: Empty, node: clause), empty: Empty, cons: fn(acc, entry) {
+    list_snoc_item(xs: acc, item: AuthoredUsesEntry {
+      alias: demand_census_entry_alias(entry: entry),
+      type_expr: demand_census_entry_type(entry: entry)
+    })
+  })
+}
+
+fn demand_census_entry_alias(entry: Node) -> Optional<Symbol> {
+  match parse_production_captured_child_optional(node: entry) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Present { value: pair } => body_lower_param_binding_optional(node: pair.left)
+        Absent => body_lower_param_binding_optional(node: captured)
+      }
+  }
+}
+
+fn demand_census_subst_aliases(node: Node, entries: List<AuthoredUsesEntry>) -> Node {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_uses_clause {
+        node
+      } else {
+        demand_census_subst_alias_atom(node: node, entries: entries)
+      }
+    Absent => demand_census_subst_alias_atom(node: node, entries: entries)
+  }
+}
+
+fn demand_census_subst_alias_atom(node: Node, entries: List<AuthoredUsesEntry>) -> Node {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } =>
+      match demand_census_alias_image(entries: entries, alias: id, source: node) {
+        Present { value: image } => image
+        Absent => demand_census_rebuild(node: node, child: fn(c) { demand_census_subst_aliases(node: c, entries: entries) })
+      }
+    Absent => demand_census_rebuild(node: node, child: fn(c) { demand_census_subst_aliases(node: c, entries: entries) })
+  }
+}
+
+fn demand_census_alias_image(entries: List<AuthoredUsesEntry>, alias: Symbol, source: Node) -> Optional<Node> {
+  fold_list(xs: entries, empty: optional_absent(), cons: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.alias {
+          Absent => optional_absent()
+          Present { value: a } =>
+            if a == alias {
+              match e.type_expr {
+                Absent => optional_absent()
+                Present { value: ty } =>
+                  match body_lower_type_expr_lowered_optional(node: ty) {
+                    Absent => optional_absent()
+                    Present { value: img } =>
+                      optional_present(value: node_lowered_from(kind: img.kind, children: img.children, source: source))
+                  }
+              }
+            } else {
+              optional_absent()
+            }
+        }
+    }
+  })
+}
+
+fn demand_census_rebuild(node: Node, child: fn(Node) -> Node) -> Node {
+  node_rebuild(n: node, children: fold(node.children, init: Empty, f: fn(acc, e) {
+    list_snoc_item(xs: acc, item: Edge { label: e.label, target: child(e.target) })
+  }))
 }
 
 // A fn declaration is not descended into: the clause belongs to the declaration's own signature,
@@ -534,8 +631,8 @@ fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) ->
 // ═══ THE ROW AND ITS VERDICT ═══════════════════════════════════════════════════════════════════
 
 // Why a uses fn's demand was not observed: the fn's file refused in the front end even with the clause
-// elided, the module refused at resolution (an alias the body still uses is unbound once the clause
-// is elided, so this is also where a NON-restatement row lands), the fn's own name could not be read,
+// rewritten, the module refused at resolution for a reason other than the uses alias (the alias is
+// bound to the resource declaration before resolve), the fn's own name could not be read,
 // or an authored type did not resolve.
 type DemandCensusUnobserved
   = UnobservedFileRefused

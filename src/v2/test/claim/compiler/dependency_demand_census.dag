@@ -13,7 +13,6 @@ import v2.compiler.dependency_demand_census {
   DemandCensusReport,
   DemandCensusRow,
   DemandCensusVerdict,
-  UnobservedModuleResolveRefused,
   UnreadableAtParse,
   UnreadableAtTokenize,
   demand_census_conserved,
@@ -56,8 +55,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //                 (a service dependency is not a Network requirement)
 //   fs_only       authors Filesystem and calls a Filesystem capability           -> equal in vocabulary;
 //                 its row is out of vocabulary and counts toward the Filesystem audit
-//   alias_used    its body still names its alias, so with the clause elided the
-//                 module refuses at resolution: not a restatement               -> unobserved
+//   alias_used    its body names the uses alias; the census binds that alias to
+//                 the resource declaration, so derived demand names Network     -> equal
 data ddc_resources_source: String = "module std.resources\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n\nresource Filesystem {\n  kind: Capability\n  mode: ReadWrite\n  capability read {}\n}\n"
 
 data ddc_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires Network\n  }\n  operation Exec {\n    requires opaque\n  }\n  operation Ping {\n    requires none\n  }\n}\n"
@@ -181,27 +180,18 @@ test fn reaching_an_opaque_operation_is_undecided_by_that_cause_RED() -> Bool {
   }
 }
 
-test fn a_body_still_naming_its_alias_is_never_judged_a_restatement_RED() -> Bool {
-  match ddc_verdict(function: "t.aliasing.alias_used") {
-    Absent => false
-    Present { value: v } =>
-      match v {
-        CensusUnobserved { reason: UnobservedModuleResolveRefused { first_reason: _ } } => true
-        CensusUnobserved { reason: _ } => false
-        CensusEqual => false
-        CensusMismatch { authored: _, derived: _ } => false
-        CensusUndecided { cause: _ } => false
-      }
-  }
+test fn a_body_naming_its_uses_alias_is_a_reference_to_the_resource_holds() -> Bool {
+  ddc_is_equal(function: "t.aliasing.alias_used")
 }
 
-// Only the in-vocabulary rows of Equal fns are deletable: the Network rows of restates, transitive and
-// mixed. The Filesystem rows of fs_only and mixed are out of vocabulary and count only toward that audit.
+// Only the in-vocabulary rows of Equal fns are deletable: the Network rows of restates, transitive,
+// mixed and alias_used. The Filesystem rows of fs_only and mixed are out of vocabulary and count only
+// toward that audit.
 test fn only_equal_network_rows_are_deletable_and_filesystem_is_counted_apart_holds() -> Bool {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
-      (demand_census_deletable_rows(r: r) == 3) && (demand_census_out_of_vocabulary_agreeing(r: r, resource: qualified_name_from_dotted_string(dotted: "std.resources.Filesystem")) == 2)
+      (demand_census_deletable_rows(r: r) == 4) && (demand_census_out_of_vocabulary_agreeing(r: r, resource: qualified_name_from_dotted_string(dotted: "std.resources.Filesystem")) == 2)
   }
 }
 
