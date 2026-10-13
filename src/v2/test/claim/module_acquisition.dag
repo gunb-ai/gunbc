@@ -408,6 +408,19 @@ test fn qualified_module_reference_does_read_named_module() -> Bool {
   request_verdict_of(content: subject_body(body: "v2.std.logic.and(a: true, b: true)"), spelling: "v2.std.logic.and") == "requested"
 }
 
+// A String literal is one interned atom. Flattening it and splitting on `.` used to request the
+// module the lexeme named (floor_route_gap identity strings; DeclarationRef.module_path data).
+test fn a_string_literal_naming_a_module_is_not_requested() -> Bool {
+  request_verdict_of(
+    content: "module v2.test.subject\n\ndata identity: String = \"test.claim.spark.spark_fabric_switch_witness.foo\"\n",
+    spelling: "test.claim.spark.spark_fabric_switch_witness.foo"
+  ) == "not-requested"
+    && request_verdict_of(
+      content: "module v2.test.subject\n\ndata identity: String = \"test.claim.spark.spark_fabric_switch_witness.foo\"\n",
+      spelling: "test.claim.spark.spark_fabric_switch_witness"
+    ) == "not-requested"
+}
+
 test fn a_head_no_visible_binder_binds_is_requested_even_when_a_parameter_has_another_name() -> Bool {
   request_verdict_of(content: subject_body(body: "z.y"), spelling: "z.y") == "requested"
 }

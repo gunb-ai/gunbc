@@ -2730,15 +2730,15 @@ fn native_lane_pattern_probe_declaration(pattern: TargetPattern) -> String {
 // which stays the authority over which declarations are admitted): the probe is the same
 // correspondence (native_route_label_in_package) and the same matcher (target_pattern_matches), applied
 // to the module's package with the declaration the pattern itself names. A label that cannot be formed
-// is ADMITTED, not dropped -- the module is then acquired and the label-level refusal names it, so a
-// name this check cannot judge widens the acquisition by one module rather than narrowing the
-// universe.
+// is NOT an entry: admitting it would acquire a module this pattern cannot name (DESIGN section 5,
+// fail-closed). The label-level universe fold still refuses that spelling if it appears as a
+// declaration identity; this check must not widen the request set to reach it.
 fn native_lane_pattern_admits_module(pattern: TargetPattern, module_qn: String) -> Bool {
   match native_route_label_in_package(
     package_text: native_route_module_package_text(module_qn: module_qn),
     declaration: native_lane_pattern_probe_declaration(pattern: pattern)
   ) {
-    LabelRefused { cause: _ } => true
+    LabelRefused { cause: _ } => false
     LabelParsed { label: label } => target_pattern_matches(pattern: pattern, target: label)
   }
 }
