@@ -1,0 +1,220 @@
+module v2.workflow.namespace_xl2_subject_tree_id
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present }
+import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
+import extdeps.crypto.sha1 { sha1_hex }
+import extdeps.git.object_store {
+  Blob,
+  GitCanonicalHashInputReady,
+  GitCanonicalHashInputRefused,
+  GitObjectId,
+  GitTreeEntryName,
+  GitTreeEntryNameDecoded,
+  GitTreeEntryNameDecodeRefused,
+  GitTreeWireName,
+  ExecutableBlobEntry,
+  GitlinkEntry,
+  ObjectBlob,
+  StoreObject,
+  ObjectTree,
+  RegularBlobEntry,
+  SubtreeEntry,
+  SymlinkEntry,
+  Tree,
+  TreeEntry,
+  git_decode_tree_entry_name,
+  git_sha1_object_id,
+  git_store_object_canonical_hash_input
+}
+import gunbc.namespace_cut.namespace_step0_subject_collector { Step0SubjectMember }
+
+// THE SUBJECT'S TREE IDENTITY, RE-DERIVED IN .dag FROM THE BYTES THE SEED PREP MATERIALIZED (the
+// standing Option A ruling: prep only lays down bytes; the tree id, the subject vector and the
+// mismatch refusal are computed here). The git object model is the single authority
+// (extdeps.git.object_store canonical hash input); this module only groups a git-ordered manifest
+// into per-directory trees and hashes them with extdeps.crypto.sha1.
+
+// One manifest row as `git ls-tree -r` states it, in git order. components are the path split at
+// "/" by the prep; a component contains no "/".
+type Xl2ManifestEntry {
+  mode: String
+  components: List<String>
+  oid_hex: String
+}
+
+type Xl2TreeVerdict
+  = Xl2TreeVerified { tree_hex: String }
+  | Xl2TreeMismatch { claimed: String, recomputed: String }
+  | Xl2MemberBlobMismatch { path: String, claimed: String, recomputed: String }
+  | Xl2MemberNotInManifest { path: String }
+  | Xl2ManifestMalformed { reason: String }
+
+type Xl2HexOutcome
+  = Xl2HexBuilt { hex: String }
+  | Xl2HexRefused { reason: String }
+
+fn xl2_octets_of_text(text: String) -> List<Int> {
+  bytes_octets(b: utf8_encode_bytes(s: text))
+}
+
+fn xl2_hash_input_hex(object: StoreObject) -> Xl2HexOutcome {
+  match git_store_object_canonical_hash_input(object: object) {
+    GitCanonicalHashInputRefused { cause: _ } => Xl2HexRefused { reason: "canonical hash input refused" }
+    GitCanonicalHashInputReady { bytes: payload } =>
+      match sha1_hex(message: bytes_octets(b: payload)) {
+        Present { value: hex } => Xl2HexBuilt { hex: hex }
+        _ => Xl2HexRefused { reason: "sha1 digest unreachable" }
+      }
+  }
+}
+
+// The blob object id of a member, from its content alone.
+fn xl2_blob_hex(content: String) -> Xl2HexOutcome {
+  xl2_hash_input_hex(object: ObjectBlob { blob: Blob { content: utf8_encode_bytes(s: content) } })
+}
+
+type Xl2Group {
+  name: String
+  members: List<Xl2ManifestEntry>
+}
+
+type Xl2Grouping {
+  done: List<Xl2Group>
+  current: Xl2Group
+}
+
+fn xl2_head(entry: Xl2ManifestEntry) -> String {
+  match entry.components.first() {
+    Present { value: head } => head
+    _ => ""
+  }
+}
+
+fn xl2_tail(entry: Xl2ManifestEntry) -> Xl2ManifestEntry {
+  Xl2ManifestEntry { mode: entry.mode, components: entry.components.skip(n: 1), oid_hex: entry.oid_hex }
+}
+
+// ONE LINEAR PASS: consecutive rows sharing a head component are one directory. A git-ordered
+// manifest keeps a directory's rows contiguous; a manifest that does not hashes to a different tree
+// and is refused as a mismatch, never repaired.
+fn xl2_group_by_head(entries: List<Xl2ManifestEntry>) -> List<Xl2Group> {
+  let grouping = fold(entries, init: Xl2Grouping { done: [], current: Xl2Group { name: "", members: [] } }, f: fn(acc, entry) {
+    let head = xl2_head(entry: entry)
+    if head == acc.current.name {
+      Xl2Grouping { done: acc.done, current: Xl2Group { name: head, members: acc.current.members |> list_push(xl2_tail(entry: entry)) } }
+    } else {
+      Xl2Grouping {
+        done: if acc.current.name == "" { acc.done } else { acc.done |> list_push(acc.current) }
+        current: Xl2Group { name: head, members: [xl2_tail(entry: entry)] }
+      }
+    }
+  })
+  if grouping.current.name == "" { grouping.done } else { grouping.done |> list_push(grouping.current) }
+}
+
+fn xl2_entry_name(name: String) -> GitTreeEntryName? {
+  match git_decode_tree_entry_name(wire: GitTreeWireName { octets: xl2_octets_of_text(text: name) }) {
+    GitTreeEntryNameDecoded { name: decoded } => Present { value: decoded }
+    GitTreeEntryNameDecodeRefused { cause: _ } => none
+  }
+}
+
+fn xl2_leaf_entry(mode: String, name: GitTreeEntryName, oid: GitObjectId) -> TreeEntry? {
+  if mode == "100644" { Present { value: RegularBlobEntry { name: name, oid: oid } } }
+  else if mode == "100755" { Present { value: ExecutableBlobEntry { name: name, oid: oid } } }
+  else if mode == "120000" { Present { value: SymlinkEntry { name: name, oid: oid } } }
+  else if mode == "160000" { Present { value: GitlinkEntry { name: name, oid: oid } } }
+  else { none }
+}
+
+type Xl2EntriesOutcome
+  = Xl2EntriesBuilt { entries: List<TreeEntry> }
+  | Xl2EntriesRefused { reason: String }
+
+// One group becomes one tree entry: a group whose single row has no remaining components is a
+// leaf; any other is a subtree whose id is the recursion over the group's tails.
+fn xl2_group_entry(group: Xl2Group) -> Xl2EntriesOutcome {
+  match xl2_entry_name(name: group.name) {
+    Absent => Xl2EntriesRefused { reason: join(["entry name refused: ", group.name], "") }
+    Present { value: name } =>
+      match group.members.first() {
+        Absent => Xl2EntriesRefused { reason: "empty group" }
+        Present { value: only } =>
+          if count(group.members) == 1 && count(only.components) == 0 {
+            match git_sha1_object_id(hex: only.oid_hex) {
+              Absent => Xl2EntriesRefused { reason: join(["object id malformed for ", group.name], "") }
+              Present { value: oid } =>
+                match xl2_leaf_entry(mode: only.mode, name: name, oid: oid) {
+                  Absent => Xl2EntriesRefused { reason: join(["mode ", only.mode, " unsupported for ", group.name], "") }
+                  Present { value: entry } => Xl2EntriesBuilt { entries: [entry] }
+                }
+            }
+          } else {
+            match xl2_tree_hex(entries: group.members) {
+              Xl2HexRefused { reason: why } => Xl2EntriesRefused { reason: why }
+              Xl2HexBuilt { hex: hex } =>
+                match git_sha1_object_id(hex: hex) {
+                  Absent => Xl2EntriesRefused { reason: "subtree id malformed" }
+                  Present { value: oid } => Xl2EntriesBuilt { entries: [SubtreeEntry { name: name, oid: oid }] }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn xl2_tree_hex(entries: List<Xl2ManifestEntry>) -> Xl2HexOutcome {
+  let built = fold(xl2_group_by_head(entries: entries), init: Xl2EntriesBuilt { entries: [] }, f: fn(acc, group) {
+    match acc {
+      Xl2EntriesRefused { reason: why } => Xl2EntriesRefused { reason: why }
+      Xl2EntriesBuilt { entries: so_far } =>
+        match xl2_group_entry(group: group) {
+          Xl2EntriesRefused { reason: why } => Xl2EntriesRefused { reason: why }
+          Xl2EntriesBuilt { entries: next } => Xl2EntriesBuilt { entries: append(so_far, items: next) }
+        }
+    }
+  })
+  match built {
+    Xl2EntriesRefused { reason: why } => Xl2HexRefused { reason: why }
+    Xl2EntriesBuilt { entries: tree_entries } => xl2_hash_input_hex(object: ObjectTree { tree: Tree { entries: tree_entries } })
+  }
+}
+
+fn xl2_manifest_path(entry: Xl2ManifestEntry) -> String {
+  join(entry.components, "/")
+}
+
+// The member's own bytes against the blob id the manifest claims for its path.
+fn xl2_member_verdict(manifest: List<Xl2ManifestEntry>, member: Step0SubjectMember) -> Xl2TreeVerdict? {
+  let path = member.path as String
+  match (manifest |> filter(e => xl2_manifest_path(entry: e) == path)).first() {
+    Absent => Present { value: Xl2MemberNotInManifest { path: path } }
+    Present { value: row } =>
+      match xl2_blob_hex(content: member.content) {
+        Xl2HexRefused { reason: why } => Present { value: Xl2ManifestMalformed { reason: why } }
+        Xl2HexBuilt { hex: recomputed } =>
+          if recomputed == row.oid_hex { none } else { Present { value: Xl2MemberBlobMismatch { path: path, claimed: row.oid_hex, recomputed: recomputed } } }
+      }
+  }
+}
+
+// The verdict: every member's bytes hash to its manifest blob, and the manifest hashes to the claimed
+// root. The first member refusal wins; a clean membership then asks the tree.
+fn xl2_verify_subject_tree(claimed_tree_hex: String, manifest: List<Xl2ManifestEntry>, members: List<Step0SubjectMember>) -> Xl2TreeVerdict {
+  let first_refusal = fold(members, init: none, f: fn(acc, m) {
+    match acc {
+      Present { value: _ } => acc
+      _ => xl2_member_verdict(manifest: manifest, member: m)
+    }
+  })
+  match first_refusal {
+    Present { value: refusal } => refusal
+    Absent =>
+      match xl2_tree_hex(entries: manifest) {
+        Xl2HexRefused { reason: why } => Xl2ManifestMalformed { reason: why }
+        Xl2HexBuilt { hex: recomputed } =>
+          if recomputed == claimed_tree_hex { Xl2TreeVerified { tree_hex: recomputed } } else { Xl2TreeMismatch { claimed: claimed_tree_hex, recomputed: recomputed } }
+      }
+  }
+}
