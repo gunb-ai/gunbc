@@ -34,7 +34,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // root, constructs and hashes the only environment admitted to build/run commands, resolves and
 // probes the build toolchain with that root as current_dir (so workspace rust-toolchain selection
 // is observed), observes Cargo configuration, and appends the context identity before consulting
-// .native_ready. Warm hits skip cargo build via extdeps.cargo and set compile_skipped. Eviction
+// .native_ready. Warm hits skip cargo build via extdeps.rust.cargo and set compile_skipped. Eviction
 // targets the outer workspace through emit_host_native_cache_evict — NOT raw shell.Remove — so it
 // removes every realization and context child and shares the durable rebase authority with the
 // transport.

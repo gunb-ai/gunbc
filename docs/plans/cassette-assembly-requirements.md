@@ -98,7 +98,7 @@ cycle. DESIGN §3d and that module name the fleet admission spine as the first
 consumer of the future shared effectful cycle. Bind cassette assessment now and
 keep `gunbc.fleet.printer_batch` as the existing actuator; do not introduce a
 cassette-local generic cycle. Before the cycle implementation, inspect
-`gunbc.fleet_converge_plan` at `dag/gunbc/fleet/fleet_converge_plan.dag`. The shared
+`gunbc.fleet.fleet_converge_plan` at `dag/gunbc/fleet/fleet_converge_plan.dag`. The shared
 cycle lands with that spine as its required consuming integration, then the
 cassette binds it in the same or a subsequent change. If it remains absent, mark
 this portion open rather than declaring cassette-first completion.

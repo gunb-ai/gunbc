@@ -1,4 +1,4 @@
-module gunbc.v1_maintenance_standing
+module gunbc.v1.v1_maintenance_standing
 
 import std.types { String, NonEmptyStr, CommitSha, Timestamp }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -110,7 +110,7 @@ type UnadjudicatedDisposition =
 // THE PURPOSE TEST FAILS, which is the governing question under the 2026-08-20 ruling and is
 // decided before any question of shape. The partition had exactly one demanded consumer: a
 // DID-NOT-RUN arm for a pre-push hook gate, which is forbidden by the 2026-07-25 fmt-only operator
-// ruling recorded at gunbc.githooks_pre_push_emit pre_push_fmt_only_note. With that surface closed,
+// ruling recorded at gunbc.githooks.githooks_pre_push_emit pre_push_fmt_only_note. With that surface closed,
 // nothing branches on the distinction -- no required phase reads it, no caller consumes it -- so
 // what remains is a typed partition with no consumer, which is the dangling declaration DESIGN
 // section 3c refuses. No v2 self-host frontier moves.
@@ -288,7 +288,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // rather than a category. (1) gunbc#8431, BehaviorPreservingRedundancyRemoval: one
 // CallApplicationPlan constructed per direct call, replacing two line-for-line duplicate per-formal
 // prologues at the same seam; measured on a same-host sequential pair with both arms built from
-// real refs, 2900 to 2280 peel calls on gunbc.host_effect_realize and reconcile 8 minutes to 6
+// real refs, 2900 to 2280 peel calls on gunbc.host.host_effect_realize and reconcile 8 minutes to 6
 // minutes -- and that pair is a WHOLE-CORPUS COMPILE measurement, not a required-floor receipt:
 // gunbc#8431 carries no floor before/after receipt and this row is not the authority for one. The
 // distinction is worth keeping because the two numbers would be quoted the same way and only one of
@@ -553,7 +553,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // not, so a recursion threading one text through its steps rehashed all of it per step. The parser
 // is a victim; the link that violated its own contract is the key derivation, which states one
 // relation (content hash) and realized it at O(|text|) per call for exactly one value kind. The
-// instrument is tools.json_parse_ladder, whose rungs re-derive every reading above.
+// instrument is gunbc.instruments.json_parse_ladder, whose rungs re-derive every reading above.
 //
 // THE PURPOSE TEST IS SATISFIED FOR THE SAME REASON AS THE ASCII FLAG: the interpreter is the engine
 // the v2 self-host program runs on, and a pure recursion over source text is that program's

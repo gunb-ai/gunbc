@@ -1,0 +1,36 @@
+module gunbc.dispatch_attempt
+
+import std.types { String, Bool }
+import gunbc.roadmap.roadmap_model { RoadmapNode }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+
+// ONE DISPATCH ATTEMPT: the instance it runs on, the node it works and the key that makes it this
+// attempt and not another. The belt (gunbc.roadmap.roadmap_belt_actuate belt_actuate_spawn_for_instance)
+// owns the attempt and names it once per spawn, and that value stays the authority for which work is
+// being launched. Preparation acquires FOR it, and the prepared launch is minted only when what was
+// prepared is this attempt (gunbc.dispatch_attempt_launch prepare_attempt_launch); every leg after
+// that -- the spawn plan, the provider argv, the belt's staging and placement, and the discard -- reads
+// its identity from the sealed prepared launch, never from an instance, node or key supplied beside
+// it. The standing probe comes before the mint and borrows the taken snapshot, which carries the same
+// attempt.
+type DispatchAttempt {
+  instance: HostDashboardInstance
+  node: RoadmapNode
+  attempt_key: String
+}
+
+fn dispatch_attempt_label(attempt: DispatchAttempt) -> String {
+  join([
+    "instance ", attempt.instance.instance_id as String, " on ", attempt.instance.host_identity as String,
+    ", node ", attempt.node.node as String, " attempt ", attempt.attempt_key,
+  ], "")
+}
+
+// TWO ATTEMPTS ARE ONE ATTEMPT when they name the same instance on the same host, the same node and
+// the same key; the instance's other fields are configuration of that instance, not identity.
+fn dispatch_attempts_agree(a: DispatchAttempt, b: DispatchAttempt) -> Bool {
+  (a.instance.instance_id as String) == (b.instance.instance_id as String)
+    && (a.instance.host_identity as String) == (b.instance.host_identity as String)
+    && (a.node.node as String) == (b.node.node as String)
+    && a.attempt_key == b.attempt_key
+}

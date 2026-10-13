@@ -1,4 +1,4 @@
-module gunbc.srv3_boot_once_cd
+module gunbc.srv3.srv3_boot_once_cd
 
 import std.measure { Second, second }
 import extdeps.bmc.http
@@ -8,7 +8,7 @@ import gunbc.clock_read { clock_now_probed_at }
 import gunbc.workflow_escalation {
   workflow_destructive_step_refusal_reason
 }
-import gunbc.srv3_os_install_actuate_workflow {
+import gunbc.srv3.srv3_os_install_actuate_workflow {
   srv3_boot_once_cd_default_approval,
   srv3_boot_once_cd_operator_granted_approval,
   srv3_boot_once_cd_workflow_disposition,
@@ -18,7 +18,7 @@ import gunbc.srv3_os_install_actuate_workflow {
   srv3_boot_cd_reset_type,
   Srv3BootOverrideSubject,
 }
-import gunbc.srv3_bmc_credential_resolve {
+import gunbc.srv3.srv3_bmc_credential_resolve {
   BmcCredentialAccessUpsertRequired,
   BmcCredentialFetchRefused,
   BmcCredentialMaterialized,
@@ -27,7 +27,7 @@ import gunbc.srv3_bmc_credential_resolve {
   observe_and_resolve_srv3_bmc_credential,
 }
 import gunbc.auth.access_token_source { access_token_upsert_required_reason }
-import gunbc.bmc_onboarding { srv3_onboarding_plan }
+import gunbc.bmc.bmc_onboarding { srv3_onboarding_plan }
 import gunbc.auth.netrc_binding {
   NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains, place_netrc_binding,
 }

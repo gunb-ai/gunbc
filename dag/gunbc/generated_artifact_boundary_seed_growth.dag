@@ -2,7 +2,7 @@ module gunbc.generated_artifact_boundary_seed_growth
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
 // Seed-growth obligation for the host that adjudicates the committed generated-artifact population
@@ -19,7 +19,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // generated_artifact_body_for_path is a pure .dag projection over the three authorities main_wet
 // already folds -- the committed-artifact roster, artifact_path, and the single artifact_generate
 // dispatch -- and it existed before this change with a real writer beside it
-// (tools.generated_artifact_gate main_wet). What did not exist was a CALLER that asked it about the
+// (gunbc.instruments.generated_artifact_gate main_wet). What did not exist was a CALLER that asked it about the
 // whole population. The growth is the asking, not the answering, and that is the whole reason this
 // obligation is small enough to state: no generator, no roster, no per-artifact knowledge is
 // duplicated in Rust. This file names no individual artifact, and adding an artifact to
@@ -31,7 +31,7 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // whose subject is that read is counted executed while its assertion never runs, which is the
 // boundary DESIGN's CI paragraph already names beside the floor's counters. So the leaf is Rust for
 // the same reason ingestion is. What was REJECTED, so the choice is visible rather than implied:
-// running the existing drift gate (tools.generated_artifact_gate main) through the interpreter in
+// running the existing drift gate (gunbc.instruments.generated_artifact_gate main) through the interpreter in
 // Wet mode would need no host adjudicator, and it is refused for two independent reasons. It makes
 // the interpreter load-bearing for a NEW required phase at the moment two lanes are deleting it;
 // and the gate body it would run is the one that also reaches artifact_extra_valid's ci_yml_parses,
@@ -52,9 +52,9 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // compile error. That refusal is the mitigation and it is deliberate -- an unknown shape is
 // ignorance and refuses -- but it is a runtime wall, not construction.
 //
-// ADMITTED AGAINST THE v1 FREEZE BY PURPOSE, on the test gunbc.v1_maintenance_standing
+// ADMITTED AGAINST THE v1 FREEZE BY PURPOSE, on the test gunbc.v1.v1_maintenance_standing
 // v1_seed_standing states: does the change serve the v2 self-host program. It does, by the same
-// route gunbc.parse_refusal_location_seed_growth and gunbc.floor_non_verdict_enrollment were
+// route gunbc.parse_refusal_location_seed_growth and gunbc.floor.floor_non_verdict_enrollment were
 // admitted -- DESIGN.md is the authority every lane in that program plans against, and a DESIGN.md
 // that has silently diverged from gunbc.design_document is premise contamination for all of them.
 // That is measured rather than argued: this phase's first execution found
@@ -231,7 +231,7 @@ data generated_artifact_boundary_seed_growth_justification: SeedGrowthJustificat
       field: WholeDeclaration
     }
   ],
-  reason: "The phase compares a modeled projection against BYTES ON DISK, and reading the committed file is a host effect the required floor's hermetic envelope refuses by construction -- so the leaf is Rust for the same reason ingestion is. The rejected alternative was running the existing tools.generated_artifact_gate main through the interpreter in Wet mode, refused because it makes the interpreter load-bearing for a NEW required phase while two lanes delete it, and because that gate body also reaches artifact_extra_valid's ci_yml_parses, so the required phase would acquire a second subject nobody asked it to check. What the growth buys is that a committed projection diverging from its authority stops the line at all: for the whole interval since the 2026-08-15 floor cut, DESIGN.md and ROADMAP.md were compared by nothing, and the first execution of this phase found four divergences, one of them wrong since #9394.",
+  reason: "The phase compares a modeled projection against BYTES ON DISK, and reading the committed file is a host effect the required floor's hermetic envelope refuses by construction -- so the leaf is Rust for the same reason ingestion is. The rejected alternative was running the existing gunbc.instruments.generated_artifact_gate main through the interpreter in Wet mode, refused because it makes the interpreter load-bearing for a NEW required phase while two lanes delete it, and because that gate body also reaches artifact_extra_valid's ci_yml_parses, so the required phase would acquire a second subject nobody asked it to check. What the growth buys is that a committed projection diverging from its authority stops the line at all: for the whole interval since the 2026-08-15 floor cut, DESIGN.md and ROADMAP.md were compared by nothing, and the first execution of this phase found four divergences, one of them wrong since #9394.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete every v1_compiler.generated_artifact_boundary_host row in hand_authored_declarations when the required run can execute a .dag adjudicator over this population -- that is, when a modeled operation can read a committed file's bytes inside the required envelope, at which point the whole comparison is gunbc.generated_artifact_emit plus one modeled read and this host has nothing left to do. Delete the separately rostered v1_compiler.bin.claim_executor run modification when required-run dispatch consumes gunbc.required_ci_phase_roster RequiredCiPhase directly under ROADMAP node v1-hand-queue-drain. A PARTIAL migration is admissible and is the expected shape: the four pure declarations here (AdjudicatedArtifact, ArtifactDisposition, artifact_disposition, artifact_disposition_name) are a fold over two strings and dissolve the moment anything models them, independently of the read. What does NOT dissolve them is moving them to another host file, and what does NOT dissolve them is a witness asserting this host agrees with the model -- that would raise the rung without removing the duplicate.",
   current_boundary: "src/v1/stage0/src/generated_artifact_boundary_host.rs; src/v1/stage0/src/cli_run.rs (one #[path] mod line and one pub use, adding no declaration); src/v1/stage0/src/bin/claim_executor.rs run (ExistingSeedItemModified: the required generated-artifact phase body consumes gunbc.required_ci_phase_roster RequiredCiPhase; no new Rust declaration); dag/gunbc/generated_artifact_boundary_seed_growth.dag"

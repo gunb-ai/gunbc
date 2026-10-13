@@ -1,4 +1,4 @@
-module gunbc.mtcollins_3ds_memory_change
+module gunbc.host.mtcollins_3ds_memory_change
 
 import std.types { List, NonEmptyStr, String }
 import std.measure { byte_size }
@@ -9,33 +9,33 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelPopulationRole, MtCollinsPopulationRoleRefusal,
   PopulationRolesResolved, PopulationRolesRefused, mt_collins_channel_population_roles,
 }
-import gunbc.memory_configuration {
+import gunbc.host.memory_configuration {
   MemoryModuleIdentity, ObservedMemoryModule, MemoryConfiguration, PositionedMemoryModule,
   MemoryDeliveryVariant, AcquireMemoryUnit,
 }
-import gunbc.memory_observation {
+import gunbc.host.memory_observation {
   MemoryCollectorReceipt, MemoryCaptureCycles, MemoryPrintedPartBinding, MemoryPrintedPositionBinding,
   MemoryEvaluationEvidence, read_verified_memory_capture,
 }
-import gunbc.mtcollins_memory_change {
+import gunbc.host.mtcollins_memory_change {
   mtcollins_dram_cycle_start,
   mtcollins_witnessed_configuration, mtcollins_memory_module, mtcollins_hynix_part,
   mtcollins_training_mixture_finding, mtcollins_memory_evidence_from_capture,
   mtcollins_training_capture_path, mtcollins_training_capture_sha256, mtcollins_replay_proposal,
 }
-import gunbc.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
-import gunbc.memory_change_report { explain_memory_change }
+import gunbc.host.memory_change_evaluation { MemoryChangeAssessment, evaluate_memory_change, memory_change_admission_refusal, ProductionMemoryPurchase }
+import gunbc.host.memory_change_report { explain_memory_change }
 
 // PR #11189 / 4f9f6e7c305. Observed tokens are not a Samsung catalog guarantee.
 data mtcollins_3ds_capture_path: NonEmptyStr = "artifacts/bmc/mtcollins1-sol-3ds-mixture-refusal-2026-09-12.txt"
 data mtcollins_3ds_capture_sha256: NonEmptyStr = "de1af941fee140e0280b77722b68c338111441c567fff570ce9065f6a72258d8"
-data mtcollins_3ds_capture_source: DeclarationRef = decl_ref(module_path: "gunbc.mtcollins_3ds_memory_change", decl_name: "mtcollins_3ds_capture_path")
+data mtcollins_3ds_capture_source: DeclarationRef = decl_ref(module_path: "gunbc.host.mtcollins_3ds_memory_change", decl_name: "mtcollins_3ds_capture_path")
 
 data mtcollins_samsung_observed_identity: MemoryModuleIdentity = ObservedMemoryModule {
   printed_part: "M393A8G40D40-CRB", capacity: Present { value: byte_size(count: 68719476736) }, source: mtcollins_3ds_capture_source,
   missing_catalog_binding: "The printed token omits the catalog's 0Q suffix. Obtain an SPD/physical-label read or Samsung suffix-decoder evidence; matching capacity/rate/ranks/width alone does not identify the SKU.",
 }
-data mtcollins_samsung_observed_part: DeclarationRef = decl_ref(module_path: "gunbc.mtcollins_3ds_memory_change", decl_name: "mtcollins_samsung_observed_identity")
+data mtcollins_samsung_observed_part: DeclarationRef = decl_ref(module_path: "gunbc.host.mtcollins_3ds_memory_change", decl_name: "mtcollins_samsung_observed_identity")
 
 // The inventory's 64GB is the firmware's DRAM-capacity notation (64 GiB).
 // Expected b2 is group-level diagnostic evidence, not an individual SPD dump.

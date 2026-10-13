@@ -1,7 +1,7 @@
-module gunbc.machine_intake_megarac_pre_os_channel
+module gunbc.machine_intake.megarac_pre_os_channel
 
 import std.measure { Second, second }
-import gunbc.machine_intake_sol_collector_observation {
+import gunbc.machine_intake.sol_collector_observation {
   SolCollectorSessionAcknowledged,
   SolCoverageStillRunningPastDeadline,
   SolHostPayloadReceived,

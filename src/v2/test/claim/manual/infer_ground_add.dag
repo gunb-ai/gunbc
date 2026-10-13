@@ -1,4 +1,4 @@
-module v2.test.manual.infer_ground_add
+module v2.test.claim.manual.infer_ground_add
 
 import std.types { List }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }

@@ -26,7 +26,7 @@ import extdeps.cloudflare.r2 { R2S3Endpoint, R2ObjectLocator, r2_object_url, r2_
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, observed_receipt }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { decl_ref }
-import gunbc.host_cli_dependency { observe_host_cli_dependency, HostCliDependencyPresent, HostCliDependencyAbsent }
+import gunbc.host.host_cli_dependency { observe_host_cli_dependency, HostCliDependencyPresent, HostCliDependencyAbsent }
 import gunbc.command_runner { run_shell_command_observe }
 import gunbc.auth.access_token_source { select_access_token_source, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
 import gunbc.auth.netrc_binding { netrc_binding_path }

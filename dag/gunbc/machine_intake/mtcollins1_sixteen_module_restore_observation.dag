@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation
+module gunbc.machine_intake.mtcollins1_sixteen_module_restore_observation
 
 import std.types { Int, List, NonEmptyStr, String, list_length }
 import std.measure { byte_size }
@@ -6,8 +6,8 @@ import std.content_hash { Sha256Digest, Sha256Hash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, OemSelPayload, SystemRestart }
-import gunbc.machine_intake_pre_os_bringup_attempt { ChassisPowerCycle }
-import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation {
+import gunbc.machine_intake.pre_os_bringup_attempt { ChassisPowerCycle }
+import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation {
   SelWindowCapture,
   SolCaptureUnderCondition,
   mtcollins1_pre_os_capabilities,
@@ -15,7 +15,7 @@ import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation {
   mtcollins1_sol_reading,
   mtcollins1_sol_session_banner_digest,
 }
-import gunbc.machine_intake_pre_os_bringup_verdict {
+import gunbc.machine_intake.pre_os_bringup_verdict {
   BootCycleWindow,
   BootRestart,
   BringupUndetermined,
@@ -35,7 +35,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
 }
 
 // MT. COLLINS UNIT 1 AFTER THE OPERATOR RESTORED THE SIXTEEN PROVEN MODULES, 2026-09-12/13: THE
-// SECOND HALF OF THE PRE-OS BRING-UP REGRESSION CORPUS. gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
+// SECOND HALF OF THE PRE-OS BRING-UP REGRESSION CORPUS. gunbc.machine_intake.mtcollins1_32dimm_bringup_observation
 // holds the failure side -- the 32-DIMM restart loop, the 3DS mixture the firmware refused with a
 // stated locus. This module holds what the same instruments recorded once the population was put
 // back: the controller's event log across the swap, and three held-session console captures of
@@ -66,7 +66,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
 // swap (0x63f, 0x640), and ends at the last record the controller held when the capture was
 // taken. The capture's own first and third lines record the host clock and the controller clock
 // in the same second: host 16:52:56Z, controller 12:52:56 PM UTC -- the four-hour offset
-// gunbc.machine_intake_mtcollins1_diskless_boot_receipt already measured. No fold here joins the
+// gunbc.machine_intake.mtcollins1_diskless_boot_receipt already measured. No fold here joins the
 // two clocks; the rendering is data.
 //
 // THE OEM PAYLOAD IN THIS LOOP IS 0fde70331102, NOT THE 0fde70330102 OF THE 32-DIMM LOOP. One byte
@@ -153,7 +153,7 @@ data mtcollins1_run_a_sparse_reference_capture: SolCaptureUnderCondition = SolCa
 
 // RUN B, THE SPARSE 3DS PAIR: one Samsung M393A8G40D40-CRB 64GB 3DS in SK0 MC0 and one in SK1 MC0,
 // the reference pair removed. The firmware that refused these modules in a mixture
-// (gunbc.mtcollins_3ds_memory_change) trains them alone: "DRAM: 128GB DDR4 2133 SYMBOL ECC"; the
+// (gunbc.host.mtcollins_3ds_memory_change) trains them alone: "DRAM: 128GB DDR4 2133 SYMBOL ECC"; the
 // run ends in the PXE retry loop.
 data mtcollins1_run_b_sparse_samsung_capture: SolCaptureUnderCondition = SolCaptureUnderCondition {
   label: "run B, sparse Samsung 3DS pair, 2026-09-13T03:08Z",
@@ -300,5 +300,5 @@ fn check_no_restart_after_the_swap() -> ProcessExit {
 // -- and they are carried here by the committed bytes alone, not by any row, so nothing in the
 // corpus can be refuted by them yet. This row is what retires that.
 data mtcollins1_restore_positive_terminal_frontier: DissolutionCondition = unbound_dissolution(
-  description: "a firmware-console positive terminal for the pre-OS bring-up verdict -- a grammar row for the DRAM capacity statement and for entry into boot-device selection (UEFI shell, PXE retry) that yields a FirmwareConsoleReport arm the verdict fold reads as the host having completed initialisation, and a reader for the populated-DIMM table that binds each printed position and part token to gunbc.memory_configuration positions -- SUFFICIENT FOR every held-session GUNBC-BOOTRUN capture on this controller family, so that trained capacity per socket and the population that trained are folded from the bytes and never restated in prose; NOT satisfied by transcribing the capacity line into a data row, by this module's byte-count check, or by a witness asserting the line is present" as NonEmptyStr,
+  description: "a firmware-console positive terminal for the pre-OS bring-up verdict -- a grammar row for the DRAM capacity statement and for entry into boot-device selection (UEFI shell, PXE retry) that yields a FirmwareConsoleReport arm the verdict fold reads as the host having completed initialisation, and a reader for the populated-DIMM table that binds each printed position and part token to gunbc.host.memory_configuration positions -- SUFFICIENT FOR every held-session GUNBC-BOOTRUN capture on this controller family, so that trained capacity per socket and the population that trained are folded from the bytes and never restated in prose; NOT satisfied by transcribing the capacity line into a data row, by this module's byte-count check, or by a witness asserting the line is present" as NonEmptyStr,
 )

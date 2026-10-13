@@ -1,0 +1,379 @@
+module test.claim.primitive_projection_authority_witness
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.primitive_projection {
+  DeclarationPrimitiveUndisposed,
+  PrimitiveProjection,
+  DeclarationProjectsNoPrimitive,
+  DeclarationProjectsPrimitive,
+  DivergentProjection,
+  HostRealizedSeam,
+  ModeledProjection,
+  primitive_decl_facts,
+  primitive_empty_map,
+  primitive_identity_runtime_name,
+  primitive_identity_slug,
+  primitive_length,
+  primitive_map_get,
+  primitive_map_insert,
+  primitive_lookup,
+  primitive_projection_row,
+}
+import std.primitive_identity {
+  BuiltinRegistry,
+  primitive_projection_roster,
+  DerivedFromAuthority,
+  EmitHandler,
+  InterpreterDispatch,
+  RuntimeRowAbsentFromEnumeratedSurfaces,
+  PrimitiveSurfaceAuthority,
+  PrimitiveSurfaceRow,
+  RuntimeRowOnEmitHandlerOnly,
+  RuntimeRowOnInterpreterDispatch,
+  SymbolJoinsDeclaredPrimitive,
+  SymbolUndisposed,
+  declaration_and_primitive_are_one_authority,
+  primitive_disposed_surface_symbol_count,
+  primitive_identity_eq,
+  primitive_map_keys,
+  primitive_projection_divergent_row_count,
+  primitive_projection_for_declaration,
+  primitive_projection_one_authority_row_count,
+  primitive_projection_violation_count,
+  primitive_projection_violation_count_in,
+  primitive_runtime_coverage,
+  primitive_runtime_coverage_in,
+  primitive_surface_distinct_symbol_count,
+  primitive_symbol_disposition,
+  primitive_undisposed_surface_symbol_count,
+  surface_row,
+}
+import std.types { Bool, List, String }
+
+// Executes the question a candidate collector asks of this carrier: given a DECLARATION, is it the
+// modeled surface of a PRIMITIVE, and are the two one authority or two. The discriminating control
+// is the DivergentProjection row -- v2.std.collection map_get_checked -- which must answer NOT one
+// authority while the seam and modeled rows answer that they are. A carrier that collapsed the
+// three fidelities into a boolean suppress flag reds w_divergent_projection_is_not_one_authority,
+// which is the whole reason the third variant exists.
+
+fn projection_declaration(module_path: String, decl_name: String) -> DeclarationRef {
+  decl_ref(module_path: module_path, decl_name: decl_name)
+}
+
+test fn w_host_realized_seam_answers_with_its_fidelity() -> Bool {
+  match primitive_projection_for_declaration(
+    declaration: projection_declaration(module_path: "v2.std.decl_index", decl_name: "decl_facts")
+  ) {
+    DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+    DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+      match fidelity {
+        HostRealizedSeam => true
+        ModeledProjection => false
+        DivergentProjection { divergence: _ } => false
+      }
+  }
+}
+
+test fn w_modeled_projection_answers_with_its_fidelity() -> Bool {
+  match primitive_projection_for_declaration(
+    declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "length")
+  ) {
+    DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+    DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+      match fidelity {
+        HostRealizedSeam => false
+        ModeledProjection => true
+        DivergentProjection { divergence: _ } => false
+      }
+  }
+}
+
+test fn w_divergent_projection_answers_with_its_fidelity() -> Bool {
+  match primitive_projection_for_declaration(
+    declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get_checked")
+  ) {
+    DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+    DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
+      match fidelity {
+        HostRealizedSeam => false
+        ModeledProjection => false
+        DivergentProjection { divergence: _ } => true
+      }
+  }
+}
+
+// THE DISCRIMINATING PAIR FOR THE ABSENCE SPLIT. Both declarations lack a projection row, so a
+// carrier that collapsed absence into one arm answers identically for both and one of these two
+// witnesses reds. `list_nth` is carried by NO primitive-bearing surface, so no builtin
+// co-candidate can exist and the classified answer is correct. `to_upper` IS carried by the
+// census (an algebra template) with no projection row declared, so the honest answer is that
+// nobody has classified it -- top-as-ignorance, which a consumer must not route to its refusing
+// arm.
+test fn w_a_declaration_on_no_surface_answers_classified_no_primitive() -> Bool {
+  match primitive_projection_for_declaration(
+    declaration: projection_declaration(
+      module_path: "v2.std.collection",
+      decl_name: "list_nth",
+    )
+  ) {
+    DeclarationProjectsNoPrimitive => true
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+    DeclarationProjectsPrimitive { identity: _, fidelity: _ } => false
+  }
+}
+
+// `list_at_optional` WAS the no-surface specimen above until it became the total projection of the
+// `get` primitive; it now answers that projection, which is the row's own positive control.
+test fn w_list_at_optional_projects_the_get_primitive() -> Bool {
+  match primitive_projection_for_declaration(
+    declaration: projection_declaration(
+      module_path: "v2.std.collection",
+      decl_name: "list_at_optional",
+    )
+  ) {
+    DeclarationProjectsPrimitive { identity: i, fidelity: _ } => primitive_identity_runtime_name(identity: i) == "get"
+    DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+  }
+}
+
+test fn w_a_declaration_on_a_surface_with_no_projection_row_answers_undisposed() -> Bool {
+  match primitive_projection_for_declaration(
+    declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "to_upper")
+  ) {
+    DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: sym } => (sym as String) == "to_upper"
+    DeclarationProjectsPrimitive { identity: _, fidelity: _ } => false
+  }
+}
+
+test fn w_undisposed_is_not_one_authority_and_so_never_suppresses() -> Bool {
+  !declaration_and_primitive_are_one_authority(
+    declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "to_upper"),
+    primitive: primitive_length,
+  )
+}
+
+test fn w_divergent_projection_is_not_one_authority() -> Bool {
+  !declaration_and_primitive_are_one_authority(
+    declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_get_checked"),
+    primitive: primitive_map_get,
+  )
+}
+
+test fn w_seam_and_modeled_projections_are_one_authority() -> Bool {
+  declaration_and_primitive_are_one_authority(
+    declaration: projection_declaration(module_path: "v2.std.decl_index", decl_name: "decl_facts"),
+    primitive: primitive_decl_facts,
+  )
+    && declaration_and_primitive_are_one_authority(
+      declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "length"),
+      primitive: primitive_length,
+    )
+    && declaration_and_primitive_are_one_authority(
+      declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_insert"),
+      primitive: primitive_map_insert,
+    )
+    && declaration_and_primitive_are_one_authority(
+      declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "empty_map"),
+      primitive: primitive_empty_map,
+    )
+    && declaration_and_primitive_are_one_authority(
+      declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_insert_primitive_delegate"),
+      primitive: primitive_map_insert,
+    )
+    && declaration_and_primitive_are_one_authority(
+      declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_lookup_primitive_delegate"),
+      primitive: primitive_lookup,
+    )
+    && declaration_and_primitive_are_one_authority(
+      declaration: projection_declaration(module_path: "v2.std.collection", decl_name: "map_lookup"),
+      primitive: primitive_lookup,
+    )
+}
+
+test fn w_projection_of_a_different_primitive_is_not_one_authority() -> Bool {
+  !declaration_and_primitive_are_one_authority(
+    declaration: projection_declaration(module_path: "v2.std.algebra", decl_name: "length"),
+    primitive: primitive_map_insert,
+  )
+}
+
+test fn w_projection_roster_carries_no_violations() -> Bool {
+  primitive_projection_violation_count() == 0
+}
+
+test fn w_planted_projection_naming_an_undeclared_primitive_refuses() -> Bool {
+  let planted = [
+    primitive_projection_row(
+      primitive: primitive_identity_slug(name: "no_such_primitive_in_the_declared_population"),
+      module_path: "v2.std.collection",
+      decl_name: "list_at_optional",
+      fidelity: ModeledProjection,
+    ),
+  ]
+  primitive_projection_violation_count_in(rows: planted) > 0
+}
+
+test fn w_planted_duplicate_projection_for_one_declaration_refuses() -> Bool {
+  let planted = [
+    primitive_projection_row(
+      primitive: primitive_length,
+      module_path: "v2.std.algebra",
+      decl_name: "length",
+      fidelity: ModeledProjection,
+    ),
+    primitive_projection_row(
+      primitive: primitive_map_insert,
+      module_path: "v2.std.algebra",
+      decl_name: "length",
+      fidelity: ModeledProjection,
+    ),
+  ]
+  primitive_projection_violation_count_in(rows: planted) > 0
+}
+
+test fn w_detector_admits_a_well_formed_planted_roster() -> Bool {
+  let planted = [
+    primitive_projection_row(
+      primitive: primitive_length,
+      module_path: "v2.std.algebra",
+      decl_name: "length",
+      fidelity: ModeledProjection,
+    ),
+  ]
+  primitive_projection_violation_count_in(rows: planted) == 0
+}
+
+test fn w_projection_roster_carries_both_one_authority_and_divergent_rows() -> Bool {
+  primitive_projection_divergent_row_count() >= 1
+    && primitive_projection_one_authority_row_count() >= 1
+}
+
+test fn w_a_declared_symbol_disposes_to_its_identity() -> Bool {
+  match primitive_symbol_disposition(authored_symbol: "map_keys") {
+    SymbolUndisposed { authored_symbol: _ } => false
+    SymbolJoinsDeclaredPrimitive { authored_symbol: _, identity: id } =>
+      primitive_identity_eq(left: id, right: primitive_map_keys)
+  }
+}
+
+test fn w_an_undeclared_symbol_disposes_to_undisposed() -> Bool {
+  match primitive_symbol_disposition(
+    authored_symbol: "no_such_symbol_in_the_declared_population"
+  ) {
+    SymbolUndisposed { authored_symbol: _ } => true
+    SymbolJoinsDeclaredPrimitive { authored_symbol: _, identity: _ } => false
+  }
+}
+
+// Asserts that the DISPOSITION CLASSIFIER IS TOTAL over the census -- every distinct authored
+// symbol lands in exactly one arm -- not that the residue has any particular size. A size
+// assertion here would be a tree-copied census pin, and it would go red the day the terminal
+// bar is reached, which is the defect the roadmap node already records against an earlier
+// acceptance clause of this same carrier.
+test fn w_every_census_symbol_lands_in_exactly_one_disposition_arm() -> Bool {
+  primitive_disposed_surface_symbol_count() + primitive_undisposed_surface_symbol_count()
+    == primitive_surface_distinct_symbol_count()
+    && primitive_surface_distinct_symbol_count() > 0
+}
+
+// The opposite direction from the projection query, and it catches the class the projection query
+// is blind to by construction: a symbol registered on the typecheck surface with no row on any
+// runtime-bearing surface. The three planted controls are a controlled fixture -- the population
+// and the expected answer are authored here, not copied from the tree -- so the detector is
+// exercised in all three arms rather than only in whichever arm the live corpus happens to occupy
+// today.
+
+fn planted_registry_row(authority: PrimitiveSurfaceAuthority, sym: String) -> PrimitiveSurfaceRow {
+  surface_row(
+    authority: authority,
+    authored_symbol: sym,
+    authority_ref: decl_ref(module_path: "test.fixture", decl_name: "planted"),
+    primitive: none,
+    provenance: DerivedFromAuthority,
+  )
+}
+
+test fn w_planted_registry_only_symbol_has_no_runtime_row() -> Bool {
+  let planted = [planted_registry_row(authority: BuiltinRegistry, sym: "planted_registry_only")]
+  match primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_registry_only") {
+    RuntimeRowAbsentFromEnumeratedSurfaces => true
+    RuntimeRowOnEmitHandlerOnly => false
+    RuntimeRowOnInterpreterDispatch => false
+  }
+}
+
+test fn w_planted_symbol_with_an_interpreter_row_has_a_runtime_row() -> Bool {
+  let planted = [
+    planted_registry_row(authority: BuiltinRegistry, sym: "planted_with_runtime"),
+    planted_registry_row(authority: InterpreterDispatch, sym: "planted_with_runtime"),
+  ]
+  match primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_with_runtime") {
+    RuntimeRowAbsentFromEnumeratedSurfaces => false
+    RuntimeRowOnEmitHandlerOnly => false
+    RuntimeRowOnInterpreterDispatch => true
+  }
+}
+
+test fn w_planted_symbol_with_only_an_emit_row_is_named_as_such() -> Bool {
+  let planted = [
+    planted_registry_row(authority: BuiltinRegistry, sym: "planted_emit_only"),
+    planted_registry_row(authority: EmitHandler, sym: "planted_emit_only"),
+  ]
+  match primitive_runtime_coverage_in(rows: planted, authored_symbol: "planted_emit_only") {
+    RuntimeRowAbsentFromEnumeratedSurfaces => false
+    RuntimeRowOnEmitHandlerOnly => true
+    RuntimeRowOnInterpreterDispatch => false
+  }
+}
+
+test fn w_live_census_answers_runtime_coverage_for_a_named_symbol() -> Bool {
+  match primitive_runtime_coverage(authored_symbol: "map_keys") {
+    RuntimeRowOnInterpreterDispatch => true
+    RuntimeRowOnEmitHandlerOnly => false
+    RuntimeRowAbsentFromEnumeratedSurfaces => false
+  }
+}
+
+// ---- the forked-spelling census (RFM one_spelling_names_a_primitive_*) ----------------------
+// A roster row whose declared function bears its primitive's OWN runtime name while carrying a
+// DIVERGENT contract is one spelling naming two meanings. The declaration must stop squatting on
+// the primitive's name: the census refuses the class. This measures the roster DATA; the
+// compiler-side census check over v1.compiler.infer_method's declaration set is the next rung and
+// is reported as a follow-up, not built here.
+fn projection_row_shares_spelling_with_divergent_contract(row: PrimitiveProjection) -> Bool {
+  match row.fidelity {
+    DivergentProjection { divergence: _ } =>
+      (row.declaration.decl_name as String) == primitive_identity_runtime_name(identity: row.primitive)
+    _ => false
+  }
+}
+
+test fn w_projection_census_declares_no_divergent_shared_spelling() -> Bool {
+  primitive_projection_roster() |> fold(init: true, f: fn(acc, row) {
+    acc && !projection_row_shares_spelling_with_divergent_contract(row: row)
+  })
+}
+
+// Positive control: the projection FACT is kept — the declared Outcome-wrapped lookup still
+// projects the primitive, under its own non-primitive spelling, with the divergence named.
+fn projection_row_is_the_outcome_lookup_projection(row: PrimitiveProjection) -> Bool {
+  match row.fidelity {
+    DivergentProjection { divergence: _ } =>
+      (row.declaration.module_path as String) == "v2.std.collection"
+        && (row.declaration.decl_name as String) == "map_get_checked"
+        && (row.primitive.slug as String) == "primitive.map_get"
+    _ => false
+  }
+}
+
+test fn w_projection_census_keeps_the_outcome_lookup_projection_under_its_own_name() -> Bool {
+  primitive_projection_roster() |> fold(init: false, f: fn(acc, row) {
+    acc || projection_row_is_the_outcome_lookup_projection(row: row)
+  })
+}

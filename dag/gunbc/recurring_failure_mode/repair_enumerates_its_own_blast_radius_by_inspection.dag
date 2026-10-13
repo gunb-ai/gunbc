@@ -85,7 +85,7 @@ data repair_enumerates_its_own_blast_radius_by_inspection: RecurringFailureMode 
 
     "(ii) A LIVE-CORPUS REFLECTION AFFORDABLE PER PULL REQUEST.",
 
-    "Even the literal half needs `decl_facts` over the whole corpus, and this repository has ALREADY adjudicated that cost against itself: `test.claim.long.host_identity_single_authoring_witness_test` was moved out of the merge path under a declared drop for \"a corpus-scale reflection cost with no lane that both admits it and runs it\", restoration trigger \"a cadence that executes test/claim/long/, or the decl_facts surface becoming cheap enough for per-PR discovery\".",
+    "Even the literal half needs `decl_facts` over the whole corpus, and this repository has ALREADY adjudicated that cost against itself: `test.claim.long.host_identity_single_authoring_witness` was moved out of the merge path under a declared drop for \"a corpus-scale reflection cost with no lane that both admits it and runs it\", restoration trigger \"a cadence that executes test/claim/long/, or the decl_facts surface becoming cheap enough for per-PR discovery\".",
 
     "Landing a new scanner in that same unexecuted lane is the inert lens DESIGN section 6 calls a lie; landing it on every pull request would overturn a standing decision from inside an unrelated repair lane.",
 

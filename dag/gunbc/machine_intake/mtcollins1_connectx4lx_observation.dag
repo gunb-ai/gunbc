@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_connectx4lx_observation
+module gunbc.machine_intake.mtcollins1_connectx4lx_observation
 
 import std.types { Bool, NonEmptyStr, String }
 import std.measure { bandwidth_count }
@@ -8,7 +8,7 @@ import extdeps.linux.mlx5_core { mlx5_core_module_name }
 import extdeps.mikrotik.crs812 { crs812_lane_speed_for_link_mode, Crs812LaneSpeedForMode }
 import extdeps.network.mcx4121a_acat { mcx4121a_acat }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.network.mikrotik_crs812 { crs812_catalog }
 import product.cable_order_admission {
   CableLegCodingEvidence, CableLinkRequirement, CableOrderAdmission,
@@ -18,8 +18,8 @@ import product.cable_order_admission {
 // Operator 2026-09-17: OEM Mellanox ConnectX-4 Lx MCX4121A-ACAT seated in Mt. Collins unit 1.
 // Host mid first-boot; this lane does not touch the host and does not cable it. Observations live
 // here, never as Unobserved properties on the extdeps card. Consumer:
-// gunbc.machine_intake_mtcollins1_expansion_candidates.expansion_candidates (InstalledUnobserved)
-// and test.claim.mtcollins1_connectx4lx_observation_witness_test.
+// gunbc.machine_intake.mtcollins1_expansion_candidates.expansion_candidates (InstalledUnobserved)
+// and test.claim.machine_intake.mtcollins1_connectx4lx_observation_witness.
 // Discharge is the first EDAC-pass boot (mtcollins1_boot, gunbc#11484): PCIe enumeration of the
 // seated CEM slot plus mlx5_core bind. Until those artifacts exist, the arm is Unobserved.
 type Connectx4LxHostObservation

@@ -19,9 +19,7 @@ use im::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::cli_run::{
-    collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,
-};
+use crate::cli_run::{collect_dag_files_tolerant, extract_module_path, repo_rel, workspace_root};
 use crate::module_path_index::parsed_dag_file::{parse_dag_content, parse_dag_file};
 use crate::v1_compiler_infer_env::lookup_binding_by_name;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
@@ -30,7 +28,8 @@ use crate::v1_interpreter::{
 };
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    param_node_type_expr, source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
+    param_node_type_expr, source_text_at, Connective, DeclarationMarker, ExprData, NewlineIndex,
+    Node, VarBindingKind,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -1450,6 +1449,10 @@ fn fn_arrow_decl_record(
             (ctx.sym("name"), str_value(name.to_string())),
             (ctx.sym("output"), output),
             (ctx.sym("params"), crate::v1_interpreter::list_value(params)),
+            (
+                ctx.sym("test_marked"),
+                Value::Bool(item.declaration_marker == DeclarationMarker::TestMarked),
+            ),
         ])),
     })
 }
@@ -1592,7 +1595,7 @@ fn data_init_decl_record(
 // Corpus-wide data-init reflection: sibling of `eval_fn_arrow_decl_facts_live` and
 // `eval_concept_decl_facts_live`. Yields one `DataInitDecl` per `ItemKind::DataItem` whose
 // initializer is a literal, carrying `literal_fp` for literal-mirror detection in
-// `v2.lens.no_dual_representation_test`. Host SOURCE half; dissolves with
+// `v2.lens.no_dual_representation`. Host SOURCE half; dissolves with
 // `fn_arrow_decl_facts_live` / `concept_decl_facts_live` on the same gunbc#5364
 // corpus-as-node accessor widen trigger named in `v2.lens.wiring_liveness`'s
 // construction_justification. Fingerprint encoding spec: `v2.std.data_index`
@@ -1831,9 +1834,6 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     let mut files_parsed = 0usize;
     for file in corpus_dag_files_for_roots(pool_roots) {
         let rel = repo_rel(file.path());
-        if is_test_dag(&rel) {
-            continue;
-        }
         files_scanned += 1;
         let content = file.read().ok();
         let module_path = content

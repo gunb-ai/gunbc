@@ -1,6 +1,6 @@
-module gunbc.fleet_container
+module gunbc.fleet.fleet_container
 
-import gunbc.fleet_intent {
+import gunbc.fleet.fleet_intent {
   ComputeHost,
   ExecutionSurface,
   compute_host_primary_cpu,

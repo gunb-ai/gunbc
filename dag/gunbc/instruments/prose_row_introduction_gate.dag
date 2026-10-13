@@ -1,4 +1,4 @@
-module tools.prose_row_introduction_gate
+module gunbc.instruments.prose_row_introduction_gate
 
 import std.types { GitRef, List, String }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -39,7 +39,7 @@ import gunbc.prose_row_frontier {
 // CHANGE introduce a prose row under a migrated path`, which is exactly the merge base. Reading a fixed
 // anchor instead would judge the whole post-anchor population on every branch, so one row landing on
 // main would refuse every open lane — the defect diagnosed in gunbc#7644 and recorded in
-// tools.extdeps_scope_placement_gate scope_placement_base_split_note. That mistake is not repeated here.
+// gunbc.instruments.extdeps_scope_placement_gate scope_placement_base_split_note. That mistake is not repeated here.
 //
 // DIFF FAILURE AND UNREADABLE STRUCTURE REFUSE. An observation that could not read what changed is not
 // the verdict `nothing was introduced`; rendering it as one is the empty-observation narrow, which is
@@ -152,7 +152,7 @@ fn run_prose_row_introduction_gate_body() -> ProcessExit {
   }
 }
 
-// The loudness half, mirroring tools.extdeps_scope_placement_gate: the floor witness collapses this
+// The loudness half, mirroring gunbc.instruments.extdeps_scope_placement_gate: the floor witness collapses this
 // gate's ProcessExit to Bool, so without a companion a refusal reads as `returned Bool(false)` and
 // names no offending row. This projects the SAME verdict rather than deciding
 // again, so there is never a second refusal authority to disagree with the first.

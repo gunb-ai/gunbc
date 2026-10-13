@@ -1,10 +1,10 @@
-module tools.publication_push_shadow
+module gunbc.instruments.publication_push_shadow
 
 import std.types { Bool, Int, List, String }
 import extdeps.git.hooks { PrePushStdinRow }
 import gunbc.public_projection { PublicProjectionPlan }
 import gunbc.publication_decision { PublicationDecisionReceipt }
-import tools.publication_publisher {
+import gunbc.instruments.publication_publisher {
   ModeledSessionId,
   PublicWriteAdmission,
   PublicWriteRefused,

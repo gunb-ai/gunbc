@@ -33,7 +33,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [git_commit_external_authority_anchor]
 }
 
-// Modeled upstream publication write operations de-fused from git.Core. GitPushRequest and GitCommitRequest are the interface shapes; shell argv lives only in git.PublicationTransport service transport rows — no parallel free-fn argv surface. Slice 1 is model + shadow only — consumers route through tools.publication_publisher before binding a transport handler in the live slice.
+// Modeled upstream publication write operations de-fused from git.Core. GitPushRequest and GitCommitRequest are the interface shapes; shell argv lives only in git.PublicationTransport service transport rows — no parallel free-fn argv surface. Slice 1 is model + shadow only — consumers route through gunbc.instruments.publication_publisher before binding a transport handler in the live slice.
 type GitRefUpdateSpec {
   local_ref: GitRef
   remote_ref: GitRef
