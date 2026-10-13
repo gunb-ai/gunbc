@@ -15599,7 +15599,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       result
     } else { acc }
   )
-  let local_name_set = fold(local_bindings |> map_keys, init: empty_map(), f: (acc, ident) => map_insert(acc, ident, true))
+  let local_name_seed: Map<Int, Bool> = empty_map()
+  let local_name_set = fold(local_bindings |> map_keys, init: local_name_seed, f: (acc, ident) => map_insert(acc, ident, true))
   let all_local_bindings = map_merge(local_bindings, param_bindings)
 
   let kernel_cache = type_env_cache_from_bindings(
@@ -15621,7 +15622,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 
   let all_deps_map = map_merge(ancestry_cache.deps_map, local_deps_map)
   let new_cycle_names = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: local_str_bindings)
-  let new_cycle_set_str = fold(new_cycle_names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let cycle_set_seed: Map<String, Bool> = empty_map()
+  let new_cycle_set_str = fold(new_cycle_names, init: cycle_set_seed, f: (acc, name) => map_insert(acc, name, true))
   let cycle_set_str = map_merge(map_merge(ancestry_cache.cycle_set_str, new_cycle_set_str), compiler_recursive_name_set())
   let cycle_set = map(sorted_map_keys(cycle_set_str), name => intern(table: intern_table, s: name).id)
   let cross_type_set = fold(sorted_map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
@@ -15636,7 +15638,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
   let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings
-  let svn_local = fold(map_keys(local_str_bindings), init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
+  let svn_local_seed: Map<String, Bool> = empty_map()
+  let svn_local = fold(map_keys(local_str_bindings), init: svn_local_seed, f: (acc, n) => map_insert(acc, n, true))
   let svn_kernel = fold(map_keys(kernel_type_set), init: svn_local, f: (acc, n) => map_insert(acc, n, true))
   let source_visible_names = fold(module.resolved_imports, init: svn_kernel, f: (acc, imp) =>
     if imp.is_all {
@@ -15758,7 +15761,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
 
   let all_deps_map = map_merge(ancestry_cache.deps_map, local_deps_map)
   let new_cycle_names = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: local_str_bindings)
-  let new_cycle_set_str = fold(new_cycle_names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let cycle_set_seed: Map<String, Bool> = empty_map()
+  let new_cycle_set_str = fold(new_cycle_names, init: cycle_set_seed, f: (acc, name) => map_insert(acc, name, true))
   let cycle_set_str = map_merge(map_merge(ancestry_cache.cycle_set_str, new_cycle_set_str), compiler_recursive_name_set())
   let cycle_set = map(sorted_map_keys(cycle_set_str), name => intern(table: intern_table, s: name).id)
   let cross_type_set = fold(sorted_map_keys(cycle_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
