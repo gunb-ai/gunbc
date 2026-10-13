@@ -7,7 +7,7 @@ import gunbc.board_authority_binding { board_authority_bindings }
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
 import extdeps.provisioning.network_boot { NativeDhcpBootOptions, UefiPxe }
 import extdeps.crypto.mac { MacKeyId }

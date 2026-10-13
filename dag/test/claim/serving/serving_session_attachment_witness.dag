@@ -3,7 +3,7 @@ module test.claim.serving.serving_session_attachment_witness
 import std.measure { token_count, money_amount_micro }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.demand { ObservationReceiptRef, admission_terms, BuyTerms, debt_payoff_objective }
 import extdeps.currency.currency { Usd }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }

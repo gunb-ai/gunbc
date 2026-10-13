@@ -2,7 +2,7 @@ module test.claim.observation_seed_heartbeat_witness
 
 import std.types { Bool, String }
 import std.measure { millisecond, byte_size }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.observation_seed_render { seed_heartbeat_line }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

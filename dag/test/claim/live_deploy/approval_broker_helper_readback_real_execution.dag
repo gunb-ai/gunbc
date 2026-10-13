@@ -7,7 +7,7 @@ import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_observe }
 import gunbc.live_deploy.emit { helper_snapshot_readback_command_at }
 import v2.extdeps.languages.bash_build { bash_build_word_cmdsubst, bash_build_command_from_lits }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

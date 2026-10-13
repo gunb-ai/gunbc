@@ -48,7 +48,7 @@ import gunbc.host.host_budget_source {
   host_budget_source_label,
   effective_planning_budget,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

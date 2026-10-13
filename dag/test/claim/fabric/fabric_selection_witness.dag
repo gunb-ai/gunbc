@@ -5,7 +5,7 @@ import test.claim.fabric.provider_use_fixture {
   fixture_route_sibling_region, fixture_demand_for, fixture_work_for,
 }
 import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List }
 import std.measure {

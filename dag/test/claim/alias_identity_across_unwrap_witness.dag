@@ -1,7 +1,7 @@
 module test.claim.alias_identity_across_unwrap_witness
 
 import std.types { String, Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

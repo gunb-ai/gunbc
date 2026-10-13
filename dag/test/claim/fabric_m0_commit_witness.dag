@@ -30,7 +30,7 @@ import gunbc.fabric.fabric_m0_completion {
   PublishFinalizationFailed,
   PublishPendingReconciliation,
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.fabric.fabric_m0_origin_readback {
   OriginReading,
   OriginReadingOutcome,

@@ -19,7 +19,7 @@ import gunbc.instruments.layout_migration_rewrite {
   sentinel
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 // WITNESSES FOR THE REFERENCE-REWRITE ENGINE OF THE SOURCE-LAYOUT CUTOVER
 // (gunbc.instruments.layout_migration_rewrite). The engine is the sweep's whole risk: for every

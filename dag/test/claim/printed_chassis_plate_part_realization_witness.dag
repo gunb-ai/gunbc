@@ -20,7 +20,7 @@ import product.printed_chassis.cadquery_realization {
   AdmittedPlatePartV0, admitted_plate_part_holes,
   plate_part_from_fan_mount, plate_part_from_standoff_gauge, realize_plate_part,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The generalized emitter had no enrolled consumer; a hand-read of its own output is not one.
 fn source_of(p: AdmittedPlatePartV0) -> String {

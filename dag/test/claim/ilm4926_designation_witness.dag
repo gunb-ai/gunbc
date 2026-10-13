@@ -65,7 +65,7 @@ import extdeps.cpu_attachment.lotes_azifa072 {
   azifa072_drawing_held_copy,
   azifa072_step_held_copy,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

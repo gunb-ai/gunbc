@@ -1,6 +1,6 @@
 module test.claim.observation_model_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List }
 import std.symbols {
   Tier,

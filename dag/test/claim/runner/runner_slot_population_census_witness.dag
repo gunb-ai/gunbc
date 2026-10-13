@@ -1,6 +1,6 @@
 module test.claim.runner.runner_slot_population_census_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.host.host_axis_caps {
   CapRaiseBlockedIncompleteEvidence,

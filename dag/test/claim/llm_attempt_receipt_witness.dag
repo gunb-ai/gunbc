@@ -42,7 +42,7 @@ import gunbc.econ.llm_attempt_receipt {
 import std.algebra { FieldOfFractions }
 import std.measure { nanosecond, token_count, token_count_value }
 import std.types { Bool, List, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

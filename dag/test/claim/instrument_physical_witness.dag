@@ -1,6 +1,6 @@
 module test.claim.instrument_physical_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
 import gunbc.design.instrument_physical {
   InstrumentChannel, ChannelOpticalJitter, ChannelVerticalShift, ChannelBuoyantDrift, ChannelImpulseGlitch,

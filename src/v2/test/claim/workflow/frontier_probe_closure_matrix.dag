@@ -31,7 +31,7 @@ import v2.compiler.source_authority {
 }
 import v2.std.cross_tree.import_model { DagTree }
 import std.algebra { Cons, Empty, length, list_map }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

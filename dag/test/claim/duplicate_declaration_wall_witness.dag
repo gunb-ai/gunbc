@@ -1,6 +1,6 @@
 module test.claim.duplicate_declaration_wall_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,7 +1,7 @@
 module test.claim.kernel_container_carrier_identity_witness
 
 import std.types { String, Bool, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,

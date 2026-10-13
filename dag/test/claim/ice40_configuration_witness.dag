@@ -37,7 +37,7 @@ import extdeps.programmable_logic.ice40.supply {
   MasterSpiConfiguration,
   SlaveSpiConfiguration,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

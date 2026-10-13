@@ -23,7 +23,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name {

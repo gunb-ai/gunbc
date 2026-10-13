@@ -6,7 +6,7 @@ import extdeps.os.ubuntu_autoinstall { NoCloudLocal, StoragePolicyDirectLayout, 
 import gunbc.os_install_deduction { AutoinstallIncompleteNotBootable, ForeignOsPresent, KvmOperatorAttestation, LoginPrompt, RequiresStoragePolicy, SubiquityStorageScreen, UnknownDiskState, fold_nbd_proxy_os_install_preflight_verdict, plan_for_os_install_preflight_verdict, runtime_verdict_from_kvm_attestation }
 import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.os_install { srv3_autoinstall_identity, srv3_ubuntu_autoinstall_on_iso }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
