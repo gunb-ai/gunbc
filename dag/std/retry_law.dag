@@ -56,6 +56,7 @@ type RetryAdmissibility
   | RetryTerminalCancelled { by: NonEmptyStr }
   | RetryAlreadySucceeded
   | RetryHintUnreadable { cause: NonEmptyStr }
+  | RetryHintUnanchored { delay: Second }
 
 fn retry_min_nat(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
@@ -132,8 +133,10 @@ fn retry_terminal_in_history(history: List<RetryHistoryEvent>) -> RetryAdmissibi
 // hint is an upstream Retry-After (or none): a lower bound on the delay, never a cap.
 // An unreadable hint is RetryHintUnreadable — not RetryHintNone. Treating unknown as
 // absent would let backoff run earlier than the upstream named (DESIGN §5).
-// earliest is last RealWorkFailure in history plus the delay. No last failure is
-// RetryAdmissibleNow — not epoch 0. The caller does not supply a second clock (DESIGN §3, §5).
+// earliest is last RealWorkFailure in history plus the delay. No last failure and
+// no delay hint is RetryAdmissibleNow — not epoch 0. A delay hint with no last
+// failure is RetryHintUnanchored: the lower bound cannot become an instant without
+// fabricating a clock, and "now" would ignore the bound (DESIGN §3, §5).
 fn retry_admissibility(
   law: RetryLaw,
   history: List<RetryHistoryEvent>,
@@ -163,7 +166,10 @@ fn retry_admissibility_given_delay(
     RetryTerminalExhausted { real_work_failures: failures }
   } else {
     match retry_last_real_work_failure_at(history: history) {
-      Absent => RetryAdmissibleNow { real_work_failures: failures }
+      Absent => match hinted_delay {
+        Absent => RetryAdmissibleNow { real_work_failures: failures }
+        Present { value: h } => RetryHintUnanchored { delay: h }
+      }
       Present { value: last_at } => {
         let backoff = retry_backoff(law: law, real_work_failures: failures)
         let hinted = match hinted_delay {
