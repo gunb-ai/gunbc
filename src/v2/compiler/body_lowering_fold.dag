@@ -1387,15 +1387,13 @@ fn body_lower_type_with_kept_where(base: Node, where_clause: Node, source: Node)
       outcome_accepted(
         value: node_with_occurrence_id(
           kind: TypeNode { connective: Conj },
-          children: body_lower_type_variant_children_with_where(
-            base: base,
-            kept_clause: kept,
-            fields: node_with_occurrence_id(
-              kind: TypeNode { connective: Conj },
-              children: [],
-              occurrence_id: source.occurrence_id
-            )
-          ),
+          children: [
+            Edge { label: Authored { name: ^dag_surface_type_expr }, target: base },
+            Edge {
+              label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause),
+              target: kept
+            }
+          ],
           occurrence_id: source.occurrence_id
         )
       )
@@ -1408,6 +1406,36 @@ fn body_lower_type_carrying_optional_where(base: Node, clause: Optional<Node>, s
     Absent => outcome_accepted(value: base)
     Present { value: where_clause } =>
       body_lower_type_with_kept_where(base: base, where_clause: where_clause, source: source)
+  }
+}
+
+// A BINDER'S INLINE REFINEMENT HAS NO TYPE-VARIANT SHELL TO REHOME. The wrap is synthetic; the
+// clause is closed as an image of the authored where production (the same close type variants
+// use on the clause). Reusing the clause's minted id on a second Conj is normalize_reason_minted_occurrence_duplicated.
+fn body_lower_binder_type_carrying_optional_where(base: Node, clause: Optional<Node>) -> Outcome<Node> {
+  match clause {
+    Absent => outcome_accepted(value: base)
+    Present { value: where_clause } =>
+      bind_outcome(
+        o: body_lower_kept_where_clause(where_clause: where_clause),
+        f: fn(kept) {
+          outcome_accepted(
+            value: close_lowered_image_of(
+              root: node_synthetic(
+                kind: TypeNode { connective: Conj },
+                children: [
+                  Edge { label: Authored { name: ^dag_surface_type_expr }, target: base },
+                  Edge {
+                    label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause),
+                    target: kept
+                  }
+                ]
+              ),
+              source: where_clause
+            )
+          )
+        }
+      )
   }
 }
 
@@ -2756,7 +2784,7 @@ fn body_lower_default_value_read(default_shell: Node) -> Outcome<Node> {
 // beside the field declaration, not inside it).
 fn body_lower_binder_edge_read(param: BodyLowerTypedParam, default: Optional<Node>) -> Outcome<Edge> {
   bind_outcome(
-    o: body_lower_type_carrying_optional_where(base: param.type_node, clause: param.refinement, source: param.type_node),
+    o: body_lower_binder_type_carrying_optional_where(base: param.type_node, clause: param.refinement),
     f: fn(type_node) {
       match default {
         Absent => outcome_accepted(value: binder_edge(name: param.name, type_node: type_node))

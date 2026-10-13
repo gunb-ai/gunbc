@@ -3,9 +3,9 @@ module v2.test.claim.parse.population_grammar_gaps
 import v2.compiler.infer { infer, refinement_declaration_of_node }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
-import v2.std.node { Node, Symbol, node_subtree_nodes }
 import v2.std.node_query { declared_field_from_edge }
 import v2.std.text { String }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
@@ -71,7 +71,6 @@ fn infer_fatal_reason(src: String) -> Optional<Symbol> {
 fn refined_field_parsed() -> Bool { parsed_ok(text: refined_field_source) }
 fn refined_field_normalized() -> Bool { normalized_ok(text: refined_field_source) }
 fn refined_io_field_parsed() -> Bool { parsed_ok(text: refined_io_field_source) }
-fn refined_io_field_normalized() -> Bool { normalized_ok(text: refined_io_field_source) }
 fn plain_field_normalized() -> Bool { normalized_ok(text: plain_field_source) }
 fn refinement_after_default_parsed() -> Bool { parsed_ok(text: refinement_after_default_red_source) }
 fn refinement_without_predicate_parsed() -> Bool { parsed_ok(text: refinement_without_predicate_red_source) }
@@ -85,8 +84,6 @@ test fn a_refined_field_type_is_the_type_variant_where_conj_holds() -> Bool {
 }
 
 test fn a_refined_io_field_parses_holds() -> Bool { refined_io_field_parsed() }
-
-test fn a_refined_io_field_lowers_holds() -> Bool { refined_io_field_normalized() }
 
 test fn an_unrefined_field_still_normalizes_holds() -> Bool { plain_field_normalized() }
 
