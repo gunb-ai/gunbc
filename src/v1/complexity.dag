@@ -4799,7 +4799,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
       Present { value: cs } => cs
       Absent => []
     }
-    let unique_set = callees |> fold(init: empty_map(), f: (s, c) => map_insert(s, c, true))
+    let unique_set_seed: Map<String, Bool> = empty_map()
+    let unique_set = callees |> fold(init: unique_set_seed, f: (s, c) => map_insert(s, c, true))
     map_keys(unique_set) |> fold(init: acc, f: (inner, callee) =>
       let current = match map_get(inner, callee) { Present { value: v } => v, Absent => 0 }
       map_insert(inner, callee, current + 1)
@@ -4840,7 +4841,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
           Present { value: cs } => cs
           Absent => []
         }
-        let unique_set = callees |> fold(init: empty_map(), f: (s, c) => map_insert(s, c, true))
+        let unique_set_seed: Map<String, Bool> = empty_map()
+        let unique_set = callees |> fold(init: unique_set_seed, f: (s, c) => map_insert(s, c, true))
         let unique_callees = map_keys(unique_set)
         let new_fan_in = unique_callees |> fold(init: acc.fan_in, f: (fi, callee) =>
           let current = match map_get(fi, callee) { Present { value: v } => v, Absent => 0 }
