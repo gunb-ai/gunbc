@@ -110,8 +110,7 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_command,
   emitted_subject_build_step_name,
   native_fault_experiment_env_name,
-  native_fault_experiment_skip_value,
-  native_fault_experiment_run_value,
+  emitted_subject_fault_experiment_expression,
   native_product_reuse_env_name,
   native_product_reuse_env_value,
   native_step_memory_inputs,
@@ -324,7 +323,7 @@ fn compiler_gate_emit_build_step(subject: RequiredCiEmittedSubjectObligation) ->
         left: [
         kv(
           key: native_fault_experiment_env_name,
-          value: yaml_string(s: join(["${{ github.event_name == 'pull_request' && '", native_fault_experiment_skip_value, "' || '", native_fault_experiment_run_value, "' }}"], ""))
+          value: yaml_string(s: emitted_subject_fault_experiment_expression(contract: subject.execution))
         ),
         kv(key: native_product_reuse_env_name, value: yaml_string(s: native_product_reuse_env_value(contract: subject.execution)))
         ],

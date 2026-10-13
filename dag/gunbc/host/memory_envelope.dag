@@ -2,7 +2,7 @@ module gunbc.host.memory_envelope
 
 import std.types { Bool, Int, String }
 import std.optional { Present, Absent }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.host.memory_cgroup_binding {
   CgroupBindDecision,
@@ -146,24 +146,6 @@ type MemoryEnvelopeContract {
   requirement: MemoryEnvelopeRequirement
   memory_max: ByteSize
   memory_swap_max: ByteSize
-}
-
-fn memory_envelope_requirement_digest(requirement: MemoryEnvelopeRequirement) -> String {
-  match requirement {
-    EnvelopeSlotRequired => "envelope_slot_required"
-    EnvelopeNotRequested => "envelope_not_requested"
-    EnvelopeRequirementUnreadable { raw: raw } => concat("envelope_requirement_unreadable\t", raw)
-  }
-}
-
-fn memory_envelope_contract_digest(contract: MemoryEnvelopeContract) -> String {
-  concat(
-    concat(
-      concat(to_string(byte_size_count(b: contract.memory_max)), "\t"),
-      concat(to_string(byte_size_count(b: contract.memory_swap_max)), "\t")
-    ),
-    memory_envelope_requirement_digest(requirement: contract.requirement)
-  )
 }
 
 fn memory_envelope_required_ci_contract() -> MemoryEnvelopeContract {
