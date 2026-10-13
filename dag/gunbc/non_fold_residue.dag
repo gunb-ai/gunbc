@@ -65,13 +65,9 @@ data nfr_reason_cost_expr_zero_absorbing_compose: String = "zero-absorbing CostE
 
 data nfr_reason_cost_valuation_zero_annihilator: String = "Zero-annihilator discrimination in the C1 exact evaluator: the arms separate an ExactCost carrying Zero from every other CostEvaluation on BOTH operands, so the wildcard is a nested-VALUE discrimination and not a variant sweep — CostEvaluation has exactly two variants and the other two matches in this module were made exhaustive rather than rostered when this row was written. Enumerating it would mean writing the residual combine_evaluation call once per surviving shape, which is the redundancy DESIGN §2 forbids rather than the totality DESIGN §4 asks for, and it would put a duplicated expression underneath an arm ORDER that multiply_evaluations_zero_note declares load-bearing: the annihilator is checked before refusal-dominance, so refusal times zero answers exact zero. A later tidy that flattens these arms silently restores the defect the function exists to fix. Declared at landing with the two-sided annihilator fix, not surfaced by a later cold sweep, so the ratchet arms with the code."
 
-data nfr_reason_provider_terminal_absorb: String = "terminal-state absorption over the provider/worker observation coproducts: the arm names each TERMINAL variant (ProviderCompleted / ProviderFailed / ProviderBudgetSpent / ProviderEventsRefused, or WorkerProcessRunning) and gives every non-terminal variant one shared arm, because those variants reduce to the identical behaviour — enumerating them would clone the arm per variant, which is the redundancy DESIGN §2 forbids rather than the totality DESIGN §4 asks for. Landed with the Codex dispatch and recursive workflow evidence slice; declared at landing (not surfaced by a later cold sweep) so the ratchet arms with the code."
-
-data nfr_dissolve_provider_terminal_absorb: DissolutionCondition = unbound_dissolution(description: "ProviderExecutionState and WorkerProcessEvidence carry a DERIVED terminality projection from inhabitance (dag/std/algebra, DESIGN §3/§4 — the same move as derived equality), so these folds match on the partition rather than on the variant list, the shared arm becomes a named case instead of a wildcard, and the rows delete.")
-
 data nfr_reason_verification_producer_absent: String = "NOT terminal-state absorption, which is why this row carries its own reason rather than the shared provider one it first landed under: verification_segment has no terminal arm to absorb into, because Verify has no authoritative receipt producer yet. Every arm — including ProviderCompleted — answers WorkflowSegmentPending, so the match selects only the operator-facing detail string and decides no behaviour. Enumerating the remaining provider variants would clone a Pending arm per variant. The Pending-on-agent-success arm is the deliberate DESIGN §5 refusal to fabricate a verification fact from provider evidence, and it is load-bearing until the producer exists."
 
-data nfr_dissolve_verification_producer_absent: DissolutionCondition = unbound_dissolution(description: "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending.")
+data nfr_dissolve_verification_producer_absent: DissolutionCondition = unbound_dissolution(description: "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the shared provider terminality partition accepted (operator ruling) for its four siblings — that partition leaves every arm answering Pending.")
 
 data nfr_reason_provider_standing_limit_draw: String = "dispatch-scoped limit relevance folds (match on ProviderLimitDispatchDraw × ProviderLimitSubject and LimitRejected carve-outs with wildcard arms routing off-shape subjects) landed with provider_standing authority #7926; declared at landing so the ratchet re-arms"
 
@@ -81,15 +77,11 @@ data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBinding
 
 data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = unbound_dissolution(description: "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row")
 
-data nfr_reason_content_hash_structural_refusal: String = "ContentHash family structural filter at SourceRef list digest boundary (PR #7762): only Fnv1a64Structural participates in population digest; other family arms refuse as SourceRefContentHashStructuralNonFnv1a64 rather than silently coercing cross-family hashes. Declared at landing so the ratchet re-arms."
-
-data nfr_dissolve_content_hash_structural_refusal: DissolutionCondition = unbound_dissolution(description: "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)")
-
 data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
 
 data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
 
-data nfr_dissolve_release_identity_absent_split: DissolutionCondition = unbound_dissolution(description: "the migration arm becomes unreachable once the identity-publishing release is deployed everywhere routed, at which point ReleaseRevisionAbsent is the executing RED control rather than a live arm; the split then folds into a derived migration-vs-defect partition over RunningReleaseUnidentifiedCause (the same derived-from-inhabitance move that clears the terminal-absorption rows) and this row deletes with it.")
+data nfr_dissolve_release_identity_absent_split: DissolutionCondition = unbound_dissolution(description: "the migration arm becomes unreachable once the identity-publishing release is deployed everywhere routed, at which point ReleaseRevisionAbsent is the executing RED control rather than a live arm; the split then folds into a derived migration-vs-defect partition over RunningReleaseUnidentifiedCause and this row deletes with it.")
 
 data nfr_dissolve_class_b_binding_projection: DissolutionCondition = unbound_dissolution(description: "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows")
 
@@ -162,34 +154,9 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_binding_outcome_resolution_wildcard,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_dispatch_actuator.dag::live_session_row_with_process" },
-    reason: nfr_reason_provider_terminal_absorb,
-    dissolution: nfr_dissolve_provider_terminal_absorb,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_provider_events.dag::provider_execution_detail" },
-    reason: nfr_reason_provider_terminal_absorb,
-    dissolution: nfr_dissolve_provider_terminal_absorb,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_provider_events.dag::provider_execution_fold_event" },
-    reason: nfr_reason_provider_terminal_absorb,
-    dissolution: nfr_dissolve_provider_terminal_absorb,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_workflow_progress.dag::provider_execution_reconcile_process" },
-    reason: nfr_reason_provider_terminal_absorb,
-    dissolution: nfr_dissolve_provider_terminal_absorb,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_workflow_progress.dag::verification_segment" },
     reason: nfr_reason_verification_producer_absent,
     dissolution: nfr_dissolve_verification_producer_absent,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/compiler/source_authority.dag::source_ref_content_hash_structural" },
-    reason: nfr_reason_content_hash_structural_refusal,
-    dissolution: nfr_dissolve_content_hash_structural_refusal,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/emit_orchestration.dag::orch_emit_let_step" },
