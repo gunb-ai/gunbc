@@ -6421,7 +6421,18 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
         Present { value: lv } => {
           PatternResult { pattern: LitPattern { value: lv }, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
         }
-        Absent => PatternResult { pattern: Wildcard, tokens: tokens, ctx: ctx, err: none }
+        // A non-literal keyword in binder position is a reserved word, not a name: the pattern
+        // binder cannot be a keyword. Refuse it here, at the keyword token (its pattern-use
+        // span), instead of returning a Wildcard that leaves the token unconsumed so the
+        // surrounding variant-binding reader re-reads it as a field name and misattributes the
+        // later field-not-found to the type declaration. parse_variant_bindings_brace_acc
+        // propagates this err without treating the token as a field (has_err(r2.err)).
+        Absent => PatternResult {
+          pattern: Wildcard,
+          tokens: tokens,
+          ctx: ctx,
+          err: Present { value: parse_error(msg: concat("pattern binder '", kw_text, "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"), span: span) }
+        }
       }
     }
     Present { value: ShLitInt } => {
