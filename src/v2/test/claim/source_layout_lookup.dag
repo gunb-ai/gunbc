@@ -181,8 +181,8 @@ test fn lookup_module_line_disagreeing_with_the_request_refuses() -> Bool {
 }
 
 // WHAT THE LOOKUP TAKES FROM A FILE'S HEADER (v2.compiler.module_header). The header is read by the real
-// lexer and the grammar's module_header production over the file's first line that holds a token, so
-// every control below pins the KIND the lookup answers and, for an agreement, the name it carries.
+// lexer and the grammar's module_header production over the start of the file's tokens, so every
+// control below pins the KIND the lookup answers and, for an agreement, the name it carries.
 fn lookup_kind_of(content: String) -> String {
   match resolve_reference_over(reader: header_reader(), layout: layout(), from_tree: DagTree {}, from_module: "m", reference: "a.b", observed: [
     ModuleFilePresent { file: dag_file(path: "a/b.dag"), content: content }
@@ -245,17 +245,20 @@ test fn lookup_never_reads_a_later_string_or_comment_as_the_header() -> Bool {
     && lookup_kind_of(content: "fn f() -> Bool { true }\nmodule a.b\n") == "header-refused"
 }
 
-// MALFORMED NAMES AND HEADERS THAT SHARE OR SPLIT THEIR LINE refuse with the parse's cause and are never
-// read as a name. The line-aligned prefix is the boundary: the production consumes a whole token list,
-// so a header that continues on a later line, or shares its line with another declaration, is a header
-// the reader cannot take whole and refuses.
-test fn lookup_refuses_a_header_it_cannot_take_whole() -> Bool {
-  lookup_kind_of(content: "module a..b\n") == "header-refused"
-    && lookup_kind_of(content: "module .a.b\n") == "header-refused"
-    && lookup_kind_of(content: "module a.b.\n") == "header-refused"
+// A NAME THAT DOES NOT BEGIN AS A PATH IS REFUSED, and a header's extent is the grammar's: the production
+// reads across line breaks and stops where its path stops, so a header that continues on a later line, or
+// shares its line with the first declaration, is read as it parses -- the spellings an earlier line-bounded
+// reading refused although the grammar accepts them. (v2.test.claim.module_header holds the reading's own
+// controls, including its agreement with the full module parse.)
+test fn lookup_refuses_a_name_that_does_not_begin_a_path() -> Bool {
+  lookup_kind_of(content: "module .a.b\n") == "header-refused"
     && lookup_kind_of(content: "module\n") == "header-refused"
-    && lookup_kind_of(content: "module\na.b\n") == "header-refused"
-    && lookup_kind_of(content: "module a.b fn f() -> Bool { true }\n") == "header-refused"
+}
+
+test fn lookup_reads_a_header_across_lines_and_beside_a_declaration() -> Bool {
+  lookup_kind_of(content: "module\na.b\n") == "resolved:a.b"
+    && lookup_kind_of(content: "module a.b fn f() -> Bool { true }\n") == "resolved:a.b"
+    && lookup_kind_of(content: "module\na.other\nfn f() -> Bool { true }\n") == "disagrees:a.other"
 }
 
 // THE LAW: header agreement accepts exactly when the parsed module identity equals the requested one.
@@ -278,7 +281,9 @@ data header_cases: List<HeaderCase> = [
   HeaderCase { content: "module a\n", authored: "a" },
   HeaderCase { content: "// module a.b\n", authored: "" },
   HeaderCase { content: "data s: String = \"module a.b\"\n", authored: "" },
-  HeaderCase { content: "module a..b\n", authored: "" }
+  HeaderCase { content: "module\na.b\n", authored: "a.b" },
+  HeaderCase { content: "module a.b fn f() -> Bool { true }\n", authored: "a.b" },
+  HeaderCase { content: "module .a\n", authored: "" }
 ]
 
 fn case_agrees_with_the_lookup(case: HeaderCase) -> Bool {
