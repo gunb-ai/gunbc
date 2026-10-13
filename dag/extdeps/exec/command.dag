@@ -6,7 +6,7 @@ import std.types { NonEmptyStr, String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import v2.std.orchestration { EnvBinding }
+import std.env_binding { EnvBinding }
 import extdeps.tools.env { env_path_resolved_program, env_prefixed_args, env_absolute_program, env_ignore_environment_flag, env_chdir_flag }
 import gunbc.remote_shell_command {
   RemoteExecCommandInterpretation,
