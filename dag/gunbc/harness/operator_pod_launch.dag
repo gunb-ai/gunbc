@@ -1,0 +1,40 @@
+module gunbc.harness.operator_pod_launch
+
+import std.types { NonEmptyStr, Port }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+// THE OPERATOR'S vLLM LAUNCH ON THE RENTED GPU POD, as this repository observed it: a consumer-layer
+// observation, not a fact of vLLM (extdeps.vllm) or of the Qwen weights. On 2026-10-13 the operator
+// replaced the pod that ran ninfer-serve over Qwen3.8-27B NVFP4 with one running `vllm serve` (0.31.0)
+// over the Qwen3.8-27B BF16 weights, shared with the operator's dashboard as its "pool". Read from the
+// pod's launch script, GET /v1/models through the srv1 tunnel, one chat completion (reasoning came back
+// split into `reasoning`, the content carried no think tags) and the weights' chat template (it closes
+// reasoning with `</think>`). The API key is deliberately not a field: it lives in a 0600 file on the
+// consuming host (gunbc.harness.harness_operator_route harness_operator_route credential_relative_path).
+type OperatorVllmLaunch {
+  served_model_name: NonEmptyStr
+  listen_port: Port
+  max_model_len: TokenCount
+  max_num_seqs: Nat
+  reasoning_parser: NonEmptyStr
+  tool_call_parser: NonEmptyStr
+  reasoning_field: NonEmptyStr
+  inline_think_end_token: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+data operator_pod_launch_read_obligation: NonEmptyStr = "Re-read the pod's ~/pool/serve.sh, GET /v1/models with the pool key, the reasoning member of one chat completion and the closing tag in ~/pool/weights/chat_template.jinja; replace this standing with a receipt once the operator route is observed by a modeled probe" as NonEmptyStr
+
+data operator_pod_vllm_launch: OperatorVllmLaunch = OperatorVllmLaunch {
+  served_model_name: "qwen" as NonEmptyStr,
+  listen_port: 18000,
+  max_model_len: token_count(count: 262144),
+  max_num_seqs: 64,
+  reasoning_parser: "qwen3" as NonEmptyStr,
+  tool_call_parser: "qwen3_coder" as NonEmptyStr,
+  reasoning_field: "reasoning" as NonEmptyStr,
+  inline_think_end_token: "</think>" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: operator_pod_launch_read_obligation },
+}
