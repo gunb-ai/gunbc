@@ -1,4 +1,4 @@
-module gunbc.fleet_probe_identity_observe
+module gunbc.fleet.fleet_probe_identity_observe
 
 import std.types { String, List, NonEmptyStr }
 import std.algebra { trim }
@@ -11,7 +11,7 @@ import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.tools.gcloud { gcloud_auth_list_accounts_command }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt_text }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key }
 
 // Observe-first for the probe-identity decision (parent msg_156e62bd): READ-ONLY observation of
 // (a) whether the fleet automation PUBLIC key is present in the runner-reachable authorized_keys

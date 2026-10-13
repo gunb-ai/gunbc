@@ -1,4 +1,4 @@
-module gunbc.host_kernel_dependency_observe
+module gunbc.host.host_kernel_dependency_observe
 
 import std.types { String, NonEmptyStr, CommitSha, Bool }
 import std.algebra { trim }
@@ -8,13 +8,13 @@ import extdeps.linux.tun_fdinfo { TunAttachedQueueRequirement, tun_attached_queu
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.tools.uname { uname_release_command, uname_machine_command }
-import extdeps.dpkg { dpkg_query_status_command, dpkg_record_field }
-import extdeps.apt
+import extdeps.package_managers.dpkg { dpkg_query_status_command, dpkg_record_field }
+import extdeps.package_managers.apt
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import product.host_identity { HostIdentity }
-import gunbc.host_kernel_dependency {
+import gunbc.host.host_kernel_dependency {
   UbuntuTunKernelProvider, tun_kernel_provider_for_host, kernel_provider_package_names, kernel_provider_selection,
   KernelPackageReading, KernelPackageExact, KernelPackageNeedsInstall, KernelPackageReadRefused,
   kernel_package_reading, kernel_package_readings_join, tun_kernel_capability_decision, host_kernel_dependency_plan,

@@ -27,7 +27,7 @@ use crate::v1_compiler_emitted_workspace::{
     EmittedWorkspaceRedRealization,
 };
 
-const WORKSPACE_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+const WORKSPACE_ENTRY: &str = "src/v2/compiler/compile.dag";
 
 pub struct EmittedCrateWorkspaceHeld {
     pub head: String,

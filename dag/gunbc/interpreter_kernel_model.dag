@@ -13,7 +13,7 @@ type V1InterpreterDissolutionPhase
 data interpreter_kernel_d_current_phase: V1InterpreterDissolutionPhase = PureEvalEmitWired
 
 data pure_eval_authority_modules: List<String> = [
-  "src/v2/compiler/05_eval.dag",
+  "src/v2/compiler/eval.dag",
   "src/v2/compiler/emit_host.dag",
   "src/v2/extdeps/runtimes/v2_evaluator.dag",
   "src/v2/std/host_transport.dag",

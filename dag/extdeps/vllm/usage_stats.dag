@@ -101,7 +101,7 @@ type VllmUsageStatsDisableTerm {
 //
 // THE NAMED CONSUMER HAS LANDED. This predicate is what an EFFECTIVE-CONFIGURATION READING feeds:
 // gunbc.spark.first_party_serving spark_serving_usage_stats_standing folds the answering container's
-// Config.Env -- carried by the incarnation observation (gunbc.spark.serving_incarnation_observe),
+// Config.Env -- carried by the incarnation observation (retired gunbc.spark.serving_incarnation_observe (deleted #13779)),
 // bound to the offered launch -- against vllm_usage_stats_reporting's disable_terms through it, so
 // the exact-equality semantics below are executed on every telemetry standing rather than held in
 // reserve. It was kept through the interim -- when its only consumer, the fold over the DECLARED

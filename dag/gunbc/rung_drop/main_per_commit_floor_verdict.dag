@@ -13,8 +13,18 @@ import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 // fe85902a07b...) is the sha main carries afterwards. The group those runs occupy is mg-<sha>
 // (gunbc#10981 / gunbc#11052), one member per landing, so no landing's verdict can be replaced by
 // another's. The population itself is then removed rather than merely emptied: the push-on-main
-// trigger is cut from gunbc.witness_floor_workflow witness_floor_triggers, so a push event on
+// trigger is cut from gunbc.witness.witness_floor_workflow witness_floor_triggers, so a push event on
 // refs/heads/main starts no run of this workflow and there is nothing left to supersede.
+// THE 2026-09-15 BASIS DIED AND THE CAPABILITY WAS RE-ESTABLISHED ON ANOTHER ROUTE 2026-10-12. The
+// merge queue stopped being used (no merge-queue rule in the ruleset; last merge_group run
+// 2026-10-09), so from then until gunbc#13791 a landed sha obtained NO terminal verdict at all --
+// the trigger had un-fired, and this row read Retired over a false basis. gunbc#13791 restores the
+// push-on-main trigger, and a push run takes the run-<id> fallback of witness_floor_group_branches,
+// not github.ref: every landed sha is the only member of its own group, so GitHub has no pending
+// member to replace and each sha's run reaches its own terminal verdict. That is the capability the
+// restoration trigger names (no superseded pending sha), not the run_id string it calls an artifact:
+// the discriminating controls are w_concurrency_group_no_longer_groups_push_by_ref and
+// w_emitted_workflow_runs_on_push_to_main in the consolidation witness.
 // The 2026-08-17 unique-run_id grouping stated that every push to main must finish, because sharing
 // one main group drops queued observations. The 2026-09-10 occupancy ruling replaces that key with
 // github.ref for push events, so GitHub may replace pending members of the main group. Running
@@ -29,7 +39,7 @@ data main_per_commit_floor_verdict: RungDrop = RungDrop {
   declared: "2026-09-11",
 
   standing: Retired {
-    trigger_fired: "2026-09-15 -- every landed main sha now obtains its terminal verdict from the merge_group run on the composed revision it lands as, in a per-sha concurrency group with no other member; and the superseded population is gone with the push-on-main trigger it was declared over" as NonEmptyStr
+    trigger_fired: "2026-10-12 (gunbc#13791) -- every landed main sha obtains its terminal verdict from its own push-on-main run of the required workflow, in a run-<id> concurrency group with no other member, so no pending main sha can be superseded. The 2026-09-15 basis (the merge_group run on the composed revision) lapsed when the merge queue stopped being used, 2026-10-09" as NonEmptyStr
   },
 
   declaration: TypedDeclaration {

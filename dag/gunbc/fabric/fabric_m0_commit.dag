@@ -1,4 +1,4 @@
-module gunbc.fabric_m0_commit
+module gunbc.fabric.fabric_m0_commit
 
 import std.types { List, NonEmptyStr, brand }
 import std.content_hash { Sha256Digest }
@@ -6,7 +6,7 @@ import std.scoped_authorization { AttemptIdentity }
 import product.fabric.identity { WorkKey }
 import product.fabric.work { OutputObligationsResolution }
 import std.durable_compare_and_set { CasOutcome }
-import gunbc.fabric_m0_origin_readback {
+import gunbc.fabric.fabric_m0_origin_readback {
   OriginReading,
   OriginReadingOutcome,
   OriginReadingTaken,
@@ -16,7 +16,7 @@ import gunbc.fabric_m0_origin_readback {
   OriginObjectAbsent,
   OriginFetchUnavailable,
 }
-import gunbc.fabric_m0_completion {
+import gunbc.fabric.fabric_m0_completion {
   ComputationOutcome,
   CommittedOutput,
   CommitManifest,
@@ -110,7 +110,7 @@ fn slot_mismatch_readback(expected: NonEmptyStr, actual: NonEmptyStr) -> OriginR
 // could stamp origin provenance over a digest taken from nothing at all.
 //
 // THE CONSTRUCTION: ManifestRead carries an OriginReading, which is sole_constructor in
-// gunbc.fabric_m0_origin_readback and is produced only by the operation that digests a named file.
+// gunbc.fabric.fabric_m0_origin_readback and is produced only by the operation that digests a named file.
 // There is no stamp to edit, because there is no stamp: a confirming read is reachable only by
 // having digested a file, and the file is named in the same value. ReadSource, DurableOriginRead
 // and DisposableCacheRead are DELETED rather than kept beside it -- a stamp surviving next to the
@@ -118,14 +118,14 @@ fn slot_mismatch_readback(expected: NonEmptyStr, actual: NonEmptyStr) -> OriginR
 // dissolved with it (DESIGN 4b(4): the lower-rung production handling goes, the evidence stays).
 //
 // WHAT IS STILL A DECLARED BOUNDARY: which file the readback staged. That is
-// gunbc.fabric_m0_origin_readback's subject and its trigger; it is cited here, not restated.
+// gunbc.fabric.fabric_m0_origin_readback's subject and its trigger; it is cited here, not restated.
 type ManifestReadbackObservation
   = ManifestRead { reading: OriginReading }
   | ManifestNotFound
   | ManifestReadUnavailable { cause: NonEmptyStr }
 
 // The mint side of the boundary, kept as a pure fold so this authority performs no effect. The read
-// itself is gunbc.fabric_m0_origin_readback's; this only says what a taken or untaken reading means
+// itself is gunbc.fabric.fabric_m0_origin_readback's; this only says what a taken or untaken reading means
 // about the manifest slot. An unavailable reading is UNKNOWN, never absence.
 fn manifest_read_of(outcome: OriginReadingOutcome) -> ManifestReadbackObservation {
   match outcome {
@@ -163,7 +163,7 @@ fn manifest_read_of_origin_fetch(fetch: OriginFetchOutcome) -> ManifestReadbackO
 // stops a caller handing a /var/cache path to read_origin_staged_file; the digest would be computed
 // honestly over those bytes and the reading would confirm. That is path PROVENANCE, which is a
 // different fact from the path-digest coherence OriginReading establishes, and it is exactly the
-// mitigatable enclosing class gunbc.fabric_m0_origin_readback declares with its capability trigger.
+// mitigatable enclosing class gunbc.fabric.fabric_m0_origin_readback declares with its capability trigger.
 // Using this helper is a discipline; the construction underneath it is the digest, not the source.
 fn cache_manifest_read(provider: NonEmptyStr) -> ManifestReadbackObservation {
   ManifestReadUnavailable {
@@ -246,9 +246,9 @@ fn manifest_observation(
 
 // The consumer: one call from a real commit attempt to a published outcome.
 //
-// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c). gunbc.fabric_m0_publication publish_work is the
+// CONSUMPTION STATE, STATED HONESTLY (DESIGN 3c). gunbc.fabric.fabric_m0_publication publish_work is the
 // named join that holds a run's Work and calls this function; the instrument
-// tools.fabric_m0_origin_readback_probe is the second caller, driving the whole gate over real
+// gunbc.instruments.fabric_m0_origin_readback_probe is the second caller, driving the whole gate over real
 // bytes. That join is itself a DECLARED FRONTIER. Rewriting this paragraph as CONSUMED while the
 // route terminated in a test was false.
 //
@@ -276,7 +276,7 @@ fn manifest_observation(
 // The trigger below states the same fact positively, as the capability that closes the frontier,
 // which is the tracked shape and carries the whole meaning.
 //
-// THE NAMED CONSUMER THAT DECIDES THE CHECK: gunbc.fabric_m0_job_ending end_required_job.
+// THE NAMED CONSUMER THAT DECIDES THE CHECK: gunbc.fabric.fabric_m0_job_ending end_required_job.
 // THE REMAINING FRONTIER TRIGGER: wiring that ending into required-CI (or another real job
 // process) so the check conclusion is the CheckConclusion it returns, once an independent origin
 // readback is constructible on the run path -- the roadmap's compute-artifact-return-and-
@@ -286,7 +286,7 @@ fn manifest_observation(
 // default this gate exists to refuse, and main's text said `DurableOriginRead` there, a variant
 // gunbc#10934 deleted -- the decayed citation DESIGN 3's cite-the-symbol rule exists to prevent. It
 // is no longer expressible at all: a confirming readback carries an OriginReading, which only
-// gunbc.fabric_m0_origin_readback read_origin_staged_file can produce.
+// gunbc.fabric.fabric_m0_origin_readback read_origin_staged_file can produce.
 //
 // This is a consumption frontier, NOT a guarantee drop: the gate's walls are enrolled and executing
 // over the population they are declared for, so no rung is being lowered by the wait.

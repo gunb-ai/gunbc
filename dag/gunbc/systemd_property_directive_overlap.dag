@@ -103,7 +103,7 @@ type SystemdPropertyWritability
 // Slice is the unit-file directive systemd.resource-control(5) specifies for placing a unit in a slice.
 // PartOf is the [Unit] directive of systemd.unit(5): a one-way dependency under which stopping the
 // named unit stops this one, while this one stopping does not stop the named unit. It is settable
-// and is set -- gunbc.runner_microvm_attempt runner_microvm_attempt_part_of_property binds a
+// and is set -- gunbc.runner.runner_microvm_attempt runner_microvm_attempt_part_of_property binds a
 // transient attempt unit to the slot unit supervising it -- so it is a directive, not manager state.
 // It was absent from this classifier on main, which left the match non-exhaustive and the module
 // unresolvable; it is added here because this change is the first to touch the classifier since.
@@ -285,12 +285,12 @@ type SystemdPropertyConsumer {
 data systemd_property_consumers: List<SystemdPropertyConsumer> = [
   SystemdPropertyConsumer { module_path: "extdeps.systemd.systemctl" as NonEmptyStr, role: ShowArgvTyped },
   SystemdPropertyConsumer { module_path: "gunbc.systemctl_show_read" as NonEmptyStr, role: ShowArgvTyped },
-  SystemdPropertyConsumer { module_path: "gunbc.host_hygiene_reaper_observe" as NonEmptyStr, role: ShowArgvTyped },
-  SystemdPropertyConsumer { module_path: "gunbc.host_axis_caps" as NonEmptyStr, role: DirectiveWriteStringified },
-  SystemdPropertyConsumer { module_path: "gunbc.host_converge" as NonEmptyStr, role: DirectiveWriteStringified },
-  SystemdPropertyConsumer { module_path: "gunbc.fleet_converge_plan" as NonEmptyStr, role: DirectiveWriteStringified },
-  SystemdPropertyConsumer { module_path: "gunbc.host_converge_slice1" as NonEmptyStr, role: VariantRecoveredByStringEquality },
-  SystemdPropertyConsumer { module_path: "gunbc.runner_unit_live_read" as NonEmptyStr, role: VariantRecoveredByStringEquality },
-  SystemdPropertyConsumer { module_path: "gunbc.fleet_show_effective_read" as NonEmptyStr, role: VariantRecoveredByStringEquality },
+  SystemdPropertyConsumer { module_path: "gunbc.host.host_hygiene_reaper_observe" as NonEmptyStr, role: ShowArgvTyped },
+  SystemdPropertyConsumer { module_path: "gunbc.host.host_axis_caps" as NonEmptyStr, role: DirectiveWriteStringified },
+  SystemdPropertyConsumer { module_path: "gunbc.host.host_converge" as NonEmptyStr, role: DirectiveWriteStringified },
+  SystemdPropertyConsumer { module_path: "gunbc.fleet.fleet_converge_plan" as NonEmptyStr, role: DirectiveWriteStringified },
+  SystemdPropertyConsumer { module_path: "gunbc.host.host_converge_slice1" as NonEmptyStr, role: VariantRecoveredByStringEquality },
+  SystemdPropertyConsumer { module_path: "gunbc.runner.runner_unit_live_read" as NonEmptyStr, role: VariantRecoveredByStringEquality },
+  SystemdPropertyConsumer { module_path: "gunbc.fleet.fleet_show_effective_read" as NonEmptyStr, role: VariantRecoveredByStringEquality },
   SystemdPropertyConsumer { module_path: "gunbc.compile_permit_scope_observe" as NonEmptyStr, role: ShowArgvTyped },
 ]

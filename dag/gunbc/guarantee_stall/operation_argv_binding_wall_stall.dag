@@ -4,7 +4,7 @@ import v2.std.algebra { Cons, Empty }
 import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when_awaiting }
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
-import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 data operation_argv_binding_wall_stall: GuaranteeStall = GuaranteeStall {
   subject: "the operation-argv binding wall does not materialize the previously unbindable operation",

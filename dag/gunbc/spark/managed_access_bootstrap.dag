@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_posix_accounts {
+import gunbc.fleet.fleet_posix_accounts {
   fleet_bootstrap_principal_login,
   FleetPosixAccountKey,
   FleetAccountOperator,
@@ -20,8 +20,7 @@ import gunbc.spark.fabric_switch_observed { spark_fabric_leg_netdev }
 import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_command }
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli { docker_container_inspect_command }
-import gunbc.spark.pair_serving_realization { spark_pair_container_name }
-import gunbc.spark.serving_arm_launch { glm_native_container_name, glm53_staircase_container_name }
+import gunbc.spark.retired_serving_container_names { spark_pair_container_name, glm_native_container_name, glm53_staircase_container_name }
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
 // The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;
@@ -110,10 +109,10 @@ fn spark_managed_principal_home(login: NonEmptyStr) -> NonEmptyStr {
   join(["/home/", login as String], "") as NonEmptyStr
 }
 // spark_operator_bootstrap_login stood here as a second literal "briansrls" beside
-// gunbc.fleet_posix_accounts fleet_posix_operator_user. Deleted: the login is
+// gunbc.fleet.fleet_posix_accounts fleet_posix_operator_user. Deleted: the login is
 // fleet_bootstrap_principal_login(), once, at the account model. Raised in review 63721, which
 // read the fork correctly as load-bearing rather than cosmetic -- the session derivation in
-// gunbc.fleet_bootstrap_principal_session compares against that name, so a divergence between two
+// gunbc.fleet.fleet_bootstrap_principal_session compares against that name, so a divergence between two
 // literals would resolve every bootstrap leg to the key session and refuse.
 
 // DERIVING THE STANDING. Absence of an observation is ManagedAccessUnobserved, never
@@ -393,7 +392,7 @@ type SparkGrantInstallBasis
 // On 2026-09-16 the operator accepted the same risk arm for InspectServingContainer over the native
 // arm's container (glm-native-tp4), which the group-keyed service-identity chain inspects on srv9.
 // The native container's image is digest-pinned and every Env entry its unit sets is declared, both
-// by the one launch specification (gunbc.spark.glm_group_b_launch glm_group_b_launch_plan, whose
+// by the one launch specification (retired gunbc.spark.glm_group_b_launch (deleted #13779) glm_group_b_launch_plan, whose
 // ArmNodeLaunch carries image_reference and whose container spec carries the environment), but no
 // classification receipt joins those declarations to the live
 // inspect object, so the disclosure stays unestablished and the obligation outstanding here too.

@@ -1,4 +1,4 @@
-module gunbc.ci_run_attempt_census
+module gunbc.ci.run_attempt_census
 
 import std.types { String, NonEmptyStr, Bool, Int, Timestamp }
 import std.page_fold { PageFoldOutcome, PagesClosed, PagesRefused, page_fold_refusal_key }

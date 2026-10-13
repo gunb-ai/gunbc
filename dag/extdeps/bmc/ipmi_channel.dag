@@ -13,7 +13,7 @@ import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
 // chassis, fru, and mc — they do not read a channel census. A workflow
 // observation of one controller is a receipt in the observing product, never
 // a row here. The fold that consumes this shape is
-// gunbc.machine_intake_bmc_secure; the effectful producer that would invoke
+// gunbc.machine_intake.bmc_secure; the effectful producer that would invoke
 // ipmitool for these three commands is that module's named rotation-actuator
 // frontier, not a silent claim that the argv already exists.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

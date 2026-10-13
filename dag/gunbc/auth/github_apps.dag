@@ -30,7 +30,7 @@ import extdeps.github.app {
   permission_access_at_least,
   permission_access_in
 }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 
 type DeclaredGitHubApp {
   owner_login: NonEmptyStr
@@ -68,7 +68,7 @@ data gunbai_ci_declared_installation_id: GitHubAppInstallationId = GitHubAppInst
 // twice, because the first reader had no reason to think it was worth writing down. An installation
 // id is a forge fact like the app id beside it: not derivable, not guessable, and cheap to hold.
 //
-// THE STRUCTURE ALREADY REFUSES TO MINT WITHOUT ONE -- gunbc.ci_spec AppInstallationTokenMint takes
+// THE STRUCTURE ALREADY REFUSES TO MINT WITHOUT ONE -- gunbc.ci.ci_spec AppInstallationTokenMint takes
 // installation_id as a required field, so no token spec can be built that omits it. What was missing
 // was never the wall; it was the RECORD. This row is that record.
 data gunbai_bot_declared_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 136673607 }

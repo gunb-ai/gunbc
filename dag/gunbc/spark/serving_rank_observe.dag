@@ -62,8 +62,8 @@ import gunbc.spark.model_snapshot_materialize {
 //
 // THE PRIVILEGED LEG IS NOT NEW. Docker's socket on these hosts is root-owned, and
 // gunbc.spark.model_snapshot_materialize spark_remote_run is the one route the corpus models for
-// reaching it. This module binds to that route exactly as gunbc.spark.v41_runtime_image_probe and
-// gunbc.spark.vllm_runtime_image_build already do; a second remote-execution path for the same
+// reaching it. This module binds to that route exactly as retired gunbc.spark.v41_runtime_image_probe (deleted #13779) and
+// retired gunbc.spark.vllm_runtime_image_build (deleted #13779) already do; a second remote-execution path for the same
 // daemon would be the fork DESIGN section 3 forbids.
 type ObservedRankSubject sole_constructor {
   host: HostIdentity
@@ -94,7 +94,7 @@ type RankObservationRefusal sole_constructor {
 }
 
 // THE CONSTRUCTOR IS EXPORTED BECAUSE A CALLER OUTSIDE THIS MODULE HAS REFUSALS OF ITS OWN TO NAME.
-// gunbc.spark.serving_relaunch_transaction's bounded wait for a communicator announcement fails on
+// retired gunbc.spark.serving_relaunch_transaction (deleted #13779)'s bounded wait for a communicator announcement fails on
 // its own step, about its own subject, and a refusal it could not construct would have to borrow one
 // of this module's steps -- which is the mislabelled diagnostic the same transaction was already
 // corrected for once.
@@ -244,7 +244,7 @@ fn observe_rank_container(ctx: SparkMaterializeContext, subject: ObservedRankSub
 //
 // AND `Config.Cmd` IS THE ENGINE'S ARGUMENTS, NOT THE DOCKER LINE. The daemon remembers the second
 // half only -- the first half was consumed by the create call -- which is why
-// gunbc.spark.serving_arm_launch splits the two lists at the plan side as well.
+// retired gunbc.spark.serving_arm_launch (deleted #13779) splits the two lists at the plan side as well.
 type RankIdentityReading
   = RankIdentityRead { incarnation: NonEmptyStr, node_rank: Nat }
   | RankIdentityUnread { cause: NonEmptyStr }

@@ -1,10 +1,10 @@
-module gunbc.fleet_posix_accounts
+module gunbc.fleet.fleet_posix_accounts
 
 import extdeps.access.posix { PosixUser, PosixLoginName }
 import std.nat { Nat }
 import std.types { Timestamp, brand }
-import gunbc.fleet_lifecycle_observation { ProcessReceipt }
-import extdeps.ssh { SshPublicKey }
+import gunbc.fleet.fleet_lifecycle_observation { ProcessReceipt }
+import extdeps.ssh.keys { SshPublicKey }
 import extdeps.netfilter.nfct { nfct_installed_path }
 import extdeps.tools.conntrack { conntrack_installed_path }
 import extdeps.netfilter.iptables_legacy { iptables_legacy_save_installed_path }
@@ -130,7 +130,7 @@ data fleet_posix_operator_user: PosixUser = PosixUser {
 // THE BOOTSTRAP PRINCIPAL'S LOGIN, DERIVED AND NAMED ONCE. It was `data spark_operator_bootstrap_login:
 // String = "briansrls"` in gunbc.spark.managed_access_bootstrap -- a second literal for the account
 // declared three lines above, which is the nickname §3 calls a correctness concern rather than a style
-// one. It became load-bearing when gunbc.fleet_bootstrap_principal_session started deriving the SSH
+// one. It became load-bearing when gunbc.fleet.fleet_bootstrap_principal_session started deriving the SSH
 // session from the principal: with two literals, a divergence would silently resolve every bootstrap
 // leg to the key session and refuse, which is the exact defect that derivation exists to make
 // unauthorable. So this is the one name, and the one place the spelling comes from.
@@ -217,10 +217,10 @@ fn fleet_posix_operator_sudo_grant_is_hostnamectl_only() -> Bool {
 // path remains for converge on the operator account.
 // Precedent: fleet_posix_ci_runner_sudo_grants already carries both binaries for ghrunner —
 // that is a finding, not automatic justification for the operator account.
-// Receipt publication: gunbc.host_layout fleet_converge_receipt_atomic_publish_note.
+// Receipt publication: gunbc.host.host_layout fleet_converge_receipt_atomic_publish_note.
 // b1 moved gunbc-roadmap-fleet-converge.service to User=briansrls. Whole-binary NOPASSWD
 // install/systemctl on the operator roster is held — root-equivalent. MemoryMax is deploy-time only
-// (gunbc.host_axis_caps); converge does not assert MemoryMax via set-property.
+// (gunbc.host.host_axis_caps); converge does not assert MemoryMax via set-property.
 
 data fleet_apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 
@@ -242,7 +242,7 @@ data fleet_mv_binary_path: NonEmptyStr = "/usr/bin/mv"
 // of ci_runner_sudo_binaries (no path-unrestricted grant): each is granted only as a pinned-argv
 // ExecutorPrivilegedOperation over one named directory (gunbc.executor_privileged_operation
 // ReadDirectoryIdentity, ListDirectoryEntries), rendered into the runner host's sudoers by
-// gunbc.runner_host_grants. A managed directory whose mode admits only its owner cannot be traversed by
+// gunbc.runner.runner_host_grants. A managed directory whose mode admits only its owner cannot be traversed by
 // the job user, and its standing must still be observable before and after the apply.
 data fleet_stat_binary_path: NonEmptyStr = "/usr/bin/stat"
 data fleet_ls_binary_path: NonEmptyStr = "/usr/bin/ls"
@@ -267,7 +267,7 @@ data fleet_nfct_binary_path: NonEmptyStr = nfct_installed_path() as NonEmptyStr
 //
 // THE CLASS THIS CLOSES, with a receipt. The runner principal's grants were declared here and the
 // privileged commands were spelled, as free strings, in the shell emitters -- extdeps.github
-// actions_runner named tar and chown, gunbc.fleet_converge_plan named mkdir and flock, and none of
+// actions_runner named tar and chown, gunbc.fleet.fleet_converge_plan named mkdir and flock, and none of
 // those four are roster members. Nothing joined the two authorities, so the only mechanism that
 // could ever report the mismatch was executing the emitted script on a real host as the real
 // principal. That is what happened: an operator-authorized add-only materialization on srv3
@@ -366,14 +366,14 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
 // release's source tree into a ROOT-OWNED snapshot in one call, without following symlinks, so the
 // grantee of the helper grant cannot write the closure that grant executes
 // (gunbc.live_deploy.emit approval_broker_helper_snapshot_steps). Both are probed with --version.
-// This roster is what the deploy principal's drop-in (/etc/sudoers.d/gunbc-deploy, gunbc.ci_deploy_access
+// This roster is what the deploy principal's drop-in (/etc/sudoers.d/gunbc-deploy, gunbc.ci.ci_deploy_access
 // gunbc_deploy_sudoers_dropin) is rendered from, and the deploy preamble installs it
-// (gunbc.ci_deploy_sudoers deploy_sudoers_install_shell). So the new rows reach srv1 through the
+// (gunbc.ci.ci_deploy_sudoers deploy_sudoers_install_shell). So the new rows reach srv1 through the
 // operator-approved deploy that carries this change, not a hand edit.
 data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod, SudoCp, SudoMv]
 
 // THE GRANTS THE DROP-IN INSTALL ITSELF SPENDS, and so the only grants a deploy may demand BEFORE
-// the drop-in is installed. gunbc.ci_deploy_sudoers deploy_sudoers_install_shell is the one step that
+// the drop-in is installed. gunbc.ci.ci_deploy_sudoers deploy_sudoers_install_shell is the one step that
 // renders ci_runner_sudo_binaries onto a host, and it runs `sudo -n visudo -cf` and `sudo -n install`
 // and nothing else under sudo; it reads its two binaries from this list, so the install and the
 // pre-install demand are one value. Every other roster row is probed AFTER the install, inside the
@@ -1103,7 +1103,7 @@ fn fleet_posix_account_from_name(name: NonEmptyStr) -> GroundedPosixPrincipal? {
 data fleet_posix_account_exists_predicate_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.fleet_posix_accounts",
+    module_path: "gunbc.fleet.fleet_posix_accounts",
     decl_name: "fleet_posix_account_from_name",
     field: WholeDeclaration,
   }

@@ -6,8 +6,8 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 
 // A COMMITTED SLOT CHANGING PURPOSE IS A TENANT HANDOVER, AND ONE HALF OF IT IS UNOBSERVABLE.
 //
-// gunbc.runner_slot_allocation fabric_execution_slot_identities reassigns srv3-06, srv3-07, srv4-06
-// and srv4-07 from GitHub Actions to fabric execution, and gunbc.runner_slot_retirement
+// gunbc.runner.runner_slot_allocation fabric_execution_slot_identities reassigns srv3-06, srv3-07, srv4-06
+// and srv4-07 from GitHub Actions to fabric execution, and gunbc.runner.runner_slot_retirement
 // fabric_purpose_retirees_for_host derives the retirement obligation that follows. What retirement
 // proves is local: RunnerRetirementObservation carries a unit, a mask flag, a running flag and a
 // cgroup occupancy, so RetirementComplete establishes that the mask held, the unit stopped and the
@@ -15,10 +15,10 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 //
 // IT DOES NOT ESTABLISH THAT THE FORMER AUTHORITY LET GO. Whether the GitHub Actions registration
 // for a slot identity still exists is read by nothing: ObserveGitHubRunnerRegistration is a
-// gunbc.runner_lifecycle_realize scaffold that provisions nothing and answers NotConverged. So the
+// gunbc.runner.runner_lifecycle_realize scaffold that provisions nothing and answers NotConverged. So the
 // dangerous state has no detector -- substrate pristine, registration live, GitHub free to dispatch
 // another job onto a slot a fabric cell now owns. A clean directory is no defence against it, and
-// sanitation cannot stand in: gunbc.runner_microvm_cell_readiness is keyed by cell and allocation
+// sanitation cannot stand in: gunbc.runner.runner_microvm_cell_readiness is keyed by cell and allocation
 // generation and carries no registration evidence, so making CellReady mean "GitHub has relinquished
 // this identity" would be a meaning fork rather than a join.
 //
@@ -37,11 +37,11 @@ data fabric_purpose_handover_registration_unobserved_stall: GuaranteeStall = Gua
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding {
-    grounding: "an executed org-roster read that answers whether a slot identity is still registered, bound through gunbc.host_effect HostEffectTransport rather than the gunbc.runner_lifecycle_realize scaffold"
+    grounding: "an executed org-roster read that answers whether a slot identity is still registered, bound through gunbc.host.host_effect HostEffectTransport rather than the gunbc.runner.runner_lifecycle_realize scaffold"
   },
   population: BoundedPopulation {
     members: Cons {
-      head: "gunbc.runner_slot_allocation fabric_execution_slot_identities (srv3-06, srv3-07, srv4-06, srv4-07)",
+      head: "gunbc.runner.runner_slot_allocation fabric_execution_slot_identities (srv3-06, srv3-07, srv4-06, srv4-07)",
       tail: Empty {}
     }
   },

@@ -1,4 +1,4 @@
-module gunbc.seeded_install_media_publish
+module gunbc.provisioning.seeded_install_media_publish
 
 import std.types { NonEmptyStr, String }
 import std.algebra { trim }
@@ -24,7 +24,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media_remaster {
   SeededInstallMediaStageRefused,
   seeded_install_media_stage,
 }
-import gunbc.machine_intake_boot_image_fetch {
+import gunbc.machine_intake.boot_image_fetch {
   BootImageFetchOutcome,
   BootImageAdmitted,
   BootImageDigestUnreadable,
@@ -43,7 +43,7 @@ import gunbc.machine_intake_boot_image_fetch {
 
 // WHERE A DERIVED IMAGE IS WRITTEN, as the two boundaries this fleet actually has. A BMC export is
 // read by a controller that fetches whatever the share holds, so writing into it is admitted against
-// the export's ownership requirement (gunbc.machine_intake_boot_image_export_ownership) exactly as
+// the export's ownership requirement (gunbc.machine_intake.boot_image_export_ownership) exactly as
 // the stock fetch is. A host's local artifacts directory is served by a process this fleet runs, and
 // carries no such requirement today; that is its standing, named rather than defaulted.
 type SeededImageWriteBoundary

@@ -251,7 +251,10 @@ fn arrow_body_form_eval_runtime_int_equals(value: RuntimeValue, n: Int) -> Bool 
         Accepted { value: magnitude, diagnostics: _ } => magnitude == n
         Rejected { diagnostics: _ } => false
       }
-    _ => false
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
   }
 }
 

@@ -35,7 +35,7 @@ data recurrence_ledger_scoped_below_the_recurrence: RecurringFailureMode = Recur
 
     "Both are the absorbing arm DESIGN section 5 forbids, and the second cannot even be reached, because the family is not anomalous -- its own work is among the smallest in the corpus.",
 
-    "REPAIR: fold each unit's ledger into a run-scoped census keyed on the DECLARATION identity plus the argument row, so cross-unit demand becomes a run product; the receipt is `v1_compiler.v1_interpreter` `absorb_claim_recompute_demand` and the artifact `gunbc.witness_floor_workflow` `required_floor_cross_claim_demand_path`, whose own discriminating red asserts the per-frame ledger's blindness beside the census's answer so re-scoping it back reds.",
+    "REPAIR: fold each unit's ledger into a run-scoped census keyed on the DECLARATION identity plus the argument row, so cross-unit demand becomes a run product; the receipt is `v1_compiler.v1_interpreter` `absorb_claim_recompute_demand` and the artifact `gunbc.witness.witness_floor_workflow` `required_floor_cross_claim_demand_path`, whose own discriminating red asserts the per-frame ledger's blindness beside the census's answer so re-scoping it back reds.",
 
     "A SECOND, INDEPENDENT CONSEQUENCE, AND IT RETIRES PART OF A DECLARED DROP RATHER THAN THE DROP: `gunbc.rung_drop` `floor_cost_claim_qualification_unavailable` names a missing carrier -- the per-claim cost artifact modeled as data a function can read -- and states that its attention subset is a HAND derivation rather than a run product.",
 

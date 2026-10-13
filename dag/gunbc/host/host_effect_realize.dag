@@ -1,14 +1,14 @@
-module gunbc.host_effect_realize
+module gunbc.host.host_effect_realize
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text }
 
 import std.algebra { Cons, Empty, list_append, list_snoc_item, trim }
-import extdeps.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
+import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
 
-import gunbc.host_effect {
+import gunbc.host.host_effect {
   HostEffect, RedfishAction, ConvergePlan,
   OsInstallActuatorToolchainEnsure, EnsureBuildCacheInstance, ProvisionCodexRuntime,
   EnsureCompilePoolSlice,
@@ -117,12 +117,12 @@ import gunbc.typed_argv_exec {
 }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
+import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
 import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
-import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
+import gunbc.host.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
 import extdeps.gunbc
-import extdeps.apt {
+import extdeps.package_managers.apt {
   package_curl,
   package_nbdkit,
   package_socat,
@@ -144,13 +144,13 @@ import extdeps.tools.websocat {
   websocat_github_release_download_url,
 }
 import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
-import gunbc.srv3_actuate_shell_paths {
+import gunbc.srv3.srv3_actuate_shell_paths {
   srv3_bmcweb_login_body_path,
   srv3_bmcweb_login_response_path,
   srv3_bmcweb_token_path,
 }
 import std.access { AccessDecision, Permit, Deny, access_policy_refusal }
-import gunbc.ci_deploy_access {
+import gunbc.ci.ci_deploy_access {
   DeployAccess,
   DeployAccessActor,
   PrivilegedCommand,
@@ -164,20 +164,20 @@ import gunbc.ci_deploy_access {
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
 import extdeps.tailscale.serve { TailscaleServeEndpoint }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
-import gunbc.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
-import gunbc.runner_host_deploy {
+import gunbc.host.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
+import gunbc.runner.runner_host_deploy {
   runner_host_deploy_for,
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
   RunnerHostDeployRefused,
 }
-import gunbc.runner_slot_population_census {
+import gunbc.runner.runner_slot_population_census {
   SlotCensus,
   slot_census_from_command_outcome,
   slot_census_from_typed_argv_outcome,
   surplus_observation,
 }
-import gunbc.runner_slot_retirement {
+import gunbc.runner.runner_slot_retirement {
   transition_required_retiring,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
   observe_retirement_standings,
@@ -201,7 +201,7 @@ import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
 }
-import gunbc.runner_lifecycle_realize {
+import gunbc.runner.runner_lifecycle_realize {
   runner_lifecycle_realize_ensure_actions_runner_release,
   runner_lifecycle_realize_ensure_runner_slot_directory,
   runner_lifecycle_realize_ensure_runner_jit_wrapper,
@@ -212,15 +212,15 @@ import gunbc.runner_lifecycle_realize {
   runner_lifecycle_realize_observe_runner_local_state,
   runner_lifecycle_realize_observe_github_runner_registration,
 }
-import gunbc.build_cache_instance { RunnerSlotIdentity, BuildCacheInstance, BuildCacheServerPlacement }
-import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
-import gunbc.runner_lifecycle { RunnerReplacementCause }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, BuildCacheInstance, BuildCacheServerPlacement }
+import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation }
+import gunbc.runner.runner_lifecycle { RunnerReplacementCause }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
-import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
+import gunbc.roadmap.roadmap_static_site { roadmap_site_digest_readback_script }
 import gunbc.package_delivery { codex_runtime_version_identity_satisfied }
 import gunbc.cli_invoke { gunbc_run_transport_argv }
 import gunbc.cli_services
-import gunbc.host_codex_runtime_provision_verdict {
+import gunbc.host.host_codex_runtime_provision_verdict {
   codex_runtime_observe_argv,
   provision_codex_runtime_verdict,
   CodexRuntimeIdentityOk,
@@ -230,13 +230,13 @@ import gunbc.host_codex_runtime_provision_verdict {
   ProvisionConverged,
   ProvisionRefused,
 }
-import gunbc.host_layout {
+import gunbc.host.host_layout {
   codex_bundled_executable_for_host,
   provider_runtime_placement_for_host,
   srv1_gunbc_repo_root,
   srv1_gunbc_serve_binary,
 }
-import gunbc.host_build_cache_catalog_gate {
+import gunbc.host.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
   ProvisionBuildCacheCatalogRealizable,
   ProvisionBuildCacheCatalogRefused,
@@ -251,8 +251,8 @@ import extdeps.cache.sccache {
 }
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.build_cache_unit { build_cache_unit_text }
-import gunbc.build_cache_provision_verdict {
+import gunbc.build_cache.build_cache_unit { build_cache_unit_text }
+import gunbc.build_cache.build_cache_provision_verdict {
   BuildCacheDaemonObservation,
   DaemonStatsOk,
   DaemonMisconfigured,
@@ -268,7 +268,7 @@ import extdeps.tools.stat { stat_inode_command }
 import extdeps.tools.findutils { find_symlink_target_glob_command }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.build_cache_ensure {
+import gunbc.build_cache.build_cache_ensure {
   EnsureBuildCacheAdmission,
   EnsureAlreadyConverged,
   EnsureBuildCacheAdmitted,
@@ -279,7 +279,7 @@ import gunbc.build_cache_ensure {
   admit_ensure_build_cache_instance,
   ensure_admission_refusal_reason,
 }
-import gunbc.build_cache_endpoint_observe {
+import gunbc.build_cache.build_cache_endpoint_observe {
   BuildCacheEndpointReads,
   BuildCacheEndpointSurvey,
   HostRead,
@@ -308,7 +308,7 @@ import gunbc.build_cache_endpoint_observe {
   path_kind_of_stat_read,
   survey_build_cache_endpoint,
 }
-import gunbc.build_cache_endpoint_path {
+import gunbc.build_cache.build_cache_endpoint_path {
   EndpointPathState,
   ObservationCurrency,
   StaleSocketUnlinkAdmission,
@@ -332,13 +332,13 @@ import v2.std.compilers.cli_surface {
   ProcessArgvExpansion,
 }
 import extdeps.jobserver { jobserver_config }
-import gunbc.host_layout {
+import gunbc.host.host_layout {
   CompilePoolPlacement,
   CompilePoolSliceDeclared,
   CompilePoolInRunnerSlots,
   gunbc_compile_pool_placement,
 }
-import gunbc.fleet_host_budget {
+import gunbc.fleet.fleet_host_budget {
   CompilePoolResolution,
   CompilePoolUnresolved,
   compile_pool_bytes_for,
@@ -358,24 +358,24 @@ import gunbc.compile_pool_ensure {
   compile_pool_ensure_is_converged,
 }
 import gunbc.compile_pool_observe { observe_compile_pool_slice }
-import gunbc.host_layout { gunbc_managed_compile_pool_slice }
+import gunbc.host.host_layout { gunbc_managed_compile_pool_slice }
 import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
 
-import gunbc.build_cache_instance { ci_cache_instance }
-import gunbc.srv3_boot_once_cd {
+import gunbc.build_cache.build_cache_instance { ci_cache_instance }
+import gunbc.srv3.srv3_boot_once_cd {
   srv3_boot_once_apply_read_back_sleep,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { second_count, ByteSize, byte_size_count }
-import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_publish }
+import gunbc.srv3.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
+import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_publish }
 import extdeps.provisioning.ubuntu_install_media_fetch {
   install_media_fetch_reconcile,
 }
 import gunbc.artifact_acquisition {
   AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquisition_refusal_text,
 }
-import gunbc.seeded_install_media_publish {
+import gunbc.provisioning.seeded_install_media_publish {
   SeededImagePublished,
   SeededImageAlreadyPublished,
   SeededImagePublicationRefused,
@@ -406,12 +406,12 @@ import extdeps.sudo.nopasswd_execute_probe_check_op {
   sudo_nopasswd_grant_list_argv,
   sudo_nopasswd_grant_list_admits_probe,
 }
-import gunbc.host_effect_nbd_proxy_serve {
+import gunbc.host.host_effect_nbd_proxy_serve {
   host_effect_nbd_proxy_serve_apply,
   host_effect_nbd_proxy_serve_session_binding,
 }
 import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
-import gunbc.host_effect_codex_supervised_turn {
+import gunbc.host.host_effect_codex_supervised_turn {
   host_effect_codex_supervised_turn_apply,
   CodexSupervisedSessionApplyConverged,
   CodexSupervisedSessionApplyRefused,
@@ -1152,7 +1152,7 @@ fn realize_bmcweb_session_login_on_host(
 // load-bearing and the flag is defence in depth. Absence has no path to Filesystem.Write
 // under either. The fix is not a
 // non-empty check after the write, because such a check concedes the empty file is writable
-// and was in fact satisfied by editing nothing (it lived in gunbc.srv3_os_install_actuate
+// and was in fact satisfied by editing nothing (it lived in gunbc.srv3.srv3_os_install_actuate
 // `srv3_bmcweb_login` as a shell.Test.IsNonEmpty on the file this fold had just produced,
 // and is deleted with this climb per DESIGN §4b dissolution-on-climb).
 type BmcwebTokenExtraction =
@@ -1324,7 +1324,7 @@ fn provision_build_cache_reconcile(
 // (observe/read-back) and gunbc.Cli.Run (materialize) — argv arrays, not a shell string, so there
 // is no branching or receipt-marker text to construct or parse; SshShell/FleetSsh dispatch through
 // run_typed_argv_transport with the same argv shape built by
-// gunbc.host_codex_runtime_provision_verdict codex_runtime_observe_argv and gunbc.cli_invoke
+// gunbc.host.host_codex_runtime_provision_verdict codex_runtime_observe_argv and gunbc.cli_invoke
 // gunbc_run_transport_argv. The mkdir-release-parent step the old shell body ran before materialize
 // is dropped: gunbc.package_delivery release_codex_runtime_bundle_immutable already runs
 // shell.Mkdir.Parents on release_parent inside materialize_codex_runtime_bundle's own call chain,
@@ -1752,11 +1752,11 @@ fn srv3_transport_witness_bin_success(
   args: List<String>,
 ) -> Srv3HostPredicate
   admit_callers: [
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_elevated_witness_bin_success"),
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_apt_tool_version_ok"),
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_run_tool_by_name"),
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_download"),
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_transport_argv_success"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "srv3_elevated_witness_bin_success"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "srv3_apt_tool_version_ok"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "srv3_run_tool_by_name"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "websocat_stage_download"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "srv3_transport_argv_success"),
   ]
 {
   match transport {
@@ -1978,11 +1978,11 @@ fn srv3_read_token(
 // The serialization half, private to the two decls above by admission rather than by convention.
 fn srv3_token_argv(subject: Srv3TokenSubject) -> List<String>
   admit_callers: [
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_read_token"),
-    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "effective_owner_subjects_derive_the_cited_id_argv"),
-    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "path_owner_subjects_derive_the_cited_stat_argv"),
-    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "owner_halves_do_not_derive_the_same_command"),
-    decl_ref(module_path: "test.claim.srv3_token_subject_witness", decl_name: "the_path_subject_carries_its_own_path"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "srv3_read_token"),
+    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness", decl_name: "effective_owner_subjects_derive_the_cited_id_argv"),
+    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness", decl_name: "path_owner_subjects_derive_the_cited_stat_argv"),
+    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness", decl_name: "owner_halves_do_not_derive_the_same_command"),
+    decl_ref(module_path: "test.claim.srv3.srv3_token_subject_witness", decl_name: "the_path_subject_carries_its_own_path"),
   ]
 {
   match subject {
@@ -1999,7 +1999,7 @@ fn srv3_token_argv(subject: Srv3TokenSubject) -> List<String>
 // adding a Srv3TokenSubject variant, not calling through here with a fresh vector.
 fn srv3_transport_token(argv: List<String>, transport: HostEffectTransport) -> Srv3ObservedToken
   admit_callers: [
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_read_token"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "srv3_read_token"),
   ]
 {
   match transport {
@@ -2276,7 +2276,7 @@ fn srv3_predicate_from_ownership_outcome(outcome: PathOwnershipEnsureOutcome) ->
 //
 // WHAT IS CLOSED, confirmed by execution: no OTHER MODULE can run an argv on a transport, elevated
 // or not. A foreign caller refuses at resolve with a diagnostic naming the permitted set --
-// "constructor call admission refused: 'gunbc.host_effect_realize.srv3_elevated_witness_bin_success'
+// "constructor call admission refused: 'gunbc.host.host_effect_realize.srv3_elevated_witness_bin_success'
 // refuses call from 'test.claim.srv3_seal_probe.a_foreign_module_may_not_run_a_privileged_argv' --
 // permitted callers: [...]". That is the property this cut is for: a caller outside this module can
 // name a semantic operation (ensure this tool, ensure this owner) and cannot name the machinery
@@ -2307,7 +2307,7 @@ fn srv3_transport_argv_success(
   argv: List<String>,
 ) -> Srv3HostPredicate
   admit_callers: [
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_ensure_executable_mode"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "websocat_stage_ensure_executable_mode"),
   ]
 {
   match argv {
@@ -2328,9 +2328,9 @@ fn srv3_elevated_witness_bin_success(
   command: List<String>,
 ) -> Srv3HostPredicate
   admit_callers: [
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_privileged_apt_install"),
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "srv3_chown_then_read_back"),
-    decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "websocat_stage_ensure_directory"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "srv3_privileged_apt_install"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "srv3_chown_then_read_back"),
+    decl_ref(module_path: "gunbc.host.host_effect_realize", decl_name: "websocat_stage_ensure_directory"),
   ]
 {
   let elevated = sudo_elevate(command: command)
@@ -2446,7 +2446,7 @@ fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffec
 // exits zero for a package removed with its configuration kept, and a token read collapses every
 // unsuccessful query into "absent" -- either way an unanswered question could authorize an apt
 // install. So the read runs dpkg-query -s over the transport's typed exec, keeping exit code, stdout
-// and stderr, and extdeps.dpkg dpkg_query_status_verdict_of decides: installed holds; a decoded
+// and stderr, and extdeps.package_managers.dpkg dpkg_query_status_verdict_of decides: installed holds; a decoded
 // not-installed state or a package unknown to dpkg fails (the ensure may install); anything
 // undecidable is Unobserved, which the ensure fold refuses rather than installing on.
 //
@@ -3117,7 +3117,7 @@ fn realize_os_install_actuator_toolchain_ensure(
 // gunbc.live_deploy.operations' existing typed-argv-backed command builders
 // (systemctl_daemon_reload_command / systemctl_enable_command / systemctl_restart_command, each
 // privileged: true) rather than hand-spelling new sudo -n systemctl strings, matching the idiom
-// already established in gunbc.live_deploy.emit and gunbc.host_axis_caps — a further §3 de-fork
+// already established in gunbc.live_deploy.emit and gunbc.host.host_axis_caps — a further §3 de-fork
 // consistent with why this swap exists.
 
 fn build_cache_unit_system_path(instance: BuildCacheInstance) -> String {
@@ -3239,12 +3239,12 @@ fn build_cache_provision_shell_script(instance: BuildCacheInstance, arch_token: 
   )
 }
 
-data build_cache_provision_shell_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.build_cache_provision_shell_script (relocated here, unchanged in kind, from the deleted gunbc.host_build_cache_provision_script) — concat-built systemd/sccache ensure shell run over shell_exec_via_bash transport; DISSOLVES WHEN host_effect_apply carries a typed operation that realizes EnsureBuildCacheInstance observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires this shell_exec_via_bash transport.")
+data build_cache_provision_shell_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host.host_effect_realize.build_cache_provision_shell_script (relocated here, unchanged in kind, from the deleted gunbc.host_build_cache_provision_script) — concat-built systemd/sccache ensure shell run over shell_exec_via_bash transport; DISSOLVES WHEN host_effect_apply carries a typed operation that realizes EnsureBuildCacheInstance observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires this shell_exec_via_bash transport.")
 
 data build_cache_provision_shell_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect_realize",
+    module_path: "gunbc.host.host_effect_realize",
     decl_name: "build_cache_provision_shell_script_dissolution_trigger",
     field: WholeDeclaration,
   }
@@ -3756,7 +3756,7 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
 // CONVERGE DOES NOT APPLY KNOBS ON THE OPERATOR PRINCIPAL, AND THE ABSENCE OF THE CODE PATH IS
 // WHAT ENFORCES THAT. The 2026-08-13 operator privilege hold says drop-in authoring,
 // daemon-reload, set-property and revert for the per-slot memory-cap axis belong to the deploy
-// principal (gunbc.host_axis_caps at live_deploy apply under ghrunner sudo), never to
+// principal (gunbc.host.host_axis_caps at live_deploy apply under ghrunner sudo), never to
 // `gunbc converge` on the operator principal. Until this cut the hold was carried by two
 // `data ...: Bool = true` flags whose only readers were witnesses asserting the literal, while the
 // arm they described was still wired: gunbc.host_converge_realize interpreted a PerSlotMemoryCap
@@ -3770,10 +3770,10 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
 // every host now refuses, where before a caps-only host would have actuated.
 //
 // CONVERGE'S ANSWER FOR THIS AXIS IS OBSERVATION, and it already exists:
-// gunbc.host_runner_memory_cap_verify reads the unit back through
-// gunbc.fleet_show_effective_read per_slot_memory_cap_verdict_from_unit_read. That path is
+// gunbc.host.host_runner_memory_cap_verify reads the unit back through
+// gunbc.fleet.fleet_show_effective_read per_slot_memory_cap_verdict_from_unit_read. That path is
 // untouched by this cut - it is the half that was always correct.
-data converge_in_process_apply_withdrawn_reason: String = "host_effect_apply: ConvergePlan in-process apply is WITHDRAWN, not unimplemented — the 2026-08-13 operator privilege hold reserves per-slot memory-cap authoring to the deploy principal (gunbc.host_axis_caps at live_deploy apply), so `gunbc converge` on the operator principal has no apply arm to reach. Converge's answer for this axis is the read-back verdict at gunbc.host_runner_memory_cap_verify (fleet_show_effective_read per_slot_memory_cap_verdict_from_unit_read), not a mutation."
+data converge_in_process_apply_withdrawn_reason: String = "host_effect_apply: ConvergePlan in-process apply is WITHDRAWN, not unimplemented — the 2026-08-13 operator privilege hold reserves per-slot memory-cap authoring to the deploy principal (gunbc.host.host_axis_caps at live_deploy apply), so `gunbc converge` on the operator principal has no apply arm to reach. Converge's answer for this axis is the read-back verdict at gunbc.host.host_runner_memory_cap_verify (fleet_show_effective_read per_slot_memory_cap_verdict_from_unit_read), not a mutation."
 
 fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   NotConverged {
@@ -4344,7 +4344,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 
 // THE CENSUS, TAKEN OVER THE TRANSPORT THE REALIZER ALREADY HOLDS.
 //
-// `gunbc.runner_slot_population_census` owns the JUDGMENT: what a `systemctl list-units` outcome
+// `gunbc.runner.runner_slot_population_census` owns the JUDGMENT: what a `systemctl list-units` outcome
 // says about a host's slots, and what an unreadable host means (a refused census, never an empty
 // population). The typed-argv decode lives THERE -- slot_census_from_typed_argv_outcome, the one
 // decode the census module's own fleet reader (observe_slot_population_over_ssh) and every remote
@@ -4989,7 +4989,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
   }
 }
 
-data provision_observes_before_it_acts_note: String = "THE PREFLIGHT IS NOW THE GATE, AND WHAT IT REPLACED WAS AN UNCONDITIONAL WRITE. Until this landed, realize_provision_build_cache had exactly one check ahead of it -- the catalog gate, which is pure id validation in a third module and never observes a host at all -- and then rendered the unit, installed it, and restarted it on every pass. The two authorities that were supposed to decide whether that was safe (gunbc.build_cache_ensure admit_ensure_build_cache_instance, gunbc.host_build_cache_provision placement_verdict) had zero production callers, so the refusal named as the remedy for a measured CI-capacity incident was computed by nothing. That is the rung inflation DESIGN section 4b calls worse than sitting low: the witnesses were green, and their greenness established that the fold was correct, not that the class was guarded.\n\nTHE ORDER IS OBSERVE, ADMIT, ACT, AND IT IS LOAD-BEARING RATHER THAN TIDY. Observing after acting would read back the state we just wrote, which is the same fabricated evidence gunbc.host_build_cache_provision build_cache_supervision_observation_note measured on srv3: a probe that greens on what it produced rather than on the state the lane exists to establish. Every read here happens BEFORE the first mutation, and the admission decides from those reads alone.\n\nWHAT THIS CHANGES ON A LIVE HOST, in the two arms that matter. A host whose managed unit already owns the endpoint AND IS OBSERVED LISTENING ON IT now converges WITHOUT reinstalling and restarting it (ownership alone is not enough, and was not enough here even before it was written down: gunbc.build_cache_ensure ensure_is_a_reconcile_not_an_install_note records the 2026-08-22 correction, under which our own unit holding its socket open without listening REFUSES with the unit named instead of converging over an unreachable cache) -- the most expensive possible no-op, which used to fire on every convergence pass and re-cold every compile on the host. And a host whose endpoint is owned by a runner slot -- srv1 on 2026-08-01, srv1-02 again on 2026-08-07 -- now REFUSES with the owner located, where it previously wrote a unit beside the stranded server and reported success."
+data provision_observes_before_it_acts_note: String = "THE PREFLIGHT IS NOW THE GATE, AND WHAT IT REPLACED WAS AN UNCONDITIONAL WRITE. Until this landed, realize_provision_build_cache had exactly one check ahead of it -- the catalog gate, which is pure id validation in a third module and never observes a host at all -- and then rendered the unit, installed it, and restarted it on every pass. The two authorities that were supposed to decide whether that was safe (gunbc.build_cache.build_cache_ensure admit_ensure_build_cache_instance, gunbc.host.host_build_cache_provision placement_verdict) had zero production callers, so the refusal named as the remedy for a measured CI-capacity incident was computed by nothing. That is the rung inflation DESIGN section 4b calls worse than sitting low: the witnesses were green, and their greenness established that the fold was correct, not that the class was guarded.\n\nTHE ORDER IS OBSERVE, ADMIT, ACT, AND IT IS LOAD-BEARING RATHER THAN TIDY. Observing after acting would read back the state we just wrote, which is the same fabricated evidence gunbc.host.host_build_cache_provision build_cache_supervision_observation_note measured on srv3: a probe that greens on what it produced rather than on the state the lane exists to establish. Every read here happens BEFORE the first mutation, and the admission decides from those reads alone.\n\nWHAT THIS CHANGES ON A LIVE HOST, in the two arms that matter. A host whose managed unit already owns the endpoint AND IS OBSERVED LISTENING ON IT now converges WITHOUT reinstalling and restarting it (ownership alone is not enough, and was not enough here even before it was written down: gunbc.build_cache.build_cache_ensure ensure_is_a_reconcile_not_an_install_note records the 2026-08-22 correction, under which our own unit holding its socket open without listening REFUSES with the unit named instead of converging over an unreachable cache) -- the most expensive possible no-op, which used to fire on every convergence pass and re-cold every compile on the host. And a host whose endpoint is owned by a runner slot -- srv1 on 2026-08-01, srv1-02 again on 2026-08-07 -- now REFUSES with the owner located, where it previously wrote a unit beside the stranded server and reported success."
 
 fn build_cache_host_read(command: ArgvCommand, transport: HostEffectTransport) -> HostRead {
   match build_cache_host_read_observed(command: command, transport: transport) {
@@ -5025,7 +5025,7 @@ type BuildCacheReadResult
 // body -- the ensure step, still unconverted -- is strictly smaller as a share of what this effect
 // does than it was.
 
-// IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason gunbc.bmc_netboot_serve's
+// IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason gunbc.bmc.bmc_netboot_serve's
 // executor does: a
 // List<String> parameter is a place an argv can be hand-spelled, and one of this function's callers
 // was doing exactly that ("stat", "-c", "%i", ...). The ssh arms still need the flat vector, which
@@ -5097,7 +5097,7 @@ fn build_cache_path_kind_read(
 // WHEN NO OWNER RESOLVES, THE OWNER READS ARE NOT PERFORMED AND SAY SO. The alternative -- issuing
 // cat /proc//cgroup against a pid that does not exist and letting it fail -- would reach the same
 // arms by accident and cost four round trips per pass to do it. Filling them with a
-// positively-named HostReadFailed keeps the decode on one path (gunbc.build_cache_endpoint_observe
+// positively-named HostReadFailed keeps the decode on one path (gunbc.build_cache.build_cache_endpoint_observe
 // unreachable_is_a_read_state_not_a_short_circuit_note makes the same move for an unreachable host)
 // while making the reason for the absence readable rather than inferred from a contrived errno.
 
@@ -5257,7 +5257,7 @@ fn build_cache_reads_without_owner(
 }
 
 // THE UNLINK RUNS AS ITS OWN COMMAND BEFORE THE ENSURE, WHICH IS WHAT
-// gunbc.build_cache_endpoint_path no_unconditional_execstartpre_note REQUIRES. Folding it into the
+// gunbc.build_cache.build_cache_endpoint_path no_unconditional_execstartpre_note REQUIRES. Folding it into the
 // unit as ExecStartPre would unlink in every path state rather than the one state where unlinking
 // is correct -- harmless under an absent path, destructive under a conflict, and silently fatal
 // under a live listener. Here it is reached only from EndpointClearedByUnlink, which
@@ -5325,10 +5325,10 @@ fn build_cache_unlink_then_ensure(
   }
 }
 
-// TWO AUTHORITIES, TWO DIFFERENT QUESTIONS, ONE EACH SIDE OF THE ACT. gunbc.build_cache_ensure
+// TWO AUTHORITIES, TWO DIFFERENT QUESTIONS, ONE EACH SIDE OF THE ACT. gunbc.build_cache.build_cache_ensure
 // admit_ensure_build_cache_instance is the PRECONDITION -- may this host be written to at all,
 // given who owns the endpoint and what is at the path -- and it runs before the first mutation.
-// gunbc.host_build_cache_provision provision_build_cache_verdict is the POSTCONDITION -- given what
+// gunbc.host.host_build_cache_provision provision_build_cache_verdict is the POSTCONDITION -- given what
 // the ensure produced, is this host converged -- and it runs after. The shell-to-dag census C-note
 // found both unconsumed and called them one wiring job; they are, and this is that job, but they
 // are not one check applied twice: the precondition can refuse a host the postcondition would never
@@ -5445,12 +5445,12 @@ fn build_cache_ensure_step(
 // THE EFFECT CARRIES NO PAYLOAD, AND THAT IS DELIBERATE AFTER THE A5 LESSON. EnsureBuildCacheInstance carries
 // its BuildCacheInstance because the desired daemon is a row a realizer would otherwise have to guess. The
 // pool's desired state is not a row: the slice NAME comes from the topology and the SIZE is derived by
-// gunbc.fleet_host_budget compile_pool_bytes_for from the cited jobserver knobs. Putting either on the effect
+// gunbc.fleet.fleet_host_budget compile_pool_bytes_for from the cited jobserver knobs. Putting either on the effect
 // would mint a second answer to a question that already has one authority, so the effect names the target host
 // and the derivation happens here from that host's own facts.
 // WHICH SLICE IS OBSERVED WHEN THE TOPOLOGY DECLARES NONE. Under CompilePoolInRunnerSlots there is no declared
 // slice to read, and the observation is a parameter the admission takes whether or not it consults it -- it
-// refuses on topology first. The subject is therefore the slice gunbc.host_layout names, which makes the read
+// refuses on topology first. The subject is therefore the slice gunbc.host.host_layout names, which makes the read
 // a true statement about the host (that unit really is what a managed pool would be called there) rather than
 // a fabricated subject, and keeps the read unconditional so it cannot become a function of the answer it
 // feeds. It also produces a real finding for free: on a host where the topology says no pool is managed and
@@ -5509,7 +5509,7 @@ fn compile_pool_slice_system_path(slice_unit: NonEmptyStr) -> String {
 // a filesystem boundary because the rename stays within /etc/systemd/system.
 //
 // THE BYTES INSTALLED ARE THE BYTES THE ADMISSION ADMITTED. The fold serializes the SystemdUnitFile
-// gunbc.build_cache_unit rendered from the derived size rather than re-rendering from the same
+// gunbc.build_cache.build_cache_unit rendered from the derived size rather than re-rendering from the same
 // inputs. Re-rendering would be a second construction of one artifact, and the failure it admits is
 // not hypothetical: the admission could be granted against one size and the file written from
 // another with nothing between them to notice.
@@ -5575,7 +5575,7 @@ fn compile_pool_ensure_admission_for(
 }
 
 // The size is DERIVED here from the target host's own facts rather than travelling on the effect, through the
-// same compile_pool_bytes_for gunbc.ci_runner_placement uses to shrink the runner pool. The two must agree or
+// same compile_pool_bytes_for gunbc.ci.ci_runner_placement uses to shrink the runner pool. The two must agree or
 // the host stops conserving, and they agree because there is one derivation, not because two call sites were
 // kept in step.
 fn compile_pool_sizing_for_host(node: ComputeHost, placement: CompilePoolPlacement) -> CompilePoolResolution {

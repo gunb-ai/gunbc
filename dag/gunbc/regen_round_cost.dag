@@ -333,7 +333,7 @@ type AffectedSetDisposition
 // add `--regen-affected-scope` for the same round with the bound consumed. A
 // change-denominated regen is bounded above by the reverse closure
 // (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one
-// whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries
+// whole-crate compile until the stage0 partition (gunbc.stage0.stage0_crate_partition_generated) carries
 // the mirrors, which is the larger of the two costs on every measured host.
 
 // WHERE THE ROUND'S TIME GOES, read from the instrument on 2026-08-30 (producer: this module's
@@ -398,7 +398,7 @@ type AffectedSetDisposition
 //   compile.emit            -> v1.compiler.emit_rust emit_rust, threading the prior generation's
 //                              population and the affected set through the CompilePipelineOptions
 //                              carrier compile_sources_with_options already takes.
-//   rebuild_from_installed  -> gunbc.stage0_crate_partition_generated carrying the mirrors, so
+//   rebuild_from_installed  -> gunbc.stage0.stage0_crate_partition_generated carrying the mirrors, so
 //                              cargo recompiles a partition rather than one whole crate.
 // Neither one moves the other's phase, and they are owned by different lanes. A reader who takes
 // the partition as the emit phase's trigger will watch the wrong artifact for the wrong number.

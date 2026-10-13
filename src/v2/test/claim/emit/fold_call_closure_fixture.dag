@@ -1,4 +1,4 @@
-module v2.test.emit.fold_call_closure_fixture
+module v2.test.claim.emit.fold_call_closure_fixture
 
 import v2.std.arrow_signature { declared_signature }
 import v2.std.node { Symbol, ArrowBodyEdge, core_edge, Authored }

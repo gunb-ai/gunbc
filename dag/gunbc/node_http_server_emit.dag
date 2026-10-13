@@ -42,7 +42,7 @@ import extdeps.languages.typescript.program {
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 
 // DISPOSITION (P5, UI-model migration): the belt-A ROADMAP dashboard emit is DELETED. Belt B (gunbc
-// serve / gunbc.roadmap_serve) retired it from deploy membership (live_deploy_spec_belt_b_note: the
+// serve / gunbc.roadmap.roadmap_serve) retired it from deploy membership (live_deploy_spec_belt_b_note: the
 // service is `gunbc serve`, not an emitted server.js) and this PR proved the belt-B path end-to-end
 // by execution (GET / , /roadmap, /sandbox render; POST /dispatch and /sandbox/echo answer
 // in-process). Gone with it: the belt-A smuggled-exec dispatch route (BeltDispatchRouteConfig + the

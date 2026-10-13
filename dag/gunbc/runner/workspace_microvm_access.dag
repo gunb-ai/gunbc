@@ -1,4 +1,4 @@
-module gunbc.workspace_microvm_access
+module gunbc.runner.workspace_microvm_access
 
 import extdeps.systemd.journalctl
 import gunbc.workspace_ssh_access { WorkspaceConnectionRoute, WorkspaceDirectSsh, WorkspaceGatewaySsh, workspace_connection_route_refusal }
@@ -12,12 +12,12 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 import extdeps.ssh.openssh_client_commands { ssh_keyscan_command }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.command_runner { run_shell_command_capture }
-import gunbc.runner_microvm_network { runner_slot_network }
-import gunbc.runner_microvm_lifecycle { AttemptIdentity, in_flight_attempt_of_identity }
-import gunbc.runner_microvm_cell_readiness_store { encode_attempt }
+import gunbc.runner.runner_microvm_network { runner_slot_network }
+import gunbc.runner.runner_microvm_lifecycle { AttemptIdentity, in_flight_attempt_of_identity }
+import gunbc.runner.runner_microvm_cell_readiness_store { encode_attempt }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.runner_microvm_cell_readiness { WorkspaceWorkload, GitHubRunnerWorkload }
-import gunbc.runner_microvm_lifecycle_realize {
+import gunbc.runner.runner_microvm_cell_readiness { WorkspaceWorkload, GitHubRunnerWorkload }
+import gunbc.runner.runner_microvm_lifecycle_realize {
   AttemptLaunch, VmmStarted, bind_attempt_console, AttemptConsoleBound, AttemptConsoleUnbound, AttemptConsoleNotStarted,
 }
 

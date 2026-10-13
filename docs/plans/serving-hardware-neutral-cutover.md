@@ -69,13 +69,13 @@ Import-graph census (`.dag` `import gunbc.spark.<X> { … }`). Internal X→X ed
 
 | Consumer | Imports from X | Note |
 |---|---|---|
-| `gunbc.ci_spec` | `native_serving_apply`, `pair_serving_apply` (receipt paths) | Workflow vocabulary; v1 required lanes withdrawn. Silent residue if X files vanish. |
+| `gunbc.ci.ci_spec` | `native_serving_apply`, `pair_serving_apply` (receipt paths) | Workflow vocabulary; v1 required lanes withdrawn. Silent residue if X files vanish. |
 | `gunbc.instruments.fabric_capacity_standing` | `pair_serving_authority`, `pair_serving_authority_log`, `vllm_kv_layout_observe`, `vllm_serving_launch` | Spark capacity instrument. |
 | `gunbc.frontend_eval.serving_identity` | `vllm_observed` | Eval identity. |
-| `gunbc.runner_fleet_ci_posture` | `first_party_serving` | Fleet posture. |
+| `gunbc.runner.runner_fleet_ci_posture` | `first_party_serving` | Fleet posture. |
 | `gunbc.workspace_demo_preparation_policy` | `first_party_serving` | Demo policy. |
-| `gunbc.fleet_workflow_steps` | `vllm_runtime_image_build` | Image build step. |
-| `gunbc.fabric_store_operation_admission` | `pair_serving_authority_log` | Store admission keyed on Spark authority log. |
+| `gunbc.fleet.fleet_workflow_steps` | `vllm_runtime_image_build` | Image build step. |
+| `gunbc.fabric.fabric_store_operation_admission` | `pair_serving_authority_log` | Store admission keyed on Spark authority log. |
 | `product.fabric.node_qualification` | `serving_rank_observe` | Qualification vs Spark rank inspect. |
 | `product.superchip_assembly_qualification` | `serving_promotion` | Superchip vs promotion receipts. |
 
@@ -85,7 +85,7 @@ Import-graph census (`.dag` `import gunbc.spark.<X> { … }`). Internal X→X ed
 
 ### Evidence modules
 
-Witnesses under `test.claim.spark.*`, `test.claim.serving.*`, `test.claim.harness_*`, plus `test.claim.workflow_dispatch_input_witness`, `test.claim.vllm_memory_receipt`, `test.claim.vllm_kv_dtype_capability_witness_test`, `test.claim.frontend_eval_witness_test`, `test.claim.fabric.{node_qualification,jurisdiction_drop_accounting}_witness`, `test.claim.product.superchip_assembly_qualification_witness`. Doctrine: re-enroll claims Y still makes; retire Spark-only claims with a receipt. Not listed at identity grain here — the executing cut writes `EvidenceDisposition` rows.
+Witnesses under `test.claim.spark.*`, `test.claim.serving.*`, `test.claim.harness_*`, plus `test.claim.workflow_dispatch_input_witness`, `test.claim.vllm_memory_receipt`, `test.claim.vllm_kv_dtype_capability_witness`, `test.claim.frontend_eval_witness`, `test.claim.fabric.{node_qualification,jurisdiction_drop_accounting}_witness`, `test.claim.product.superchip_assembly_qualification_witness`. Doctrine: re-enroll claims Y still makes; retire Spark-only claims with a receipt. Not listed at identity grain here — the executing cut writes `EvidenceDisposition` rows.
 
 ### Prose that will not refuse (manual grep at deletion)
 
