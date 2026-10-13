@@ -14,34 +14,40 @@ import v1.compiler.artifact { Rust }
 import std.types { List, String, Bool }
 
 // THE SHARED-TYPE SET IS KEYED ON A TYPE'S BARE NAME (v1.compiler.emit_rust build_shared_types).
-// This module owns the GRADES of a leaf collision whose declarers are both in one emitted
-// closure: same independent sharing (benign for the shared-type set) versus different sharing.
-// rustc's answer on a different-sharing collision is a separate grade; the producer asks cargo
-// and splices that grade through rustc_grade_from_cargo_status_zero / apply_rustc_to_different_sharing.
+// This module owns the SHARING GRADE of a leaf collision whose declarers are both in one
+// emitted closure, and the SUBJECT-GRAIN rustc build of that closure. Independent sharing is
+// maybe_mark_shared_type per declaration. rustc is one cargo run per subject, never stamped
+// onto every different-sharing row.
 //
-// Independent sharing is the answer maybe_mark_shared_type would give ONE declaration if the set
-// were keyed on the declaration: a coproduct of Int fields would not share; a List field would.
-// The leaf-keyed set conflates those answers.
+// EmitGraphInfo.recursive_type_set is leaf-keyed last-write-wins. When a colliding leaf is in
+// that set, this module does not report SameSharing/DifferentSharing from it:
+// SharingUndeterminedByDeclaration.
 //
-// compile_to_resolved over an authored source vector is called from the host (it does not run
-// under the interpreter). This module classifies a ResolvedGraph the host already holds.
+// compile_to_resolved over an authored source vector is called from the host.
 
 type CollisionSharing
   = SameSharing
   | DifferentSharing
+  | SharingUndeterminedByDeclaration
 
-type RustcGrade
-  = RustcRefused
-  | RustcAccepted
-  | RustcNotAttempted
+type SubjectBuild
+  = BuildAccepted
+  | BuildRefused { diagnostic: String }
+  | BuildNotAttempted
 
 type LeafCollisionRow {
   leaf: String
   declarers: List<String>
   would_share: List<Bool>
   sharing: CollisionSharing
-  rustc: RustcGrade
 }
+
+type SubjectCollisionReport {
+  rows: List<LeafCollisionRow>
+  build: SubjectBuild
+}
+
+data refuse_diagnostic_class: String = "E0204"
 
 fn collision_sharing_of(would_share: List<Bool>) -> CollisionSharing {
   match would_share |> first {
@@ -51,44 +57,21 @@ fn collision_sharing_of(would_share: List<Bool>) -> CollisionSharing {
   }
 }
 
-fn rustc_not_attempted() -> RustcGrade {
-  RustcNotAttempted
+fn sharing_of_collision(leaf: String, would_share: List<Bool>, recursive_type_set: Set<String>) -> CollisionSharing {
+  if set_contains(recursive_type_set, leaf) {
+    SharingUndeterminedByDeclaration
+  } else {
+    collision_sharing_of(would_share: would_share)
+  }
 }
 
-fn rustc_grade_from_cargo_status_zero(status_zero: Bool) -> RustcGrade {
-  if status_zero { RustcAccepted } else { RustcRefused }
-}
-
-fn leaf_collision_row(leaf: String, declarers: List<String>, would_share: List<Bool>, rustc: RustcGrade) -> LeafCollisionRow {
+fn leaf_collision_row(leaf: String, declarers: List<String>, would_share: List<Bool>, sharing: CollisionSharing) -> LeafCollisionRow {
   LeafCollisionRow {
     leaf: leaf
     declarers: declarers
     would_share: would_share
-    sharing: collision_sharing_of(would_share: would_share)
-    rustc: rustc
+    sharing: sharing
   }
-}
-
-fn red_fixture_flags_different_sharing(rows: List<LeafCollisionRow>) -> Bool {
-  rows |> any(r =>
-    match r.sharing {
-      DifferentSharing => true
-      SameSharing => false
-    }
-  )
-}
-
-fn green_fixture_has_no_collision(rows: List<LeafCollisionRow>) -> Bool {
-  (rows |> count) == 0
-}
-
-fn apply_rustc_to_different_sharing(rows: List<LeafCollisionRow>, grade: RustcGrade) -> List<LeafCollisionRow> {
-  rows |> map(r =>
-    match r.sharing {
-      SameSharing => r
-      DifferentSharing => leaf_collision_row(leaf: r.leaf, declarers: r.declarers, would_share: r.would_share, rustc: grade)
-    }
-  )
 }
 
 fn declaration_would_share(summary: TypeSummary, recursive_type_set: Set<String>, needs_sharing: Bool) -> Bool {
@@ -111,7 +94,7 @@ fn collision_row_of_leaf(info: EmitGraphInfo, leaf: String, needs_sharing: Bool)
   } else {
     let would_share = declarers |> map(identity => would_share_of_identity(info: info, identity: identity, needs_sharing: needs_sharing))
     Present {
-      value: leaf_collision_row(leaf: leaf, declarers: declarers, would_share: would_share, rustc: rustc_not_attempted())
+      value: leaf_collision_row(leaf: leaf, declarers: declarers, would_share: would_share, sharing: sharing_of_collision(leaf: leaf, would_share: would_share, recursive_type_set: info.recursive_type_set))
     }
   }
 }
@@ -137,18 +120,78 @@ fn collisions_from_sources(sources: List<SourceFile>) -> List<LeafCollisionRow>?
   }
 }
 
+fn subject_report(rows: List<LeafCollisionRow>, build: SubjectBuild) -> SubjectCollisionReport {
+  SubjectCollisionReport { rows: rows, build: build }
+}
+
+fn build_accepted() -> SubjectBuild {
+  BuildAccepted
+}
+
+fn build_refused(diagnostic: String) -> SubjectBuild {
+  BuildRefused { diagnostic: diagnostic }
+}
+
+fn build_not_attempted() -> SubjectBuild {
+  BuildNotAttempted
+}
+
+fn report_has_different_sharing(report: SubjectCollisionReport) -> Bool {
+  report.rows |> any(r =>
+    match r.sharing {
+      DifferentSharing => true
+      SameSharing => false
+      SharingUndeterminedByDeclaration => false
+    }
+  )
+}
+
+fn report_has_no_collision(report: SubjectCollisionReport) -> Bool {
+  (report.rows |> count) == 0
+}
+
+fn diagnostic_names_class(diagnostic: String, class: String) -> Bool {
+  string_contains(s: diagnostic, pattern: class)
+}
+
+fn refuse_control_holds(report: SubjectCollisionReport) -> Bool {
+  match report.build {
+    BuildRefused { diagnostic: d } =>
+      report_has_different_sharing(report: report) && diagnostic_names_class(diagnostic: d, class: refuse_diagnostic_class)
+    BuildAccepted => false
+    BuildNotAttempted => false
+  }
+}
+
+fn silent_control_holds(report: SubjectCollisionReport) -> Bool {
+  match report.build {
+    BuildAccepted => report_has_different_sharing(report: report)
+    BuildRefused { diagnostic: _ } => false
+    BuildNotAttempted => false
+  }
+}
+
+fn green_control_holds(report: SubjectCollisionReport) -> Bool {
+  match report.build {
+    BuildAccepted => report_has_no_collision(report: report)
+    BuildRefused { diagnostic: _ } => false
+    BuildNotAttempted => false
+  }
+}
+
 fn sharing_label(sharing: CollisionSharing) -> String {
   match sharing {
     SameSharing => "same"
     DifferentSharing => "different"
+    SharingUndeterminedByDeclaration => "undetermined"
   }
 }
 
-fn rustc_label(grade: RustcGrade) -> String {
-  match grade {
-    RustcRefused => "refused"
-    RustcAccepted => "accepted"
-    RustcNotAttempted => "not_attempted"
+fn build_label(build: SubjectBuild) -> String {
+  match build {
+    BuildAccepted => "accepted"
+    BuildRefused { diagnostic: d } => concat("refused:", d)
+    BuildNotAttempted => "not_attempted"
   }
 }
 
@@ -157,40 +200,51 @@ fn would_share_cell(b: Bool) -> String {
 }
 
 fn collision_report_line(subject: String, row: LeafCollisionRow) -> String {
-  concat(concat(concat(concat(concat("collision subject=", subject), concat(" leaf=", row.leaf)), concat(" declarers=", row.declarers |> join(separator: ","))), concat(" would_share=", row.would_share |> map(b => would_share_cell(b: b)) |> join(separator: ","))), concat(concat(" sharing=", sharing_label(sharing: row.sharing)), concat(" rustc=", rustc_label(grade: row.rustc))))
+  concat(concat(concat(concat("collision subject=", subject), concat(" leaf=", row.leaf)), concat(" declarers=", row.declarers |> join(separator: ","))), concat(concat(" would_share=", row.would_share |> map(b => would_share_cell(b: b)) |> join(separator: ",")), concat(" sharing=", sharing_label(sharing: row.sharing))))
 }
 
-fn subject_summary_line(kind: String, name: String, rows: List<LeafCollisionRow>) -> String {
-  let same = rows |> filter(r =>
+fn subject_summary_line(kind: String, name: String, report: SubjectCollisionReport) -> String {
+  let same = report.rows |> filter(r =>
     match r.sharing {
       SameSharing => true
       DifferentSharing => false
+      SharingUndeterminedByDeclaration => false
     }
   ) |> count
-  let different = rows |> filter(r =>
+  let different = report.rows |> filter(r =>
     match r.sharing {
       DifferentSharing => true
       SameSharing => false
+      SharingUndeterminedByDeclaration => false
     }
   ) |> count
-  concat(concat(concat(concat("subject kind=", kind), concat(" name=", name)), concat(" colliding_leaves=", to_string(rows |> count))), concat(concat(" same_sharing=", to_string(same)), concat(" different_sharing=", to_string(different))))
+  let undetermined = report.rows |> filter(r =>
+    match r.sharing {
+      SharingUndeterminedByDeclaration => true
+      SameSharing => false
+      DifferentSharing => false
+    }
+  ) |> count
+  concat(concat(concat(concat(concat("subject kind=", kind), concat(" name=", name)), concat(" colliding_leaves=", to_string(report.rows |> count))), concat(concat(" same_sharing=", to_string(same)), concat(" different_sharing=", to_string(different)))), concat(concat(" undetermined_sharing=", to_string(undetermined)), concat(" build=", build_label(build: report.build))))
 }
 
 fn control_line(name: String, held: Bool) -> String {
   concat(concat(concat("control ", name), " "), if held { "held" } else { "unmet" })
 }
 
-fn fixture_standing(red_rows: List<LeafCollisionRow>, green_rows: List<LeafCollisionRow>) -> String {
-  let red_held = red_fixture_flags_different_sharing(rows: red_rows)
-  let green_held = green_fixture_has_no_collision(rows: green_rows)
-  let held = red_held && green_held
+fn fixture_standing(refuse_report: SubjectCollisionReport, silent_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> String {
+  let refuse_held = refuse_control_holds(report: refuse_report)
+  let silent_held = silent_control_holds(report: silent_report)
+  let green_held = green_control_holds(report: green_report)
+  let held = refuse_held && silent_held && green_held
   [
     concat("STANDING ", if held { "held" } else { "unmet" }),
-    control_line(name: "red_fixture_flags_different_sharing", held: red_held),
-    control_line(name: "green_fixture_has_no_collision", held: green_held)
+    control_line(name: "refuse_different_sharing_rustc_e0204", held: refuse_held),
+    control_line(name: "silent_different_sharing_rustc_accepted", held: silent_held),
+    control_line(name: "green_no_collision_rustc_accepted", held: green_held)
   ] |> join(separator: "\n")
 }
 
-fn fixture_controls_hold(red_rows: List<LeafCollisionRow>, green_rows: List<LeafCollisionRow>) -> Bool {
-  red_fixture_flags_different_sharing(rows: red_rows) && green_fixture_has_no_collision(rows: green_rows)
+fn fixture_controls_hold(refuse_report: SubjectCollisionReport, silent_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> Bool {
+  refuse_control_holds(report: refuse_report) && silent_control_holds(report: silent_report) && green_control_holds(report: green_report)
 }

@@ -1,0 +1,9 @@
+module stlc.silent_copy
+
+type Mark
+  = Off
+  | On
+
+fn hold_copy() -> Int {
+  0
+}

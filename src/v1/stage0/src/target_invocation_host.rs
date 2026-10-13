@@ -4401,11 +4401,12 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
 
 /// `gunbc.instrument_targets` `shared_type_leaf_collision_census_label`.
 ///
-/// TRANSPORT: load each measured closure, `compile_to_resolved`, and — only for a
-/// different-sharing collision — emit and ask cargo. Grades, row construction, subject
-/// summaries and fixture standing are `v1.tests.claim.shared_type_leaf_collision_census`.
-/// Independent sharing is `v1.compiler.emit_rust` `maybe_mark_shared_type` per declaration,
-/// called from that module. Standing is the fixture controls; the live rows are the report.
+/// TRANSPORT: load each measured closure, `compile_to_resolved`, emit, and ask cargo
+/// once per subject. Sharing rows and fixture standing are
+/// `v1.tests.claim.shared_type_leaf_collision_census`. Independent sharing is
+/// `v1.compiler.emit_rust` `maybe_mark_shared_type` per declaration. Standing is the
+/// three fixture cargo controls; the live rows are a report (sharing at declaration
+/// grain, rustc at subject grain).
 fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationOutcome {
     use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
     use crate::v1_compiler_emit_rust::emit_rust;
@@ -4445,40 +4446,38 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
         Ok(out)
     }
 
-    fn cargo_status_zero(
+    fn subject_build_of_cargo(
         entry: &str,
         graph: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
-    ) -> Result<(bool, String), String> {
+    ) -> Result<census::SubjectBuild, String> {
         let emit = emit_rust(graph);
         match super::emitted_closure_compile_host::cargo_verdict_of_emit(entry, &emit) {
             Err(cause) => Err(cause),
-            Ok(super::emitted_closure_compile_host::CargoVerdict::Completed {
-                status,
-                probe_diagnostic,
-                ..
-            }) => Ok((
-                status == 0,
-                probe_diagnostic.unwrap_or_else(|| format!("cargo status {status}")),
-            )),
-            Ok(other) => Err(format!("{other:?}")),
+            Ok(verdict) => {
+                match &verdict {
+                    super::emitted_closure_compile_host::CargoVerdict::Completed {
+                        status, ..
+                    } if *status == 0 => Ok(census::build_accepted()),
+                    super::emitted_closure_compile_host::CargoVerdict::NotAttempted { .. } => {
+                        Ok(census::build_not_attempted())
+                    }
+                    _ => Ok(census::build_refused(
+                        super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
+                    )),
+                }
+            }
         }
     }
 
-    fn print_rows(
-        kind: &str,
-        subject: &str,
-        rows: Rc<im::Vector<Rc<census::LeafCollisionRow>>>,
-        rustc_detail: &str,
-    ) {
+    fn print_report(kind: &str, subject: &str, report: Rc<census::SubjectCollisionReport>) {
         println!(
             "{PREFIX}: {}",
-            census::subject_summary_line(kind.to_string(), subject.to_string(), rows.clone())
+            census::subject_summary_line(kind.to_string(), subject.to_string(), report.clone())
         );
-        for row in rows.iter() {
+        for row in report.rows.iter() {
             println!(
-                "{PREFIX}: {} {}",
-                census::collision_report_line(subject.to_string(), row.clone()),
-                rustc_detail
+                "{PREFIX}: {}",
+                census::collision_report_line(subject.to_string(), row.clone())
             );
         }
     }
@@ -4486,75 +4485,76 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     fn classify_sources(
         label: &str,
         sources: Vec<Rc<SourceFile>>,
-        rustc_when_different: bool,
-    ) -> Result<(Rc<im::Vector<Rc<census::LeafCollisionRow>>>, String), String> {
+    ) -> Result<Rc<census::SubjectCollisionReport>, String> {
         let compiled = compile_to_resolved(Rc::new(sources.into()));
         let graph = compiled
             .graph
             .clone()
             .ok_or_else(|| format!("{label}: compile_to_resolved produced no graph"))?;
-        let mut rows = census::collisions_of_graph(graph.clone());
-        let mut rustc_detail = String::new();
-        if rustc_when_different && census::red_fixture_flags_different_sharing(rows.clone()) {
-            let (status_zero, detail) = cargo_status_zero(label, graph)?;
-            rustc_detail = if status_zero { String::new() } else { detail };
-            rows = census::apply_rustc_to_different_sharing(
-                rows,
-                census::rustc_grade_from_cargo_status_zero(status_zero),
-            );
-        }
-        Ok((rows, rustc_detail))
+        let rows = census::collisions_of_graph(graph.clone());
+        let build = subject_build_of_cargo(label, graph)?;
+        Ok(census::subject_report(rows, build))
     }
 
-    let red_sources = match load_dir(FIXTURE_DIR) {
-        Ok(all) => all
-            .into_iter()
+    let fixture_sources = match load_dir(FIXTURE_DIR) {
+        Ok(all) => all,
+        Err(e) => return unreached(e),
+    };
+    let select = |names: &[&str]| {
+        fixture_sources
+            .iter()
             .filter(|s| {
                 let name = std::path::Path::new(&s.path)
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("");
-                matches!(name, "copy_word.dag" | "shared_word.dag" | "red_entry.dag")
+                names.iter().any(|want| name == *want)
             })
-            .collect::<Vec<_>>(),
-        Err(e) => return unreached(e),
+            .cloned()
+            .collect::<Vec<_>>()
     };
-    let green_sources = match load_dir(FIXTURE_DIR) {
-        Ok(all) => all
-            .into_iter()
-            .filter(|s| {
-                let name = std::path::Path::new(&s.path)
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-                matches!(name, "green_a.dag" | "green_b.dag" | "green_entry.dag")
-            })
-            .collect::<Vec<_>>(),
-        Err(e) => return unreached(e),
-    };
+    let refuse_sources = select(&["copy_word.dag", "shared_word.dag", "red_entry.dag"]);
+    let silent_sources = select(&["silent_zcopy.dag", "silent_share.dag", "silent_entry.dag"]);
+    let green_sources = select(&["green_a.dag", "green_b.dag", "green_entry.dag"]);
+    if refuse_sources.len() != 3 {
+        return unreached("refuse fixture files missing".to_string());
+    }
+    if silent_sources.len() != 3 {
+        return unreached("silent fixture files missing".to_string());
+    }
+    if green_sources.len() != 3 {
+        return unreached("green fixture files missing".to_string());
+    }
 
-    let (red_rows, red_detail) = match classify_sources("stlc.red_entry", red_sources, true) {
-        Ok(rows) => rows,
+    let refuse_report = match classify_sources("stlc.red_entry", refuse_sources) {
+        Ok(report) => report,
         Err(e) => return unreached(e),
     };
-    let (green_rows, green_detail) =
-        match classify_sources("stlc.green_entry", green_sources, false) {
-            Ok(rows) => rows,
-            Err(e) => return unreached(e),
-        };
-    print_rows("fixture", "stlc.red_entry", red_rows.clone(), &red_detail);
-    print_rows(
-        "fixture",
-        "stlc.green_entry",
-        green_rows.clone(),
-        &green_detail,
+    let silent_report = match classify_sources("stlc.silent_entry", silent_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    let green_report = match classify_sources("stlc.green_entry", green_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    print_report("fixture", "stlc.red_entry", refuse_report.clone());
+    print_report("fixture", "stlc.silent_entry", silent_report.clone());
+    print_report("fixture", "stlc.green_entry", green_report.clone());
+
+    let standing = census::fixture_standing(
+        refuse_report.clone(),
+        silent_report.clone(),
+        green_report.clone(),
     );
-
-    let standing = census::fixture_standing(red_rows.clone(), green_rows.clone());
     for line in standing.lines() {
         println!("{PREFIX}: {line}");
     }
-    let held = census::fixture_controls_hold(red_rows.clone(), green_rows.clone());
+    let held = census::fixture_controls_hold(
+        refuse_report.clone(),
+        silent_report.clone(),
+        green_report.clone(),
+    );
 
     let mut subjects: Vec<(String, String)> = Vec::new();
     for (label, producer) in instrument_registry() {
@@ -4577,8 +4577,8 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     let mut reports_ok = true;
     for (name, entry) in subjects {
         match cli_run::load_sources_for_entry_with_pool_index(source_roots, &entry, false) {
-            Ok(sources) => match classify_sources(&name, sources, true) {
-                Ok((rows, detail)) => print_rows("closure", &name, rows, &detail),
+            Ok(sources) => match classify_sources(&name, sources) {
+                Ok(report) => print_report("closure", &name, report),
                 Err(e) => {
                     reports_ok = false;
                     println!("{PREFIX}: subject kind=closure name={name} unreached {e}");
