@@ -248,3 +248,23 @@ fn fixture_standing(refuse_report: SubjectCollisionReport, silent_report: Subjec
 fn fixture_controls_hold(refuse_report: SubjectCollisionReport, silent_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> Bool {
   refuse_control_holds(report: refuse_report) && silent_control_holds(report: silent_report) && green_control_holds(report: green_report)
 }
+
+fn observation_held(standing_held: Bool, live_unobserved: Bool) -> Bool {
+  standing_held && !live_unobserved
+}
+
+fn build_is_reportable_finding(build: SubjectBuild) -> Bool {
+  match build {
+    BuildAccepted => true
+    BuildRefused { diagnostic: _ } => true
+    BuildNotAttempted => false
+  }
+}
+
+fn build_is_refused_finding(build: SubjectBuild) -> Bool {
+  match build {
+    BuildRefused { diagnostic: _ } => true
+    BuildAccepted => false
+    BuildNotAttempted => false
+  }
+}

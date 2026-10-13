@@ -4406,7 +4406,39 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
 /// `v1.tests.claim.shared_type_leaf_collision_census`. Independent sharing is
 /// `v1.compiler.emit_rust` `maybe_mark_shared_type` per declaration. Standing is the
 /// three fixture cargo controls; the live rows are a report (sharing at declaration
-/// grain, rustc at subject grain).
+/// grain, rustc at subject grain). Completed cargo is a subject-grain finding;
+/// NotAttempted / DidNotComplete / DependencyFetchFailed are SubjectUnreached.
+fn shared_type_census_subject_build_from_cargo_verdict(
+    verdict: &crate::cli_run::emitted_closure_compile_host::CargoVerdict,
+) -> Result<
+    std::rc::Rc<crate::v1_tests_claim_shared_type_leaf_collision_census::SubjectBuild>,
+    String,
+> {
+    use crate::cli_run::emitted_closure_compile_host::{cargo_verdict_summary, CargoVerdict};
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+    match verdict {
+        CargoVerdict::Completed { status, .. } if *status == 0 => Ok(census::build_accepted()),
+        CargoVerdict::Completed { .. } => Ok(census::build_refused(cargo_verdict_summary(verdict))),
+        CargoVerdict::NotAttempted { .. }
+        | CargoVerdict::DidNotComplete { .. }
+        | CargoVerdict::DependencyFetchFailed { .. } => Err(cargo_verdict_summary(verdict)),
+    }
+}
+
+fn shared_type_census_termination(
+    standing_held: bool,
+    mapping_controls_hold: bool,
+    live_unobserved: bool,
+) -> Termination {
+    if !standing_held || !mapping_controls_hold {
+        Termination::ObservationDidNotHold
+    } else if live_unobserved {
+        Termination::SubjectUnreached
+    } else {
+        Termination::ObservationHeld
+    }
+}
+
 fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationOutcome {
     use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
     use crate::v1_compiler_emit_rust::emit_rust;
@@ -4453,19 +4485,7 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
         let emit = emit_rust(graph);
         match super::emitted_closure_compile_host::cargo_verdict_of_emit(entry, &emit) {
             Err(cause) => Err(cause),
-            Ok(verdict) => {
-                match &verdict {
-                    super::emitted_closure_compile_host::CargoVerdict::Completed {
-                        status, ..
-                    } if *status == 0 => Ok(census::build_accepted()),
-                    super::emitted_closure_compile_host::CargoVerdict::NotAttempted { .. } => {
-                        Ok(census::build_not_attempted())
-                    }
-                    _ => Ok(census::build_refused(
-                        super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
-                    )),
-                }
-            }
+            Ok(verdict) => shared_type_census_subject_build_from_cargo_verdict(&verdict),
         }
     }
 
@@ -4556,6 +4576,41 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
         green_report.clone(),
     );
 
+    use super::emitted_closure_compile_host::CargoVerdict;
+    let unobserved_mapped = [
+        CargoVerdict::NotAttempted {
+            reason: "bounded-control-unobserved".to_string(),
+        },
+        CargoVerdict::DidNotComplete {
+            detail: "bounded-control-unobserved".to_string(),
+        },
+        CargoVerdict::DependencyFetchFailed {
+            status: None,
+            stderr_tail: "bounded-control-unobserved".to_string(),
+        },
+    ]
+    .iter()
+    .all(|v| shared_type_census_subject_build_from_cargo_verdict(v).is_err());
+    let unobserved_live_control = unobserved_mapped && !census::observation_held(held, true);
+    let completed_nonzero_control = census::build_is_refused_finding(refuse_report.build.clone())
+        && census::build_is_reportable_finding(refuse_report.build.clone())
+        && census::observation_held(held, false);
+    println!(
+        "{PREFIX}: {}",
+        census::control_line(
+            "unobserved_live_with_standing_unreaches".to_string(),
+            unobserved_live_control,
+        )
+    );
+    println!(
+        "{PREFIX}: {}",
+        census::control_line(
+            "completed_nonzero_refusal_does_not_unreach".to_string(),
+            completed_nonzero_control,
+        )
+    );
+    let mapping_controls_hold = unobserved_live_control && completed_nonzero_control;
+
     let mut subjects: Vec<(String, String)> = Vec::new();
     for (label, producer) in instrument_registry() {
         match producer {
@@ -4591,17 +4646,22 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
         }
     }
 
+    let live_unobserved = !reports_ok;
     InvocationOutcome {
-        termination: if !held {
-            Termination::ObservationDidNotHold
-        } else if !reports_ok {
-            Termination::SubjectUnreached
-        } else {
-            Termination::ObservationHeld
-        },
+        termination: shared_type_census_termination(
+            held,
+            mapping_controls_hold,
+            live_unobserved,
+        ),
         message: format!(
             "{PREFIX}: {} (controls over {FIXTURE_DIR}; report over required subjects and NativeClaimProgramProducer entries)",
-            if held { "STANDING held" } else { "STANDING unmet" }
+            if census::observation_held(held && mapping_controls_hold, live_unobserved) {
+                "STANDING held"
+            } else if live_unobserved && held && mapping_controls_hold {
+                "subject unreached"
+            } else {
+                "STANDING unmet"
+            }
         ),
     }
 }
@@ -4745,5 +4805,81 @@ fn run_regen_round_cost_instrument() -> InvocationOutcome {
                 round.round_failures.join("; ")
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod shared_type_census_cargo_mapping_tests {
+    use super::*;
+    use crate::cli_run::emitted_closure_compile_host::CargoVerdict;
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+
+    fn completed(status: i32) -> CargoVerdict {
+        CargoVerdict::Completed {
+            status,
+            stderr_tail: "error[E0204]: bounded-control".to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+            warning_headers: Vec::new(),
+            cargo_network_retries: 0,
+            first_error: None,
+        }
+    }
+
+    #[test]
+    fn unobserved_cargo_outcomes_are_unreached_not_refused_findings() {
+        let not_attempted = CargoVerdict::NotAttempted {
+            reason: "live-subject-not-attempted".to_string(),
+        };
+        let did_not = CargoVerdict::DidNotComplete {
+            detail: "live-subject-did-not-complete".to_string(),
+        };
+        let fetch = CargoVerdict::DependencyFetchFailed {
+            status: Some(1),
+            stderr_tail: "live-subject-fetch-failed".to_string(),
+        };
+        let na = shared_type_census_subject_build_from_cargo_verdict(&not_attempted);
+        let dc = shared_type_census_subject_build_from_cargo_verdict(&did_not);
+        let ff = shared_type_census_subject_build_from_cargo_verdict(&fetch);
+        assert!(na.as_ref().unwrap_err().contains("NotAttempted"));
+        assert!(na
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-not-attempted"));
+        assert!(dc.as_ref().unwrap_err().contains("DidNotComplete"));
+        assert!(dc
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-did-not-complete"));
+        assert!(ff.as_ref().unwrap_err().contains("DependencyFetchFailed"));
+        assert!(ff
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-fetch-failed"));
+        assert_eq!(
+            shared_type_census_termination(true, true, true),
+            Termination::SubjectUnreached
+        );
+        assert!(!census::observation_held(true, true));
+    }
+
+    #[test]
+    fn completed_nonzero_is_a_reportable_refusal_and_does_not_unreach() {
+        let build = shared_type_census_subject_build_from_cargo_verdict(&completed(101)).unwrap();
+        assert!(census::build_is_refused_finding(build.clone()));
+        assert!(census::build_is_reportable_finding(build));
+        assert!(census::observation_held(true, false));
+        assert_eq!(
+            shared_type_census_termination(true, true, false),
+            Termination::ObservationHeld
+        );
+    }
+
+    #[test]
+    fn completed_zero_is_accepted() {
+        let build = shared_type_census_subject_build_from_cargo_verdict(&completed(0)).unwrap();
+        assert!(!census::build_is_refused_finding(build.clone()));
+        assert!(census::build_is_reportable_finding(build));
     }
 }

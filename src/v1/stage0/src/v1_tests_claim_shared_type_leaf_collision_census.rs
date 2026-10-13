@@ -535,6 +535,26 @@ pub fn fixture_controls_hold(
         && green_control_holds(green_report.clone()))
 }
 
+pub fn observation_held(standing_held: bool, live_unobserved: bool) -> bool {
+    (standing_held.clone() && !live_unobserved.clone())
+}
+
+pub fn build_is_reportable_finding(build: Rc<SubjectBuild>) -> bool {
+    match (*build.clone()).clone() {
+        SubjectBuild::BuildAccepted => true,
+        SubjectBuild::BuildRefused { diagnostic: _, .. } => true,
+        SubjectBuild::BuildNotAttempted => false,
+    }
+}
+
+pub fn build_is_refused_finding(build: Rc<SubjectBuild>) -> bool {
+    match (*build.clone()).clone() {
+        SubjectBuild::BuildRefused { diagnostic: _, .. } => true,
+        SubjectBuild::BuildAccepted => false,
+        SubjectBuild::BuildNotAttempted => false,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SameSharing;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
