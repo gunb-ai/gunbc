@@ -160,6 +160,31 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
+        function: "bash_fold_subshell_or_else_as_stmt_preserves_both_sides_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_subshell_or_else_body_refuses_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_program_subshell_or_else_body_refuses_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_if_or_else_body_refuses_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
+        function: "bash_fold_subshell_command_body_refuses_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
         function: "bash_fold_if_true_then_echo_holds",
         profile: runnable_resource_profile_negligible()
       },

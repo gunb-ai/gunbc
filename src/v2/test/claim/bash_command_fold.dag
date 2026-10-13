@@ -17,9 +17,11 @@ import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits,
   bash_build_command_from_word_nodes,
   bash_build_exit,
+  bash_build_if,
   bash_build_if_from_stmts,
   bash_build_or_else,
   bash_build_pipe,
+  bash_build_subshell,
   bash_build_subshell_from_stmts,
   bash_build_with_redir,
   bash_build_with_redir_to_file,
@@ -61,11 +63,22 @@ import v2.workflow.bash_emit {
   bash_emit_negation,
   bash_emit_negation_spelling,
   bash_emit_raw_line_matches_golden,
+  bash_emit_stmts,
   bash_emit_wrong_spelling_oracle_holds,
   bash_emit_wrong_target_oracle_holds
 }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.diagnostic {
+  Accepted,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  None,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual
+}
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates, Witness }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -116,6 +129,7 @@ data bash_fold_redir_stdout_stderr_golden: String = "'true' >&2"
 data bash_fold_subshell_golden: String = "('true')"
 data bash_fold_subshell_multi_golden: String = "('true'; 'false')"
 data bash_fold_subshell_nested_golden: String = "('true' && 'false')"
+data bash_fold_subshell_or_else_golden: String = "('true' || 'false')"
 
 fn bash_fold_command_stmt(node: Node) -> BashEmitStmt {
   BashEmitStmt {
@@ -503,6 +517,73 @@ test fn bash_fold_subshell_nested_and_then_holds() -> Bool {
       node: bash_build_subshell_from_stmts(stmts: [bash_fold_and_then_true_false_emitted])
     ),
     golden: bash_fold_subshell_nested_golden
+  )
+}
+
+fn bash_fold_or_else_true_false_node() -> Node {
+  bash_build_or_else(
+    left: bash_fold_cmd_true_emitted,
+    right: bash_build_command_from_lits(lits: ["false"])
+  )
+}
+
+fn bash_fold_stmt_list_malformed_refusal(o: Outcome<String>) -> Bool {
+  match o {
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^bash_fold_serialize_stmt_list_malformed
+        && match d.head.at {
+          NodeLocus { anchor: _ } => true
+          Textual { file: _, extent: _ } => false
+          SourcePortLocus { anchor: _, file: _, extent: _ } => false
+          InvariantPortLocus { anchor: _, invariant: _ } => false
+          DeclarationLocus { declaration: _ } => false
+        }
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn bash_fold_subshell_or_else_as_stmt_preserves_both_sides_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_subshell_stmt(
+      node: bash_build_subshell_from_stmts(stmts: [bash_fold_or_else_true_false_node()])
+    ),
+    golden: bash_fold_subshell_or_else_golden
+  )
+}
+
+test fn bash_fold_subshell_or_else_body_refuses_holds() -> Bool {
+  bash_fold_stmt_list_malformed_refusal(
+    o: bash_fold_serialize_node(
+      stmt: bash_build_subshell(body: bash_fold_or_else_true_false_node())
+    )
+  )
+}
+
+test fn bash_fold_program_subshell_or_else_body_refuses_holds() -> Bool {
+  bash_fold_stmt_list_malformed_refusal(
+    o: bash_emit_stmts(
+      statements: [bash_build_subshell(body: bash_fold_or_else_true_false_node())],
+      set_e: false
+    )
+  )
+}
+
+test fn bash_fold_if_or_else_body_refuses_holds() -> Bool {
+  bash_fold_stmt_list_malformed_refusal(
+    o: bash_fold_serialize_node(
+      stmt: bash_build_if(
+        cond: bash_fold_cmd_true_emitted,
+        body: bash_fold_or_else_true_false_node()
+      )
+    )
+  )
+}
+
+test fn bash_fold_subshell_command_body_refuses_holds() -> Bool {
+  bash_fold_stmt_list_malformed_refusal(
+    o: bash_fold_serialize_node(
+      stmt: bash_build_subshell(body: bash_fold_cmd_true_emitted)
+    )
   )
 }
 

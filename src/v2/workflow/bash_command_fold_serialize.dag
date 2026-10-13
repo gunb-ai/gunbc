@@ -58,6 +58,7 @@ import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   None,
+  NonEmptyDiagnostics,
   Outcome,
   Rejected,
   Some,
@@ -165,20 +166,61 @@ fn bash_fold_serialize_stmts_semi(stmts: List<Node>) -> Outcome<String> {
   bash_fold_serialize_stmts_semi_from(acc: "", first: true, rest: stmts)
 }
 
-fn bash_fold_flatten_stmt_list(list_node: Node) -> List<Node> {
-  match list_at_optional(xs: node_positional_child_targets(node: list_node), index: 0) {
-    Present { value: first } =>
-      match list_at_optional(xs: node_positional_child_targets(node: list_node), index: 1) {
-        Present { value: second } =>
-          concat(bash_fold_flatten_stmt_list(list_node: first), [second])
-        Absent => [first]
+fn bash_fold_stmt_list_malformed_diagnostics(list_node: Node) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: Diagnostic {
+      reason: ^bash_fold_serialize_stmt_list_malformed,
+      at: node_locus(node: list_node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
+fn bash_fold_stmt_list_malformed(list_node: Node) -> Outcome<List<Node>> {
+  Rejected { diagnostics: bash_fold_stmt_list_malformed_diagnostics(list_node: list_node) }
+}
+
+// Statement lists are untagged cons cells: one positional child (a statement) or two
+// (nested list, statement). A tagged statement used as a body has a production Atom at
+// child 0 and further siblings; walking children 0 and 1 only would emit the left and
+// drop the rest (DESIGN section 5). Refuse that shape instead of truncating.
+fn bash_fold_flatten_stmt_list(list_node: Node) -> Outcome<List<Node>> {
+  let children = node_positional_child_targets(node: list_node)
+  match list_at_optional(xs: children, index: 2) {
+    Present { value: _ } => bash_fold_stmt_list_malformed(list_node: list_node)
+    Absent =>
+      match list_at_optional(xs: children, index: 0) {
+        Present { value: first } =>
+          match list_at_optional(xs: children, index: 1) {
+            Present { value: second } =>
+              match node_atom_identity_optional(node: first) {
+                Present { value: _ } => bash_fold_stmt_list_malformed(list_node: list_node)
+                Absent =>
+                  bind_outcome(
+                    o: bash_fold_flatten_stmt_list(list_node: first),
+                    f: fn(left) {
+                      Accepted { value: concat(left, [second]), diagnostics: None }
+                    }
+                  )
+              }
+            Absent =>
+              match node_atom_identity_optional(node: first) {
+                Present { value: _ } => bash_fold_stmt_list_malformed(list_node: list_node)
+                Absent => Accepted { value: [first], diagnostics: None }
+              }
+          }
+        Absent => bash_fold_stmt_list_malformed(list_node: list_node)
       }
-    Absent => []
   }
 }
 
 fn bash_fold_serialize_stmt_list_semi(list_node: Node) -> Outcome<String> {
-  bash_fold_serialize_stmts_semi(stmts: bash_fold_flatten_stmt_list(list_node: list_node))
+  bind_outcome(
+    o: bash_fold_flatten_stmt_list(list_node: list_node),
+    f: fn(stmts) {
+      bash_fold_serialize_stmts_semi(stmts: stmts)
+    }
+  )
 }
 
 fn bash_fold_serialize_with_redir_file(stmt: Node, stmt_spelling: String, redir_of: fn(String) -> String) -> Outcome<String> {
@@ -333,10 +375,15 @@ fn bash_fold_serialize_word_list_spelling_from(
 }
 
 fn bash_fold_serialize_word_list_spelling(parts: Node) -> Outcome<String> {
-  bash_fold_serialize_word_list_spelling_from(
-    acc: "",
-    first: true,
-    rest: bash_fold_flatten_stmt_list(list_node: parts)
+  bind_outcome(
+    o: bash_fold_flatten_stmt_list(list_node: parts),
+    f: fn(words) {
+      bash_fold_serialize_word_list_spelling_from(
+        acc: "",
+        first: true,
+        rest: words
+      )
+    }
   )
 }
 
