@@ -12,6 +12,7 @@ pub use crate::std_algebra::{
 };
 pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
 pub use crate::std_optional::Optional;
+pub use crate::std_optional::{optional_absent, optional_present};
 pub use crate::std_unicode_types::unicode_scalar;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -291,9 +292,9 @@ pub fn http_status_max() -> i64 {
 
 pub fn http_status_of(n: i64) -> Option<i64> {
     if ((n.clone() < http_status_min()) || (n.clone() > http_status_max())) {
-        std::option::Option::None
+        crate::std_optional::optional_absent()
     } else {
-        Some(n.clone())
+        crate::std_optional::optional_present(n.clone())
     }
 }
 
