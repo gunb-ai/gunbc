@@ -2,19 +2,17 @@ module test.claim.namespace_xl2_rehearsal_census
 
 import std.types { Bool, List }
 import gunbc.namespace_cut.namespace_xl2_rehearsal_census {
-  Xl2PrerequisiteOutstanding,
-  Xl2ScopeUnobserved,
-  Xl2CompleteArmNotAdmitted,
-  Xl2CensusCompletenessRefused,
   Xl2MemberPathDuplicated,
   Xl2ModuleObservationIncomplete,
   Xl2RehearsalObserved,
   Xl2RehearsalRun,
   Xl2ResidualChain,
-  Xl2ScopeUnobserved,
   Xl2KernelCanonicalReferencesUncounted,
   HeaderSegmentsNotRefusalSites,
   xl2_strip_members
+}
+import gunbc.namespace_cut.namespace_xl2_completeness {
+  Xl2CompleteArmNotAdmitted, Xl2CensusCompletenessRefused, Xl2PrerequisiteOutstanding, Xl2ScopeUnobserved, xl2_completeness
 }
 import gunbc.namespace_cut.namespace_xl2_rehearsal_controls {
   xl2_clean_control_source, xl2_clean_fixture, xl2_control_rehearse, xl2_control_source,
@@ -90,13 +88,17 @@ test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool {
 // the rehearsal incomplete for a reason P4 has since discharged.
 test fn xl2_control_completeness_is_refused_holds() -> Bool {
   match xl2_cut_run() {
-    Xl2RehearsalObserved { completeness: Xl2CensusCompletenessRefused { first: Xl2PrerequisiteOutstanding { prerequisite: _ }, rest: rest } } =>
+    Xl2RehearsalObserved { unobserved: u } =>
+    match xl2_completeness(unobserved: u) {
+    Xl2CensusCompletenessRefused { first: Xl2PrerequisiteOutstanding { prerequisite: _ }, rest: rest } =>
       count(rest) + 1 == count(xl2_prerequisites_outstanding())
         && all(rest, r => match r {
              Xl2PrerequisiteOutstanding { prerequisite: _ } => true
              Xl2ScopeUnobserved { scope: _ } => false
              Xl2CompleteArmNotAdmitted => false
            })
+    _ => false
+    }
     _ => false
   }
 }
@@ -118,7 +120,9 @@ fn xl2_first_and_last_chains_differ(residual: List<Xl2ResidualChain>) -> Bool {
 // chains, and the module's complete observation raises no scope.
 test fn xl2_two_failures_in_one_module_are_two_rows_holds() -> Bool {
   match xl2_two_run() {
-    Xl2RehearsalObserved { residual: residual, completeness: Xl2CensusCompletenessRefused { first: _, rest: rest } } =>
+    Xl2RehearsalObserved { residual: residual, unobserved: u } =>
+    match xl2_completeness(unobserved: u) {
+    Xl2CensusCompletenessRefused { first: _, rest: rest } =>
       count(residual) == 2
         && all(residual, r => r.module == "v2.xl2_control_two")
         && xl2_first_and_last_chains_differ(residual: residual)
@@ -126,6 +130,8 @@ test fn xl2_two_failures_in_one_module_are_two_rows_holds() -> Bool {
              Xl2ScopeUnobserved { scope: Xl2ModuleObservationIncomplete { module: _, path: _, reason: _ } } => true
              _ => false
            })
+    _ => false
+    }
     _ => false
   }
 }
@@ -148,12 +154,16 @@ test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
 // emitted, only the uniquely-pathed module resolves, and the path is reported once as unobserved.
 test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool {
   match xl2_duplicated_run() {
-    Xl2RehearsalObserved { residual: residual, resolved_module_count: n, completeness: Xl2CensusCompletenessRefused { first: _, rest: rest } } =>
+    Xl2RehearsalObserved { residual: residual, resolved_module_count: n, unobserved: u } =>
+    match xl2_completeness(unobserved: u) {
+    Xl2CensusCompletenessRefused { first: _, rest: rest } =>
       count(residual) == 0 && n == 1
         && count(filter(rest, c => match c {
              Xl2ScopeUnobserved { scope: Xl2MemberPathDuplicated { path: _ } } => true
              _ => false
            })) == 1
+    _ => false
+    }
     _ => false
   }
 }
