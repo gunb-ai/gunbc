@@ -1395,6 +1395,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "dag/test/claim/non_fold_residue_frontier.dag",
       check_fns: [
+        "non_fold_residue_frontier_rows_well_formed_holds",
+        "non_fold_residue_frontier_keyed_roster_build_admits",
         "non_fold_residue_frontier_red_control_empty_trigger_reds",
         "non_fold_residue_frontier_red_control_duplicate_path_reds"
       ],

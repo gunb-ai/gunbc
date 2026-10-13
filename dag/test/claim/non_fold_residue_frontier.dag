@@ -1,16 +1,25 @@
 module test.claim.non_fold_residue_frontier
 
 import std.types { NonEmptyStr }
-import std.roster_frontier { FrontierRow, PathSubject, frontier_row_well_formed, frontier_rows_keyed_roster_build }
+import std.roster_frontier {
+  FrontierRow,
+  PathSubject,
+  frontier_row_well_formed,
+  frontier_rows_well_formed,
+  frontier_rows_keyed_roster_build,
+}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
+import gunbc.non_fold_residue { non_fold_residue_frontier }
 
-// Live rows live in each subject module as `data non_fold_residue_frontier`. Equivalence with
-// the live corpus is the typed walk's: the required floor's diff-scoped
-// non_fold_residue_diff_verdict on every PR, and the whole-corpus census
-// (cli_run/non_fold_residue.rs nfr_whole_corpus_typed_census) at unrostered=0, stale=0 for
-// the union. These controls keep proving frontier_row_well_formed and duplicate-path refusal
-// (DESIGN 4b(4): production machinery dissolves on a climb, the evidence stays enrolled).
+// Live rows live in each subject module as `data non_fold_residue_frontier`, plus the
+// stated std/extdeps exception list imported here. The host union (population, unique
+// paths, nonempty triples) is the seed rust control
+// `nfr_live_union_is_populated_unique_and_tripled`. The required floor's diff-scoped
+// non_fold_residue_diff_verdict and nfr_whole_corpus_typed_census keep unrostered=0,
+// stale=0. These dag controls keep proving well-formedness of the exception list,
+// keyed-roster uniqueness of that list, and the synthetic empty-trigger / duplicate-path
+// REDs (DESIGN 4b(4): production machinery dissolves on a climb, the evidence stays enrolled).
 
 // Constructs the empty condition through the NON-LITERAL path deliberately: the literal form
 // `unbound_dissolution(description: "")` is refused at compile (the parameter is NonEmptyStr) --
@@ -24,6 +33,17 @@ fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
 
 fn synthetic_empty_condition(text: String) -> DissolutionCondition {
   unbound_dissolution(description: synthetic_nonliteral_text(text: text))
+}
+
+test fn non_fold_residue_frontier_rows_well_formed_holds() -> Bool {
+  frontier_rows_well_formed(rows: non_fold_residue_frontier)
+}
+
+test fn non_fold_residue_frontier_keyed_roster_build_admits() -> Bool {
+  match frontier_rows_keyed_roster_build(rows: non_fold_residue_frontier) {
+    KeyedRosterBuilt { rows: _ } => true
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
 }
 
 test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {

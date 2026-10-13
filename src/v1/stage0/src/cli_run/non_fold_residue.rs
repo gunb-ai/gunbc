@@ -490,19 +490,51 @@ fn nfr_collect_units_from_files(files: &[(String, String)], home: NfrHomeCheck) 
     all
 }
 
-pub(crate) fn non_fold_residue_roster_entries() -> &'static [String] {
-    static ENTRIES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    ENTRIES.get_or_init(|| {
+pub(crate) fn non_fold_residue_identity_join_triples() -> &'static [NfrFrontierTriple] {
+    static TRIPLES: std::sync::OnceLock<Vec<NfrFrontierTriple>> = std::sync::OnceLock::new();
+    TRIPLES.get_or_init(|| {
         let root = process_workspace_root();
         let files = nfr_workspace_carrier_files(&root);
-        let units = nfr_collect_units_from_files(&files, NfrHomeCheck::Require);
-        if units.is_empty() {
+        let mut all = Vec::new();
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        for (rel, content) in &files {
+            if !nfr_content_declares_frontier(content) {
+                continue;
+            }
+            for triple in non_fold_residue_triples_from_module_source_with(
+                rel,
+                content,
+                NfrHomeCheck::Require,
+            ) {
+                if !seen.insert(triple.path.clone()) {
+                    panic!(
+                        "nfr frontier reader: duplicate path {:?} across co-located \
+                         `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` lists (first collision involving \
+                         {rel}; {})",
+                        triple.path,
+                        nfr_identity_join_line(&triple)
+                    );
+                }
+                all.push(triple);
+            }
+        }
+        if all.is_empty() {
             panic!(
                 "nfr frontier reader: no `data {NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` rows in the \
                  corpus (fail-closed)"
             );
         }
-        units
+        all
+    })
+}
+
+pub(crate) fn non_fold_residue_roster_entries() -> &'static [String] {
+    static ENTRIES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    ENTRIES.get_or_init(|| {
+        non_fold_residue_identity_join_triples()
+            .iter()
+            .map(|t| t.path.clone())
+            .collect()
     })
 }
 
@@ -786,37 +818,6 @@ pub(crate) fn non_fold_residue_classify_row_subject(
     }
 }
 
-fn nfr_git_show(root: &Path, commit: &str, rel: &str) -> Result<Option<String>, String> {
-    let output = std::process::Command::new("git")
-        .args([
-            "-C",
-            &root.to_string_lossy(),
-            "show",
-            &format!("{commit}:{rel}"),
-        ])
-        .output()
-        .map_err(|e| format!("git show {commit}:{rel}: {e}"))?;
-    if !output.status.success() {
-        let err = String::from_utf8_lossy(&output.stderr);
-        if err.contains("does not exist")
-            || err.contains("exists on disk, but not in")
-            || err.contains("bad revision")
-            || err.contains("did not match")
-            || err.contains("Path")
-        {
-            return Ok(None);
-        }
-        // absent path typically: "fatal: path '...' does not exist in '...'"
-        if output.status.code() == Some(128) {
-            return Ok(None);
-        }
-        return Err(format!("git show {commit}:{rel} failed: {err}"));
-    }
-    String::from_utf8(output.stdout)
-        .map(Some)
-        .map_err(|e| format!("git show {commit}:{rel} stdout is not utf-8: {e}"))
-}
-
 fn nfr_units_from_optional_source(
     rel: &str,
     content: Option<&str>,
@@ -839,7 +840,6 @@ pub(crate) fn non_fold_residue_changed_row_subjects(
     diff_paths: &[String],
 ) -> Result<Vec<NonFoldResidueRowSubject>, String> {
     let root = process_workspace_root();
-    let commit = base_tree.commit()?.as_str().to_string();
     let mut candidates: BTreeSet<String> = diff_paths
         .iter()
         .filter(|p| p.ends_with(".dag"))
@@ -850,7 +850,8 @@ pub(crate) fn non_fold_residue_changed_row_subjects(
     let mut base_files = Vec::new();
     let mut head_files = Vec::new();
     for rel in &candidates {
-        let base_content = nfr_git_show(&root, &commit, rel)?;
+        let base_content =
+            crate::cli_run::required_floor_runner::floor_base_file_read(base_tree, rel)?;
         let head_path = root.join(rel);
         let head_content = if head_path.is_file() {
             Some(std::fs::read_to_string(&head_path).map_err(|e| e.to_string())?)

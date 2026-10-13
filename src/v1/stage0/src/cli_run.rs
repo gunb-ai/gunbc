@@ -30503,6 +30503,43 @@ mod nfr_tests {
             "a comment mention must not hide a later real decl"
         );
     }
+
+    #[test]
+    fn nfr_live_union_is_populated_unique_and_tripled() {
+        let entries = super::non_fold_residue_roster_entries();
+        assert!(
+            entries.len() >= 100,
+            "live host union must stay populated (got {})",
+            entries.len()
+        );
+        let mut seen = std::collections::BTreeSet::new();
+        for path in entries {
+            assert!(!path.is_empty(), "live union path must be nonempty");
+            assert!(
+                path.contains("::"),
+                "live union path must be a site (file::decl), got {path}"
+            );
+            assert!(
+                seen.insert(path.as_str()),
+                "live union path must be unique, duplicate {path}"
+            );
+        }
+        let triples = super::non_fold_residue_identity_join_triples();
+        assert_eq!(
+            triples.len(),
+            entries.len(),
+            "identity-join triples must cover every live unit"
+        );
+        for t in &triples {
+            assert!(!t.path.is_empty());
+            assert!(!t.reason.is_empty(), "reason ident empty for {}", t.path);
+            assert!(
+                !t.dissolution.is_empty(),
+                "dissolution ident empty for {}",
+                t.path
+            );
+        }
+    }
 }
 
 const LANGUAGES_AUTHORITY_REL: &str = "dag/std/languages.dag";
