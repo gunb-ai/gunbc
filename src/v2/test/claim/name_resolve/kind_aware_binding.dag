@@ -223,9 +223,8 @@ test fn a_listed_record_type_binds_beside_a_whole_module_import() -> Bool {
   }
 }
 
-// CONSTRUCT TAG. Rec is RecordTypePayload / TypeOccurrence; the tag door asks for
-// ConstructorOccurrence. Eligibility keeps the record-payload arm so Rec { value: U }
-// is not unbound (review 79222).
+// CONSTRUCT TAG. Rec is RecordTypePayload. The tag door is the payload map
+// (symbol_index_lexical_lookup_for_declared_payload), not ConstructorOccurrence.
 test fn a_record_construct_tag_resolves() -> Bool {
   match kab_verdicts() {
     Absent => false
