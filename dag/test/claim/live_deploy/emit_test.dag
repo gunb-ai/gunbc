@@ -156,6 +156,7 @@ import gunbc.live_deploy.emit {
   compose_host_script,
   compose_host_script_decide_steps,
   compose_host_script_mutate_steps,
+  host_script_step_marker,
   host_script_trace_steps,
   HostScriptRefused,
   HostScriptFragment,
@@ -1684,6 +1685,28 @@ test fn compose_traces_each_decide_and_mutate_step() -> Bool {
   let text = pipeline_steps_text(steps: compose_host_script(fragments: fragments).steps)
   string_contains(s: text, pattern: "__GUNBC_HOST_SCRIPT_STEP__ Decide probe 0")
     && string_contains(s: text, pattern: "__GUNBC_HOST_SCRIPT_STEP__ Mutate probe 0")
+}
+
+// RED on the hand-built `printf '%s\n' '... <member> ...'` join: a `'` in member ends the
+// word. GREEN when the marker is one argv-serialized printf and the member survives as
+// POSIX `'\''` inside that word. Readers match `__GUNBC_HOST_SCRIPT_STEP__` on the printed
+// line, not the shell source; this claim pins the source shape those readers skip.
+test fn a_member_quote_does_not_split_the_step_marker() -> Bool {
+  let member = "path/o's" as NonEmptyStr
+  let cmd = pipeline_step_text(st: host_script_step_marker(kind: "Decide", member: member, index: 0))
+  let hand = join([
+    "printf '%s\\n' '__GUNBC_HOST_SCRIPT_STEP__ ",
+    "Decide",
+    " ",
+    member as String,
+    " ",
+    "0",
+    "'",
+  ], "")
+  cmd != hand
+    && starts_with(s: cmd, prefix: "'printf'")
+    && string_contains(s: cmd, pattern: "path/o'\\''s")
+    && string_contains(s: cmd, pattern: "__GUNBC_HOST_SCRIPT_STEP__ Decide path/o")
 }
 
 // INHABITANCE: withheld caps are a CONVERGE_WITHHELD report that still precedes binary/tree/unit
