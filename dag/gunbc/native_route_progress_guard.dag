@@ -1,4 +1,4 @@
-module v2.workflow.native_route_progress_guard
+module gunbc.native_route_progress_guard
 
 import std.types { List }
 import v2.std.algebra { count_where, fold_list, is_empty, length, list_flat_map, list_map }
@@ -10,7 +10,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStage, NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
 }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, structural_content_hash, content_hash_eq_structural }
-import v2.workflow.v2_native_route {
+import gunbc.witness.v2_native_route {
   NativeRouteTestIdentity, native_route_identity_eq, native_route_identity_qualified,
   NativeRouteDisposition,
   NativeAgreementPass, NativeAgreementExpectedRed, NativeAgreementRouteGap,
@@ -26,7 +26,7 @@ import v2.workflow.v2_native_route {
 // WHY A PROGRESS GUARD IS A DIFFERENT QUESTION FROM ADMISSION, AND NOT A SECOND RATCHET
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
-// `v2.workflow.v2_native_route` `native_route_admission` answers ONE question about ONE run:
+// `gunbc.witness.v2_native_route` `native_route_admission` answers ONE question about ONE run:
 // is this receipt well-formed, does its population join its universe exactly, and does every
 // reached verdict agree with the floor's reference. It is the right question and it is
 // COMPLETE ON ONE HEAD. What it cannot see is the only thing a frontier lane exists to report:
@@ -67,7 +67,7 @@ import v2.workflow.v2_native_route {
 // CONSUMPTION: THIS IS A DECLARED FRONTIER, AND HERE IS ITS TRIGGER (DESIGN section 3c)
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
-// CONSUMED SINCE 2026-09-23, PER ROW. v2.workflow.native_frontier_ratchet calls this module's row, disposition
+// CONSUMED SINCE 2026-09-23, PER ROW. gunbc.native_frontier_ratchet calls this module's row, disposition
 // and cause-transition folds (`native_progress_row_findings`, `native_progress_disposition_row_findings`,
 // `native_cause_transition_row_findings`) and `native_progress_finding_text` from inside the emitted
 // binary's adjudicate mode, run by `//gunbc/instruments:v2-native-frontier` (bound to the native
@@ -95,7 +95,7 @@ import v2.workflow.v2_native_route {
 //   The Tier 2 native-lane job of gunbc#12043's programme -- the run that
 //   invokes the native route over the derived `v2.test.*` universe, derives one
 //   `NativeProgressObservedReading` per universe member from the dispositions
-//   `v2.workflow.v2_native_route` `native_route_disposition` already computes, and adjudicates
+//   `gunbc.witness.v2_native_route` `native_route_disposition` already computes, and adjudicates
 //   `native_progress_verdict` beside `native_route_admission`.
 //
 //   TRIGGER. That job's CADENCE and its COVERAGE DISPOSITION are an operator decision, put on

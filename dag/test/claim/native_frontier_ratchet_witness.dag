@@ -9,25 +9,25 @@ import v2.compiler.native_test_vocabulary {
   NativeTestPassed, NativeTestReturnedOther,
   NativeTestStage, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval
 }
-import v2.workflow.v2_native_route {
+import gunbc.witness.v2_native_route {
   NativeRouteTestIdentity, NativeRouteMemberRow, NativeRouteExclusionCause,
   NativeEntryResolutionLimit, CompilerFrontierAttributed,
   NativeAgreementPass, NativeExclusion,
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   DivergencesPresent, UnattributedExclusionsPresent, EmittedBuildNotClean, PopulationOmissionsPresent
 }
-import v2.workflow.native_route_progress_guard {
+import gunbc.native_route_progress_guard {
   NativeProgressObservedReading, NativeProgressDispositionRow, SubjectDeleted, SubjectRenamed,
   AttainAgreed, AttainDiverged, native_progress_read_observed
 }
-import v2.workflow.native_frontier_debt {
+import gunbc.native_frontier_debt {
   NativeFrontierDebtRow, DebtRefused, NativeFrontierRosterStanding, RosterUnminted, RosterMinted,
   NativeFrontierMintReceipt
 }
 import v2.workflow.compile_door_cause_ownership {
   CauseOwnership, CorrectnessFlipDeclaration, MigrationOwned
 }
-import v2.workflow.native_frontier_ratchet {
+import gunbc.native_frontier_ratchet {
   NativeFrontierVerdict, FrontierHeld, FrontierAdvanced, FrontierGrewByOwnedCorrectnessFlip,
   NativeFrontierFlipAuthority, FrontierLost, FrontierUnminted, FrontierNotAMeasurement,
   native_frontier_verdict_over, native_frontier_verdict_word, native_frontier_reading,

@@ -1,6 +1,6 @@
 module v2.test.claim.native_route.native_refusal_detail
 
-import v2.workflow.v2_native_route { NativeRouteMemberRow, native_route_member_row_text }
+import gunbc.witness.v2_native_route { NativeRouteMemberRow, native_route_member_row_text }
 import v2.compiler.compile {
   NativeLaneModuleContextRowsDecided,
   NativeLaneModuleResolution,

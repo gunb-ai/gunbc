@@ -1184,7 +1184,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 }
 
 /// THE NATIVE FRONTIER PRODUCER: did one complete native run keep the debt
-/// `v2.workflow.native_frontier_roster` records. The verdict is `v2.workflow.native_frontier_ratchet`'s, decided
+/// `gunbc.native_frontier_roster` records. The verdict is `gunbc.native_frontier_ratchet`'s, decided
 /// inside the emitted binary; this arm only maps its word to a termination, and that map is closed:
 /// an unknown word is a harness defect, never a pass.
 ///
@@ -1212,7 +1212,7 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
                         termination: Termination::SubjectUnreached,
                         message: format!(
                             "v2-native-frontier: the emitted binary reported an unknown frontier word {other:?}; \
-                             v2.workflow.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
+                             gunbc.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
                         ),
                     }
                 }
@@ -2084,7 +2084,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `v2.workflow.v2_native_route` `native_route_default_pattern`, mirrored: the native test
+/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, mirrored: the native test
 /// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
 ///
 /// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
