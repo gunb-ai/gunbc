@@ -392,7 +392,7 @@ fn w_freemonoid_supplemental_enum_hand_written_impls() -> Bool {
       "impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListTailResultLike<T>",
       "impl<T: Clone + PartialEq> PartialEq for ListTailResultLike<T>",
       "Self::Present { value } => f.debug_struct(\"Present\").field(\"value\", value).finish(),",
-      "(Self::Present { value: a_tail }, Self::Present { value: b_tail }) => a_tail == b_tail,"
+      "(Self::Present { value: a_value }, Self::Present { value: b_value }) => a_value == b_value,"
     ],
     [
       "enum ListTailResultLike<T: Clone>",
