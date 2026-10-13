@@ -1,7 +1,7 @@
 module v2.cli.population_verbs
 
 import std.types { Bool, Int, List, Map }
-import std.algebra { Cons }
+import std.algebra { Cons, Empty }
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
@@ -360,10 +360,10 @@ fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationP
 }
 
 fn population_parse_go(env: AcquisitionEnv, pending: List<String>, tally: PopulationParse) -> PopulationParse {
-  match list_head(xs: pending) {
-    HeadAbsent => tally
-    HeadFound { value: name } =>
-      population_parse_go(env: env, pending: skip(xs: pending, n: 1), tally: population_parse_member(env: env, name: name, tally: tally))
+  match pending {
+    Empty => tally
+    Cons { head: name, tail: rest } =>
+      population_parse_go(env: env, pending: rest, tally: population_parse_member(env: env, name: name, tally: tally))
   }
 }
 

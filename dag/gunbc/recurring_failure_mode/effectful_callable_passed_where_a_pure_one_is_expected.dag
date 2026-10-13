@@ -23,5 +23,6 @@ data effectful_callable_passed_where_a_pure_one_is_expected: RecurringFailureMod
     DeclarationRef { module_path: "gunbc.auth.approval_store_receipt", decl_name: "authenticate_store_receipt_asker", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.auth.approval_store_receipt", decl_name: "store_receipt_answer", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.host.host_cli_dependency", decl_name: "first_absent_host_cli_dependency", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.cli.population_verbs", decl_name: "population_parse_go", field: WholeDeclaration },
   ],
 }
