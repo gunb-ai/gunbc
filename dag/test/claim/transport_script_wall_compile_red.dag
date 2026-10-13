@@ -1,6 +1,6 @@
 module test.claim.transport_script_wall_compile_red
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // §5.E wall REDs (operator acceptance 2026-07-24): the two documented transport-script fake
 // patterns, reconstructed AS WRITTEN, must FAIL TO COMPILE — not merely fail review. Each fake is

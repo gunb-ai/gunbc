@@ -2,7 +2,7 @@ module v2.test.claim.manual.edit_locus_resolution
 
 import v2.lens.edit_locus { resolve_edit_locus_from_loci }
 import v2.std.integer { integer_int_type_node }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates }

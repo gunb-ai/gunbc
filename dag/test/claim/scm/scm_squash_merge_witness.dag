@@ -15,7 +15,7 @@ module test.claim.scm.scm_squash_merge_witness
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.minted_identity { MintedId, MintedIdAllocator }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.object_store {
   ObjectId, object_id_eq,
   ObjectStore, empty_store,

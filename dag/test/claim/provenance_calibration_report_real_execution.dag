@@ -5,7 +5,7 @@ import std.types { String, FilePath, List, list_length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.instruments.reference_binding_provenance_calibration {
   ProvenanceCell,
   calibration_body_of,

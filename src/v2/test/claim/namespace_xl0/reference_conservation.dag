@@ -23,7 +23,7 @@ import v2.extdeps.languages.dag { dag_grammar_root }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Rejected, Some, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton, invariant_port_locus }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
 import v2.std.integer { Int }

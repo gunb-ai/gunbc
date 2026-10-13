@@ -9,7 +9,7 @@ import v2.compiler.source_authority { ModuleFileRef }
 import std.algebra { list_snoc_item, contains, fold_list, length }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.text { String }
 

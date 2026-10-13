@@ -14,7 +14,7 @@ import std.claim_evidence {
   EvidenceAdmissionPolicy,
   EvidenceAuthorityRefused,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.native_scm_interaction_contract {
   NativeScmFirstContinuationOption,
   NativeScmSecondContinuationOption,

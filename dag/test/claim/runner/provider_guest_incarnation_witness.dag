@@ -9,7 +9,7 @@ import gunbc.runner.provider_guest_incarnation {
   provider_guest_isolation_excuses, provider_guest_egress_excuse,
 }
 import gunbc.runner.provider_guest_launch { provider_guest_launch_evidenced, provider_guest_launch_withheld }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

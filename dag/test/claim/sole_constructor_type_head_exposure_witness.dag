@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
 }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 import std.types { Bool, Int, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 
 // THE DISCRIMINATING PAIR IS THE WHOLE ARGUMENT, so the six sources below differ on exactly one

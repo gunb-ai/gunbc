@@ -1,6 +1,6 @@
 module test.claim.machine_intake.pre_os_sol_crlf_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.goal_assessment { ObservationEstablished }
 import extdeps.posix.termios { termios_onlcr_output_lines }

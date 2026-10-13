@@ -28,7 +28,7 @@ import std.goal_assessment {
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
 import std.algebra { non_empty_to_list }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE SWITCH SUBJECT. `cable_plant_assessment_witness` holds the CABLES to
 // their required mode; this holds the SWITCH to the configuration those cables imply. The two are

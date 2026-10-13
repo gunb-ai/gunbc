@@ -61,7 +61,7 @@ import v2.lens.realization_vocabulary_containment {
   realization_vocab_grandfathered_edge_keys,
 }
 import gunbc.guarantee_measurement { MeasurementRevision }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

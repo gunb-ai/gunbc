@@ -1,7 +1,7 @@
 module test.claim.auth.managed_host_boot_federation_witness
 
 import std.types { Bool, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.managed_host { managed_host_fixture, managed_hosts }

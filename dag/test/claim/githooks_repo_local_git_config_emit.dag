@@ -20,7 +20,7 @@ import gunbc.repo.repo_local_git_config {
 }
 import extdeps.exec.command { shell_command_render, shell_quote }
 import std.disposition { Scaffold }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -32,7 +32,7 @@ import std.reference_realization {
   RenderTargetRepresentation, ReferenceRenderingRefused
 }
 import gunbc.reference_realization_policy { reference_realization_rendering }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

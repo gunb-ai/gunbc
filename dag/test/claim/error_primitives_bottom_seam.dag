@@ -3,7 +3,7 @@ module test.claim.error_primitives_bottom_seam
 import std.types { Bool, Int, String }
 import std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float, pure_dag_seam_unreachable_string }
 import std.algebra { trim }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

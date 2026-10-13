@@ -11,7 +11,7 @@ import gunbc.stage0.stage0_executable_assembly_generated {
   generated_host_shell_package_name,
   generated_host_shell_partition_dependencies
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.stage0.stage0_emitted_edge_admission {
   Stage0EmittedEdgesAdmitted,
   Stage0EmittedEdgesNotCovered,

@@ -12,7 +12,7 @@ import v2.extdeps.languages.rust_fixtures {
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.host_run { HostLogicalRun }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.operation_argv { operation_argv_tokens_or_refusal_label }
 import std.optional { Present, Absent }
 

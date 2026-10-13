@@ -4,7 +4,7 @@ import std.algebra { Cons, Empty, list_snoc_item, fold_list }
 import std.types { Bool, String, List }
 import v2.std.compilers.cli_surface { cli_argument_text, cli_surface_arguments }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.dns.domain_name { DnsLabel }
 import extdeps.shell.exec { process_observation }
 import extdeps.tools.hostname {
