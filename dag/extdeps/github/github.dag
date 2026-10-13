@@ -41,6 +41,10 @@ type Repository {
 // either result would reveal it if they were not. Projecting the remote from the same Repository
 // that names the API target makes them the same subject by construction.
 
+data github_https_host: NonEmptyStr = "github.com" as NonEmptyStr
+
+data github_installation_token_git_login: NonEmptyStr = "x-access-token" as NonEmptyStr
+
 fn github_https_clone_url(repo: Repository) -> NonEmptyStr {
   join(["https://github.com/", repo.owner, "/", repo.name, ".git"], "") as NonEmptyStr
 }

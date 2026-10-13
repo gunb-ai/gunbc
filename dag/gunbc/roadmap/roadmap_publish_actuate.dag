@@ -1,25 +1,60 @@
 module gunbc.roadmap.roadmap_publish_actuate
 
-import std.types { String, Int, Bool, NonEmptyStr, FilePath, CommitSha }
-import std.credentials { CredentialSource }
+import std.types { String, Int, Bool, NonEmptyStr, FilePath, CommitSha, Secret, Map }
+import std.algebra { trim }
+import v2.std.collection { empty_map, map_insert }
 import extdeps.git
+import extdeps.git { git_dir_fetch_source_grant, git_local_fetch_upload_pack_command }
+import extdeps.git.plumbing { GitWorktreeAt, GitDirectoryAt }
 import extdeps.github.pulls
+import extdeps.github.github { github_https_host, github_installation_token_git_login }
+import extdeps.shell
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.roadmap.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
+import gunbc.auth.netrc_binding {
+  place_netrc_binding, shred_netrc_binding, NetrcBindingPlaced, NetrcBindingRefused,
+  NetrcBindingRefusedResidueRemains, NetrcBinding,
+}
 
-// PUBLICATION ACTUATION: the two host effects that turn a verified attempt head into a bound pull
-// request, kept thin so that everything decidable is decided elsewhere. The push is the NON-FORCED
-// git.Core.PushRefInRepo: a rejected push (a branch that moved under us) is a typed refusal with the
-// remote's own stderr, never forced through. The pull request is github.Pulls.Create; its created
-// number and URL map, purely and witnessed, onto the ReceiptBound arm the publication receipt
-// already carries, so the belt's existing receipt writer needs no new arm.
+// PUBLICATION ACTUATION: push an already-captured candidate SHA, then open the pull request.
+//
+// WHY GIT PUSH AND NOT heal's REST Git Database route. Heal fast-forwards one admitted bot commit
+// by updating a ref through the Git Database API. A roadmap candidate is an arbitrary multi-commit
+// history whose captured SHA must remain that SHA on the published branch. REST create/update-ref
+// of a single commit object cannot carry that history; git push of the captured objects can.
+//
+// THE PUSH OPERATION IS THE INTERFACE; which remote URL and which ref are POLICY parameters
+// (DESIGN §3). The credential never appears in argv or in a URL (gunbc.credential_argv_exposure):
+// it travels in a netrc under a private HOME passed in the push environment and is shredded on
+// every arm.
+//
+// THE MIRROR IS HELPER-OWNED. Fetch from the worker checkout happens BEFORE the token is used, so
+// worker-controlled hooks and config cannot run while the publication principal holds the token.
+// A linked worktree's .git is a file; the fetch source is rev-parse --absolute-git-dir.
+
 type PublishActuation
   = PublishActuated { pr_number: Int, url: NonEmptyStr }
   | PushRefused { exit_code: Int, stderr: String }
   | PullRequestRefused { detail: String }
 
+type CapturedShaPush
+  = CapturedShaPushed
+  | CapturedShaPushRefused { exit_code: Int, stderr: String }
+
 fn attempt_branch_refspec(branch: NonEmptyStr) -> String {
   join([branch as String, ":refs/heads/", branch as String], "")
+}
+
+fn publication_push_env(home: FilePath) -> Map<String, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), "HOME", home as String),
+      "GIT_CONFIG_GLOBAL",
+      "/dev/null",
+    ),
+    "GIT_CONFIG_NOSYSTEM",
+    "1",
+  )
 }
 
 fn pull_request_created_outcome(number: Int, html_url: NonEmptyStr) -> PublicationReceiptOutcome {
@@ -34,33 +69,184 @@ fn pull_request_refusal_detail(outcome: RestRefusal) -> String {
   }
 }
 
-fn publish_attempt(
-  repo: FilePath,
+fn publication_mirror_ref(branch: NonEmptyStr) -> String {
+  join(["refs/heads/", branch as String], "")
+}
+
+fn shred_publication_netrc_then(binding: NetrcBinding, home: FilePath, mirror: FilePath, result: CapturedShaPush) -> CapturedShaPush {
+  let _shredded = shred_netrc_binding(binding: binding)
+  let _home = shell.Remove.RecursiveForce(path: home)
+  let _mirror = shell.Remove.RecursiveForce(path: mirror)
+  result
+}
+
+fn refuse_captured_push_after_cleanup(home: FilePath, mirror: FilePath, exit_code: Int, stderr: String) -> CapturedShaPush {
+  let _home = shell.Remove.RecursiveForce(path: home)
+  let _mirror = shell.Remove.RecursiveForce(path: mirror)
+  CapturedShaPushRefused { exit_code: exit_code, stderr: stderr }
+}
+
+fn push_captured_sha_from_bare_mirror(
+  mirror: FilePath,
   remote: NonEmptyStr,
   branch: NonEmptyStr,
+  token: Secret,
+) -> CapturedShaPush {
+  let home = shell.Mktemp.Dir()
+  if !home.success {
+    let _mirror = shell.Remove.RecursiveForce(path: mirror)
+    CapturedShaPushRefused { exit_code: 1, stderr: "no private HOME could be created for the publication netrc" }
+  } else {
+    match place_netrc_binding(
+      path: join([home.path as String, "/.netrc"], "") as FilePath,
+      machine: github_https_host,
+      login: github_installation_token_git_login,
+      password: token,
+    ) {
+      NetrcBindingRefused { cause } => refuse_captured_push_after_cleanup(home: home.path, mirror: mirror, exit_code: 1, stderr: cause as String)
+      NetrcBindingRefusedResidueRemains { cause } => refuse_captured_push_after_cleanup(home: home.path, mirror: mirror, exit_code: 1, stderr: cause as String)
+      NetrcBindingPlaced { binding } => {
+        let pushed = git.Core.PushRefInRepo(
+          repo: mirror,
+          remote: remote as String,
+          refspec: attempt_branch_refspec(branch: branch),
+          env: publication_push_env(home: home.path),
+        )
+        if pushed.exit_code != 0 {
+          shred_publication_netrc_then(
+            binding: binding,
+            home: home.path,
+            mirror: mirror,
+            result: CapturedShaPushRefused { exit_code: pushed.exit_code, stderr: pushed.stderr },
+          )
+        } else {
+          shred_publication_netrc_then(
+            binding: binding,
+            home: home.path,
+            mirror: mirror,
+            result: CapturedShaPushed,
+          )
+        }
+      }
+    }
+  }
+}
+
+// THE PUSH INTERFACE: copy the captured SHA into a helper-owned bare store from the checkout's
+// git dir, CAS the policy ref, then push that ref to the policy remote. Token is used only for
+// the push, after the local fetch.
+fn push_captured_candidate_sha(
+  source_worktree: FilePath,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+  expected_head: CommitSha,
+  token: Secret,
+) -> CapturedShaPush {
+  let git_dir = git.Core.RevParseAbsoluteGitDirInRepo(repo: source_worktree)
+  if git_dir.exit_code != 0 {
+    CapturedShaPushRefused { exit_code: git_dir.exit_code, stderr: git_dir.stderr }
+  } else {
+    let source = trim(s: git_dir.git_dir) as NonEmptyStr
+    let created = shell.Mktemp.Dir()
+    if !created.success {
+      CapturedShaPushRefused { exit_code: 1, stderr: "no helper-owned bare mirror directory could be created" }
+    } else {
+      let mirror = created.path
+      let init = git.Plumbing.InitBareAt(address: GitWorktreeAt { path: mirror }, path: mirror)
+      if init.exit_code != 0 {
+        let _mirror = shell.Remove.RecursiveForce(path: mirror)
+        CapturedShaPushRefused { exit_code: init.exit_code, stderr: init.stderr }
+      } else {
+        let fetched = git.Core.FetchForcedRefInRepoTrustingSource(
+          repo: mirror,
+          remote: source as String,
+          refspec: expected_head as String,
+          upload_pack: git_local_fetch_upload_pack_command(grant: git_dir_fetch_source_grant(git_dir: source)),
+        )
+        if fetched.exit_code != 0 {
+          let _mirror = shell.Remove.RecursiveForce(path: mirror)
+          CapturedShaPushRefused { exit_code: fetched.exit_code, stderr: fetched.stderr }
+        } else {
+          let present = git.Plumbing.CatFileExists(
+            address: GitDirectoryAt { path: mirror, run_in: mirror },
+            object: expected_head as String,
+          )
+          if present.exit_code != 0 {
+            let _mirror = shell.Remove.RecursiveForce(path: mirror)
+            CapturedShaPushRefused { exit_code: present.exit_code, stderr: present.stderr }
+          } else {
+            let swapped = git.Core.UpdateRefCompareAndSwapInRepo(
+              repo: mirror,
+              ref: publication_mirror_ref(branch: branch),
+              new_value: expected_head as String,
+              expected_old: "",
+            )
+            if swapped.exit_code != 0 {
+              let _mirror = shell.Remove.RecursiveForce(path: mirror)
+              CapturedShaPushRefused { exit_code: swapped.exit_code, stderr: swapped.stderr }
+            } else {
+              push_captured_sha_from_bare_mirror(mirror: mirror, remote: remote, branch: branch, token: token)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn open_publication_pull_request(
+  owner: String,
+  repo_name: String,
+  branch: NonEmptyStr,
+  base: NonEmptyStr,
+  title: NonEmptyStr,
+  body: String,
+  token: Secret,
+) -> PublishActuation {
+  match github.Pulls.Create(
+    auth_token: token,
+    owner: owner,
+    repo: repo_name,
+    title: title,
+    head: branch,
+    base: base,
+    body: body,
+    draft: false,
+  ) {
+    RestAnswered { answer } => PublishActuated { pr_number: answer.number, url: answer.html_url }
+    RestRefused { refusal } => PullRequestRefused { detail: pull_request_refusal_detail(outcome: refusal) }
+  }
+}
+
+fn publish_attempt(
+  source_worktree: FilePath,
+  remote: NonEmptyStr,
+  branch: NonEmptyStr,
+  expected_head: CommitSha,
   base: NonEmptyStr,
   owner: String,
   repo_name: String,
   title: NonEmptyStr,
   body: String,
-  credential: CredentialSource,
+  token: Secret,
 ) -> PublishActuation {
-  let pushed = git.Core.PushRefInRepo(repo: repo, remote: remote as String, refspec: attempt_branch_refspec(branch: branch))
-  if pushed.exit_code != 0 {
-    PushRefused { exit_code: pushed.exit_code, stderr: pushed.stderr }
-  } else {
-    match github.Pulls.Create(
-      auth_token: credential,
-      owner: owner,
-      repo: repo_name,
-      title: title,
-      head: branch,
-      base: base,
-      body: body,
-      draft: false,
-    ) {
-      RestAnswered { answer } => PublishActuated { pr_number: answer.number, url: answer.html_url }
-      RestRefused { refusal } => PullRequestRefused { detail: pull_request_refusal_detail(outcome: refusal) }
-    }
+  match push_captured_candidate_sha(
+    source_worktree: source_worktree,
+    remote: remote,
+    branch: branch,
+    expected_head: expected_head,
+    token: token,
+  ) {
+    CapturedShaPushRefused { exit_code, stderr } => PushRefused { exit_code: exit_code, stderr: stderr }
+    CapturedShaPushed =>
+      open_publication_pull_request(
+        owner: owner,
+        repo_name: repo_name,
+        branch: branch,
+        base: base,
+        title: title,
+        body: body,
+        token: token,
+      )
   }
 }

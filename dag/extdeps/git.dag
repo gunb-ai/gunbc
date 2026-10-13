@@ -6,9 +6,12 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
 import std.measure { Percent, percent }
-import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
+import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, Map, NonEmptyStr, Seconds, Timestamp, Unit }
+import v2.std.collection { empty_map }
 import std.algebra { length, skip }
 import std.resources { Network }
+
+data git_push_inherit_env: Map<String, String> = empty_map()
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -995,6 +998,10 @@ fn git_local_fetch_source_grant(source: NonEmptyStr) -> SafeDirectoryGrant {
   SafeDirectoryGrant { path: git_non_bare_git_dir(worktree: source) }
 }
 
+fn git_dir_fetch_source_grant(git_dir: NonEmptyStr) -> SafeDirectoryGrant {
+  SafeDirectoryGrant { path: git_dir }
+}
+
 // THE SOURCE TRUST RIDES INSIDE --upload-pack, BECAUSE A `-c` ON THE FETCH NEVER REACHES UPLOAD-PACK.
 // For a local-path remote git connect.c git_connect() (PROTO_LOCAL) spawns the upload-pack command
 // with `local_repo_env` (environment.c) pushed as variables to UNSET, and that list carries
@@ -1636,6 +1643,18 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "rev-parse", "{target}"] }
   }
 
+  operation RevParseAbsoluteGitDirInRepo {
+    requires opaque
+    input { repo: FilePath }
+    output {
+      git_dir: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "rev-parse", "--absolute-git-dir"] }
+  }
+
   operation FetchForcedRefInRepo {
     requires opaque
     input { repo: FilePath, remote: String, refspec: String }
@@ -1671,7 +1690,7 @@ service git.Core {
 
   operation PushRefInRepo {
     requires opaque
-    input { repo: FilePath, remote: String, refspec: String }
+    input { repo: FilePath, remote: String, refspec: String, env: Map<String, String> = git_push_inherit_env }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"

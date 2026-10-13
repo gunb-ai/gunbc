@@ -2,10 +2,11 @@ module gunbc.roadmap.roadmap_publication_helper
 
 import std.algebra { trim }
 import std.types { String, NonEmptyStr, List, Bool, CommitSha, FilePath }
-import std.credentials { CredentialSource }
+import gunbc.github_effect_perform {
+  mint_publication_helper_installation_token, PublisherTokenMinted, PublisherTokenNotMinted,
+}
 import std.content_hash { content_hash_atom }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -64,7 +65,7 @@ import gunbc.roadmap.roadmap_publish_observe {
 
 // THE PUBLICATION CREDENTIAL BOUNDARY IS A UNIX PRINCIPAL, NOT A TRANSPORT.
 //
-// gunbc.live_deploy.spec deployment_credential_env_path records why the obvious repairs were
+// The publication principal, not an environment file, is the credential boundary. The env-file path
 // withdrawn, and both of its arguments are about WHO can read, never about HOW the token is
 // carried. A service-wide environment source reaches the whole process AND every child, and the
 // belt spawns providers through `env -C <workdir> <program>` with neither -i nor -u, so a token
@@ -437,56 +438,14 @@ fn publication_answer_standing(
 // THE ANSWERING SIDE -- the only code in this repository that resolves a publication credential.
 // ---------------------------------------------------------------------------------------------
 
-// THE PROBE, MOVED HERE FROM THE BELT RATHER THAN COPIED. gunbc.roadmap.roadmap_belt_actuate carried
-// belt_publication_credential and its source row until this change; both are DELETED there, which
-// is the deliverable rather than a tidy-up -- the belt now has no function that can name, read or
-// hold a publication token, so the boundary is a property of what exists rather than of what the
-// units happen to bind.
-//
-// WHY THE PROBE EXISTS AT ALL, unchanged from the argument it carried in the belt: a publication
-// read without a usable token is not a failed read, it is a read that must not be attempted.
-// Sending an empty bearer produces a 401 whose only content is that we sent nothing. Probing turns
-// the most decidable failure on a fresh host into an ordinary value that becomes a recorded
-// refusal, which is why an absent credential still produces an ANSWER rather than silence.
-//
-// THE VALUE DOES TRANSIT this function, and pretending otherwise would be the overclaim.
-// shell.Env.Get returns the variable's contents, so the token is briefly a String inside this
-// process; only its emptiness escapes, and nothing stores or renders it. Dissolve-on: a modeled
-// presence-only environment probe, at which point this reads nothing.
-//
-// OutcomeIsData ADMISSIBILITY: printenv exits 1 when the variable is unset, and that exit IS the
-// answer being asked for, not a fault. The result is a PublicationCredentialSource whose two arms
-// ARE the adjudication, never unit.
-data publication_helper_credential_env_var: NonEmptyStr = "GITHUB_TOKEN" as NonEmptyStr
-
-// THE VARIABLE NAME IS SPELLED ONCE AND PROJECTED EVERYWHERE ELSE, including into the refusal
-// prose. The first cut carried the literal four times -- the row above, this source, and both
-// refusal reasons -- which is the second-representation defect this module was written to argue
-// against, reproduced inside its own credential resolver. The failure it invites is quiet: renaming
-// the variable in the row would leave a source reading a different name and two diagnostics naming
-// a third, and every one of them would still compile.
-data publication_helper_credential_source: CredentialSource = std.credentials.EnvVar { name: publication_helper_credential_env_var as String }
-
+// THE CREDENTIAL IS MINTED HERE, not read from an environment file. publication_helper_credential_env_var
+// and the GITHUB_TOKEN EnvironmentFile path are deleted: a token in the helper's environment was the
+// previous transport, and this mint (gunbai-bot, host-custodied key, contents+pull_requests write on
+// gunbc) is its replacement. A mint refusal is still an ANSWER rather than silence.
 fn publication_helper_credential() -> PublicationCredentialSource {
-  match shell.Env.Get(name: publication_helper_credential_env_var, expect: OutcomeIsData).value {
-    Present { value } =>
-      if trim(value) == "" {
-        CredentialSourceAbsent {
-          reason: join([
-            publication_helper_credential_env_var as String,
-            " is set to an empty value in the publication helper's environment",
-          ], ""),
-        }
-      } else {
-        CredentialSourceConfigured { source: publication_helper_credential_source }
-      }
-    Absent =>
-      CredentialSourceAbsent {
-        reason: join([
-          publication_helper_credential_env_var as String,
-          " is not set in the publication helper's environment",
-        ], ""),
-      }
+  match mint_publication_helper_installation_token() {
+    PublisherTokenMinted { token } => CredentialSourceConfigured { token: token }
+    PublisherTokenNotMinted { cause } => CredentialSourceAbsent { reason: cause }
   }
 }
 
@@ -654,17 +613,18 @@ fn publication_helper_publish_if_unpublished(
     match credential {
       CredentialSourceAbsent { reason } =>
         PublicationObservationRefused { detail: join(["the branch is unpublished and no credential is configured to publish it: ", reason], "") }
-      CredentialSourceConfigured { source } =>
+      CredentialSourceConfigured { token } =>
         match publish_attempt(
-          repo: worktree as FilePath,
+          source_worktree: worktree as FilePath,
           remote: publication_subject_remote(subject: subject),
           branch: subject.branch,
+          expected_head: subject.expected_head,
           base: subject.expected_base,
           owner: subject.repository.owner,
           repo_name: subject.repository.name,
           title: publication_helper_publish_title(subject: subject),
           body: publication_helper_publish_body(subject: subject),
-          credential: source,
+          token: token,
         ) {
           PushRefused { exit_code, stderr } =>
             PublicationObservationRefused { detail: join(["the attempt branch could not be pushed (exit ", to_string(value: exit_code), "): ", stderr], "") }

@@ -1739,8 +1739,124 @@ service github.AppInstallationAccessTokens {
   }
 }
 
+// GitHub's installation-token request `permissions` object (Create an installation access token
+// for an app, app_permissions_citation / docs.github.com/en/rest/apps/apps): each documented App
+// permission this module has an axis for is OPTIONAL. An omitted key is not requested; GitHub
+// then grants the installation's default for that axis, which is why a contents-only mint must
+// not send `pull_requests` at all. Wire names are permission_axis_wire_name, not a second spelling.
 type GitHubInstallationTokenPermissions {
-  contents: String
+  actions: String?
+  administration: String?
+  artifact_metadata: String?
+  attestations: String?
+  checks: String?
+  code_quality: String?
+  contents: String?
+  deployments: String?
+  discussions: String?
+  id_token: String?
+  issues: String?
+  metadata: String?
+  models: String?
+  organization_self_hosted_runners: String?
+  packages: String?
+  pages: String?
+  pull_requests: String?
+  repository_projects: String?
+  security_events: String?
+  statuses: String?
+  vulnerability_alerts: String?
+  workflows: String?
+}
+
+fn installation_token_permission_access_wire(perms: List<GitHubAppPermission>, axis: GitHubPermissionAxis) -> String? {
+  fold_list(
+    xs: perms,
+    empty: none,
+    cons: fn(found, p) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if permission_name_eq(a: p.name, b: axis) {
+            Present { value: permission_access_wire_name(access: p.access) as String }
+          } else {
+            none
+          }
+      }
+    }
+  )
+}
+
+fn github_installation_token_permissions(perms: List<GitHubAppPermission>) -> GitHubInstallationTokenPermissions {
+  GitHubInstallationTokenPermissions {
+    actions: installation_token_permission_access_wire(perms: perms, axis: ActionsAxis),
+    administration: installation_token_permission_access_wire(perms: perms, axis: AdministrationAxis),
+    artifact_metadata: installation_token_permission_access_wire(perms: perms, axis: ArtifactMetadataAxis),
+    attestations: installation_token_permission_access_wire(perms: perms, axis: AttestationsAxis),
+    checks: installation_token_permission_access_wire(perms: perms, axis: ChecksAxis),
+    code_quality: installation_token_permission_access_wire(perms: perms, axis: CodeQualityAxis),
+    contents: installation_token_permission_access_wire(perms: perms, axis: ContentsAxis),
+    deployments: installation_token_permission_access_wire(perms: perms, axis: DeploymentsAxis),
+    discussions: installation_token_permission_access_wire(perms: perms, axis: DiscussionsAxis),
+    id_token: installation_token_permission_access_wire(perms: perms, axis: IdTokenAxis),
+    issues: installation_token_permission_access_wire(perms: perms, axis: IssuesAxis),
+    metadata: installation_token_permission_access_wire(perms: perms, axis: MetadataAxis),
+    models: installation_token_permission_access_wire(perms: perms, axis: ModelsAxis),
+    organization_self_hosted_runners: installation_token_permission_access_wire(perms: perms, axis: OrganizationSelfHostedRunnersAxis),
+    packages: installation_token_permission_access_wire(perms: perms, axis: PackagesAxis),
+    pages: installation_token_permission_access_wire(perms: perms, axis: PagesAxis),
+    pull_requests: installation_token_permission_access_wire(perms: perms, axis: PullRequestsAxis),
+    repository_projects: installation_token_permission_access_wire(perms: perms, axis: RepositoryProjectsAxis),
+    security_events: installation_token_permission_access_wire(perms: perms, axis: SecurityEventsAxis),
+    statuses: installation_token_permission_access_wire(perms: perms, axis: StatusesAxis),
+    vulnerability_alerts: installation_token_permission_access_wire(perms: perms, axis: VulnerabilityAlertsAxis),
+    workflows: installation_token_permission_access_wire(perms: perms, axis: WorkflowsAxis),
+  }
+}
+
+fn installation_token_optional_permission_kv(key: String, access: String?) -> List<JsonKeyValue> {
+  match access {
+    Absent => []
+    Present { value: v } => [json_kv(key: key, value: json_string(s: v))]
+  }
+}
+
+fn installation_token_permissions_json_members(p: GitHubInstallationTokenPermissions) -> List<JsonKeyValue> {
+  concat(
+    concat(
+      concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: ActionsAxis) as String, access: p.actions), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: AdministrationAxis) as String, access: p.administration)),
+      concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: ArtifactMetadataAxis) as String, access: p.artifact_metadata), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: AttestationsAxis) as String, access: p.attestations))
+    ),
+    concat(
+      concat(
+        concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: ChecksAxis) as String, access: p.checks), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: CodeQualityAxis) as String, access: p.code_quality)),
+        concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: ContentsAxis) as String, access: p.contents), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: DeploymentsAxis) as String, access: p.deployments))
+      ),
+      concat(
+        concat(
+          concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: DiscussionsAxis) as String, access: p.discussions), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: IdTokenAxis) as String, access: p.id_token)),
+          concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: IssuesAxis) as String, access: p.issues), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: MetadataAxis) as String, access: p.metadata))
+        ),
+        concat(
+          concat(
+            concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: ModelsAxis) as String, access: p.models), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: OrganizationSelfHostedRunnersAxis) as String, access: p.organization_self_hosted_runners)),
+            concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: PackagesAxis) as String, access: p.packages), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: PagesAxis) as String, access: p.pages))
+          ),
+          concat(
+            concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: PullRequestsAxis) as String, access: p.pull_requests), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: RepositoryProjectsAxis) as String, access: p.repository_projects)),
+            concat(
+              concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: SecurityEventsAxis) as String, access: p.security_events), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: StatusesAxis) as String, access: p.statuses)),
+              concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: VulnerabilityAlertsAxis) as String, access: p.vulnerability_alerts), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: WorkflowsAxis) as String, access: p.workflows))
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn installation_token_permissions_json(p: GitHubInstallationTokenPermissions) -> String {
+  serialize_json(v: json_object(members: installation_token_permissions_json_members(p: p)))
 }
 
 // GET /app and GET /app/installations/{installation_id}, the two App-level READS a process holding
