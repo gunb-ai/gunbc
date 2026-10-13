@@ -125,20 +125,6 @@ pub(crate) fn test_migration_rust_test_fn_names(content: &str) -> Result<Vec<Str
     Ok(names)
 }
 
-pub(crate) fn test_migration_dag_test_fn_names(content: &str) -> Vec<String> {
-    content
-        .lines()
-        .filter_map(|line| {
-            line.trim()
-                .strip_prefix("test fn ")
-                .and_then(|rest| rest.split('(').next())
-                .map(str::trim)
-                .filter(|name| !name.is_empty())
-                .map(str::to_string)
-        })
-        .collect()
-}
-
 pub(crate) fn test_migration_behavior_discovery_report(
 ) -> &'static TestMigrationBehaviorDiscoveryReport {
     static REPORT: OnceLock<TestMigrationBehaviorDiscoveryReport> = OnceLock::new();
@@ -166,26 +152,32 @@ pub fn test_migration_behavior_discovery_holds() -> bool {
     test_migration_behavior_discovery_report().errors.is_empty()
 }
 
+/// The stem of a legacy v1 Rust test module: its file name without the extension and without the
+/// `_test` the Rust module files themselves are named with (`<stem>_test.rs`). The floor side of
+/// the diff is keyed by the `.dag` file stem alone (`test_migration_debt_floor_stems`): a floor
+/// witness is a file carrying test-marked declarations, and its spelling carries no `_test`.
 pub(crate) fn test_migration_debt_stem(name: &str) -> String {
-    let stem = name
-        .strip_suffix(".rs")
-        .or_else(|| name.strip_suffix(".dag"))
-        .unwrap_or(name);
+    let stem = name.strip_suffix(".rs").unwrap_or(name);
     stem.strip_suffix("_test").unwrap_or(stem).to_string()
 }
 
+/// The `.dag` file stems of the corpus files that carry at least one test-marked declaration. A
+/// corpus file that does not parse has no determinable test set and the lens refuses, the same
+/// way `corpus_dag_files` refuses a walk it cannot complete.
 pub(crate) fn test_migration_debt_floor_stems() -> Vec<String> {
     let mut stems: Vec<String> = corpus_dag_files()
         .into_iter()
-        .map(|(path, _)| path)
-        .filter(|p| is_test_dag(p))
-        .map(|p| {
-            let file_name = std::path::Path::new(&p)
-                .file_name()
+        .filter(|(path, content)| {
+            !test_marker::test_marked_decl_names(content, path)
+                .unwrap_or_else(|cause| panic!("test-migration debt lens: {cause}"))
+                .is_empty()
+        })
+        .map(|(path, _)| {
+            std::path::Path::new(&path)
+                .file_stem()
                 .and_then(|n| n.to_str())
-                .unwrap_or(&p)
-                .to_string();
-            test_migration_debt_stem(&file_name)
+                .unwrap_or(&path)
+                .to_string()
         })
         .collect();
     stems.sort();

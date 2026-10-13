@@ -1,11 +1,11 @@
 module gunbc.dispatch_attempt
 
 import std.types { String, Bool }
-import gunbc.roadmap_model { RoadmapNode }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_model { RoadmapNode }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 
 // ONE DISPATCH ATTEMPT: the instance it runs on, the node it works and the key that makes it this
-// attempt and not another. The belt (gunbc.roadmap_belt_actuate belt_actuate_spawn_for_instance)
+// attempt and not another. The belt (gunbc.roadmap.roadmap_belt_actuate belt_actuate_spawn_for_instance)
 // owns the attempt and names it once per spawn, and that value stays the authority for which work is
 // being launched. Preparation acquires FOR it, and the prepared launch is minted only when what was
 // prepared is this attempt (gunbc.dispatch_attempt_launch prepare_attempt_launch); every leg after

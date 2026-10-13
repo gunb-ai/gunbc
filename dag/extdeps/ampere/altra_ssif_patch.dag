@@ -14,7 +14,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // 2026-10-07. The readme names Altra and Altra Max, and SSIF host timeouts.
 // These are vendor-stated target ranges, not a compatibility decision for a
 // running kernel; no patch application or production qualification was performed.
-// Consumer: gunbc.altra_firmware_library reference_report.
+// Consumer: gunbc.fleet.altra_firmware_library reference_report.
 // The readme names this upstream support contact. It does not identify the
 // distribution URL from which the operator acquired the archive.
 data altra_ssif_patch_authority: ExternalAuthority = ExternalAuthority {

@@ -172,7 +172,7 @@ fn sdr_reading_words(reading_text: NonEmptyStr) -> List<String> {
 // answer false on a SUCCESSFUL read, and so produced HostPoweredOnPrePost and then
 // FailsafeBeforeHostTelemetry -- the arm whose header says it is the contract working rather than a
 // finding. A decoder gap silently disabled FailsafeHeldAfterPost, which is the identical
-// widen-to-benign path gunbc.machine_intake_bmc_fan_observation condemns at length for the
+// widen-to-benign path gunbc.machine_intake.bmc_fan_observation condemns at length for the
 // unreadable thermal read. Third instance of that one path in this lane.
 //
 // So the sentinel is matched as the LITERAL TEXT the tool documents for an unavailable sensor, and

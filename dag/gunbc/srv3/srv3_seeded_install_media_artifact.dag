@@ -1,4 +1,4 @@
-module gunbc.srv3_seeded_install_media_artifact
+module gunbc.srv3.srv3_seeded_install_media_artifact
 
 import gunbc.host_command_binding { LocalCommandHost, CreationNotRequested }
 
@@ -14,8 +14,8 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
 }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
 import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
-import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
-import gunbc.seeded_install_media_publish {
+import gunbc.provisioning.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
+import gunbc.provisioning.seeded_install_media_publish {
   HostArtifactsDirectory,
   SeededImagePublication,
   SeededImagePublicationRefused,
@@ -64,7 +64,7 @@ fn srv3_seeded_install_media_input_for(user_data_body: NonEmptyStr) -> UbuntuSee
 // the body is written into the ISO's seed and is in the build key, so a document the YAML writer
 // will not write leaves no image to build, publish, or resolve. Every consumer of the row below
 // therefore matches this outcome and refuses in its own vocabulary -- publication and resolution
-// through the refusal arms gunbc.seeded_install_media_publish already carries.
+// through the refusal arms gunbc.provisioning.seeded_install_media_publish already carries.
 type Srv3SeededInstallMedia
   = Srv3SeededInstallMediaDerived { input: UbuntuSeededInstallMediaBuildInput }
   | Srv3SeededInstallMediaRefused { reason: String }

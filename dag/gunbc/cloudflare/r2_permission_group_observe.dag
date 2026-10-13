@@ -228,7 +228,7 @@ fn r2_storage_write_permission_group() -> PermissionGroupRef {
 // THIS ROW'S OLD REASON WAS FALSIFIED BY THE CHANGE THAT ADDED THE CALLER, and repointing it
 // without rewriting it would have left a frontier asserting something the same commit made
 // untrue. It read "the listing entry is operator-invoked and has no automated caller"; the
-// listing now has an executing route -- gunbc.fleet_converge_workflow's r2_mint_preflight mode
+// listing now has an executing route -- gunbc.fleet.fleet_converge_workflow's r2_mint_preflight mode
 // runs observe_account_permission_groups_wet and folds its standing into a process exit and an
 // uploaded receipt. Half of the original gap therefore closed.
 //

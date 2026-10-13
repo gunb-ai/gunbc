@@ -56,7 +56,7 @@ import extdeps.bmc.access_profile {
   bmc_profile_nbd_websocket_path,
   bmc_surface_eligibility,
 }
-import gunbc.machine_intake_access {
+import gunbc.machine_intake.access {
   AccessContextBound,
   AccessContextBoardNotFactsBound,
   AccessContextCatalogRefused,
@@ -93,8 +93,8 @@ import gunbc.boot_artifact {
   intake_artifact_for,
 }
 import gunbc.board_authority_binding { board_authority_bindings }
-import gunbc.machine_intake_subject { MachineIntakeSubject }
-import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
+import gunbc.machine_intake.subject { MachineIntakeSubject }
+import gunbc.machine_intake.receipt { EvidenceRef, same_intake_subject }
 import gunbc.install_transport_qualification {
   ConfigfsTransportRequirement,
   ReinstallPathEstablished,
@@ -141,7 +141,7 @@ import gunbc.network_boot_delivery {
 // carries a protocol-neutral BootControlTarget rather than a Redfish override value. This
 // module is the ONE solver. It reads a BootDeliveryRequest (target unit, attempt and protocol-
 // neutral controller, exact BootArtifact, the staging offers each naming the digest they
-// serve), BoundBootDeliveryEvidence (an access context that gunbc.machine_intake_access has
+// serve), BoundBootDeliveryEvidence (an access context that gunbc.machine_intake.access has
 // already bound to this attempt, plus the transport-local standings, each bound to a target)
 // and a BootDeliveryPolicy. It first binds the request's target to the access context — same
 // subject and attempt, same controller — and consumes only that bound arm (ruling 4 §1); every
@@ -288,7 +288,7 @@ data boot_artifact_staging_unbound: BootArtifactStagingBinding = BootArtifactSta
   configfs_gadget: none,
 }
 
-// WHO and WHAT. The target (gunbc.machine_intake_access BootDeliveryTarget) is
+// WHO and WHAT. The target (gunbc.machine_intake.access BootDeliveryTarget) is
 // the intake subject plus the controller the plan will drive; the artifact is
 // the exact content-addressed thing to boot. Both are repeated on the plan, and
 // the eventual agent callback repeats the digest from the same plan.
@@ -470,7 +470,7 @@ type BootDeliveryEligibilityProvenance {
 // PLANNED, NOT ESTABLISHED. A plan is a candidate the bound profile and the
 // live probe admit, bound to the target and the artifact it was solved for;
 // insert, host consumption, eject and detach are established only by execution
-// receipts (the boot-delivery and cleanup phases of gunbc.machine_intake_phase),
+// receipts (the boot-delivery and cleanup phases of gunbc.machine_intake.phase),
 // never by this solver.
 // boot_control_route is the CONTROL half's evidence: the route the controller
 // was OBSERVED answering boot control over — its bytes named in the evidence

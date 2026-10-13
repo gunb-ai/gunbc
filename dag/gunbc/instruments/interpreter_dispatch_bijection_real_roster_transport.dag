@@ -1,8 +1,8 @@
-module tools.interpreter_dispatch_bijection_real_roster_transport
+module gunbc.instruments.interpreter_dispatch_bijection_real_roster_transport
 
 import extdeps.git.inspect
 import extdeps.shell
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 import gunbc.cargo_execution_placement {
   CargoPlacement,
   LocalRunner,
@@ -60,7 +60,7 @@ import std.types { FilePath, NonEmptyStr, List, String }
 // literal, and why the modeled cargo.Build.Test could not be used as it stands.
 data real_roster_placement_requirement: CargoSubjectPlacementRequirement = RequiresLocalWorkspace {
     required_by: DeclarationRef {
-      module_path: "tools.interpreter_dispatch_bijection_real_roster_transport",
+      module_path: "gunbc.instruments.interpreter_dispatch_bijection_real_roster_transport",
       decl_name: "run_interpreter_dispatch_bijection_real_roster_red",
       field: WholeDeclaration,
     },

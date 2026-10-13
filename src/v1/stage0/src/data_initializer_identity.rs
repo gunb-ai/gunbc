@@ -2,7 +2,7 @@
 //!
 //! Identity is marshaled only from typechecked subjects in `InterpContext`. Resolution uses
 //! inferred `Node` stamps and owning type-item nodes — never lossy name strings re-looked up
-//! through first-pick authority helpers (`resolved_initializer_decl_ref`, etc.).
+//! through first-pick authority helpers.
 
 // CLIPPY ROSTER -- 7 finding(s) this module trips today, listed one lint per line with
 // its count. Until this commit the generated crate root allowed `clippy::all` plus six

@@ -219,7 +219,7 @@ fn v41_published_observations() -> List<PublishedImageObservation> {
 
 // ── WHO CONSUMES THESE ROWS, AND WHEN (DESIGN §3c) ────────────────────────────────────────────
 //
-// Live consumers: test.claim.spark.engram_materialization_witness_test reads
+// Live consumers: test.claim.spark.engram_materialization_witness reads
 // v41_published_engram_placement; gunbc.spark.runtime_architecture_registry_reading joins the
 // published arm64 digest. Remaining declarations are observations this repository made of the
 // published image, not a deferred serving-selector import.

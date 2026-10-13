@@ -27,7 +27,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // THIS MODULE OWNS THE INTERFACE SHAPE OF GITHUB'S REPOSITORY RULESETS API AND NOTHING ELSE. Which
 // ruleset this repository wants, which contexts it requires, and what to do when the live ruleset
-// disagrees are business policy and live in gunbc.repo_ruleset — modelling them here would be the
+// disagrees are business policy and live in gunbc.repo.repo_ruleset — modelling them here would be the
 // layer inversion DESIGN section 3 names, making the upstream authority carry a fact GitHub has no
 // opinion about.
 //

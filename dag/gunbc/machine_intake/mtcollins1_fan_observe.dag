@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_fan_observe
+module gunbc.machine_intake.mtcollins1_fan_observe
 
 import extdeps.shell
 import std.algebra { trim }
@@ -6,15 +6,15 @@ import std.types { NonEmptyStr, String }
 import std.measure { ObservationRoundCount, Second, observation_round_count, second }
 import std.process { ProcessExit, exit_failure }
 import std.optional { Present, Absent }
-import gunbc.managed_host { managed_host_binding_for }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake_fan_observe {
+import gunbc.host.managed_host { managed_host_binding_for }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.fan_observe {
   FanObserveAdmitted, FanObserveRefused, FanObservePolicy,
   fan_observe_admission, fan_observe_refusal_text, fan_observe_with,
 }
 
 // MT. COLLINS UNIT 1'S BINDING OF THE FAN OBSERVATION (managed-host cut 5). The read, the family-selected
-// policy authority and the receipt's rendering are gunbc.machine_intake_fan_observe over the host's
+// policy authority and the receipt's rendering are gunbc.machine_intake.fan_observe over the host's
 // managed binding; what stays here is what the fleet-converge workflow names (ruling (a): the workflow
 // surface moves in cut 7) -- the entry function, the credential variable its prelude materializes and
 // the receipt path its upload reads -- and this unit's own series policy: how many samples, how far
@@ -44,13 +44,13 @@ data mtcollins1_fan_observation_interval: Second = second(count: 10)
 data mtcollins1_fan_transition_window: Second = second(count: 60)
 
 // THE BARE `import extdeps.shell` ABOVE IS WHAT MAKES shell.Env.Get RESOLVABLE AT RUN TIME, for the
-// reason gunbc.managed_host_boot_handoff's header states at length: service operations
+// reason gunbc.host.managed_host_boot_handoff's header states at length: service operations
 // register from the import closure, so without it this function refuses with
 // `Unimplemented { what: "unknown service operation: shell.Env.Get" }` - naming the operation
 // rather than the import, which is why that module hit it first and this one hit it second.
 //
 // A CREDENTIAL PATH IS A TYPED OUTCOME AND NOT AN OPTIONAL, the same shape
-// gunbc.fleet_bootstrap_principal_session uses for exactly this fact. Optional would carry two
+// gunbc.fleet.fleet_bootstrap_principal_session uses for exactly this fact. Optional would carry two
 // different absences on one arm - the variable was never set, and it was set to whitespace - and the
 // second is a materialization that went wrong rather than one that did not happen.
 type MtCollins1FanCredentialPath

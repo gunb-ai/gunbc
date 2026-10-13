@@ -2,7 +2,7 @@
 //! crate boundary files, produced from the authority and adjudicated against the tree.
 //!
 //! WHY THIS MODULE EXISTS. `stage0_crate_boundary_emit_outcome` already rendered every
-//! partition crate's `lib.rs` and `Cargo.toml` from `gunbc.stage0_crate_partition_generated`
+//! partition crate's `lib.rs` and `Cargo.toml` from `gunbc.stage0.stage0_crate_partition_generated`
 //! (authority `v2.workflow.rust_crate_partition`) but had no CALLER from the 2026-08-20 regen
 //! cut until this module: `regen_stage0` was deleted at the root and `--required-regen` never
 //! covered these files, so the committed files were hand-edited while their
@@ -282,7 +282,7 @@ pub fn compile_partition_crates(packages: &[String]) -> PartitionCompileOutcome 
 
 /// The package names the partition authority declares, read from the rendered rows.
 pub fn partition_package_names() -> Vec<String> {
-    crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows()
+    crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows()
         .iter()
         .map(|row| row.package_name.clone())
         .collect()

@@ -13,7 +13,7 @@ data compensating_errors_cancel_in_the_aggregate: RecurringFailureMode = Recurri
 
     "Distinct from `executed_conjunct_discriminates_nothing`, where the conjunct can never go red: this one goes red readily on a SINGLE defect and is blind only to defects in opposing directions -- which is precisely the pair a long-lived roster accumulates, since the same neglect that leaves a new member unrostered leaves a deleted member rostered.",
 
-    "Receipt (2026-09-01): `test.claim.language_source_scaffold_index_test.compiler_tests_rust_blobs_are_all_rostered` asserted `declared_fn_count(ct_) == rostered_count_for(v1.compiler.compiler_tests_rust)`.",
+    "Receipt (2026-09-01): `test.claim.language_source_scaffold_index.compiler_tests_rust_blobs_are_all_rostered` asserted `declared_fn_count(ct_) == rostered_count_for(v1.compiler.compiler_tests_rust)`.",
 
     "The tree carried 44 `ct_` blobs and 40 roster rows, so it was RED and enrolled in `v2.workflow.floor_expected_red` -- but the residues were not 4 of one kind.",
 

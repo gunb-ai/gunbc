@@ -1,4 +1,4 @@
-module gunbc.machine_intake_arrival_subject
+module gunbc.machine_intake.arrival_subject
 
 import std.types { List, NonEmptyStr, String }
 import std.optional { Present, Absent }
@@ -7,10 +7,10 @@ import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost,
   StandingJadeArrivalArchive, StandingJadeFirmwareQualification,
 }
-import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
 
 // ── ARRIVAL-CONVERGE SUBJECT POPULATION ───────────────────────────────────────────────────────
-// J2/J4 cannot read gunbc.managed_host managed_hosts(): mtjade1 is not a member until J4's
+// J2/J4 cannot read gunbc.host.managed_host managed_hosts(): mtjade1 is not a member until J4's
 // ManagedHostAdmission. The dispatch input for those effects is this population, distinct from the
 // executor `host` input and from `managed_host`. Options are derived from the rows, never a second
 // hand list in fleet-converge.yml.
@@ -31,7 +31,7 @@ type ArrivalConvergePopulationRow {
 data arrival_converge_population: List<ArrivalConvergePopulationRow> = [
   ArrivalConvergePopulationRow {
     wire: "mtjade1" as NonEmptyStr,
-    producer: decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_mtjade1_arrival_prefix"),
+    producer: decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "converge_mtjade1_arrival_prefix"),
   },
 ]
 

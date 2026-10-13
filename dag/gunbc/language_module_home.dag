@@ -56,7 +56,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // WHAT THIS MODULE DOES AND DELIBERATELY DOES NOT DO. IT DOES: declare a canonical home per
 // registered language target, carry the four legacy flat modules as an EXACT finite frontier with a
-// dissolution trigger each, and supply the admission predicate tools.extdeps_scope_placement_gate
+// dissolution trigger each, and supply the admission predicate gunbc.instruments.extdeps_scope_placement_gate
 // calls on the paths a change adds. IT DOES NOT: move any file, edit any importer, touch src/v2, or
 // check that a module sits under ITS OWN target's home rather than someone else's. IT ALSO NO
 // LONGER CARRIES EXCEPTIONS FOR UNREGISTERED-TARGET DIRECTORIES (operator P1, 2026-08-05). An
@@ -240,7 +240,7 @@ type FlatModuleVerdict
 // no allowance is keyed on a name pattern, and there is no toggle — the three shapes DESIGN section
 // 5 rules out. THE CONSEQUENCE, ENFORCED RATHER THAN INTENDED: a new target-specific module
 // authored flat beside the target directories cannot land, so this population can only shrink,
-// because tools.extdeps_scope_placement_gate calls added_language_paths_refused on the paths a
+// because gunbc.instruments.extdeps_scope_placement_gate calls added_language_paths_refused on the paths a
 // change adds and exits failure naming them. AN EARLIER REVISION CLAIMED THAT CONSEQUENCE WHILE
 // NOTHING CALLED THE PREDICATE (cursor review 48516, and the parent lane found it independently) —
 // the coverage-by-illusion tier DESIGN section 6 names: machinery exists, nothing gates on it, an

@@ -33,12 +33,12 @@ data mt_collins_board_binding: BoardAuthorityBinding = BoardAuthorityBinding {
   authority: mt_collins_board_authority,
   standing: BoundByObservedEvidence {
     first: DeclarationRef {
-      module_path: "gunbc.machine_intake_mtcollins1_32dimm_bringup_observation",
+      module_path: "gunbc.machine_intake.mtcollins1_32dimm_bringup_observation",
       decl_name: "mtcollins1_dram_training_capture",
       field: WholeDeclaration
     },
     further: [DeclarationRef {
-      module_path: "gunbc.machine_intake_mtcollins1_physical_orientation",
+      module_path: "gunbc.machine_intake.mtcollins1_physical_orientation",
       decl_name: "mtcollins1_three_stick_anchor",
       field: WholeDeclaration
     }]
