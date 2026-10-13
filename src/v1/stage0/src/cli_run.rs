@@ -22974,9 +22974,9 @@ fn trim_retained_heap() -> Option<u64> {
 /// spawned from a large parent reads the parent's peak. VmHWM belongs to the mm the exec created.
 /// The ledger row is `gunbc.recurring_failure_mode`
 /// `a_child_peak_resident_inherits_the_predecessor_address_space`; the control is
-/// `peak_resident_inheritance_control_tests`. Other hosts keep `getrusage` (the portable call,
-/// with the unit answered per implementation); whether their `ru_maxrss` is inherited across exec
-/// is unverified. Missing readings are `None`, never a fabricated zero.
+/// `peak_resident_inheritance_control_tests`. macOS keeps `getrusage` (the portable call,
+/// with the unit answered per implementation); whether its `ru_maxrss` is inherited across exec
+/// is unverified. Hosts other than Linux and macOS are unmodeled and answer `None`. Missing readings are `None`, never a fabricated zero.
 pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     // LINUX: THE NEW ADDRESS SPACE'S OWN HIGH-WATER, NOT `ru_maxrss`. Linux seeds a process's
     // `ru_maxrss` at exec from the high-water of the address space it replaces, so a process spawned
@@ -22987,13 +22987,18 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     {
         return proc_status_kb_field("VmHWM").filter(|b| *b > 0);
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     {
         peak_rss_getrusage_bytes()
     }
+    // Unmodeled hosts (the BSDs report kibibytes) refuse: no unit is guessed.
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        None
+    }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
 fn peak_rss_getrusage_bytes() -> Option<u64> {
     // SAFETY: `ru` is a live, fully-owned zeroed `rusage`; `getrusage` only writes it.
     let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
@@ -23001,7 +23006,7 @@ fn peak_rss_getrusage_bytes() -> Option<u64> {
     if rc != 0 || ru.ru_maxrss <= 0 {
         return None;
     }
-    // Darwin reports bytes (extdeps.darwin.rusage); other non-Linux hosts are not modeled.
+    // Darwin reports bytes (extdeps.darwin.rusage).
     Some(ru.ru_maxrss as u64)
 }
 
@@ -41112,6 +41117,13 @@ mod peak_resident_inheritance_control_tests {
                 .unwrap_or_else(|| panic!("no {name} in {line}"))
         };
         let vmhwm = field("vmhwm=");
+        // THE SETUP MUST BE ABLE TO FAIL: the raw `ru_maxrss` the old reader returned has to show the
+        // parent's peak here, or this host/harness no longer inherits and the pass below shows nothing.
+        let raw = field("raw_ru_maxrss=");
+        assert!(
+            raw >= (PARENT_BYTES as u64) / 2,
+            "the control child did not inherit the parent's peak, so this test discriminates nothing: {line}"
+        );
         assert!(vmhwm > 0, "a Measured peak must exist: {line}");
         assert!(
             vmhwm < (PARENT_BYTES as u64) / 2,
