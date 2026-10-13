@@ -1931,23 +1931,7 @@ fn resolve_declared_path_reading(
     required: ctx.reference_category,
     candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
   ) {
-    Empty =>
-      match unavailable_provider_for_path(providers: ctx.namespace.unavailable_providers, path: path) {
-        Present { value: provider } =>
-          Rejected {
-            diagnostics: rejected_with_pending(
-              pending: pending,
-              rejected: declarer_refused_diagnostics(n: n, provider: provider)
-            )
-          }
-        Absent =>
-          Rejected {
-            diagnostics: rejected_with_pending(
-              pending: pending,
-              rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
-            )
-          }
-      }
+    Empty => resolve_reference_path_miss(ctx: ctx, n: n, path: path, pending: pending)
     Cons { head: candidate, tail: rest } =>
       resolve_declared_path_candidates(ctx: ctx, n: n, candidate: candidate, rest: rest, pending: pending)
   }
@@ -1956,6 +1940,34 @@ fn resolve_declared_path_reading(
 // ONE CANDIDATE IS THE ANSWER AND SEVERAL ARE AMBIGUOUS. Factored out because both arms above reach it and
 // a second copy of an ambiguity refusal is the duplicated authority DESIGN section 2 prices -- the two arms
 // differ in what they do with an EMPTY candidate list, not in how they read a non-empty one.
+fn resolve_reference_path_miss(
+  ctx: ResolveContext,
+  n: Node,
+  path: QualifiedName,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match unavailable_provider_for_path(providers: ctx.namespace.unavailable_providers, path: path) {
+    Present { value: provider } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: declarer_refused_diagnostics(n: n, provider: provider)
+        )
+      }
+    Absent =>
+      match qualified_name_last_segment(qn: path) {
+        Present { value: leaf } => resolve_atom_unbound(ctx: ctx, n: n, identity: leaf, pending: pending)
+        Absent =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+            )
+          }
+      }
+  }
+}
+
 fn resolve_declared_path_candidates(
   ctx: ResolveContext,
   n: Node,
@@ -3669,6 +3681,7 @@ fn resolve_construct_tag_walk(ctx: ResolveContext, reference: Node) -> ResolveNo
 fn resolve_construct_tag_from_payload_lookup(
   ctx: ResolveContext,
   reference: Node,
+  identity: Symbol,
   lookup: LexicalLookup
 ) -> Outcome<Node> {
   match lookup {
@@ -3680,7 +3693,7 @@ fn resolve_construct_tag_from_payload_lookup(
           class: AmbiguousOnLexicalChain { candidates: candidates }
         )
       }
-    LexicalUnbound => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
+    LexicalUnbound => resolve_atom_unbound(ctx: ctx, n: reference, identity: identity, pending: None)
   }
 }
 
@@ -3690,6 +3703,7 @@ fn resolve_construct_tag_reference(ctx: ResolveContext, reference: Node, path: Q
       resolve_construct_tag_from_payload_lookup(
         ctx: ctx,
         reference: reference,
+        identity: only,
         lookup: symbol_index_lexical_lookup_for_declared_payload(
           index: ctx.namespace.symbol_index,
           position: symbol_index_lookup_position(ctx: ctx),
@@ -3774,13 +3788,7 @@ fn resolve_construct_tag_declared_payload_path(
     index: ctx.namespace.symbol_index,
     candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
   ) {
-    Empty =>
-      Rejected {
-        diagnostics: rejected_with_pending(
-          pending: pending,
-          rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference))
-        )
-      }
+    Empty => resolve_reference_path_miss(ctx: ctx, n: reference, path: path, pending: pending)
     Cons { head: candidate, tail: rest } =>
       resolve_declared_path_candidates(ctx: ctx, n: reference, candidate: candidate, rest: rest, pending: pending)
   }
