@@ -3,8 +3,9 @@ module v2.test.claim.map_carrier_shape_gate
 import v2.std.live_tree { LiveTreeDisposition }
 import std.decl_ref { decl_ref }
 import std.primitive_identity {
-  declaration_and_primitive_are_one_authority,
-  primitive_projection_for_declaration,
+  declaration_and_primitive_are_one_authority_in,
+  primitive_identity_surface_symbols,
+  primitive_projection_for_declaration_in,
 }
 import std.primitive_projection {
   DeclarationPrimitiveUndisposed,
@@ -73,12 +74,14 @@ test fn native_map_reaches_map_insert() -> Bool {
 }
 
 test fn map_insert_delegate_is_host_realized_seam() -> Bool {
-  declaration_and_primitive_are_one_authority(
+  declaration_and_primitive_are_one_authority_in(
     declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_insert_primitive_delegate"),
     primitive: primitive_map_insert,
+    surface_symbols: primitive_identity_surface_symbols(),
   )
-    && match primitive_projection_for_declaration(
-      declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_insert_primitive_delegate")
+    && match primitive_projection_for_declaration_in(
+      declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_insert_primitive_delegate"),
+      surface_symbols: primitive_identity_surface_symbols(),
     ) {
       DeclarationProjectsNoPrimitive => false
       DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
@@ -92,12 +95,14 @@ test fn map_insert_delegate_is_host_realized_seam() -> Bool {
 }
 
 test fn map_lookup_delegate_is_host_realized_seam() -> Bool {
-  declaration_and_primitive_are_one_authority(
+  declaration_and_primitive_are_one_authority_in(
     declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_lookup_primitive_delegate"),
     primitive: primitive_lookup,
+    surface_symbols: primitive_identity_surface_symbols(),
   )
-    && match primitive_projection_for_declaration(
-      declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_lookup_primitive_delegate")
+    && match primitive_projection_for_declaration_in(
+      declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_lookup_primitive_delegate"),
+      surface_symbols: primitive_identity_surface_symbols(),
     ) {
       DeclarationProjectsNoPrimitive => false
       DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
@@ -111,12 +116,14 @@ test fn map_lookup_delegate_is_host_realized_seam() -> Bool {
 }
 
 test fn map_insert_surface_is_modeled_projection_of_the_insert_primitive() -> Bool {
-  declaration_and_primitive_are_one_authority(
+  declaration_and_primitive_are_one_authority_in(
     declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_insert"),
     primitive: primitive_map_insert,
+    surface_symbols: primitive_identity_surface_symbols(),
   )
-    && match primitive_projection_for_declaration(
-      declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_insert")
+    && match primitive_projection_for_declaration_in(
+      declaration: decl_ref(module_path: "v2.std.collection", decl_name: "map_insert"),
+      surface_symbols: primitive_identity_surface_symbols(),
     ) {
       DeclarationProjectsNoPrimitive => false
       DeclarationPrimitiveUndisposed { authored_symbol: _ } => false

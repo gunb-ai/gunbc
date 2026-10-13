@@ -54,15 +54,16 @@ import std.primitive_projection {
 
 // D2 (primitive projection authority): the join gains the question a callable-resolution wall
 // actually asks -- given a DECLARATION, is it the modeled surface of a PRIMITIVE, and are the two
-// ONE authority or genuinely two. primitive_projection_for_declaration is total over every
-// DeclarationRef; ProjectionFidelity separates a host-realized seam from a modeled projection from
-// a divergent one, and only the first two mean one authority. Consumer: the bare-call candidate
-// collector in gunbc#8952, whose first corpus run refused 1215 sites across five names precisely
-// because a modeled std surface and the primitive it projects were two co-candidates with no
-// relation between them. D2 also replaces the prose open denominator with a counted one:
-// primitive_undisposed_surface_symbol_count enumerates, at symbol grain, how far the five-surface
-// census is from the terminal bar. It does NOT close that bar -- see
-// primitive_undisposed_residue_note.
+// ONE authority or genuinely two. primitive_projection_for_declaration_in is total over every
+// DeclarationRef given a supplied surface-symbol census; ProjectionFidelity separates a
+// host-realized seam from a modeled projection from a divergent one, and only the first two mean
+// one authority. The five-surface closed form lives in gunbc.primitive_egress.d0_census.
+// Consumer: the bare-call candidate collector in gunbc#8952, whose first corpus run refused 1215
+// sites across five names precisely because a modeled std surface and the primitive it projects
+// were two co-candidates with no relation between them. D2 also replaces the prose open
+// denominator with a counted one: primitive_undisposed_surface_symbol_count enumerates, at symbol
+// grain, how far the five-surface census is from the terminal bar. It does NOT close that bar --
+// see primitive_undisposed_residue_note.
 
 // D0 (primitive-identity-join first slice): semantic primitive identity is ONE join key across five
 // independently-writable surfaces. See primitive_identity_d0_scope_note — NOT the closing contract.
@@ -662,9 +663,11 @@ fn contract_contains_name(name: String) -> Bool {
   primitive_contract_roster() |> any(contract => contract.name == name)
 }
 
-// Each surface's authored symbols, in one place. The census rows below map over these lists, and
-// primitive_surface_carries_symbol reads them directly: a membership question needs the names, not
-// the full rows (each row also resolves its primitive identity and authority reference).
+// Each std-owned surface's authored symbols, in one place. The census rows below map over these
+// lists, and primitive_surface_carries_symbol_in reads a caller-supplied concat of them: a
+// membership question needs the names, not the full rows (each row also resolves its primitive
+// identity and authority reference). InterpreterDispatch names are not in this tree; the
+// five-surface concat is gunbc.primitive_egress.d0_census primitive_surface_symbols.
 fn primitive_registry_surface_symbols() -> List<String> {
   builtin_registry_surface_names()
 }
@@ -1121,12 +1124,12 @@ fn primitive_identity_is_declared(identity: PrimitiveIdentity) -> Bool {
 
 data primitive_projection_query_note: String = "The question a candidate collector asks, and it is TOTAL: every DeclarationRef gets an answer. Absence and divergence are different states at the consumer, which is the distinction a boolean suppress flag could not carry.
 
-AND ABSENCE ITSELF IS TWO STATES, NOT ONE -- the top-as-answer / top-as-ignorance split, in the arm where it is most expensive. DeclarationProjectsNoPrimitive means CLASSIFIED: no primitive-bearing surface carries this declaration's name at all, so no builtin co-candidate can exist and a consumer may treat two candidates as two authorities. DeclarationPrimitiveUndisposed means UNCLASSIFIED: a surface does carry the name, but nobody has declared whether this declaration projects it. Collapsing them would hand a consumer one answer meaning both -this is genuinely not a projection- and -I do not know-, and at a candidate-resolution wall the ignorance arm lands on the REFUSING side: measured at the time of writing, 13 symbols are disposed against 196 undisposed, so the collapsed answer is the shortest path to a corpus-wide false-refusal storm. Requested by gunbc#8952, which consumes this query, and correct independently of that consumer.
+AND ABSENCE ITSELF IS TWO STATES, NOT ONE -- the top-as-answer / top-as-ignorance split, in the arm where it is most expensive. DeclarationProjectsNoPrimitive means CLASSIFIED: no primitive-bearing surface in the SUPPLIED census carries this declaration's name at all, so no builtin co-candidate can exist and a consumer may treat two candidates as two authorities. DeclarationPrimitiveUndisposed means UNCLASSIFIED: a supplied surface does carry the name, but nobody has declared whether this declaration projects it. Collapsing them would hand a consumer one answer meaning both -this is genuinely not a projection- and -I do not know-, and at a candidate-resolution wall the ignorance arm lands on the REFUSING side: measured at the time of writing, 13 symbols are disposed against 196 undisposed, so the collapsed answer is the shortest path to a corpus-wide false-refusal storm. Requested by gunbc#8952, which consumes this query, and correct independently of that consumer.
 
-The discrimination is DERIVED, not declared: it asks whether the five-surface census carries the declaration's name, so it stays right as the disposition population grows without anyone maintaining a second list."
+The discrimination is DERIVED from the caller-supplied surface-symbol list, not from a second authored roster. primitive_identity_surface_symbols is the four std-owned surfaces (registry, contract, algebra, emit). The five-surface census that also includes InterpreterDispatch is gunbc.primitive_egress.d0_census primitive_surface_symbols; its closed projection query is the form that still asks whether that join carries the declaration's name."
 
 
-fn primitive_surface_symbols() -> List<String> {
+fn primitive_identity_surface_symbols() -> List<String> {
   concat(
     concat(
       concat(primitive_registry_surface_symbols(), primitive_contract_surface_symbols()),
@@ -1136,16 +1139,25 @@ fn primitive_surface_symbols() -> List<String> {
   )
 }
 
-fn primitive_surface_carries_symbol(authored_symbol: String) -> Bool {
-  primitive_surface_symbols() |> any(fn(sym) { sym == authored_symbol })
+fn primitive_surface_carries_symbol_in(
+  authored_symbol: String,
+  surface_symbols: List<String>,
+) -> Bool {
+  surface_symbols |> any(fn(sym) { sym == authored_symbol })
 }
 
-fn primitive_projection_for_declaration(declaration: DeclarationRef) -> PrimitiveProjectionAnswer {
+fn primitive_projection_for_declaration_in(
+  declaration: DeclarationRef,
+  surface_symbols: List<String>,
+) -> PrimitiveProjectionAnswer {
   match primitive_projection_row_for_declaration(declaration: declaration) {
     Present { value: row } =>
       DeclarationProjectsPrimitive { identity: row.primitive, fidelity: row.fidelity }
     Absent =>
-      if primitive_surface_carries_symbol(authored_symbol: declaration.decl_name as String) {
+      if primitive_surface_carries_symbol_in(
+        authored_symbol: declaration.decl_name as String,
+        surface_symbols: surface_symbols,
+      ) {
         DeclarationPrimitiveUndisposed { authored_symbol: declaration.decl_name }
       } else {
         DeclarationProjectsNoPrimitive
@@ -1161,11 +1173,15 @@ fn projection_fidelity_is_one_authority(fidelity: ProjectionFidelity) -> Bool {
   }
 }
 
-fn declaration_and_primitive_are_one_authority(
+fn declaration_and_primitive_are_one_authority_in(
   declaration: DeclarationRef,
   primitive: PrimitiveIdentity,
+  surface_symbols: List<String>,
 ) -> Bool {
-  match primitive_projection_for_declaration(declaration: declaration) {
+  match primitive_projection_for_declaration_in(
+    declaration: declaration,
+    surface_symbols: surface_symbols,
+  ) {
     DeclarationProjectsNoPrimitive => false
     DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
     DeclarationProjectsPrimitive { identity: id, fidelity: fidelity } =>

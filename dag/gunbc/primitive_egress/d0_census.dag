@@ -20,6 +20,7 @@ import std.primitive_identity {
   primitive_algebra_surface_symbols,
   primitive_contract_surface_rows,
   primitive_contract_surface_symbols,
+  declaration_and_primitive_are_one_authority_in,
   primitive_d0_derived_surface_authority_count,
   primitive_d0_open_surface_authority_count,
   primitive_emit_surface_rows,
@@ -30,6 +31,7 @@ import std.primitive_identity {
   primitive_identity_is_declared,
   primitive_identity_slug,
   primitive_map_keys,
+  primitive_projection_for_declaration_in,
   PrimitiveRuntimeBodyCensus,
   PrimitiveRuntimeBodiesObserved,
   PrimitiveRuntimeBodyScanRefused,
@@ -37,6 +39,7 @@ import std.primitive_identity {
   primitive_runtime_coverage_in,
   primitive_registry_surface_rows,
   primitive_registry_surface_symbols,
+  primitive_surface_carries_symbol_in,
   primitive_surface_row_identity_violation,
   primitive_surface_rows_missing_identity_violations,
   primitive_symbol_disposition,
@@ -48,6 +51,7 @@ import std.primitive_identity {
   emit_contains_symbol,
   algebra_contains_template_name,
 }
+import std.primitive_projection { PrimitiveProjectionAnswer }
 import gunbc.v1.v1_interpreter_primitive_surface {
   v1_interpreter_primitive_arms,
   v1_interpreter_row_count,
@@ -227,6 +231,33 @@ fn primitive_surface_symbols() -> List<String> {
       primitive_emit_surface_symbols()
     ),
     primitive_interpreter_surface_symbols()
+  )
+}
+
+fn primitive_surface_carries_symbol(authored_symbol: String) -> Bool {
+  primitive_surface_carries_symbol_in(
+    authored_symbol: authored_symbol,
+    surface_symbols: primitive_surface_symbols(),
+  )
+}
+
+fn primitive_projection_for_declaration(
+  declaration: DeclarationRef,
+) -> PrimitiveProjectionAnswer {
+  primitive_projection_for_declaration_in(
+    declaration: declaration,
+    surface_symbols: primitive_surface_symbols(),
+  )
+}
+
+fn declaration_and_primitive_are_one_authority(
+  declaration: DeclarationRef,
+  primitive: PrimitiveIdentity,
+) -> Bool {
+  declaration_and_primitive_are_one_authority_in(
+    declaration: declaration,
+    primitive: primitive,
+    surface_symbols: primitive_surface_symbols(),
   )
 }
 
