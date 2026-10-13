@@ -4475,6 +4475,20 @@ mod compiler_tests {
             text.starts_with("integer overflow:"),
             "the Nat product must refuse through v1_rt, got {text:?}"
         );
+        let call_result_refusal = std::panic::catch_unwind(|| {
+            crate::std_measure::micrometer_to_nanometer(crate::std_measure::micrometer(
+                i64::MAX / 10,
+            ))
+        })
+        .expect_err("a Nat product of a call result past i64 must refuse");
+        let call_result_text = call_result_refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            call_result_text.starts_with("integer overflow:"),
+            "the call-result Nat product must refuse through v1_rt, got {call_result_text:?}"
+        );
     }
 
     #[test]
