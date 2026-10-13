@@ -106,6 +106,10 @@ type Bool = True | False
 
 type Unit
 
+// Uninhabited: zero constructors. The dag-tree home so a dag module cannot import
+// v2.std.cardinality for this spelling (v2.std.cross_tree.resolution denies Dag→V2).
+type Never
+
 type Json
 type Bytes
 
