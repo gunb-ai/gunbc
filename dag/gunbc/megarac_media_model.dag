@@ -41,7 +41,7 @@ type MegaRacImage {
   image_index: Int
 }
 
-// ready_after is the controller's connecting interval. Observed 2026-09-27 (gunbc.machine_intake_megarac_media_attach
+// ready_after is the controller's connecting interval. Observed 2026-09-27 (gunbc.machine_intake.megarac_media_attach
 // readiness notes): status 100 at +6s, then 1 with session index 0 from +12s.
 type MegaRacMediaWorld {
   sessions: List<MegaRacSession>

@@ -1,4 +1,4 @@
-module gunbc.bmc_fan_program_interpretation
+module gunbc.bmc.bmc_fan_program_interpretation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash }
@@ -37,7 +37,7 @@ type DecoderIdentityStanding
   | DecoderIdentityNotInstrumented { obligation: NonEmptyStr }
 
 // THE PRECEDENT AND THE TRIGGER, both named so this does not have to be rediscovered. The two-digest
-// shape already exists in this repository: tools.multi_module_compile_fixture carries a structural
+// shape already exists in this repository: gunbc.instruments.multi_module_compile_fixture carries a structural
 // source_digest over its exact source vector and a compiler_digest taken from the running
 // compiler's own content hash, and its note records why both are absent from its refused arm --
 // stamping a digest on a measurement that did not happen names a measurement that did not happen.
@@ -46,7 +46,7 @@ type DecoderIdentityStanding
 // DISSOLVES WHEN: an instrument supplies both digests for a decode, at which point
 // DecoderIdentityNotInstrumented has no producer and the carrier below always holds an established
 // identity. Until then the standing is honest and the receipt says so.
-data decoder_identity_instrument_obligation: NonEmptyStr = "no instrument in this repository supplies a source-closure digest for a .dag entry's transitive closure together with the running compiler's content digest, so a decoder identity would have to be hand-authored beside the result it describes. Precedent for the shape: tools.multi_module_compile_fixture source_digest and compiler_digest."
+data decoder_identity_instrument_obligation: NonEmptyStr = "no instrument in this repository supplies a source-closure digest for a .dag entry's transitive closure together with the running compiler's content digest, so a decoder identity would have to be hand-authored beside the result it describes. Precedent for the shape: gunbc.instruments.multi_module_compile_fixture source_digest and compiler_digest."
 
 data fan_program_decoder: DeclarationRef = DeclarationRef {
   module_path: "extdeps.bmc.pid_control_representability",

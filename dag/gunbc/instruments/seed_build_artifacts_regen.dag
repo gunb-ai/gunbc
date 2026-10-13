@@ -1,4 +1,4 @@
-module tools.seed_build_artifacts_regen
+module gunbc.instruments.seed_build_artifacts_regen
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }

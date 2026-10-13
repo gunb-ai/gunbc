@@ -148,7 +148,7 @@ data runtime_rust_rc_container_trigger: Disposition = Scaffold {
 data runtime_rust_filesystem_effect_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffect",
     field: WholeDeclaration
   }

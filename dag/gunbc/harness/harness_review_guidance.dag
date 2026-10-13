@@ -218,7 +218,7 @@ fn harness_reviewer_guidance_at(worktree: String, verdict_path: String, verdict_
     review_grounded(premise: CapabilityHeld { capability: ReadTheTree }, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
     review_grounded(premise: CapabilityHeld { capability: RunTheAcceptanceCommand }, module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
     review_grounded(premise: CapabilityWithheld { capability: ChangeTheTree }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_verdict_decode"),
-    review_grounded(premise: CapabilityWithheld { capability: CommitOrPublish }, module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
+    review_grounded(premise: CapabilityWithheld { capability: CommitOrPublish }, module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
     review_grounded(premise: VerdictFileAt { path: verdict_path }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_verdict_decode"),
     review_grounded(premise: VerdictShapeIs { shape: verdict_shape }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "review_verdict_shape_text"),
     review_grounded(premise: VerdictWordMeans { word: ApproveWord }, module_path: "gunbc.roadmap.roadmap_review_role", decl_name: "HeadVerdict"),

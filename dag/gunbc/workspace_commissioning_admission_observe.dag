@@ -1,7 +1,7 @@
 module gunbc.workspace_commissioning_admission_observe
 
 import std.types { String, NonEmptyStr }
-import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.workspace_slot_mutation { workspace_commissioning_mutation_held }
 import gunbc.workspace_commissioning {
   WorkspaceCommissioningAdmission, WorkspaceCommissioningReady, WorkspaceCommissioningRefused,
@@ -16,13 +16,13 @@ import gunbc.workspace_commissioning_store {
   WorkspaceCommissioningStoreObserved, WorkspaceCommissioningStoreRefused,
 }
 import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
-import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
-import gunbc.fabric_control_plane { fabric_control_plane_store_root, fabric_cell_allocation_key }
+import gunbc.runner.runner_microvm_network { SlotNetworkSanitationSubject }
+import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root, fabric_cell_allocation_key }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldObservationUnavailable, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
-import gunbc.fleet_host_budget { HostAllocationConserves }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.fleet.fleet_host_budget { HostAllocationConserves }
 
 // The installed controller calls this under its slot incarnation and the fleet apply's host
 // mutation exclusion. Intent fields never stand in for host observations. No operation writes.

@@ -1,4 +1,4 @@
-module extdeps.gitignore
+module extdeps.git.gitignore
 
 
 import extdeps.external_authority { ExternalAuthority }

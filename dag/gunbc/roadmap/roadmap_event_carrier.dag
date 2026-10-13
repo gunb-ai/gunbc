@@ -37,12 +37,12 @@ import extdeps.git {
   shape_git_worktree_add_detached_argv, shape_git_checkout_orphan_args, shape_git_commit_allow_empty_args,
   shape_git_add_path_args, shape_git_commit_message_args, shape_git_ls_remote_heads_args,
 }
-import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_dashboard_preview_id, dashboard_instance_shared_directory, dashboard_instance_child }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv2_dashboard_preview_id, dashboard_instance_shared_directory, dashboard_instance_child }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_events_worktree_child, roadmap_event_carrier_directory }
-import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
-import gunbc.roadmap_execution_contract { GitWorkspaceCapability, AttemptStateDirectoryCapability }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
+import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability, AttemptStateDirectoryCapability }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, roadmap_event_envelope, roadmap_event_wire_text,
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,

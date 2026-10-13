@@ -1,4 +1,4 @@
-module v2.test.manual.grammar_choice_ambiguity_audit
+module v2.test.claim.manual.grammar_choice_ambiguity_audit
 
 
 fn witness_python_choice_ambiguity_count() -> Int {

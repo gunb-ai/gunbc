@@ -2,7 +2,7 @@ module gunbc.web_motion_binding
 
 import std.types { String, Bool, Int, List, Milliseconds }
 import std.decl_ref { DeclarationRef }
-import gunbc.host_realization { HostRealization, ResolvedRef, ref_is_resolved, host_identity_is_exact }
+import gunbc.host.host_realization { HostRealization, ResolvedRef, ref_is_resolved, host_identity_is_exact }
 import extdeps.w3c.accelerometer {
   AccelerometerInterface, AccelerometerSensor, LinearAccelerationSensor, GravitySensor,
   accelerometer_interface_name, interface_suits_a_knock_detector,
@@ -35,7 +35,7 @@ data motion_binding_note: String = "AN OBSERVATION IS A RECEIPT IN THE OBSERVING
 
 WHY THIS CARRIER EXISTS AT ALL, stated as the receipt of a real failure rather than as a preference: a capability probe run on 2026-08-05 reported five motion interfaces exposed, a secure context, no permission prompt, and zero events, and that was written up as though it established that the host had no usable sensor. It established nothing of the kind. The probe ran inside an embedding context whose Permissions Policy it never read, listened only for devicemotion events, never constructed or started any of the three Generic Sensor interfaces it had just finished enumerating, recorded no observation window, and copied frozen User-Agent literals as though they were host identity. Its honest derived state was MotionReachabilityUnresolved. Every axis below exists because that probe conflated it with another one."
 
-data web_binding_scope_note: String = "THIS MODULE IS ONE BINDING, NOT THE FRONTEND ARCHITECTURE (operator ruling, 2026-08-06). An earlier revision of it declared BrowserProductRef and MotionExecutionSubject as TOP-LEVEL types of a supposedly neutral motion observation, which quietly made the product a website and every other container a variant of one. Browsing context, secure context and Permissions Policy admission are real and load-bearing — they are simply WEB facts, belonging to the web realization of a capability rather than to the capability. The host now comes from gunbc.host_realization, where container, renderer, platform and device are separate axes, and the verdict comes from gunbc.capability_binding, where a Windows sensor, Core Motion, SensorManager, Linux IIO and the synthetic source produce the same fact this binding does.
+data web_binding_scope_note: String = "THIS MODULE IS ONE BINDING, NOT THE FRONTEND ARCHITECTURE (operator ruling, 2026-08-06). An earlier revision of it declared BrowserProductRef and MotionExecutionSubject as TOP-LEVEL types of a supposedly neutral motion observation, which quietly made the product a website and every other container a variant of one. Browsing context, secure context and Permissions Policy admission are real and load-bearing — they are simply WEB facts, belonging to the web realization of a capability rather than to the capability. The host now comes from gunbc.host.host_realization, where container, renderer, platform and device are separate axes, and the verdict comes from gunbc.capability_binding, where a Windows sensor, Core Motion, SensorManager, Linux IIO and the synthetic source produce the same fact this binding does.
 
 The subject-identity carrier went with it: ObservedIdentity was a second spelling of ResolvedRef, one file apart, which is the §3 fork at its smallest scale. It is deleted in favour of the single authority, and the reduced-User-Agent arm survives there as RefReducedByPolicy."
 

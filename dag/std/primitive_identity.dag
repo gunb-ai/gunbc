@@ -25,7 +25,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.rust.emit { RuntimeFunction, rt_function_registry }
 import gunbc.rust_item_scan { scan_rust_source, RustFileScanned, RustFileScanRefused }
 import gunbc.rust_item_identity { RustFunction, RustItemIdentity }
-import gunbc.v1_interpreter_primitive_surface {
+import gunbc.v1.v1_interpreter_primitive_surface {
   v1_interpreter_primitive_arms,
   v1_interpreter_row_count,
 }
@@ -46,7 +46,7 @@ import std.primitive_projection {
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
 // mechanism across five carriers, five refusal variants typed, three refusal detectors executing
 // with witnesses (see primitive_d0_refusal_execution_note), derived census across all five surfaces
-// including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1
+// including InterpreterDispatch from gunbc.v1.v1_interpreter_primitive_surface. D1
 // (interpreter-primitive-roster consumption): measurement scaffold deleted;
 // primitive_surface_census_derived reads the roster authority. Population-wide identity join
 // closure remains the terminal acceptance bar.
@@ -73,7 +73,7 @@ import std.primitive_projection {
 // D0 (primitive-identity-join first slice): semantic primitive identity is ONE join key across five
 // independently-writable surfaces. See primitive_identity_d0_scope_note — NOT the closing contract.
 // primitive_surface_census_derived reads five live authorities including InterpreterDispatch from
-// gunbc.v1_interpreter_primitive_surface. Open denominator receipt:
+// gunbc.v1.v1_interpreter_primitive_surface. Open denominator receipt:
 // primitive_d0_open_denominator_receipt. Dissolve-on:
 // feature:primitive-realization-single-authority.
 
@@ -82,7 +82,7 @@ data primitive_d0_derived_surface_drift_audit_note: String = "Derived-surface dr
 // Typed located counted denominator (rung-honesty receipt): derived_surface_authority_count=5
 // (BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler, InterpreterDispatch);
 // open_surface_authority_count=0; interpreter dispatch rows/arm-identities/spellings derived from
-// gunbc.v1_interpreter_primitive_surface counters (v1_interpreter_row_count,
+// gunbc.v1.v1_interpreter_primitive_surface counters (v1_interpreter_row_count,
 // distinct_arm_identity_count, authored_spelling_count).
 // primitive_d0_interpreter_census_matches_roster links census to roster authority.
 // derived_census_rows_missing_identity_count is measured live by
@@ -105,7 +105,7 @@ data primitive_d0_parallel_roster_surface_authority_count: Int = 2
 // does not mean complete; parallel roster does not mean single-authority.
 
 // Interpreter dispatch is six dispatch symbols in v1_interpreter
-// (gunbc.v1_interpreter_primitive_surface): eval_builtin_inner; eval_algebra_method_inner;
+// (gunbc.v1.v1_interpreter_primitive_surface): eval_builtin_inner; eval_algebra_method_inner;
 // eval_call (bridge families plus native fold intercept);
 // try_v2_std_collection_map_primitive_grounding; eval_method_call
 // lookup short-circuit; eval_service_call Filesystem.Read carve-out. Row/arm-identity/spelling
@@ -115,7 +115,7 @@ data primitive_d0_parallel_roster_surface_authority_count: Int = 2
 
 // Finding (inherits to v1 exit lane): the interpreter primitive surface was six hand-written Rust
 // dispatch sites in v1_interpreter, not one. v1_interpreter eval_builtin_inner is the main
-// free-call site. v2.compiler.eval v2_eval_call_primitive (carrier src/v2/compiler/05_eval.dag) is
+// free-call site. v2.compiler.eval v2_eval_call_primitive (carrier src/v2/compiler/eval.dag) is
 // a separate v2 witness hook — real symbol, NOT v1 dispatch (§3 cite-the-symbol: never attribute it
 // to v1_interpreter.rs). eval_call native intercept for fold_list fires before eval_builtin_inner —
 // explains registry absence. clever-crab-111 macro authority may make eval_builtin_inner derivable
@@ -209,7 +209,7 @@ fn primitive_signature(contract: PrimitiveSemanticContract) -> PrimitiveSignatur
 
 // ARITY IS DERIVED AND HAS NO FIELD. There is deliberately no arity: Int anywhere in this
 // module. A stored arity is a hand transcription that rots the first time the signature it
-// describes changes -- the decorative-roster failure gunbc.v1_interpreter_primitive_surface
+// describes changes -- the decorative-roster failure gunbc.v1.v1_interpreter_primitive_surface
 // arm_accepted_shape_gap_note refuses an Int for -- so arity exists only as the length of the
 // parameter list it is the length of. An unresolved signature therefore has NO arity rather
 // than a guessed one: the absent arm returns Absent, not zero, because a primitive taking no
@@ -757,7 +757,7 @@ fn primitive_interpreter_surface_rows() -> List<PrimitiveSurfaceRow> {
         authority: InterpreterDispatch,
         authored_symbol: sym,
         authority_ref: decl_ref(
-          module_path: "gunbc.v1_interpreter_primitive_surface",
+          module_path: "gunbc.v1.v1_interpreter_primitive_surface",
           decl_name: "v1_interpreter_primitive_arms",
         ),
         primitive: primitive_identity_for_symbol(
@@ -1484,7 +1484,7 @@ fn primitive_disposed_surface_symbol_count() -> Int {
 
 data primitive_runtime_coverage_note: String = "The projection query asks, of a DECLARATION, which primitive it projects. This asks the opposite and the two catch different defects. A primitive registered on the typecheck surface with NO row on any runtime-bearing surface typechecks clean at every call site and answers NoSuchFunction when one is actually evaluated -- the class gunbc#8952 found in emit_map_has by probing, where every one of its 21 live call sites happened to reach a same-named declaration through its own import closure so nobody noticed. The projection direction is blind to it BY CONSTRUCTION, because the defect is a primitive with no declaration rather than a declaration with a divergent primitive.
 
-WHAT THIS ANSWERS AND WHAT IT DOES NOT, AND IT IS THE SAME NAMED CLASS AS THE PROJECTION QUERY'S ABSENCE SPLIT, ONE LAYER DOWN. RuntimeRowAbsentFromEnumeratedSurfaces is top-as-answer about the DENOMINATOR -- nothing on the runtime-bearing surfaces of the derived census joins this symbol. It is NOT top-as-answer about the INTERPRETER -- 'no runtime exists' is a different and stronger claim this carrier cannot make, because a dispatch site the interpreter roster does not enumerate is invisible here exactly as it is invisible to every other consumer of that roster, which is the standing limit gunbc.v1_interpreter_primitive_surface records for itself. So the answer is a CANDIDATE SET, never a defect count: a consumer that reads it as the latter has performed the same conflation primitive_projection_query_note refuses in the projection direction.
+WHAT THIS ANSWERS AND WHAT IT DOES NOT, AND IT IS THE SAME NAMED CLASS AS THE PROJECTION QUERY'S ABSENCE SPLIT, ONE LAYER DOWN. RuntimeRowAbsentFromEnumeratedSurfaces is top-as-answer about the DENOMINATOR -- nothing on the runtime-bearing surfaces of the derived census joins this symbol. It is NOT top-as-answer about the INTERPRETER -- 'no runtime exists' is a different and stronger claim this carrier cannot make, because a dispatch site the interpreter roster does not enumerate is invisible here exactly as it is invisible to every other consumer of that roster, which is the standing limit gunbc.v1.v1_interpreter_primitive_surface records for itself. So the answer is a CANDIDATE SET, never a defect count: a consumer that reads it as the latter has performed the same conflation primitive_projection_query_note refuses in the projection direction.
 
 THE ARM IS NAMED FOR WHAT IT MEASURES, WHICH IS WHY IT IS NOT CALLED NoRuntimeRow. absence-of-OBSERVATION and observation-of-ABSENCE are two states with opposite repairs -- the first is closed by enumerating a dispatch site on the roster, the second by supplying a runtime -- and a name that spells the first while reading as the second hands every consumer the conflation for free. RuntimeRowAbsentFromEnumeratedSurfaces says the rosters do not enumerate this; it does not say nothing runs it. to_int and with are exactly the symbols where that distinction decides whether someone files a defect against a live method-dispatch path. Carried as a TYPE rather than a caveat deliberately: a caveat is read later as hedging and dropped, a variant has to be named to compile."
 

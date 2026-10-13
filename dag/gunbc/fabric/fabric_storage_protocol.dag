@@ -1,4 +1,4 @@
-module gunbc.fabric_storage_protocol
+module gunbc.fabric.fabric_storage_protocol
 
 import std.types { String, NonEmptyStr, Int, List, CommitSha }
 import std.nat { Nat }
@@ -8,10 +8,10 @@ import std.fabric_storage {
   FabricReplyUndecodable, FabricHeadNameRefused,
   FabricPutRefused, FabricHeadReadRefused, FabricHeadAdvanceRefused, FabricClosureRefused,
 }
-import gunbc.fabric_storage_file_store {
+import gunbc.fabric.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity, DoorProxied }
+import gunbc.fabric.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity, DoorProxied }
 import extdeps.tailscale.identity { tailnet_identity_of }
 
 import v2.std.algebra { skip }

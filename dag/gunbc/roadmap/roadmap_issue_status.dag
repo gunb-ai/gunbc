@@ -1,9 +1,9 @@
-module gunbc.roadmap_issue_status
+module gunbc.roadmap.roadmap_issue_status
 
 import std.types { Bool, Int, List, String }
 
 // The status an issue is shown with, as a closed vocabulary. It is DERIVED and never stored:
-// gunbc.roadmap_presentation issue_display_status projects it from a row's standing, lifecycle,
+// gunbc.roadmap.roadmap_presentation issue_display_status projects it from a row's standing, lifecycle,
 // scheduling and activity, and every surface that shows a status renders this value. The label
 // and the sort rank are total matches over it, so a tenth status cannot be added without naming
 // its word, its place in the order and whether it is closed.

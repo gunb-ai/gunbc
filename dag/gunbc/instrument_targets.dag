@@ -2,7 +2,7 @@ module gunbc.instrument_targets
 
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
-import gunbc.witness_v2_native_route { NativeRouteMemberRow }
+import gunbc.witness.v2_native_route { NativeRouteMemberRow }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
   NativeTestRefused
@@ -236,10 +236,10 @@ fn v2_native_cli_label() -> Label {
 
 // THE ENTRY EACH OF THE TWO SELF-HOST INSTRUMENTS EMITS, AS THE INSTRUMENT'S OWN FACT. Every
 // reader of these entries -- the required-lane resolution census, and the seed's native lane runner
-// whose constants test.claim.compiler_gate_emit_build_lane_witness_test holds against these rows --
+// whose constants test.claim.compiler_gate_emit_build_lane_witness holds against these rows --
 // takes them from here, so a moved subject cannot leave a stale closure reported as covered.
 fn self_host_entry() -> String {
-  "src/v2/compiler/00_compile.dag"
+  "src/v2/compiler/compile.dag"
 }
 
 fn v2_native_cli_entry() -> String {
@@ -310,9 +310,9 @@ fn type_declaration_use_census_label() -> Label {
 // an over-approximation of the direct edges, because the inline crate::<module>:: paths the
 // expression emitter writes are not returned as edges (gunbc.guarantee_stall
 // emitted_inline_crate_path_edges_unreturned_stall). And the crates carry no grounded interface
-// maps: that waits on host-effect emission of v2.compiler.source_authority
-// module_storage_bindings_for_source_roots (v2.workflow.rust_crate_partition
-// stage0_module_dag_interface_grounding). So a green says the derived partition compiles through
+// maps: that waits on the acquirer's contents supply (v2.compiler.module_acquisition
+// acquire_closure_of) reaching v2.workflow.rust_crate_partition
+// stage0_module_dag_interface_grounding. So a green says the derived partition compiles through
 // glob facades; it does not say each crate's public surface is minimal or grounded.
 fn emitted_crate_workspace_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "emitted-crate-workspace" } }
@@ -456,8 +456,8 @@ fn primitive_egress_census_seed_label() -> Label {
 // The unreached population, by identity, is the printed product; the exit says whether it is
 // empty. This is DESIGN section 3's "a product-layer dependent can stop resolving, stay broken,
 // and let every required lane report SUCCESS" measured rather than warned about, after
-// gunbc.site_pxe_edge_converge did exactly that on 2026-09-20 (gunbc#11607). The lane roster it
-// classifies is read from gunbc.compiler_gate_workflow, the authority that emits witnesses.yml.
+// gunbc.fleet.site_pxe_edge_converge did exactly that on 2026-09-20 (gunbc#11607). The lane roster it
+// classifies is read from gunbc.witness.compiler_gate_workflow, the authority that emits witnesses.yml.
 // `gunbc test //gunbc/instruments:required-lane-resolution-census`.
 fn required_lane_resolution_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "required-lane-resolution-census" } }
@@ -474,7 +474,7 @@ fn bare_reference_channel_outcome_label() -> Label {
 }
 
 // SELF-HOST BEHAVIORAL EQUIVALENCE, TAKEN ON PURPOSE (operator ruling 2026-09-27): runs every
-// tools.self_host_module_behavioral_transport_roster row for real and prints one receipt of
+// gunbc.instruments.self_host_module_behavioral_transport_roster row for real and prints one receipt of
 // gunbc.self_host_behavioral_equivalence_receipt to persist; the interlock milestone
 // SelfHostEmittedContractsHeld derives from the latest persisted receipt. Deliberately
 // not nightly and not per pull request, so this label is on no lane.

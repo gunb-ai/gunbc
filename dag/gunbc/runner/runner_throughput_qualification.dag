@@ -1,4 +1,4 @@
-module gunbc.runner_throughput_qualification
+module gunbc.runner.runner_throughput_qualification
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Timestamp, WorkflowRunId }
 import std.nat { Nat }
@@ -22,7 +22,7 @@ import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.required_ci_phase_roster {
   RequiredCiPhase, required_ci_phase_name, required_ci_phase_is, required_ci_phases,
 }
-import gunbc.host_budget_source {
+import gunbc.host.host_budget_source {
   HostBudgetResolution, HostBudgetResolved, HostBudgetDeclaredUnverified, HostBudgetUnreadable,
 }
 import v2.workflow.floor_eval_step_calibration {
@@ -40,10 +40,10 @@ import v2.workflow.floor_eval_step_calibration {
 // The selected offer, the requirements the offer is claimed to deliver, the selected conserving
 // host allocation, the selected slot, the sampling policy and the phase ceilings are INPUTS --
 // `SelectedRunnerQualification` -- chosen by the fleet before any run and projected from the
-// fleet's own authorities by `gunbc.runner_throughput_selection`, which also carries the
+// fleet's own authorities by `gunbc.runner.runner_throughput_selection`, which also carries the
 // independently selected `ExecutorSanction` the fabric admits on. This module mints none of them:
 // an earlier draft derived the sanction and the supply row FROM the assessment, which reversed
-// `gunbc.fabric_executor_class`'s meaning (a sanction is permission decided before fungibility,
+// `gunbc.fabric.fabric_executor_class`'s meaning (a sanction is permission decided before fungibility,
 // not a performance conclusion) and let the same fast run be labelled either class. What this
 // module produces is an assessment bound to that exact selection, and the fabric's existing
 // admission -- `product.fabric.capacity_admission admit_delivered_offer` through
@@ -52,8 +52,8 @@ import v2.workflow.floor_eval_step_calibration {
 // WHY THIS MODULE IS A LEAF AND THE SELECTION MODULE IS NOT. product.fabric.node_qualification
 // imports this module for the assessment type, so this module's import closure joins the fabric's.
 // Measured on the seed at gunbc#11722 (2026-09-20): adding an import edge from that closure to
-// gunbc.build_cache_instance -- through gunbc.runner_slot_allocation, gunbc.fleet_host_budget or
-// gunbc.fabric_executor_class, each already reachable in the closure by other paths -- makes
+// gunbc.build_cache.build_cache_instance -- through gunbc.runner.runner_slot_allocation, gunbc.fleet.fleet_host_budget or
+// gunbc.fabric.fabric_executor_class, each already reachable in the closure by other paths -- makes
 // gunbc.harness.harness_backend's bare `split` and `last` fail to resolve, with the module set
 // unchanged. That is a seed resolution defect reported to the parent lane, not a modeling fact, and
 // this module routes around it: the fleet authorities are consumed one module up and projected
@@ -91,7 +91,7 @@ import v2.workflow.floor_eval_step_calibration {
 
 // ── THE WORKLOAD: THE FLOOR AT A PINNED REVISION, ON A NAMED SPECIMEN ──────────────────────────
 //
-// `program` names the producer (gunbc.fabric_witness_run floor_work_contract names the same one),
+// `program` names the producer (gunbc.fabric.fabric_witness_run floor_work_contract names the same one),
 // `revision` pins the corpus it walked, `specimen` names the calibration specimen whose [witness]
 // line the rate is floored from. Two runs differing in any of the three measured different work.
 type FloorWorkloadPin {
@@ -162,9 +162,9 @@ type CgroupMemoryReading
 
 // THE UNIT'S PROPERTIES AS systemd REPORTS THEM AFTER THE RUN STARTED -- what bound the run, as
 // opposed to what was asked for. The join compares them to the selected slot. THE CPU QUOTA IS
-// CARRIED AS A PROJECTION of gunbc.runner_slot_desired RunnerSlotCpuQuota: a thread count when
+// CARRIED AS A PROJECTION of gunbc.runner.runner_slot_desired RunnerSlotCpuQuota: a thread count when
 // a ceiling is declared, absent when the fleet declares none (SlotCpuQuotaUnbounded), the same
-// projection on both sides of the join; gunbc.runner_throughput_selection performs it for the
+// projection on both sides of the join; gunbc.runner.runner_throughput_selection performs it for the
 // selected side, and the producer reads CPUQuotaPerSecUSec=infinity as absent for the observed.
 type SlotQuotaThreads = HardwareThreadCount?
 
@@ -249,10 +249,10 @@ fn observed_run(
 
 // ── THE SELECTION: EVERYTHING THE ASSESSMENT CONSUMES AND NEVER MINTS ─────────────────────────
 
-// THE HOST ALLOCATION IS A RECEIPT, NOT FACTS TO RE-PLAN FROM. `gunbc.fleet_host_budget
+// THE HOST ALLOCATION IS A RECEIPT, NOT FACTS TO RE-PLAN FROM. `gunbc.fleet.fleet_host_budget
 // fleet_host_plan_for` derives the plan (refusing on unverified oomd, an absent jobserver citation,
 // an unset headroom) and `host_allocation_verdict` says whether it conserves with the control plane
-// charged; `gunbc.runner_throughput_selection selected_host_allocation` projects the two into this
+// charged; `gunbc.runner.runner_throughput_selection selected_host_allocation` projects the two into this
 // carrier, admitting the slice and the effective runner CPU cap only when the plan derived AND the
 // allocation conserves, and carrying the fleet's own reason otherwise. The assessment reads the
 // slice and the cap off it and chooses no sibling claim of its own (hold item 4).
@@ -459,7 +459,7 @@ type ThroughputStanding
 // THE SLOT ENVELOPE MUST HOLD THE FLOOR TWICE OVER: its high line must sit at or above
 // `gunbc_floor_minimum_viable_armed_budget` (or the executor refuses to arm at all), and the
 // MAXIMUM peak over the sample must sit within that line, or a run was held by the throttle rather
-// than measured -- the censored-lower-bound lesson `gunbc.runner_slot_allocation` records.
+// than measured -- the censored-lower-bound lesson `gunbc.runner.runner_slot_allocation` records.
 type MemoryEnvelopeStanding
   = PeakWithinSlotHigh { peak: ByteSize, high: ByteSize }
   | PeakExceedsSlotHigh { peak: ByteSize, high: ByteSize }
@@ -827,7 +827,7 @@ fn phase_wall_refusal(s: PhaseWallStanding) -> List<ThroughputRefusal> {
   }
 }
 
-// A WIDTH OF ZERO IS A REFUSAL, NOT A SMALL FLEET, exactly as gunbc.ci_runner_placement refuses a
+// A WIDTH OF ZERO IS A REFUSAL, NOT A SMALL FLEET, exactly as gunbc.ci.ci_runner_placement refuses a
 // zero-width host by name rather than deploying nothing to it.
 fn slot_width_refusal(s: SlotWidthStanding) -> List<ThroughputRefusal> {
   match s {
@@ -961,7 +961,7 @@ fn leg_authority(leg: RouteLegStanding) -> DeclarationRef? {
 }
 
 data qualification_run_producer_frontier: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "a collect stage on the qualification route that parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, with admit_callers on observed_run naming it, AND reads every seat's ready/start/end instants and settlement plus the barrier and host window into a product.capacity.cohort_observation CohortReading, seals it with seal_cohort and passes it to assess_runner_throughput as CohortObserved (gunbc.runner_throughput_qualification_route ConcurrentCohortSeatWindows); until then assess_runner_throughput has no production caller and a delivery claim refuses ConcurrencyUnobserved; it needs a runner to have run, so it follows gunbc.runner_throughput_qualification_route mtcollins1_boot_leg" as NonEmptyStr,
+  lands_with: "a collect stage on the qualification route that parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, with admit_callers on observed_run naming it, AND reads every seat's ready/start/end instants and settlement plus the barrier and host window into a product.capacity.cohort_observation CohortReading, seals it with seal_cohort and passes it to assess_runner_throughput as CohortObserved (gunbc.runner.runner_throughput_qualification_route ConcurrentCohortSeatWindows); until then assess_runner_throughput has no production caller and a delivery claim refuses ConcurrencyUnobserved; it needs a runner to have run, so it follows gunbc.runner.runner_throughput_qualification_route mtcollins1_boot_leg" as NonEmptyStr,
   sufficient_for: "minting ObservedRunnerQualificationRuns and a sealed concurrent cohort of them from a real run of the floor on mtcollins1, so assess_runner_throughput is fed by execution rather than by a fixture" as NonEmptyStr,
 }
 

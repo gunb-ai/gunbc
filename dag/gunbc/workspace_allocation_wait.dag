@@ -1,15 +1,15 @@
 module gunbc.workspace_allocation_wait
 
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import std.types { String, NonEmptyStr, Int, Timestamp }
 import std.measure { second }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.workspace_allocation_milestones { workspace_record_first_ready }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.principal_projection { PrincipalRef }
-import gunbc.runner_microvm_lifecycle { AttemptIdentity, TerminalTrigger, StopRequested, DeadlineReached, VmmExited, attempt_identity_same }
-import gunbc.runner_microvm_lifecycle_realize { AttemptLaunch, VmmStarted, observe_unit_exit_status }
-import gunbc.workspace_microvm_access { WorkspaceConnectionReading, WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_text }
+import gunbc.runner.runner_microvm_lifecycle { AttemptIdentity, TerminalTrigger, StopRequested, DeadlineReached, VmmExited, attempt_identity_same }
+import gunbc.runner.runner_microvm_lifecycle_realize { AttemptLaunch, VmmStarted, observe_unit_exit_status }
+import gunbc.runner.workspace_microvm_access { WorkspaceConnectionReading, WorkspaceConnectionReady, WorkspaceConnectionUnavailable, workspace_connection_text }
 import gunbc.workspace_allocation_store {
   WorkspaceAllocation, WorkspaceWanted, WorkspaceRetired, WorkspaceReserved, WorkspaceRunning,
   WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceStoreWritten,

@@ -1,4 +1,4 @@
-module gunbc.machine_intake_terminal_transcript
+module gunbc.machine_intake.terminal_transcript
 
 import std.types { List, String }
 import extdeps.posix.termios { termios_onlcr_output_lines }

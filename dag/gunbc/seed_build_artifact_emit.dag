@@ -9,18 +9,18 @@ import gunbc.generated_artifact {
   V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact,
   ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact
 }
-import gunbc.cargo_config_emit { expected_cargo_config_toml }
+import gunbc.repo.cargo_config_emit { expected_cargo_config_toml }
 import extdeps.filesystem.rust_realization { expected_gunbc_file_transport_generated_rs }
-import gunbc.stage0_crate_layout_emit { expected_stage0_crate_layout_generated_dag, expected_stage0_crate_layout_generated_rs }
-import gunbc.stage0_crate_partition_emit { expected_stage0_crate_partition_generated_dag }
-import gunbc.stage0_executable_assembly_emit {
+import gunbc.stage0.stage0_crate_layout_emit { expected_stage0_crate_layout_generated_dag, expected_stage0_crate_layout_generated_rs }
+import gunbc.stage0.stage0_crate_partition_emit { expected_stage0_crate_partition_generated_dag }
+import gunbc.stage0.stage0_executable_assembly_emit {
   expected_stage0_executable_assembly_generated_dag, expected_stage0_linked_partition_crates_txt,
   LinkedPartitionCratesRendered, LinkedPartitionCratesRefused
 }
-import gunbc.seed_retention_frontier_emit { expected_seed_retention_frontier_generated_rs }
+import gunbc.stage0.seed_retention_frontier_emit { expected_seed_retention_frontier_generated_rs }
 import gunbc.evaluation_budget_consequence_emit { expected_evaluation_budget_consequence_generated_rs }
 import gunbc.release_locus_seed_constants_emit { expected_release_locus_seed_constants_generated_rs }
-import gunbc.v1_interpreter_dispatch_emit {
+import gunbc.v1.v1_interpreter_dispatch_emit {
   expected_v1_interpreter_dispatch_generated_rs, V1InterpreterDispatchGenerated, V1InterpreterDispatchGenerationRefused
 }
 

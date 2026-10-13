@@ -1,12 +1,19 @@
-module tools.cause_assertion_census
+module gunbc.instruments.cause_assertion_census
 
 import std.types { Bool, Int, List, String }
 import std.import_statement { ParsedImportStatement, ImportStatementsParsed, ImportStatementParseRefused, ImportStatementParseCause, SourceHasNoModuleDeclaration, import_statement_parse_cause_label }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
-import gunbc.parsed_import_statement_production { parsed_import_observation_live }
+import gunbc.namespace_cut.parsed_import_statement_production { parsed_import_observation_live }
 import v2.std.compilers.lexing { Token }
 import v2.workflow.floor_discovery_producer { FloorDiscoverySource, FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused, floor_discovery_source_inventory_live }
-import v2.workflow.floor_naming_hygiene { floor_entry_requires_test_sidecar }
+import v2.workflow.floor_discovery_row { FloorMarkedSource }
+import v2.workflow.floor_marked_fact {
+  FloorMarkedFactDuplicated,
+  FloorMarkedFactSupplied,
+  floor_marked_fact_duplicated_reason,
+  floor_marked_fact_index,
+  floor_marked_fact_missing_reason
+}
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.optional { Present, Absent }
@@ -30,6 +37,7 @@ type CauseSourceObservation
   | CauseSourceExcluded { path: String, cause: ImportStatementParseCause }
   | CauseSourceIndexRefused { path: String, module_path: String }
   | CauseSourceLexicalRefused { path: String }
+  | CauseSourceMarkerFactRefused { path: String, reason: String }
   | CauseSourceImportProjectionUnestablished { path: String, tokens: List<Token> }
 
 fn cause_source_observation(path: String) -> CauseSourceObservation {
@@ -75,6 +83,7 @@ fn cause_source_observation_report(path: String, observation: CauseSourceObserva
     CauseSourceExcluded { path: p, cause: c } => join(["EXCLUDED", p, import_statement_parse_cause_label(cause: c) as String], "\t")
     CauseSourceIndexRefused { path: p, module_path: m } => join(["INDEX_REFUSED", p, m], "\t")
     CauseSourceLexicalRefused { path: p } => join(["LEXICAL_REFUSED", p], "\t")
+    CauseSourceMarkerFactRefused { path: p, reason: r } => join(["MARKER_FACT_REFUSED", p, r], "\t")
     CauseSourceImportProjectionUnestablished { path: p, tokens: ts } => cause_import_unestablished_report(path: p, tokens: ts)
     CauseSourceObserved { tokens: ts, imports: imports, members: members } =>
       join([
@@ -98,6 +107,7 @@ fn probe(path: String, report: String) -> ProcessExit {
       CauseSourceExcluded { path: _, cause: _ } => exit_failure(reason: "source excluded; see probe report")
       CauseSourceIndexRefused { path: _, module_path: _ } => exit_failure(reason: "source index refused; see probe report")
       CauseSourceLexicalRefused { path: _ } => exit_failure(reason: "source lexing refused; see probe report")
+      CauseSourceMarkerFactRefused { path: _, reason: _ } => exit_failure(reason: "marker fact refused; see probe report")
       CauseSourceImportProjectionUnestablished { path: _, tokens: _ } => exit_failure(reason: "import projection unestablished; see probe report")
     }
   }
@@ -328,8 +338,11 @@ fn cause_module_import_projection(tokens: List<Token>, imports: List<ParsedImpor
   projected
 }
 
-fn cause_witness_module(path: String) -> Bool {
-  floor_entry_requires_test_sidecar(entry_path: path)
+// A witness module is a module that declares at least one test-marked declaration. Which
+// declarations carry the authored `test` marker is a SUPPLIED value (FloorMarkedSource), so this
+// answers from that value and never from the module's path or the spelling of its name.
+fn cause_witness_module(marked: List<String>) -> Bool {
+  count(marked) > 0
 }
 
 fn cause_identifier_counts(tokens: List<Token>, counts: Map<String, Int>) -> Map<String, Int> {
@@ -358,7 +371,12 @@ fn cause_acquisition_refused(acc: CauseCorpusAcquisition, observation: CauseSour
   }
 }
 
-fn cause_corpus_acquire(subjects: List<FloorDiscoverySource>, modules: List<ModuleDeclarationFact>) -> CauseCorpusAcquisition {
+fn cause_corpus_acquire(
+  subjects: List<FloorDiscoverySource>,
+  modules: List<ModuleDeclarationFact>,
+  marked_sources: List<FloorMarkedSource>
+) -> CauseCorpusAcquisition {
+  let marked_index = floor_marked_fact_index(marked_sources: marked_sources)
   let indexed = fold(modules, init: empty_map(), f: (acc, subject) =>
     map_insert(m: acc, key: join([subject.path, subject.module], "\t"), value: true))
   fold(subjects, init: CauseCorpusAcquisition { sources: [], excluded: [], refusals: [], identifier_counts: empty_map() }, f: (acc, subject) => {
@@ -367,17 +385,27 @@ fn cause_corpus_acquire(subjects: List<FloorDiscoverySource>, modules: List<Modu
       CauseSourceObserved { tokens: tokens, imports: imports, members: members } => {
         if !cause_name_is_known(names: indexed, spelling: join([subject.repo_path, subject.module_path], "\t")) {
           cause_acquisition_refused(acc: acc, observation: CauseSourceIndexRefused { path: subject.repo_path, module_path: subject.module_path })
-        } else { CauseCorpusAcquisition {
-          sources: list_snoc_item(xs: acc.sources, item: CauseModuleSyntax {
-            module: subject.module_path, path: subject.repo_path, witness: cause_witness_module(path: subject.repo_path),
-            carets: cause_caret_occurrences(tokens: tokens),
-            import_modules: fold(imports, init: empty_map(), f: (index, statement) =>
-              map_insert(m: index, key: statement.imported_module, value: true)),
-            import_members: fold(members, init: empty_map(), f: (index, member) =>
-              map_insert(m: index, key: join([member.module, member.member], "."), value: true))
-          }),
-          excluded: acc.excluded, refusals: acc.refusals,
-          identifier_counts: cause_identifier_counts(tokens: tokens, counts: acc.identifier_counts)
+        } else { match map_lookup(m: marked_index, key: subject.repo_path) {
+          Absent => cause_acquisition_refused(acc: acc, observation: CauseSourceMarkerFactRefused {
+            path: subject.repo_path, reason: floor_marked_fact_missing_reason(repo_path: subject.repo_path)
+          })
+          Present { value: fact } => match fact {
+            FloorMarkedFactDuplicated => cause_acquisition_refused(acc: acc, observation: CauseSourceMarkerFactRefused {
+              path: subject.repo_path, reason: floor_marked_fact_duplicated_reason(repo_path: subject.repo_path)
+            })
+            FloorMarkedFactSupplied { marked: marked } => CauseCorpusAcquisition {
+              sources: list_snoc_item(xs: acc.sources, item: CauseModuleSyntax {
+                module: subject.module_path, path: subject.repo_path, witness: cause_witness_module(marked: marked),
+                carets: cause_caret_occurrences(tokens: tokens),
+                import_modules: fold(imports, init: empty_map(), f: (index, statement) =>
+                  map_insert(m: index, key: statement.imported_module, value: true)),
+                import_members: fold(members, init: empty_map(), f: (index, member) =>
+                  map_insert(m: index, key: join([member.module, member.member], "."), value: true))
+              }),
+              excluded: acc.excluded, refusals: acc.refusals,
+              identifier_counts: cause_identifier_counts(tokens: tokens, counts: acc.identifier_counts)
+            }
+          }
         } }
       }
       CauseSourceExcluded { path: _, cause: _ } => CauseCorpusAcquisition {
@@ -388,6 +416,7 @@ fn cause_corpus_acquire(subjects: List<FloorDiscoverySource>, modules: List<Modu
       CauseSourceImportParseRefused { path: _, cause: _ } => cause_acquisition_refused(acc: acc, observation: observation)
       CauseSourceIndexRefused { path: _, module_path: _ } => cause_acquisition_refused(acc: acc, observation: observation)
       CauseSourceLexicalRefused { path: _ } => cause_acquisition_refused(acc: acc, observation: observation)
+      CauseSourceMarkerFactRefused { path: _, reason: _ } => cause_acquisition_refused(acc: acc, observation: observation)
       CauseSourceImportProjectionUnestablished { path: _, tokens: _ } => cause_acquisition_refused(acc: acc, observation: observation)
     }
   })
@@ -516,6 +545,7 @@ fn cause_source_refusal_report(refusal: CauseSourceObservation) -> String {
     CauseSourceExcluded { path: p, cause: c } => join(["EXCLUDED", p, import_statement_parse_cause_label(cause: c) as String], "\t")
     CauseSourceIndexRefused { path: p, module_path: m } => join(["INDEX_REFUSED", p, m], "\t")
     CauseSourceLexicalRefused { path: p } => join(["LEXICAL_REFUSED", p], "\t")
+    CauseSourceMarkerFactRefused { path: p, reason: r } => join(["MARKER_FACT_REFUSED", p, r], "\t")
     CauseSourceImportProjectionUnestablished { path: p, tokens: ts } => cause_import_unestablished_report(path: p, tokens: ts)
     CauseSourceObserved { tokens: _, imports: _, members: _ } => "OBSERVED"
   }
@@ -531,6 +561,7 @@ fn cause_import_projection_unestablished_count(refusals: List<CauseSourceObserva
       CauseSourceExcluded { path: _, cause: _ } => n
       CauseSourceIndexRefused { path: _, module_path: _ } => n
       CauseSourceLexicalRefused { path: _ } => n
+      CauseSourceMarkerFactRefused { path: _, reason: _ } => n
     }
   })
 }
@@ -620,7 +651,7 @@ fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List
   join([
     "roots\tdag,src/v2",
     cause_acquisition_disposition_report(acquisition: acquisition),
-    "method\ttools.cause_assertion_census.census",
+    "method\tgunbc.instruments.cause_assertion_census.census",
     "evidence boundary: NO_ASSERTION is a candidate gap; ASSERTED_UNESTABLISHED records syntax, not discriminating coverage; ESTABLISHED requires a cause-identity join to v2.std.test_claim_falsification.FalsificationReceipt",
     "identity boundary: ambiguous candidates have empty assertion-standing columns and are named in the typed refusal section; independently joined import gaps remain reportable",
     join(["missing_import_file_count", to_string(count(missing_files))], "\t"),
@@ -641,9 +672,11 @@ fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List
 }
 
 // On-demand only. Whole-corpus acquisition must not enter ordinary witness discovery.
+// `marked_sources` is a supplied value, one FloorMarkedSource per walked `.dag` file: the census
+// asks it which modules declare a test, and a walked file with no fact refuses the acquisition.
 // GUNBC_EVAL_MEMO=0 gunbc run --source-root dag --source-root src/v2 \
 //   --entry dag/gunbc/instruments/cause_assertion_census.dag --function census --arg report=/tmp/causes.tsv
-fn census(report: String) -> ProcessExit {
+fn census(report: String, marked_sources: List<FloorMarkedSource>) -> ProcessExit {
   let roots = ["dag", "src/v2"]
   match floor_discovery_source_inventory_live(pool_roots: roots) {
     FloorDiscoverySourcesRefused { reason: reason } => exit_failure(reason: reason)
@@ -651,7 +684,7 @@ fn census(report: String) -> ProcessExit {
       if count(subjects) == 0 {
         exit_failure(reason: "cause census refused: source ingress returned no subjects")
       } else {
-        let acquisition = cause_corpus_acquire(subjects: subjects, modules: module_declaration_facts_live(pool_roots: roots))
+        let acquisition = cause_corpus_acquire(subjects: subjects, modules: module_declaration_facts_live(pool_roots: roots), marked_sources: marked_sources)
         let complete = count(acquisition.refusals) == 0
         let content = if complete {
           join([join(["rederive with selected realization: GUNBC_EVAL_MEMO=0 gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/cause_assertion_census.dag --function census --arg report=", report], ""),
@@ -673,7 +706,7 @@ fn census(report: String) -> ProcessExit {
 
 // Select a bounded control by module identity from the same source ingress as census.
 // This entry does not select an evaluator realization; the invoking process does.
-fn bounded_census(production_module: String, witness_module: String, report: String) -> ProcessExit {
+fn bounded_census(production_module: String, witness_module: String, report: String, marked_sources: List<FloorMarkedSource>) -> ProcessExit {
   let roots = ["dag", "src/v2"]
   match floor_discovery_source_inventory_live(pool_roots: roots) {
     FloorDiscoverySourcesRefused { reason: reason } => exit_failure(reason: reason)
@@ -682,7 +715,7 @@ fn bounded_census(production_module: String, witness_module: String, report: Str
       if count(selected) != 2 {
         exit_failure(reason: "bounded cause census requires two distinct source module identities")
       } else {
-        let acquisition = cause_corpus_acquire(subjects: selected, modules: module_declaration_facts_live(pool_roots: roots))
+        let acquisition = cause_corpus_acquire(subjects: selected, modules: module_declaration_facts_live(pool_roots: roots), marked_sources: marked_sources)
         if count(acquisition.refusals) != 0 {
           exit_failure(reason: cause_acquisition_disposition_report(acquisition: acquisition))
         } else {

@@ -35,5 +35,5 @@ data deployed_repository_empty_root_bootstrap_stall: GuaranteeStall = GuaranteeS
     "gunbc.live_deploy.desired srv1_lab_desired_deployment at a fresh repository root",
     "gunbc.live_deploy.desired srv2_deploy_desired_deployment at a fresh repository root",
   ] },
-  next_rung_trigger: climbs_when(capability: "the bootstrap discriminating evidence enrolled in a lane that EXECUTES it. test.claim.repository_bootstrap_wet_witness_test proves both states by execution -- an empty root reads back as the candidate, a root holding content refuses untouched -- but it performs host effects, so the hermetic floor refuses it at the boundary and counts it executed while it asserts nothing. Until a wet lane runs those two rows, a regression in the bootstrap is caught by nothing at merge time")
+  next_rung_trigger: climbs_when(capability: "the bootstrap discriminating evidence enrolled in a lane that EXECUTES it. test.claim.repository_bootstrap_wet_witness proves both states by execution -- an empty root reads back as the candidate, a root holding content refuses untouched -- but it performs host effects, so the hermetic floor refuses it at the boundary and counts it executed while it asserts nothing. Until a wet lane runs those two rows, a regression in the bootstrap is caught by nothing at merge time")
 }

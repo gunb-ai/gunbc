@@ -553,7 +553,7 @@ fn merge_base_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeBa
 // addition and this operation reported a tree differing from main's -- while every line of the
 // branch was already there. A consumer answering "is this already landed" from this operation alone
 // will therefore MISS that case. The divergence is not a defect in git and not one here; it is why
-// the containment consumer in tools.pr_containment_instrument runs a second, content-grain measure
+// the containment consumer in gunbc.instruments.pr_containment_instrument runs a second, content-grain measure
 // beside this one and reports the disagreement as its own disposition rather than resolving it.
 //
 // THE CONFLICTED ARM IS AN ANSWER, NOT AN ERROR, exactly as NoCommonAncestor is above: exit 1 means

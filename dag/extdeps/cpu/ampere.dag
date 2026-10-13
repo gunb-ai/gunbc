@@ -294,7 +294,7 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
 // The Approved Vendor List: Ampere's positive qualification results for
 // memory on the Altra family. Absence of a part from this list is the absence
 // of a positive result, NOT a negative result — see
-// gunbc.host_memory_qualification SpecificPartQualification, which keeps those
+// gunbc.host.host_memory_qualification SpecificPartQualification, which keeps those
 // two states distinct.
 data ampere_altra_avl_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -19,7 +19,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // A listing is not an acquired FirmwareReleaseRow: the table gives rounded sizes,
 // no digest and no established applicability prerequisite. Its Global/China link
 // targets were not included in the transcription, so the reference stays the page.
-// Consumer: gunbc.altra_firmware_library reference_report, for operator discovery.
+// Consumer: gunbc.fleet.altra_firmware_library reference_report, for operator discovery.
 type AsrockAltrad8udBetaFirmwareListing {
   target: FirmwareTarget
   version: AsrockBetaFirmwareVersion

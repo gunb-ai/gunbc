@@ -1,4 +1,4 @@
-module gunbc.ci_floor_measurement
+module gunbc.ci.ci_floor_measurement
 
 import std.measure {
   ByteSize, byte_size, byte_size_count,
@@ -7,8 +7,8 @@ import std.types { Int, List, String, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.floor_demand { gunbc_ci_floor_run_peak_receipts, floor_run_peak_receipt_at_throttle_line }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.floor.floor_demand { gunbc_ci_floor_run_peak_receipts, floor_run_peak_receipt_at_throttle_line }
 
 data gunbc_ci_width_constants_retired_note: String = "WITHIN-run width constants retired (operator ruling 2026-07-12): the hand-edited per-shard peak samples (floor 3.2-4.6GiB, falsifier 3.9-6.4GiB), the executor base overhead (8910036989), the 17/20 usable fraction, the conservative fallback width, the execution-corpus per-witness reservation, and every memory-derived width fold over them are DELETED — they were pins freezing derivations (the per-shard source row itself said STALE-PENDING-RECALIBRATION: samples predated the enrollment flip) and their staleness was the July OOM/wedge regime's root. Run-time concurrency is now governed adaptively by v1_compiler::memory_governor (AIMD admission against the slot's own cgroup budget, graceful back-off on creep, counted receipts — see gunbc_ci_adaptive_width_note in v2.workflow.ci_floor_plan). This module keeps only the INTER-run granularity: whole-run job peaks and session reservations feeding host co-residence and the conserving budget tree, plus the live slot-limit readback receipts. Quantified per-runnable demand returns when derivable from the graph, never as authored literals."
 
@@ -19,7 +19,7 @@ data gunbc_ci_runner_slot_memory_max_live: ByteSize = gunbc_runner_slot_desired(
 data gunbc_ci_runner_slot_memory_high_live: ByteSize = gunbc_runner_slot_desired().memory_high
 
 data gunbc_ci_runner_slot_memory_high_live_source: Disposition = Terminal {
-  reason: "Live readback 2026-07-11, four independent floor cgroup post-reads across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043 and the 29112-series wedge, srv1-01/srv1-03/srv2-01/srv2-02): floor_peak_post pinned within 0.65MiB ABOVE exactly 16106127360 with zero oom_kill events - the memory.high reclaim clamp's overshoot signature (allocations cross the line by one burst, forced direct reclaim drags usage back, memory.peak records the overshoot; sub-MiB overshoot = reclaim keeping up = the floor tail running at swap speed). This is the throttle line the 2026-07-11 MemoryHigh-emit ruling declared APPLIED (gunbc.runner_slot_allocation, max-1GiB relation). memory.max is the kill line (loud, attributable); memory.high is the speed line - between them the slot does not fail, it degrades into swap. The run-time memory governor packs to this line by construction: it reads the tightest memory.high as its budget and backs off on the creep signals (PSI, swap growth) that crossing it produces. Values derive from gunbc.runner_slot_allocation single authority (operator ruling 2026-07-14); the four floor_peak_post receipts in gunbc_ci_floor_run_peak_receipts are the measured corroboration, not a second numeric source."
+  reason: "Live readback 2026-07-11, four independent floor cgroup post-reads across four diffs and both hosts (runs 29137081535, 29142398465, 29159082043 and the 29112-series wedge, srv1-01/srv1-03/srv2-01/srv2-02): floor_peak_post pinned within 0.65MiB ABOVE exactly 16106127360 with zero oom_kill events - the memory.high reclaim clamp's overshoot signature (allocations cross the line by one burst, forced direct reclaim drags usage back, memory.peak records the overshoot; sub-MiB overshoot = reclaim keeping up = the floor tail running at swap speed). This is the throttle line the 2026-07-11 MemoryHigh-emit ruling declared APPLIED (gunbc.runner.runner_slot_allocation, max-1GiB relation). memory.max is the kill line (loud, attributable); memory.high is the speed line - between them the slot does not fail, it degrades into swap. The run-time memory governor packs to this line by construction: it reads the tightest memory.high as its budget and backs off on the creep signals (PSI, swap growth) that crossing it produces. Values derive from gunbc.runner.runner_slot_allocation single authority (operator ruling 2026-07-14); the four floor_peak_post receipts in gunbc_ci_floor_run_peak_receipts are the measured corroboration, not a second numeric source."
 }
 
 fn gunbc_ci_runner_slot_ram_speed_ceiling() -> ByteSize {
@@ -31,7 +31,7 @@ fn gunbc_ci_runner_slot_ram_speed_ceiling() -> ByteSize {
 }
 
 data gunbc_ci_runner_slot_memory_max_live_source: Disposition = Terminal {
-  reason: "Operator ruling 2026-07-14: gunbc_ci_runner_slot_memory_max_live derives from gunbc.runner_slot_allocation (no duplicate literal). DECLARED ROW is 14GiB MemoryMax / 13GiB MemoryHigh (2026-08-05 allocation ruling). HONEST RESIDUAL (operator observation 2026-08-13, srv1): deploy drop-ins on disk may still read 16GiB/15GiB while system.control set-property residue pins EFFECTIVE caps at 14GiB/13GiB until live_deploy clears it — gunbc.host_axis_caps control_shadow_reconcile + deploy apply (author derived drop-ins then systemctl revert under ghrunner sudo; converge on briansrls does not run this pipeline). This carrier names the DECLARED allocation row, not the kernel-effective cap; floor width sizing must not assume deploy drop-in authority is in force while shadow residue remains. Post-apply throttle-line evidence is the four floor_peak_post receipts (gunbc_ci_floor_run_peak_receipts). Dissolve-on: direct post-apply memory.max readback on a COMPLETED fleet floor lands as a FloorRunCgroupPeakReceipt with memory_max_observed, then the live row can retire in favor of the receipt-fed authority."
+  reason: "Operator ruling 2026-07-14: gunbc_ci_runner_slot_memory_max_live derives from gunbc.runner.runner_slot_allocation (no duplicate literal). DECLARED ROW is 14GiB MemoryMax / 13GiB MemoryHigh (2026-08-05 allocation ruling). HONEST RESIDUAL (operator observation 2026-08-13, srv1): deploy drop-ins on disk may still read 16GiB/15GiB while system.control set-property residue pins EFFECTIVE caps at 14GiB/13GiB until live_deploy clears it — gunbc.host.host_axis_caps control_shadow_reconcile + deploy apply (author derived drop-ins then systemctl revert under ghrunner sudo; converge on briansrls does not run this pipeline). This carrier names the DECLARED allocation row, not the kernel-effective cap; floor width sizing must not assume deploy drop-in authority is in force while shadow residue remains. Post-apply throttle-line evidence is the four floor_peak_post receipts (gunbc_ci_floor_run_peak_receipts). Dissolve-on: direct post-apply memory.max readback on a COMPLETED fleet floor lands as a FloorRunCgroupPeakReceipt with memory_max_observed, then the live row can retire in favor of the receipt-fed authority."
 }
 
 // AN OBSERVATION IS EVIDENCE ONLY TOGETHER WITH THE CONDITIONS IT WAS TAKEN UNDER, and these four
@@ -53,8 +53,8 @@ data gunbc_ci_runner_slot_memory_max_live_source: Disposition = Terminal {
 // the wrong repairs are editing the observation or reconciling the declaration toward it. Here
 // neither was needed — the receipt was simply missing a field it always implicitly had.
 
-// THE CARRIER, THE OVERSHOOT CEILING AND THE FOUR RECEIPTS NOW LIVE IN gunbc.floor_demand, which is
-// the floor's demand authority and a leaf this module and gunbc.runner_slot_allocation both import.
+// THE CARRIER, THE OVERSHOOT CEILING AND THE FOUR RECEIPTS NOW LIVE IN gunbc.floor.floor_demand, which is
+// the floor's demand authority and a leaf this module and gunbc.runner.runner_slot_allocation both import.
 // They moved unchanged; this module keeps the disposition and the witness over them.
 
 data gunbc_ci_floor_run_peak_receipt_disposition: Disposition = Terminal {
@@ -127,7 +127,7 @@ type RunnerSliceCapEffectiveness
 // carries the per-session ceiling and the concurrency that shared the deleted constructor.
 //
 // REGIME-1 SURVIVES AND IS NOT A LIVE RESERVATION. It scores candidate (cap, concurrency) pairs for
-// the operating curve in gunbc.ci_runner_placement -- a design-space explorer, not an answer about
+// the operating curve in gunbc.ci.ci_runner_placement -- a design-space explorer, not an answer about
 // any host.
 type SessionReservationMode
   = Regime1WorstCase { point: SessionOperatingPoint }
@@ -141,7 +141,7 @@ data gunbc_ci_footprint_bridge_disposition: Disposition = Terminal { reason: "De
 data gunbc_ci_concurrent_runs_conservative_high_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.ci_runner_placement",
+    module_path: "gunbc.ci.ci_runner_placement",
     decl_name: "runner_deployment_plan",
     field: WholeDeclaration
   }

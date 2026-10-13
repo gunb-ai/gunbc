@@ -1,4 +1,4 @@
-module gunbc.runner_group_restriction_observation
+module gunbc.runner.runner_group_restriction_observation
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
@@ -10,7 +10,7 @@ import gunbc.fleet.org_actions_inspection {
 
 // THE ONE READING THAT AUTHORIZES A MICROVM MINT, AND THE ONLY PLACE IT CAN BE WRITTEN.
 //
-// gunbc.runner_jit_mint plan_jit_mint mints a JIT runner only into a group OBSERVED restricted to
+// gunbc.runner.runner_jit_mint plan_jit_mint mints a JIT runner only into a group OBSERVED restricted to
 // the shakedown workflow file, because GitHub may hand a JIT registration its OS and architecture
 // default labels and a runner in an unrestricted group would then match witnesses.yml, heal.yml and
 // fleet-converge jobs. That authorization is only as good as the path that constructs it, so the
@@ -40,7 +40,7 @@ fn microvm_shakedown_selected_workflow() -> NonEmptyStr {
 }
 
 // THE GROUP IS NAMED, AND ITS ID IS READ. The microVM mint's group is one this repository creates
-// (gunbc.runner_group_restriction_ensure), and GitHub assigns its id at creation -- so the name is
+// (gunbc.runner.runner_group_restriction_ensure), and GitHub assigns its id at creation -- so the name is
 // the only identity the repository can author, and the id reaches the mint only through a reading
 // that found exactly one group holding that name. A name held by two groups is refused, never
 // resolved to either.
@@ -83,7 +83,7 @@ type MicrovmRunnerGroupStanding
 // A group that selects the shakedown workflow AND another one is refused, not admitted: exactly one
 // entry is the whole restriction, and a second entry is a second workflow whose jobs the guest takes.
 // THE EXPECTED WORKFLOW IS THE CALLER'S, because the restricted groups are a roster
-// (gunbc.runner_group_restriction_ensure restricted_runner_groups): the shakedown's and gunbc-private's
+// (gunbc.runner.runner_group_restriction_ensure restricted_runner_groups): the shakedown's and gunbc-private's
 // heal publisher's. The authorization record still has one constructor -- this observer -- and it
 // carries the workflow it was observed restricted to, so a mint cannot be handed a group observed
 // for another workflow.

@@ -1,4 +1,4 @@
-module gunbc.verified_archive_install
+module gunbc.host.verified_archive_install
 
 import std.types { NonEmptyStr, List, FilePath, Bool, Int, list_length }
 import std.algebra { list_append }
@@ -20,8 +20,8 @@ import gunbc.package_delivery {
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture, process_outcome_admitted, LocalExec }
 
 // FETCH, VERIFY, THEN INSTALL -- ONE FOLD FOR EVERY CONVERGE THAT PLACES A DOWNLOADED ARCHIVE ON A
-// HOST. gunbc.runner_microvm_host_ready wrote this sequence inline for the Firecracker release; the
-// browser toolchain (gunbc.runner_browser_toolchain) needs it five times over, and a second inline
+// HOST. gunbc.runner.runner_microvm_host_ready wrote this sequence inline for the Firecracker release; the
+// browser toolchain (gunbc.runner.runner_browser_toolchain) needs it five times over, and a second inline
 // copy would be two authorities for "an archive whose bytes were not verified is never unpacked"
 // (operator condition on the RunnerBrowserToolchainConverge ruling, 2026-09-28: extract, never
 // copy). Both converges now call this.
@@ -124,8 +124,8 @@ fn verified_archive_install_text(outcome: VerifiedArchiveInstallOutcome) -> Stri
 // STAGING A SET OF ARCHIVES INTO ONE TREE, AND PUBLISHING IT
 // ---------------------------------------------------------------------------------------------
 
-// ONE PROCEDURE FOR EVERY CONVERGE THAT BUILDS A TREE FROM PINNED ARCHIVES (gunbc.runner_browser_toolchain
-// and gunbc.runner_qemu_toolchain). What differs between them is DATA -- which
+// ONE PROCEDURE FOR EVERY CONVERGE THAT BUILDS A TREE FROM PINNED ARCHIVES (gunbc.runner.runner_browser_toolchain
+// and gunbc.runner.runner_qemu_toolchain). What differs between them is DATA -- which
 // archives, how each unpacks -- so it is carried on the record, never forked into a second fold: an
 // archive is kept at <archives dir>/<file_name> (a relative path, so a Debian pool path keeps its
 // directories), and its extraction is one of the arms below. What each caller ADMITS before publishing

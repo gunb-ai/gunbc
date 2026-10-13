@@ -5,10 +5,10 @@ import std.types { String }
 
 // ── HOW A REJECTED HTML EMISSION IS REPORTED ────────────────────────────────────────────────
 // THIS IS A FACT ABOUT SERIALIZING MARKUP, NOT ABOUT THE ROADMAP SITE, and it lived in
-// gunbc.roadmap_site_surface_render only because the roadmap was the first thing that rendered a
+// gunbc.roadmap.roadmap_site_surface_render only because the roadmap was the first thing that rendered a
 // page. The approval broker's confirmation page is the second, and it is served from a process
 // whose whole purpose is to share nothing with the roadmap -- so consuming the prefix from the
-// roadmap's module would have pulled gunbc.roadmap_component and its client assets into the
+// roadmap's module would have pulled gunbc.roadmap.roadmap_component and its client assets into the
 // broker's compiled closure to obtain one string. A closure is exactly what the split is about, so
 // the declaration moved to the layer that actually owns it rather than being re-spelled at the
 // second consumer (DESIGN section 3: a fact home is its LAYER, not its file).

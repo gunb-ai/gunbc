@@ -37,7 +37,7 @@ import gunbc.scm.squash_merge {
   squash_merge, SquashMerged,
 }
 import gunbc.roadmap.roadmap_belt_commit { belt_candidate_commit_message }
-import gunbc.roadmap_belt_actuate {
+import gunbc.roadmap.roadmap_belt_actuate {
   belt_legacy_intake_plan, LegacyIntakePlanned, LegacyIntakePlanRefused, BeltLegacyCaptureBase,
   BaseShaObserved, BeltBaseSha,
 }

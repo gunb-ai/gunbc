@@ -73,7 +73,7 @@ type ExactDecimal {
 // digest positions.
 // ExactDecimal.fraction_digits carries where range(min: 0), refusing an authored negative literal
 // at resolve but not a computed one. Mechanically preventable, not structural; the same partial-wall
-// behaviour recorded for PositiveFanCount in gunbc.fleet_fan_wiring. Because the wall is partial,
+// behaviour recorded for PositiveFanCount in gunbc.fleet.fleet_fan_wiring. Because the wall is partial,
 // every producer routes through admit_exact_decimal below and the canonicaliser DIVERGES rather
 // than reinterpreting a negative scale.
 

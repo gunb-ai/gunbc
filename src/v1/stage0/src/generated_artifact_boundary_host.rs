@@ -47,7 +47,7 @@ pub const GENERATED_ARTIFACT_PRODUCING_COMMAND: &str =
 /// Regenerates only the two `docs/*.md` ledger projections and returns `ProcessExit`.
 /// Distinct from `GENERATED_ARTIFACT_PRODUCING_COMMAND`: that entry resolves the whole
 /// registry emit graph. This one is the two ledger paths only.
-/// The operator-facing recipe is `tools.docs_projection_agreement` `docs_projection_regen_command`
+/// The operator-facing recipe is `gunbc.instruments.docs_projection_agreement` `docs_projection_regen_command`
 /// and is already inside the gate's `ProcessExit` reason; this host does not mint a second copy.
 const DOCS_PROJECTION_GATE_ENTRY: &str = "dag/gunbc/instruments/docs_projection_gate.dag";
 

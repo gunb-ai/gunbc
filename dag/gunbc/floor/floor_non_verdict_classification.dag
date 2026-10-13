@@ -1,4 +1,4 @@
-module gunbc.floor_non_verdict_classification
+module gunbc.floor.floor_non_verdict_classification
 
 import std.types { String, List }
 import v2.std.integer { Int }
@@ -103,8 +103,8 @@ data closure_dependent_evidence: String = "PASSES under a narrow claim_batch --h
 
 // EMPTY, AND THAT IS A REPAYMENT RECEIPT AND A MEASURED JOIN RATHER THAN A MISSING MEASUREMENT.
 // This list held NINE ClosureDependentResolution / AssertsARedThatDoesNotExist rows -- six
-// test.claim.srv3_subsumption, two v2.test.claim.staging, and
-// v2.test.emit.produced_decl_support_preserved. All nine now ANSWER and PASS on the required floor,
+// test.claim.srv3.srv3_subsumption_witness, two v2.test.claim.staging, and
+// v2.test.claim.emit.produced_decl_support_preserved. All nine now ANSWER and PASS on the required floor,
 // so they left this carrier and left floor_expected_red in the same change. THE JOIN THIS CARRIER
 // DECLARED AS INFERENCE IS NOW MEASURED, and that is the substantive result rather than the
 // bookkeeping: unjoined_inference_note stated that closure-dependence was measured for these rows,
@@ -127,7 +127,7 @@ data closure_dependent_evidence: String = "PASSES under a narrow claim_batch --h
 data closure_dependent_rows: List<ClassifiedNonVerdictRow> = []
 
 // THE COMPOSED #9106 BRANCH CONTRIBUTED A TENTH ClosureDependentResolution specimen:
-// gunbc.test.claim.realization_attempt_keystone_test.witness_planted_minimal_module_emits passed in
+// test.claim.realization_attempt_keystone.witness_planted_minimal_module_emits passed in
 // its 179-module entry closure but the old floor union shadowed emit_produced's pattern-bound
 // render with std.layout.render(doc, proto), producing the same missing-proto error as
 // produced_decl_support_preserved. #9259 makes the lexical Value::Fn binding win, so this
@@ -135,7 +135,7 @@ data closure_dependent_rows: List<ClassifiedNonVerdictRow> = []
 // regression control.
 
 // EMPTY, AND THAT IS A REPAYMENT RECEIPT RATHER THAN A MISSING MEASUREMENT. This list held the four
-// v2.test.manual.bootstrap_footprint_anchor identities, the only ClosureIndependent /
+// v2.test.claim.manual.bootstrap_footprint_anchor identities, the only ClosureIndependent /
 // HonestDebtWithStatedTrigger rows in the population. Their cause was a Symbol-declared field
 // holding Int code points: semantic_decl_string_to_bundle_node folded a String into character atoms
 // carrying raw code points, and canonical_hash_of_connective routed that field into
@@ -151,7 +151,7 @@ data closure_dependent_rows: List<ClassifiedNonVerdictRow> = []
 data closure_independent_rows: List<ClassifiedNonVerdictRow> = []
 
 // EMPTY, AND IT WAS REPAID WITHOUT EVER BEING MEASURED, which is a different receipt from the two
-// above and is worth keeping distinct. This list held the two test.claim.host_phase_status
+// above and is worth keeping distinct. This list held the two test.claim.host.host_phase_status_witness
 // identities. They were classified StandingUnmeasured on an honest obstacle: their witness carries
 // ONE import and resolves everything else from the pool, so no narrow closure can even resolve them
 // and there was no small-closure arm to compare against -- host_phase_unmeasured_note records that,

@@ -1,7 +1,7 @@
-module ctl.pos_emit2
+module test.ctl.pos_emit2
 
 import std.types { String }
-import extdeps.cargo_build
+import extdeps.rust.cargo_build
 
 // TWO-SEGMENT CONTROL for the same question. cargo.Build resolved before this branch existed, so if
 // its emitted signature also lacks the service binding the defect is pre-existing; if it carries one

@@ -6,7 +6,7 @@
 //! REALIZATION of it. It exists only because no `.dag` carrier yet hands the floor the call sites a
 //! planned claim reaches together with their argument rows -- demand identity is the declared
 //! frontier of demand-engine M1.b -- and its seed-growth receipt
-//! (`gunbc.floor_call_site_demand_seed_growth`) names that capability as the trigger that deletes
+//! (`gunbc.floor.floor_call_site_demand_seed_growth`) names that capability as the trigger that deletes
 //! it.
 //!
 //! WHAT IT DOES. For each planned claim it walks the claim function's reach over the prepared
