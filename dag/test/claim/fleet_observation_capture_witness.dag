@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set {
-  CasGeneration, cas_generation, cas_generation_first,
+  cas_generation, cas_generation_first,
   CasSlotObservationRefused,
   CasOutcome,
   CasCommitted,
@@ -54,6 +54,16 @@ import gunbc.fleet_observation.collector_ownership {
   NotTheRecordingOwner,
   recording_owner,
 }
+import std.durable_transfer {
+  LocalCommitStanding,
+  DownstreamAcceptanceStanding,
+  LocallyCommitted,
+  LocalCommitFailed,
+  LocalCommitNotAttempted,
+  DownstreamAccepted,
+  DownstreamRejected,
+  DownstreamNotOffered,
+}
 import gunbc.fleet_observation.capture_chunk {
   CaptureChunk,
   ChunkOccurrence,
@@ -67,10 +77,7 @@ import gunbc.fleet_observation.capture_chunk {
   PositionIncomparable,
   source_stream_eq,
   SourceStreamRange,
-  LocalCommitStanding,
-  LocallyCommitted,
-  LocalCommitFailed,
-  LocalCommitNotAttempted,
+  DurableCommitProof,
   CapturePersistenceRefusal,
   SpoolDiskExhausted,
   ChunkCorruptOnReadBack,
@@ -78,9 +85,6 @@ import gunbc.fleet_observation.capture_chunk {
   ChunkRetentionExpired,
   ChunkCommitRefused,
   ChunkCommitLostRace,
-  DownstreamAcceptanceStanding,
-  DownstreamAccepted,
-  DownstreamNotOffered,
   StreamContinuity,
   ContinuityEstablished,
   ContinuityGap,
@@ -270,9 +274,9 @@ fn t_chunk(seq: Nat, generation: Int, payload: NonEmptyStr, first: Nat, len: Nat
 fn t_envelope(
   ownership: EndpointOwnership,
   chunk: CaptureChunk,
-  local_commit: LocalCommitStanding,
+  local_commit: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>,
   continuity: StreamContinuity,
-  downstream: DownstreamAcceptanceStanding,
+  downstream: DownstreamAcceptanceStanding<CapturePersistenceRefusal>,
 ) -> ObservationEnvelope {
   ObservationEnvelope {
     binding: SourceMachineBinding {
@@ -304,7 +308,7 @@ fn t_envelope(
 // line the digests up by hand, which is the circularity being removed.
 // THE COMMIT FIXTURE GOES THROUGH THE REAL CONSTRUCTOR, and now it MUST: LocallyCommitted carries a
 // sealed DurableCommitProof, so a witness cannot author a committed standing at all.
-fn t_commit_for(payload: NonEmptyStr) -> LocalCommitStanding {
+fn t_commit_for(payload: NonEmptyStr) -> LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> {
   let outcome: CasOutcome<NonEmptyStr> = CasCommitted {
     committed: CasSlotVersion {
       generation: 1
@@ -1359,7 +1363,7 @@ fn is_recording_owner(id: RecordingOwnerIdentity) -> Bool {
 
 
 
-fn is_committed(standing: LocalCommitStanding) -> Bool {
+fn is_committed(standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>) -> Bool {
   match standing {
     LocallyCommitted { proof: _ } => true
     LocalCommitFailed { cause: _ } => false
@@ -1367,7 +1371,7 @@ fn is_committed(standing: LocalCommitStanding) -> Bool {
   }
 }
 
-fn is_reference_missing(standing: LocalCommitStanding) -> Bool {
+fn is_reference_missing(standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>) -> Bool {
   match standing {
     LocalCommitFailed { cause: cause } =>
       match cause {
@@ -1383,7 +1387,7 @@ fn is_reference_missing(standing: LocalCommitStanding) -> Bool {
   }
 }
 
-fn is_commit_refused(standing: LocalCommitStanding) -> Bool {
+fn is_commit_refused(standing: LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal>) -> Bool {
   match standing {
     LocalCommitFailed { cause: cause } =>
       match cause {

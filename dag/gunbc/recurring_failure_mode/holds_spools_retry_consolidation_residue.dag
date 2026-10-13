@@ -8,7 +8,7 @@ data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringF
   identity: "holds_spools_retry_consolidation_residue" as NonEmptyStr,
 
   receipts: [
-    "INVALID STATE: the holds/spools/retry consolidation (gunbc#13821) left named leftover authorities beside the new homes, so a later durable work-queue can still fork against the old spelling. HARM: a second decision algebra, a second stall bound, a specialized transfer pair, or a systemd RestartSec that is not the retry law's earliest time reappears as if the consolidation had not happened. These are not rung drops: nothing fell; the class sits unbuilt.",
+    "INVALID STATE: the holds/spools/retry consolidation (gunbc#13821) left named leftover authorities beside the new homes, so a later durable work-queue can still fork against the old spelling. HARM: a second decision algebra, a second stall bound, a second unit-liveness spelling, or a systemd RestartSec that is not the retry law's earliest time reappears as if the consolidation had not happened. These are not rung drops: nothing fell; the class sits unbuilt.",
 
     "SITE — ProcessLeasePlan and DispatchLeasePlan remain separate from std.temporal_effect decision_for_held_lease_verdict. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: one UpsertDecision fold consumed by gunbc.session_lease and gunbc.roadmap_dispatch_actuator, with ProcessLeasePlan/DispatchLeasePlan deleted.",
 
@@ -16,7 +16,9 @@ data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringF
 
     "SITE — stall_budget_verdict is not yet the stall half of event_backlog_judge, systemd_workload_stall_fired, or runner_broker_progress_silence_bound_seconds. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: those three consumers call std.temporal_effect stall_budget_verdict and their local stall numbers are deleted.",
 
-    "SITE — gunbc.fleet_observation_capture_chunk LocalCommitStanding remains a specialized pair beside std.durable_transfer. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: capture_chunk instantiates LocalCommitStanding<DurableCommitProof, CapturePersistenceRefusal> from std.durable_transfer and deletes its own type.",
+    "SITE — gunbc.roadmap_dispatch_actuator AttemptUnitObservation still answers LoadState/SubState/exit, beside gunbc.systemd_unit_invocation_liveness unit_invocation_holder_liveness which answers InvocationID holder liveness. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: belt exit-reconcile consumes unit_invocation_holder_liveness; AttemptUnitObservation is deleted or kept only if SubState/exit remains a distinct observation with its own name.",
+
+    "SITE — gunbc.workspace_acquisition_invocation WorkspacePriorActorStanding wraps unit_invocation_holder_liveness into PriorActorRunning/Terminal/Unobservable. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: workspace_actor_takeover_decision consumes DurableHoldHolderLiveness directly and WorkspacePriorActorStanding is deleted.",
 
     "SITE — spark transfer RestartSec/StartLimit* are systemd unit properties whose numbers are taken from spark_transfer_retry_law, but the unit still restarts without asking retry_admissibility. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the transfer supervisor consumes retry_admissibility for whether another start is admissible; RestartSec is the law's earliest delay, not a second bound.",
 
@@ -31,7 +33,10 @@ data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringF
     decl_ref(module_path: "std.temporal_effect", decl_name: "decision_for_held_lease_verdict"),
     decl_ref(module_path: "std.temporal_effect", decl_name: "stall_budget_verdict"),
     decl_ref(module_path: "std.durable_transfer", decl_name: "LocalCommitStanding"),
-    decl_ref(module_path: "gunbc.fleet_observation_capture_chunk", decl_name: "LocalCommitStanding"),
+    decl_ref(module_path: "gunbc.fleet_observation.capture_chunk", decl_name: "local_commit_from_cas"),
+    decl_ref(module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "AttemptUnitObservation"),
+    decl_ref(module_path: "gunbc.workspace_acquisition_invocation", decl_name: "WorkspacePriorActorStanding"),
+    decl_ref(module_path: "gunbc.systemd_unit_invocation_liveness", decl_name: "unit_invocation_holder_liveness"),
     decl_ref(module_path: "gunbc.spark.model_snapshot_materialize", decl_name: "spark_transfer_retry_law"),
     decl_ref(module_path: "gunbc.retry_http_hint", decl_name: "retry_hint_from_http"),
     decl_ref(module_path: "gunbc.harness.hosted_failure", decl_name: "hosted_http_failure_wire"),

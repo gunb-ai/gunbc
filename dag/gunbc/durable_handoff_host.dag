@@ -36,6 +36,28 @@ fn host_spool_stage_wire(stage: HostSpoolStage) -> String {
   }
 }
 
+fn host_spool_stage_eq(a: HostSpoolStage, b: HostSpoolStage) -> Bool {
+  match a {
+    AttemptExitInbox => match b { AttemptExitInbox => true  _ => false }
+    AttemptExitQueued => match b { AttemptExitQueued => true  _ => false }
+    AttemptExitRunning => match b { AttemptExitRunning => true  _ => false }
+    AttemptExitDone => match b { AttemptExitDone => true  _ => false }
+    AttemptExitRefused => match b { AttemptExitRefused => true  _ => false }
+  }
+}
+
+fn host_spool_stage_is_inbox(stage: HostSpoolStage) -> Bool {
+  match stage { AttemptExitInbox => true  _ => false }
+}
+
+fn host_spool_stage_is_queued(stage: HostSpoolStage) -> Bool {
+  match stage { AttemptExitQueued => true  _ => false }
+}
+
+fn host_spool_stage_is_running(stage: HostSpoolStage) -> Bool {
+  match stage { AttemptExitRunning => true  _ => false }
+}
+
 type HostSpoolCreateObservation
   = HostSpoolNameAbsent
   | HostSpoolNamePresent
@@ -79,7 +101,7 @@ type HostSpoolHealth
 fn host_spool_bound_for(bounds: List<HostSpoolHealthBound>, stage: HostSpoolStage) -> Second? {
   fold(bounds, init: Absent, f: (acc, b) => match acc {
     Present { value: v } => Present { value: v }
-    Absent => if host_spool_stage_wire(stage: b.stage) == host_spool_stage_wire(stage: stage) {
+    Absent => if host_spool_stage_eq(a: b.stage, b: stage) {
       Present { value: b.bound }
     } else {
       Absent
@@ -113,9 +135,9 @@ fn host_spool_health_judge(entries: List<HostSpoolHealthEntry>, bounds: List<Hos
         }
       }
     Absent => HostSpoolHealthClear {
-      depth_inbox: count(filter(entries, e => host_spool_stage_wire(stage: e.stage) == "inbox")),
-      depth_queued: count(filter(entries, e => host_spool_stage_wire(stage: e.stage) == "queued")),
-      depth_running: count(filter(entries, e => host_spool_stage_wire(stage: e.stage) == "running")),
+      depth_inbox: count(filter(entries, e => host_spool_stage_is_inbox(stage: e.stage))),
+      depth_queued: count(filter(entries, e => host_spool_stage_is_queued(stage: e.stage))),
+      depth_running: count(filter(entries, e => host_spool_stage_is_running(stage: e.stage))),
     }
   }
 }
