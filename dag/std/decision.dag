@@ -739,8 +739,9 @@ type CandidateFieldStanding
 // One row per declared objective term the caller supplies. Completeness against the
 // assessment terms (membership, uniqueness, orientation vs funded Pareto axes) is
 // admit_term_valuations, not a closed record of one domain's units. A zero scale is
-// present, never dropped. CONSUMERS: ValuedObjective; product.fabric.demand
-// interpret_demand_objective.
+// present, never dropped. scale_micro is Int so a negative is authorable; admission
+// refuses it, because a negative LowerIsBetter scale silently reverses orientation.
+// CONSUMERS: ValuedObjective; product.fabric.demand interpret_demand_objective.
 type TermValuation {
   term: DeclarationRef
   scale_micro: Int
@@ -748,7 +749,9 @@ type TermValuation {
 }
 
 // NetValue is the signed sum (LowerIsBetter adds, HigherIsBetter subtracts).
-// CostPerAcceptedUnit divides the non-unit terms by the named unit term; zero or
+// CostPerAcceptedUnit divides the non-unit cost by the unit *reading* (not by
+// scale times reading). The unit row must be HigherIsBetter with scale_micro 1,
+// so an unused or inverted scale cannot disagree with the denominator. Zero or
 // negative accepted units are unbounded, never a zero cost.
 // CONSUMERS: apply_policy; product.fabric.demand profiles.
 type ValuedObjectiveMeasure
@@ -1527,6 +1530,24 @@ fn completeness_defects(join: ObservationCompleteness<DeclarationRef>) -> List<N
   }
 }
 
+fn unit_row_defects(valuations: List<TermValuation>, unit: DeclarationRef) -> List<NonEmptyStr> {
+  match (filter(valuations, tv => declaration_ref_eq(a: tv.term, b: unit))).first() {
+    Absent => ["cost-per-accepted-unit names a term the valuations do not carry" as NonEmptyStr]
+    Present { value: tv } =>
+      concat(
+        match tv.goal {
+          HigherIsBetter => []
+          LowerIsBetter => ["cost-per-accepted-unit unit term must be HigherIsBetter" as NonEmptyStr]
+        },
+        if tv.scale_micro == 1 {
+          []
+        } else {
+          ["cost-per-accepted-unit unit scale_micro must be 1; the denominator is the unit reading" as NonEmptyStr]
+        },
+      )
+  }
+}
+
 fn admit_term_valuations(valuations: List<TermValuation>, terms: List<ObjectiveTerm>, pareto_axes: List<SelectionAxis>, measure: ValuedObjectiveMeasure) -> List<NonEmptyStr> {
   let ids = map(valuations, v => v.term)
   let join = observation_completeness(
@@ -1537,16 +1558,18 @@ fn admit_term_valuations(valuations: List<TermValuation>, terms: List<ObjectiveT
   let orientations = fold(valuations, init: [], f: (acc, tv) =>
     concat(acc, orientation_defects(pareto_axes: pareto_axes, wanted: tv.term, expected: tv.goal))
   )
+  let scales = fold(valuations, init: [], f: (acc, tv) =>
+    if tv.scale_micro < 0 {
+      concat(acc, ["valued-objective scale_micro must be nonnegative" as NonEmptyStr])
+    } else {
+      acc
+    }
+  )
   let unit_defects = match measure {
     NetValue => []
-    CostPerAcceptedUnit { unit: unit } =>
-      if any(valuations, tv => declaration_ref_eq(a: tv.term, b: unit)) {
-        []
-      } else {
-        ["cost-per-accepted-unit names a term the valuations do not carry" as NonEmptyStr]
-      }
+    CostPerAcceptedUnit { unit: unit } => unit_row_defects(valuations: valuations, unit: unit)
   }
-  concat(concat(completeness_defects(join: join), orientations), unit_defects)
+  concat(concat(concat(completeness_defects(join: join), orientations), scales), unit_defects)
 }
 
 fn apply_policy(

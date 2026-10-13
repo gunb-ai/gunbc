@@ -352,6 +352,58 @@ fn delay_bound_to_money_valuations(objective: DemandObjective) -> List<TermValua
   )
 }
 
+fn with_delay_scale(objective: DemandObjective, scale: Int) -> List<TermValuation> {
+  map(interpret_demand_objective(objective: objective).valuations, v =>
+    if declaration_ref_eq(a: v.term, b: term_delay.identity) {
+      TermValuation { term: v.term, scale_micro: scale, goal: v.goal }
+    } else {
+      v
+    }
+  )
+}
+
+test fn a_negative_delay_scale_refuses_rather_than_reversing_orientation() -> Bool {
+  match pick(field: tradeoff_field(), objective: latency_sensitive_objective, constraints: []) {
+    Picked { id: move_id, policy: _ } =>
+      declaration_ref_eq(a: move_id, b: id_move)
+        && match pick_with_policy(
+          field: tradeoff_field(),
+          objective: latency_sensitive_objective,
+          constraints: [],
+          policy: ValuedObjective {
+            identity: latency_sensitive_objective.profile,
+            valuations: with_delay_scale(objective: latency_sensitive_objective, scale: -1),
+            measure: latency_sensitive_objective.measure,
+          },
+        ) {
+          Refused => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn cost_per_accepted_unit_refuses_a_lower_is_better_denominator() -> Bool {
+  match pick(field: accepted_work_field(), objective: debt_payoff_objective, constraints: []) {
+    Picked { id: move_id, policy: _ } =>
+      declaration_ref_eq(a: move_id, b: id_move)
+        && match pick_with_policy(
+          field: accepted_work_field(),
+          objective: debt_payoff_objective,
+          constraints: [],
+          policy: ValuedObjective {
+            identity: debt_payoff_objective.profile,
+            valuations: interpret_demand_objective(objective: debt_payoff_objective).valuations,
+            measure: CostPerAcceptedUnit { unit: term_money.identity },
+          },
+        ) {
+          Refused => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
 test fn remapping_only_the_delay_axis_refuses_rather_than_reversing_the_pick() -> Bool {
   match pick(field: tradeoff_field(), objective: latency_sensitive_objective, constraints: []) {
     Picked { id: move_id, policy: _ } =>
