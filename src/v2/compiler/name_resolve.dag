@@ -618,8 +618,10 @@ fn admit_import_visible_entry(
   )
 }
 
-fn admit_import_entry(
-  roots: FreeMonoid<NormalizedTree>,
+// THE ONE CROSS-TREE GATE. ImportScoped then merges named exports (admit_import_entry);
+// NamespaceOnlyY records listed-name origins from captured rows (admit_captured_import_rows)
+// without a second cross_tree_edge_decision.
+fn admit_import_cross_tree_gate(
   import_edge: Import,
   state: AdmissionState,
   subject_qn: QualifiedName,
@@ -642,10 +644,8 @@ fn admit_import_entry(
             to_qn: import_edge.target,
             active_roots: active_roots
           ) {
-            EdgeNormalResolution =>
-              admit_import_visible_entry(roots: roots, import_edge: import_edge, state: state)
-            EdgeCrossAdmitted =>
-              admit_import_visible_entry(roots: roots, import_edge: import_edge, state: state)
+            EdgeNormalResolution => state
+            EdgeCrossAdmitted => state
             EdgeCrossDenied =>
               AdmissionRejected {
                 diagnostics: resolve_diagnostics(reason: ^resolve_cross_tree_import_denied)
@@ -656,6 +656,28 @@ fn admit_import_entry(
               }
           }
       }
+  }
+}
+
+fn admit_import_entry(
+  roots: FreeMonoid<NormalizedTree>,
+  import_edge: Import,
+  state: AdmissionState,
+  subject_qn: QualifiedName,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>
+) -> AdmissionState {
+  match admit_import_cross_tree_gate(
+    import_edge: import_edge,
+    state: state,
+    subject_qn: subject_qn,
+    index: index,
+    active_roots: active_roots
+  ) {
+    AdmissionRejected { diagnostics: d } =>
+      AdmissionRejected { diagnostics: d }
+    AdmissionAccepted { bindings: _, origins: _ } =>
+      admit_import_visible_entry(roots: roots, import_edge: import_edge, state: state)
   }
 }
 
@@ -696,37 +718,41 @@ fn admission_namespace_base(canonical_symbols: PointwisePower<Symbol>) -> Namesp
   }
 }
 
-fn origins_from_import_bindings(rows: FreeMonoid<AliasBindingRow>, origins: Map<Symbol, QualifiedName>) -> Map<Symbol, QualifiedName> {
-  fold_list(xs: rows, empty: origins, cons: fn(acc, row) {
-    map_insert(m: acc, key: row.binding, value: qualified_name_init(qn: row.target))
-  })
+fn import_edge_from_binding_row(row: AliasBindingRow) -> Import {
+  Import {
+    target: qualified_name_init(qn: row.target),
+    visibility: ImportVisible
+  }
 }
 
-fn captured_import_cross_tree_refusal(
-  subject_qn: QualifiedName,
+fn admit_captured_import_rows(
   rows: FreeMonoid<AliasBindingRow>,
+  state: AdmissionState,
+  subject_qn: QualifiedName,
   index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>
-) -> Optional<NonEmptyDiagnostics> {
-  fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, row) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match v2.std.cross_tree.resolution.cross_tree_edge_decision(
-          index: index,
-          from_qn: subject_qn,
-          to_qn: qualified_name_init(qn: row.target),
-          active_roots: active_roots
-        ) {
-          EdgeCrossDenied =>
-            optional_present(value: resolve_diagnostics(reason: ^resolve_cross_tree_import_denied))
-          EdgeCrossAmbiguous =>
-            optional_present(value: resolve_diagnostics(reason: ^resolve_cross_tree_import_ambiguous))
-          EdgeNormalResolution => acc
-          EdgeCrossAdmitted => acc
-        }
+) -> AdmissionState {
+  fold_list(
+    xs: rows,
+    empty: state,
+    cons: fn(acc, row) {
+      match admit_import_cross_tree_gate(
+        import_edge: import_edge_from_binding_row(row: row),
+        state: acc,
+        subject_qn: subject_qn,
+        index: index,
+        active_roots: active_roots
+      ) {
+        AdmissionRejected { diagnostics: d } =>
+          AdmissionRejected { diagnostics: d }
+        AdmissionAccepted { bindings: b, origins: o } =>
+          AdmissionAccepted {
+            bindings: b,
+            origins: map_insert(m: o, key: row.binding, value: qualified_name_init(qn: row.target))
+          }
+      }
     }
-  })
+  )
 }
 
 // The shared context consumes only the map emitted by successful validation. General
@@ -791,10 +817,7 @@ fn admitted_subject_from_bindings(
       module_qn: module_qn,
       test_code: test_code,
       declared_in: module_qn,
-      imported_origins: origins_from_import_bindings(
-        rows: normalized_tree_import_bindings(tree: subject_module_root),
-        origins: origins
-      ),
+      imported_origins: origins,
       unavailable_providers: []
     },
     subject_root: subject_module_root
@@ -908,18 +931,19 @@ fn namespace_for_subject_root(
             Rejected {
               diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
             }
-          AdmissionAccepted { bindings: b, origins: o } =>
-            match captured_import_cross_tree_refusal(
-              subject_qn: admission.subject.name,
+          AdmissionAccepted { bindings: _, origins: _ } =>
+            match admit_captured_import_rows(
               rows: normalized_tree_import_bindings(tree: subject_module_root),
+              state: initial,
+              subject_qn: admission.subject.name,
               index: index,
               active_roots: active_roots
             ) {
-              Present { value: denied } =>
+              AdmissionRejected { diagnostics: denied } =>
                 Rejected {
                   diagnostics: rejected_with_pending(pending: validate_diag, rejected: denied)
                 }
-              Absent =>
+              AdmissionAccepted { bindings: b, origins: o } =>
                 Accepted {
                   value: admitted_subject_from_bindings(
                     bindings: b,
