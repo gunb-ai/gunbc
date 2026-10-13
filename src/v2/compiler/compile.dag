@@ -1,7 +1,7 @@
 module v2.compiler.compile
 
 import std.compiler_entry { CompilerEntryDriver, SourceRootEvalDriver }
-import gunbc.witness.v2_native_route {
+import v2.workflow.v2_native_route {
   NativeRouteEmittedBuild,
   NativeRouteMalformedControl,
   NativeRouteMemberRow,
@@ -21,7 +21,7 @@ import gunbc.witness.v2_native_route {
 }
 // THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside
 // native_route_admission, and the emitted crate carries a module only when this closure reaches it.
-import gunbc.native_frontier_ratchet { native_frontier_verdict }
+import v2.workflow.native_frontier_ratchet { native_frontier_verdict }
 import gunbc.source_layout_namespaces { layout_namespaces }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
@@ -2468,7 +2468,7 @@ fn native_lane_universe_of_facts(
 // the namespace's module NAMES (native_lane_acquire_bound lists them), so recognising the spelling
 // reads no module the pattern did not otherwise admit. The refusal names the module
 // spelling, `//<package>/<target>:all`. The comparison is made in PACKAGE-TEXT space with the one
-// correspondence the selection already uses (gunbc.witness.v2_native_route
+// correspondence the selection already uses (v2.workflow.v2_native_route
 // `native_route_module_package_text`), never by an inverse fold back to namespaces. A single
 // target that matches nothing and names no module is left to the caller's own emptiness contract.
 fn native_lane_pattern_named_module(
@@ -2705,7 +2705,7 @@ fn native_lane_module_reachable(
 }
 
 // THE POPULATION A PATTERN SELECTS WITHIN is the `v2.test` namespace, named by the prefix the universe
-// admits members by (gunbc.witness.v2_native_route native_route_universe_prefix, trailing dot
+// admits members by (v2.workflow.v2_native_route native_route_universe_prefix, trailing dot
 // dropped), so the namespace listed and the namespace admitted are one fact.
 fn native_lane_universe_namespace() -> String {
   substring(
@@ -4310,7 +4310,7 @@ fn native_census_infer_completeness(outcome: NativeInferCensusOutcome) -> Native
 // (gunbc.roadmap.roadmap_authority), whose boundary names this label and rules that its population is
 // DERIVED from the label, never kept as a list. So there is no roster of its tests here. The label is
 // parsed by the one target-pattern authority, its package names the subject module by the same
-// correspondence the native lane uses (gunbc.witness.v2_native_route native_route_module_package_text),
+// correspondence the native lane uses (v2.workflow.v2_native_route native_route_module_package_text),
 // and the subject's closure is walked over the census's own import graph. A root is "in the N7 closure"
 // exactly when the subject module reaches it. The label is the instrument's own fact, never a CLI option.
 data native_census_subject_label: String = "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all"
@@ -4536,7 +4536,7 @@ type NativeLaneControls {
 // other missing verdict, which is the one distinction these two controls exist to draw. The
 // refusal is carried as the verdict it is, at the stage it happened, with the reason every
 // sibling arm preserves. Both clauses already map NativeTestRefused to false
-// (gunbc.witness.v2_native_route native_route_false_control_holds / _true_control_holds), so
+// (v2.workflow.v2_native_route native_route_false_control_holds / _true_control_holds), so
 // this reports the same verdict with the cause attached rather than changing what is admitted.
 fn native_lane_controls(context: NativeTestContext) -> NativeLaneControls {
   match native_test_prepare_module(

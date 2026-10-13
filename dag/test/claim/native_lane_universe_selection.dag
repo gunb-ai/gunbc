@@ -2,7 +2,7 @@ module test.claim.native_lane_universe_selection
 
 import std.types { List }
 import extdeps.bazel.target_pattern { TargetPatternParsed, TargetPatternRefused, parse_target_pattern }
-import gunbc.witness.v2_native_route { native_route_identity_qualified }
+import v2.workflow.v2_native_route { native_route_identity_qualified }
 import v2.compiler.compile { native_lane_universe_selected }
 import v2.compiler.module_acquisition { AcquiredModule }
 import v2.compiler.source_authority { ModuleFileRef }
