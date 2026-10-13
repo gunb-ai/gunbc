@@ -1,6 +1,6 @@
 module product.fabric.flex_market
 
-import std.types { NonEmptyStr, Bool, Int, List, brand }
+import std.types { NonEmptyStr, Bool, Int, List, String, brand }
 import std.nat { Nat }
 import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
 import std.decl_ref { DeclarationRef }
@@ -24,9 +24,11 @@ import std.decision {
   ValuedObjective, CostPerAcceptedUnit, SelectionPolicy,
 }
 import gunbc.harness.harness_reasoning_wire {
-  HarnessServingUnit, Qwen3_8_27bOnNinfer,
+  HarnessServingUnit, Qwen3_8_27bOnNinfer, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
+  NemotronUltraFreeOnOpenRouter,
   harness_unit_placement, PlacedOnFleetSeat, RunOnOperatorEndpoint, LeasedFromHostedQuota,
 }
+import extdeps.cloud.vast_ai { VastAiOffer }
 
 // Market-level interruptible bid, ranking, cleanup pacing, and ownership. Ctrl reference
 // (read-only): gunb-ai/ctrl lib/vast_bidder.mjs, vast_rentals.mjs. No second decision algebra:
@@ -540,4 +542,43 @@ fn flex_rented_card_fungible(probe: FlexCardProbe) -> Bool {
 
 fn flex_ninfer_qwen_probe() -> FlexCardProbe {
   FlexCardUnitEstablished { unit: Qwen3_8_27bOnNinfer }
+}
+
+data flex_ninfer_min_driver: Int = 580
+data flex_vllm_min_driver: Int = 590
+
+fn flex_unit_min_host_driver(unit: HarnessServingUnit) -> Int? {
+  match unit {
+    Qwen3_8_27bOnNinfer => Present { value: flex_ninfer_min_driver }
+    DeepseekV4FlashOnVllm => Present { value: flex_vllm_min_driver }
+    Glm53FlashOnVllm => Present { value: flex_vllm_min_driver }
+    NemotronUltraFreeOnOpenRouter => none
+  }
+}
+
+fn flex_offer_driver_major(offer: VastAiOffer) -> Int? {
+  match offer.driver_version {
+    Absent => none
+    Present { value: raw } =>
+      match parse_int(s: split(s: raw, delimiter: ".").first()) {
+        Absent => none
+        Present { value: major } => if major < 0 { none } else { Present { value: major } }
+      }
+  }
+}
+
+fn flex_offer_meets_unit_driver(offer: VastAiOffer, unit: HarnessServingUnit) -> Bool {
+  match flex_unit_min_host_driver(unit: unit) {
+    Absent => true
+    Present { value: min } =>
+      match flex_offer_driver_major(offer: offer) {
+        Absent => false
+        Present { value: observed } => observed >= min
+      }
+  }
+}
+
+fn flex_serving_unit_accepts_offer(unit: HarnessServingUnit, offer: VastAiOffer) -> Bool {
+  flex_rented_card_fungible(probe: FlexCardUnitEstablished { unit: unit })
+    && flex_offer_meets_unit_driver(offer: offer, unit: unit)
 }

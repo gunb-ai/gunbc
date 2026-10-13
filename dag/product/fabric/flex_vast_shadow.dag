@@ -22,7 +22,11 @@ import product.fabric.flex_policy {
   flex_bid_admission, occupancy_sum, AcquisitionActive,
   PhysicalMachineObservationIdentity, ProviderAccountObservationIdentity,
 }
-import product.fabric.flex_market { flex_owner_label_gunbc_flex, FlexOwnerLabel }
+import product.fabric.flex_market {
+  flex_owner_label_gunbc_flex, FlexOwnerLabel,
+  flex_offer_meets_unit_driver,
+}
+import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand { debt_payoff_objective, DemandObjective }
 import product.fabric.budget { MoneyAccount }
@@ -292,22 +296,6 @@ data flex_qwen_serving_template: FlexServingTemplate = FlexServingTemplate {
   model_id: flex_qwen_model_id,
 }
 
-type FlexEngineRuntime
-  = FlexNinfer
-  | FlexVllm
-
-data flex_ninfer_min_driver: Int = 580
-data flex_vllm_min_driver: Int = 590
-
-fn flex_engine_min_driver(engine: FlexEngineRuntime) -> Int {
-  match engine {
-    FlexNinfer => flex_ninfer_min_driver
-    FlexVllm => flex_vllm_min_driver
-  }
-}
-
-data flex_host_driver_unread_frontier: DissolutionCondition = unbound_dissolution(description: "Vast search-offers as modeled carries no host driver version, so ninfer >= 580 and vLLM >= 590 cannot be decided from an offer. TRIGGER: the offer or instance wire carries a host driver version and flex_engine_min_driver screens it. SUFFICIENT FOR deleting this row.")
-
 type FlexGpuClass {
   identity: NonEmptyStr
   gpu_name_contains: String?
@@ -375,7 +363,9 @@ fn flex_interruptible_rentable(offer: VastAiOffer) -> Bool {
 }
 
 fn flex_offer_in_shadow_field(offer: VastAiOffer) -> Bool {
-  flex_interruptible_rentable(offer: offer) && flex_offer_supported(offer: offer)
+  flex_interruptible_rentable(offer: offer)
+    && flex_offer_supported(offer: offer)
+    && flex_offer_meets_unit_driver(offer: offer, unit: Qwen3_8_27bOnNinfer)
 }
 
 data flex_search_type: String = vast_ai_search_type_bid
@@ -527,6 +517,7 @@ fn flex_reconcile_acquisition(
     FlexInstancesUnreadable => FlexAcquisitionUnknown
     FlexInstancesPartial { next_token: _, observed: _, total: _ } => FlexReconcileNeedsExhaustedRoster
     FlexInstancesExhausted { instances: instances, total: _ } =>
+  // Answered create matches contract id only. Lost or refused may match the machine.
   match standing {
     FlexCreateAnswered { instance_id: id, machine_id: _, ask_id: _ } =>
       match flex_find_instance(instances: instances, lookup: FlexLookupContractId { id: id }) {

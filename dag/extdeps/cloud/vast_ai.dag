@@ -36,8 +36,8 @@ import extdeps.uri { Uri, Https }
 // std.measure exact_decimal_to_money_per_hour_ceil (round up). storage_cost ($/GB-month) and
 // inet_up_cost / inet_down_cost ($/GB) stay ExactDecimal: a MoneyAmountMicro wrapper would drop
 // the quantity axis. gpu_ram is an Int of megabytes on the REST wire (docs.vast.ai: CLI GB,
-// REST MB). num_gpus is an Int and IS a request axis: an offer is a machine with that many GPUs,
-// rented whole.
+// REST MB). driver_version is the host driver string on search-offers. num_gpus is an Int and
+// IS a request axis: an offer is a machine with that many GPUs, rented whole.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/search/search-offers" }
 }
@@ -110,6 +110,8 @@ type VastAiOffer {
   inet_up_cost: ExactDecimal
   inet_down_cost: ExactDecimal
   gpu_ram: Int
+  // Host NVIDIA driver as search-offers publishes it (e.g. "580.65.06"). Absent is unread.
+  driver_version: String?
 }
 
 data vast_ai_quote_currency: CurrencyCode = Usd

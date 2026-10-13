@@ -39,18 +39,19 @@ import product.fabric.flex_policy {
 }
 import product.fabric.flex_market {
   FlexMarketQuoted, FlexBidLevelMarket, flex_owner_label_gunbc_flex,
+  flex_ninfer_min_driver, flex_vllm_min_driver, flex_unit_min_host_driver,
+  flex_serving_unit_accepts_offer, flex_offer_meets_unit_driver,
 }
 import product.fabric.flex_vast_shadow {
   flex_trial_fleet_rate_cap, flex_trial_total, flex_trial_policy, flex_objective,
-  flex_qwen_serving_template, flex_ninfer_min_driver, flex_vllm_min_driver,
-  FlexNinfer, FlexVllm, flex_engine_min_driver,
+  flex_qwen_serving_template,
   flex_gpu_class_rtx_5000_48gb, flex_gpu_class_72gb, flex_gpu_class_rtx_pro_6000_96gb,
   flex_gpu_class_matches, flex_offer_supported, flex_offer_in_shadow_field,
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
   flex_bind_attempt_to_offer, flex_vast_offer_key, flex_keyset_page_limit,
   flex_instances_page, flex_fold_instance_pages, flex_cap_from_roster,
   flex_charges_page, FlexChargesExhausted, FlexChargesPartial, FlexChargesUnreadable,
-  flex_vast_api_read_grant, flex_host_driver_unread_frontier, flex_delay_unvalued,
+  flex_vast_api_read_grant, flex_delay_unvalued,
   FlexCreateLost, FlexCreateRefused, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
   FlexReconcileNeedsExhaustedRoster,
   flex_reconcile_acquisition,
@@ -79,6 +80,7 @@ import test.claim.fabric.provider_use_fixture {
 }
 import gunbc.secret_provision { fleet_secret_ref }
 import gunbc.harness.harness_operator_route { harness_operator_route }
+import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer, Glm53FlashOnVllm, DeepseekV4FlashOnVllm }
 import gunbc.auth.gcp_secret_access { secret_accessor_grant }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -229,6 +231,7 @@ fn wire_offer(name: String, ram: Int, bid: Bool, rentable: Bool) -> VastAiOffer 
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     gpu_ram: ram,
+    driver_version: Present { value: "580.65.06" },
   }
 }
 
@@ -264,8 +267,14 @@ test fn operator_template_and_policy_are_named_facts() -> Bool {
     && flex_qwen_published_tcp_port == 8000
     && byte_size_count(b: flex_qwen_disk) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 32)))
     && flex_search_type == vast_ai_search_type_bid
-    && flex_engine_min_driver(engine: FlexNinfer) == flex_ninfer_min_driver
-    && flex_engine_min_driver(engine: FlexVllm) == flex_vllm_min_driver
+    && match flex_unit_min_host_driver(unit: Qwen3_8_27bOnNinfer) {
+      Present { value: n } => n == flex_ninfer_min_driver
+      Absent => false
+    }
+    && match flex_unit_min_host_driver(unit: Glm53FlashOnVllm) {
+      Present { value: n } => n == flex_vllm_min_driver
+      Absent => false
+    }
     && money_per_hour_cap_is_one_thirty_four()
     && flex_actuation_mode_default_is_dry()
     && objective_is_cost_per_accepted_unit()
@@ -399,10 +408,6 @@ fn frontiers_are_unbound() -> Bool {
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
     }
-    && match flex_host_driver_unread_frontier {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
 }
 
 fn objective_is_cost_per_accepted_unit() -> Bool {
@@ -432,6 +437,47 @@ test fn supported_gpu_classes_screen_offers() -> Bool {
     && flex_offer_supported(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true))
     && !flex_offer_in_shadow_field(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: false, rentable: true))
     && !flex_offer_in_shadow_field(offer: wire_offer(name: "RTX 4090", ram: 24576, bid: true, rentable: true))
+    && host_driver_screens_the_serving_unit()
+}
+
+fn wire_offer_driver(name: String, ram: Int, driver: String?) -> VastAiOffer {
+  VastAiOffer {
+    id: 7,
+    machine_id: 42,
+    gpu_name: name,
+    num_gpus: 1,
+    compute_cap: 1200,
+    gpu_arch: Present { value: "nvidia" },
+    verification: "verified",
+    geolocation: "US",
+    rentable: true,
+    rented: false,
+    is_bid: Present { value: true },
+    min_bid: ExactDecimal { units: 1, fraction_digits: 0 },
+    dph_total: ExactDecimal { units: 2, fraction_digits: 0 },
+    storage_cost: ExactDecimal { units: 15, fraction_digits: 2 },
+    inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
+    inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
+    gpu_ram: ram,
+    driver_version: driver,
+  }
+}
+
+fn host_driver_screens_the_serving_unit() -> Bool {
+  let ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "580.65.06" })
+  let unread = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: none)
+  let low_ninfer = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "570.86.15" })
+  let vllm_ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "590.44.01" })
+  let vllm_low = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "580.65.06" })
+  flex_offer_meets_unit_driver(offer: ok, unit: Qwen3_8_27bOnNinfer)
+    && !flex_offer_meets_unit_driver(offer: unread, unit: Qwen3_8_27bOnNinfer)
+    && !flex_offer_meets_unit_driver(offer: low_ninfer, unit: Qwen3_8_27bOnNinfer)
+    && flex_serving_unit_accepts_offer(unit: Qwen3_8_27bOnNinfer, offer: ok)
+    && !flex_serving_unit_accepts_offer(unit: Qwen3_8_27bOnNinfer, offer: unread)
+    && flex_offer_meets_unit_driver(offer: vllm_ok, unit: Glm53FlashOnVllm)
+    && !flex_offer_meets_unit_driver(offer: vllm_low, unit: DeepseekV4FlashOnVllm)
+    && flex_offer_in_shadow_field(offer: ok)
+    && !flex_offer_in_shadow_field(offer: unread)
 }
 
 test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {
