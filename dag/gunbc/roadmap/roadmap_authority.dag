@@ -2885,7 +2885,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/compiler_frontend_program_status.dag"),
       line: ticket(t: updated(t: updated(t: fields(
           headline: "Every lowered node keeps its occurrence, and service modules lower",
-          boundary: "gunbc.compiler_frontend_program_status: ServiceModuleLowering stays PrerequisiteOutstanding until gunbc#13833's merge SHA can be named (carriers landed, ServiceSetAside deleted, claim-runs at bfbe247e8a). LoweringOccurrenceProjection is Delivered (gunbc#13828, cdbaa92531d). Also Outstanding: UsesClauseCarrier.",
+          boundary: "gunbc.compiler_frontend_program_status: ServiceModuleLowering stays PrerequisiteOutstanding until gunbc#13833's merge SHA can be named (carriers landed, ServiceSetAside deleted, claim-runs at 4ff78bc650). LoweringOccurrenceProjection is Delivered (gunbc#13828, cdbaa92531d). Also Outstanding: UsesClauseCarrier.",
           displaced_cost: "A fn with a uses clause still refuses its module at lowering, so those references stay outside the XL-2 residual.",
           first_slice: "After #13833 lands, flip ServiceModuleLowering to PrerequisiteDelivered with the merge SHA. UsesClauseCarrier stays outstanding.",
           red_control: "A uses-clause fn refused at lowering keeps UsesClauseCarrier OUTSTANDING.",
