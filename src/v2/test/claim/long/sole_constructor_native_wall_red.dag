@@ -465,6 +465,7 @@ test fn closure_emission_admits_imported_unsealed_variant_alias_holds() -> Bool 
     Present { value: reason } =>
       (reason != ^infer_reason_sole_constructor_modifiers_unreadable)
         && (reason != ^infer_reason_sole_constructor_refused)
+        && (reason != ^infer_reason_declaration_identity_unavailable)
   }
 }
 
