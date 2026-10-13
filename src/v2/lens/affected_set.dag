@@ -6,8 +6,8 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
-import v2.std.collection { Absent, Map, Present, list_at_optional, map_get_checked, map_insert }
-import std.algebra { list_append, list_snoc_item, contains, length, list_tail }
+import v2.std.collection { Absent, Map, Present, map_get_checked, map_insert }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, contains, length }
 import v2.compiler.infer { InferredTree }
 import v2.std.change {
   AffectedDependency,
@@ -1097,15 +1097,10 @@ fn union_dimension_lists(left: List<AffectedDimension>, right: List<AffectedDime
 }
 
 fn list_to_changed_dimension_receipt(dims: List<AffectedDimension>) -> ChangedDimensionReceipt {
-  match list_at_optional(xs: dims, index: 0) {
-    Present { value: first } =>
-      match list_tail(xs: dims) {
-        Present { value: rest } =>
-          ChangedDimensions { first: first, rest: rest }
-        Absent =>
-          ChangedDimensions { first: first, rest: [] }
-      }
-    Absent =>
+  match dims {
+    Cons { head: first, tail: rest } =>
+      ChangedDimensions { first: first, rest: rest }
+    Empty =>
       ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
   }
 }

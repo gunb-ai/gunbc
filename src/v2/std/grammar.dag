@@ -2578,17 +2578,14 @@ fn grammar_infix_associativity_symbol(associativity: InfixAssociativity) -> Symb
 // The rows as a right-folded spine, as a repeat's capture is: a Conj's labels are unique, so a list
 // cannot be one Conj with a repeated label.
 fn grammar_infix_rows_node(rows: List<InfixOperatorRow>) -> Node {
-  match list_head(xs: rows) {
-    Absent => grammar_expr_node(children: [])
-    Present { value: row } =>
+  match rows {
+    Empty => grammar_expr_node(children: [])
+    Cons { head: row, tail: rest } =>
       grammar_expr_node(children: [
         grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: grammar_infix_row_node(row: row)),
         grammar_named_edge(
           name: ^grammar_sequence_right_node_projection,
-          target: match list_tail(xs: rows) {
-            Absent => grammar_expr_node(children: [])
-            Present { value: rest } => grammar_infix_rows_node(rows: rest)
-          }
+          target: grammar_infix_rows_node(rows: rest)
         )
       ])
   }

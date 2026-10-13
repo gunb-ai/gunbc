@@ -5,7 +5,7 @@ import std.optional { Absent, Optional, Present }
 import std.types { List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.algebra { list_append, list_snoc_item, Cons, Empty, contains, fold_list, list_head, list_reverse, list_tail }
+import std.algebra { list_append, list_snoc_item, Cons, Empty, contains, fold_list, list_head, list_reverse, skip }
 import v2.std.collection { Absent, Map, Present, empty_map, map_insert, map_lookup, optional_absent, optional_present }
 import v2.std.compilers.body_lowering {
   ApplicationHeadFound,
@@ -156,10 +156,7 @@ fn decl_named_in_module(
 }
 
 fn tail_decls(xs: List<FnArrowDecl>) -> List<FnArrowDecl> {
-  match list_tail(xs: xs) {
-    Present { value: t } => t
-    Absent => empty_fn_arrow_decl_list
-  }
+  skip(xs: xs, n: 1)
 }
 
 fn fn_arrow_decl_eq(a: FnArrowDecl, b: FnArrowDecl) -> Bool {

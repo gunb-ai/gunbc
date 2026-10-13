@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
-import std.algebra { FreeMonoid, freemonoid_empty, list_head, list_tail }
+import std.algebra { FreeMonoid, freemonoid_empty, list_head, skip }
 import gunbc.host.host_effect {
   HostEffect,
   HostEffectIntent,
@@ -86,10 +86,7 @@ fn host_effect_plan_apply_rest(
       Present { value: next } =>
         host_effect_plan_apply_rest(
           head_result: host_effect_plan_apply_step(step: next, ctx: ctx),
-          rest: match list_tail(xs: rest) {
-            Present { value: t } => t
-            Absent => freemonoid_empty()
-          },
+          rest: skip(xs: rest, n: 1),
           ctx: ctx,
         )
     }
@@ -109,10 +106,7 @@ fn host_effect_plan_apply(
     Present { value: first } =>
       host_effect_plan_apply_rest(
         head_result: host_effect_plan_apply_step(step: first, ctx: ctx),
-        rest: match list_tail(xs: plan.steps) {
-          Present { value: t } => t
-          Absent => freemonoid_empty()
-        },
+        rest: skip(xs: plan.steps, n: 1),
         ctx: ctx,
       )
   }

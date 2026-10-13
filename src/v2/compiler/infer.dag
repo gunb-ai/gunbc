@@ -2904,10 +2904,7 @@ fn infer_coproduct_arm_pattern_constructed(pat: Node) -> InferCoproductArmPatter
           match qualified_name_last_segment(qn: path) {
             Absent => ArmPatternUnread
             Present { value: tag } =>
-              match list_tail(xs: pat.children) {
-                Present { value: fields } => ArmPatternVariant { tag: tag, fields: fields }
-                Absent => ArmPatternVariant { tag: tag, fields: Empty }
-              }
+              ArmPatternVariant { tag: tag, fields: skip(xs: pat.children, n: 1) }
           }
       }
   }

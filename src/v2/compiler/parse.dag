@@ -1864,10 +1864,7 @@ fn choice_alts_for_present_token(alts: List<PreparedExprFold>, token_class: Symb
         } else {
           first.nullable
         }
-      let more = match list_tail(xs: alts) {
-        Absent => std.algebra.Empty
-        Present { value: rest } => choice_alts_for_present_token(alts: rest, token_class: token_class)
-      }
+      let more = choice_alts_for_present_token(alts: skip(xs: alts, n: 1), token_class: token_class)
       list_append(
         left: if keep {
           Cons { head: alt, tail: std.algebra.Empty }
@@ -1884,10 +1881,7 @@ fn choice_alts_nullable(alts: List<PreparedExprFold>) -> List<PreparedExprFold> 
     Absent => std.algebra.Empty
     Present { value: alt } =>
       let first = prepared_expr_fold_first(alt: alt)
-      let more = match list_tail(xs: alts) {
-        Absent => std.algebra.Empty
-        Present { value: rest } => choice_alts_nullable(alts: rest)
-      }
+      let more = choice_alts_nullable(alts: skip(xs: alts, n: 1))
       list_append(
         left: if first.nullable {
           Cons { head: alt, tail: std.algebra.Empty }
@@ -1905,10 +1899,7 @@ fn choice_alt_trees(alts: List<PreparedExprFold>) -> List<PreparedGrammarExpr> {
     Present { value: alt } =>
       list_append(
         left: Cons { head: prepared_expr_fold_tree(alt: alt), tail: std.algebra.Empty },
-        right: match list_tail(xs: alts) {
-          Absent => std.algebra.Empty
-          Present { value: rest } => choice_alt_trees(alts: rest)
-        }
+        right: choice_alt_trees(alts: skip(xs: alts, n: 1))
       )
   }
 }
@@ -3018,17 +3009,12 @@ fn authored_choice_site_residue(
   production: Symbol,
   ctx: LookaheadContext
 ) -> List<GrammarChoiceAmbiguityRow> {
-  match list_tail(xs: alts) {
-    Absent => std.algebra.Empty
-    Present { value: rest } =>
-      if is_empty(xs: rest) {
-        std.algebra.Empty
-      } else {
+  let rest = skip(xs: alts, n: 1)
+  if is_empty(xs: rest) {
+    std.algebra.Empty
+  } else {
         let row = ordered_backtrack_row(production: production, alts: alts)
-        let raw_rest = match list_tail(xs: raw_alts) {
-          Present { value: r } => r
-          Absent => std.algebra.Empty
-        }
+        let raw_rest = skip(xs: raw_alts, n: 1)
         let stands = row.both_nullable || (
           !is_empty(xs: row.overlap_terminals)
             && lookahead_site_overlaps(alts: alts, raw_alts: raw_alts, raw_rest: raw_rest, ctx: ctx)
@@ -3042,7 +3028,6 @@ fn authored_choice_site_residue(
           left: here,
           right: authored_choice_site_residue(alts: rest, raw_alts: raw_rest, production: production, ctx: ctx)
         )
-      }
   }
 }
 

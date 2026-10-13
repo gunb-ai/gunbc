@@ -35,6 +35,7 @@ import v2.lens.module_graph {
 import std.integer { int_to_decimal_string }
 import v2.std.live_read { LiveReadUnestablished }
 import v2.std.text { string_eq }
+import std.algebra { list_head, skip }
 
 // This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
 data no_declared_pool_files: List<String> = []
@@ -215,10 +216,7 @@ fn carriers_from_call_node(node: Node, param_names: List<String>) -> List<LiveRe
 }
 
 fn tail_nodes(xs: List<Node>) -> List<Node> {
-  match list_tail(xs: xs) {
-    Present { value: t } => t
-    Absent => empty_node_list
-  }
+  skip(xs: xs, n: 1)
 }
 
 fn literal_path_carrier(text: String) -> LiveReadCarrier {
@@ -823,10 +821,7 @@ fn decls_with_qualified_name(qualified: String, decls: List<FnArrowDecl>) -> Lis
 }
 
 fn tail_module_facts(xs: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
-  match list_tail(xs: xs) {
-    Present { value: t } => t
-    Absent => empty_module_declaration_fact_list
-  }
+  skip(xs: xs, n: 1)
 }
 
 fn bind_g2_root(
