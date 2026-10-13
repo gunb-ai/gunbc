@@ -70,7 +70,6 @@ import v2.compiler.source_authority {
   reference_after_probe,
   reference_next_read,
   reference_prefixes,
-  segment_count,
   source_root_ref_label,
   text_set_has,
   text_set_of
@@ -93,7 +92,7 @@ import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.qualified_name { qualified_name_init, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
 
@@ -106,8 +105,11 @@ import extdeps.communication.medium { Lossless, Medium }
 // enumerations of the layout; they are never a side effect of compiling one entry.
 //
 // WHAT IS REQUESTABLE. An import names a module exactly. A qualified reference of two or more
-// segments names a module and a member, split by the storage lookup's longest-prefix probe. A BARE
-// NAME IS NOT REQUESTABLE (R1): nothing here derives a module from one, so a bare name that no import
+// spine segments (the QualifiedName list, not a string split on `.`) names a module and a member,
+// split by the storage lookup's longest-prefix probe. A String literal is never a module reference:
+// its payload is one interned atom even when the lexeme contains dots, so identity strings and
+// DeclarationRef.module_path data do not drive acquisition. A BARE NAME IS NOT REQUESTABLE (R1):
+// nothing here derives a module from one, so a bare name that no import
 // or local declaration binds reaches the resolver unbound and refuses there, naming the spelling.
 // A qualified spelling that names no module requests nothing -- it may be a member access on a
 // local, which the resolver judges -- while an import or entry that names no module refuses at once.
@@ -402,8 +404,20 @@ fn acquisition_probe_candidate(
 
 // ---- reading what a member asks for -------------------------------------------------------------
 
-fn acquisition_spelling_is_qualified(spelling: String) -> Bool {
-  segment_count(segments: split(s: spelling, delimiter: ".")) >= 2
+// A CODE-POSITION QUALIFIED NAME IS A SPINE OF TWO OR MORE SEGMENTS, not a string that happens to
+// contain dots. Flattening the spine and splitting the lexeme again treats a single interned
+// string-literal payload (`"test.claim.spark.foo"` as one atom) as a module reference, which is
+// how identity strings drove acquisition. A bare name (one segment) is not requestable (R1), even
+// when that segment's lexeme contains `.`.
+fn acquisition_qn_names_a_module(qn: QualifiedName) -> Bool {
+  match qn {
+    Empty => false
+    Cons { head: _, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: _, tail: _ } => true
+      }
+  }
 }
 
 fn acquisition_import_texts(rows: List<Import>) -> List<String> {
@@ -451,7 +465,7 @@ fn acquisition_head_is_candidate_module(head: SiteHeadBinding) -> Bool {
 
 fn acquisition_seen_site(acc: AcquisitionSeen, scoped: ScopedReferenceSite) -> AcquisitionSeen {
   let text = qualified_name_to_dotted_string(qn: scoped.site.spelling)
-  if acquisition_head_is_candidate_module(head: scoped.head) && acquisition_spelling_is_qualified(spelling: text) && !text_set_has(set: acc.seen, name: text) {
+  if acquisition_head_is_candidate_module(head: scoped.head) && acquisition_qn_names_a_module(qn: scoped.site.spelling) && !text_set_has(set: acc.seen, name: text) {
     AcquisitionSeen {
       order: list_snoc_item(xs: acc.order, item: text),
       seen: map_insert(m: acc.seen, key: text, value: true)
