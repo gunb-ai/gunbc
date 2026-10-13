@@ -411,11 +411,9 @@ fn native_materialization_store_closure_entry() -> String {
   "dag/gunbc/instruments/native_materialization_store_closure.dag"
 }
 
-// THE NATIVE EMISSION CONTROLS: one carrier per Rust-emitter rule, emitted, built and run by the
-// NativeClaimDriver program gunbc.instruments.native_emission_controls. It is the executing evidence
-// that a rule's emission is a compilable program with the right answers -- the half a textual
-// witness over the emitted header cannot establish. Run by name, not a merge gate.
-// `gunbc test //gunbc/instruments:native-emission-controls`.
+// THE NAMESPACE-CUT XL-2 REHEARSAL: the root deletion executed in a throwaway subject by a
+// NativeClaimDriver program, holding iff the residual is the one control residual. Run by name.
+// `gunbc test //gunbc/instruments:native-xl2-rehearsal`.
 fn native_xl2_rehearsal_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-xl2-rehearsal" } }
 }
@@ -424,6 +422,11 @@ fn native_xl2_rehearsal_entry() -> String {
   "src/v2/workflow/namespace_xl2_rehearsal_native.dag"
 }
 
+// THE NATIVE EMISSION CONTROLS: one carrier per Rust-emitter rule, emitted, built and run by the
+// NativeClaimDriver program gunbc.instruments.native_emission_controls. It is the executing evidence
+// that a rule's emission is a compilable program with the right answers -- the half a textual
+// witness over the emitted header cannot establish. Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:native-emission-controls`.
 fn native_emission_controls_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-emission-controls" } }
 }
