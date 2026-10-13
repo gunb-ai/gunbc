@@ -115,7 +115,7 @@ data rtx_pro_6000_family_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data rtx_pro_6000_cuda_core_uncited_obligation: NonEmptyStr = "Read the CUDA core count off NVIDIA's RTX PRO 6000 Blackwell datasheet for this edition. The Server Edition page states 24,064; this edition's product page states no count, and the equal value is assumed from the shared GB202 die, not read."
+data rtx_pro_6000_cuda_core_uncited_obligation: NonEmptyStr = "Read the CUDA core count off NVIDIA's RTX PRO 6000 Blackwell Max-Q product page or a Max-Q datasheet for this edition. The Workstation Edition datasheet (document 3519208) and the Server Edition page both state 24,064; the Max-Q product page states no count, and the equal value is assumed from the shared GB202 die, not read."
 
 data rtx_pro_6000_workstation_cuda_core_standing: CitedFigureStanding = CitedToAuthority {
   authority: rtx_pro_6000_workstation_authority
