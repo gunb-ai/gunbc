@@ -7,7 +7,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
-import std.algebra { length, skip }
+import std.algebra { length, skip, trim }
 import std.resources { Network }
 
 // HOME AND GIT CONFIG ARE ARGV `env` WORDS, not a Map the seed spawn never applies (review 79196).
@@ -1006,6 +1006,38 @@ data git_non_bare_git_dir_name: String = ".git"
 
 fn git_non_bare_git_dir(worktree: NonEmptyStr) -> NonEmptyStr {
   join([worktree as String, "/", git_non_bare_git_dir_name], "") as NonEmptyStr
+}
+
+// gitrepository-layout(5): a linked worktree's `.git` is a file whose first line is `gitdir: <path>`.
+// Reading that file as data finds the private git dir without running git inside the worktree (so
+// the worktree owner's config and dubious-ownership check never enter). A main checkout's `.git` is
+// a directory and is the git dir itself.
+data git_dir_file_prefix: String = "gitdir:"
+
+fn git_dir_path_from_gitfile(contents: String) -> String? {
+  match first(split(s: contents, delimiter: "\n")) {
+    Absent => none
+    Present { value: raw } =>
+      let line = trim(s: raw)
+      if !starts_with(s: line, prefix: git_dir_file_prefix) {
+        none
+      } else {
+        let rest = trim(s: substring(s: line, start: string_length(s: git_dir_file_prefix), end: string_length(s: line)))
+        if rest == "" {
+          none
+        } else {
+          Present { value: rest }
+        }
+      }
+  }
+}
+
+fn resolve_git_dir_pointer(worktree: FilePath, pointer: String) -> NonEmptyStr {
+  if starts_with(s: pointer, prefix: "/") {
+    pointer as NonEmptyStr
+  } else {
+    join([worktree as String, "/", pointer], "") as NonEmptyStr
+  }
 }
 
 // A LOCAL FETCH SOURCE IS TRUSTED AT ITS GIT DIR, NOT ITS WORKTREE. `git fetch <path>` spawns

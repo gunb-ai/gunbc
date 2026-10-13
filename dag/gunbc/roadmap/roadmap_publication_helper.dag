@@ -32,8 +32,12 @@ import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound,
 }
-import gunbc.host.host_layout { publication_request_dir, publication_answer_dir, publication_refused_dir }
-import gunbc.roadmap.roadmap_publish_actuate { publish_attempt, PublishActuated, PushRefused, PullRequestRefused }
+import gunbc.host.host_layout { publication_request_dir, publication_answer_dir, publication_refused_dir, publication_bare_mirror_path }
+import gunbc.roadmap.roadmap_publish_actuate {
+  publish_staged_attempt, stage_captured_candidate_sha,
+  PublishActuated, PushRefused, PullRequestRefused, PublishNetrcResidueRemains,
+  CapturedShaStaged, CapturedShaStageRefused,
+}
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_publish {
   RoadmapPublicationSubject,
@@ -594,7 +598,7 @@ fn publication_helper_publish_body(subject: RoadmapPublicationSubject) -> String
 fn publication_helper_publish_if_unpublished(
   credential: PublicationCredentialSource,
   subject: RoadmapPublicationSubject,
-  worktree: String,
+  mirror: FilePath,
   observed: PublicationOutcome,
 ) -> PublicationOutcome {
   let unpublished = match observed {
@@ -614,8 +618,8 @@ fn publication_helper_publish_if_unpublished(
       CredentialSourceAbsent { reason } =>
         PublicationObservationRefused { detail: join(["the branch is unpublished and no credential is configured to publish it: ", reason], "") }
       CredentialSourceConfigured { token } =>
-        match publish_attempt(
-          source_worktree: worktree as FilePath,
+        match publish_staged_attempt(
+          mirror: mirror,
           remote: publication_subject_remote(subject: subject),
           branch: subject.branch,
           expected_head: subject.expected_head,
@@ -630,6 +634,8 @@ fn publication_helper_publish_if_unpublished(
             PublicationObservationRefused { detail: join(["the attempt branch could not be pushed (exit ", to_string(value: exit_code), "): ", stderr], "") }
           PullRequestRefused { detail } =>
             PublicationObservationRefused { detail: join(["the pull request could not be opened: ", detail], "") }
+          PublishNetrcResidueRemains { detail } =>
+            PublicationObservationRefused { detail: join(["the publication netrc or private HOME remained after the push: ", detail], "") }
           PublishActuated { pr_number: _, url: _ } =>
             observe_publication_for_subject(credential: credential, subject: subject)
         }
@@ -725,46 +731,15 @@ fn publication_helper_retire_request(
   }
 }
 
-fn publication_helper_answer_request(
+fn publication_helper_record_subject_outcome(
   instance_root: String,
-  credential: PublicationCredentialSource,
   entry: String,
-  request_text: String,
+  subject: RoadmapPublicationSubject,
+  outcome: PublicationOutcome,
 ) -> PublicationHelperOutcome {
-  match publication_request_admission(entry: entry, request_text: request_text) {
-    RequestUndecodableDocument { reason } =>
-      publication_helper_retire_request(
-        instance_root: instance_root,
-        entry: entry,
-        refused: HelperRequestRefused { entry: entry, detail: reason },
-      )
-    RequestOutsideCapability { detail } =>
-      publication_helper_retire_request(
-        instance_root: instance_root,
-        entry: entry,
-        refused: HelperSubjectOutsideCapability { entry: entry, detail: detail },
-      )
-    RequestMisaddressed { detail } =>
-      publication_helper_retire_request(
-        instance_root: instance_root,
-        entry: entry,
-        refused: HelperRequestRefused { entry: entry, detail: detail },
-      )
-    RequestAdmitted { subject, worktree } => {
-      let key = publication_spool_key(subject: subject)
-      let receipt = publication_receipt_of(
-              subject: subject,
-              outcome: publication_helper_publish_if_unpublished(
-                credential: credential,
-                subject: subject,
-                worktree: worktree,
-                observed: observe_publication_for_subject(
-                  credential: credential,
-                  subject: subject,
-                ),
-              ),
-            )
-            let write = Filesystem.Write(
+  let key = publication_spool_key(subject: subject)
+  let receipt = publication_receipt_of(subject: subject, outcome: outcome)
+  let write = Filesystem.Write(
               path: publication_answer_path_for(instance_root: instance_root, key: key),
               content: publication_receipt_json(receipt: receipt),
             )
@@ -804,7 +779,143 @@ fn publication_helper_answer_request(
                 )
               }
             }
+}
+
+fn publication_helper_answer_admitted(
+  instance_root: String,
+  credential: PublicationCredentialSource,
+  entry: String,
+  subject: RoadmapPublicationSubject,
+) -> PublicationHelperOutcome {
+  publication_helper_record_subject_outcome(
+    instance_root: instance_root,
+    entry: entry,
+    subject: subject,
+    outcome: publication_helper_publish_if_unpublished(
+      credential: credential,
+      subject: subject,
+      mirror: publication_bare_mirror_path(instance_root: instance_root),
+      observed: observe_publication_for_subject(
+        credential: credential,
+        subject: subject,
+      ),
+    ),
+  )
+}
+
+type PublicationHelperPrepared
+  = PreparedOutcome { outcome: PublicationHelperOutcome }
+  | PreparedAdmitted { entry: String, subject: RoadmapPublicationSubject }
+
+fn publication_helper_stage_admitted(
+  instance_root: String,
+  entry: String,
+  subject: RoadmapPublicationSubject,
+  worktree: String,
+) -> PublicationHelperPrepared {
+  match stage_captured_candidate_sha(
+    source_worktree: worktree as FilePath,
+    mirror: publication_bare_mirror_path(instance_root: instance_root),
+    expected_head: subject.expected_head,
+  ) {
+    CapturedShaStaged => PreparedAdmitted { entry: entry, subject: subject }
+    CapturedShaStageRefused { exit_code, stderr } =>
+      PreparedOutcome {
+        outcome: publication_helper_record_subject_outcome(
+          instance_root: instance_root,
+          entry: entry,
+          subject: subject,
+          outcome: PublicationObservationRefused {
+            detail: join(["the captured SHA could not be staged into the helper-owned mirror (exit ", to_string(value: exit_code), "): ", stderr], ""),
+          },
+        ),
+      }
+  }
+}
+
+fn publication_helper_prepare_decoded(
+  instance_root: String,
+  entry: String,
+  request_text: String,
+) -> PublicationHelperPrepared {
+  match publication_request_admission(entry: entry, request_text: request_text) {
+    RequestUndecodableDocument { reason } =>
+      PreparedOutcome {
+        outcome: publication_helper_retire_request(
+          instance_root: instance_root,
+          entry: entry,
+          refused: HelperRequestRefused { entry: entry, detail: reason },
+        ),
+      }
+    RequestOutsideCapability { detail } =>
+      PreparedOutcome {
+        outcome: publication_helper_retire_request(
+          instance_root: instance_root,
+          entry: entry,
+          refused: HelperSubjectOutsideCapability { entry: entry, detail: detail },
+        ),
+      }
+    RequestMisaddressed { detail } =>
+      PreparedOutcome {
+        outcome: publication_helper_retire_request(
+          instance_root: instance_root,
+          entry: entry,
+          refused: HelperRequestRefused { entry: entry, detail: detail },
+        ),
+      }
+    RequestAdmitted { subject, worktree } =>
+      publication_helper_stage_admitted(
+        instance_root: instance_root,
+        entry: entry,
+        subject: subject,
+        worktree: worktree,
+      )
+  }
+}
+
+fn publication_helper_prepare_entry(instance_root: String, entry: String) -> PublicationHelperPrepared {
+  if trim(entry) == "" {
+    PreparedOutcome { outcome: HelperSpoolRefused { detail: "the request listing carried an empty entry name" } }
+  } else {
+    let path = join([
+      publication_request_dir(instance_root: instance_root), "/", entry,
+    ], "")
+    let read = Filesystem.Read(path: path)
+    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+      FilesystemReadRefused { error } =>
+        PreparedOutcome {
+          outcome: publication_helper_retire_request(
+            instance_root: instance_root,
+            entry: entry,
+            refused: HelperRequestUnreadable {
+              entry: entry,
+              detail: join([
+                "a publication request was listed and then could not be read: ",
+                path, " (", error, ")",
+              ], ""),
+            },
+          ),
+        }
+      FilesystemReadSucceeded { content } =>
+        publication_helper_prepare_decoded(instance_root: instance_root, entry: entry, request_text: content)
     }
+  }
+}
+
+fn publication_helper_finish_prepared(
+  instance_root: String,
+  credential: PublicationCredentialSource,
+  prepared: PublicationHelperPrepared,
+) -> PublicationHelperOutcome {
+  match prepared {
+    PreparedOutcome { outcome } => outcome
+    PreparedAdmitted { entry, subject } =>
+      publication_helper_answer_admitted(
+        instance_root: instance_root,
+        credential: credential,
+        entry: entry,
+        subject: subject,
+      )
   }
 }
 
@@ -876,46 +987,10 @@ fn publication_helper_capability_admits(
 // request answered twice, which costs one network read and produces identical bytes. A delete that
 // FAILS is its own outcome rather than a silence, because the alternative is a subject re-observed
 // on every run forever with nothing saying why.
-fn publication_helper_entry_outcome(
-  instance_root: String,
-  credential: PublicationCredentialSource,
-  entry: String,
-) -> PublicationHelperOutcome {
-  if trim(entry) == "" {
-    HelperSpoolRefused { detail: "the request listing carried an empty entry name" }
-  } else {
-    let path = join([
-      publication_request_dir(instance_root: instance_root), "/", entry,
-    ], "")
-    let read = Filesystem.Read(path: path)
-    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-      FilesystemReadRefused { error } =>
-        publication_helper_retire_request(
-          instance_root: instance_root,
-          entry: entry,
-          refused: HelperRequestUnreadable {
-            entry: entry,
-            detail: join([
-              "a publication request was listed and then could not be read: ",
-              path, " (", error, ")",
-            ], ""),
-          },
-        )
-      FilesystemReadSucceeded { content } =>
-        publication_helper_answer_request(
-          instance_root: instance_root,
-          credential: credential,
-          entry: entry,
-          request_text: content,
-        )
-    }
-  }
-}
-
-// ONE CREDENTIAL PROBE PER RUN, not one per request, for the reason belt_publish_pass_note gives
-// for the probe it replaces: the environment does not change between requests within a run, and
-// probing per request would multiply a process spawn by the request count for an answer that
-// cannot differ.
+// STAGE EVERY PENDING CANDIDATE BEFORE THE MINT. Fetch from the worker git dir is git in a
+// worker-writable repo; the token must not be in the process yet (operator 2026-10-13). One mint
+// per run still holds: the environment does not change between requests, and probing per request
+// would multiply a process spawn by the request count for an answer that cannot differ.
 //
 // AN UNLISTABLE REQUEST SPOOL REFUSES AND DOES NOT WIDEN. There is no arm that answers `assume
 // there is nothing to do` -- that is the empty-observation narrow, and it would render a helper
@@ -933,14 +1008,14 @@ fn publication_helper_run_once(instance_root: String) -> List<PublicationHelperO
       },
     ]
   } else {
+    let prepared = map(
+      filter(xs: split(s: requests.entries, delimiter: "\n"), f: e => trim(e) != ""),
+      entry => publication_helper_prepare_entry(instance_root: instance_root, entry: trim(entry)),
+    )
     let credential = publication_helper_credential()
     map(
-      filter(xs: split(s: requests.entries, delimiter: "\n"), f: e => trim(e) != ""),
-      entry => publication_helper_entry_outcome(
-        instance_root: instance_root,
-        credential: credential,
-        entry: trim(entry),
-      ),
+      prepared,
+      p => publication_helper_finish_prepared(instance_root: instance_root, credential: credential, prepared: p),
     )
   }
 }

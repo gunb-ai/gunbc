@@ -1,6 +1,6 @@
 module test.claim.roadmap_publication_helper_witness
 
-import std.types { Bool, String, NonEmptyStr, CommitSha }
+import std.types { Bool, String, NonEmptyStr, CommitSha, FilePath }
 import std.layout { render }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.github { Repository }
@@ -25,7 +25,6 @@ import gunbc.roadmap.roadmap_publication_helper {
   publication_helper_outcome_key,
   PublicationHelperRunStanding, HelperRunCompleted, HelperRunStopped,
   publication_helper_run_standing,
-  publication_helper_answer_request,
   publication_request_admission,
   RequestAdmission, RequestAdmitted, RequestUndecodableDocument,
   RequestOutsideCapability, RequestMisaddressed,
@@ -37,6 +36,7 @@ import gunbc.host.host_layout {
   publication_request_dir,
   publication_answer_dir,
   publication_refused_dir,
+  publication_bare_mirror_path,
 }
 import gunbc.live_deploy.emit {
   live_deploy_protocol,
@@ -470,6 +470,7 @@ test fn a_request_and_its_answer_are_addressed_in_different_directories() -> Boo
     != publication_answer_dir(instance_root: "/opt/gunbc")
   && publication_request_path_for(instance_root: "/opt/gunbc", key: "k")
     != publication_answer_path_for(instance_root: "/opt/gunbc", key: "k")
+    && !string_contains(s: publication_bare_mirror_path(instance_root: "/opt/gunbc") as String, pattern: "publication-spool")
 }
 
 test fn two_instances_do_not_share_a_spool() -> Bool {

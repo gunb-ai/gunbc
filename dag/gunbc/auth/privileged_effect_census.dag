@@ -452,7 +452,7 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
-    hold: runner_lifecycle_operator_ruling.interlock,
+    hold: privileged_effect_interlock_hold(interlock: runner_lifecycle_operator_ruling.interlock),
     refusal: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
     premise: "the dispatch takes the slot host's unit hold proof and refuses DispatchHoldForAnotherHost unless the proof's admitted host is the slot's own; the root that acquires it is the route fold the dispatch leg owes (LegAuthorityImplemented wiring_owed), so no production root is rostered yet" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,

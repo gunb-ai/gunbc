@@ -417,6 +417,13 @@ fn publication_refused_dir(instance_root: String) -> String {
   join([publication_spool_root(instance_root: instance_root), "/requests-refused"], "")
 }
 
+// THE HELPER KEEPS ITS OWN BARE MIRROR, beside the spool rather than inside it. A fresh mktemp
+// mirror packs the whole reachable history on every publish; this path persists so a later fetch is
+// a delta. It is not a spool document: the belt must not write it.
+fn publication_bare_mirror_path(instance_root: String) -> FilePath {
+  join([instance_root, "/publication-mirror.git"], "") as FilePath
+}
+
 // srv1 observation (2026-08-13, parent eager-koi-458): directory already briansrls-owned;
 // EACCES was a root-owned STALE FILE from the pre-b1 unit user, not the directory.
 // Publication authority is atomic rename in gunbc.fleet.fleet_converge_cli — NOT live_deploy

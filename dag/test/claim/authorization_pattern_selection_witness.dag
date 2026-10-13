@@ -452,8 +452,12 @@ test fn the_dispatch_is_federated_only_while_the_scope_ruling_names_it() -> Bool
     ],
   }
   (runner_lifecycle_scope_ruling.decided_through as String) == "escalation msg_5756a200-fcb5-470a-87eb-40867bfe9cdb"
-    && (runner_lifecycle_operator_ruling.interlock.decl_name as String) == "UnitHoldProof"
-    && (runner_lifecycle_operator_ruling.interlock.module_path as String) == "gunbc.host.managed_host_unit_hold"
+    && match runner_lifecycle_operator_ruling.interlock {
+      InterlockedBy { hold } =>
+        (hold.decl_name as String) == "UnitHoldProof"
+          && (hold.module_path as String) == "gunbc.host.managed_host_unit_hold"
+      InterlockPending { obligation: _ } => false
+    }
     && match row {
       Present { value: r } =>
         selected_federated(s: select_authorization_pattern(e: r.effect))
