@@ -12,7 +12,15 @@ import std.optional {
 }
 import v2.std.integer { integer_u8_from_byte }
 import std.integer { int_to_decimal_string }
-import v2.std.runtime { RuntimePrimitive, RuntimePrimitiveValue, RuntimeValue }
+import v2.std.runtime {
+  RuntimeAggregate,
+  RuntimeClosure,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeReference,
+  RuntimeUnit,
+  RuntimeValue
+}
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 
@@ -52,7 +60,11 @@ fn runtime_value_discriminant_octet(value: RuntimeValue) -> Optional<Int> {
         Present { value: octet_byte } => Present { value: integer_u8_from_byte(b: octet_byte) }
         Absent => Absent
       }
-    _ => Absent
+    // The non-primitive RuntimeValue variants carry no primitive-discriminant byte.
+    RuntimeAggregate { value: _ } => Absent
+    RuntimeReference { value: _ } => Absent
+    RuntimeClosure { value: _ } => Absent
+    RuntimeUnit { value: _ } => Absent
   }
 }
 

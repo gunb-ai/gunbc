@@ -65,10 +65,6 @@ data nfr_dissolve_floor_discovery_transport: DissolutionCondition = unbound_diss
 
 data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait capability table (nested match on ReprGroundingDeriveElemShape × ReprGroundingDeriveTrait with off-trait wildcard arms returning false) landed with Gate-1 sub-wall #2 predicate scaffold (#7174); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
 
-data nfr_reason_native_agreement_octet: String = "RuntimeValue primitive-discriminant projection (RuntimePrimitive arm extracts byte[1]; off-variant wildcard Absent) landed with Lane B native-agreement loudness (#7111); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
-
-data nfr_dissolve_native_agreement_octet: DissolutionCondition = unbound_dissolution(description: "RuntimeValue model↔realization grounds each primitive variant and the wildcard arm migrates to a total match — or the receipt formatter derives from inhabitance and the row deletes")
-
 data nfr_reason_observation_hold_cause: String = "the CI-log renderer names the two memory-pressure holds (PsiPressure, CurrentHighWater — the crawl-window narrative) with a specific cause and gives the other five SchedulerHold variants a generic 'blocked on scheduler admission'; landed with the progress-and-observation stack (session/sleek-ibex-634, #7168) and surfaced by the whole-corpus nfr receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at merge time (the masking class); declared so the ratchet re-arms"
 
 data nfr_reason_resolve_realization_predicate: String = "discriminating subset predicate over ResolveRealization (param scrutinee, off-variant wildcard arm returning false) — each arms an independent RED control in floor_resolve_realization_witness.dag; landed with #7810 resolve-realization 0B obligation model and surfaced by the whole-corpus nfr receipt; declared so the ratchet re-arms"
@@ -377,11 +373,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/lens/unused_parameters.dag::use_relation_eq" },
     reason: nfr_reason_structural_eq_mint,
     dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/std/native_agreement.dag::runtime_value_discriminant_octet" },
-    reason: nfr_reason_native_agreement_octet,
-    dissolution: nfr_dissolve_native_agreement_octet,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/std/node_minimal.dag::node_superset_field_eq" },
