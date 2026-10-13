@@ -687,8 +687,7 @@ fn render_rust_diagnostics_carrier_applied(shared_types: Set<String>) -> String 
 // Optional-wrapped collection: `Optional<List<Optional<Int>>>` reached here as `Option<Rc<Vec<Option<()>>>>`,
 // a wrong type that compiled for `[Absent]` and failed E0308 for `[Absent, Present{value: 5}]`). Rendering
 // `()` fabricated a payload type the declaration never named (DESIGN section 5). The refusal is the located
-// compile_error! this renderer already uses for missing identity evidence; it fires zero times in the
-// required closures (self-host, v2-native-cli) and the matstore closure, measured 2026-10-13. Whether this
+// compile_error! this renderer already uses for missing identity evidence. Whether this
 // renderer should read `.inferred` for the payload is decided when the infer-side stamping of the nested
 // collection lands, not here.
 fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
