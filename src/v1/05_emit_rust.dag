@@ -3425,7 +3425,8 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
 }
 
 fn group_unlisted_type_names(diags: List<ErrorNode>) -> Map<String, List<String>> {
-  diags |> fold(init: empty_map(), f: (acc, en) =>
+  let seed: Map<String, List<String>> = empty_map()
+  diags |> fold(init: seed, f: (acc, en) =>
     match en.diagnostic {
       UnlistedImportUse { name: nm, span: _ } =>
         let existing = match map_get(acc, en.module_name) { Present { value: v } => v  Absent => [] }

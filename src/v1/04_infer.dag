@@ -15564,7 +15564,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     } else { [] }
   )
 
-  let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
+  let local_bindings_seed: Map<Int, TypeBinding> = empty_map()
+  let local_bindings = fold(module_items(n: module.module), init: local_bindings_seed, f: (acc, item) =>
     if is_namespace_alias_item(item: item, source_indices: source_indices) {
       match namespace_alias_target_path(item: item, source_indices: source_indices) {
         Absent => acc
@@ -15588,7 +15589,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     }
   )
 
-  let param_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
+  let param_bindings_seed: Map<Int, TypeBinding> = empty_map()
+  let param_bindings = fold(module_items(n: module.module), init: param_bindings_seed, f: (acc, item) =>
     let is_type_decl = match map_get(local_bindings, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id) { Present { value: _ } => true  Absent => false }
     if item.params |> count > 0 && is_type_decl && item.body == none {
       let result = fold(item.params, init: acc, f: (pacc, p) =>
@@ -15609,7 +15611,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let ancestry_cache = ancestry_precedence.cache
   let binding_forks = ancestry_precedence.conflicts
 
-  let local_deps_map = fold(all_local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
+  let deps_seed: Map<String, List<String>> = empty_map()
+  let local_deps_map = fold(all_local_bindings |> map_values, init: deps_seed, f: (acc, b) =>
     map_insert(acc, b.name, deps_excluding_leaf_self(b: b, source_indices: source_indices))
   )
   let local_str_bindings = fold(all_local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
@@ -15714,7 +15717,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     }
   )
   let scope_parents = concat(import_parents, [kernel])
-  let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
+  let local_bindings_seed: Map<Int, TypeBinding> = empty_map()
+  let local_bindings = fold(module_items(n: module.module), init: local_bindings_seed, f: (acc, item) =>
     if is_namespace_alias_item(item: item, source_indices: source_indices) {
       acc
     } else {
@@ -15744,7 +15748,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let ancestry_precedence = build_ancestry_precedence(resolved_imports: module.resolved_imports, parent_index: parent_index, kernel_cache: kernel_cache)
   let ancestry_cache = ancestry_precedence.cache
 
-  let local_deps_map = fold(local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
+  let deps_seed: Map<String, List<String>> = empty_map()
+  let local_deps_map = fold(local_bindings |> map_values, init: deps_seed, f: (acc, b) =>
     map_insert(acc, b.name, deps_excluding_leaf_self(b: b, source_indices: source_indices))
   )
   let local_str_bindings = fold(local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
@@ -17759,7 +17764,8 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
 }
 
 fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
-  let index = fold(modules, init: empty_map(), f: (acc, m) =>
+  let index_seed: Map<String, TypedModule> = empty_map()
+  let index = fold(modules, init: index_seed, f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
   let shared_kernel = match modules |> flat_map(m =>
@@ -17814,7 +17820,8 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
 }
 
 fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
-  let index = fold(modules, init: empty_map(), f: (acc, m) =>
+  let index_seed: Map<String, TypedModule> = empty_map()
+  let index = fold(modules, init: index_seed, f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
   map(modules, m =>

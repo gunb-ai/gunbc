@@ -1,7 +1,7 @@
 module test.claim.list_sort_by_key_witness
 
 import std.types { Bool, Int, String, List }
-import std.algebra { list_sort_by_key, int_total_order, TotalOrder, Ordering, Less, Greater, list_map }
+import std.algebra { list_sort_by_key, int_total_order, TotalOrder, Ordering, Less, Equal, Greater, list_map }
 
 // std.algebra list_sort_by_key is the MODELED realization of std.primitives sort_by_contract. Its
 // reference is the host `sort_by` method on the same fixture: equal keys keep input order (a stable
@@ -47,4 +47,38 @@ test fn modeled_sort_keeps_input_order_among_equal_keys() -> Bool {
 test fn an_unstable_comparator_is_a_discriminating_red() -> Bool {
   row_tags(rows: list_sort_by_key(xs: fixture_rows, key: fn(r) { r.key }, order: unstable_int_order))
     != row_tags(rows: fixture_rows |> sort_by(r => r.key))
+}
+
+// A second admitted key carrier: String keys under the canonical content order the host applies.
+type NamedRow {
+  name: String
+  tag: Int
+}
+
+data named_rows: List<NamedRow> = [
+  NamedRow { name: "pear", tag: 1 },
+  NamedRow { name: "apple", tag: 2 },
+  NamedRow { name: "pear", tag: 3 },
+  NamedRow { name: "fig", tag: 4 },
+  NamedRow { name: "apple", tag: 5 }
+]
+
+fn string_compare_canonical(a: String, b: String) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+data string_total_order: TotalOrder<String> = { compare: string_compare_canonical }
+
+fn named_tags(rows: List<NamedRow>) -> List<Int> {
+  list_map(xs: rows, f: fn(r) { r.tag })
+}
+
+test fn modeled_sort_agrees_with_the_host_sort_on_duplicate_string_keys() -> Bool {
+  named_tags(rows: list_sort_by_key(xs: named_rows, key: fn(r) { r.name }, order: string_total_order))
+    == named_tags(rows: named_rows |> sort_by(r => r.name))
+}
+
+test fn modeled_string_sort_keeps_input_order_among_equal_keys() -> Bool {
+  named_tags(rows: list_sort_by_key(xs: named_rows, key: fn(r) { r.name }, order: string_total_order))
+    == [2, 5, 4, 1, 3]
 }

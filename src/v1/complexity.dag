@@ -4760,7 +4760,8 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>, si: Map<String, Newl
 
 fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: RecursionContext, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
   let si = source_indices
-  let func_index = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
+  let func_index_seed: Map<String, FuncEntry> = empty_map()
+  let func_index = func_entries |> fold(init: func_index_seed, f: (acc, entry) =>
     map_insert(acc, entry.name, entry)
   )
   let scc_result = build_scc_index(func_entries: func_entries, func_index: func_index, si: si)
