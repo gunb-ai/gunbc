@@ -9,7 +9,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.python { python_grammar_root, python_lex }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.grammar { ModeledGrammar, ParseTree }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

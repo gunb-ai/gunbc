@@ -22,7 +22,7 @@ import gunbc.roadmap.roadmap_presentation {
 }
 import test.claim.roadmap.roadmap_launch_canary_witness { canary_doc }
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

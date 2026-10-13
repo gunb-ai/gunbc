@@ -10,7 +10,7 @@ import extdeps.exec.exec_arg_limit {
 import extdeps.runtime.architecture.x86_64_linux { x86_64_linux_architecture_profile }
 import extdeps.runtime.architecture.aarch64_linux { aarch64_linux_architecture_profile }
 import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

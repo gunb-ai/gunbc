@@ -13,7 +13,7 @@ module test.claim.scm.scm_affected_set_capture_witness
 // names by its instrument.
 
 import std.types { Bool, String, Int, List, NonEmptyStr, Map }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.minted_identity { MintedIdAllocator }
 import extdeps.languages.json.emit { serialize_json, JsonValue }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }

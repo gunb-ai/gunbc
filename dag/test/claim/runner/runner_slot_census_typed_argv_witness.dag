@@ -1,7 +1,7 @@
 module test.claim.runner.runner_slot_census_typed_argv_witness
 
 import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host.host_effect_realize { slot_census_from_process_outcome }
 import gunbc.runner.runner_slot_population_census {
   CensusDerived, CensusRefused, SlotCensusRow,

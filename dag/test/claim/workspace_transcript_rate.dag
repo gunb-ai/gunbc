@@ -14,7 +14,7 @@ import gunbc.fabric.workspace_transcript_rate {
   TranscriptRateObserved, TranscriptRateRefused, TranscriptRateRootSelection, TranscriptRateObservation, workspace_transcript_rate_receipt,
   workspace_transcript_rate_select_roots, workspace_transcript_rate_roots, TranscriptRateRootsSelected, TranscriptRateRootUndeclared, TranscriptRateSlotRefused, workspace_transcript_rate_fixed_root_labels,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

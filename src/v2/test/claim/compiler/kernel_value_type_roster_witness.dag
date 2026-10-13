@@ -25,7 +25,7 @@ import v2.extdeps.languages.dag {
 import v2.std.compilers.target_model { char_kernel_type_node, symbol_kernel_type_node }
 import v2.std.diagnostic { diagnostics_fatal_reason, Accepted, Outcome, Rejected, diagnostics_has_reason }
 import v2.std.integer { integer_int_type_node }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
 import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme, symbol_type_node }
 import std.optional { Absent, Optional, Present }

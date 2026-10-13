@@ -52,7 +52,7 @@ import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   mtcollins1_secondary_join_reading_two_cpus, mtcollins1_cpu0_fingerprint_comparison, MtCollins1CpuFingerprintComparison, MtCollins1SocketFingerprint,
   HypothesisWeakenedByMatchingCpu0Characteristics,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

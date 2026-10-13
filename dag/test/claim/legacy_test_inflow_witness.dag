@@ -11,7 +11,7 @@ import gunbc.legacy_test_inflow {
   inflow_tally_is_measured,
   inflow_observation_of_unified_diff_result,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

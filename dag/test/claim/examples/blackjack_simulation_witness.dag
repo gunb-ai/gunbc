@@ -1,6 +1,6 @@
 module test.claim.examples.blackjack_simulation_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import examples.blackjack.cards { standard_deck }
 import examples.blackjack.round { BlackjackRules, Shoe, ShoeExhausted }
 import examples.blackjack.shuffle { ShuffleSeed, shuffle, next_seed }

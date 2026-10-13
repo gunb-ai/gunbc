@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import v2.std.integer { Int }
 import v2.std.text { String }
 import std.algebra { for_all, length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.module_header {
   ModuleHeaderAbsent,

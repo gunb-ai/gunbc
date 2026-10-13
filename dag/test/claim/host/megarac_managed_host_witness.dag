@@ -2,7 +2,7 @@ module test.claim.host.megarac_managed_host_witness
 
 import test.fixture.board_fru_observation { jade_fru_read }
 import std.types { Bool, List, NonEmptyStr, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcFirmwareFamily, AmiMegaRac, OpenBmc }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }

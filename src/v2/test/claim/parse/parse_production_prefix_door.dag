@@ -7,7 +7,7 @@ import v2.compiler.tokenize { tokenize_prepared }
 import std.algebra { for_all, length, list_reverse }
 import v2.std.compilers.lexing { Token, token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, content_hash }
 import v2.std.text { String }
 

@@ -17,7 +17,7 @@ module test.claim.scm.scm_repository_load_witness
 
 import std.types { Bool, String, List, Int }
 import std.content_hash { content_hash_eq_structural }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.scm.repository_load {
   RepositoryLoad,

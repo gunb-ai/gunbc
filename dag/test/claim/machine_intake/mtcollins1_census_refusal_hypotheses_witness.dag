@@ -1,6 +1,6 @@
 module test.claim.machine_intake.mtcollins1_census_refusal_hypotheses_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import gunbc.machine_intake.mtcollins1_census_refusal_hypotheses {

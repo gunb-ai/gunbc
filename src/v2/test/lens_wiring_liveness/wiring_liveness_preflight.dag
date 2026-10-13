@@ -21,7 +21,7 @@ import v2.lens.wiring_liveness_preflight {
   preflight_reexec_frontier
 }
 import v2.std.diagnostic { Suggested, correction_eq }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -23,7 +23,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Conj, Node, Symbol, TypeNode }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.test.claim.manual.infer_ground_add { fixture_add_resolved_tree }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

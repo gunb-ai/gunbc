@@ -39,7 +39,7 @@ import extdeps.programmable_logic.ice40.supply {
   ice40_lvcmos18_supply,
   ice40_lvcmos33_supply,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.electrical.connectivity {
   ElectricalDesignIdentity,
   NetIdentity,

@@ -33,7 +33,7 @@ import std.realization_schedule {
   SpanUndeclared,
 }
 import std.types { NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

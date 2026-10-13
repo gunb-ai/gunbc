@@ -11,7 +11,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.node { symbol_intern_lexeme }
 import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

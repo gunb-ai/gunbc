@@ -2,7 +2,7 @@ module test.claim.infer_algebra_length_homonym_witness
 
 import extdeps.filesystem.filesystem_io
 import std.types { Bool, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
