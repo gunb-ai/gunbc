@@ -8,7 +8,11 @@ import std.access {
   AccessActionNotGranted, AccessContextAbsent, AccessPolicyRefused,
   decision_meet,
 }
-import extdeps.http.server { RequestSecurityContext }
+import extdeps.http.server {
+  RequestSecurityContext, ServeHttpRequest, ServeRequestHeader,
+  ServeRequestHeaderAbsent, ServeRequestHeaderSingle, ServeRequestHeaderRepeated,
+  serve_request_header_reading,
+}
 import extdeps.network.address { IpV4, ip_address_is_loopback }
 import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetIdentityAbsent, tailnet_identity_of }
@@ -317,11 +321,10 @@ fn tailnet_route_readback_observed(acl_revision: ContentHash, serve_route: Tails
 
 // ── The consequential-route action vocabulary ──────────────────────────────────────────────────
 
-// EVERY CONSEQUENTIAL ROUTE projects into std.access under one of these actions. The belt
-// actuation routes (dispatch/stop/publish/cleanup) are workflow operations governed by the
-// launch-admission authority today; they join this vocabulary when their lane cuts them over,
-// and until then the write law below governs exactly the routes the ruling names: assign,
-// comment, approve.
+// EVERY CONSEQUENTIAL ROUTE projects into std.access under one of these actions. Belt actuation
+// (dispatch/stop/publish/cleanup) is a human write of the same law as assign/comment: an
+// authenticated Google session, plus a same-origin submission proof. Launch admission stays the
+// workflow authority AFTER this gate; it never substitutes for who submitted the POST.
 type ServeRouteAction
   = ServeActionAssignIssue
   | ServeActionCreateIssue
@@ -330,6 +333,9 @@ type ServeRouteAction
   | ServeActionApproveDecision
   | ServeActionCreateAllocation
   | ServeActionReleaseAllocation
+  | ServeActionDispatchNode
+  | ServeActionStopNode
+  | ServeActionPublishNode
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
@@ -340,6 +346,9 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
     ServeActionApproveDecision => "approve-decision" as NonEmptyStr
     ServeActionCreateAllocation => "create-allocation" as NonEmptyStr
     ServeActionReleaseAllocation => "release-own-allocation" as NonEmptyStr
+    ServeActionDispatchNode => "dispatch-node" as NonEmptyStr
+    ServeActionStopNode => "stop-node" as NonEmptyStr
+    ServeActionPublishNode => "publish-node" as NonEmptyStr
   }
 }
 
@@ -448,6 +457,9 @@ fn human_action_authorization_decision(
         ServeActionSaveOwnView => Permit
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
+        ServeActionDispatchNode => Permit
+        ServeActionStopNode => Permit
+        ServeActionPublishNode => Permit
         ServeActionApproveDecision =>
           if principal_in_approve_roster(principal: session.principal, roster: policy.approve_roster) {
             Permit
@@ -613,6 +625,131 @@ fn principal_in_approve_roster(principal: PrincipalRef, roster: List<PrincipalRe
     init: false,
     f: (acc, p) => acc || principal_ref_eq(a: p, b: principal),
   )
+}
+
+// BELT ACTUATION IS A HUMAN WRITE. Authentication is the Google session the request-security
+// model already carries. Cross-site submission is refused by Fetch metadata (Sec-Fetch-Site
+// same-origin), with Origin matching Host only when Fetch-Site is absent — not a second CSRF
+// token, because /auth/session deliberately does not carry csrf and the dashboard actuator is
+// fetch() rather than a form. Tailnet transport is still not a principal (2026-09-25).
+fn belt_actuation_admission(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  authorization_policy: ServeWriteAuthorizationPolicy,
+  deployment_policy: DeploymentAccessPolicy,
+  observed_at: Timestamp,
+) -> AccessDecision {
+  decision_meet(
+    human_authentication_decision(route_path: route_path, action: action, security: request.security, observed_at: observed_at),
+    decision_meet(
+      human_action_authorization_decision(route_path: route_path, action: action, security: request.security, policy: authorization_policy),
+      decision_meet(
+        same_origin_submission_decision(route_path: route_path, action: action, security: request.security, headers: request.headers),
+        deployment_path_decision(route_path: route_path, action: action, security: request.security, policy: deployment_policy),
+      ),
+    ),
+  )
+}
+
+fn same_origin_submission_decision(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  headers: List<ServeRequestHeader>,
+) -> AccessDecision {
+  match serve_request_header_reading(headers: headers, name: "sec-fetch-site") {
+    ServeRequestHeaderRepeated { occurrences: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceRejected { evidence: "sec-fetch-site", reason: "the request repeated Sec-Fetch-Site" },
+      )
+    ServeRequestHeaderSingle { value: site } =>
+      if site == "same-origin" {
+        Permit
+      } else {
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessEvidenceRejected {
+            evidence: "sec-fetch-site",
+            reason: join(["cross-site submission is refused; Sec-Fetch-Site=", site], ""),
+          },
+        )
+      }
+    ServeRequestHeaderAbsent => origin_host_submission_decision(route_path: route_path, action: action, security: security, headers: headers)
+  }
+}
+
+fn origin_host_submission_decision(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  headers: List<ServeRequestHeader>,
+) -> AccessDecision {
+  match serve_request_header_reading(headers: headers, name: "origin") {
+    ServeRequestHeaderRepeated { occurrences: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceRejected { evidence: "origin", reason: "the request repeated Origin" },
+      )
+    ServeRequestHeaderAbsent =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceAbsent { evidence: "sec-fetch-site: no Fetch-Site or Origin; cross-site submission cannot be excluded" },
+      )
+    ServeRequestHeaderSingle { value: origin } =>
+      if origin == "null" {
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessEvidenceRejected { evidence: "origin", reason: "an opaque Origin cannot prove same-origin submission" },
+        )
+      } else {
+        match serve_request_header_reading(headers: headers, name: "host") {
+          ServeRequestHeaderRepeated { occurrences: _ } =>
+            write_refused(
+              route_path: route_path,
+              action: action,
+              security: security,
+              cause: AccessEvidenceRejected { evidence: "host", reason: "the request repeated Host" },
+            )
+          ServeRequestHeaderAbsent =>
+            write_refused(
+              route_path: route_path,
+              action: action,
+              security: security,
+              cause: AccessEvidenceAbsent { evidence: "origin: Origin was present without Host, so it cannot be bound to this door" },
+            )
+          ServeRequestHeaderSingle { value: host } =>
+            if origin_matches_host(origin: origin, host: host) {
+              Permit
+            } else {
+              write_refused(
+                route_path: route_path,
+                action: action,
+                security: security,
+                cause: AccessEvidenceRejected {
+                  evidence: "origin",
+                  reason: join(["cross-site submission is refused; Origin=", origin, " Host=", host], ""),
+                },
+              )
+            }
+        }
+      }
+  }
+}
+
+fn origin_matches_host(origin: String, host: String) -> Bool {
+  origin == concat("https://", host) || origin == concat("http://", host)
 }
 
 fn csrf_refusal_reason(c: CsrfRefusalCause) -> String {

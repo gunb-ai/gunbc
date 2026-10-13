@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.state_changing_route_unconsulted_request_security
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data state_changing_route_unconsulted_request_security: RecurringFailureMode = RecurringFailureMode {
+  identity: "state_changing_route_unconsulted_request_security" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a served POST that writes (spawn, stop, publish, cleanup) is selected and runs its effect without reading request.security.authentication or a same-origin submission proof. HARM: anyone who can reach the tailnet door, and any cross-site POST a tailnet user's browser will send, can launch or tear down work. DISTINGUISHING FACTS: the request-security model already exists and other human writes (assign, comment, allocation) consult it; the belt routes were left on launch-admission alone, which answers whether the NODE may run, never WHO submitted the POST. It is not a missing CSRF token on a form that already authenticates — the handler never asked who the caller was.",
+    "SPECIMEN (calm-fox-473, 2026-10-13): gunbc.roadmap.roadmap_serve BeltDispatchHandler called serve_dispatch_handler_response_over without the request. The same was true of BeltStopHandler and BeltPublishHandler. Found by the smart-gull-336 review. Tailscale-User-Login is transport metadata (2026-09-25), not a principal; production has no tracker-web PROD OAuth client (gunbc.auth.tracker_web_oauth_client TrackerWebOauthClientUnbound), so the principal the door can actually seat today is a Google OIDC session only where the TEST client is configured (srv1 lab / a hand-started srv2 unit). Dependency: dashboard dispatch stays admitted only for a live Google session; production dispatch remains 403 until a PROD client is declared.",
+    "REPAIR: belt_actuation_admission in gunbc.auth.request_authentication — the existing human authentication and action-authorization decisions, plus same_origin_submission_decision (Sec-Fetch-Site same-origin, Origin/Host only when Fetch-Site is absent). Chosen over a CSRF token because /auth/session deliberately carries no csrf and the dashboard actuator is fetch(), which browsers mark same-origin. Unauthenticated and cross-site POSTs refuse 403 before any belt effect. RUNG FOUND AT: mitigatable (typed refusal on the real handler). CEILING: structurally guaranteed once every state-changing ServedRouteSpec is derived to consult the write law (a handler that cannot be wired without an admission fold). NEXT-RUNG TRIGGER: the served route table construction requires a write-admission binding on every non-GET spec, SUFFICIENT FOR adding POST /dispatch without an admission fold to fail to compile.",
+  ],
+
+  evidence: [],
+}

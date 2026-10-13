@@ -142,7 +142,7 @@ fn seam_create(security: RequestSecurityContext<RequestAccessPath, RequestAuthen
   match witness_single_owner_policy(owner: owner.principal) {
     Absent => workspace_http_reason(status: 500, reason: "witness policy refused at admission")
     Present { value: policy } => workspace_route_create_over(
-      request: ServeHttpRequest { method: POST, path: "/allocations", body: body, security: security },
+      request: ServeHttpRequest { method: POST, path: "/allocations", body: body, headers: [], security: security },
       store: store,
       policy: policy,
       observed_at: seam_decided_at,
@@ -333,7 +333,7 @@ test fn seam_malformed_identity_refuses_the_write() -> Bool {
     Present { value: empty } => {
       let no_login = seam_create_status(header: "", readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
       let malformed_session = workspace_route_create_over(
-        request: ServeHttpRequest { method: POST, path: "/allocations", body: seam_create_body(csrf: "csrf-1"), security: RequestSecurityContext {
+        request: ServeHttpRequest { method: POST, path: "/allocations", body: seam_create_body(csrf: "csrf-1"), headers: [], security: RequestSecurityContext {
           access_path: seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at),
           authentication: SessionStandingInvalid { standing: SessionCookieMalformed { detail: "two session cookies" } },
         } },
@@ -343,7 +343,7 @@ test fn seam_malformed_identity_refuses_the_write() -> Bool {
         terms: workspace_create_terms(expires_at: "2026-09-25T01:00:00Z"),
       ).status
       let unauthenticated_unvouched = workspace_route_create_over(
-        request: ServeHttpRequest { method: POST, path: "/allocations", body: seam_create_body(csrf: "csrf-1"), security: RequestSecurityContext {
+        request: ServeHttpRequest { method: POST, path: "/allocations", body: seam_create_body(csrf: "csrf-1"), headers: [], security: RequestSecurityContext {
           access_path: seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_permission_denied_readback(), decided_at: seam_decided_at),
           authentication: SessionStandingInvalid { standing: SessionCookieMalformed { detail: "two session cookies" } },
         } },
@@ -378,8 +378,8 @@ test fn seam_csrf_and_release_are_held_to_the_same_law() -> Bool {
         Absent => false
         Present { value: allowed } => {
           let release_body = "\{\"csrf_token\":\"csrf-1\",\"generation\":\"0\"\}"
-          let release_refused = workspace_route_release_over(request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: release_body, security: no_path }, store: FabricStorageBindingUnplaced, policy: allowed, observed_at: seam_decided_at, allocation_id: "seam-request-1")
-          let release_admitted = workspace_route_release_over(request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: release_body, security: good_path }, store: FabricStorageBindingUnplaced, policy: allowed, observed_at: seam_decided_at, allocation_id: "seam-request-1")
+          let release_refused = workspace_route_release_over(request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: release_body, headers: [], security: no_path }, store: FabricStorageBindingUnplaced, policy: allowed, observed_at: seam_decided_at, allocation_id: "seam-request-1")
+          let release_admitted = workspace_route_release_over(request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: release_body, headers: [], security: good_path }, store: FabricStorageBindingUnplaced, policy: allowed, observed_at: seam_decided_at, allocation_id: "seam-request-1")
           seam_create(security: good_path, owner: session, store: FabricStorageBindingUnplaced, body: seam_create_body(csrf: "wrong")).status == 403
             && release_refused.status == 503 && string_contains(s: release_refused.body, pattern: "readback-not-demanded")
             && release_admitted.status == 409

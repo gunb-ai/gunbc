@@ -598,6 +598,7 @@ fn approval_broker_respond_as(
               method: m,
               path: path,
               body: body,
+              headers: [],
               security: approval_broker_request_security(tailscale_identity: tailscale_identity),
             },
           )

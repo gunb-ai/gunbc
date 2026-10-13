@@ -279,6 +279,20 @@ type RequestSecurityContext<AccessPath, Authentication> {
   authentication: Authentication
 }
 
+// ONE REQUEST HEADER FIELD AS THE SEAM HANDS IT OVER (RFC 9110 section 5: a field is a name and a
+// value). The name is lowercased by the seam because field names are case-insensitive (section
+// 5.1), so a handler compares against one spelling; the value is the field value with its
+// surrounding whitespace removed and nothing else interpreted. A served entry that reads headers
+// DECLARES `request_headers: List<ServeRequestHeader>` and receives every field of the request in
+// arrival order; an entry that declares no such parameter receives none. Which fields mean
+// anything is the handler's fact, never the seam's. The same bag is carried on ServeHttpRequest
+// so a write handler can refuse cross-site submission from Origin / Sec-Fetch-Site without a
+// second channel.
+type ServeRequestHeader {
+  name: String
+  value: String
+}
+
 // THE AUTHENTICATION EVIDENCE IS A TYPE ARGUMENT because extdeps owns the request SHAPE and the
 // interface stays realization-free (DESIGN 3): it cannot name gunbc's session vocabulary. A
 // handler that needs nothing ignores the field; a handler that writes consults the law in
@@ -287,19 +301,8 @@ type ServeHttpRequest<AccessPath, Authentication> {
   method: HttpMethod
   path: String
   body: String
+  headers: List<ServeRequestHeader>
   security: RequestSecurityContext<AccessPath, Authentication>
-}
-
-// ONE REQUEST HEADER FIELD AS THE SEAM HANDS IT OVER (RFC 9110 section 5: a field is a name and a
-// value). The name is lowercased by the seam because field names are case-insensitive (section
-// 5.1), so a handler compares against one spelling; the value is the field value with its
-// surrounding whitespace removed and nothing else interpreted. A served entry that reads headers
-// DECLARES `request_headers: List<ServeRequestHeader>` and receives every field of the request in
-// arrival order; an entry that declares no such parameter receives none. Which fields mean
-// anything is the handler's fact, never the seam's.
-type ServeRequestHeader {
-  name: String
-  value: String
 }
 
 // What a request carried under one field name. Three answers, because a field may repeat (section

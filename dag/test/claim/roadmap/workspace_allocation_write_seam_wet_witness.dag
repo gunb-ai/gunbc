@@ -54,7 +54,7 @@ test fn seam_admitted_create_and_release_land_in_the_store() -> Bool {
         let released = match witness_single_owner_policy(owner: session.principal) {
           Absent => workspace_http_reason(status: 500, reason: "witness policy refused at admission")
           Present { value: policy } => workspace_route_release_over(
-            request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: "\{\"csrf_token\":\"csrf-1\",\"generation\":\"0\"\}", security: good_path },
+            request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: "\{\"csrf_token\":\"csrf-1\",\"generation\":\"0\"\}", headers: [], security: good_path },
             store: store, policy: policy,
             observed_at: seam_decided_at, allocation_id: "seam-request-1")
         }

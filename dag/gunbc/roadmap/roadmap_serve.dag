@@ -68,9 +68,13 @@ import gunbc.auth.request_authentication {
   human_write_admission,
   tracker_write_authorization_policy,
   roadmap_deployment_access_policy,
-  ServeActionAssignIssue,
+    ServeActionAssignIssue,
   ServeActionCreateIssue,
   ServeActionCommentIssue,
+  ServeActionDispatchNode,
+  ServeActionStopNode,
+  ServeActionPublishNode,
+  belt_actuation_admission,
   RequestAccessPath,
 }
 import gunbc.auth.session { SessionCookieAbsent, session_cookie_standing_reason }
@@ -637,27 +641,41 @@ fn serve_dispatch_handler_response_over(
   plan: RoadmapAuthorityProjection,
   params: List<PathParamBinding>,
   executor_word: String,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  let node_id = path_param_value(params: params, name: "node_id")
-  if node_id == "" {
-    serve_text_response(
-      status: 400,
-      content_type: text_plain_utf8,
-      body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
-    )
-  } else {
-    match decode_dispatch_executor_request(word: executor_word) {
-      DispatchExecutorRequestUnknown { word, known } =>
+  match belt_actuation_admission(
+    route_path: request.path as NonEmptyStr,
+    action: ServeActionDispatchNode,
+    request: request,
+    authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy,
+    observed_at: human_write_observed_at(security: request.security),
+  ) {
+    Deny { refusal } =>
+      serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => {
+      let node_id = path_param_value(params: params, name: "node_id")
+      if node_id == "" {
         serve_text_response(
           status: 400,
           content_type: text_plain_utf8,
-          body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
+          body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
         )
-      DispatchExecutorRequestDecoded { request: executor } =>
-        serve_dispatch_with_follow_ups(
-          instance: instance,
-          r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
-        )
+      } else {
+        match decode_dispatch_executor_request(word: executor_word) {
+          DispatchExecutorRequestUnknown { word, known } =>
+            serve_text_response(
+              status: 400,
+              content_type: text_plain_utf8,
+              body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
+            )
+          DispatchExecutorRequestDecoded { request: executor } =>
+            serve_dispatch_with_follow_ups(
+              instance: instance,
+              r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
+            )
+        }
+      }
     }
   }
 }
@@ -665,12 +683,14 @@ fn serve_dispatch_handler_response_over(
 fn serve_dispatch_handler_response_for_instance(
   instance: HostDashboardInstance,
   params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
   serve_dispatch_handler_response_over(
     instance: instance,
     plan: roadmap_plan_projection(),
     params: params,
     executor_word: "",
+    request: request,
   )
 }
 
@@ -688,19 +708,33 @@ fn serve_dispatch_handler_response_for_instance(
 fn serve_publish_handler_response_for_instance(
   instance: HostDashboardInstance,
   params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  let node_id = path_param_value(params: params, name: "node_id")
-  if node_id == "" {
-    serve_text_response(
-      status: 400,
-      content_type: text_plain_utf8,
-      body: "publish requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
-    )
-  } else {
-    serve_publish_with_follow_ups(
-      instance: instance,
-      outcome: belt_publish_node_for_instance(instance: instance, node_id: node_id),
-    )
+  match belt_actuation_admission(
+    route_path: request.path as NonEmptyStr,
+    action: ServeActionPublishNode,
+    request: request,
+    authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy,
+    observed_at: human_write_observed_at(security: request.security),
+  ) {
+    Deny { refusal } =>
+      serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => {
+      let node_id = path_param_value(params: params, name: "node_id")
+      if node_id == "" {
+        serve_text_response(
+          status: 400,
+          content_type: text_plain_utf8,
+          body: "publish requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
+        )
+      } else {
+        serve_publish_with_follow_ups(
+          instance: instance,
+          outcome: belt_publish_node_for_instance(instance: instance, node_id: node_id),
+        )
+      }
+    }
   }
 }
 
@@ -1324,10 +1358,14 @@ fn issue_comment_body_of(wire: String) -> String {
   issue_form_field(body: wire, name: "body")
 }
 
-fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+fn serve_dispatch_handler_response(
+  params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+) -> ServeHttpResponse {
   serve_dispatch_handler_response_for_instance(
     instance: srv1_live_dashboard_instance(),
     params: params,
+    request: request,
   )
 }
 
@@ -1470,7 +1508,7 @@ fn roadmap_serve_invoke_over(
         body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
-      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params, executor_word: uri_query_param(path: request.path, key: "executor"))
+      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params, executor_word: uri_query_param(path: request.path, key: "executor"), request: request)
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
@@ -1491,8 +1529,8 @@ fn roadmap_serve_invoke_over(
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
     ObservationJsonHandler => served_observation_standing_response_for_instance(instance: instance)
-    BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
-    BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
+    BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params, request: request)
+    BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params, request: request)
     ApprovalBrokerCutoverHandler { route: r } =>
       approval_broker_invoke(handler: r, params: params, request: request, process: RoadmapProcess)
   }
@@ -1534,26 +1572,44 @@ fn roadmap_serve_invoke(
 fn serve_stop_handler_response_for_instance(
   instance: HostDashboardInstance,
   params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  let node_id = path_param_value(params: params, name: "node_id")
-  if node_id == "" {
-    serve_text_response(
-      status: 400,
-      content_type: text_plain_utf8,
-      body: "cleanup requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
-    )
-  } else {
-    serve_stop_with_follow_ups(
-      instance: instance,
-      r: belt_stop_node_for_instance(instance: instance, node_id: node_id),
-    )
+  match belt_actuation_admission(
+    route_path: request.path as NonEmptyStr,
+    action: ServeActionStopNode,
+    request: request,
+    authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy,
+    observed_at: human_write_observed_at(security: request.security),
+  ) {
+    Deny { refusal } =>
+      serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => {
+      let node_id = path_param_value(params: params, name: "node_id")
+      if node_id == "" {
+        serve_text_response(
+          status: 400,
+          content_type: text_plain_utf8,
+          body: "cleanup requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
+        )
+      } else {
+        serve_stop_with_follow_ups(
+          instance: instance,
+          r: belt_stop_node_for_instance(instance: instance, node_id: node_id),
+        )
+      }
+    }
   }
 }
 
-fn serve_stop_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+fn serve_stop_handler_response(
+  params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+) -> ServeHttpResponse {
   serve_stop_handler_response_for_instance(
     instance: srv1_live_dashboard_instance(),
     params: params,
+    request: request,
   )
 }
 
@@ -1837,6 +1893,7 @@ fn roadmap_serve_respond_over(
   tailscale_identity: String,
   ingress: RequestIngress,
   cookie_header: String = "",
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
@@ -1872,6 +1929,7 @@ fn roadmap_serve_respond_over(
               method: m,
               path: path,
               body: body,
+              headers: request_headers,
               security: roadmap_serve_request_security(
                 instance: instance,
                 tailscale_identity: tailscale_identity,
@@ -1907,6 +1965,7 @@ fn roadmap_serve_respond_for_instance(
     tailscale_identity: tailscale_identity,
     ingress: IngressUnattested,
     cookie_header: cookie_header,
+    request_headers: [],
     release_revision: release_revision,
   )
 }
@@ -1985,12 +2044,12 @@ fn roadmap_serve_handle_over(
     ServeRequestHeaderAbsent =>
       serve_wire_response(r: roadmap_serve_respond_over(
         instance: instance, plan: plan, daily_body: daily_body, method_label: method, path: path, body: body,
-        tailscale_identity: tailscale_identity, ingress: ingress, cookie_header: "", release_revision: release_revision,
+        tailscale_identity: tailscale_identity, ingress: ingress, cookie_header: "", request_headers: request_headers, release_revision: release_revision,
       ))
     ServeRequestHeaderSingle { value: cookie_header } =>
       serve_wire_response(r: roadmap_serve_respond_over(
         instance: instance, plan: plan, daily_body: daily_body, method_label: method, path: path, body: body,
-        tailscale_identity: tailscale_identity, ingress: ingress, cookie_header: cookie_header, release_revision: release_revision,
+        tailscale_identity: tailscale_identity, ingress: ingress, cookie_header: cookie_header, request_headers: request_headers, release_revision: release_revision,
       ))
   }
 }

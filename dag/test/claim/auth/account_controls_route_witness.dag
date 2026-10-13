@@ -82,6 +82,7 @@ test fn logout_redirects_home_and_clears_the_session_cookie() -> Bool {
       method: POST,
       path: "/auth/logout",
       body: "",
+      headers: [],
       security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
     },
   )

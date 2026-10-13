@@ -3,10 +3,11 @@ module test.claim.request_authentication_witness
 import std.types { Bool, NonEmptyStr, String, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.access {
-  Permit, Deny,
+  Permit, Deny, access_refusal_reason,
   AccessEvidenceAbsent, AccessEvidenceRejected, AccessActionNotGranted, AccessContextAbsent,
   AccessPolicyRefused,
 }
+import extdeps.ietf.http_semantics { POST }
 import extdeps.auth.jwt {
   NumericDateWholeSeconds, JwtBareString, JwtUriString, JwtAudienceSingle,
 }
@@ -16,7 +17,7 @@ import extdeps.auth.oidc {
   OidcIdTokenVerdictPolicy, verify_oidc_id_token,
   OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath,
 }
-import extdeps.http.server { RequestSecurityContext }
+import extdeps.http.server { RequestSecurityContext, ServeHttpRequest, ServeRequestHeader }
 import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
 import extdeps.tailscale.serve {
   TailscaleServeStatusProjection, ServeStatusProxies, ServeStatusUnreadable,
@@ -38,7 +39,8 @@ import gunbc.auth.request_authentication {
   ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision,
   ServeWriteAuthorizationPolicy,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
-  human_write_admission, service_write_authentication_decision,
+  human_write_admission, service_write_authentication_decision, belt_actuation_admission,
+  ServeActionDispatchNode,
   request_authentication_evidence_of_standing,
   RequestAccessPath, AccessPathDirectHttps, AccessPathTailnetProxy, AccessPathLocalDev, AccessPathTailnetUnobserved, TailnetStatusUnreadable, TailnetIngressUnattested, TailnetIngressNotTheProxy, RequestIngress, IngressUnattested, IngressAttestedPeer, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved,
 }
@@ -628,5 +630,54 @@ test fn a_forged_cookie_mints_nothing_and_each_invalid_standing_refuses_with_its
           }
         Permit => false
       }
+  }
+}
+
+fn dispatch_request(session: AuthenticatedSession, headers: List<ServeRequestHeader>) -> ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence> {
+  ServeHttpRequest {
+    method: POST,
+    path: "/dispatch/demo",
+    body: "",
+    headers: headers,
+    security: session_security(session: session),
+  }
+}
+
+test fn belt_actuation_refuses_absent_auth_and_cross_site_and_admits_same_origin() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } => {
+      let unauth = ServeHttpRequest {
+        method: POST,
+        path: "/dispatch/demo",
+        body: "",
+        headers: [ServeRequestHeader { name: "sec-fetch-site", value: "same-origin" }],
+        security: local_dev_absent_security(),
+      }
+      let cross = dispatch_request(session: s, headers: [ServeRequestHeader { name: "sec-fetch-site", value: "cross-site" }])
+      let same = dispatch_request(session: s, headers: [ServeRequestHeader { name: "sec-fetch-site", value: "same-origin" }])
+      match belt_actuation_admission(
+        route_path: "/dispatch/demo" as NonEmptyStr, action: ServeActionDispatchNode, request: unauth,
+        authorization_policy: open_write_policy(), deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+        observed_at: "2026-09-25T00:05:00Z",
+      ) {
+        Deny { refusal: _ } =>
+          match belt_actuation_admission(
+            route_path: "/dispatch/demo" as NonEmptyStr, action: ServeActionDispatchNode, request: cross,
+            authorization_policy: open_write_policy(), deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+            observed_at: "2026-09-25T00:05:00Z",
+          ) {
+            Deny { refusal: r } =>
+              string_contains(s: access_refusal_reason(refusal: r), pattern: "cross-site")
+                && belt_actuation_admission(
+                  route_path: "/dispatch/demo" as NonEmptyStr, action: ServeActionDispatchNode, request: same,
+                  authorization_policy: open_write_policy(), deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+                  observed_at: "2026-09-25T00:05:00Z",
+                ) == Permit
+            Permit => false
+          }
+        Permit => false
+      }
+    }
   }
 }

@@ -890,7 +890,10 @@ fn dispatch_click_handler_body(url_expr: TsExpr) -> TsStmt {
               callee: ts_member(
                 object: ts_call(
                   callee: ts_ident(name: "fetch"),
-                  args: [url_expr, ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))])],
+                  args: [url_expr, ts_object(fields: [
+                    ts_field(key: "method", value: ts_lit_str(value: "POST")),
+                    ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")),
+                  ])],
                 ),
                 property: "then",
               ),
@@ -1341,6 +1344,7 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
                                 right: ts_member(object: ts_ident(name: "sess"), property: "node_id")),
                               ts_object(fields: [
                                 ts_field(key: "method", value: ts_lit_str(value: "POST")),
+                                ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")),
                               ]),
                             ]),
                             property: "then"),
@@ -3423,7 +3427,10 @@ fn issue_action_click_handler_body() -> TsStmt {
               callee: ts_member(
                 object: ts_call(
                   callee: ts_ident(name: "fetch"),
-                  args: [issue_action_url_expr(), ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))])],
+                  args: [issue_action_url_expr(), ts_object(fields: [
+                    ts_field(key: "method", value: ts_lit_str(value: "POST")),
+                    ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")),
+                  ])],
                 ),
                 property: "then",
               ),
