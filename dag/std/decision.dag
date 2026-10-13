@@ -25,6 +25,8 @@ import std.effect_grant { LifecycleGrade, LifecycleByConstruction, LifecycleByCo
 import std.frame_boundary { boundary_grade_meet }
 import std.pareto {
   AxisGoal,
+  HigherIsBetter,
+  LowerIsBetter,
   AxisComparison,
   Better,
   Same,
@@ -738,7 +740,9 @@ type CandidateFieldStanding
 // A ZERO RATE IS PRESENT, NEVER DROPPED. Dropping a term whose buyer-assigned rate is zero
 // makes the objective under-modeled at the next join and silently treats unread evidence as
 // free. Four named fields, one per unit: missing, repeated and foreign terms are unwritable.
-// Pareto-axis identities are ValuationAxes, supplied once.
+// Pareto-axis identities are ValuationAxes. They are not a second meaning of the objective:
+// apply_policy admits them against the assessment terms (membership, uniqueness, orientation)
+// before scoring, and production mints them only from interpret_demand_objective.
 type TermValuations {
   money: MoneyAmountMicro
   delay: MoneyPerSecond
@@ -1508,6 +1512,70 @@ fn scan_valued_survivors(
   )
 }
 
+fn valuation_axis_ids(axes: ValuationAxes) -> List<DeclarationRef> {
+  [axes.money, axes.delay, axes.interruption, axes.accepted_work]
+}
+
+fn term_declares_identity(terms: List<ObjectiveTerm>, id: DeclarationRef) -> Bool {
+  any(terms, t => declaration_ref_eq(a: t.identity, b: id))
+}
+
+fn axis_goal_eq(a: AxisGoal, b: AxisGoal) -> Bool {
+  match a {
+    LowerIsBetter =>
+      match b {
+        LowerIsBetter => true
+        HigherIsBetter => false
+      }
+    HigherIsBetter =>
+      match b {
+        HigherIsBetter => true
+        LowerIsBetter => false
+      }
+  }
+}
+
+fn orientation_defects(pareto_axes: List<SelectionAxis>, wanted: DeclarationRef, expected: AxisGoal) -> List<NonEmptyStr> {
+  match axis_goal_for(axes: pareto_axes, wanted: wanted) {
+    Absent => ["valued-objective axis is not a funded Pareto axis" as NonEmptyStr]
+    Present { value: g } =>
+      if axis_goal_eq(a: g, b: expected) {
+        []
+      } else {
+        ["valued-objective axis orientation disagrees with the funded Pareto axis" as NonEmptyStr]
+      }
+  }
+}
+
+fn admit_valuation_axes(vaxes: ValuationAxes, terms: List<ObjectiveTerm>, pareto_axes: List<SelectionAxis>) -> List<NonEmptyStr> {
+  let ids = valuation_axis_ids(axes: vaxes)
+  let distinct = if identity_duplicated(ids: ids) {
+    ["valued-objective axes are not distinct" as NonEmptyStr]
+  } else {
+    []
+  }
+  let membership = fold(ids, init: [], f: (acc, id) =>
+    if term_declares_identity(terms: terms, id: id) {
+      acc
+    } else {
+      concat(acc, ["valued-objective axis is not an assessment objective term" as NonEmptyStr])
+    }
+  )
+  concat(
+    concat(distinct, membership),
+    concat(
+      concat(
+        orientation_defects(pareto_axes: pareto_axes, wanted: vaxes.money, expected: LowerIsBetter),
+        orientation_defects(pareto_axes: pareto_axes, wanted: vaxes.delay, expected: LowerIsBetter),
+      ),
+      concat(
+        orientation_defects(pareto_axes: pareto_axes, wanted: vaxes.interruption, expected: LowerIsBetter),
+        orientation_defects(pareto_axes: pareto_axes, wanted: vaxes.accepted_work, expected: HigherIsBetter),
+      ),
+    ),
+  )
+}
+
 fn apply_policy(
   remaining: List<ParetoEntry>,
   survivors: List<DeclarationRef>,
@@ -1518,6 +1586,7 @@ fn apply_policy(
   constraint_authority: DeclarationRef,
   axes: List<SelectionAxis>,
   evidence_snapshot: DeclarationRef,
+  objective_terms: List<ObjectiveTerm>,
 ) -> RealizationSelectionResult<ParetoEntry> {
   let scope = mint_scope(
     decision_subject: decision_subject,
@@ -1579,6 +1648,10 @@ fn apply_policy(
         RealizationSelectionRefused { defects: ["policy preferred a dominated, infeasible, unresolved or absent candidate" as NonEmptyStr] }
       }
     ValuedObjective { identity: pol, valuations: vals, axes: vaxes, measure: measure } =>
+      let axis_defects = admit_valuation_axes(vaxes: vaxes, terms: objective_terms, pareto_axes: axes)
+      if (axis_defects |> count) > 0 {
+        RealizationSelectionRefused { defects: axis_defects }
+      } else {
       if (survivors |> count) == 0 {
         NoFeasibleRealization {
           causes: ["no non-dominated feasible realization" as NonEmptyStr],
@@ -1614,6 +1687,7 @@ fn apply_policy(
             }
           }
         }
+      }
       }
   }
 }
@@ -1706,6 +1780,7 @@ fn select_realization(
                   constraint_authority: constraint_authority,
                   axes: axes,
                   evidence_snapshot: evidence_snapshot,
+                  objective_terms: assessment.subject.objective.terms,
                 )
             }
       }

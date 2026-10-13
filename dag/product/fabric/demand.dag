@@ -13,6 +13,7 @@ import std.decision {
   TermValuations, ValuationAxes,
   HardConstraint,
   ValuedObjectiveMeasure, NetValue, CostPerAcceptedUnit,
+  SelectionPolicy, ValuedObjective,
 }
 
 // Demand is WHO currently wants a result and WHERE to report it. Provider facts
@@ -180,6 +181,35 @@ fn fabric_valuation_axes() -> ValuationAxes {
   }
 }
 
+// THE ONE INTERPRETATION both serving delay and generic ValuedObjective scoring project from.
+// Axes are the four term identities, never a caller-authored remapping. CONSUMERS:
+// demand_delay_valuation; valued_objective_policy; test.claim.fabric.valued_objective_witness.
+type InterpretedDemandObjective {
+  profile: DeclarationRef
+  valuations: TermValuations
+  axes: ValuationAxes
+  measure: ValuedObjectiveMeasure
+}
+
+fn interpret_demand_objective(objective: DemandObjective) -> InterpretedDemandObjective {
+  InterpretedDemandObjective {
+    profile: objective.profile,
+    valuations: objective.valuations,
+    axes: fabric_valuation_axes(),
+    measure: objective.measure,
+  }
+}
+
+fn valued_objective_policy(objective: DemandObjective) -> SelectionPolicy {
+  let interpreted = interpret_demand_objective(objective: objective)
+  ValuedObjective {
+    identity: interpreted.profile,
+    valuations: interpreted.valuations,
+    axes: interpreted.axes,
+    measure: interpreted.measure,
+  }
+}
+
 fn usd_rate(count: Nat) -> MoneyPerSecond {
   MoneyRate { amount: money_amount_micro(count: count), currency: Usd }
 }
@@ -215,7 +245,7 @@ data latency_sensitive_objective: DemandObjective = DemandObjective {
 }
 
 fn demand_delay_valuation(objective: DemandObjective) -> MoneyPerSecond {
-  objective.valuations.delay
+  interpret_demand_objective(objective: objective).valuations.delay
 }
 
 data id_buy_order_constraint: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "buy_order_constraint")

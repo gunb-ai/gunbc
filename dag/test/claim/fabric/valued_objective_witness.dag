@@ -9,6 +9,8 @@ import std.pareto {
 import std.decision {
   HardConstraint,
   ValuedObjective,
+  ValuationAxes,
+  SelectionPolicy,
   SelectedWithin,
   SelectionNeedsEvidence,
   SelectionNeedsPolicy,
@@ -40,7 +42,7 @@ import product.fabric.demand {
   debt_payoff_objective, latency_sensitive_objective, DemandObjective,
   demand_delay_valuation, admission_hard_constraints,
   admission_terms, BuyTerms, fabric_demand_required_term_ids,
-  fabric_valuation_axes,
+  fabric_valuation_axes, valued_objective_policy,
 }
 import std.measure { money_amount_micro, money_rate_micros }
 import extdeps.currency.currency { Usd }
@@ -163,7 +165,7 @@ fn replica(id: DeclarationRef, label: NonEmptyStr, money: Int, delay: Int, inter
   }
 }
 
-fn pick(field: List<ParetoEntry>, objective: DemandObjective, constraints: List<HardConstraint>) -> RealizationPick {
+fn pick_with_policy(field: List<ParetoEntry>, objective: DemandObjective, constraints: List<HardConstraint>, policy: SelectionPolicy) -> RealizationPick {
   match select_realization(
     assessment: closed_assessment(objective: objective),
     candidate_field_identity: id_field,
@@ -171,21 +173,25 @@ fn pick(field: List<ParetoEntry>, objective: DemandObjective, constraints: List<
     axes: axes(),
     constraints: constraints,
     constraint_authority: id_constraints,
-    policy: ValuedObjective {
-      identity: objective.profile,
-      valuations: objective.valuations,
-      axes: fabric_valuation_axes(),
-      measure: objective.measure,
-    },
+    policy: policy,
     evidence_snapshot: id_evidence,
   ) {
     SelectedWithin { candidate: c, receipt: r } => Picked { id: c.identity, policy: r.policy_authority }
     SelectionNeedsEvidence { needs: _ } => NeedsEvidence
     SelectionNeedsPolicy { survivors: _ } => NeedsPolicy
     NoFeasibleRealization { causes: _, scope: _ } => NoneFeasible
-    RealizationSelectionRefused { defects: _ } => Other
+    RealizationSelectionRefused { defects: _ } => Refused
     _ => Other
   }
+}
+
+fn pick(field: List<ParetoEntry>, objective: DemandObjective, constraints: List<HardConstraint>) -> RealizationPick {
+  pick_with_policy(
+    field: field,
+    objective: objective,
+    constraints: constraints,
+    policy: valued_objective_policy(objective: objective),
+  )
 }
 
 type RealizationPick
@@ -193,6 +199,7 @@ type RealizationPick
   | NeedsEvidence
   | NeedsPolicy
   | NoneFeasible
+  | Refused
   | Other
 
 fn tradeoff_field() -> List<ParetoEntry> {
@@ -333,6 +340,37 @@ test fn unread_valued_delay_needs_evidence_never_zero() -> Bool {
 test fn serving_reads_the_demand_delay_valuation() -> Bool {
   (money_rate_micros(q: demand_delay_valuation(objective: latency_sensitive_objective)) as Int)
     > (money_rate_micros(q: demand_delay_valuation(objective: debt_payoff_objective)) as Int)
+}
+
+fn delay_bound_to_money_axes() -> ValuationAxes {
+  ValuationAxes {
+    money: term_money.identity,
+    delay: term_money.identity,
+    interruption: term_interruption.identity,
+    accepted_work: term_accepted_work.identity,
+  }
+}
+
+test fn remapping_only_the_delay_axis_refuses_rather_than_reversing_the_pick() -> Bool {
+  match pick(field: tradeoff_field(), objective: latency_sensitive_objective, constraints: []) {
+    Picked { id: move_id, policy: _ } =>
+      declaration_ref_eq(a: move_id, b: id_move)
+        && match pick_with_policy(
+          field: tradeoff_field(),
+          objective: latency_sensitive_objective,
+          constraints: [],
+          policy: ValuedObjective {
+            identity: latency_sensitive_objective.profile,
+            valuations: latency_sensitive_objective.valuations,
+            axes: delay_bound_to_money_axes(),
+            measure: latency_sensitive_objective.measure,
+          },
+        ) {
+          Refused => true
+          _ => false
+        }
+    _ => false
+  }
 }
 
 test fn both_profiles_carry_the_four_required_valuations() -> Bool {
