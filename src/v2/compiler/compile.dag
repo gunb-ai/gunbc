@@ -189,8 +189,11 @@ import v2.compiler.dependency_demand_census {
   DemandCensusAuthoredReading,
   DemandCensusModuleStanding,
   DemandCensusReport,
+  DemandCensusUnboundLocus,
   DemandCensusUnreadable,
   DemandCensusUnreadableStage,
+  UnboundNamed,
+  UnboundShaped,
   DemandModuleResolveRefused,
   DemandModuleResolved,
   UnreadableAtParse,
@@ -278,7 +281,7 @@ import v2.std.diagnostic {
   outcome_with_diagnostics,
   diagnostics_fatal
 }
-import v2.std.node { Arrow, Atom, ComputationNode, Edge, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
+import v2.std.node { Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Node, NodeFold, NodeKind, Occupancy, Positional, Symbol, Transform, TypeNode, Value, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
 import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -3422,14 +3425,31 @@ fn native_demand_census_unreadable(
   }
 }
 
-fn native_demand_census_unbound_name(d: NonEmptyDiagnostics) -> Optional<Symbol> {
+fn native_demand_census_kind_sym(k: NodeKind) -> Symbol {
+  match k {
+    TypeNode { connective: Atom { identity: _ } } => symbol_intern_lexeme(lexeme: "atom")
+    TypeNode { connective: Conj } => symbol_intern_lexeme(lexeme: "conj")
+    TypeNode { connective: Disj } => symbol_intern_lexeme(lexeme: "disj")
+    TypeNode { connective: Arrow } => symbol_intern_lexeme(lexeme: "arrow")
+    TypeNode { connective: Occupancy } => symbol_intern_lexeme(lexeme: "occupancy")
+    TypeNode { connective: Instantiation } => symbol_intern_lexeme(lexeme: "instantiation")
+    ComputationNode { behavior: Value } => symbol_intern_lexeme(lexeme: "value")
+    ComputationNode { behavior: Transform } => symbol_intern_lexeme(lexeme: "transform")
+    ComputationNode { behavior: Branch } => symbol_intern_lexeme(lexeme: "branch")
+    ComputationNode { behavior: Loop } => symbol_intern_lexeme(lexeme: "loop")
+    ComputationNode { behavior: Bind } => symbol_intern_lexeme(lexeme: "bind")
+    ComputationNode { behavior: Match } => symbol_intern_lexeme(lexeme: "match")
+  }
+}
+
+fn native_demand_census_unbound_locus(d: NonEmptyDiagnostics) -> Optional<DemandCensusUnboundLocus> {
   let fatal = diagnostics_fatal(d: d)
   if fatal.reason == ^resolve_reason_unbound_symbol {
     match fatal.at {
       NodeLocus { anchor: a } =>
         match node_atom_identity_optional(node: a.at) {
-          Present { value: n } => optional_present(value: n)
-          Absent => optional_absent()
+          Present { value: n } => optional_present(value: UnboundNamed { name: n })
+          Absent => optional_present(value: UnboundShaped { kind: native_demand_census_kind_sym(k: a.at.kind) })
         }
       Textual { file: _, extent: _ } => optional_absent()
       SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
@@ -3535,7 +3555,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
             standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused {
               authored: mine,
               first_reason: diagnostics_fatal_reason(d: d),
-              first_unbound: native_demand_census_unbound_name(d: d)
+              first_unbound: native_demand_census_unbound_locus(d: d)
             })
           }
         Accepted { value: resolved, diagnostics: _ } =>

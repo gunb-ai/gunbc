@@ -163,7 +163,7 @@ fn demand_census_subst_aliases(node: Node, entries: List<AuthoredUsesEntry>) -> 
 fn demand_census_subst_alias_atom(node: Node, entries: List<AuthoredUsesEntry>) -> Node {
   match node_atom_identity_optional(node: node) {
     Present { value: id } =>
-      match demand_census_alias_image(entries: entries, alias: id, source: node) {
+      match demand_census_alias_image(entries: entries, uses_alias: id, source: node) {
         Present { value: image } => image
         Absent => demand_census_rebuild(node: node, child: fn(c) { demand_census_subst_aliases(node: c, entries: entries) })
       }
@@ -171,7 +171,7 @@ fn demand_census_subst_alias_atom(node: Node, entries: List<AuthoredUsesEntry>) 
   }
 }
 
-fn demand_census_alias_image(entries: List<AuthoredUsesEntry>, alias: Symbol, source: Node) -> Optional<Node> {
+fn demand_census_alias_image(entries: List<AuthoredUsesEntry>, uses_alias: Symbol, source: Node) -> Optional<Node> {
   fold_list(xs: entries, empty: optional_absent(), cons: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
@@ -179,7 +179,7 @@ fn demand_census_alias_image(entries: List<AuthoredUsesEntry>, alias: Symbol, so
         match e.alias {
           Absent => optional_absent()
           Present { value: a } =>
-            if a == alias {
+            if a == uses_alias {
               match e.type_expr {
                 Absent => optional_absent()
                 Present { value: ty } =>
@@ -634,9 +634,13 @@ fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) ->
 // rewritten, the module refused at resolution for a reason other than the uses alias (the alias is
 // bound to the resource declaration before resolve), the fn's own name could not be read,
 // or an authored type did not resolve.
+type DemandCensusUnboundLocus
+  = UnboundNamed { name: Symbol }
+  | UnboundShaped { kind: Symbol }
+
 type DemandCensusUnobserved
   = UnobservedFileRefused
-  | UnobservedModuleResolveRefused { first_reason: Symbol, first_unbound: Optional<Symbol> }
+  | UnobservedModuleResolveRefused { first_reason: Symbol, first_unbound: Optional<DemandCensusUnboundLocus> }
   | UnobservedFunctionUnnamed
   | UnobservedFunctionNotDeclared
   | UnobservedAuthoredTypeUnresolved
@@ -993,7 +997,7 @@ fn demand_census_row_line(r: DemandCensusRow) -> String {
           demand_census_text(parts: [
             reason_part,
             " resolve_reason=", symbol_lexeme(sym: r),
-            " unbound_name=", demand_census_unbound_word(u: u)
+            " ", demand_census_unbound_site_text(u: u)
           ])
         UnobservedFileRefused => reason_part
         UnobservedFunctionUnnamed => reason_part
@@ -1086,18 +1090,29 @@ fn demand_census_resolve_refused_bucket_line(b: DemandCensusResolveRefusedBucket
   ])
 }
 
-fn demand_census_unbound_word(u: Optional<Symbol>) -> String {
+fn demand_census_unbound_site_text(u: Optional<DemandCensusUnboundLocus>) -> String {
   match u {
-    Absent => ""
-    Present { value: n } => symbol_lexeme(sym: n)
+    Absent => "unbound_locus="
+    Present { value: loc } =>
+      match loc {
+        UnboundNamed { name: n } => demand_census_text(parts: ["unbound_name=", symbol_lexeme(sym: n)])
+        UnboundShaped { kind: k } => demand_census_text(parts: ["unbound_kind=", symbol_lexeme(sym: k)])
+      }
+  }
+}
+
+fn demand_census_unbound_locus_site(loc: DemandCensusUnboundLocus) -> Symbol {
+  match loc {
+    UnboundNamed { name: n } => n
+    UnboundShaped { kind: k } => k
   }
 }
 
 fn demand_census_unbound_buckets(rows: List<DemandCensusRow>) -> List<DemandCensusResolveRefusedBucket> {
   fold_list(xs: rows, empty: Empty, cons: fn(acc, row) {
     match row.verdict {
-      CensusUnobserved { reason: UnobservedModuleResolveRefused { first_reason: _, first_unbound: Present { value: n } } } =>
-        demand_census_add_to_buckets(buckets: acc, reason: n, module: qualified_name_init(qn: row.function))
+      CensusUnobserved { reason: UnobservedModuleResolveRefused { first_reason: _, first_unbound: Present { value: loc } } } =>
+        demand_census_add_to_buckets(buckets: acc, reason: demand_census_unbound_locus_site(loc: loc), module: qualified_name_init(qn: row.function))
       CensusUnobserved { reason: _ } => acc
       CensusEqual => acc
       CensusMismatch { authored: _, derived: _ } => acc
@@ -1108,7 +1123,7 @@ fn demand_census_unbound_buckets(rows: List<DemandCensusRow>) -> List<DemandCens
 
 fn demand_census_unbound_bucket_line(b: DemandCensusResolveRefusedBucket) -> String {
   demand_census_text(parts: [
-    "[demand-census-unbound] name=", symbol_lexeme(sym: b.reason),
+    "[demand-census-unbound] site=", symbol_lexeme(sym: b.reason),
     " functions=", to_string(b.functions),
     " examples=", demand_census_paths_text(paths: b.examples)
   ])
@@ -1151,7 +1166,7 @@ fn demand_census_lines(r: DemandCensusReport) -> List<String> {
 // so every one of them becomes exactly one row whatever the standing is.
 type DemandCensusModuleStanding
   = DemandModuleResolved { readings: List<DemandCensusAuthoredReading> }
-  | DemandModuleResolveRefused { authored: List<AuthoredUsesFunction>, first_reason: Symbol, first_unbound: Optional<Symbol> }
+  | DemandModuleResolveRefused { authored: List<AuthoredUsesFunction>, first_reason: Symbol, first_unbound: Optional<DemandCensusUnboundLocus> }
 
 type DemandCensusAuthoredReading {
   authored: AuthoredUsesFunction
