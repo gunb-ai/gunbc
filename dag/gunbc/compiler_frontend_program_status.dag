@@ -469,7 +469,7 @@ fn render_xl2_prerequisite(p: Xl2Prerequisite) -> String {
 fn render_xl2_prerequisites() -> String {
   concat(
     fold(xl2_prerequisites, init: "", f: fn(acc, p) { concat(acc, concat("\n      - ", render_xl2_prerequisite(p: p))) }),
-    "\n      NOT in the observable population: kernel canonical leaves (e.g. Bool) resolve with no import via v2.compiler.resolve resolved_reference_identity, so no residual for them is not coverage. A SEPARATE AXIS from these prerequisites: the native requalification walls (import hygiene, sleek-cat-104; diagnostic.dag field-read, gunbc#12033 step 2). The Step-0 canary (gunbc.namespace_cut.namespace_step0_candidate_run) is not this instrument: its carrier is a per-bucket histogram differential (gunbc.namespace_cut.namespace_step0_canary_v2 Step0HistogramDifferential) and cannot carry an exact occurrence residual.")
+    "\n      NOT in the observable population: kernel canonical leaves (e.g. Bool) resolve with no import via v2.compiler.resolve resolved_reference_identity, so no residual for them is not coverage. A SEPARATE AXIS from these prerequisites: the native requalification walls (import hygiene, sleek-cat-104; diagnostic.dag field-read, gunbc#12033 step 2). The Step-0 canary (v2.workflow.namespace_step0_candidate_run) is not this instrument: its carrier is a per-bucket histogram differential (gunbc.namespace_cut.namespace_step0_canary_v2 Step0HistogramDifferential) and cannot carry an exact occurrence residual.")
 }
 
 // AN INSTRUMENT THAT IS MISSING AND ONE THAT IS REFUSED ARE DIFFERENT STATES WITH DIFFERENT
