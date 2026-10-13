@@ -20,35 +20,37 @@ use v1_compiler::v1_std_core::diagnostic_to_message;
 
 const SOURCE: &str = r#"module cursor_probe
 
-fn walk_pos(xs: List<Int>, acc: Int) -> Int {
+import std.algebra { Cons, Empty, FreeMonoid }
+
+fn walk_pos(xs: FreeMonoid<Int>, acc: Int) -> Int {
   match xs {
     Empty => acc
     Cons { head: h, tail: t } => walk_pos(t, acc + h)
   }
 }
 
-fn walk_escape(xs: List<Int>, acc: Int) -> List<Int> {
+fn walk_escape(xs: FreeMonoid<Int>, acc: Int) -> FreeMonoid<Int> {
   match xs {
-    Empty => []
+    Empty => Empty
     Cons { head: h, tail: t } => if h == 0 { t } else { walk_escape(t, acc + h) }
   }
 }
 
-fn walk_xs_after(xs: List<Int>, acc: Int) -> Int {
+fn walk_xs_after(xs: FreeMonoid<Int>, acc: Int) -> Int {
   match xs {
     Empty => acc + (xs |> count)
     Cons { head: h, tail: t } => walk_xs_after(t, acc + h)
   }
 }
 
-fn walk_other_pos(xs: List<Int>, ys: List<Int>, acc: Int) -> Int {
+fn walk_other_pos(xs: FreeMonoid<Int>, ys: FreeMonoid<Int>, acc: Int) -> Int {
   match xs {
     Empty => acc
     Cons { head: h, tail: t } => walk_other_pos(ys, t, acc + h)
   }
 }
 
-fn walk_depth2(xs: List<Int>, acc: Int) -> Int {
+fn walk_depth2(xs: FreeMonoid<Int>, acc: Int) -> Int {
   match xs {
     Empty => acc
     Cons { head: a, tail: Cons { head: b, tail: r } } => walk_depth2(r, acc + a + b)

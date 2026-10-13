@@ -31888,6 +31888,8 @@ pub fn build_emit_graph_info(
         Rc::new(EmitGraphInfo {
             item_leaf_owner_modules:
                 crate::v1_compiler_infer_items::leaf_owner_modules_from_registry(registry.clone()),
+            tco_cursor_param: "".to_string(),
+            tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
             type_summaries: built.type_summaries.clone(),
             type_decl_items: built.type_decl_items.clone(),
             data_variant_wire_spellings: v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(
