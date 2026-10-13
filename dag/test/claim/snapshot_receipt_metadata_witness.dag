@@ -144,8 +144,10 @@ fn fx_fleet_numeric_receipt_version() -> SmResolvedVersionIdentity {
 }
 
 test fn path_parent_directory_drops_the_last_segment() -> Bool {
-  path_parent_directory(path: "/tmp/fixture/custody.gunbc-export-receipt") == "/tmp/fixture"
-    && path_parent_directory(path: "/receipt") == "/"
+  path_parent_directory(path: "/a/b") == "/a"
+    && path_parent_directory(path: "/a") == "/"
+    && path_parent_directory(path: "/") == "/"
+    && path_parent_directory(path: "a") == "."
 }
 
 test fn the_fleet_project_id_joins_the_canonical_numeric_receipt() -> Bool {
