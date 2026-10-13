@@ -1,6 +1,6 @@
 module gunbc.serving.caller_backlog
 
-import std.types { Bool, String, NonEmptyStr, Int, List, brand }
+import std.types { Bool, String, NonEmptyStr, Int, List, EpochSecs, brand }
 import std.nat { Nat, Zero, Succ }
 import std.optional { Present, Absent }
 import std.algebra { length }
@@ -14,7 +14,7 @@ import extdeps.languages.json.parse {
 }
 import product.fabric.execution { ReservationRef }
 import product.fabric.budget { MoneyAccount, fence_admits }
-import product.capacity.lease { LeaseGrant }
+import product.capacity.lease { LeaseGrant, LeaseFence, FenceCurrent, FenceObsolete, FenceForeignGrant, fence_verdict, lease_grant_expired_at }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.durable_compare_and_set {
   ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
@@ -754,16 +754,25 @@ type AttemptCommit
 // THE FENCE IS A SUM OVER THE TWO SHAPES OF HOLDER, NOT TWO COMMIT FOLDS. A compute cell is fenced
 // by the money account's lease generation; a serving seat is not a money-settling cell
 // (docs/plans/serving-capacity-home-ruling.md) and is fenced by the generation of its
-// product.capacity.lease LeaseGrant, which must also be the grant of this work's reservation.
+// product.capacity.lease LeaseGrant: the replica presents its LeaseFence (grant identity and generation),
+// fence_verdict must find it current, the grant must be the work's reservation, and unexpired at `at`.
 type AttemptFence
   = ComputeCellFence { account: MoneyAccount }
-  | SeatLeaseFence { grant: LeaseGrant }
+  | SeatLeaseFence { grant: LeaseGrant, holder: LeaseFence, at: EpochSecs }
 
 fn attempt_fence_admits(fence: AttemptFence, reservation: ReservationRef, presented: Int) -> Bool {
   match fence {
     ComputeCellFence { account: a } => fence_admits(a: a, reference: reservation, presented: presented)
-    SeatLeaseFence { grant: g } =>
-      (g.reference as String) == (reservation as String) && (g.fence.generation as Int) == presented
+    SeatLeaseFence { grant: g, holder: h, at: now } =>
+      (g.reference as String) == (reservation as String)
+        && !lease_grant_expired_at(grant: g, at: now)
+        && (h.generation as Int) == presented
+        && (h.generation as Int) == (g.fence.generation as Int)
+        && (match fence_verdict(current: g.fence, presented: h) {
+          FenceCurrent => true
+          FenceObsolete { presented: _, current: _ } => false
+          FenceForeignGrant { presented: _, current: _ } => false
+        })
   }
 }
 

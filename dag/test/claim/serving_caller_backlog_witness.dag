@@ -471,11 +471,19 @@ data seat_grant_gen2: LeaseGrant = LeaseGrant {
   expires_at: 60 as EpochSecs,
 }
 
+fn seat_holder(generation: Int, grant: String) -> LeaseFence {
+  LeaseFence { grant: grant as GrantIdentity, generation: generation as Nat }
+}
+
 test fn w_seat_lease_stale_generation_cannot_commit() -> Bool {
   let waiting = persisted_waiting()
-  let stale = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2 }, work: work_a, presented: 1)
-  let live = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2 }, work: work_a, presented: 2)
-  (match stale { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
+  let foreign = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 2, grant: "evt-other"), at: 10 as EpochSecs }, work: work_a, presented: 2)
+  let expired = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 2, grant: "evt-1"), at: 60 as EpochSecs }, work: work_a, presented: 2)
+  let stale = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 1, grant: "evt-1"), at: 10 as EpochSecs }, work: work_a, presented: 1)
+  let live = commit_attempt(snapshot: waiting, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 2, grant: "evt-1"), at: 10 as EpochSecs }, work: work_a, presented: 2)
+  (match foreign { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
+    && (match expired { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
+    && (match stale { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
     && (match live { AttemptCommitted { record: _ } => true  AttemptFenceRefused => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
 }
 
