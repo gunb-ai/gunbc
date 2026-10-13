@@ -550,17 +550,27 @@ fn shell_argv_refusal(op: Node, argv: Node) -> Optional<RealizationRefusal> {
 
 fn transport_string_field_refusal(op: Node, value: Node) -> Optional<RealizationRefusal> {
   match list_introduction_elements_optional(node: value) {
-    Present { value: _ } => optional_absent()
-    Absent =>
-      match argv_template_of_node(el: value) {
-        Present { value: t } =>
-          match argv_template_holes_cause(inputs: operation_input_names(op: op), t: t) {
-            Present { value: cause } =>
-              optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: value, argv: optional_present(value: cause) })
-            Absent => optional_absent()
-          }
+    Present { value: elements } =>
+      fold(elements, init: optional_absent(), f: fn(acc, el) {
+        realization_first_refusal(acc: acc, next: fn() { transport_template_element_refusal(op: op, el: el) })
+      })
+    Absent => transport_template_element_refusal(op: op, el: value)
+  }
+}
+
+// A non-argv transport field is Template<OperationInputName>, or a list of those. Each element
+// uses the hole check argv uses, without argv[0]'s executable-literal rule. An element that is
+// not a template refuses located (ArgvExpressionUnsupported) rather than admitting.
+fn transport_template_element_refusal(op: Node, el: Node) -> Optional<RealizationRefusal> {
+  match argv_template_of_node(el: el) {
+    Present { value: t } =>
+      match argv_template_holes_cause(inputs: operation_input_names(op: op), t: t) {
+        Present { value: cause } =>
+          optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: el, argv: optional_present(value: cause) })
         Absent => optional_absent()
       }
+    Absent =>
+      optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: el, argv: argv_expression_unsupported() })
   }
 }
 

@@ -39,6 +39,8 @@ data srl_shared_prefix_source: String = "module m\n\nservice s.F {\n  operation 
 data srl_bound_hole_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport shell { argv: [\"echo\", path] }\n  }\n}\n"
 data srl_undeclared_hole_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport shell { argv: [\"echo\", other] }\n  }\n}\n"
 data srl_template_hole_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport shell { argv: [\"echo\", \"\{path\}\"] }\n  }\n}\n"
+data srl_list_field_bound_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport rest { path: [\"/\", path] }\n  }\n}\n"
+data srl_list_field_undeclared_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport rest { path: [\"/\", other] }\n  }\n}\n"
 
 fn srl_census(text: String) -> Outcome<CensusTree> {
   match conservation_subject_of_text(path: "probe_service_realization_lowering.dag", text: text).parsed {
@@ -166,6 +168,8 @@ fn srl_full_refused_as(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {
 fn srl_bound_hole() -> Outcome<CensusTree> { srl_census(text: srl_bound_hole_source) }
 fn srl_undeclared_hole() -> Outcome<CensusTree> { srl_census(text: srl_undeclared_hole_source) }
 fn srl_template_hole() -> Outcome<CensusTree> { srl_census(text: srl_template_hole_source) }
+fn srl_list_field_bound() -> Outcome<CensusTree> { srl_census(text: srl_list_field_bound_source) }
+fn srl_list_field_undeclared() -> Outcome<CensusTree> { srl_census(text: srl_list_field_undeclared_source) }
 
 test fn a_declared_input_hole_lowers_on_argv_holds() -> Bool {
   srl_has(n: srl_body(o: srl_bound_hole()), names: [realization_root_label(), ^S, ^Run, realization_transport_label(), ^argv])
@@ -174,4 +178,12 @@ test fn a_declared_input_hole_lowers_on_argv_holds() -> Bool {
 
 test fn an_undeclared_argv_hole_refuses_located_holds() -> Bool {
   srl_refused_as(o: srl_undeclared_hole(), reason: ^service_realization_argv_refused)
+}
+
+test fn a_declared_input_hole_lowers_on_a_transport_list_field_holds() -> Bool {
+  srl_has(n: srl_body(o: srl_list_field_bound()), names: [realization_root_label(), ^S, ^Run, realization_transport_label(), ^path])
+}
+
+test fn an_undeclared_hole_in_a_transport_list_field_refuses_located_holds() -> Bool {
+  srl_refused_as(o: srl_list_field_undeclared(), reason: ^service_realization_argv_refused)
 }
