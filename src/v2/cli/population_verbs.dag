@@ -26,6 +26,7 @@ import v2.compiler.module_acquisition {
   PopulationMemberRefused,
   SourceRootBinding,
   acquisition_env,
+  acquisition_header_reader,
   acquisition_parse,
   acquisition_probe,
   enumerate_bound_modules,
@@ -43,9 +44,9 @@ import v2.compiler.source_authority {
   layout_check,
   layout_verdict_holds,
   layout_verdict_text,
-  module_file_key,
-  module_header_declared_name
+  module_file_key
 }
+import v2.compiler.module_header { ModuleHeaderReader, module_header_read }
 import v2.std.algebra { HeadAbsent, HeadFound, fold_list, is_empty, length, list_head, list_map, list_reverse, skip }
 import v2.std.collection { empty_map, map_contains_key, map_insert, map_lookup }
 import v2.std.text { String }
@@ -105,16 +106,17 @@ fn tree_files(binding: SourceRootBinding) -> TreeFiles {
   }
 }
 
-fn layout_headers_go(host_directory: String, pending: List<ModuleFileRef>, acc: List<LayoutFileHeader>) -> LayoutHeaders {
+fn layout_headers_go(reader: ModuleHeaderReader, host_directory: String, pending: List<ModuleFileRef>, acc: List<LayoutFileHeader>) -> LayoutHeaders {
   match list_head(xs: pending) {
     HeadAbsent => LayoutHeadersRead { headers: acc }
     HeadFound { value: file } =>
       match acquisition_probe(host_directory: host_directory, file: file) {
         ModuleFilePresent { file: _, content: content } =>
           layout_headers_go(
+            reader: reader,
             host_directory: host_directory,
             pending: skip(xs: pending, n: 1),
-            acc: Cons { head: LayoutFileHeader { file: file, declared_module: module_header_declared_name(content: content) }, tail: acc }
+            acc: Cons { head: LayoutFileHeader { file: file, declared: module_header_read(reader: reader, file: module_file_key(file: file), content: content) }, tail: acc }
           )
         ModuleFileAbsent { file: _ } =>
           LayoutHeadersRefused { cause: concat(module_file_key(file: file), ": the walk listed the file and it is absent") }
@@ -123,7 +125,7 @@ fn layout_headers_go(host_directory: String, pending: List<ModuleFileRef>, acc: 
   }
 }
 
-fn layout_bindings_headers(pending: List<SourceRootBinding>, acc: List<LayoutFileHeader>) -> LayoutHeaders {
+fn layout_bindings_headers(reader: ModuleHeaderReader, pending: List<SourceRootBinding>, acc: List<LayoutFileHeader>) -> LayoutHeaders {
   match list_head(xs: pending) {
     HeadAbsent => LayoutHeadersRead { headers: acc }
     HeadFound { value: binding } =>
@@ -131,9 +133,9 @@ fn layout_bindings_headers(pending: List<SourceRootBinding>, acc: List<LayoutFil
         TreeFilesRefused { path: path, kind: kind, cause: cause } =>
           LayoutHeadersRefused { cause: concat("could not walk ", path, ": ", kind, ": ", cause) }
         TreeFilesListed { files: files } =>
-          match layout_headers_go(host_directory: binding.host_directory, pending: files, acc: acc) {
+          match layout_headers_go(reader: reader, host_directory: binding.host_directory, pending: files, acc: acc) {
             LayoutHeadersRefused { cause: cause } => LayoutHeadersRefused { cause: cause }
-            LayoutHeadersRead { headers: headers } => layout_bindings_headers(pending: skip(xs: pending, n: 1), acc: headers)
+            LayoutHeadersRead { headers: headers } => layout_bindings_headers(reader: reader, pending: skip(xs: pending, n: 1), acc: headers)
           }
       }
   }
@@ -155,7 +157,15 @@ fn layout_report(verdict: LayoutVerdict) -> PopulationReport {
 // refuses the whole check: a layout verdict over a population that silently lost a member would
 // certify a smaller repository.
 fn check_layout(bindings: List<SourceRootBinding>) -> PopulationReport {
-  match layout_bindings_headers(pending: bindings, acc: []) {
+  match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: _ } =>
+      PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module header was read" }
+    AcquisitionEnvReady { env: env } => check_layout_prepared(env: env, bindings: bindings)
+  }
+}
+
+fn check_layout_prepared(env: AcquisitionEnv, bindings: List<SourceRootBinding>) -> PopulationReport {
+  match layout_bindings_headers(reader: acquisition_header_reader(env: env), pending: bindings, acc: []) {
     LayoutHeadersRefused { cause: cause } =>
       PopulationReport { text: cause, held: false, detail: concat("the layout could not be observed: ", cause) }
     LayoutHeadersRead { headers: headers } =>

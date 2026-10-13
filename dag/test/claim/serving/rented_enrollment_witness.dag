@@ -21,6 +21,8 @@ import gunbc.serving.rented_enrollment {
   rented_replica_enrolled_twice_obligation, rented_replica_unenrolled_obligation,
   rented_endpoint_enrolled_twice_obligation, rented_replica_node_differs_from_access_node_obligation,
 }
+import std.scoped_authorization { ScopedAuthorization, AuthorizationGranted, OperatorGrant, Unclaimed, AttemptIdentity }
+import gunbc.serving.rented_host_grant { RentedHostSubject, RentedHostClock, RentedHostClockRead, rented_host_subject, rented_host_request }
 import gunbc.harness.harness_seat { harness_observe_incarnation }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -105,23 +107,39 @@ test fn a_replica_enrolled_twice_has_no_host() -> Bool {
   }
 }
 
+fn e_now() -> RentedHostClock {
+  RentedHostClockRead { at: "2026-10-12T11:00:00Z" }
+}
+
+fn e_grant(ssh_endpoint: String, attempt: String) -> ScopedAuthorization<RentedHostSubject> {
+  let request = rented_host_request(escalation_id: "esc-1" as NonEmptyStr, subject: rented_host_subject(declaration: e_access(endpoint: ssh_endpoint)), attempt: attempt as AttemptIdentity)
+  AuthorizationGranted {
+    grant: OperatorGrant {
+      escalation_id: request.escalation_id, scopes: request.scopes, subject: request.subject, purpose: request.purpose,
+      attempt: request.attempt, intent_hash: request.intent_hash, granted_by: "operator" as NonEmptyStr,
+      granted_at: "2026-10-12T10:00:00Z", expires_at: "2026-10-12T12:00:00Z",
+    },
+    claim: Unclaimed,
+  }
+}
+
 // THE TRANSPORT IS REACHED THROUGH THE ENROLLED ACCESS: a host key row for another endpoint is refused
 // by the real rented_host_access before any leg runs, an unsafe attempt identity likewise, and an
 // unenrolled replica or a launch naming another replica never reaches a host.
 test fn an_unenrolled_replica_reads_its_incarnation_unread() -> Bool {
-  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: []), endpoint: e_row(device: 0, ssh_endpoint: "203.0.113.7").endpoint, launch: e_launch(device: 0), attempt_raw: "e-1"), needle: "no enrollment row")
+  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: []), authorizations: [], clock: e_now(), endpoint: e_row(device: 0, ssh_endpoint: "203.0.113.7").endpoint, launch: e_launch(device: 0), attempt_raw: "e-1"), needle: "no enrollment row")
 }
 
 test fn a_launch_naming_another_replica_is_not_observed_at_this_endpoint() -> Bool {
-  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_endpoint: "203.0.113.7")]), endpoint: e_row(device: 0, ssh_endpoint: "203.0.113.7").endpoint, launch: e_launch(device: 1), attempt_raw: "e-1"), needle: "another replica")
+  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_endpoint: "203.0.113.7")]), authorizations: [], clock: e_now(), endpoint: e_row(device: 0, ssh_endpoint: "203.0.113.7").endpoint, launch: e_launch(device: 1), attempt_raw: "e-1"), needle: "another replica")
 }
 
 test fn an_enrolled_host_whose_key_row_names_another_endpoint_reads_unread() -> Bool {
-  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_endpoint: "203.0.113.8")]), endpoint: e_row(device: 0, ssh_endpoint: "203.0.113.8").endpoint, launch: e_launch(device: 0), attempt_raw: "e-1"), needle: "203.0.113.8")
+  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_endpoint: "203.0.113.8")]), authorizations: [e_grant(ssh_endpoint: "203.0.113.8", attempt: "e-1")], clock: e_now(), endpoint: e_row(device: 0, ssh_endpoint: "203.0.113.8").endpoint, launch: e_launch(device: 0), attempt_raw: "e-1"), needle: "203.0.113.8")
 }
 
 test fn an_unsafe_attempt_identity_reads_the_incarnation_unread() -> Bool {
-  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_endpoint: "203.0.113.7")]), endpoint: e_row(device: 0, ssh_endpoint: "203.0.113.7").endpoint, launch: e_launch(device: 0), attempt_raw: "../escape"), needle: "attempt identity")
+  e_unread_with(s: rented_incarnation_standing(index: rented_enrollment_index(rows: [e_row(device: 0, ssh_endpoint: "203.0.113.7")]), authorizations: [e_grant(ssh_endpoint: "203.0.113.7", attempt: "../escape")], clock: e_now(), endpoint: e_row(device: 0, ssh_endpoint: "203.0.113.7").endpoint, launch: e_launch(device: 0), attempt_raw: "../escape"), needle: "attempt identity")
 }
 
 // THE INHABITANCE CLAIM: the REAL production enrollment is empty, so the REAL harness seam reads every
