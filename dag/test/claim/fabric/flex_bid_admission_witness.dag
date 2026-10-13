@@ -388,6 +388,7 @@ fn vast_min_sample() -> VastAiOffer {
     storage_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 3 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 3 },
+    gpu_ram: 24576,
   }
 }
 

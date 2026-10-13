@@ -33,12 +33,8 @@ import product.fabric.selection {
   OfferLiabilityOverBuyOrder, OfferRevocationNotAdmitted, selection_liability,
 }
 
-// Fleet interruptible-bid policy. In this change the executing consumer of flex_bid_admission is
-// the witness. DECLARED FRONTIER (DESIGN §3c): the production consumer is the fold that maps a
-// Vast SearchOffers row through vast_ai_min_bid_money_per_hour into FlexBidAttempt (quote_currency
-// = vast_ai_quote_currency) and calls flex_bid_admission. TRIGGER: that adapter exists as a
-// production module (not a test) and deleting the witness still leaves an execution of the real
-// path. Until then this slice is M0 model-only: no effects, no search, no bid PUT.
+// Fleet interruptible-bid policy. Production consumer of flex_bid_admission is
+// product.fabric.flex_vast_shadow flex_shadow_bid. No create or destroy is declared on that path.
 
 data flex_floor_buffer: NonzeroNatFraction = NonzeroNatFraction { num: 1, denom_predecessor: 9 }
 
