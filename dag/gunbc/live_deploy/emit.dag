@@ -225,7 +225,7 @@ import gunbc.host.host_axis_caps {
   host_axis_caps_author_before_revert_enforced,
 }
 import gunbc.ownership { Ownership }
-import std.filesystem { path_parent_directory }
+import std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
@@ -1470,7 +1470,7 @@ fn apply_oidc_config_steps_at(spec: DeploymentSpec, now_epoch: Second, should_wr
         [
           deploy_raw(command: install_directory_command(
             mode: install_d_shared_mode,
-            path: path_parent_directory(path: cfg.config_path as String),
+            path: path_parent_dir(path: cfg.config_path as String),
             privileged: true,
           )),
           deploy_raw(command: deploy_stage_write_command(
@@ -1653,6 +1653,12 @@ fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
 // unchanged: production's bin directory is root-owned, and switching this to the service-user-owned
 // install_d_owned_command would silently re-own a live directory to satisfy a twin.
 
+fn path_parent_dir(path: String) -> String {
+  match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
+    TailAbsent => "/"
+    TailFound { tail: rest } => join(reverse(rest), "/")
+  }
+}
 // THE 0755 IS A SHARED CONSTANT, NOT A DERIVED FACT, and every member still on it inherits it
 // regardless of what that member's readers and writers actually need. That is why
 // /opt/gunbc/attempt-state converges world-readable while the per-attempt directories the belt
@@ -3016,7 +3022,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       deploy_raw(command: digest_shell_verify_line(digest: plan.target.executable, file_path: release_executable_install_source as NonEmptyStr)),
       deploy_raw(command: install_directory_command(
         mode: install_d_shared_mode,
-        path: path_parent_directory(path: spec.service.serve_binary as String),
+        path: path_parent_dir(path: spec.service.serve_binary as String),
         privileged: true,
       )),
       deploy_raw(command: install_file_owned_command(
@@ -3100,7 +3106,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     ServeBinary => concat([
       deploy_raw(command: install_directory_command(
         mode: install_d_shared_mode,
-        path: path_parent_directory(path: art.path as String),
+        path: path_parent_dir(path: art.path as String),
         privileged: true,
       )),
       deploy_raw(command: install_file_owned_command(

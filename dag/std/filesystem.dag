@@ -68,11 +68,9 @@ fn skip_reason(entry: FileEntry) -> String {
 data filesystem_is_text_encoding_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: std.filesystem.is_text_encoding — deleted duplicate Optional-lifted predicate; sole authority is std.encoding.is_text_encoding (Encoding, not Encoding?).")
 
 // THE PARENT DIRECTORY OF A PATH, linear in the segment count: drop the last segment, keep the
-// separators. An empty remainder is the root (`/` for `/foo` and for a relative basename). Local
-// walks that still answer `""` for a relative path with no separator (gunbc.frontend_eval.control
-// parent_dir, gunbc.roadmap.roadmap_belt_actuate belt_path_parent_dir) and the runner's
-// parent_directory_of (absolute paths, length < 3 => `/`) stay until a consumer of those modules
-// admits the root remainder; that admission is the cutover trigger, not a silent alias.
+// separators. An empty remainder is the root. This is the shared spelling for that fact; local
+// copies (frontend_eval parent_dir, runner parent_directory_of, live_deploy path_parent_dir) are
+// the same question and should call this rather than fold-concat a walk.
 fn path_parent_directory(path: String) -> String {
   match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
     TailAbsent => "/"
