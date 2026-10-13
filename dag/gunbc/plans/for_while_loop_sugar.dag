@@ -1,7 +1,7 @@
 module gunbc.plans.for_while_loop_sugar
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 
@@ -296,7 +296,7 @@ fn for_while_loop_sugar_body() -> List<MarkdownBlock> {
 }
 
 data for_while_loop_sugar_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
   slug: "for-while-loop-sugar",
   title: "for / while — frontend sugar over Loop, one canonical meaning per spelling",
   body: for_while_loop_sugar_body(),

@@ -1,7 +1,7 @@
 module gunbc.plans.v2_compiler_architecture
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 
@@ -104,7 +104,7 @@ fn v2_compiler_architecture_body() -> List<MarkdownBlock> {
 }
 
 data v2_compiler_architecture_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
   slug: "v2-compiler-architecture",
   title: "v2 compiler architecture: completion, residual, closure, and the lenses that prove them",
   body: v2_compiler_architecture_body(),

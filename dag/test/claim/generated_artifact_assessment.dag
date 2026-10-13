@@ -1,7 +1,7 @@
 module test.claim.generated_artifact_assessment
 
-import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, SeedRetentionFrontierGeneratedRsArtifact, ConcurrentDivergenceRepair, AuthorRegeneratesBeforeMerge, HealRegeneratesAfterProvisionalMerge, concurrent_divergence_repair, artifact_path, artifact_directory, artifact_name }
-import gunbc.generated_artifact_registry { heal_regenerated_after_provisional_merge_paths }
+import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, DesignFailureModesArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, SeedRetentionFrontierGeneratedRsArtifact, artifact_path, artifact_directory, artifact_name }
+import gunbc.generated_artifact { artifact_is_committed }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
@@ -24,27 +24,13 @@ import gunbc.instruments.generated_artifact_gate { generated_artifact_agreement_
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE EXCEPTION IS THE COMMITTED RUNG-DROP LEDGER, not all documentation: only
-// DesignRungDropsArtifact answers HealRegeneratesAfterProvisionalMerge. The failure-mode
-// projection is NotCommitted, so it is not a heal subject. count == 1 is that policy
-// population, not a measurement copied from the current tree.
+// Pure documentation projections are NotCommitted. DESIGN.md stays committed because every
+// session loads it. A heal-delegated concurrent-repair arm no longer has a subject.
 
-test fn only_design_ledgers_delegate_concurrent_regeneration_to_heal() -> Bool {
-  let paths = heal_regenerated_after_provisional_merge_paths()
-  count(paths) == 1
-    && any(paths, p => p == "docs/design-rung-drops.md")
-    && match concurrent_divergence_repair(a: DesignFailureModesArtifact) {
-         HealRegeneratesAfterProvisionalMerge => false
-         AuthorRegeneratesBeforeMerge => true
-       }
-    && match concurrent_divergence_repair(a: DesignRungDropsArtifact) {
-         HealRegeneratesAfterProvisionalMerge => true
-         AuthorRegeneratesBeforeMerge => false
-       }
-    && match concurrent_divergence_repair(a: DesignArtifact) {
-         AuthorRegeneratesBeforeMerge => true
-         HealRegeneratesAfterProvisionalMerge => false
-       }
+test fn documentation_projections_except_design_are_not_committed() -> Bool {
+  !artifact_is_committed(a: DesignFailureModesArtifact)
+    && !artifact_is_committed(a: RoadmapArtifact)
+    && artifact_is_committed(a: DesignArtifact)
 }
 
 // EVERY FIXTURE HERE IS AUTHORED, INPUT AND EXPECTATION BOTH. The production population is never

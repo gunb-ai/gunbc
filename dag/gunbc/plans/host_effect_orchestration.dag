@@ -1,7 +1,7 @@
 module gunbc.plans.host_effect_orchestration
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, CodeBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 
@@ -86,7 +86,7 @@ fn host_effect_orchestration_body() -> List<MarkdownBlock> {
 }
 
 data host_effect_orchestration_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
   slug: "host-effect-orchestration",
   title: "Host-effect orchestration — interface + shell→.dag migration plan",
   body: host_effect_orchestration_body(),

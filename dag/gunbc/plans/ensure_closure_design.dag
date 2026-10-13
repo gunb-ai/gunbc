@@ -1,7 +1,7 @@
 module gunbc.plans.ensure_closure_design
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 
@@ -224,7 +224,7 @@ fn ensure_closure_design_body() -> List<MarkdownBlock> {
 }
 
 data ensure_closure_design_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
   slug: "ensure-closure-design",
   title: "Completion, residual and closure: environmental dependencies derived from structure (D14)",
   body: ensure_closure_design_body(),

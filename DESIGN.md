@@ -4,7 +4,7 @@
 
 The document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it, or an independent peer, never a restatement. The principles apply to this document too.
 
-It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); declared rung drops in [docs/design-rung-drops.md](docs/design-rung-drops.md) (`gunbc.rung_drop`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. Plans live under `docs/plans/`, linked from the section that governs them.
+It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); declared rung drops under `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. Plans live under `docs/plans/`, linked from the section that governs them.
 
 ---
 
@@ -227,7 +227,7 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Boundaries.**
 
 - Faithfully realizing an admitted identity belongs to materialization / realization.
-- Demand identity and the dependency read set are a declared frontier, entering when M1 of [demand-engine-program.md](docs/plans/demand-engine-program.md) lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).
+- Demand identity and the dependency read set are a declared frontier, entering when M1 of `gunbc.plans.demand_engine_program` lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).
 
 **Existing authorities**
 
@@ -322,7 +322,7 @@ Four meta-obligations make the ladder operational:
 
 At a service boundary rung honesty is commercial: an opaque dimension needs a falsifiable quality floor with a named consequence (billing, remedy or refusal), or the claim is marketing. Below-floor delivery refuses or discharges the remedy; materially different delivery is its own named, priced product; losing the ability to verify a floor is a declared drop that may force refusal and never licenses silent below-floor delivery.
 
-Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_failure_mode`): invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in full in [docs/design-rung-drops.md](docs/design-rung-drops.md) (`gunbc.rung_drop`). The two are separate because they are appended separately, and this document names neither population so that an append never regenerates it.
+Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_failure_mode`): invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate` `regen`). The two are separate because they are appended separately, and this document names neither population so that an append never regenerates it.
 
 **The floor first, the differentiator above it.** gunbc must hold the ordinary compiler floor — names resolve, applications bind in exact bijection, values inhabit declared types, fields exist, closed variants eliminate exhaustively — and no higher capability compensates a failure there. Above it, because the substrate carries causal, cardinality, algebraic, effect, ownership, cost and realization facts, the ladder reaches classes ordinary compilers leave to tests and postmortems: an empty collection into a nonempty consumer, recursion without descent proof, a non-idempotent effect under retry, a blown complexity bound, a realization that does not preserve behavior.
 
@@ -421,7 +421,7 @@ One file per class under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_f
 
 ## Building & checks
 
-The CI contract. From a bare clone, start at [docs/onboarding.md](docs/onboarding.md) (`gunbc.contributor_onboarding_path`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document.
+The CI contract. From a bare clone, start at `gunbc.contributor_onboarding_path` (combined view: `gunbc.instruments.docs_projection_gate` `regen`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document.
 
 - **CI is one required job.** `gunbc.witness.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `witnesses`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no `witnesses` check — unobserved, not excused.
 - **A non-required job repairs two generated populations and judges nothing.** `gunbc.heal_workflow` runs on same-repository pull requests that touch the generation inputs, converges the stage0 mirrors to the seed's own fixed point and rewrites the seed-build artifacts, and `gunbc.heal_publisher_workflow` pushes the result as one bot commit, compare-and-set on the head, with a receipt naming each artifact. A fork pull request gets a notice, and a non-converging round pushes nothing. `gunbc.drift_watch_workflow` runs on a schedule, reads the default branch and fails with one typed, located finding per drifted workflow, runner sudoers, githook, `.gitignore`, `.gitattributes` or fci1 context, each naming its remedy (`gunbc.tier_o_artifact_emit` `tier_o_artifacts`); it writes nothing. Neither is a required context and neither refuses a merge; every other generated artifact is left to its author (`gunbc.rung_drop` `v1_required_lanes_withdrawn`); the two added jobs are recorded at (ruling `gunbc.design_ruling regeneration_jobs_added_to_roster`).

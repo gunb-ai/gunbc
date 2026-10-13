@@ -1,7 +1,7 @@
 module gunbc.plans.inert_layer_lens
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
 
@@ -131,7 +131,7 @@ fn inert_layer_lens_body() -> List<MarkdownBlock> {
 }
 
 data inert_layer_lens_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
   slug: "inert-layer-lens",
   title: "The inert-layer lens — modeled but unreached",
   body: inert_layer_lens_body(),

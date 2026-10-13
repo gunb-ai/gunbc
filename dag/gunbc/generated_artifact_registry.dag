@@ -8,8 +8,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact, GeneratedArtifactProducerRow,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
-  AuthorRegeneratesBeforeMerge, HealRegeneratesAfterProvisionalMerge,
-  concurrent_divergence_repair, artifact_path, artifact_is_committed, artifact_eq, artifact_producer_row
+  artifact_path, artifact_is_committed, artifact_eq, artifact_producer_row
 }
 
 // THE POPULATION, APART FROM THE VOCABULARY (DESIGN section 3: a fact's home is its layer).
@@ -29,17 +28,6 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
   ),
   map(all_plans, pl => PlanArtifact { plan: pl })
 )
-
-fn heal_regenerated_after_provisional_merge_artifacts() -> List<GeneratedArtifact> {
-  filter(generated_artifact_registry, a => match concurrent_divergence_repair(a: a) {
-    AuthorRegeneratesBeforeMerge => false
-    HealRegeneratesAfterProvisionalMerge => true
-  })
-}
-
-fn heal_regenerated_after_provisional_merge_paths() -> List<String> {
-  map(heal_regenerated_after_provisional_merge_artifacts(), a => artifact_path(a: a))
-}
 
 fn committed_generated_artifacts() -> List<GeneratedArtifact> {
   filter(generated_artifact_registry, a => artifact_is_committed(a: a))

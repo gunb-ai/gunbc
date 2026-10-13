@@ -1,8 +1,7 @@
 module gunbc.plans.dag_v2_defork_audit
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsDerivedMarkdown }
-import gunbc.defork_type_name_census { defork_census_derivation }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -147,7 +146,7 @@ fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
 }
 
 data dag_v2_defork_audit_plan: Plan = Plan {
-  projection: PlanProjectsDerivedMarkdown { derive: fn() { defork_census_derivation() } },
+  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
   slug: "dag-v2-defork-audit",
   title: "Plan — De-fork `dag/` ↔ `src/v2/` (collapse the duplicated standard library)",
   body: dag_v2_defork_audit_body(),

@@ -1,7 +1,7 @@
 module gunbc.plans.v2_closed_pr_recovery
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 import std.types { NonEmptyStr }
@@ -361,7 +361,7 @@ fn v2_closed_pr_recovery_body() -> List<MarkdownBlock> {
 }
 
 data v2_closed_pr_recovery_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
   slug: "v2-closed-pr-recovery",
   title: "v2 closed-PR recovery — census of closed-but-unfolded PRs after the v1 closeout",
   body: v2_closed_pr_recovery_body(),

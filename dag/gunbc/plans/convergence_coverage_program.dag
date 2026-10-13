@@ -1,7 +1,7 @@
 module gunbc.plans.convergence_coverage_program
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
 
@@ -66,7 +66,7 @@ fn convergence_coverage_program_body() -> List<MarkdownBlock> {
 }
 
 data convergence_coverage_program_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
   slug: "convergence-coverage-program",
   title: "Convergence coverage: the ensure chain to the execution boundary",
   body: convergence_coverage_program_body(),

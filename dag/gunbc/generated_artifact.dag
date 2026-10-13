@@ -2,7 +2,14 @@
 module gunbc.generated_artifact
 
 import gunbc.os_install { HostAutoinstall }
-import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanProjectsDerivedMarkdown, PlanIsAuthorityOnly }
+import gunbc.plan {
+  Plan,
+  PlanIsAuthorityOnly,
+  PlanProjectsCommittedMarkdown,
+  PlanProjectsDerivedMarkdown,
+  plan_doc_directory,
+  plan_doc_name,
+}
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
 import gunbc.fleet.fleet_intent { ComputeHost }
@@ -78,59 +85,6 @@ type RepoConsumer
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
   | NotCommitted
-
-// WHO REPAIRS A CONCURRENTLY-DIVERGED PROJECTION IS NOT ITS COMMIT POLICY. Both kinds below stay
-// committed, stay in the generated-artifact drift population, and stay protected by the refusing
-// merge driver. This axis answers only who pays to derive the merged authorities after that driver
-// has done its job.
-//
-// The rung-drop ledger remains the exceptional committed projection whose authority is a
-// small authored append while the projection is unbounded. Requiring every lane to run the
-// whole-tree regenerator before it can finish an otherwise mechanical merge puts that shared
-// projection on every lane's critical path. heal-generated-artifacts already checks out the
-// pushed branch head, derives every committed artifact from that head's authorities, commits
-// the result. So for that artifact heal
-// IS the route, not one of two: this arm is what the selector returns and what the emitted recipe
-// instructs, and no value in this module means "either actuator". THAT EXCLUSIVITY IS THE MODELED
-// POLICY AND IS ASSERTED IN BOTH DIRECTIONS by
-// gunbc.test.claim.generated_artifact_assessment_witness_test
-// `only_design_ledgers_delegate_concurrent_regeneration_to_heal`.
-//
-// The failure-mode ledger is no longer in this pair: its committed projection was the merge
-// hotspot, so it is NotCommitted (generated on demand) and its membership list is derived from
-// the row directory rather than hand-appended. Independent failure-mode appends do not share
-// a committed merge region.
-//
-// THE PROVISIONAL BYTES ARE THE BASE-SIDE PROJECTION, NEVER THE DRIVER-LEFT WORKTREE BYTES. This
-// sentence previously said ours, which is the action gunbc.generated_artifact_merge_driver measured
-// as row-deleting across four heads and now instructs against in its own step 1: the driver leaves
-// the ours side in the worktree, so staging it commits this branch's rows over the base's and drops
-// every row the base added since the merge base. Taking the base side is not a resolution either --
-// it leaves the tree authority-ahead-of-artifact by exactly this branch's rows, which is the state
-// heal exists to close -- but it is preservation-safe, and that is the whole requirement on a
-// provisional head.
-//
-// THE ORDERING IS THE INVARIANT, and it is what both actuators owe -- "who runs the regenerator" is
-// an actuator choice, while deriving against a pre-merge branch is a defect either one can commit:
-// preserve the base-side projection, complete the authored-authority merge, publish that as H0,
-// heal derives the projection from H0's AUTHORITIES, publish H1, verify H1. DERIVE ONLY AFTER THE
-// INTEGRATED AUTHORITY STATE EXISTS AS THE SUBJECT.
-// The required generated-artifact phase remains unchanged: it may red on H0 and must agree on H1.
-//
-// Every other artifact retains AuthorRegeneratesBeforeMerge. In particular this is not inferred
-// from ProjectDocumentation: DESIGN.md and ROADMAP.md do not share the ledger's append/content
-// asymmetry, and widening by consumer would silently move future documents onto a repair route
-// nobody judged for them.
-type ConcurrentDivergenceRepair
-  = AuthorRegeneratesBeforeMerge
-  | HealRegeneratesAfterProvisionalMerge
-
-fn concurrent_divergence_repair(a: GeneratedArtifact) -> ConcurrentDivergenceRepair {
-  match a {
-    DesignRungDropsArtifact => HealRegeneratesAfterProvisionalMerge
-    _ => AuthorRegeneratesBeforeMerge
-  }
-}
 
 // THE PATH IS A PROJECTION OF ITS PARTS, NOT THE OTHER WAY ROUND. Every row below CONSTRUCTS its
 // path from a directory and an entry name -- some literal, some computed from a spec host or a plan
@@ -240,11 +194,8 @@ fn artifact_path(a: GeneratedArtifact) -> String {
   if l.directory == "." { l.name } else { concat(concat(l.directory, "/"), l.name) }
 }
 
-// THE PLAN DECIDES ITS OWN ARM, NOT THIS ROW. A plan whose markdown the repository removed on
-// purpose (gunbc.plan PlanIsAuthorityOnly) is still rostered, still generated, and still refused
-// if its generation refuses -- it is simply not expected on disk. Answering CommitRequired for
-// every plan is what let a deleted projection read as an absent one, and once a drift phase
-// adjudicates the population that reads as an obligation to recreate the deleted file.
+// PLAN MARKDOWN COMMIT DISPOSITION IS `Plan.projection` AND NOTHING ELSE (`gunbc.plan`
+// `PlanProjection`). This function reads that field; it does not override it.
 // THE COUPON PROGRAM IS GENERATED BUT NOT COMMITTED, because RepoConsumer answers a narrower
 // question than "what eventually consumes these bytes": it answers WHY THEY MUST PERSIST IN A GIT
 // CHECKOUT. A CAD kernel executing an emitted program establishes no such requirement -- the kernel
@@ -273,17 +224,16 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     HealPublisherWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     DriftWatchWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     BranchRunGrantBrokerWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
-    RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
+    RoadmapArtifact => NotCommitted
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignFailureModesArtifact => NotCommitted
-    DesignRungDropsArtifact => CommitRequired { consumer: ProjectDocumentation }
-    ContributorOnboardingArtifact => CommitRequired { consumer: ProjectDocumentation }
-    PlanArtifact { plan } =>
-      match plan.projection {
-        PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
-        PlanProjectsDerivedMarkdown { derive: _ } => CommitRequired { consumer: ProjectDocumentation }
-        PlanIsAuthorityOnly { ruling: _ } => NotCommitted
-      }
+    DesignRungDropsArtifact => NotCommitted
+    ContributorOnboardingArtifact => NotCommitted
+    PlanArtifact { plan } => match plan.projection {
+      PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
+      PlanProjectsDerivedMarkdown { derive: _ } => CommitRequired { consumer: ProjectDocumentation }
+      PlanIsAuthorityOnly { ruling: _ } => NotCommitted
+    }
     RunnerDeployArtifact => NotCommitted
     CouponCadQueryProgramArtifact => NotCommitted
     WholeCorpusCompileMeasuredRootDemandsArtifact => CommitRequired { consumer: CompilerRunInput }
