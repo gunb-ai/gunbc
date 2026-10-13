@@ -355,8 +355,11 @@ test fn w_note_recovery_unknown_work_is_refused() -> Bool {
 }
 
 test fn w_duplicate_records_refuse_persist_and_do_not_revive() -> Bool {
-  let one = persisted_waiting()
-  let dup = CallerBacklogSnapshot { records: concat(one.records, one.records) }
+  let cancelled = snapshot_after_cancel(
+    snapshot: persisted_waiting(),
+    standing: cancel_work(snapshot: persisted_waiting(), work: work_a),
+  )
+  let dup = CallerBacklogSnapshot { records: concat(cancelled.records, cancelled.records) }
   (match persist_waiting(snapshot: dup, work: work_a, reservation: reservation_a, generation: 9) {
     PersistRefusedDuplicate => true
     WaitingPersisted { record: _ } => false
@@ -368,16 +371,10 @@ test fn w_duplicate_records_refuse_persist_and_do_not_revive() -> Bool {
       CallerRecordFound { record: _ } => false
       CallerRecordAbsent => false
     })
-    && (match note_recovery(
+    && (match snapshot_after_persist(
       snapshot: dup,
-      work: work_a,
-      event: RecoveryEvent { kind: RecoveryRequest, succeeded: false },
-      bound: 1,
+      standing: persist_waiting(snapshot: dup, work: work_a, reservation: reservation_a, generation: 9),
     ) {
-      RecoveryDuplicate => true
-      RecoveryNoted { record: _ } => false
-      RecoveryBoundExceeded { record: _ } => false
-      RecoveryUnknownWork => false
-      RecoveryAlreadyTerminal { phase: _ } => false
+      CallerBacklogSnapshot { records: rs } => length(rs) == 2
     })
 }
