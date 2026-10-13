@@ -6038,6 +6038,124 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "compiler-guarantee", contribution: "Each closes one ordinary-floor class the blocking door requires."),
     ),
     roadmap_node(
+      identity: "rn_KGZG93FSJ53MTWC2F4V3U9GY9L",
+      id: "cardinality-absence",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "Cardinality / absence: one model through every retained compiler path",
+        boundary: "Consolidate presence and nonempty-sequence meaning, deliver cardinality enforcement, and retire the competing production authorities across retained source, runtime, target and ingestion paths. Containment is not serial order: a child is a prerequisite of another only through an explicit edge, and only cardinality-optional-declaration and cardinality-native-closure-cutover gate the typed native closure (the native-seven node stays the authority for whether it is typed). The permanent Cardinality / absence conformance domain (gunbc.design_argument conformance_domains) survives this parent. Front-end manager owns the program; emitter and native-runtime children coordinate with the native-execution manager.",
+        displaced_cost: "Without one program, presence, absence and nonemptiness keep several authorities and each consumer disagrees at its seam.",
+        first_slice: "Run the children in dependency order from their own edges; none waits on the parent.",
+        red_control: "Any retained path still typing, evaluating or realizing absence by a rival authority keeps this red.",
+        out_of_scope: "Not the permanent conformance domain, not foreign null models or reason-bearing meanings, and not a second omnibus implementation task.",
+        handback: "Executed child results joined to the retained consumer and target population; required cardinality admission active; obsolete absence authorities and migration allowances retired; reason, policy and upstream distinctions preserved."
+      )),
+      parent: in_project(project: "compiler-guarantee", contribution: "The cardinality program is a recovery under the compiler-guarantee ladder."),
+    ),
+    roadmap_node(
+      identity: "rn_44E8L35PWJQQR8833G5F8ARNXQ",
+      id: "cardinality-absence-conformance",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "Cardinality / absence is an enrolled conformance domain with its rulings",
+        boundary: "Add the row to gunbc.design_argument conformance_domains, record the six 2026-10-13 rulings in gunbc.design_ruling, file the failure-mode rows, and exercise the derived reviewer and DESIGN projection. No new conformance engine and no general absence classifier.",
+        displaced_cost: "Cardinality forks go unreviewed against any home.",
+        first_slice: "One derived criterion conformance-cardinality-absence under the three-valued algebra.",
+        red_control: "A missing-home or disconnected-row mutation that does not fail its control keeps this red.",
+        out_of_scope: "Rung claims: enrollment and projection only.",
+        handback: "One derived criterion, resolved homes, matching document and brief populations, and discriminating enrollment controls."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "Enrollment is documentation and review; the engineering repair does not wait for it."),
+    ),
+    roadmap_node(
+      identity: "rn_X9MHZ7FXWXKKS32YBXJASTZJM5",
+      id: "cardinality-optional-declaration",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "T? and explicit Optional name the same declaration",
+        boundary: "Make sugar and explicitly authored Optional applications resolve to std.optional.Optional with its acquisition dependency, through v2.compiler.module_acquisition, lowering, resolution and inference, preserving aliases, type arguments, constructor parents and nested layers. Remove the synthetic kernel-mint authority at each complete replacement boundary.",
+        displaced_cost: "A kernel mint beside the declaration is a second authority and its homonyms bind the wrong type.",
+        first_slice: "A production-source control showing T? and explicit Optional reach one declaration.",
+        red_control: "A local homonym redirecting T?, or a missing Optional declaration not refusing, keeps this red.",
+        out_of_scope: "Retiring every seed occurrence is not a gate on a native consumer already using the correct authority.",
+        handback: "Controls for same-declaration, homonym, missing authority and nested layers, and exactly which mint route was deleted."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "Gates the typed native closure where the closure uses these forms."),
+    ),
+    roadmap_node(
+      identity: "rn_8RSG8MNVXVE4QKRZHKJ7AN8WJT",
+      id: "cardinality-native-closure-cutover",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "A named native cohort moves from none to declared absence, completely",
+        boundary: "Complete the migration of a precisely named native cohort: none to declared Absent, explicit Present branches, correct constructor dependencies, coherent typing and the production execution and realization path, with no new legacy-null use. A complete consumer cut, not 'rewrite source now, repair the evaluator later'.",
+        displaced_cost: "A half-migrated cohort keeps two absence semantics alive.",
+        first_slice: "Name the cohort by identity and migrate it end to end.",
+        red_control: "Any fallback into legacy none semantics in the migrated cohort keeps this red.",
+        out_of_scope: "The whole historical module population is not the acceptance condition.",
+        handback: "Cohort identities, migrated occurrences, the actual native invocation and outcome, positive and negative controls for joins and nested Optional, and remaining unrelated refusals stated."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "Gates the typed native closure for affected sites in that cohort."),
+    ),
+    roadmap_node(
+      identity: "rn_H4C2NSEPA3NKL7SY387ZP8VVQ2",
+      id: "cardinality-carrier-consolidation",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "Redundant presence and nonempty carriers are deleted by complete cohort",
+        boundary: "Consolidate std.constructors Cardinality, v2.std.node_query DeclaredField, v2.std.algebra head and tail results, v2.std.diagnostic and gunbc.design_argument nonempty carriers (including ConformanceHomes and ConformanceHomeGroups where their contracts are only nonempty sequences) into Optional, FreeMonoid and FreeSemigroup. Keep independent cause, progress, policy and foreign-state information; preserve ordering and specialized equality deliberately.",
+        displaced_cost: "Each rival carrier is a meaning fork.",
+        first_slice: "The first cohort, including the registry's own hand-written nonempty records.",
+        red_control: "A new domain-specific NonEmpty record replacing another keeps this red.",
+        out_of_scope: "Broad classification of every absence-named variant.",
+        handback: "Each removed carrier names its canonical replacement and migrated consumers with executing controls; each retained one names its independent distinction."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "Gates the typed native closure only for portions that are actual closure blockers."),
+    ),
+    roadmap_node(
+      identity: "rn_CMUYU95KGPZWV6WDZ7XGZ7W5A9",
+      id: "cardinality-realization-conformance",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "Runtime, target and foreign paths preserve the same distinctions",
+        boundary: "Constructor, pattern, indexing, equality and encoding behavior over the admitted representation, RuntimeValue operations, the target model and existing language realization rows, and foreign decoders. The subject population is derived from the compiler's retained supported paths. Controlled specimens: Absent; Present(Absent); Present(Present(value)); absent collection; present empty collection; present collection containing absent entries; foreign member missing; present with null; present with an invalid value.",
+        displaced_cost: "A target can erase a nested layer or conflate absent with empty after typing was right.",
+        first_slice: "One retained path end to end with the nine specimens.",
+        red_control: "Any in-scope path that neither executes the specimens nor refuses explicitly keeps this red.",
+        out_of_scope: "Unrelated target completion.",
+        handback: "Executed results or explicit realization refusals for each in-scope path."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "No blanket gate; what the current native cohort needs belongs in that cohort."),
+    ),
+    roadmap_node(
+      identity: "rn_37DWVWGXSEPGF8WZ7HT6TNAXZB",
+      id: "cardinality-absence-retirement",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+      line: ticket(t: fields(
+        headline: "The obsolete absence authorities and the migration allowance are deleted",
+        boundary: "Finish the remainder and delete legacy keyword, mint and runtime routes, spelling fallbacks, compatibility machinery and the migration allowance. Shared foreign-null machinery survives only where an independently retained upstream contract requires it. The remainder is explicit, identity-based and shrink-only; counts are observations, not oracles.",
+        displaced_cost: "Rival authorities left in place keep shaping decisions.",
+        first_slice: "The census of remaining consumers by identity.",
+        red_control: "A retained DAG consumer on the retired semantics, or a fallback reintroducing them, keeps this red.",
+        out_of_scope: "The persistent conformance domain and its regression evidence.",
+        handback: "No retained consumer uses the retired semantics, no production fallback, every formerly permitted subject restored or retired, the allowance deleted."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "cardinality-absence", contribution: "No gate on native progress."),
+    ),
+    roadmap_node(
       identity: "rn_LOVW74OSEOKAJHINOV2BVHPNCE",
       id: "cardinality-vertical-slice",
       owner: "compiler-guarantee",
@@ -6052,7 +6170,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The lattice fragment landed, the seam judgment site, both probe receipts."
       ), on: "2026-09-24", note: "Moved from the brief at the 100-word re-cut (context, not an obligation): (v2.std.refinement refined_vacuous_stub_pack, the forged Rejected-arm mint this candidate used to reference, is deleted outright — not merely fixed — as of the delete-first replacement in gunbc.std.refinement; the wall question below is unaffected and still open)"), on: "2026-09-30", note: "Not yet centered: vertical slice across infer; lane judgment.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "compiler-guarantee", contribution: "A 0..n producer cannot feed a 1..n consumer."),
+      parent: in_project(project: "cardinality-absence", contribution: "A 0..n producer cannot feed a 1..n consumer: the program's missing bound model, delivered with its consumer."),
     ),
     roadmap_node(
       identity: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ",
@@ -6205,7 +6323,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The admission receipt and the flip's green whole-tree run.",
       ), on: "2026-09-30", note: "Not yet centered: far downstream.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "compiler-guarantee", contribution: "The first extended class admitted once the floor closes: a possibly-empty collection cannot reach a nonempty consumer through the accepted door."),
+      parent: in_project(project: "cardinality-absence", contribution: "Activation of the completed cardinality judgment as a Required acceptance obligation."),
     ),
     roadmap_node(
       identity: "rn_W2KPJ5VLF3RMNDELVJXP6EKL5A",
