@@ -1,5 +1,5 @@
 module std.types
-import std.optional { Absent, Present }
+import std.optional { Absent, Present, optional_absent, optional_present }
 
 import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map }
 import std.unicode.types { unicode_scalar }
@@ -55,7 +55,7 @@ fn container_param_name(kind_name: String, index: Int) -> String? {
   let names = container_param_names_for(kind_name: kind_name)
   match names |> enumerate |> filter(pair => pair.first == index) |> map(pair => pair.second) |> first {
     Present { value: name } => Present { value: name }
-    Absent => none
+    Absent => Absent
   }
 }
 
@@ -237,7 +237,7 @@ data http_status_min: Int = 100
 data http_status_max: Int = 599
 
 fn http_status_of(n: Int) -> HttpStatus? {
-  if n < http_status_min || n > http_status_max { none } else { Present { value: n } }
+  if n < http_status_min || n > http_status_max { optional_absent() } else { optional_present(value: n) }
 }
 
 type Email        = String
