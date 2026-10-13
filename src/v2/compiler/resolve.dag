@@ -3515,6 +3515,11 @@ fn resolve_list_elements_expected(ctx: ResolveContext, n: Node, x: ResolveExpect
 // other answer -- a field projection, if the qualified door reads the first segment as a local value
 // (whether a dotted path is a name or a projection is decided in that door, by the first segment's
 // scope, and nowhere here) -- is not a constructor and refuses the same way.
+// ConstructorOccurrence keeps a variant tag (Optional) and drops a colliding type of the
+// same spelling. Record construction `Rec { value: U }` is a payload too: eligibility keeps
+// RecordTypePayload on this required kind (v2.std.symbol_index
+// symbol_index_construct_tag_keeps_record_payload) so the tag is not unbound before
+// resolve_construct_tag_names_constructor joins the payload map.
 fn resolve_construct_tag_walk(ctx: ResolveContext, reference: Node) -> ResolveNodeWalk {
   let tag_ctx = resolve_ctx_with_reference_category(ctx: ctx, category: ConstructorOccurrence)
   match qualified_name_from_node(root: reference) {

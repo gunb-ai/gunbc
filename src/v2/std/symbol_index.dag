@@ -778,6 +778,29 @@ fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBinding
 // distinct wrong-kind refusal (std.occurrence_binding_resolve Inadmissible arm, refusal: none;
 // occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds). WrongOccurrenceRole
 // is the wrong *role* (declaration vs reference), not the wrong occurrence category.
+//
+// CONSTRUCT TAGS NAME DECLARED PAYLOADS. A record stays TypeOccurrence so `x: Rec` still binds
+// (TypeOccurrence reference, TypeOccurrence declaration). A construct `Rec { value: U }` asks for
+// ConstructorOccurrence; the kernel admits only ConstructorOccurrence, which is the variant arm.
+// RecordTypePayload is the other payload (v2.compiler.resolve resolve_path_is_declared_payload),
+// kept here rather than recategorizing the record (which would unbind type-position Rec) or
+// widening the kernel to every TypeOccurrence.
+fn symbol_index_construct_tag_keeps_record_payload(
+  index: SymbolIndex,
+  required: OccurrenceCategory,
+  candidate: LexicalBindingCandidate
+) -> Bool {
+  match required {
+    ConstructorOccurrence =>
+      match symbol_index_declared_payload_at(index: index, qualified_path: candidate.path) {
+        Present { value: RecordTypePayload } => true
+        Present { value: VariantArmPayload } => false
+        Absent => false
+      }
+    _ => false
+  }
+}
+
 fn symbol_index_lexical_eligible(
   index: SymbolIndex,
   required: OccurrenceCategory,
@@ -792,7 +815,12 @@ fn symbol_index_lexical_eligible(
         declaration: symbol_index_candidate_category(index: index, candidate: candidate)
       ) {
         OccurrenceCategoryBindingAdmissible => list_snoc_item(xs: acc, item: candidate)
-        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => acc
+        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } =>
+          if symbol_index_construct_tag_keeps_record_payload(index: index, required: required, candidate: candidate) {
+            list_snoc_item(xs: acc, item: candidate)
+          } else {
+            acc
+          }
       }
     }
   )

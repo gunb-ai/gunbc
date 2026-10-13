@@ -56,6 +56,8 @@ data kab_rec_source: String = "module v2.test.kab.rec\n\ntype Rec { value: Unit 
 
 data kab_rec_user_source: String = "module v2.test.kab.rec_user\n\nimport v2.test.kab.rec\nimport v2.test.kab.rec { Rec }\nfn f(x: Rec) -> Rec { x }\n"
 
+data kab_rec_ctor_source: String = "module v2.test.kab.rec_ctor\n\nimport v2.test.kab.rec\nimport v2.test.kab.rec { Rec, Unit, U }\nfn f() -> Rec { Rec { value: U } }\n"
+
 fn kab_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -80,7 +82,8 @@ fn kab_context() -> Outcome<NativeTestContext> {
     kab_read(text: kab_qual_type_source, id: ^kab_qual_type, path: "src/v2/test/fixture/kab/qual_type.dag"),
     kab_read(text: kab_qual_ctor_source, id: ^kab_qual_ctor, path: "src/v2/test/fixture/kab/qual_ctor.dag"),
     kab_read(text: kab_rec_source, id: ^kab_rec, path: "src/v2/test/fixture/kab/rec.dag"),
-    kab_read(text: kab_rec_user_source, id: ^kab_rec_user, path: "src/v2/test/fixture/kab/rec_user.dag")
+    kab_read(text: kab_rec_user_source, id: ^kab_rec_user, path: "src/v2/test/fixture/kab/rec_user.dag"),
+    kab_read(text: kab_rec_ctor_source, id: ^kab_rec_ctor, path: "src/v2/test/fixture/kab/rec_ctor.dag")
   ])
 }
 
@@ -94,6 +97,7 @@ type KabVerdicts {
   qual_type: NativeModuleResolveVerdict
   qual_ctor: NativeModuleResolveVerdict
   rec_user: NativeModuleResolveVerdict
+  rec_ctor: NativeModuleResolveVerdict
 }
 
 fn kab_verdicts() -> Optional<KabVerdicts> {
@@ -111,7 +115,8 @@ fn kab_verdicts() -> Optional<KabVerdicts> {
           data_n_as_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_as_type", path: ^kab_data_n_as_type).verdict,
           qual_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_type", path: ^kab_qual_type).verdict,
           qual_ctor: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_ctor", path: ^kab_qual_ctor).verdict,
-          rec_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.rec_user", path: ^kab_rec_user).verdict
+          rec_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.rec_user", path: ^kab_rec_user).verdict,
+          rec_ctor: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.rec_ctor", path: ^kab_rec_ctor).verdict
         })
       }
   }
@@ -215,5 +220,15 @@ test fn a_listed_record_type_binds_beside_a_whole_module_import() -> Bool {
   match kab_verdicts() {
     Absent => false
     Present { value: vs } => kab_accepted(v: vs.rec_user)
+  }
+}
+
+// CONSTRUCT TAG. Rec is RecordTypePayload / TypeOccurrence; the tag door asks for
+// ConstructorOccurrence. Eligibility keeps the record-payload arm so Rec { value: U }
+// is not unbound (review 79222).
+test fn a_record_construct_tag_resolves() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.rec_ctor)
   }
 }
