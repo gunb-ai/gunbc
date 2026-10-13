@@ -14,9 +14,9 @@ import v2.workflow.namespace_xl2_rehearsal_census {
 }
 
 // THE REHEARSAL'S CONTROL SPECIMENS, ONE HOME: read by the hermetic claims
-// (test.claim.namespace_xl2_rehearsal_census) and by the native instrument
-// (v2.workflow.xl2_rehearsal_native), so the red the native run discriminates on is the same
-// specimen the floor discriminates on, not a second copy of it (DESIGN section 3).
+// (test.claim.namespace_xl2_rehearsal_census) and, when it lands, by the native rehearsal instrument, so
+// the red the native run discriminates on is the same specimen the floor discriminates on, not a
+// second copy of it (DESIGN section 3).
 // THE CONTROLS THE BRIEF OWES, RUN THROUGH THE REHEARSAL'S OWN COMPOSITION: the typed strip
 // (gunbc.namespace_cut.namespace_step0_strip_producer), path admission, the path-faithful ingest, and
 // v2.compiler.compile's census-resolve. Only the exact-base collector is replaced by supplied
