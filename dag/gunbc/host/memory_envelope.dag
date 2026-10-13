@@ -129,11 +129,15 @@ type MemoryEnvelopeVerdict
 // WHAT A GREEN ENVELOPE ENTITLES A CONSUMER TO CONCLUDE, and what the contract epoch hashes.
 // memory_envelope_verdict is the execution of this row: a different enforcement is a different
 // contract, even if the env var name that carries EnvelopeSlotRequired stays put.
-type MemoryEnvelopeEnforcement
-  = RefuseOomOrSwapAndPrintReceipt
-  | EnvelopeEnforcementUnspecified
+type MemoryEnvelopeEnforcement {
+  refuse_oom: Bool
+  refuse_swap: Bool
+}
 
-data memory_envelope_enforcement: MemoryEnvelopeEnforcement = RefuseOomOrSwapAndPrintReceipt
+data memory_envelope_enforcement: MemoryEnvelopeEnforcement = MemoryEnvelopeEnforcement {
+  refuse_oom: true,
+  refuse_swap: true,
+}
 
 type MemoryEnvelopeContract {
   requirement: MemoryEnvelopeRequirement
@@ -151,10 +155,11 @@ fn memory_envelope_requirement_digest(requirement: MemoryEnvelopeRequirement) ->
 }
 
 fn memory_envelope_enforcement_digest(enforcement: MemoryEnvelopeEnforcement) -> String {
-  match enforcement {
-    RefuseOomOrSwapAndPrintReceipt => "refuse_oom_or_swap_and_print_receipt"
-    EnvelopeEnforcementUnspecified => "envelope_enforcement_unspecified"
-  }
+  join([
+    if enforcement.refuse_oom { "refuse_oom" } else { "allow_oom" },
+    "\t",
+    if enforcement.refuse_swap { "refuse_swap" } else { "allow_swap" },
+  ], "")
 }
 
 fn memory_envelope_contract_digest(contract: MemoryEnvelopeContract) -> String {
@@ -181,23 +186,20 @@ fn memory_envelope_required_ci_contract() -> MemoryEnvelopeContract {
 }
 
 fn memory_envelope_verdict(oom_kills_delta: Int, swap_current: Int?, swap_peak_rose: Bool?, swap_max_zero: Bool) -> MemoryEnvelopeVerdict {
-  match memory_envelope_enforcement {
-    EnvelopeEnforcementUnspecified =>
-      EnvelopeViolated { oom_kills_delta: oom_kills_delta, swap_current: swap_current, swap_peak_rose: swap_peak_rose, swap_max_zero: swap_max_zero }
-    RefuseOomOrSwapAndPrintReceipt =>
-      let swap_resident = match swap_current {
-        Absent => true
-        Present { value: v } => v > 0
-      }
-      let swap_rose_or_unobservable = match swap_peak_rose {
-        Absent => swap_max_zero == false
-        Present { value: rose } => rose
-      }
-      if oom_kills_delta > 0 || swap_resident || swap_rose_or_unobservable {
-        EnvelopeViolated { oom_kills_delta: oom_kills_delta, swap_current: swap_current, swap_peak_rose: swap_peak_rose, swap_max_zero: swap_max_zero }
-      } else {
-        EnvelopeHeld
-      }
+  let swap_resident = match swap_current {
+    Absent => true
+    Present { value: v } => v > 0
+  }
+  let swap_rose_or_unobservable = match swap_peak_rose {
+    Absent => swap_max_zero == false
+    Present { value: rose } => rose
+  }
+  let oom = memory_envelope_enforcement.refuse_oom && oom_kills_delta > 0
+  let swap = memory_envelope_enforcement.refuse_swap && (swap_resident || swap_rose_or_unobservable)
+  if oom || swap {
+    EnvelopeViolated { oom_kills_delta: oom_kills_delta, swap_current: swap_current, swap_peak_rose: swap_peak_rose, swap_max_zero: swap_max_zero }
+  } else {
+    EnvelopeHeld
   }
 }
 
