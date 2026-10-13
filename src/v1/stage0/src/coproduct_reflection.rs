@@ -58,11 +58,16 @@ fn expect_string_lexeme(value: Option<&Value>, what: &str) -> InterpResult<Strin
             let mut spelling = String::new();
             for item in items {
                 match item {
-                    Value::Int(c) => {
-                        if let Some(ch) = char::from_u32(c as u32) {
-                            spelling.push(ch);
+                    Value::Int(c) => match u32::try_from(c).ok().and_then(char::from_u32) {
+                        Some(ch) => spelling.push(ch),
+                        None => {
+                            return Err(InterpError::TypeError {
+                                msg: format!(
+                                    "{what} lexeme element {c} is not a Unicode scalar value"
+                                ),
+                            });
                         }
-                    }
+                    },
                     _ => {
                         return Err(InterpError::TypeError {
                             msg: format!("{what} lexeme contains non-Char element"),

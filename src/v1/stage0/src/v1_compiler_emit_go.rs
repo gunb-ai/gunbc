@@ -9,6 +9,7 @@ use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
+pub use crate::std_unicode_scalar::ascii_lowercase;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Go;
 use crate::v1_compiler_emit::BoundOperation::*;
@@ -38,8 +39,8 @@ pub use crate::v1_compiler_emit_core_support::{
     escape_string_literal_body, extract_test_projections, is_leaf_type_item, is_type_alias_item,
     is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
     make_indent, module_filename_collision_diagnostics, module_to_filename, sanitize_service_name,
-    service_var_name, test_function_name, to_lower_char, to_screaming_snake, to_snake, to_string,
-    to_string_helper, to_upper_char, unique_strings,
+    service_var_name, test_function_name, to_screaming_snake, to_snake, to_string,
+    to_string_helper, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
@@ -563,25 +564,7 @@ pub fn go_package_name(module_name: String) -> String {
                 .collect::<Vec<_>>(),
         );
         match parts.clone().last().cloned() {
-            Some(last_part) => Rc::new({
-                let mut __result = Vec::new();
-                for c in Rc::new(
-                    last_part
-                        .clone()
-                        .chars()
-                        .map(|c| c as i64)
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                {
-                    __result.push(crate::v1_compiler_emit_core_support::to_lower_char(
-                        c.clone(),
-                    ));
-                }
-                __result
-            })
-            .join(&"".to_string()),
+            Some(last_part) => crate::std_unicode_scalar::ascii_lowercase(last_part.clone()),
             std::option::Option::None => "main".to_string(),
         }
     }

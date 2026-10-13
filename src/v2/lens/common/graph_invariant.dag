@@ -4,8 +4,7 @@ import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.application { apply_edit }
 import v2.std.lens_verdict { Holds, LensVerdict, Violation }
-import v2.std.algebra { contains, length }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, contains, length }
 import v2.std.dependency { DependencyView }
 import v2.std.diagnostic {
   Accepted,

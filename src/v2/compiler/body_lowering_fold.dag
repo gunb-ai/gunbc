@@ -16,7 +16,7 @@ import v2.std.service_realization_labels {
 }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq }
 import v2.compiler.fold_lowering {
   CallbackAllByAnd,
   CallbackAnyByOr,
@@ -89,7 +89,6 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
 import v2.std.node { content_hash }
-import v2.std.algebra { fold_list, list_map, length, zip_eq }
 import v2.std.collection {
   empty_map,
   list_at_optional,
@@ -10292,8 +10291,8 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
 // exceeds the emitter's bounded recursion fuel on ordinary literals. (gunbc#12208 first lowered to a
 // right-nested list_append over singletons; that forked this authority and was reversed.) The head
 // is the declaring qualified name as a spine -- resolve binds it through its qualified door and
-// mints it as a resolved reference -- and it names std.algebra, NOT v2.std.algebra: v2.std.algebra
-// imports v2.std.node, so a list literal in v2.std.node referring to v2.std.algebra would close a
+// mints it as a resolved reference -- and it names std.algebra, NOT std.algebra: std.algebra
+// imports v2.std.node, so a list literal in v2.std.node referring to std.algebra would close a
 // node -> algebra -> node cycle, and v2 collapses onto dag/std, not the reverse. The Transform is
 // not an application: 04_infer types it by its one introduction case
 // (v2.compiler.infer infer_transform_freemonoid_introduction), every element unifying to one T. The

@@ -10,7 +10,7 @@ module gunbc.guarantee_stall.roster
 // every projection derived from it. Append at the end.
 
 import std.types { List, Bool }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import gunbc.guarantee_stall { GuaranteeStall }
 import gunbc.guarantee_stall.pci_address_rendering_equivalence_stall { pci_address_rendering_equivalence_stall }
 import gunbc.guarantee_stall.fabric_purpose_handover_registration_unobserved_stall { fabric_purpose_handover_registration_unobserved_stall }

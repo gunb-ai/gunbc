@@ -7,7 +7,7 @@ module test.claim.emitter_freemonoid_arm_chain_witness
 // FIRST answer to each, and emitted `if __fm.is_empty() { A } else { B }`. Its admission predicate
 // established only that the SCRUTINEE resolves to FreeMonoid, never that the ARMS fit a two-way
 // split. So a refutable field sub-pattern degraded to a wildcard, every arm after the first `Cons`
-// arm was discarded, and an arm guard was dropped outright. v2.std.algebra `list_init` emitted as
+// arm was discarded, and an arm guard was dropped outright. std.algebra `list_init` emitted as
 // `if __fm.is_empty() { vec![] } else { vec![] }` -- one function, every input answered `[]`.
 //
 // WHY THIS ROW EXISTS AT ALL, because the repair's own PR argued it could not. The PR body and an
@@ -60,7 +60,7 @@ module test.claim.emitter_freemonoid_arm_chain_witness
 // that lowering bound nothing and emitted no skip. `drop_last(t.clone())` is the unambiguous one,
 // because only arm three's body carries a recursive call on a bound tail.
 //
-// RED-ABILITY IS MEASURED, NOT ARGUED. v2.std.algebra `list_init` carries this fixture's EXACT arm
+// RED-ABILITY IS MEASURED, NOT ARGUED. std.algebra `list_init` carries this fixture's EXACT arm
 // shape, and its retained pre-repair emission is
 // `{ let __fm = xs.clone(); if __fm.is_empty() { Rc::new(vec![]) } else { Rc::new(vec![]) } }`
 // with `skip(1)` appearing 0 times and `list_init(t` appearing 0 times. So both pins are absent

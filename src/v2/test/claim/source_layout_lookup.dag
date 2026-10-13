@@ -3,7 +3,7 @@ module v2.test.claim.source_layout_lookup
 import std.types { Bool, List }
 import std.coercion { unicode_scalar_fold }
 import v2.std.text { String }
-import v2.std.algebra { for_all, length, list_map }
+import std.algebra { for_all, length, list_map }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderReader, ModuleHeaderRefused }

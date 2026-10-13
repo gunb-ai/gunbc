@@ -45,7 +45,7 @@ fn primitive_identity_runtime_name(identity: PrimitiveIdentity) -> String {
 // is decl_facts(pool_roots: pool_roots)): it is correct by construction, because a body that could
 // never survive being reached is exactly what a declared host seam should look like -- reaching it
 // recurses to the evaluation-budget refusal. A ModeledProjection body is REAL CODE that the builtin
-// arm intercepts ahead of user-fn dispatch (v2.std.algebra length has a genuine fold_list body no
+// arm intercepts ahead of user-fn dispatch (std.algebra length has a genuine fold_list body no
 // bare call reaches): it is dead code that looks live, and someone will eventually edit it
 // believing it runs. This carrier makes that observable rather than folklore. Repairing the
 // dead-code half is NOT this carrier's job and is not claimed here.
@@ -129,7 +129,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_bytes_octets, module_path: "std.bytes", decl_name: "bytes_octets", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_utf8_encode_bytes, module_path: "std.bytes", decl_name: "utf8_encode_bytes", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_pure_dag_seam_unreachable, module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable", fidelity: HostRealizedSeam),
-    primitive_projection_row(primitive: primitive_length, module_path: "v2.std.algebra", decl_name: "length", fidelity: ModeledProjection),
+    primitive_projection_row(primitive: primitive_length, module_path: "std.algebra", decl_name: "length", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_map_insert, module_path: "v2.std.collection", decl_name: "map_insert", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_lookup, module_path: "v2.std.collection", decl_name: "map_lookup", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_get, module_path: "v2.std.collection", decl_name: "list_at_optional", fidelity: ModeledProjection),

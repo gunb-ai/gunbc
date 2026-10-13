@@ -11,7 +11,7 @@ import v2.compiler.body_lowering_fold {
   no_wrapper_retentions,
   wrapper_retentions_concat
 }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.compiler.normalized_tree { admit_retention_free, admit_unmarked_normalized_roots }
 import v2.std.diagnostic {
   Accepted,
@@ -30,7 +30,6 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.node { Atom, Conj, Node, TypeNode, content_hash, node_synthetic }
-import v2.std.algebra { fold_list }
 
 // THE RETENTION DOOR, EXECUTED (MQ-4). Retention is a typed variant of the body lowering's result
 // (v2.compiler.body_lowering_fold WrapperRetention); v2.compiler.normalize gathers it into a

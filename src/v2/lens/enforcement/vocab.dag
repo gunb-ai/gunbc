@@ -1,6 +1,6 @@
 module v2.lens.enforcement.vocab
 
-import v2.std.algebra { contains }
+import std.algebra { contains }
 import v2.std.text { string_eq }
 
 
