@@ -1386,14 +1386,6 @@ fn body_lower_type_with_kept_where(base: Node, where_clause: Node, source: Node)
   )
 }
 
-fn body_lower_type_carrying_optional_where(base: Node, clause: Optional<Node>, source: Node) -> Outcome<Node> {
-  match clause {
-    Absent => outcome_accepted(value: base)
-    Present { value: where_clause } =>
-      body_lower_type_with_kept_where(base: base, where_clause: where_clause, source: source)
-  }
-}
-
 // A BINDER'S INLINE REFINEMENT HAS NO TYPE-VARIANT SHELL TO REHOME. The wrap is synthetic; the
 // clause is closed as an image of the authored where production (the same close type variants
 // use on the clause). Reusing the clause's minted id on a second Conj is normalize_reason_minted_occurrence_duplicated.
