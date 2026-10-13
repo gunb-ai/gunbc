@@ -4,7 +4,7 @@
 
 The document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it, or an independent peer, never a restatement. The principles apply to this document too.
 
-It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); declared rung drops under `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. Plans live under `docs/plans/`, linked from the section that governs them.
+It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); declared rung drops under `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. A plan's authority is its `.dag` carrier; generated plan markdown whose only consumer is ProjectDocumentation is not a checkout artifact (ruling `gunbc.design_ruling project_documentation_projections_are_not_checkout_artifacts`). Write it on demand (`gunbc.instruments.generated_artifact_gate` `documentation_wet`). Plans that still project committed markdown stay linked from the section that governs them.
 
 ---
 

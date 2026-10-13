@@ -5,6 +5,7 @@ import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 import gunbc.plans.demand_restatement_follow_up { demand_restatement_follow_up_commit_range, demand_restatement_retained_row_texts }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn demand_engine_program_body() -> List<MarkdownBlock> {
   [
@@ -221,7 +222,7 @@ fn demand_engine_program_body() -> List<MarkdownBlock> {
 }
 
 data demand_engine_program_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "demand-engine-program",
   title: "Demand-engine program: derived demand, lawful decomposition, realization and materialization",
   body: demand_engine_program_body(),

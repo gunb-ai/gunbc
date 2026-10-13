@@ -4,6 +4,7 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn harness_session_lifecycle_body() -> List<MarkdownBlock> {
   [
@@ -98,7 +99,7 @@ fn harness_session_lifecycle_body() -> List<MarkdownBlock> {
 }
 
 data harness_session_lifecycle_plan: Plan = Plan {
-  projection: PlanIsAuthorityOnly { ruling: "ProjectDocumentation-only plan markdown is not a checkout artifact (PR 13810): the .dag carrier is the authority, per PlanIsAuthorityOnly / a295e17415. Generate locally; do not expect the path in a clone." },
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "harness-session-lifecycle",
   title: "Harness session lifecycle: one durable session per attempt, supervision as a transparent cadence",
   body: harness_session_lifecycle_body(),
