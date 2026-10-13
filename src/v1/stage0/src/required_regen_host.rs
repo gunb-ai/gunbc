@@ -4642,7 +4642,7 @@ fn convergence_surface_roles(
             _ => {}
         }
     }
-    let host_shell_modules = super::emitted_closure_compile_host::closure_modules(
+    let host_shell_modules = super::emitted_closure_compile_host::release_closure_modules(
         &workspace.join("src/v1/stage0/src/lib.rs"),
     )?
     .into_iter()
@@ -6467,6 +6467,42 @@ mod regen_round_cost_tests {
             SeedHandoff::decode("garbage"),
             Err(SeedHandoffRefusal::HandoffUndecodable { .. })
         ));
+    }
+
+    /// THE DEFECT: lib.rs declares `#[cfg(test)] #[allow(..)] mod compiler_tests;` and the
+    /// attribute-blind roster made compiler_tests.rs SeedEmbedded, which the NonSeedGeneratedOutput
+    /// role refuses ("0 closure identities"), so heal could not regenerate it. The control is the
+    /// plain `mod X;` beside it, which must stay in the seed.
+    #[test]
+    fn seed_membership_excludes_cfg_test_modules_and_keeps_plain_ones() {
+        let dir =
+            std::env::temp_dir().join(format!("seed_membership_cfg_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let lib = dir.join("lib.rs");
+        std::fs::write(
+            &lib,
+            "pub mod plain_one;\n#[cfg(test)]\n#[allow(\n    unused_imports,\n    clippy::all\n)]\nmod test_only;\n// note\nmod plain_two;\n#[cfg(test)]\nfn helper() {}\nmod after_helper;\n",
+        )
+        .unwrap();
+        let release =
+            super::super::emitted_closure_compile_host::release_closure_modules(&lib).unwrap();
+        let all = super::super::emitted_closure_compile_host::closure_modules(&lib).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(release, vec!["plain_one", "plain_two", "after_helper"]);
+        assert_eq!(
+            all,
+            vec!["plain_one", "test_only", "plain_two", "after_helper"]
+        );
+        let lib_rs = workspace_root().join("src/v1/stage0/src/lib.rs");
+        let real_release =
+            super::super::emitted_closure_compile_host::release_closure_modules(&lib_rs).unwrap();
+        let real_all =
+            super::super::emitted_closure_compile_host::closure_modules(&lib_rs).unwrap();
+        let excluded: Vec<&String> = real_all
+            .iter()
+            .filter(|m| !real_release.contains(m))
+            .collect();
+        assert_eq!(excluded, vec![&"compiler_tests".to_string()]);
     }
 
     #[test]

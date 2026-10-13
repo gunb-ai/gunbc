@@ -1329,17 +1329,57 @@ pub(crate) fn run_cargo(
 /// crate it never read -- execution-provenance loss, misattributing a filesystem defect to the
 /// emission.
 pub(crate) fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
-    let content = std::fs::read_to_string(lib_rs).map_err(|e| e.to_string())?;
-    Ok(content
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            line.strip_prefix("pub mod ")
-                .or_else(|| line.strip_prefix("mod "))
-                .and_then(|rest| rest.strip_suffix(';'))
-                .map(|m| m.trim().to_string())
-        })
+    Ok(lib_module_lines(lib_rs)?
+        .into_iter()
+        .map(|(module, _)| module)
         .collect())
+}
+
+/// THE MODULES A RELEASE BUILD COMPILES: `closure_modules` less every `mod X;` guarded by a
+/// `#[cfg(test)]` attribute. Seed membership is a release-build fact, so a test-only mirror
+/// (compiler_tests.rs) is OUTSIDE the seed; `closure_modules` stays attribute-blind because its
+/// other readers need the module roster the host shell declares, test modules included.
+pub(crate) fn release_closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
+    Ok(lib_module_lines(lib_rs)?
+        .into_iter()
+        .filter(|(_, cfg_test)| !cfg_test)
+        .map(|(module, _)| module)
+        .collect())
+}
+
+/// Each `mod X;` / `pub mod X;` line of lib.rs with whether a `#[cfg(test)]` attribute guards it.
+/// Attributes may span lines (`#[allow(` .. `)]`), so bracket depth, not line shape, decides
+/// whether a line still belongs to the attribute group above the declaration.
+fn lib_module_lines(lib_rs: &Path) -> Result<Vec<(String, bool)>, String> {
+    let content = std::fs::read_to_string(lib_rs).map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    let mut guarded = false;
+    let mut depth: i32 = 0;
+    for raw in content.lines() {
+        let line = raw.trim();
+        if depth > 0 {
+            depth += line.matches('[').count() as i32 - line.matches(']').count() as i32;
+            continue;
+        }
+        if line.starts_with("#[") {
+            if line.starts_with("#[cfg(test)]") {
+                guarded = true;
+            }
+            depth = (line.matches('[').count() as i32 - line.matches(']').count() as i32).max(0);
+            continue;
+        }
+        if let Some(module) = line
+            .strip_prefix("pub mod ")
+            .or_else(|| line.strip_prefix("mod "))
+            .and_then(|rest| rest.strip_suffix(';'))
+        {
+            out.push((module.trim().to_string(), guarded));
+        }
+        if !line.is_empty() && !line.starts_with("//") {
+            guarded = false;
+        }
+    }
+    Ok(out)
 }
 
 /// THE UNATTRIBUTED REFUSAL CARRIES THE FAULTED RUN'S OWN OUTPUT. It names the class, and without
