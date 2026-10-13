@@ -2,6 +2,8 @@ module gunbc.host.memory_envelope
 
 import std.types { Bool, Int, String }
 import std.optional { Present, Absent }
+import std.measure { ByteSize, byte_size_count }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.host.memory_cgroup_binding {
   CgroupBindDecision,
   BindNotRequested,
@@ -124,19 +126,78 @@ type MemoryEnvelopeVerdict
   = EnvelopeHeld
   | EnvelopeViolated { oom_kills_delta: Int, swap_current: Int?, swap_peak_rose: Bool?, swap_max_zero: Bool }
 
+// WHAT A GREEN ENVELOPE ENTITLES A CONSUMER TO CONCLUDE, and what the contract epoch hashes.
+// memory_envelope_verdict is the execution of this row: a different enforcement is a different
+// contract, even if the env var name that carries EnvelopeSlotRequired stays put.
+type MemoryEnvelopeEnforcement
+  = RefuseOomOrSwapAndPrintReceipt
+  | EnvelopeEnforcementUnspecified
+
+data memory_envelope_enforcement: MemoryEnvelopeEnforcement = RefuseOomOrSwapAndPrintReceipt
+
+type MemoryEnvelopeContract {
+  requirement: MemoryEnvelopeRequirement
+  memory_max: ByteSize
+  memory_swap_max: ByteSize
+  enforcement: MemoryEnvelopeEnforcement
+}
+
+fn memory_envelope_requirement_digest(requirement: MemoryEnvelopeRequirement) -> String {
+  match requirement {
+    EnvelopeSlotRequired => "envelope_slot_required"
+    EnvelopeNotRequested => "envelope_not_requested"
+    EnvelopeRequirementUnreadable { raw: raw } => concat("envelope_requirement_unreadable\t", raw)
+  }
+}
+
+fn memory_envelope_enforcement_digest(enforcement: MemoryEnvelopeEnforcement) -> String {
+  match enforcement {
+    RefuseOomOrSwapAndPrintReceipt => "refuse_oom_or_swap_and_print_receipt"
+    EnvelopeEnforcementUnspecified => "envelope_enforcement_unspecified"
+  }
+}
+
+fn memory_envelope_contract_digest(contract: MemoryEnvelopeContract) -> String {
+  concat(
+    concat(
+      concat(
+        concat(to_string(byte_size_count(b: contract.memory_max)), "\t"),
+        concat(to_string(byte_size_count(b: contract.memory_swap_max)), "\t")
+      ),
+      concat(memory_envelope_requirement_digest(requirement: contract.requirement), "\t")
+    ),
+    memory_envelope_enforcement_digest(enforcement: contract.enforcement)
+  )
+}
+
+fn memory_envelope_required_ci_contract() -> MemoryEnvelopeContract {
+  let slot = gunbc_runner_slot_desired()
+  MemoryEnvelopeContract {
+    requirement: EnvelopeSlotRequired,
+    memory_max: slot.memory_max,
+    memory_swap_max: slot.memory_swap_max,
+    enforcement: memory_envelope_enforcement,
+  }
+}
+
 fn memory_envelope_verdict(oom_kills_delta: Int, swap_current: Int?, swap_peak_rose: Bool?, swap_max_zero: Bool) -> MemoryEnvelopeVerdict {
-  let swap_resident = match swap_current {
-    Absent => true
-    Present { value: v } => v > 0
-  }
-  let swap_rose_or_unobservable = match swap_peak_rose {
-    Absent => swap_max_zero == false
-    Present { value: rose } => rose
-  }
-  if oom_kills_delta > 0 || swap_resident || swap_rose_or_unobservable {
-    EnvelopeViolated { oom_kills_delta: oom_kills_delta, swap_current: swap_current, swap_peak_rose: swap_peak_rose, swap_max_zero: swap_max_zero }
-  } else {
-    EnvelopeHeld
+  match memory_envelope_enforcement {
+    EnvelopeEnforcementUnspecified =>
+      EnvelopeViolated { oom_kills_delta: oom_kills_delta, swap_current: swap_current, swap_peak_rose: swap_peak_rose, swap_max_zero: swap_max_zero }
+    RefuseOomOrSwapAndPrintReceipt =>
+      let swap_resident = match swap_current {
+        Absent => true
+        Present { value: v } => v > 0
+      }
+      let swap_rose_or_unobservable = match swap_peak_rose {
+        Absent => swap_max_zero == false
+        Present { value: rose } => rose
+      }
+      if oom_kills_delta > 0 || swap_resident || swap_rose_or_unobservable {
+        EnvelopeViolated { oom_kills_delta: oom_kills_delta, swap_current: swap_current, swap_peak_rose: swap_peak_rose, swap_max_zero: swap_max_zero }
+      } else {
+        EnvelopeHeld
+      }
   }
 }
 

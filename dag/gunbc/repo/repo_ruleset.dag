@@ -113,12 +113,13 @@ import std.goal_assessment {
 //
 // DESIGN's Building & checks section states, as the fact the whole two-lane split turns on, that
 // this repository's `passing CI` ruleset is active, carries no bypass actors, and names exactly one
-// required status check -- `witnesses`. Until this module, that sentence was the ONLY place the
-// fact lived on our side of the boundary. The setting itself was a hand-maintained web form: no
-// authority declared it, nothing read it back, and nothing in the tree went red if it changed. The
-// aggregation job in gunbc.witness.witness_floor_workflow exists precisely because a required context is
-// produced by a JOB and a second job's check is not required -- which means the safety of that
-// whole design rests on a value nobody in this repository could observe.
+// required status check -- gunbc.required_ci_contract_epoch required_ci_context_name. Until this
+// module, that sentence was the ONLY place the fact lived on our side of the boundary. The setting
+// itself was a hand-maintained web form: no authority declared it, nothing read it back, and
+// nothing in the tree went red if it changed. The required job in
+// gunbc.witness.compiler_gate_workflow exists precisely because a required context is produced by a
+// JOB and a second job's check is not required -- which means the safety of that whole design rests
+// on a value nobody in this repository could observe.
 //
 // That is the specification-without-execution failure DESIGN section 5 names, at the outermost
 // boundary the project has: a claim about the world, typed nowhere, checked by nothing. A prose
@@ -157,7 +158,7 @@ import std.goal_assessment {
 data gunbc_passing_ci_ruleset_id: Int = 16178731
 data gunbc_passing_ci_ruleset_name: String = "passing CI"
 
-// THE ONE REQUIRED CONTEXT, DERIVED. See the module annotation: this is the aggregation job's id,
+// THE ONE REQUIRED CONTEXT, DERIVED. See the module annotation: this is the required job's id,
 // not a second spelling of it.
 fn witness_floor_required_check_identities() -> List<String> {
   append(
@@ -221,7 +222,8 @@ fn desired_required_status_checks() -> List<RequiredStatusCheckWire> {
 // compositions and then advances main to one -- and neither GitHub's available-rules page nor its
 // merge-queue page says the queue is exempt from a rule that limits updates to bypass actors. Adding
 // it could therefore stop every landing in the repository, and it would buy almost nothing: a direct
-// push to main must already satisfy the required `witnesses` context and the merge_queue rule. The
+// push to main must already satisfy the required context (gunbc.required_ci_contract_epoch
+// required_ci_context_name) and the merge_queue rule. The
 // operator ruled on 2026-09-17 to leave it off until that interaction is established, not to forbid
 // it; establishing it is a live observation of one queue landing under the rule, which is a change
 // with a receipt rather than a paragraph.

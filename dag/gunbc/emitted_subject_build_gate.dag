@@ -120,7 +120,37 @@ data native_fault_experiment_run_value: String = "run"
 // steps (job-private root, the two federations, the save) left the required job with this ruling;
 // cargo's own dependency reuse inside the job's checkout is untouched.
 data native_product_reuse_env_name: String = "GUNBC_NATIVE_PRODUCT_REUSE"
-data native_product_reuse_fresh_value: String = "fresh"
+
+// THE EXECUTION CONTRACT THE REQUIRED SUBJECT STEPS DISCHARGE, typed here because this module is
+// what asks the seed to emit, build-fresh, and start. The env spelling is a projection of
+// ProductReuseFresh, not the fact the contract epoch hashes.
+type NativeProductReusePolicy
+  = ProductReuseFresh
+  | ProductReuseRestored
+
+type EmittedSubjectExecutionContract
+  = EmitThenBuildFreshThenStart
+  | EmitWithoutStart
+
+data native_product_reuse_policy: NativeProductReusePolicy = ProductReuseFresh
+
+data emitted_subject_execution_contract: EmittedSubjectExecutionContract = EmitThenBuildFreshThenStart
+
+fn native_product_reuse_env_value(policy: NativeProductReusePolicy) -> String {
+  match policy {
+    ProductReuseFresh => "fresh"
+    ProductReuseRestored => "restored"
+  }
+}
+
+fn emitted_subject_execution_digest(contract: EmittedSubjectExecutionContract) -> String {
+  match contract {
+    EmitThenBuildFreshThenStart => "emit_then_build_fresh_then_start"
+    EmitWithoutStart => "emit_without_start"
+  }
+}
+
+data native_product_reuse_fresh_value: String = native_product_reuse_env_value(policy: native_product_reuse_policy)
 
 // THE MEMORY ENVELOPE OF A SUBJECT STEP (operator ruling 2026-10-09: "MemorySwapMax=0 and a fixed
 // hard memory maximum; a lower compiler abort/trip threshold; a peak and swap receipt; no larger-

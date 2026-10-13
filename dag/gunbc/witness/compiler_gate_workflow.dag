@@ -125,7 +125,18 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership
 // it. witnesses.yml lost the member at 85c1356300c and fleet-desired has refused every push to main
 // since (8 runs, 2026-09-19T23:50Z onward) with RequiredCiEpochAbsent, against 52 consecutive
 // greens before it.
-import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key, required_ci_context_name }
+import gunbc.required_ci_contract_epoch {
+  required_ci_contract_epoch,
+  required_ci_contract_epoch_env_key,
+  required_ci_context_name,
+  required_ci_emitted_subject_obligations,
+}
+import gunbc.host.memory_envelope {
+  EnvelopeSlotRequired,
+  EnvelopeNotRequested,
+  EnvelopeRequirementUnreadable,
+  memory_envelope_required_ci_contract,
+}
 
 // THE HOSTED BUILD PRELUDE. No job of this workflow uses it: gunbc.instruments.instrument_dispatch_workflow builds
 // `gunbc` on a hosted runner through it. It was the whole job of the `compiler` lane the 2026-09-28
@@ -315,10 +326,15 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
         ),
         kv(key: native_product_reuse_env_name, value: yaml_string(s: native_product_reuse_fresh_value))
         ],
-        right: list_map(
-          xs: native_step_memory_inputs(ownership: gunbc_runner_slot_job_cgroup_ownership),
-          f: fn(env_input) { kv(key: env_input.env_name, value: yaml_string(s: env_input.env_value)) }
-        )
+        right: match memory_envelope_required_ci_contract().requirement {
+          EnvelopeSlotRequired =>
+            list_map(
+              xs: native_step_memory_inputs(ownership: gunbc_runner_slot_job_cgroup_ownership),
+              f: fn(env_input) { kv(key: env_input.env_name, value: yaml_string(s: env_input.env_value)) }
+            )
+          EnvelopeNotRequested => []
+          EnvelopeRequirementUnreadable { raw: _ } => []
+        }
       )
     },
     working_directory: none,
@@ -368,11 +384,11 @@ fn compiler_gate_emit_build_notice_step() -> Step {
 }
 
 fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep> {
-  list_map(xs: emitted_subject_build_rows(), f: fn(row) {
+  list_map(xs: required_ci_emitted_subject_obligations(), f: fn(subject) {
     CompilerGateBoundStep {
-      step: compiler_gate_emit_build_step(row: row),
+      step: compiler_gate_emit_build_step(row: subject.row),
       role: consumes_only(capabilities: [CargoCapability]),
-      step_name: emitted_subject_build_step_name(row: row),
+      step_name: emitted_subject_build_step_name(row: subject.row),
     }
   })
 }
