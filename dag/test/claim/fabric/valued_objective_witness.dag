@@ -9,7 +9,7 @@ import std.pareto {
 import std.decision {
   HardConstraint,
   ValuedObjective,
-  ValuationAxes,
+  TermValuation,
   SelectionPolicy,
   SelectedWithin,
   SelectionNeedsEvidence,
@@ -42,7 +42,7 @@ import product.fabric.demand {
   debt_payoff_objective, latency_sensitive_objective, DemandObjective,
   demand_delay_valuation, admission_hard_constraints,
   admission_terms, BuyTerms, fabric_demand_required_term_ids,
-  fabric_valuation_axes, valued_objective_policy,
+  interpret_demand_objective, valued_objective_policy,
 }
 import std.measure { money_amount_micro, money_rate_micros }
 import extdeps.currency.currency { Usd }
@@ -342,13 +342,14 @@ test fn serving_reads_the_demand_delay_valuation() -> Bool {
     > (money_rate_micros(q: demand_delay_valuation(objective: debt_payoff_objective)) as Int)
 }
 
-fn delay_bound_to_money_axes() -> ValuationAxes {
-  ValuationAxes {
-    money: term_money.identity,
-    delay: term_money.identity,
-    interruption: term_interruption.identity,
-    accepted_work: term_accepted_work.identity,
-  }
+fn delay_bound_to_money_valuations(objective: DemandObjective) -> List<TermValuation> {
+  map(interpret_demand_objective(objective: objective).valuations, v =>
+    if declaration_ref_eq(a: v.term, b: term_delay.identity) {
+      TermValuation { term: term_money.identity, scale_micro: v.scale_micro, goal: v.goal }
+    } else {
+      v
+    }
+  )
 }
 
 test fn remapping_only_the_delay_axis_refuses_rather_than_reversing_the_pick() -> Bool {
@@ -361,8 +362,7 @@ test fn remapping_only_the_delay_axis_refuses_rather_than_reversing_the_pick() -
           constraints: [],
           policy: ValuedObjective {
             identity: latency_sensitive_objective.profile,
-            valuations: latency_sensitive_objective.valuations,
-            axes: delay_bound_to_money_axes(),
+            valuations: delay_bound_to_money_valuations(objective: latency_sensitive_objective),
             measure: latency_sensitive_objective.measure,
           },
         ) {
@@ -376,10 +376,12 @@ test fn remapping_only_the_delay_axis_refuses_rather_than_reversing_the_pick() -
 test fn both_profiles_carry_the_four_required_valuations() -> Bool {
   match debt_payoff_objective.measure {
     NetValue => false
-    CostPerAcceptedUnit =>
-      match latency_sensitive_objective.measure {
-        CostPerAcceptedUnit => false
-        NetValue => true
-      }
+    CostPerAcceptedUnit { unit: debt_unit } =>
+      declaration_ref_eq(a: debt_unit, b: term_accepted_work.identity)
+        && match latency_sensitive_objective.measure {
+          CostPerAcceptedUnit { unit: _ } => false
+          NetValue => (interpret_demand_objective(objective: debt_payoff_objective).valuations |> count) == 4
+            && (interpret_demand_objective(objective: latency_sensitive_objective).valuations |> count) == 4
+        }
   }
 }

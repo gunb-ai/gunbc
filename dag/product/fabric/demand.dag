@@ -3,14 +3,15 @@ module product.fabric.demand
 import std.types { NonEmptyStr, Timestamp, Bool, List, Int, brand }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, money_amount_micro, money_amount_micro_count }
+import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, money_amount_micro, money_amount_micro_count, money_rate_micros }
 import extdeps.currency.currency { CurrencyCode, Usd }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
 import std.algebra { Cons, Empty }
+import std.pareto { HigherIsBetter, LowerIsBetter }
 import extdeps.external_authority { TranscribedUncited }
 import std.decision {
   ObjectiveTerm,
-  TermValuations, ValuationAxes,
+  TermValuation,
   HardConstraint,
   ValuedObjectiveMeasure, NetValue, CostPerAcceptedUnit,
   SelectionPolicy, ValuedObjective,
@@ -166,36 +167,41 @@ fn fabric_demand_required_term_ids() -> List<DeclarationRef> {
   map(fabric_demand_objective_terms(), t => t.identity)
 }
 
+// Fabric's four buyer-policy units. Missing, repeated and foreign terms are unwritable here;
+// std.decision scores the projection, not this record.
+type TermValuations {
+  money: MoneyAmountMicro
+  delay: MoneyPerSecond
+  interruption: MoneyAmountMicro
+  accepted_work: MoneyAmountMicro
+}
+
 type DemandObjective {
   profile: DeclarationRef
   valuations: TermValuations
   measure: ValuedObjectiveMeasure
 }
 
-fn fabric_valuation_axes() -> ValuationAxes {
-  ValuationAxes {
-    money: term_money.identity,
-    delay: term_delay.identity,
-    interruption: term_interruption.identity,
-    accepted_work: term_accepted_work.identity,
-  }
-}
-
 // THE ONE INTERPRETATION both serving delay and generic ValuedObjective scoring project from.
-// Axes are the four term identities, never a caller-authored remapping. CONSUMERS:
+// Term identities are the four fabric terms, never a caller-authored remapping. CONSUMERS:
 // demand_delay_valuation; valued_objective_policy; test.claim.fabric.valued_objective_witness.
 type InterpretedDemandObjective {
   profile: DeclarationRef
-  valuations: TermValuations
-  axes: ValuationAxes
+  valuations: List<TermValuation>
+  delay: MoneyPerSecond
   measure: ValuedObjectiveMeasure
 }
 
 fn interpret_demand_objective(objective: DemandObjective) -> InterpretedDemandObjective {
   InterpretedDemandObjective {
     profile: objective.profile,
-    valuations: objective.valuations,
-    axes: fabric_valuation_axes(),
+    valuations: [
+      TermValuation { term: term_money.identity, scale_micro: money_amount_micro_count(m: objective.valuations.money) as Int, goal: LowerIsBetter },
+      TermValuation { term: term_delay.identity, scale_micro: money_rate_micros(q: objective.valuations.delay) as Int, goal: LowerIsBetter },
+      TermValuation { term: term_interruption.identity, scale_micro: money_amount_micro_count(m: objective.valuations.interruption) as Int, goal: LowerIsBetter },
+      TermValuation { term: term_accepted_work.identity, scale_micro: money_amount_micro_count(m: objective.valuations.accepted_work) as Int, goal: HigherIsBetter },
+    ],
+    delay: objective.valuations.delay,
     measure: objective.measure,
   }
 }
@@ -205,7 +211,6 @@ fn valued_objective_policy(objective: DemandObjective) -> SelectionPolicy {
   ValuedObjective {
     identity: interpreted.profile,
     valuations: interpreted.valuations,
-    axes: interpreted.axes,
     measure: interpreted.measure,
   }
 }
@@ -232,7 +237,7 @@ data id_latency_sensitive: DeclarationRef = decl_ref(module_path: "product.fabri
 data debt_payoff_objective: DemandObjective = DemandObjective {
   profile: id_debt_payoff,
   valuations: closed_valuations(money: 1, delay: 0, interruption: 0, accepted_work: 1),
-  measure: CostPerAcceptedUnit,
+  measure: CostPerAcceptedUnit { unit: term_accepted_work.identity },
 }
 
 // Positive delay valuation. Fixture and declared profile only — production reads
@@ -245,7 +250,7 @@ data latency_sensitive_objective: DemandObjective = DemandObjective {
 }
 
 fn demand_delay_valuation(objective: DemandObjective) -> MoneyPerSecond {
-  interpret_demand_objective(objective: objective).valuations.delay
+  interpret_demand_objective(objective: objective).delay
 }
 
 data id_buy_order_constraint: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "buy_order_constraint")
