@@ -3,9 +3,10 @@ module extdeps.crypto.sha1
 import std.types { Int, List, String }
 import std.optional { Present }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
-import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_rotr, bitwise_pow2 }
+import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_rotr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.crypto.md_padding { md_append_octets, md_blocks_64 }
 import extdeps.numeric.base16 { base16_encode_lower }
 
 // SHA-1 per FIPS 180-4 section 6.1, computed in the substrate. It exists for ONE consumer: git's
@@ -128,39 +129,9 @@ fn sha1_compress(h: Sha1State, block: List<Int>) -> Sha1State {
   Sha1State { a: word32_add(a: h.a, b: s.a), b: word32_add(a: h.b, b: s.b), c: word32_add(a: h.c, b: s.c), d: word32_add(a: h.d, b: s.d), e: word32_add(a: h.e, b: s.e) }
 }
 
-// Section 5.1.1 padding: the message, 0x80, zero octets to 56 (mod 64), the bit length as 64-bit big-endian.
-fn sha1_zero_octets(n: Int, acc: List<Int>) -> List<Int> {
-  if n <= 0 { acc } else { sha1_zero_octets(n: n - 1, acc: acc |> list_push(0)) }
-}
-
-fn sha1_length_octets(bits: Int) -> List<Int> {
-  [0, 7, 6, 5, 4, 3, 2, 1] |> map(i => if i == 0 { 0 } else { (bits / bitwise_pow2(n: 8 * (i - 1))) % 256 })
-}
-
-fn sha1_append_octets(left: List<Int>, right: List<Int>) -> List<Int> {
-  fold(right, init: left, f: (acc, o) => acc |> list_push(o))
-}
-
-fn sha1_padded(message: List<Int>) -> List<Int> {
-  let len = count(message)
-  let zeros = (119 - len % 64) % 64
-  sha1_append_octets(left: sha1_append_octets(left: message |> list_push(128), right: sha1_zero_octets(n: zeros, acc: [])), right: sha1_length_octets(bits: len * 8))
-}
-
-type Sha1BlockFold {
-  state: Sha1State
-  block: List<Int>
-}
-
+// Padding and block parsing are the shared extdeps.crypto.md_padding fact; only compress is SHA-1's.
 fn sha1_state_of(message: List<Int>) -> Sha1State {
-  fold(sha1_padded(message: message), init: Sha1BlockFold { state: sha1_initial_state, block: [] }, f: (acc, octet) => {
-    let block = acc.block |> list_push(octet)
-    if count(block) == 64 {
-      Sha1BlockFold { state: sha1_compress(h: acc.state, block: block), block: [] }
-    } else {
-      Sha1BlockFold { state: acc.state, block: block }
-    }
-  }).state
+  fold(md_blocks_64(message: message), init: sha1_initial_state, f: (state, block) => sha1_compress(h: state, block: block))
 }
 
 fn sha1_word_octets(w: Int) -> List<Int> {
@@ -170,7 +141,7 @@ fn sha1_word_octets(w: Int) -> List<Int> {
 // The twenty-octet digest, big-endian words a..e.
 fn sha1(message: List<Int>) -> List<Int> {
   let s = sha1_state_of(message: message)
-  fold([s.a, s.b, s.c, s.d, s.e], init: [], f: (acc, w) => sha1_append_octets(left: acc, right: sha1_word_octets(w: w)))
+  fold([s.a, s.b, s.c, s.d, s.e], init: [], f: (acc, w) => md_append_octets(left: acc, right: sha1_word_octets(w: w)))
 }
 
 // Lowercase hex of the digest, through the admission fold. The refusal arm is unreachable (every
