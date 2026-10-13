@@ -140,7 +140,7 @@ test fn the_rename_moves_staging_onto_the_destination() -> Bool {
     Absent => false
     Present { value: w } =>
       typed_remote_file_rename_argv(write: w)
-        == ["mv", "-f", typed_remote_file_staging_path(write: w), subject_path as String]
+        == ["mv", "-fT", typed_remote_file_staging_path(write: w), subject_path as String]
   }
 }
 

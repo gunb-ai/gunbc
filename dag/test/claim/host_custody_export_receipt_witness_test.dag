@@ -35,7 +35,7 @@ import gunbc.fleet.host_credential_custody_converge {
   CustodyExportRefused,
   CustodyExportPublished,
   CustodyExportNotOwedStanding,
-  custody_export_does_not_block_settled,
+  CustodyExportWithheldStanding,
   custody_file_legs,
   custody_dir_legs,
   CustodyPathAsDeclared,
@@ -107,7 +107,7 @@ test fn an_identical_settled_placement_plans_a_publication() -> Bool {
         && rec.placement == cursor_row.path
         && rec.reader == cursor_row.file_ownership.group
         && rec.publisher == cursor_row.dir_ownership.user
-        && rec.content_sha256 == sha256_hex_of_text(text: placed_material)
+        && (rec.content_sha256 as String) == sha256_hex_of_text(text: placed_material)
         && (o.user as String) == (cursor_row.dir_ownership.user as String)
         && string_contains(s: body, pattern: host_custody_export_generation_standing)
         && string_contains(s: host_custody_export_receipt_wire(receipt: rec), pattern: "reader=")
@@ -126,7 +126,10 @@ test fn a_run_that_is_not_settled_publishes_nothing() -> Bool {
   ) {
     CustodyExportWithheld { reason: r } =>
       string_contains(s: r, pattern: "not settled")
-        && custody_export_does_not_block_settled(s: classify_host_custody_export(plan: CustodyExportWithheld { reason: r }, convergence: none, owner_refusal: none, receipt_metadata: none))
+        && match classify_host_custody_export(plan: CustodyExportWithheld { reason: r }, convergence: none, owner_refusal: none, receipt_metadata: none) {
+          CustodyExportWithheldStanding { reason: _ } => true
+          _ => false
+        }
     _ => false
   }
 }
@@ -161,11 +164,11 @@ test fn a_receipt_is_published_only_when_custody_metadata_is_as_declared() -> Bo
         _ => false
       }
       let symlink_red = match not_a_regular_file {
-        CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "not of type f") && !custody_export_does_not_block_settled(s: not_a_regular_file)
+        CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "not of type f")
         _ => false
       }
       let missing_red = match missing {
-        CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "metadata") && !custody_export_does_not_block_settled(s: missing)
+        CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "metadata")
         _ => false
       }
       published && symlink_red && missing_red
@@ -192,11 +195,11 @@ test fn a_failed_or_interrupted_publication_reports_no_successful_export() -> Bo
     receipt_metadata: none,
   )
   let interrupted_red = match interrupted {
-    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "interrupted") && !custody_export_does_not_block_settled(s: interrupted)
+    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "interrupted")
     _ => false
   }
   let failed_red = match failed {
-    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "rename") && !custody_export_does_not_block_settled(s: failed)
+    CustodyExportRefused { reason: r } => string_contains(s: r, pattern: "rename")
     _ => false
   }
   interrupted_red && failed_red
@@ -214,19 +217,25 @@ test fn the_cursor_row_is_root_owned_with_operator_group_read() -> Bool {
 }
 
 test fn the_receipt_directory_owner_is_root_not_the_reader() -> Bool {
-  let cursor_receipt = host_custody_export_receipt_from_row(
+  match host_custody_export_receipt_from_row(
     row: cursor_row, host: "srv2" as HostIdentity, sm_version: supplied_version, placed_material: placed_material,
-  )
-  let claude_receipt = host_custody_export_receipt_from_row(
-    row: claude_row, host: "srv1" as HostIdentity, sm_version: supplied_version, placed_material: placed_material,
-  )
-  (cursor_receipt.publisher as String) == "root"
-    && (cursor_receipt.reader as String) == "briansrls"
-    && (cursor_receipt.publisher as String) != (cursor_receipt.reader as String)
-    && (cursor_row.dir_ownership.user as String) == (cursor_receipt.publisher as String)
-    && (claude_receipt.publisher as String) == "root"
-    && (claude_receipt.reader as String) == "briansrls"
-    && (claude_receipt.publisher as String) != (claude_receipt.reader as String)
+  ) {
+    Absent => false
+    Present { value: cursor_receipt } =>
+      match host_custody_export_receipt_from_row(
+        row: claude_row, host: "srv1" as HostIdentity, sm_version: supplied_version, placed_material: placed_material,
+      ) {
+        Absent => false
+        Present { value: claude_receipt } =>
+          (cursor_receipt.publisher as String) == "root"
+            && (cursor_receipt.reader as String) == "briansrls"
+            && (cursor_receipt.publisher as String) != (cursor_receipt.reader as String)
+            && (cursor_row.dir_ownership.user as String) == (cursor_receipt.publisher as String)
+            && (claude_receipt.publisher as String) == "root"
+            && (claude_receipt.reader as String) == "briansrls"
+            && (claude_receipt.publisher as String) != (claude_receipt.reader as String)
+      }
+  }
 }
 
 test fn a_codex_row_does_not_plan_an_export() -> Bool {
@@ -239,7 +248,7 @@ test fn a_codex_row_does_not_plan_an_export() -> Bool {
   ) {
     CustodyExportNotOwed =>
       match classify_host_custody_export(plan: CustodyExportNotOwed, convergence: none, owner_refusal: none, receipt_metadata: none) {
-        CustodyExportNotOwedStanding => custody_export_does_not_block_settled(s: CustodyExportNotOwedStanding)
+        CustodyExportNotOwedStanding => true
         _ => false
       }
     _ => false

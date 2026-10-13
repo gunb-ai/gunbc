@@ -1,36 +1,31 @@
 module test.claim.host_custody_export_receipt_wet_witness
 
-import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.types { Bool, String, NonEmptyStr, FilePath, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.chmod { chmod_path_resolved_program }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWrite,
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
+  TypedRemoteFileWriteStep,
   RemoteFileModeOwnerReadWriteGroupRead,
   typed_remote_file_write_seal,
   typed_remote_file_staging_path,
-  typed_remote_file_unlink_staging_argv,
-  typed_remote_file_stage_argv,
-  typed_remote_file_chmod_argv,
-  typed_remote_file_rename_argv,
-  typed_remote_file_compare_argv,
   typed_remote_file_pre_compare_steps,
-  typed_remote_file_write_stdin_payload,
+  typed_remote_file_compare_argv,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE MIGRATION CASE THE SHARED STAGING USED TO LOSE. Old Cursor layout: the directory is writable
 // by the reader, who plants `<receipt>.gunbc-staging` as a symlink to a file they control. `dd of=`
-// followed the link, `mv -f` published the symlink, `cmp` followed it, and the writer reported
-// success. The production sequence is typed_remote_file_pre_compare_steps (unlink the staging name
-// without following it, then dd a fresh regular file, chmod, rename). Restoring the old `dd of=`
-// alone reddens a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real_execution:
-// the dest stays a symlink and the referent changes. Enrolled on the local-repo wet lane.
+// followed the link, `mv` published the symlink, `cmp` followed it, and the writer reported success.
+// This file FOLDS typed_remote_file_pre_compare_steps and runs each step's own argv, then
+// typed_remote_file_compare_argv the same way. Dropping unlink from typed_remote_file_fresh_staging_steps
+// reddens a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real_execution because
+// the dest stays a symlink and the referent changes; the two ordinary-publication claims stay green.
 
 data planted_referent_body: String = "reader-owned-referent\n"
 data published_body: String = "custody-export-receipt-body\n"
@@ -58,29 +53,30 @@ fn is_symlink(path: String) -> Bool {
   shell.Exec.RunArgv(program: "test", arguments: ["-L", path]).exit_code == 0
 }
 
+fn run_production_argv(argv: List<String>, stdin_payload: String) -> Bool {
+  match first(argv) {
+    Absent => false
+    Present { value: prog } =>
+      if stdin_payload == "" {
+        shell.Exec.RunArgv(program: prog as NonEmptyStr, arguments: argv |> skip(n: 1)).exit_code == 0
+      } else {
+        shell.Exec.RunArgvStdin(
+          program: prog as NonEmptyStr,
+          arguments: argv |> skip(n: 1),
+          stdin_payload: stdin_payload,
+        ).exit_code == 0
+      }
+  }
+}
+
+fn run_step(st: TypedRemoteFileWriteStep) -> Bool {
+  run_production_argv(argv: st.argv, stdin_payload: st.stdin_payload)
+}
+
 fn run_pre_compare(write: TypedRemoteFileWrite) -> Bool {
-  let staging = typed_remote_file_staging_path(write: write)
-  let dest = write.path as String
-  let names = map(typed_remote_file_pre_compare_steps(write: write, mode: RemoteFileModeOwnerReadWriteGroupRead), s => s.step)
-  names == ["unlink-staging", "stage", "mode", "rename"]
-    && typed_remote_file_unlink_staging_argv(write: write) == ["rm", "-f", "--", staging]
-    && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", staging]).exit_code == 0
-    && typed_remote_file_stage_argv(write: write) == ["dd", "status=none", concat("of=", staging)]
-    && shell.Exec.RunArgvStdin(
-      program: "dd",
-      arguments: ["status=none", concat("of=", staging)],
-      stdin_payload: typed_remote_file_write_stdin_payload(write: write),
-    ).exit_code == 0
-    && typed_remote_file_chmod_argv(write: write, mode: RemoteFileModeOwnerReadWriteGroupRead)
-      == [chmod_path_resolved_program as String, "640", staging]
-    && shell.Exec.RunArgv(
-      program: chmod_path_resolved_program as NonEmptyStr,
-      arguments: ["640", staging],
-    ).exit_code == 0
-    && typed_remote_file_rename_argv(write: write) == ["mv", "-f", staging, dest]
-    && shell.Exec.RunArgv(program: "mv", arguments: ["-f", staging, dest]).exit_code == 0
-    && typed_remote_file_compare_argv(write: write) == ["cmp", "-s", "-", dest]
-    && shell.Exec.RunArgvStdin(program: "cmp", arguments: ["-s", "-", dest], stdin_payload: write.content).exit_code == 0
+  let steps = typed_remote_file_pre_compare_steps(write: write, mode: RemoteFileModeOwnerReadWriteGroupRead)
+  fold(steps, init: true, f: (ok, st) => ok && run_step(st: st))
+    && run_production_argv(argv: typed_remote_file_compare_argv(write: write), stdin_payload: write.content)
 }
 
 test fn a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real_execution() -> Bool {
@@ -96,7 +92,10 @@ test fn a_planted_staging_symlink_does_not_publish_or_touch_its_referent_by_real
   let published = match sealed_write(dest: dest, root: root, body: published_body) {
     Absent => false
     Present { value: w } =>
-      (typed_remote_file_staging_path(write: w) == staging) && run_pre_compare(write: w)
+      (typed_remote_file_staging_path(write: w) == staging)
+        && map(typed_remote_file_pre_compare_steps(write: w, mode: RemoteFileModeOwnerReadWriteGroupRead), s => s.step)
+          == ["unlink-staging", "stage", "mode", "rename"]
+        && run_pre_compare(write: w)
   }
   let dest_regular = is_regular_file(path: dest) && !is_symlink(path: dest)
   let dest_bytes = Filesystem.Read(path: dest)
