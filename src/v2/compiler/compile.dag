@@ -221,7 +221,7 @@ import v2.compiler.resolve {
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
 import v2.std.staging { then_outcome }
 import v2.std.compilers.lexing { TokenStream }
-import v2.std.grammar { ParseTree }
+import v2.std.grammar { ParseTree, node_atom_identity_optional }
 import v2.std.language_model { LanguageModel }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel }
@@ -265,6 +265,7 @@ import v2.std.diagnostic {
   InvariantPortLocus,
   DeclarationLocus,
   declaration_locus,
+  diagnostics_fatal,
   diagnostics_fatal_reason,
   invariant_port_locus,
   Rejected,
@@ -3421,6 +3422,25 @@ fn native_demand_census_unreadable(
   }
 }
 
+fn native_demand_census_unbound_name(d: NonEmptyDiagnostics) -> Optional<Symbol> {
+  let fatal = diagnostics_fatal(d: d)
+  if fatal.reason == ^resolve_reason_unbound_symbol {
+    match fatal.at {
+      NodeLocus { anchor: a } =>
+        match node_atom_identity_optional(node: a.at) {
+          Present { value: n } => optional_present(value: n)
+          Absent => optional_absent()
+        }
+      Textual { file: _, extent: _ } => optional_absent()
+      SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
+      InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
+      DeclarationLocus { declaration: _ } => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
 fn native_demand_census_read(
   state: NativeDemandCensusFoldState,
   read: DagSourceReadWitness,
@@ -3512,7 +3532,11 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
             functions: w.functions,
             operations: w.operations,
             audited: w.audited,
-            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused { authored: mine, first_reason: diagnostics_fatal_reason(d: d) })
+            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused {
+              authored: mine,
+              first_reason: diagnostics_fatal_reason(d: d),
+              first_unbound: native_demand_census_unbound_name(d: d)
+            })
           }
         Accepted { value: resolved, diagnostics: _ } =>
           let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
