@@ -16,9 +16,9 @@ data optional_bool_payload_read_as_a_native_arm: RecurringFailureMode = Recurrin
 
     "HARM: a crash on the real path, at a privileged boundary. THE SPECIMEN: `gunbc.auth.gcp_iam_bootstrap` `iam_bootstrap_apply`, run on srv1 at main 632b725 under operator authorization. Its first userinfo readback was the probe-authority stage: the deny policy pre-existed, so the deny stage did not elect authority, and the cleanup stages withdraw without readback. The stages services through capabilities passed. `bootstrap_operator_matches` then matched `claims.email_verified` and the run crashed, with no probe journal and no grant written.",
 
-    "THE HYPOTHESIS THIS FALSIFIED, stated because it was the brief: a Bool arriving as the TEXT \"true\". `test.claim.rest_exchange_replay_test` replays a JSON BOOLEAN true through the same route, and it crashed identically. The wire form was never the cause, and the PatternMatchFailure rendering cannot tell `Bool(true)` from `Str(\"true\")`. A JSON string under the declared Bool already refuses at decode, typed and located.",
+    "THE HYPOTHESIS THIS FALSIFIED, stated because it was the brief: a Bool arriving as the TEXT \"true\". `test.claim.rest_exchange_replay` replays a JSON BOOLEAN true through the same route, and it crashed identically. The wire form was never the cause, and the PatternMatchFailure rendering cannot tell `Bool(true)` from `Str(\"true\")`. A JSON string under the declared Bool already refuses at decode, typed and located.",
 
-    "THE WITNESS THAT DID NOT SEE IT: `test.claim.auth.gcp_iam_bootstrap_witness_test` handed `bootstrap_operator_matches` CONSTRUCTED `Present \{ value: true \}` claims, a Variant value that never reaches the host-bool arm. Same lesson as `rest_response_coproduct_decoded_type_blind`, one representation over: the decode-to-consumer route must be replayed, not constructed.",
+    "THE WITNESS THAT DID NOT SEE IT: `test.claim.auth.gcp_iam_bootstrap_witness` handed `bootstrap_operator_matches` CONSTRUCTED `Present \{ value: true \}` claims, a Variant value that never reaches the host-bool arm. Same lesson as `rest_response_coproduct_decoded_type_blind`, one representation over: the decode-to-consumer route must be replayed, not constructed.",
 
     "THE REPAIR: the Optional `Present` and Witness `Holds` raw unwraps run before the host-bool arm, so a raw Bool payload is unwrapped like every other kind. `Absent` against a raw Bool still falls to the host-bool arm and misses, as it should. The emitted Rust realization carries `Option<bool>` natively and never had the defect.",
 
@@ -32,8 +32,8 @@ data optional_bool_payload_read_as_a_native_arm: RecurringFailureMode = Recurrin
   evidence: [
     DeclarationRef { module_path: "gunbc.auth.gcp_iam_bootstrap_authority", decl_name: "bootstrap_operator_matches", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.google.userinfo", decl_name: "GoogleUserInfoWire", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "a_decoded_optional_bool_true_reads_through_its_present_arm", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "a_decoded_optional_bool_false_reads_through_its_present_arm", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "a_decoded_absent_optional_bool_takes_its_absent_arm", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_exchange_replay", decl_name: "a_decoded_optional_bool_true_reads_through_its_present_arm", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_exchange_replay", decl_name: "a_decoded_optional_bool_false_reads_through_its_present_arm", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_exchange_replay", decl_name: "a_decoded_absent_optional_bool_takes_its_absent_arm", field: WholeDeclaration },
   ],
 }

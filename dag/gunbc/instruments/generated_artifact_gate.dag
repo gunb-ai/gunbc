@@ -1,9 +1,9 @@
 
-module tools.generated_artifact_gate
+module gunbc.instruments.generated_artifact_gate
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.ci_gate { gate_receipt_failure_detail }
+import gunbc.ci.ci_gate { gate_receipt_failure_detail }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.generated_artifact_emit {
@@ -145,7 +145,7 @@ fn generated_artifact_drift_failure_receipt() -> String {
 // unmeasured one, because it gets cited as the reason a thing is safe to try -- the §4b
 // decoration shape pointed at a resource limit rather than at a check.
 //
-// gunbc.memory_stall_refusal bounds the same runner class from the other two sides: a
+// gunbc.host.memory_stall_refusal bounds the same runner class from the other two sides: a
 // TRUTHFUL budget declaration thrashes without completing, an OVERSTATED one is SIGKILLed at
 // rc=137. With this figure the honest range there is not merely narrow, it is EMPTY, and the
 // remedy is a runner exposing a real cgroup limit rather than any value of the budget
@@ -271,7 +271,7 @@ fn main_wet() -> ProcessExit {
 // regeneration produces.
 //
 // THE STEP IS ORDERED AGAINST THE WRITE, NOT AGAINST A PARTICULAR ENTRY NAME, and that is
-// deliberate: gunbc.ci_spec has already repointed the heal job's regeneration step from
+// deliberate: gunbc.ci.ci_spec has already repointed the heal job's regeneration step from
 // main_wet_verified to main_wet once. A rationale written against whichever entry heal happens to
 // invoke would have quietly become false at that change while still reading as current. What this
 // step requires is only that it run before ANY entry that writes the projections.

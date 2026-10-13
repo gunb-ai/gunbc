@@ -9,15 +9,15 @@ import extdeps.cloud.gcp.secret_ref { SecretRef, gcp_version_resource_by_number 
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin, OidcPresentedClaim, claim_pins_attribute_condition, claim_pins_admit, fleet_converge_job_claim_pins }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
-import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake_bmc_secure { BmcSecured, BmcSecureRefused }
-import gunbc.managed_host {
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake.bmc_secure { BmcSecured, BmcSecureRefused }
+import gunbc.host.managed_host {
   ManagedHost, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured,
   ManagedHostEndpointMismatch, OrdinaryMember, MemberUnderDeclaredDrop, ManagedHostMembership, managed_host_binding,
   managed_host_memberships, managed_membership_for,
 }
-import gunbc.machine_intake_subject { MachineIntakeSubject }
+import gunbc.machine_intake.subject { MachineIntakeSubject }
 import std.decl_ref { DeclarationRef }
 
 // ── THE BOOT'S FEDERATION IS POLICY FOR THE PAIR (MANAGED HOST, BOOT), NOT HOST IDENTITY ───────
@@ -26,7 +26,7 @@ import std.decl_ref { DeclarationRef }
 // FederatedScopedGrant for it: the run's own workload identity, holding one cell per secret it reads,
 // with no human per run, scoped to ONE job -- this repository, the fleet-converge workflow file at
 // reviewed main, a workflow_dispatch on main, and the job's GitHub environment -- never repo-wide.
-// None of the ids below is a field of gunbc.managed_host ManagedHost: a second operation on the same
+// None of the ids below is a field of gunbc.host.managed_host ManagedHost: a second operation on the same
 // host federates through its own pool, and the same host under another policy is a different pair.
 //
 // WHY A DEDICATED POOL, NOT gunbc.auth.github_gcp_federation github_wif_provider. That pool's one
@@ -145,7 +145,7 @@ fn boot_federation_standing_of(m: ManagedHostMembership) -> ManagedHostBootFeder
 }
 
 // THE PAIR'S ADMISSION INCLUDES ITS POLICY, and its cells are the ROW's values. The BMC credential
-// cell is the version the row's secure standing published (gunbc.machine_intake_bmc_secure
+// cell is the version the row's secure standing published (gunbc.machine_intake.bmc_secure
 // ManagedCredentialReference secret), read through managed_host_binding so it is never a secured
 // account beside some other controller's access; the fleet key cell is the census medium readback
 // on the store host, which runs over fleet ssh. The approval submission MAC key is NOT a cell: the

@@ -1,4 +1,4 @@
-module gunbc.fleet_acoustic_intent
+module gunbc.fleet.fleet_acoustic_intent
 
 import std.types { Bool, NonEmptyStr }
 import std.measure { Percent, percent }
@@ -29,7 +29,7 @@ import product.fan_policy_standing {
 // (45 dB(A) at one metre, say) would read as the operator's constraint forever, and the person it
 // misrepresents is the one who has to live with the result.
 //
-// THE SITE IS THE ONE ALREADY DECLARED. gunbc.fleet_physical_inventory operator_site is where these
+// THE SITE IS THE ONE ALREADY DECLARED. gunbc.fleet.fleet_physical_inventory operator_site is where these
 // machines are; minting a second identity for the same place - "operator-residence" beside
 // "operator-lab" - would be the §3 fork, arrived at from the direction where both spellings look
 // reasonable.

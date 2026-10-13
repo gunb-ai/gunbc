@@ -1,4 +1,4 @@
-module tools.reference_derived_graph
+module gunbc.instruments.reference_derived_graph
 
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.types { Bool, List, String }
@@ -153,7 +153,7 @@ fn main() -> ProcessExit {
   match fixture_report() {
     Rejected { diagnostics: _ } =>
       exit_failure(
-        reason: "tools.reference_derived_graph.report refused over the fixture source root"
+        reason: "gunbc.instruments.reference_derived_graph.report refused over the fixture source root"
       )
     Accepted { value: r, diagnostics: _ } =>
       if !(diffs_include_reference_only(

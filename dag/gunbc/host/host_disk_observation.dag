@@ -1,4 +1,4 @@
-module gunbc.host_disk_observation
+module gunbc.host.host_disk_observation
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.measure { ByteSize, byte_size, byte_size_count }
@@ -9,7 +9,7 @@ import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import extdeps.tools.gnu_coreutils { df_available_bytes_argv }
-import gunbc.fleet_shell_transport_observation {
+import gunbc.fleet.fleet_shell_transport_observation {
   fleet_shell_transport_observation,
   ShellTransportSucceeded,
   ShellTransportReachRefused,
@@ -19,7 +19,7 @@ import gunbc.fleet_shell_transport_observation {
 data host_disk_observation_authority_disposition: ConstructionMechanism = SingleAuthority
 
 // DISK FREE SPACE IS AN OBSERVATION AXIS, not a hand-authored width cap.
-// gunbc.runner_slot_allocation.host_disk_admitted_width admits width only for srv4 from a deploy row;
+// gunbc.runner.runner_slot_allocation.host_disk_admitted_width admits width only for srv4 from a deploy row;
 // srv1–srv3 carry DiskWidthUnconstrained because nobody measured them. This module owns the PRODUCER
 // that will return typed free-space observations through shell transport; until it lands,
 // host_disk_observed_producer returns DiskUnobserved with a located reason — never fabricated df output.
@@ -81,7 +81,7 @@ fn host_disk_observation(host: HostIdentity) -> HostDiskObservation {
 data host_disk_observed_producer_dissolve_on: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.host_effect",
+    module_path: "gunbc.host.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,
   }

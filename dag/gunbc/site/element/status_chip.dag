@@ -3,7 +3,7 @@ module gunbc.site.element.status_chip
 import std.types { Int, List, String }
 import std.markup { Fragment, attr }
 import gunbc.site.markup { el_attrs, txt }
-import gunbc.roadmap_issue_status {
+import gunbc.roadmap.roadmap_issue_status {
   IssueDisplayStatus, DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked,
   DisplayReturned, DisplayDone, DisplaySuperseded, DisplayUnknown, issue_display_status_label,
 }
@@ -21,7 +21,7 @@ import extdeps.languages.css.properties {
 }
 
 // StatusChip: the one rendering of an issue's displayed status. It takes the typed status
-// (gunbc.roadmap_issue_status) and nothing else, so no caller can hand it a word to classify.
+// (gunbc.roadmap.roadmap_issue_status) and nothing else, so no caller can hand it a word to classify.
 // The geometry is the product's status chip. The vocabulary is ours, mapped onto the product's
 // three forms: an ink ring over a light tint of the same ink for the open states, text in the
 // surface colour on a muted fill for done, and a muted ring on the subtle ground for superseded

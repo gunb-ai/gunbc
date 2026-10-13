@@ -10,7 +10,7 @@ import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire 
 // THE ONE FOLD FROM A CAPACITY GRANT TO THE PROPERTIES OF THE UNIT THAT HOLDS IT. It used to live in
 // gunbc.compute.work_provider_local as compute_unit_properties, and it moved here rather than being
 // copied because a second consumer arrived that the provider's module cannot serve:
-// gunbc.compute.work_provider_local imports gunbc.roadmap_dispatch_actuator, so the dispatch
+// gunbc.compute.work_provider_local imports gunbc.roadmap.roadmap_dispatch_actuator, so the dispatch
 // actuator -- which builds the agent session's unit -- cannot import the provider back without a
 // cycle. A copy of the MemoryMax line in the actuator is what it had, and that copy read the
 // instance's ceiling rather than the grant, which is the drift between reservation and enforcement

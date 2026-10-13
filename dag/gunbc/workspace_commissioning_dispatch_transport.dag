@@ -5,17 +5,17 @@ import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_op
 import std.types { String, NonEmptyStr, CommitSha }
 import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObservation, WorkspaceCommissioningFleetRefused, workspace_commissioning_basis_from_privileged }
 import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
-import gunbc.runner_microvm_slot_unit { microvm_controller_root }
+import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
 import extdeps.languages.bash.invocation { bash_program_command }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, RunGunbcEntryAs, executor_privileged_operation_shell_command }
-import gunbc.runner_microvm_slot_unit { microvm_controller_gunbc_binary, microvm_controller_owner }
+import gunbc.runner.runner_microvm_slot_unit { microvm_controller_gunbc_binary, microvm_controller_owner }
 import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
 import gunbc.workspace_commissioning_executor { workspace_executor_read_systemd }
-import gunbc.fleet_generation_execution { fleet_generation_lock, fleet_generation_writer }
+import gunbc.fleet.fleet_generation_execution { fleet_generation_lock, fleet_generation_writer }
 import extdeps.sudo.elevation { sudo_elevate_as }
 import extdeps.systemd.systemctl { systemctl_binary_path }
 import extdeps.posix.shell_command_language { posix_single_quote }

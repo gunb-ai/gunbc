@@ -1,4 +1,4 @@
-module v2.test.branch_dispatch.rung_3_4
+module v2.test.claim.branch_dispatch.rung_3_4
 
 
 data claim_phase4_branch_dispatch_module_roundtrip: TestClaim = RoundTripClaim {

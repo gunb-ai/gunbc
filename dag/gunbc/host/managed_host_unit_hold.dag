@@ -1,4 +1,4 @@
-module gunbc.managed_host_unit_hold
+module gunbc.host.managed_host_unit_hold
 
 import gunbc.process_hold_identity {
   process_hold_text, process_hold_marker, process_hold_decode, text_at, self_process_identity, SelfIdentified, SelfUnidentified, holder_process_liveness,
@@ -21,7 +21,7 @@ import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
 import std.list { distinct_by_key }
-import gunbc.build_cache_instance { ProcessIdentity, process_identity_eq }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity, process_identity_eq }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -45,8 +45,8 @@ import gunbc.durable_exclusive_hold_file_store {
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.managed_host { ManagedHost, ResetNoUnitHold, ResetUnitHoldRequired, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_memberships, managed_membership_for }
-import gunbc.host_maintenance_hold_reason { maintenance_hold_reason_env }
+import gunbc.host.managed_host { ManagedHost, ResetNoUnitHold, ResetUnitHoldRequired, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_memberships, managed_membership_for }
+import gunbc.host.host_maintenance_hold_reason { maintenance_hold_reason_env }
 import extdeps.tools.hostname
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 
@@ -59,7 +59,7 @@ import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 // federated pattern for it). The second is a physical-safety fact about the unit, not about who may
 // authorize, so it does not dissolve with the approval stage: a boot that power-cycles a unit whose
 // DIMMs are being reseated is the harm. It is carried here as ONE std.durable_exclusive_hold slot
-// per unit, keyed by the key its gunbc.managed_host ManagedHost row declares (unit_hold). Nothing here
+// per unit, keyed by the key its gunbc.host.managed_host ManagedHost row declares (unit_hold). Nothing here
 // names a unit: which hosts have a hold, under which key and on which store host, is read off the row.
 //
 // ONE SLOT, TWO KINDS OF HOLDER, AND THAT IS THE POINT. The operator takes the slot for
@@ -145,14 +145,14 @@ fn unit_hold_host_admission_refusal(admission: UnitHoldHostAdmission) -> NonEmpt
   match admission {
     UnitHoldHostAdmitted { subject: _ } => none
     UnitHoldHostNotManaged { host: h } =>
-      Present { value: join(["'", h as String, "' is not a managed host (gunbc.managed_host managed_hosts has no row for it), so it has no unit hold; nothing was taken, released or written"], "") as NonEmptyStr }
+      Present { value: join(["'", h as String, "' is not a managed host (gunbc.host.managed_host managed_hosts has no row for it), so it has no unit hold; nothing was taken, released or written"], "") as NonEmptyStr }
     UnitHoldHostNotRequired { host: h } =>
       Present { value: join(["managed host '", h as String, "' declares no unit hold (ResetNoUnitHold), so there is no hold slot for it; nothing was taken, released or written"], "") as NonEmptyStr }
   }
 }
 
 // THE HOSTS A HOLD STORE MUST EXIST ON: every store host some managed host's hold names, each once,
-// in row order. gunbc.runner_host_grants provisions the store root on exactly these. The named hosts
+// in row order. gunbc.runner.runner_host_grants provisions the store root on exactly these. The named hosts
 // are gathered by prepending and reversed once, and std.list distinct_by_key removes repeats through
 // its keyed map, so neither step copies an accumulator or scans one per row.
 fn unit_hold_named_store_hosts_reversed(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
@@ -190,7 +190,7 @@ fn unit_hold_store_hosts() -> List<NonEmptyStr> {
 // looks. So every store effect below is fed a UnitHoldStoreExecutor, and that carrier exists only
 // when THIS PROCESS OBSERVED its own short hostname (os.Hostname.ReadShort) and it equals the
 // hostname gunbc.hostname_allocation allocates to the subject's store host -- the same two
-// authorities gunbc.host_reset_return_run observer_self_corroboration reads to establish which
+// authorities gunbc.host.host_reset_return_run observer_self_corroboration reads to establish which
 // machine a run is on. A label a caller supplies is not that observation, so there is no parameter
 // for one: unit_hold_store_executor performs the read itself. A store host with no allocated
 // hostname, and a hostname that cannot be read, refuse; neither is treated as a match.
@@ -269,7 +269,7 @@ fn unit_hold_not_on_store_host(key: NonEmptyStr, decision: UnitHoldStoreExecutor
 // says which attempt took the slot and nothing about whether that attempt is still running, so a
 // worker killed while holding the unit left a hold nobody could ever show to be dead, and every later
 // attempt refused on it. The boot's owner therefore carries the holding process's identity -- boot id,
-// pid and start time, gunbc.build_cache_instance ProcessIdentity, the triple that survives pid reuse
+// pid and start time, gunbc.build_cache.build_cache_instance ProcessIdentity, the triple that survives pid reuse
 // and reboots -- and the PID NAMESPACE it was read in (review 72326): a pid means something only in
 // its namespace, and boot_id is shared by every namespace on a host, so a successor in another
 // namespace would find NotFound for a holder that is alive. A successor recovers the slot only after
@@ -392,7 +392,7 @@ fn boot_run_owner(run_id: NonEmptyStr, process: ProcessIdentity, pid_namespace: 
 // acquire outcome therefore cannot become a proof: the pure refusal fold below reads outcomes, and
 // it returns text, never a proof. The proof carries the admitted subject it was acquired for, so what
 // it proves -- this host's slot is held -- is read from the row that admitted it.
-// test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness_test enrolls
+// test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness enrolls
 // test.probe.unit_hold_proof_forged_probe, where a forged proof is refused at the literal.
 type UnitHoldProof sole_constructor {
   subject: AdmittedUnitHoldSubject
@@ -474,7 +474,7 @@ fn recovery_refusal_text(key: NonEmptyStr, r: DurableHoldRecoveryRefusal) -> Non
 
 fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration) -> DeadHolderRecovery
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire_on_store_host"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire_on_store_host"),
   ]
 {
   let report = holder_report(holder: holder, generation: generation)
@@ -495,7 +495,7 @@ fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: Du
 // admission is what keeps a supplied FileHoldAcquired from becoming a proof.
 fn unit_hold_minted(subject: AdmittedUnitHoldSubject, outcome: FileHoldAcquireOutcome) -> UnitHoldAcquisition
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire_on_store_host"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire_on_store_host"),
   ]
 {
   match outcome {
@@ -523,9 +523,9 @@ fn unit_hold_not_acquired(outcome: FileHoldAcquireOutcome) -> UnitHoldAcquisitio
 // someone else in between refuses as occupied, naming them.
 fn unit_hold_acquire(subject: AdmittedUnitHoldSubject, owner: DurableHoldOwnerRef) -> UnitHoldAcquisition
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "boot_run_acquire_unit_hold"),
-    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "kvm_observer_acquire_unit_hold"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "boot_run_acquire_unit_hold"),
+    decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "kvm_observer_acquire_unit_hold"),
   ]
 {
   match unit_hold_store_executor(subject: subject) {
@@ -537,7 +537,7 @@ fn unit_hold_acquire(subject: AdmittedUnitHoldSubject, owner: DurableHoldOwnerRe
 // The store effect itself, reachable only with the executor carrier and only from the mint above.
 fn unit_hold_acquire_on_store_host(executor: UnitHoldStoreExecutor, owner: DurableHoldOwnerRef) -> UnitHoldAcquisition
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
   ]
 {
   let subject = executor.subject
@@ -563,7 +563,7 @@ fn unit_hold_acquire_on_store_host(executor: UnitHoldStoreExecutor, owner: Durab
 // acquire itself takes only the admitted subject.
 fn boot_run_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHoldAcquisition
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
   ]
 {
   match unit_hold_admission_for(host: host as NonEmptyStr) {
@@ -586,14 +586,14 @@ fn unit_hold_not_admitted(admission: UnitHoldHostAdmission) -> UnitHoldAcquisiti
   }
 }
 
-// THE KVM OBSERVER PROBE TAKES THE SAME SLOT (a unit's KVM observer probe, e.g. gunbc.machine_intake_mtcollins1_kvm_observer_observe).
+// THE KVM OBSERVER PROBE TAKES THE SAME SLOT (a unit's KVM observer probe, e.g. gunbc.machine_intake.mtcollins1_kvm_observer_observe).
 // It writes nothing to the controller, but it takes the BMC's one KVM viewer seat, and the boot takes
 // that seat under this hold and REFUSES its handoff when the seat is busy -- so a probe that did not
 // hold the unit could make a concurrent boot refuse, and an operator's maintenance would see a viewer
 // nobody accounted for. Holding the unit makes the probe, the boot and maintenance exclude each other.
 fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHoldAcquisition
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_observe"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_observe"),
   ]
 {
   match unit_hold_admission_for(host: host as NonEmptyStr) {
@@ -700,7 +700,7 @@ fn probe_hold_release_step_exit(o: ProbeHoldReleaseOutcome, context_line: String
 
 fn kvm_observer_release_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_release"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_release"),
   ]
 {
   match unit_hold_admission_for(host: host as NonEmptyStr) {
@@ -716,7 +716,7 @@ fn kvm_observer_release_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> Pr
 
 fn kvm_observer_release_on_store_host(executor: UnitHoldStoreExecutor, run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "kvm_observer_release_unit_hold"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "kvm_observer_release_unit_hold"),
   ]
 {
   let key = executor.subject.key
@@ -783,7 +783,7 @@ fn unit_hold_proof_refusal(proof: UnitHoldProof, host: HostIdentity, label: Stri
 
 // ── The operator's side: two entries run in the operator's own session on the store host ───────
 // MAINTENANCE IS ITS OWN OPERATION WITH ITS OWN POLICY: beside the host's hold decision, the operator
-// names why the unit is held, through the variable gunbc.host_maintenance_hold_reason declares for
+// names why the unit is held, through the variable gunbc.host.host_maintenance_hold_reason declares for
 // that host. A host with a hold and no declared reason variable is refused rather than given a
 // default name. AdmittedMaintenanceHold is sole_constructor and admit_maintenance_hold_in its only
 // mint, so the take and the release below act only on a host that passed both -- and, like every
@@ -831,7 +831,7 @@ fn maintenance_hold_admission_refusal(admission: MaintenanceHoldAdmission) -> St
         Absent => "maintenance hold: unit hold admission unclassified"
       }
     MaintenanceHoldNoReasonVariable { host: h } =>
-      join(["maintenance hold: managed host '", h as String, "' has a unit hold but gunbc.host_maintenance_hold_reason declares no reason variable for it; nothing was taken or released"], "")
+      join(["maintenance hold: managed host '", h as String, "' has a unit hold but gunbc.host.host_maintenance_hold_reason declares no reason variable for it; nothing was taken or released"], "")
   }
 }
 
@@ -860,7 +860,7 @@ fn maintenance_hold_label(hold: AdmittedMaintenanceHold) -> String {
 // store host refuses in the first arm, before the reason is read or the store touched.
 fn maintenance_hold_take_admitted(hold: AdmittedMaintenanceHold) -> ProcessExit
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "maintenance_hold_take"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "maintenance_hold_take"),
   ]
 {
   let label = maintenance_hold_label(hold: hold)
@@ -900,7 +900,7 @@ fn maintenance_hold_release(host: String) -> ProcessExit {
 
 fn maintenance_hold_release_admitted(hold: AdmittedMaintenanceHold) -> ProcessExit
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "maintenance_hold_release"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "maintenance_hold_release"),
   ]
 {
   match unit_hold_store_executor(subject: hold.subject) {
@@ -914,7 +914,7 @@ fn maintenance_hold_release_admitted(hold: AdmittedMaintenanceHold) -> ProcessEx
 // Sealed to the helper above.
 fn maintenance_hold_release_on_store_host(executor: UnitHoldStoreExecutor) -> ProcessExit
   admit_callers: [
-    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "maintenance_hold_release_admitted"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "maintenance_hold_release_admitted"),
   ]
 {
   let label = concat("maintenance hold on ", executor.subject.key as String)

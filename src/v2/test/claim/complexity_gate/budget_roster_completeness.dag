@@ -1,0 +1,85 @@
+module v2.test.claim.complexity_gate.budget_roster_completeness
+
+import std.types { List }
+import v2.lens.complexity {
+  ComplexityAssessment,
+  Established,
+  Incomplete,
+  complexity_assessment_dominates,
+  complexity_lens,
+  incomplete_complexity
+}
+import v2.std.algebra { fold_list, is_empty }
+import std.algebra { list_append }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
+  table_fixture_add_arrow_with_body
+}
+import v2.test.claim.complexity_gate.lens_subject_body_supply {
+  lens_subject_arrow_body_for_budget_row
+}
+import v2.test.claim.complexity_gate.subject_complexity_budget_roster {
+  LensSubjectComplexityBudgetRow,
+  complexity_declared_budget_for_row,
+  complexity_subject_budget_rows
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn complexity_declared_budget_is_established(budget: ComplexityAssessment) -> Bool {
+  match budget {
+    Incomplete { diagnostic: _ } => false
+    Established { bound: _ } => true
+  }
+}
+
+data complexity_budget_row_unrated_declared_budget_semantic_red: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: table_fixture_add_arrow_with_body,
+  declared_budget: fn(body) {
+    incomplete_complexity()
+  }
+}
+
+fn complexity_budget_row_dominates(row: LensSubjectComplexityBudgetRow) -> Bool {
+  match lens_subject_arrow_body_for_budget_row(row: row) {
+    Accepted { value: body, diagnostics: _ } =>
+      let declared = complexity_declared_budget_for_row(row: row, body: body)
+      if !complexity_declared_budget_is_established(budget: declared) {
+        false
+      } else {
+        complexity_assessment_dominates(
+          declared: declared,
+          computed: complexity_lens(n: body)
+        )
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn complexity_budget_roster_family_all_rows_hold(rows: List<LensSubjectComplexityBudgetRow>) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: true,
+    cons: fn(acc, row) {
+      acc && complexity_budget_row_dominates(row: row)
+    }
+  )
+}
+
+test fn complexity_budget_roster_unrated_declared_budget_semantic_red_holds() -> Bool {
+  !complexity_budget_roster_family_all_rows_hold(
+    rows: list_append(
+      left: complexity_subject_budget_rows,
+      right: [complexity_budget_row_unrated_declared_budget_semantic_red]
+    )
+  )
+}
+
+test fn complexity_budget_roster_family_gate_holds() -> Bool {
+  if is_empty(xs: complexity_subject_budget_rows) {
+    false
+  } else {
+    complexity_budget_roster_family_all_rows_hold(rows: complexity_subject_budget_rows)
+  }
+}

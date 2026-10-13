@@ -1,4 +1,4 @@
-module gunbc.runner_shape_census
+module gunbc.runner.runner_shape_census
 
 import std.types { Bool, List, NonEmptyStr }
 import std.measure { gibibyte, gigabyte, hardware_thread_count_value }
@@ -18,7 +18,7 @@ import extdeps.ci_runner.types {
   runner_shape_rows,
   shape_is_architecture,
 }
-import gunbc.runner_provider_survey { surveyed_runner_catalogs }
+import gunbc.runner.runner_provider_survey { surveyed_runner_catalogs }
 
 fn surveyed_runner_shapes() -> List<RunnerShapeRow> {
   fold(surveyed_runner_catalogs(), init: [], f: (acc, c) => concat(acc, runner_shape_rows(availability: c)))

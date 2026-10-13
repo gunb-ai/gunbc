@@ -1,11 +1,11 @@
 module v2.compiler.self_host.wet_receipt_route_standing
 
 import std.types { List }
-import tools.self_host_module_behavioral_transport_roster {
+import gunbc.instruments.self_host_module_behavioral_transport_roster {
   ModuleBehavioralTransportConfig,
   module_behavioral_transport_config_for
 }
-import tools.self_host_curated_seed_linked_harness {
+import gunbc.instruments.self_host_curated_seed_linked_harness {
   cssl_pass_marker_stem,
   CsslWitnessDriver
 }
@@ -16,7 +16,7 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings {
 import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
   seed_emitter_behavioral_wet_known_red_entries
 }
-import tools.self_host_logic_behavioral_transport { slb_receipt_pass_marker }
+import gunbc.instruments.self_host_logic_behavioral_transport { slb_receipt_pass_marker }
 import std.realization_schedule { ScheduleWitnessEntry }
 import v2.std.algebra { fold_list, length }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
@@ -203,115 +203,115 @@ fn wet_receipt_template_row_standing(
 data wet_receipt_route_standings: List<WetReceiptRouteStanding> = [
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_00_compile_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_00_compile_behavioral_witness.dag",
       function: "self_host_00_compile_behavioral_receipt_holds"
     },
-    module_path: "src/v2/compiler/00_compile.dag"
+    module_path: "src/v2/compiler/compile.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_01_tokenize_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_01_tokenize_behavioral_witness.dag",
       function: "self_host_01_tokenize_behavioral_receipt_holds"
     },
-    module_path: "src/v2/compiler/01_tokenize.dag"
+    module_path: "src/v2/compiler/tokenize.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_02_parse_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_02_parse_behavioral_witness.dag",
       function: "self_host_02_parse_behavioral_receipt_holds"
     },
-    module_path: "src/v2/compiler/02_parse.dag"
+    module_path: "src/v2/compiler/parse.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_03_ingest_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_03_ingest_behavioral_witness.dag",
       function: "self_host_03_ingest_behavioral_receipt_holds"
     },
-    module_path: "src/v2/compiler/03_ingest.dag"
+    module_path: "src/v2/compiler/ingest.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_03_normalize_behavioral_witness.dag",
       function: "self_host_03_normalize_behavioral_receipt_holds"
     },
-    module_path: "src/v2/compiler/03_normalize.dag"
+    module_path: "src/v2/compiler/normalize.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_03_resolve_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_03_resolve_behavioral_witness.dag",
       function: "self_host_03_resolve_behavioral_receipt_holds"
     },
-    module_path: "src/v2/compiler/03_resolve.dag"
+    module_path: "src/v2/compiler/resolve.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_04_infer_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_04_infer_behavioral_witness.dag",
       function: "self_host_04_infer_behavioral_receipt_holds"
     },
-    module_path: "src/v2/compiler/04_infer.dag"
+    module_path: "src/v2/compiler/infer.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_body_producer_behavioral_witness.dag",
       function: "self_host_body_producer_behavioral_receipt_holds"
     },
-    module_path: "src/v2/compiler/03_body_producer.dag"
+    module_path: "src/v2/compiler/body_producer.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness.dag",
       function: "self_host_discovery_enumeration_behavioral_receipt_holds"
     },
     module_path: "src/v2/compiler/discovery_enumeration.dag"
   ),
   wet_receipt_template_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_logic_behavioral_witness.dag",
       function: "self_host_logic_behavioral_receipt_holds"
     },
     driver: DriverInlineSource {
-      citation: "tools.self_host_logic_behavioral_transport slb_driver_main_source"
+      citation: "gunbc.instruments.self_host_logic_behavioral_transport slb_driver_main_source"
     },
     pass_marker: slb_receipt_pass_marker
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_materialization_carriers_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_materialization_carriers_behavioral_witness.dag",
       function: "self_host_materialization_carriers_behavioral_receipt_holds"
     },
     module_path: "src/v2/compiler/materialization_carriers.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_program_assembly_behavioral_witness.dag",
       function: "self_host_program_assembly_behavioral_receipt_holds"
     },
     module_path: "src/v2/compiler/program_assembly.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_program_partition_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_program_partition_behavioral_witness.dag",
       function: "self_host_program_partition_behavioral_receipt_holds"
     },
     module_path: "src/v2/compiler/program_partition.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_source_authority_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_source_authority_behavioral_witness.dag",
       function: "self_host_source_authority_behavioral_receipt_holds"
     },
     module_path: "src/v2/compiler/source_authority.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_target_carriers_behavioral_witness.dag",
       function: "self_host_target_carriers_behavioral_receipt_holds"
     },
-    module_path: "src/v2/compiler/07_target_carriers.dag"
+    module_path: "src/v2/compiler/target_carriers.dag"
   ),
   wet_receipt_module_row_standing(
     receipt: WetReceiptIdentity {
-      entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
+      entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness.dag",
       function: "self_host_use_site_verdict_behavioral_receipt_holds"
     },
     module_path: "src/v2/compiler/use_site_verdict.dag"

@@ -8,10 +8,10 @@ import extdeps.languages.json.emit { serialize_json }
 import gunbc.command_runner { run_shell_command_capture, LocalExec }
 import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.fabric_storage_binding { fabric_state_storage_binding }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation { workspace_allocation_id_of }
 import gunbc.workspace_allocation_admission { WorkspaceRequestAdmission, workspace_request_compose,
   WorkspaceRequestAdmitted, WorkspaceRequestAdmissionRefused, WorkspaceRequestPolicyRefused }

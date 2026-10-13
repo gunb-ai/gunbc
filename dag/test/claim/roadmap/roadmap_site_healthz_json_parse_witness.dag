@@ -1,4 +1,4 @@
-module test.claim.roadmap_site_healthz_json_parse_witness
+module test.claim.roadmap.roadmap_site_healthz_json_parse_witness
 
 
 fn roadmap_site_healthz_json_parse_witness() -> ProcessExit {

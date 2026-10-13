@@ -1,4 +1,4 @@
-module gunbc.provider_acquisition
+module gunbc.fleet.provider_acquisition
 
 import std.types { NonEmptyStr }
 import extdeps.cloud.gcp.secret_ref { SecretRef }

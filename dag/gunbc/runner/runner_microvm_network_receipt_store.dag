@@ -1,20 +1,20 @@
-module gunbc.runner_microvm_network_receipt_store
+module gunbc.runner.runner_microvm_network_receipt_store
 
 import std.types { String, NonEmptyStr, Bool }
 import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
-import gunbc.runner_host_deploy { runner_host_deploy_for, runner_slot_identities_of,
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_slot_identities_of,
   RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.file_access { path_ancestor_prefixes }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread, entry_is_root_authoritative }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread, entry_is_root_authoritative }
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent,
   FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied,
   FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
 }
-import gunbc.runner_microvm_network {
+import gunbc.runner.runner_microvm_network {
   ConvergedSlotNetwork, runner_microvm_converged_receipt_path,
   render_converged_slot_network, parse_converged_slot_network,
   ConvergedSlotNetworkParsed, ConvergedSlotNetworkMalformed,
@@ -69,7 +69,7 @@ fn read_network_receipt(host: HostIdentity) -> NetworkReceiptRead {
 // Initial publication is atomic and never replaces a generation a controller may already use.
 // A rerun verifies the stored generation against fresh host readings before reaching this entry.
 fn publish_initial_network_receipt(receipt: ConvergedSlotNetwork) -> NetworkReceiptRead
-  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_network_observe", decl_name: "initialize_local_network_receipt")]
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_network_observe", decl_name: "initialize_local_network_receipt")]
 {
   if !network_receipt_ancestors_owned() { StoredNetworkReceiptUnreadable { reason: "network receipt store is not installed under root custody" } }
   else {

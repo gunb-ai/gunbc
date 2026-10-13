@@ -1,4 +1,4 @@
-module tools.path_writer_set_instrument
+module gunbc.instruments.path_writer_set_instrument
 
 import std.types { Bool, GitRef, Int, List, NonEmptyStr, String }
 import extdeps.git

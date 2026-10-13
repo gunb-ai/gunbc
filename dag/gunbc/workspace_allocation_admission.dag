@@ -8,9 +8,9 @@ import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decisi
 import extdeps.http.server { RequestSecurityContext }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
 import std.list { distinct_by_key }
-import extdeps.ssh { SshPublicKey, Ed25519, ssh_ed25519_key_identity }
+import extdeps.ssh.keys { SshPublicKey, Ed25519, ssh_ed25519_key_identity }
 import gunbc.workspace_ssh_access { WorkspaceSshAccess, WorkspaceSshFromHost, WorkspaceSshThroughGateway }
-import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.request_authentication { RequestAccessPath,
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
   ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCreateIssue, ServeActionCommentIssue, ServeActionSaveOwnView, ServeActionApproveDecision, ServeRouteAction,
