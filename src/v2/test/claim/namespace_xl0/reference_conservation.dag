@@ -431,7 +431,7 @@ fn dotted_spine_subject() -> ReferenceConservationSubject {
 
 test fn dotted_spine_segments_keep_their_own_occurrence_holds() -> Bool {
   let r = conservation_report_of(subject: dotted_spine_subject())
-  r.authored == 18 && r.conserved == 10 && r.locus_erased + r.role_excluded + r.header_channel == 8 && length(xs: r.dropped) == 0
+  r.authored == 18 && r.conserved == 10 && r.locus_erased == 0 && r.role_excluded == 5 && r.header_channel == 3 && length(xs: r.dropped) == 0
 }
 
 // ---- anonymous parameter slots are conserved by their minted identity -------------------------

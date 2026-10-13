@@ -11,7 +11,7 @@ import std.decision {
   VariesAlong, RelationOtherwiseEstablished,
   ConstraintDisposition, ConstraintSatisfied, ParameterDisposition, ParameterBound,
   PhysicalModelEstablished, CausalModelEstablished, FleetObservedCoupling,
-  HardConstraint, SelectionPolicy, UniqueSurvivorRequired,
+  HardConstraint, NonMoneyConstraint, SelectionPolicy, UniqueSurvivorRequired,
   RealizationSelectionResult, SelectedWithin, SelectionReceipt,
   CandidateFieldUnestablished, NoFeasibleRealization, SelectionNeedsEvidence, SelectionNeedsPolicy, RealizationSelectionRefused,
   select_realization,
@@ -187,9 +187,9 @@ data constraint_every_target_once: DeclarationRef = decl_ref(module_path: "gunbc
 data baseline_constraint_authority: DeclarationRef = decl_ref(module_path: "extdeps.ampere.mt_collins_firmware_release", decl_name: "mt_collins_bios_scp_pairs")
 
 data baseline_hard_constraints: List<HardConstraint> = [
-  HardConstraint { identity: constraint_bios_scp_paired, axis: ax_bios_scp_paired, bound_micro: 1 },
-  HardConstraint { identity: constraint_interop_met, axis: ax_interop_met, bound_micro: 1 },
-  HardConstraint { identity: constraint_every_target_once, axis: ax_every_target_once, bound_micro: 1 },
+  HardConstraint { identity: constraint_bios_scp_paired, axis: ax_bios_scp_paired, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: constraint_interop_met, axis: ax_interop_met, bound_micro: 1, denomination: NonMoneyConstraint },
+  HardConstraint { identity: constraint_every_target_once, axis: ax_every_target_once, bound_micro: 1, denomination: NonMoneyConstraint },
 ]
 
 fn gate(passes: Bool) -> Int {

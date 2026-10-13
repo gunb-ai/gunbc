@@ -237,6 +237,29 @@ test fn an_unlabelable_declaration_inside_the_universe_refuses_typed() -> Bool {
   )
 }
 
+// A namespace name whose dummy label cannot be formed is filtered from entries so it is not
+// acquired, but the listing still carries it: the universe fold refuses with the same located
+// cause rather than dropping the name (DESIGN section 5).
+test fn an_unformable_population_name_refuses_typed() -> Bool {
+  match parse_target_pattern(text: "//...") {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: pattern } =>
+      match native_lane_universe_selected(
+        modules: [inside_probe()],
+        population: ["v2.test.selection_probe", "v2.test.foo..bar"],
+        pattern: pattern
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          d.head.reason == ^native_lane_identity_label_refused
+            && (d.tail |> any(fn(x) {
+                 string_contains(s: symbol_lexeme(sym: x.reason), pattern: "v2.test.foo..bar")
+                   && string_contains(s: symbol_lexeme(sym: x.reason), pattern: "empty package segment")
+               }))
+      }
+  }
+}
+
 // ── discovery covers the acquired universe members, and refuses for them ───────────────────────────
 
 fn disposition_broken() -> AcquiredModule {

@@ -3,7 +3,7 @@ module v2.compiler.reference_site_collector
 import std.types { List }
 
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
-import v2.std.algebra { fold_list, is_empty, list_map }
+import v2.std.algebra { fold_list, is_empty, list_init, list_map }
 import v2.std.collection { Map, empty_map, map_contains_key, map_insert }
 import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
 import v2.std.integer { Int }
@@ -30,6 +30,7 @@ import v2.compiler.lexical_scope {
   ChildSeesParentValues,
   ChildSeesParentValuesAnd,
   ChildSeesParentValuesAndUndecided,
+  ChildSeesParentValuesBeyondCurrentArm,
   ChildValueScope,
   child_value_scope,
   declaration_names_value,
@@ -207,7 +208,7 @@ type SiteChildWalk {
 fn site_scope_of_child(scope: SiteScope, seen: ChildValueScope) -> SiteScope {
   match seen {
     ChildSeesParentValues => scope
-    ChildSeesNoValues => SiteScope { frame: empty_map(), undecided: empty_map(), roots: scope.roots, imported: scope.imported }
+    ChildSeesNoValues => SiteScope { frame: empty_map(), undecided: [], roots: scope.roots, imported: scope.imported }
     ChildSeesParentValuesAnd { names: names } =>
       SiteScope {
         frame: site_names_added(names: names, to: scope.frame),
@@ -218,7 +219,14 @@ fn site_scope_of_child(scope: SiteScope, seen: ChildValueScope) -> SiteScope {
     ChildSeesParentValuesAndUndecided { names: names } =>
       SiteScope {
         frame: scope.frame,
-        undecided: site_names_added(names: names, to: scope.undecided),
+        undecided: list_snoc_item(xs: scope.undecided, item: site_names_added(names: names, to: empty_map())),
+        roots: scope.roots,
+        imported: scope.imported
+      }
+    ChildSeesParentValuesBeyondCurrentArm { names: names } =>
+      SiteScope {
+        frame: site_names_added(names: names, to: scope.frame),
+        undecided: list_init(xs: scope.undecided),
         roots: scope.roots,
         imported: scope.imported
       }
@@ -431,12 +439,15 @@ fn reference_site_collection_of(scoped: ScopedReferenceSiteCollection) -> Refere
 // The names in scope at a site, by how much the walk knows of each. `frame` is the value binders the
 // enclosing Arrows and `let`s introduce (v2.compiler.lexical_scope child_value_scope) and `roots` the
 // module-level declarations that name a value: those heads ARE bound. `undecided` is the pattern atoms of the
-// enclosing match arms and `imported` the names the module imports, both names a construct introduces
-// that the walk cannot classify: those heads MAY be bound. `imported` is module-level, so a type-role edge
-// keeps it as it keeps `roots`, while a type scope holds no arm's binder.
+// enclosing match arms, one layer per arm, innermost last, and `imported` the names the module imports, both
+// names a construct introduces that the walk cannot classify: those heads MAY be bound. The arms are layers
+// because a `let` that ends its arm's binders (v2.compiler.lexical_scope bind_carries_arm_scope_exit) leaves
+// only the innermost one, while the arms around the match still enclose the rest of the function.
+// `imported` is module-level, so a type-role edge keeps it as it keeps `roots`, while a type scope holds no
+// arm's binder.
 type SiteScope {
   frame: Map<Symbol, Symbol>
-  undecided: Map<Symbol, Symbol>
+  undecided: List<Map<Symbol, Symbol>>
   roots: Map<Symbol, Symbol>
   imported: Map<Symbol, Symbol>
 }
@@ -448,13 +459,18 @@ fn site_head_binding(scope: SiteScope, spelling: QualifiedName) -> SiteHeadBindi
         HeadBoundInFrame
       } else if map_contains_key(m: scope.roots, key: head) {
         HeadBoundAtRootValue
-      } else if map_contains_key(m: scope.undecided, key: head) || map_contains_key(m: scope.imported, key: head) {
+      } else if site_head_is_undecided(scope: scope, head: head) {
         HeadBindingUndecided
       } else {
         HeadLexicallyUnbound
       }
     Empty => HeadLexicallyUnbound
   }
+}
+
+fn site_head_is_undecided(scope: SiteScope, head: Symbol) -> Bool {
+  map_contains_key(m: scope.imported, key: head)
+    || fold_list(xs: scope.undecided, empty: false, cons: fn(acc, layer) { acc || map_contains_key(m: layer, key: head) })
 }
 
 // The module-level declarations that name a value, from the producer resolution builds its root frame
@@ -503,7 +519,7 @@ fn module_reference_sites(
         position: list_map(xs: module_qn, f: fn(segment) { Authored { name: segment } }),
         scope: SiteScope {
           frame: empty_map(),
-          undecided: empty_map(),
+          undecided: [],
           roots: module_root_value_names(root: root),
           imported: site_names_added(names: imported, to: empty_map())
         },

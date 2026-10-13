@@ -15,7 +15,7 @@ import extdeps.github.effect { GitHubEffect, DispatchWorkflow, GitHubWorkflowRef
 import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.actions {
   Workflow, Job, DispatchInput, InputString, RunnerSpec, RunsOnExpression, HostedRunner, SelfHosted,
-  WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, WorkflowRunCompleted, MergeGroup,
+  WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, WorkflowRunTriggered, MergeGroup,
   Step, RunStep, UsesStep,
 }
 import extdeps.languages.yaml.types { kv, yaml_string }
@@ -214,7 +214,7 @@ fn workflow_declares_dispatch_input(workflow: Workflow, input: DispatchInput) ->
       PullRequest { branches: _, types: _, paths: _ } => false
       Schedule { cron: _ } => false
       WorkflowCall { inputs: _ } => false
-      WorkflowRunCompleted { workflows: _, branches: _ } => false
+      WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => false
       MergeGroup => false
     })
 }
