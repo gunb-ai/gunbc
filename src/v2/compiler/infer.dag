@@ -1561,24 +1561,98 @@ fn infer_declaration_reference_facts_indexed(
             inner: inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
           )
         Present { value: declared } =>
-          match infer_declaration_callable_evidence(declared: declared) {
-            Absent =>
-              inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
-            Present { value: callable } =>
-              infer_reference_facts_or_frontier(
-                o: infer_facts_denoting(
-                  o: inferred_facts_from_derived_type(
-                    node: n,
-                    derived_type: infer_reference_value_type(callable: callable),
-                    descent: Holds { value: descent_proof }
-                  ),
-                  declaration: declared
-                ),
+          match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
+            Present { value: VariantArmPayload } =>
+              infer_variant_arm_value_reference_facts(
                 n: n,
+                resolved: resolved,
+                path: path,
+                declared: declared,
+                descent_proof: descent_proof
+              )
+            Present { value: RecordTypePayload } =>
+              infer_declaration_callable_reference_facts(
+                n: n,
+                declared: declared,
+                descent_proof: descent_proof
+              )
+            Absent =>
+              infer_declaration_callable_reference_facts(
+                n: n,
+                declared: declared,
                 descent_proof: descent_proof
               )
           }
       }
+}
+
+// A NULLARY COPRODUCT-ARM REFERENCE IS TYPED BY THE DECLARING COPRODUCT, the same claimant
+// chase infer_coproduct_path_of_variant_arm uses for constructs. Callable evidence is the wrong
+// derivation: an arm is not an Arrow, so the previous arm left CliTargetRust underived and the
+// list (and data cli_default_emit_target) fatally demanded a grounding. A missing claimant
+// refuses declaration_identity_unavailable, located. A payload-bearing arm used bare is still
+// not a value of the coproduct — it stays GroundingNotDerived, as before. Expected-type
+// checking mode is not this repair.
+fn infer_variant_arm_value_reference_facts(
+  n: Node,
+  resolved: ResolvedTree,
+  path: QualifiedName,
+  declared: Node,
+  descent_proof: TerminationProof
+) -> Outcome<InferredFacts> {
+  match infer_coproduct_path_of_variant_arm(index: resolved.resolved_declarations, arm_path: path) {
+    Absent =>
+      outcome_rejected(infer_declaration_identity_unavailable_diagnostic(at: n))
+    Present { value: coproduct } =>
+      if infer_variant_arm_payload_is_nullary(payload: declared) {
+        infer_reference_facts_or_frontier(
+          o: infer_facts_denoting(
+            o: inferred_facts_from_derived_type(
+              node: n,
+              derived_type: declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic),
+              descent: Holds { value: descent_proof }
+            ),
+            declaration: declared
+          ),
+          n: n,
+          descent_proof: descent_proof
+        )
+      } else {
+        inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+      }
+  }
+}
+
+fn infer_variant_arm_payload_is_nullary(payload: Node) -> Bool {
+  match payload.kind {
+    TypeNode { connective: Conj } => length(xs: payload.children) == 0
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn infer_declaration_callable_reference_facts(
+  n: Node,
+  declared: Node,
+  descent_proof: TerminationProof
+) -> Outcome<InferredFacts> {
+  match infer_declaration_callable_evidence(declared: declared) {
+    Absent =>
+      inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+    Present { value: callable } =>
+      infer_reference_facts_or_frontier(
+        o: infer_facts_denoting(
+          o: inferred_facts_from_derived_type(
+            node: n,
+            derived_type: infer_reference_value_type(callable: callable),
+            descent: Holds { value: descent_proof }
+          ),
+          declaration: declared
+        ),
+        n: n,
+        descent_proof: descent_proof
+      )
+  }
 }
 
 // A REFERENCE TO A `data` CONSTANT USES ITS VALUE, so it is typed at the constant's declared type, the

@@ -1,0 +1,238 @@
+// Nullary coproduct-arm *references* (CliTargetRust, not CliTargetRust { }) are typed
+// by the declaring coproduct at v2.compiler.infer infer_declaration_reference_facts_indexed.
+// Inputs are supplied at infer's interface.
+
+module v2.test.claim.nullary_variant_arm_reference
+
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
+import std.optional { Absent, Present, optional_absent, optional_present }
+import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
+import v2.compiler.infer { infer, inferred_facts_resolved_type }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.collection { empty_map }
+import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
+import v2.std.logic { Bool }
+import v2.std.member_declaration_kind { no_member_declaration_kinds }
+import v2.std.node {
+  Atom,
+  Authored,
+  Conj,
+  Edge,
+  Node,
+  TypeNode
+}
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
+import v2.std.symbol_index {
+  SymbolIndex,
+  VariantArmPayload,
+  empty_symbol_index,
+  symbol_index_bind_at,
+  symbol_index_insert,
+  symbol_index_mark_declared_payload,
+  symbol_index_mark_module_root
+}
+import v2.std.witness { Holds, Violates }
+
+fn nvar_id(n: Int) -> NodeOccurrenceIdentity {
+  OccurrenceMinted { id: OccurrenceId { value: n } }
+}
+
+fn nvar_empty_payload() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn nvar_field_payload() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Authored { name: ^code },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^Int } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+        }
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn nvar_module() -> QualifiedName {
+  Cons { head: ^aca, tail: Empty }
+}
+
+fn nvar_coproduct_path() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^CliEmitTarget, tail: Empty } }
+}
+
+fn nvar_rust_declaring() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^CliEmitTarget, tail: Cons { head: ^CliTargetRust, tail: Empty } } }
+}
+
+fn nvar_c_declaring() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^CliEmitTarget, tail: Cons { head: ^CliTargetC, tail: Empty } } }
+}
+
+fn nvar_rust_alias() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^CliTargetRust, tail: Empty } }
+}
+
+fn nvar_c_alias() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^CliTargetC, tail: Empty } }
+}
+
+fn nvar_process_exit() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^ProcessExit, tail: Empty } }
+}
+
+fn nvar_failure_declaring() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^ProcessExit, tail: Cons { head: ^ExitFailure, tail: Empty } } }
+}
+
+fn nvar_failure_alias() -> QualifiedName {
+  Cons { head: ^aca, tail: Cons { head: ^ExitFailure, tail: Empty } }
+}
+
+fn nvar_bind_nullary_arm(index: SymbolIndex, alias: QualifiedName, declaring: QualifiedName) -> SymbolIndex {
+  let with_arm = symbol_index_mark_declared_payload(
+    index: symbol_index_insert(index: index, qualified_path: declaring, resolved: nvar_empty_payload()),
+    qualified_path: declaring,
+    kind: VariantArmPayload
+  )
+  symbol_index_mark_declared_payload(
+    index: symbol_index_bind_at(
+      index: with_arm,
+      binding_path: alias,
+      declaring_path: declaring,
+      resolved: nvar_empty_payload()
+    ),
+    qualified_path: alias,
+    kind: VariantArmPayload
+  )
+}
+
+fn nvar_cli_index() -> SymbolIndex {
+  let with_module = symbol_index_mark_module_root(index: empty_symbol_index(), qualified_path: nvar_module())
+  let with_type = symbol_index_insert(index: with_module, qualified_path: nvar_coproduct_path(), resolved: nvar_empty_payload())
+  nvar_bind_nullary_arm(
+    index: nvar_bind_nullary_arm(index: with_type, alias: nvar_rust_alias(), declaring: nvar_rust_declaring()),
+    alias: nvar_c_alias(),
+    declaring: nvar_c_declaring()
+  )
+}
+
+fn nvar_tree(root: Node, index: SymbolIndex) -> ResolvedTree {
+  ResolvedTree {
+    root: root,
+    symbol_index: index,
+    resolved_declarations: index,
+    lexical_bindings: empty_map(),
+    unavailable_providers: [],
+    member_kinds: no_member_declaration_kinds(),
+    type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
+    constructing_module: optional_absent()
+  }
+}
+
+fn nvar_ref(path: QualifiedName, id: Int) -> Node {
+  declaration_reference_node(qn: path, occurrence_id: nvar_id(n: id))
+}
+
+fn nvar_derived_path(root: Node, index: SymbolIndex) -> Optional<QualifiedName> {
+  match infer(tree: nvar_tree(root: root, index: index)) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: t, diagnostics: _ } =>
+      match t.facts.lookup(root) {
+        Absent => optional_absent()
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: _ } => optional_absent()
+            Holds { value: ty } => declaration_reference_path_optional(node: ty)
+          }
+      }
+  }
+}
+
+test fn cli_default_emit_target_infers_cli_emit_target_holds() -> Bool {
+  match nvar_derived_path(root: nvar_ref(path: nvar_rust_alias(), id: 1), index: nvar_cli_index()) {
+    Absent => false
+    Present { value: path } => path == nvar_coproduct_path()
+  }
+}
+
+test fn cli_emit_targets_list_infers_cli_emit_target_elements_holds() -> Bool {
+  let rust = nvar_ref(path: nvar_rust_alias(), id: 2)
+  let c = nvar_ref(path: nvar_c_alias(), id: 3)
+  let rust_ok =
+    match nvar_derived_path(root: rust, index: nvar_cli_index()) {
+      Absent => false
+      Present { value: path } => path == nvar_coproduct_path()
+    }
+  let c_ok =
+    match nvar_derived_path(root: c, index: nvar_cli_index()) {
+      Absent => false
+      Present { value: path } => path == nvar_coproduct_path()
+    }
+  rust_ok && c_ok
+}
+
+test fn a_variant_reference_whose_coproduct_is_unresolvable_refuses_identity_unavailable_holds() -> Bool {
+  let indexed = symbol_index_mark_declared_payload(
+    index: symbol_index_insert(
+      index: symbol_index_mark_module_root(index: empty_symbol_index(), qualified_path: nvar_module()),
+      qualified_path: nvar_rust_alias(),
+      resolved: nvar_empty_payload()
+    ),
+    qualified_path: nvar_rust_alias(),
+    kind: VariantArmPayload
+  )
+  match infer(tree: nvar_tree(root: nvar_ref(path: nvar_rust_alias(), id: 4), index: indexed)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^infer_reason_declaration_identity_unavailable)
+  }
+}
+
+fn nvar_payload_index() -> SymbolIndex {
+  let with_module = symbol_index_mark_module_root(index: empty_symbol_index(), qualified_path: nvar_module())
+  let with_type = symbol_index_insert(index: with_module, qualified_path: nvar_process_exit(), resolved: nvar_empty_payload())
+  let with_arm = symbol_index_mark_declared_payload(
+    index: symbol_index_insert(index: with_type, qualified_path: nvar_failure_declaring(), resolved: nvar_field_payload()),
+    qualified_path: nvar_failure_declaring(),
+    kind: VariantArmPayload
+  )
+  symbol_index_mark_declared_payload(
+    index: symbol_index_bind_at(
+      index: with_arm,
+      binding_path: nvar_failure_alias(),
+      declaring_path: nvar_failure_declaring(),
+      resolved: nvar_field_payload()
+    ),
+    qualified_path: nvar_failure_alias(),
+    kind: VariantArmPayload
+  )
+}
+
+test fn a_payload_bearing_arm_used_bare_stays_grounding_not_derived_holds() -> Bool {
+  let root = nvar_ref(path: nvar_failure_alias(), id: 5)
+  match infer(tree: nvar_tree(root: root, index: nvar_payload_index())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: d } =>
+      match t.facts.lookup(root) {
+        Absent => false
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Holds { value: _ } => false
+            Violates { diagnostic: v } =>
+              v.reason == ^infer_grounding_not_derived
+                && diagnostics_has_reason(d: d, reason: ^infer_grounding_not_derived)
+          }
+      }
+  }
+}
