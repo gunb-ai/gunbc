@@ -1814,51 +1814,6 @@ fn github_installation_token_permissions(perms: List<GitHubAppPermission>) -> Gi
   }
 }
 
-fn installation_token_optional_permission_kv(key: String, access: String?) -> List<JsonKeyValue> {
-  match access {
-    Absent => []
-    Present { value: v } => [json_kv(key: key, value: json_string(s: v))]
-  }
-}
-
-fn installation_token_permissions_json_members(p: GitHubInstallationTokenPermissions) -> List<JsonKeyValue> {
-  concat(
-    concat(
-      concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: ActionsAxis) as String, access: p.actions), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: AdministrationAxis) as String, access: p.administration)),
-      concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: ArtifactMetadataAxis) as String, access: p.artifact_metadata), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: AttestationsAxis) as String, access: p.attestations))
-    ),
-    concat(
-      concat(
-        concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: ChecksAxis) as String, access: p.checks), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: CodeQualityAxis) as String, access: p.code_quality)),
-        concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: ContentsAxis) as String, access: p.contents), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: DeploymentsAxis) as String, access: p.deployments))
-      ),
-      concat(
-        concat(
-          concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: DiscussionsAxis) as String, access: p.discussions), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: IdTokenAxis) as String, access: p.id_token)),
-          concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: IssuesAxis) as String, access: p.issues), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: MetadataAxis) as String, access: p.metadata))
-        ),
-        concat(
-          concat(
-            concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: ModelsAxis) as String, access: p.models), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: OrganizationSelfHostedRunnersAxis) as String, access: p.organization_self_hosted_runners)),
-            concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: PackagesAxis) as String, access: p.packages), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: PagesAxis) as String, access: p.pages))
-          ),
-          concat(
-            concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: PullRequestsAxis) as String, access: p.pull_requests), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: RepositoryProjectsAxis) as String, access: p.repository_projects)),
-            concat(
-              concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: SecurityEventsAxis) as String, access: p.security_events), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: StatusesAxis) as String, access: p.statuses)),
-              concat(installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: VulnerabilityAlertsAxis) as String, access: p.vulnerability_alerts), installation_token_optional_permission_kv(key: permission_axis_wire_name(axis: WorkflowsAxis) as String, access: p.workflows))
-            )
-          )
-        )
-      )
-    )
-  )
-}
-
-fn installation_token_permissions_json(p: GitHubInstallationTokenPermissions) -> String {
-  serialize_json(v: json_object(members: installation_token_permissions_json_members(p: p)))
-}
-
 // GET /app and GET /app/installations/{installation_id}, the two App-level READS a process holding
 // the App key performs with the JWT it signed (get_authenticated_app_citation,
 // get_app_installation_citation). The JWT is an INPUT, as on github.AppInstallationAccessTokens and

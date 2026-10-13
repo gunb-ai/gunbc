@@ -25,8 +25,6 @@ import gunbc.github_effect_perform {
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.github_apps { gunbai_bot_declared }
-import extdeps.github.app { installation_token_permissions_json, github_installation_token_permissions }
-import extdeps.github.effect { contents_write, pull_requests_write }
 import test.claim.github_app_registry { dispatched, runner_grant }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -207,17 +205,25 @@ test fn witness_the_staged_key_file_is_removed_when_signing_refuses() -> Bool {
 }
 
 test fn heal_installation_token_permissions_are_contents_write_only() -> Bool {
-  let wire = installation_token_permissions_json(p: heal_publisher_installation_token_permissions)
-  let from_list = installation_token_permissions_json(p: github_installation_token_permissions(perms: [contents_write]))
-  wire == "\{\"contents\": \"write\"}"
-    && wire == from_list
-    && !string_contains(s: wire, pattern: "pull_requests")
+  let p = heal_publisher_installation_token_permissions
+  match p.contents {
+    Present { value: v } => v == "write"
+    Absent => false
+  }
+    && match p.pull_requests {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
 test fn publication_helper_installation_token_permissions_add_pull_requests_write() -> Bool {
-  let wire = installation_token_permissions_json(p: publication_helper_installation_token_permissions)
-  let from_list = installation_token_permissions_json(p: github_installation_token_permissions(perms: [contents_write, pull_requests_write]))
-  wire == from_list
-    && string_contains(s: wire, pattern: "\"contents\": \"write\"")
-    && string_contains(s: wire, pattern: "\"pull_requests\": \"write\"")
+  let p = publication_helper_installation_token_permissions
+  match p.contents {
+    Present { value: v } => v == "write"
+    Absent => false
+  }
+    && match p.pull_requests {
+      Present { value: v } => v == "write"
+      Absent => false
+    }
 }

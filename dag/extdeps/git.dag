@@ -1712,18 +1712,6 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "rev-parse", "{target}"] }
   }
 
-  operation RevParseAbsoluteGitDirInRepo {
-    requires opaque
-    input { repo: FilePath }
-    output {
-      git_dir: String from "stdout"
-      exit_code: Int from "exit_code"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell { argv: ["git", "-C", "{repo}", "rev-parse", "--absolute-git-dir"] }
-  }
-
   operation FetchForcedRefInRepo {
     requires opaque
     input { repo: FilePath, remote: String, refspec: String }
