@@ -1,8 +1,8 @@
-module gunbc.roadmap_identity
+module gunbc.roadmap.roadmap_identity
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
 
 // THE INDEX IS DERIVED, NEVER AUTHORED. An earlier cut carried a hand-written list of (identity,
 // slug) rows beside the authority, which created two things that had to be kept in step and could

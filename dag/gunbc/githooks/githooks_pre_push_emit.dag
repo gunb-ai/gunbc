@@ -1,7 +1,7 @@
-module gunbc.githooks_pre_push_emit
+module gunbc.githooks.githooks_pre_push_emit
 
 import extdeps.git { git_toplevel_shell_subexpr }
-import gunbc.githooks_repo_local_git_config_emit { emit_repo_local_git_config_converge_shell }
+import gunbc.githooks.githooks_repo_local_git_config_emit { emit_repo_local_git_config_converge_shell }
 import gunbc.commit_workflow {
   commit_gate_roster,
   project_local_tidy_checks,

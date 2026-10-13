@@ -1,4 +1,4 @@
-module gunbc.machine_intake_arrival_interlock
+module gunbc.machine_intake.arrival_interlock
 
 import std.types { NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -12,10 +12,10 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleasePlanned, FileHoldReleaseNotEligible,
   FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
 }
-import gunbc.machine_intake_bmc_rotation_route {
+import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, rotation_route_is_grounded,
 }
-import gunbc.machine_intake_arrival_subject { ArrivalSubjectAdmitted }
+import gunbc.machine_intake.arrival_subject { ArrivalSubjectAdmitted }
 
 // ── THE INTERLOCK AN MTJADE1 ARRIVAL WRITE TAKES ──────────────────────────────────────────────
 // The standing grant's words cover the class; this is the physical-safety / route-ground fact the

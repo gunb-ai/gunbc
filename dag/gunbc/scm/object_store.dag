@@ -51,7 +51,7 @@ import v2.std.collection { map_lookup }
 // CORRECTED 2026-09-21 (gunbc#11996). This note said "No stronger option exists in .dag today -- the
 // sha256 surfaces in std.content_hash and extdeps.crypto.hash VALIDATE hex rather than computing it".
 // That was true when written and is now FALSE: extdeps.crypto.sha2 computes FIPS 180-4 SHA-256 over
-// List<UInt8> in the substrate, witnessed by test.claim.sha256_fips_witness_test. A std.content_hash
+// List<UInt8> in the substrate, witnessed by test.claim.sha256_fips_witness. A std.content_hash
 // mint over it, and std.fabric_storage's object refs bound to that mint, were both authored in that
 // change and both withdrawn in it. Interpreted SHA-256 made every store consumer two to three hundred
 // times slower and cancelled the required floor, and the mint's own inhabitance claim performed
@@ -190,7 +190,7 @@ fn scm_object_ref_locator(reference: ScmObjectRef) -> ObjectId {
 // content -- it is transient store-relative provenance that was being carried inside the record.
 //
 // Carrying it there was not merely redundant, it was WRONG, and the defect it produced is executed by
-// test.claim.scm_commit_closure_witness `a_node_requirement_over_a_file_is_not_a_fetchable_absence`:
+// test.claim.scm.scm_commit_closure_witness `a_node_requirement_over_a_file_is_not_a_fetchable_absence`:
 // an authored source occupying L made the requirement unsatisfied, the Bool that consumers read
 // reported it as simply absent, completeness called it fetchable, and the kind-blind encoder emitted
 // the CONTAINED spelling for it -- so an admitted partial closure produced bytes this same build
@@ -1975,7 +1975,7 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
 // writing [alpha, beta] and then [beta, alpha] derives ONE locator, so the second write found the
 // first record, records_equal compared the labeled children in supplied order, they differed, and
 // insert_admission reported a LocatorCollision for a store being asked to do something ordinary.
-// Nothing had collided. Executed by test.claim.scm_commit_closure_witness
+// Nothing had collided. Executed by test.claim.scm.scm_commit_closure_witness
 // `re_writing_the_same_bindings_in_another_order_is_idempotent`, with
 // `swapping_which_target_each_label_names_is_a_different_object` as the control that keeps this from
 // being satisfied by collapsing genuinely different label-to-target associations.
@@ -2217,7 +2217,7 @@ fn a_copy_into_a_colliding_destination_refuses() -> Bool {
 // AUTHORED SOURCE, EXECUTED. Same split as the collision bodies above and for the same reason: the
 // impostor fixtures need this module's seal, and floor discovery only finds `test fn` in a path
 // ending `_test.dag`, so the bodies live here and the enrolled wrappers live in
-// dag/test/claim/scm/scm_object_store_collision_witness_test.dag.
+// dag/test/claim/scm/scm_object_store_collision_witness.dag.
 // ------------------------------------------------------------------------------------------------
 
 // THE SAME BYTES ARE THE SAME OBJECT, AND DIFFERENT BYTES ARE NOT. Without the second half this

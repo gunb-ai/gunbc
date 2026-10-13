@@ -2,7 +2,7 @@ module gunbc.workspace_allocation_lease
 
 import std.types { String, NonEmptyStr, Int, Timestamp }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before, utc_instant_seconds_after }
-import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_allocation_store { WorkspaceStoreWrite, WorkspaceStoreWriteRefused, WorkspaceStoreWritten, WorkspaceStoreUnreadable, WorkspaceStoreReadOk, WorkspaceRetired, workspace_read_owner, workspace_write_allocation, workspace_retired_at }
 

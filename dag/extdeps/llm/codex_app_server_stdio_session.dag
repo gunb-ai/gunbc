@@ -36,7 +36,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // ClientRequest slice through turn/start).
 
 // LANDED (#8166): native session driver at target/release/codex_app_server_stdio_session, invoked
-// through gunbc.host_effect_codex_supervised_turn + host_effect_apply CodexSupervisedWorkerTurn.
+// through gunbc.host.host_effect_codex_supervised_turn + host_effect_apply CodexSupervisedWorkerTurn.
 // Coprocess uses pipe stdin, setsid process group, JSON turn/start (no sed). Wet terminal receipt
 // must execute through this path.
 

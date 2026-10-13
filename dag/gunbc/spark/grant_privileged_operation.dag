@@ -18,13 +18,13 @@ import std.scoped_authorization {
   AuthorizationRequest,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
   portable_remote_words,
   portable_remote_words_strings,
 }
-import gunbc.fleet_bootstrap_principal_session {
+import gunbc.fleet.fleet_bootstrap_principal_session {
   BootstrapCredentialInRunEnvironment,
   read_fleet_bootstrap_credential_path,
   FleetBootstrapCredentialPathReady,
@@ -33,7 +33,7 @@ import gunbc.fleet_bootstrap_principal_session {
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
 }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.spark.managed_grant_reconcile {
   spark_retired_shared_inspect_dropin_name, spark_retired_shared_inspect_dropin_path, spark_modeled_inspect_grants,
   spark_managed_grant_dropin_path, spark_managed_grant_dropin_name, spark_managed_grant_sudoers_content,
@@ -56,7 +56,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
-import gunbc.host_effect_realize { run_typed_argv_transport, HostEffectTransport, FleetSsh }
+import gunbc.host.host_effect_realize { run_typed_argv_transport, HostEffectTransport, FleetSsh }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
 import gunbc.spark.remote_step_sequence {
@@ -75,7 +75,7 @@ import gunbc.spark.managed_access_bootstrap {
   GrantAbsent,
   GrantProbeRefused,
 }
-import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // THE JOIN BETWEEN AUTHORIZATION AND EXECUTION, which is the one thing this vertical was missing.
 //
@@ -439,7 +439,7 @@ fn privileged_step_outcome_wire(outcome: PrivilegedStepOutcome) -> String {
 //
 // THE ENVIRONMENT-VARIABLE NAME MOVED, and the move is what made the transport repair expressible.
 // It lived here as `spark_grant_credential_path_env`; the password session that actually consumes it
-// lives in gunbc.fleet_bootstrap_principal_session, and a module that EXECUTES a password leg cannot
+// lives in gunbc.fleet.fleet_bootstrap_principal_session, and a module that EXECUTES a password leg cannot
 // import the module that merely named the file without closing an import cycle. So the declaration is
 // now fleet_bootstrap_credential_path_env there, beside the session fact it serves, and this module
 // reads it rather than owning it. The argument for a PATH rather than the secret is recorded at the
@@ -478,7 +478,7 @@ type BootstrapCredentialMaterialization
 //
 // AN INTERMEDIATE REVISION REMOVED ONE TRAILING LF OR CRLF, on the stated premise that the
 // materialization wrote it. That premise was false and the removal was a second silent corruption of
-// the same class. gunbc.ci_spec gunbc_ci_spark_grant_install_credential_prelude base64-decodes
+// the same class. gunbc.ci.ci_spec gunbc_ci_spark_grant_install_credential_prelude base64-decodes
 // Secret Manager's payload straight into the file and appends NOTHING, so a line break in that file is part of the enrolled
 // secret -- and stripping it would authenticate with a different credential than the one enrolled,
 // while reporting success. The producer is the authority on what the bytes are; this consumer does
@@ -562,7 +562,7 @@ fn read_bootstrap_credential() -> BootstrapCredentialMaterialization {
 // ever reached sudo's stdin. So on any host where that principal holds no fleet key the
 // leg refused at authentication with the credential untouched, which is every host this
 // repository bootstrapped rather than hand-keyed: measured on srv9-srv12 on 2026-09-11.
-// gunbc.fleet_bootstrap_principal_session now decides the session from the principal, so
+// gunbc.fleet.fleet_bootstrap_principal_session now decides the session from the principal, so
 // the password reaches the TRANSPORT as well as sudo.
 // A leg that never opened is not a command that failed. The only way this arm is
 // reached is a run holding no materialized credential path, which is the same

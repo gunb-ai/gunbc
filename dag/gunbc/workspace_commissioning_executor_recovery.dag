@@ -16,7 +16,7 @@ import gunbc.workspace_commissioning_executor_fence { workspace_executor_mutatio
 import gunbc.workspace_commissioning_start_observe {
   workspace_commissioning_start_observe, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartUnreadable,
 }
-import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+import gunbc.runner.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
 
 // Recovery never authorizes a new StartUnit. A submission without a bound winner can still
 // have an outstanding start request, even when systemd currently reports inactive. That case

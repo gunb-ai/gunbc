@@ -35,7 +35,7 @@ import gunbc.lifecycle_bounded_referent {
 //
 // THE ONE MECHANISM THAT TOUCHES THE CLASS TODAY confirms that reading from the other direction:
 // test.claim.stage0_rust_source_lifecycle_scaffold_witness_test asserts string_contains over
-// gunbc.stage0_rust_source_lifecycle_scaffold unclassified_axis_rung_note for the literal phrase
+// gunbc.stage0.stage0_rust_source_lifecycle_scaffold unclassified_axis_rung_note for the literal phrase
 // "NEXT-RUNG TRIGGER". It is a real, executing check, and what it can establish is that one prose
 // row still contains a phrase -- not that the class it belongs to named a trigger, and not that
 // any other class did.

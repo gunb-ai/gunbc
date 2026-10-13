@@ -1,24 +1,24 @@
-module gunbc.runner_slot_population_census
+module gunbc.runner.runner_slot_population_census
 
 import std.types { Bool, List, String }
 import product.host_identity { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_unit { runner_slot_unit_name, runner_unit_prefix, runner_unit_suffix }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_unit { runner_slot_unit_name, runner_unit_prefix, runner_unit_suffix }
 import std.algebra { trim }
-import gunbc.runner_slot_allocation {
+import gunbc.runner.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
   host_committed_identities_at,
 }
-import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.host.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
 
 // THE POPULATION A SHRINK ACTS ON, READ RATHER THAN ASSUMED.
 //
-// `gunbc.host_axis_caps` orders a cap raise after retirement evidence and refuses without it, which
+// `gunbc.host.host_axis_caps` orders a cap raise after retirement evidence and refuses without it, which
 // is correct and leaves the transaction blocked-by-construction: nothing produced a
 // `SurplusSlotObservation`. This module is that producer. It takes what a host's systemd actually
 // reports and classifies it against what the allocation authority desires.
@@ -50,7 +50,7 @@ type SlotCensus
   | CensusRefused { cause: String }
 
 // A SLOT UNIT BY NAME, DERIVED FROM THE UNIT AUTHORITY'S OWN PREFIX AND SUFFIX rather than spelled
-// again. `gunbc.runner_host_file_converge` carries an identical predicate for its own list-units
+// again. `gunbc.runner.runner_host_file_converge` carries an identical predicate for its own list-units
 // parse; this is the same contract read from the same two data rows, not a second convention.
 fn census_unit_name_is_slot(name: String) -> Bool {
   starts_with(s: name, prefix: runner_unit_prefix)
@@ -81,7 +81,7 @@ fn desired_unit_names_range(host: HostIdentity, slot: Int, limit: Int) -> List<S
 
 // THE COMMITTED POPULATION AS UNIT NAMES, AT IDENTITY GRAIN. Since #12339 a host's committed members
 // are not 1..width: on srv1 the microVM shakedown slot is a member by its authored index (13) and the
-// fleet range beneath it is 1..(width - 1) -- gunbc.runner_slot_allocation
+// fleet range beneath it is 1..(width - 1) -- gunbc.runner.runner_slot_allocation
 // host_committed_identities_at. A consumer that enumerated 1..width named a fleet slot the width never
 // charged for and dropped srv1-13, so the census classified the shakedown slot as retiring and the
 // transition obligation required it. Every desired-set reader goes through this one derivation.
@@ -202,7 +202,7 @@ fn surplus_observation(census: SlotCensus) -> SurplusSlotObservation {
 // ── THE LIVE PRODUCER ─────────────────────────────────────────────────────────────────────────
 //
 // THE TRANSPORT ALREADY EXISTED AND IS REUSED RATHER THAN REBUILT.
-// `gunbc.runner_host_file_converge` `observe_runner_slot_population` reads this same
+// `gunbc.runner.runner_host_file_converge` `observe_runner_slot_population` reads this same
 // `systemctl list-units` over the same FleetSsh edge as the same declared administrator; this
 // module needs a different PROJECTION of that output, not a second way to obtain it.
 //

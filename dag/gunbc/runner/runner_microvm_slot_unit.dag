@@ -1,9 +1,9 @@
-module gunbc.runner_microvm_slot_unit
+module gunbc.runner.runner_microvm_slot_unit
 
-import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot, identity_is_workspace_execution_member }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, identity_is_workspace_execution_member }
 import gunbc.workspace_commissioning_start_identity { workspace_commissioning_submitter_credential_id, workspace_commissioning_submitter_credential_prefix }
 
-import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+import gunbc.runner.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
 
 import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { ConstructionMechanism, SingleAuthority }
@@ -20,14 +20,14 @@ import extdeps.systemd.unit_file {
   RemainAfterExit, ExecStartPre, ExecStartPost, ExecStop, ExecStopPost, ExecStopPostIgnoringFailure, ServiceStandardOutput, ServiceStandardError, EnvironmentFile, EnvironmentFileIfPresent, ServiceGroup, ServiceNice, ServiceIoSchedulingClass, TimeoutStartSec, RestartSec, ServiceTasksMax,
 }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import gunbc.runner_slot_allocation { microvm_controller_slice_memory_max }
+import gunbc.runner.runner_slot_allocation { microvm_controller_slice_memory_max }
 import extdeps.virtualization.firecracker { FirecrackerRelease, firecracker_release_aarch64 }
 import gunbc.cli_invoke { gunbc_run_invocation_words, invocation_words_bare }
-import gunbc.ci_release_bins { gunbc_release_bin_name }
-import gunbc.runner_unit { RunnerUnitLifecycleIntent, gunbc_runner_lifecycle_intent }
-import gunbc.runner_unit_file { runner_unit_teardown_directives }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.runner.runner_unit { RunnerUnitLifecycleIntent, gunbc_runner_lifecycle_intent }
+import gunbc.runner.runner_unit_file { runner_unit_teardown_directives }
 import std.measure { Second, second, second_count, measure_add }
-import gunbc.runner_microvm_attempt_bounds {
+import gunbc.runner.runner_microvm_attempt_bounds {
   runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace, attempt_stop_grace, attempt_force_stop_bound,
   attempt_unit_stop_slack,
 }
@@ -37,18 +37,18 @@ data runner_microvm_slot_unit_disposition: ConstructionMechanism = SingleAuthori
 // THE microVM SLOT UNIT: WHAT systemd STARTS FOR A microVM SLOT, AND WHERE THE CONTROLLER IT EXECS
 // LIVES. This module is deliberately small and imports nothing wet, because two consumers on
 // opposite sides of the corpus read it: gunbc.live_deploy.emit renders the unit file and installs
-// the release locus the ExecStart names, and gunbc.runner_microvm_slot_controller -- the process
+// the release locus the ExecStart names, and gunbc.runner.runner_microvm_slot_controller -- the process
 // that ExecStart runs -- reads the same locus and environment names back. One authority for the
 // unit's shape keeps the emitter and the process from disagreeing about which variable carries the
 // slot or where the VMM binary is.
 //
-// THE CONTROLLER IS MainPID, WHICH IS THE WHOLE CLAIM gunbc.runner_microvm's
+// THE CONTROLLER IS MainPID, WHICH IS THE WHOLE CLAIM gunbc.runner.runner_microvm's
 // VmmUnderLifecycleController topology rests on: the unit execs the controller directly (Type=exec,
 // no launcher that exits), the controller starts the VMM as a transient unit in the cell's slice
-// and waits for it, and the unit's ExitType=main / KillMode=control-group are gunbc.runner_unit's
+// and waits for it, and the unit's ExitType=main / KillMode=control-group are gunbc.runner.runner_unit's
 // declared lifecycle intent -- the same rows the GitHub slot units carry. A launcher that forked the
 // controller and exited would make systemd's view of the slot end at the fork, which is precisely
-// the orphan class gunbc.runner_microvm_lifecycle exists to close.
+// the orphan class gunbc.runner.runner_microvm_lifecycle exists to close.
 //
 // WHAT KillMode=control-group DOES NOT REACH, corrected here because an earlier revision of this
 // note claimed the opposite (external review of gunbc#12011). It reaches the processes in THIS
@@ -57,7 +57,7 @@ data runner_microvm_slot_unit_disposition: ConstructionMechanism = SingleAuthori
 // A control-group kill on the slot unit therefore does not cross into it, and the claim that
 // stopping this unit reaches every process under it was FALSE for the topology this module installs.
 // The edge that makes it true is a directive on the ATTEMPT unit, not on this one:
-// gunbc.runner_microvm_attempt runner_microvm_attempt_part_of_property sets
+// gunbc.runner.runner_microvm_attempt runner_microvm_attempt_part_of_property sets
 // PartOf=gunbc-microvm-slot@<slot>.service, which is what propagates this unit's stop to the guest.
 // Read that row's annotation for why the relation is one-way and why moving the VMM into this slice
 // is the wrong repair.
@@ -112,7 +112,7 @@ fn microvm_controller_gunbc_binary(release_dir: String) -> String {
 data microvm_controller_firecracker_release: FirecrackerRelease = firecracker_release_aarch64
 
 // THE CONTROLLER HAS ITS OWN SLICE AND ITS OWN CEILING, OUTSIDE THE CELL. The seed refuses to run
-// under no cgroup memory limit (gunbc.host_budget_source: a planning allowance read from the machine
+// under no cgroup memory limit (gunbc.host.host_budget_source: a planning allowance read from the machine
 // is a number about the machine, not this process; measured on srv1 2026-09-21, the unit's first
 // start after the spawn-root fix exited 101 with HostBudgetUnreadable), and extdeps.systemd.unit_file
 // keeps resource-control directives out of [Service] by construction -- so the bound is a slice,
@@ -138,12 +138,12 @@ data microvm_controller_firecracker_release: FirecrackerRelease = firecracker_re
 //
 // THIS BOUND IS SIZED TO A SYMPTOM, AND THE SYMPTOM HAS AN OWNER. The 12.7G the controller holds
 // is the seed's retained preparation set -- the same set loyal-ibex-544 attributed on the floor
-// (gunbc.floor_demand: preparation reaches ~23 GiB and never releases it; the fold adds ~5%), whose
+// (gunbc.floor.floor_demand: preparation reaches ~23 GiB and never releases it; the fold adds ~5%), whose
 // reduction lane is named by floor_peak_attribution_consumer_frontier there -- named, not
 // discharged: that row's trigger is the seam being carried and read by its own consumers, and a
 // sizing argument citing it retires nothing (loyal-ibex-544, 2026-09-22). When that reduction
 // lands, this row's figure falls with the demand row it reads, and the width charge in
-// gunbc.runner_slot_allocation gunbc_microvm_shakedown_slot_charge falls with it; nothing
+// gunbc.runner.runner_slot_allocation gunbc_microvm_shakedown_slot_charge falls with it; nothing
 // here should be tuned toward the symptom meanwhile.
 data microvm_controller_slice_unit_name: NonEmptyStr = "gunbc-microvm-controller.slice" as NonEmptyStr
 
@@ -174,7 +174,7 @@ fn microvm_controller_slice_unit_file() -> SystemdUnitFile {
 data microvm_slot_controller_receipt_dir: String = "/var/lib/gunbc/microvm-slot-controller"
 
 // WHERE THE START STEP WRITES ITS OWN RECEIPT, beside the controller's. It lives with the unit's
-// on-host layout rather than in gunbc.runner_microvm_slot_start so the workflow emitter and ci_spec can
+// on-host layout rather than in gunbc.runner.runner_microvm_slot_start so the workflow emitter and ci_spec can
 // name the path without importing the start module -- which would pull the whole controller subtree
 // (controller, lifecycle, guest image, launch planner) into every consumer of the workflow emitter to
 // read one string.
@@ -223,7 +223,7 @@ fn microvm_slot_unit_execstart(release_dir: String) -> NonEmptyStr {
 }
 
 // THE LIFECYCLE INTENT IS THE FLEET'S DECLARED ONE, READ NOT RESTATED: ExitType=main with
-// KillMode=control-group is what gunbc.runner_microvm's admission requires of this topology
+// KillMode=control-group is what gunbc.runner.runner_microvm's admission requires of this topology
 // (lifecycle_intent_stops_finished_incarnation), and rendering it through the same
 // runner_unit_teardown_directives the GitHub slot units use keeps the two unit families from
 // drifting on the one pair of lines that decides whether a VMM can outlive its unit.
@@ -240,7 +240,7 @@ fn microvm_slot_lifecycle_intent() -> RunnerUnitLifecycleIntent {
 // the controller module that owns those figures; the unit only carries the rendered value.
 // THE STOP TIMEOUT IS THE SUM OF THE BOUNDS THE CONTROLLER ALREADY DECLARES -- the VMM deadline and
 // its kill grace, the graceful stop grace, the force bound, and the settlement slack, all rows of
-// gunbc.runner_microvm_attempt_bounds -- so systemd's own SIGKILL of the controller can arrive only
+// gunbc.runner.runner_microvm_attempt_bounds -- so systemd's own SIGKILL of the controller can arrive only
 // after the controller's bounded teardown has had its full declared time. A shorter value would kill the controller mid-readback and leave the cell
 // with no settlement, which is the recovery arm at the next admission rather than a clean stop.
 // THE SUM STAYS IN Second AND THE PROJECTION TO A STRING HAPPENS ONCE, AT THE EDGE. This fold used
@@ -353,14 +353,14 @@ fn workspace_launch_credential_source_path(instance: String) -> String {
 // OBSERVES. It is a SEPARATE unit from the slot controller because broker and tenant are distinct
 // parties on the fabric route (DESIGN 3b): the controller observes a reservation somebody else made
 // and never mints its own. It runs as root for the reason the allocation store is root-only
-// (gunbc.fabric_allocation_store_substrate): a reservation the job user could write is one the root
+// (gunbc.fabric.fabric_allocation_store_substrate): a reservation the job user could write is one the root
 // controller would believe, which is the root-equivalence class ruled out on 2026-09-21. It runs from
 // the same root-owned release locus as the controller, so the job chooses no byte this process
 // evaluates; the job may only ask systemd to start this one fixed unit.
 //
 // IT IS NOT A TEMPLATE, BECAUSE NOTHING ABOUT WHAT IT RESERVES MAY ARRIVE FROM OUTSIDE. The slot,
 // the demand, the offer and the slot key are all derived inside the root process from the shakedown
-// slot row (gunbc.runner_microvm_slot_reserve), so there is no instance specifier a starter could
+// slot row (gunbc.runner.runner_microvm_slot_reserve), so there is no instance specifier a starter could
 // point at another cell. It is never enabled (NotInstallable): a reservation is a decision made when
 // someone asks for it, not at boot.
 //

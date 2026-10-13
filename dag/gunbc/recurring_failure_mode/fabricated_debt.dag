@@ -21,7 +21,7 @@ data fabricated_debt: RecurringFailureMode = RecurringFailureMode {
 
     "It is now stated as a FRACTION, 1 of 7 discharged and 6 outstanding, because a population that shrinks silently cannot be checked.",
 
-    "(2) THE PER-WITNESS EVAL DEADLINE was on the same list and ALREADY CARRIES ITS OWN DROP at `gunbc.witness_row_cost` `gunbc_ci_fast_lane_rule_note`; a second row would have been the section 3 fork, and it is cited from the sibling rows rather than re-declared.",
+    "(2) THE PER-WITNESS EVAL DEADLINE was on the same list and ALREADY CARRIES ITS OWN DROP at `gunbc.witness.witness_row_cost` `gunbc_ci_fast_lane_rule_note`; a second row would have been the section 3 fork, and it is cited from the sibling rows rather than re-declared.",
 
     "Six items on the paragraph, five real rows.",
 

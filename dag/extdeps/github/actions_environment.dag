@@ -100,7 +100,7 @@ type ActionsRunCoordinate
 // separation exists to prevent. The run identity locates an EXECUTION; the runner names a MACHINE.
 //
 // THE RUNNER IS AN OPAQUE IDENTITY AND NOTHING MAY BE DERIVED FROM ITS SPELLING. A host family is
-// not recoverable from a slot name by taking a prefix: `gunbc.build_cache_endpoint_observe` is the
+// not recoverable from a slot name by taking a prefix: `gunbc.build_cache.build_cache_endpoint_observe` is the
 // one place in this repository that decomposes a runner unit name, and it parses only an INDEX
 // while taking the host from a CARRIED fact, refusing to `OwnerContextUndecided` rather than
 // fabricating one. This type carries no accessor that splits the runner, and a host-family concept,

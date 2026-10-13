@@ -68,7 +68,7 @@ What was wrong was the reading of them.
 
 srv2's 64 GiB install FAILED memory training and was reverted, while the identical Samsung
 parts trained on srv1, srv3 and srv4. Modules working elsewhere and failing on one host is a
-class this fleet has already seen once, recorded at `gunbc.host_memory_qualification` -- which
+class this fleet has already seen once, recorded at `gunbc.host.host_memory_qualification` -- which
 is the same module that carries the purchasing fail-open found tonight.
 
 ## What the OEM payload has earned, and only this

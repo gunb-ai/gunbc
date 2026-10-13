@@ -121,7 +121,7 @@ fn ownership(site: String, diagnostic: String, occurrence: Int) -> SelfCompileDi
 
 fn confinement_plant() -> SelfCompileDiagnosticIdentity {
   diagnostic_identity(
-    module_path: "v2.test.fixture.meta_exec_confinement_scan.leak_plant",
+    module_path: "v2.test.fixture.meta_exec_confinement_scan.leak.plant",
     site: "planted_meta_exec_import_leak",
     diagnostic: "sole_constructor type 'TransportScript' cannot be constructed outside its defining module",
     occurrence: 1,

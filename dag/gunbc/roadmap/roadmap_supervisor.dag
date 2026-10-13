@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_supervisor
 
 import std.types { String, Int, List, NonEmptyStr }
-import gunbc.roadmap_nesting { RoadmapMembership }
+import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
 import gunbc.roadmap.roadmap_project { node_project_membership, project_member_ids, MembershipStandalone, MembershipMember, MembershipAmbiguous, project_root_for_node }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -17,7 +17,7 @@ import extdeps.languages.json.parse {
   JsonDocumentUnreadable,
   json_document_gap_text,
 }
-import gunbc.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
+import gunbc.roadmap.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
 
 // THE SUPERVISOR IS A MODELED SESSION ROLE, NOT A HUMAN PAGER (docs/plans/harness-work-lifecycle.md,
 // "Resource policy"). A budget is the alignment cadence, never a failure measure: when a lineage

@@ -1,15 +1,15 @@
-module gunbc.roadmap_nesting
+module gunbc.roadmap.roadmap_nesting
 
 import std.types { String, List }
-import gunbc.roadmap_model { RoadmapNode, MemberOf, AdmittedRoot, Closes }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_model { RoadmapNode, MemberOf, AdmittedRoot, Closes }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
 import gunbc.roadmap.roadmap_lineage { lineage_root_ids }
 
 // Nesting is independently authored. A blocking edge never assigns project ownership.
 // Both ends name the same recursive kind of work item; no Epic/Task type hierarchy exists.
 //
 // THE MEMBERSHIP LIST IS A PROJECTION OF THE ROWS, not a table (operator ruling, 2026-09-30). Each
-// row declares its own parent (gunbc.roadmap_model NodeParent) with the contribution argument on
+// row declares its own parent (gunbc.roadmap.roadmap_model NodeParent) with the contribution argument on
 // the edge -- why the member's work advances THIS project -- so the former hand-kept roster
 // (declared_roadmap_memberships, keyed by member id) was deleted and every consumer reads this
 // projection instead. One row carries one parent, so a member claimed by two projects has no

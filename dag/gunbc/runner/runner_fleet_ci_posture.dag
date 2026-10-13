@@ -1,4 +1,4 @@
-module gunbc.runner_fleet_ci_posture
+module gunbc.runner.runner_fleet_ci_posture
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -32,7 +32,7 @@ data fleet_ci_use_posture: FirstPartySelfUsePosture = FirstPartySelfUsePosture {
     basis: "Escalation msg_657c16a8 closed APPROVED BY DEFAULT on 2026-09-28 with the sentence: 'The gunbc CI runner cells on my hosts serve only gunbc's own CI jobs, and it is fine for those jobs' logs, artifacts and runner control traffic to go to GitHub under our GitHub organization's terms.' This is an attributable default approval, not an operator utterance and not a measurement: who a CI cell serves is a fact about our intent, which no probe reads off a running runner.",
   },
   serves: "gunbc's own CI jobs only. Every job placed on a fleet CI cell is a workflow run of a gunbc repository under our GitHub organization; no job is run for any party outside gunbc.",
-  data_subject: "gunbc's own source, build outputs and logs. No customer data and no third-party data is processed on these cells. EXACTLY ONE COUNTERPARTY RECEIVES ROUTE MATERIAL, AND IT IS NAMED: the jobs' logs, artifacts and runner control traffic go to GitHub under our GitHub organization's terms (gunbc.runner_fleet_ci_posture fleet_ci_github_org_terms). Everything else stays on the operator's hosts.",
+  data_subject: "gunbc's own source, build outputs and logs. No customer data and no third-party data is processed on these cells. EXACTLY ONE COUNTERPARTY RECEIVES ROUTE MATERIAL, AND IT IS NAMED: the jobs' logs, artifacts and runner control traffic go to GitHub under our GitHub organization's terms (gunbc.runner.runner_fleet_ci_posture fleet_ci_github_org_terms). Everything else stays on the operator's hosts.",
   hardware_custody: "operator-held. The cells run on the operator's own hosts; no hosting contract stands between us and the hardware.",
 }
 
@@ -44,7 +44,7 @@ data fleet_ci_use_posture: FirstPartySelfUsePosture = FirstPartySelfUsePosture {
 // a cited source for it.
 data fleet_ci_github_org_terms: FirstPartyUseProfile = FirstPartyUseProfile {
   label: "github-organization-terms",
-  basis: "The agreement governing what reaches GitHub from a fleet CI cell is our GitHub organization's terms with GitHub. The approved posture (gunbc.runner_fleet_ci_posture fleet_ci_use_posture) permits logs, artifacts and runner control traffic to reach GitHub under those terms. GitHub's processing location and legal jurisdiction are NOT established by this row.",
+  basis: "The agreement governing what reaches GitHub from a fleet CI cell is our GitHub organization's terms with GitHub. The approved posture (gunbc.runner.runner_fleet_ci_posture fleet_ci_use_posture) permits logs, artifacts and runner control traffic to reach GitHub under those terms. GitHub's processing location and legal jurisdiction are NOT established by this row.",
 }
 
 data fleet_ci_customer_profile: FirstPartyUseProfile = FirstPartyUseProfile {
@@ -76,41 +76,41 @@ data fleet_ci_export_not_engaged: UseProgramStanding = UseProgramStanding {
 }
 
 fn fleet_ci_prohibited_use_disposition() -> DispositionStanding {
-  DispositionNotEngaged { basis: decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_prohibited_use_not_engaged") }
+  DispositionNotEngaged { basis: decl_ref(module_path: "gunbc.runner.runner_fleet_ci_posture", decl_name: "fleet_ci_prohibited_use_not_engaged") }
 }
 
 fn fleet_ci_sanctions_disposition() -> DispositionStanding {
-  DispositionNotEngaged { basis: decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_sanctions_not_engaged") }
+  DispositionNotEngaged { basis: decl_ref(module_path: "gunbc.runner.runner_fleet_ci_posture", decl_name: "fleet_ci_sanctions_not_engaged") }
 }
 
 fn fleet_ci_export_disposition() -> DispositionStanding {
-  DispositionNotEngaged { basis: decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_export_not_engaged") }
+  DispositionNotEngaged { basis: decl_ref(module_path: "gunbc.runner.runner_fleet_ci_posture", decl_name: "fleet_ci_export_not_engaged") }
 }
 
 fn fleet_ci_posture_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_use_posture")
+  decl_ref(module_path: "gunbc.runner.runner_fleet_ci_posture", decl_name: "fleet_ci_use_posture")
 }
 
 fn fleet_ci_github_terms_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_github_org_terms")
+  decl_ref(module_path: "gunbc.runner.runner_fleet_ci_posture", decl_name: "fleet_ci_github_org_terms")
 }
 
 fn fleet_ci_customer_profile_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_customer_profile")
+  decl_ref(module_path: "gunbc.runner.runner_fleet_ci_posture", decl_name: "fleet_ci_customer_profile")
 }
 
 fn fleet_ci_data_handling_profile_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_data_handling_profile")
+  decl_ref(module_path: "gunbc.runner.runner_fleet_ci_posture", decl_name: "fleet_ci_data_handling_profile")
 }
 
 // THE POSTURE PERMITS EXACTLY TWO LOCATIONS: the operator's hosts, as the posture's own assertion
 // names them, and GitHub under our organization's terms. A path at any other place refuses.
 data fleet_ci_posture: CompliancePostureRevision = CompliancePostureRevision {
-  authority: decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_use_posture"),
+  authority: decl_ref(module_path: "gunbc.runner.runner_fleet_ci_posture", decl_name: "fleet_ci_use_posture"),
   revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.fleet-ci.first-party-self-use.2026-09-28" as NonEmptyStr)),
   permitted_jurisdictions: PermittedJurisdictionsEnumerated {
-    first: decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_use_posture"),
-    further: [decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_github_org_terms")],
+    first: decl_ref(module_path: "gunbc.runner.runner_fleet_ci_posture", decl_name: "fleet_ci_use_posture"),
+    further: [decl_ref(module_path: "gunbc.runner.runner_fleet_ci_posture", decl_name: "fleet_ci_github_org_terms")],
   },
   jurisdiction_drop_enrollments: [],
 }

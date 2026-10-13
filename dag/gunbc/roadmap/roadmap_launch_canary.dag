@@ -1,19 +1,19 @@
-module gunbc.roadmap_launch_canary
+module gunbc.roadmap.roadmap_launch_canary
 
 import std.types { String, NonEmptyStr, FilePath }
 import std.content_hash { Fnv1a64Structural }
-import gunbc.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge, roadmap_criteria_digest, NodeParent, AdmittedRoot }
-import gunbc.roadmap_status { TicketFields }
-import gunbc.roadmap_execution_contract {
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge, roadmap_criteria_digest, NodeParent, AdmittedRoot }
+import gunbc.roadmap.roadmap_status { TicketFields }
+import gunbc.roadmap.roadmap_execution_contract {
   WorkItemExecutionContract,
   gunbc_claim_execution_contract,
 }
 
 // THE TWO-NODE CANARY OF THE ROADMAP LAUNCH MVP, DECLARED INERT (RLM-0 of
-// docs/plans/roadmap-launch-mvp-plan.md). Nothing here is a row of gunbc.roadmap_authority: the
+// docs/plans/roadmap-launch-mvp-plan.md). Nothing here is a row of gunbc.roadmap.roadmap_authority: the
 // identities, contract and edge are declared once, here, and consumed by the synthetic fixture
-// graph at test.claim.roadmap_launch_canary_witness today and by the live authority at RLM-3.
-// The identities are minted per gunbc.roadmap_model roadmap_node_identity_law, so RLM-3 adds the
+// graph at test.claim.roadmap.roadmap_launch_canary_witness today and by the live authority at RLM-3.
+// The identities are minted per gunbc.roadmap.roadmap_model roadmap_node_identity_law, so RLM-3 adds the
 // nodes by reference rather than re-minting them, and every RLM-4..6 receipt binds these values.
 data roadmap_launch_canary_parent_id: NonEmptyStr = "roadmap-launch-canary"
 
@@ -34,7 +34,7 @@ fn roadmap_launch_canary_child_node_id() -> RoadmapNodeId {
 }
 
 // The one dependency of the MVP: the child depends on the parent's ACCEPTED completion, decided
-// by the same gunbc.roadmap_spawner predicates the live page and belt consume (node_dep_done over
+// by the same gunbc.roadmap.roadmap_spawner predicates the live page and belt consume (node_dep_done over
 // node_closes_dependency) -- never re-implemented beside them.
 fn roadmap_launch_canary_edge() -> RoadmapEdge {
   RoadmapEdge {
@@ -46,9 +46,9 @@ fn roadmap_launch_canary_edge() -> RoadmapEdge {
 // THE PINNED ORACLE. The entry is the file the pin's digest covers; the function is the claim the
 // verifier runs. Both are literals here because a ValidationOperation carries a path and a name,
 // not a declaration reference -- the verifier's declaration scan
-// (gunbc.roadmap_validation_oracle validation_oracle_declaration_count) is what joins the name to
+// (gunbc.roadmap.roadmap_validation_oracle validation_oracle_declaration_count) is what joins the name to
 // exactly one declaration at verification time.
-data roadmap_launch_canary_oracle_entry: FilePath = "dag/test/manual/roadmap_launch_canary_oracle_test.dag" as FilePath
+data roadmap_launch_canary_oracle_entry: FilePath = "dag/test/manual/roadmap_launch_canary_oracle.dag" as FilePath
 
 data roadmap_launch_canary_oracle_function: NonEmptyStr = "roadmap_launch_canary_oracle_completed" as NonEmptyStr
 
@@ -64,16 +64,16 @@ fn roadmap_launch_canary_execution_contract() -> WorkItemExecutionContract {
 // production consumer is paths_allowed_production_consumer_frontier.
 
 // The acceptance criteria of the parent, in the ticket carrier the live authority uses, so the
-// criteria digest RLM-3..6 bind is gunbc.roadmap_model roadmap_criteria_digest over exactly these
+// criteria digest RLM-3..6 bind is gunbc.roadmap.roadmap_model roadmap_criteria_digest over exactly these
 // fields (brief, red_control, handback) -- one producer, no transcribed number.
 fn roadmap_launch_canary_ticket() -> TicketFields {
   TicketFields {
     headline: "Roadmap launch canary: flip one sentinel",
     brief: "In dag/gunbc/roadmap/roadmap_launch_canary_sentinel.dag change the value of roadmap_launch_canary_sentinel from `pending:FRYKV2DT7ZMYQ6NCMZSQ` to `completed:FRYKV2DT7ZMYQ6NCMZSQ`. Change nothing else in that file and touch no other path.",
     displaced_cost: "Proves, on the production launch path, that one operator click produces exactly one attempt that performs exactly one bounded change which the pinned oracle verifies and publication offers.",
-    current_state: "Inert: declared in the synthetic fixture graph only; not a row of gunbc.roadmap_authority until RLM-3.",
+    current_state: "Inert: declared in the synthetic fixture graph only; not a row of gunbc.roadmap.roadmap_authority until RLM-3.",
     first_slice: "The single edit named in the brief.",
-    red_control: "test.manual.roadmap_launch_canary_oracle roadmap_launch_canary_oracle_completed is red on base (sentinel pending), green only when the sentinel equals `completed:` followed by the exact nonce, and red on a wrong or missing nonce; the predicate controls execute at test.claim.roadmap_launch_canary_witness.",
+    red_control: "test.manual.roadmap_launch_canary_oracle roadmap_launch_canary_oracle_completed is red on base (sentinel pending), green only when the sentinel equals `completed:` followed by the exact nonce, and red on a wrong or missing nonce; the predicate controls execute at test.claim.roadmap.roadmap_launch_canary_witness.",
     out_of_scope: "Any change outside roadmap_launch_canary_sentinel.dag; any change to the oracle entry; any change to the nonce.",
     handback: "One attempt head whose diff is exactly the sentinel flip, a passing verification receipt against the pinned oracle, and a publication receipt for that head.",
     updates: [],
@@ -99,6 +99,6 @@ fn roadmap_launch_canary_parent_lineage() -> NodeParent? {
   Present { value: AdmittedRoot }
 }
 
-data roadmap_launch_canary_parent_centering_plan: String = "Synthetic canary of the launch admission (gunbc.roadmap_launch_canary): centering supplied so the admission's own admit-path witnesses traverse the centering gate exactly as a real node does. There is no work to do on this node; it exists so the page, the POST route and the belt tick can be witnessed end to end on a graph that touches no host."
+data roadmap_launch_canary_parent_centering_plan: String = "Synthetic canary of the launch admission (gunbc.roadmap.roadmap_launch_canary): centering supplied so the admission's own admit-path witnesses traverse the centering gate exactly as a real node does. There is no work to do on this node; it exists so the page, the POST route and the belt tick can be witnessed end to end on a graph that touches no host."
 
-data roadmap_launch_canary_child_centering_plan: String = "Synthetic canary follow-up (gunbc.roadmap_launch_canary): centered for the same reason as its parent — the dependency-gate witnesses admit this node once the parent is accepted, and that path must traverse the centering gate. No work to do."
+data roadmap_launch_canary_child_centering_plan: String = "Synthetic canary follow-up (gunbc.roadmap.roadmap_launch_canary): centered for the same reason as its parent — the dependency-gate witnesses admit this node once the parent is accepted, and that path must traverse the centering gate. No work to do."
