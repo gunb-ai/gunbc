@@ -318,6 +318,25 @@ test fn a_well_formed_import_is_requested_and_its_marked_declaration_is_captured
   ) == "read|v2.std.optional|a_claim"
 }
 
+// THE IDENTITY ASSERTED AT ADMIT. The lookup admitted a file because its header agreed with the requested
+// module (v2.compiler.source_authority reference_present); the member the acquirer then parses must declare
+// that same module, and the two reads are different readings of one fact, so a member whose parse declares
+// another module is refused at admit rather than acquired under the name it was asked for. The control is
+// the well-formed member above, which differs from the RED in the module line alone.
+test fn a_member_that_parses_as_another_module_than_the_one_requested_is_refused_at_admit() -> Bool {
+  member_read_of(content: "module v2.test.other\nfn subject() -> Bool { true }\n")
+    == "module v2.test.subject at v2:test/subject.dag parses as module v2.test.other"
+    && member_read_of(content: "module v2.test.subject\nfn subject() -> Bool { true }\n") == "read||"
+}
+
+// A longer or shorter name is another module: agreement is equality of the parsed identity, not a prefix.
+test fn a_member_whose_parsed_module_extends_or_truncates_the_requested_one_is_refused_at_admit() -> Bool {
+  member_read_of(content: "module v2.test.subject.more\nfn subject() -> Bool { true }\n")
+    == "module v2.test.subject at v2:test/subject.dag parses as module v2.test.subject.more"
+    && member_read_of(content: "module v2.test\nfn subject() -> Bool { true }\n")
+      == "module v2.test.subject at v2:test/subject.dag parses as module v2.test"
+}
+
 // ---- which qualified spellings a member requests -------------------------------------------------------------
 //
 // THE SUBJECT IS THE REQUEST LIST acquisition_member_requests HANDS THE ACQUIRER, because the acquirer reads
