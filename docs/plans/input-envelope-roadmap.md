@@ -13,11 +13,11 @@ An unbounded input is the data-side of a non-terminating Loop (which requires De
 - input_admitted function: EnvelopeUnknown => RefusedUndeclared; per-axis ceiling check
 - WorkDemand.input_envelope required field added; existing demands carry EnvelopeUnknown (honest: ceiling not yet declared)
 - gunbc_ci_corpus_envelope: the CI corpus as the first BoundedInput instance — ceiling values are operator-set operating-point ceilings, NOT derived quantities (P2 derives them; P1 scaffolds with explicit Scaffold-disposition values)
-- input_envelope_admission_test.dag: 5 test fns covering at-limit, over-limit, undeclared-axis, EnvelopeUnknown, and a red-on-revert discriminating assertion
+- input_envelope_admission.dag: 5 test fns covering at-limit, over-limit, undeclared-axis, EnvelopeUnknown, and a red-on-revert discriminating assertion
 
 ## P2 (follow-on, operator sign-off before landing) — ceiling derivation
 
-- Derive the WitnessCount ceiling from the marker-driven corpus discovery roster (gunbc.ci_layer_roots witness_discovery_scan_dirs scan; count is known at CI-spec emit time)
+- Derive the WitnessCount ceiling from the marker-driven corpus discovery roster (gunbc.ci.ci_layer_roots witness_discovery_scan_dirs scan; count is known at CI-spec emit time)
 - Derive SourceNodeCount and CorpusNodeCount from the measured per-file / per-tree node counts (the ci_floor_measurement infrastructure)
 - Replace the Scaffold ceiling rows in gunbc_ci_corpus_envelope with derived values; the Scaffold disposition dissolves on this replacement
 - Wire input_admitted into the scheduler / admission path as a fail-closed gate (operator controls timing; this PR's gate is a wall on WorkDemand construction, not a runtime check yet)

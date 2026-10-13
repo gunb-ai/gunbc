@@ -1,4 +1,4 @@
-module tools.extdeps_scope_placement_gate
+module gunbc.instruments.extdeps_scope_placement_gate
 
 import std.types { GitRef, List, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -23,10 +23,10 @@ import gunbc.extdeps_scope_frontier {
 // EXECUTING ROUTE (re-measured 2026-10-01, replacing a stale "does not run" note from 2026-08-19):
 // this gate DOES execute on a CI route. It runs wherever `claim_executor --required-ci` runs the
 // required floor's gate witnesses (`.github/workflows/witnesses.yml`), as the
-// `extdeps_scope_placement_gate_passes` witness of `tools.floor_effect_gate_witness` — enrolled on
+// `extdeps_scope_placement_gate_passes` witness of `gunbc.instruments.floor_effect_gate_witness` — enrolled on
 // the GithubActionsCiJob surface by the `ExtdepsScopePlacementGate` row of `commit_gate_roster`
-// (dag/gunbc/commit_workflow.dag), projected into `gunbc_ci_floor_gates` by `gunbc.ci_spec`, and
-// dispatched by `tools.ci_gates` `run_spec_gate`. Its reds were loud on that route before the
+// (dag/gunbc/commit_workflow.dag), projected into `gunbc_ci_floor_gates` by `gunbc.ci.ci_spec`, and
+// dispatched by `gunbc.instruments.ci_gates` `run_spec_gate`. Its reds were loud on that route before the
 // 2026-08-24 loudness repair (ten consecutive `extdeps_scope_placement_gate_passes` reds are
 // recorded at cli_run::entry_resolve's failure-receipt companion note), and the required floor
 // has billed the gate row directly (83.0s before the module-path-index warm, required_floor_runner
@@ -51,7 +51,7 @@ import gunbc.extdeps_scope_frontier {
 // refusal attributable: only paths the change itself introduces are judged there, so this gate
 // neither retroactively reds the frozen manifest population nor blocks a lane for a file some other
 // lane landed. The wet live-cover witness
-// (dag/test/claim/external_model_scope_live_cover_witness_test.dag) remains the whole-population
+// (dag/test/claim/external_model_scope_live_cover_witness.dag) remains the whole-population
 // re-verification. This gate dissolves with the whole storage-grain frontier into the
 // v2.lens.mandatory_tag region promotion (compile-grain, module-name grain).
 

@@ -1,13 +1,13 @@
 module gunbc.roadmap.roadmap_belt_obligation
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import gunbc.roadmap_workflow_stage {
+import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
   SubmissionWorkflowSegment, VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
   workflow_segment_of_kind,
 }
-import gunbc.roadmap_provider_events {
+import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning,
   ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
 }
@@ -23,7 +23,7 @@ import gunbc.roadmap_provider_events {
 //
 // An obligation is (kind, subject). Its subject is an attempt for the per-attempt kinds and the
 // instance for the instance kinds. WHETHER IT IS OUTSTANDING IS DERIVED, never stored: it is read off
-// the attempt's own durable evidence -- the segments gunbc.roadmap_workflow_progress already projects
+// the attempt's own durable evidence -- the segments gunbc.roadmap.roadmap_workflow_progress already projects
 // from the attempt's receipts -- so there is no second record of what the receipts say (bold-bee-114
 // ruling, Q1). A queued obligation is only its identity.
 

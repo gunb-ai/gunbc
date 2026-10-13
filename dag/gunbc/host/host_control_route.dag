@@ -1,22 +1,22 @@
-module gunbc.host_control_route
+module gunbc.host.host_control_route
 
 import std.types { List, NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.cloud.hetzner_cloud_api { HetznerServerResponse }
 import product.host_identity { HostIdentity }
 import product.fabric.provider_route { ProviderRoute }
-import gunbc.managed_host {
+import gunbc.host.managed_host {
   ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved,
   ManagedHostNotSecured, ManagedHostEndpointMismatch, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged,
   managed_host_binding_for,
 }
-import gunbc.provider_acquisition { ProviderResourceAcquisition }
-import gunbc.fleet_host_backing {
+import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.fleet.fleet_host_backing {
   OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest,
   ProviderResourceAwaited, ProviderResourceAcquired,
 }
-import gunbc.fleet_enrollment { HostEnrollmentIntent }
-import gunbc.hetzner_cloud_server_reading {
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.fleet.hetzner_cloud_server_reading {
   AcquiredServerRead, AcquiredServerObserved, AcquiredServerIdUnparsed, AcquiredServerAnsweredForAnother, AcquiredServerReadRefused, acquired_server_read_line,
 }
 
@@ -26,7 +26,7 @@ import gunbc.hetzner_cloud_server_reading {
 // target or its controller (operator rulings 2026-09-05 and 2026-10-08). An owned Altra board is
 // controlled through its BMC; a rented guest has no BMC, and its provider's API is the same route.
 //
-// gunbc.managed_host stays what it is -- a host driven through a secured baseboard controller, whose
+// gunbc.host.managed_host stays what it is -- a host driven through a secured baseboard controller, whose
 // row carries BMC and Altra facts (SMpro site, firmware capability) every consumer of it needs.
 // Widening it to a guest would give that name a second meaning, so the generic fact lives here and
 // the BMC route carries a managed-host binding unchanged.
@@ -55,7 +55,7 @@ type HostControlStanding
   = HostControlled { controlled: ControlledHost }
   | HostControlRefused { refusal: HostControlRefusal }
 
-// THE BMC ROUTE, from a managed host's binding standing as gunbc.managed_host decided it. A refusal
+// THE BMC ROUTE, from a managed host's binding standing as gunbc.host.managed_host decided it. A refusal
 // carries that standing unchanged rather than a re-coined cause.
 fn bmc_controlled_host(standing: ManagedHostBindingStanding) -> HostControlStanding {
   match standing {
@@ -68,7 +68,7 @@ fn bmc_controlled_host(standing: ManagedHostBindingStanding) -> HostControlStand
 }
 
 // AN ENROLLED HOST'S ROUTE, decided by its backing. A board installed over BMC virtual media is
-// controlled only once gunbc.managed_host binds it; an appliance that provisions itself through first
+// controlled only once gunbc.host.managed_host binds it; an appliance that provisions itself through first
 // boot has no out-of-band route at all, and says so; a provider guest is controlled through the
 // account its acquisition is held under, and only on a provider read that answered about exactly
 // that resource -- an unrecorded acquisition, no read, or a refused one each refuse with its cause.

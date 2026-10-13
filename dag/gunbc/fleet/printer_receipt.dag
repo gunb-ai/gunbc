@@ -3,7 +3,7 @@ import gunbc.fleet.printer_setup_reports {PrinterFilamentUnreported,PrinterFilam
 import gunbc.fleet.printer_setup_reports {printer_filament_report,PrinterFilamentReported}
 import std.types {String}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
-import gunbc.fleet_asset_identity {PhysicalAssetIdentity}
+import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
 import gunbc.auth.access_token_source {AccessTokenSource,WorkloadIdentityToken,OperatorSuppliedToken,GcloudPrintToken}
 import gunbc.actions_run_binding {actions_variable_trimmed}
 import gunbc.fleet.printer_workflow_artifact {printer_workflow_receipt_path}

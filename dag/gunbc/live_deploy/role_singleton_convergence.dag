@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool, Int, EpochMs, FilePath }
 import v2.std.collection { Present, Absent }
 import gunbc.deployment_risk { DeploymentId, deployment_id, ProdRoleSelection, prod_role_selection }
 import std.decl_ref { decl_ref }
-import gunbc.roadmap_dashboard_instance {
+import gunbc.roadmap.roadmap_dashboard_instance {
   ProdRoleHolder,
   ProdRoleRealization,
   ProdRoleRealizedBy,
@@ -17,7 +17,7 @@ import gunbc.roadmap_dashboard_instance {
   prod_role_realization_refusal_detail,
   HostDashboardInstance,
 }
-import gunbc.host_effect { HostEffectTransport }
+import gunbc.host.host_effect { HostEffectTransport }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   HoldsProdRoleSingletons,
@@ -26,7 +26,7 @@ import gunbc.live_deploy.spec {
   gunbc_approval_broker_unit_path,
   deployment_tailnet_url,
 }
-import gunbc.fabric_storage_placement { FabricStorageOwnershipMarkerSpec, FabricStorageMarkerReading, FabricStorageMarkerExact, FabricStorageMarkerMismatched, fabric_storage_ownership_marker_spec, fabric_storage_marker_verdict }
+import gunbc.fabric.fabric_storage_placement { FabricStorageOwnershipMarkerSpec, FabricStorageMarkerReading, FabricStorageMarkerExact, FabricStorageMarkerMismatched, fabric_storage_ownership_marker_spec, fabric_storage_marker_verdict }
 import extdeps.shell
 import std.algebra { trim }
 import std.list { distinct_by_key }
@@ -101,7 +101,7 @@ import gunbc.live_deploy.member_observe {
 // observed and it is the desired one on its own target (or nothing is desired and nothing is observed);
 // Install when a valid holder is desired and NOTHING is observed anywhere. Completeness is the
 // broker unit and the fabric unit -- the store's directories are already owned-directory demands
-// (gunbc.fabric_storage_placement fabric_storage_directory_demands, landed in #13688). The
+// (gunbc.fabric.fabric_storage_placement fabric_storage_directory_demands, landed in #13688). The
 // Ensured ownership-marker file is written by the holder's apply, not a second ownership census
 // and not an ssh hand step: a holder that already has its units therefore Noops the assessment
 // and the apply still ensures the marker.
@@ -509,7 +509,7 @@ fn presence_cause(p: EntryPresence) -> String? {
 }
 
 // THE MARKER IS READ BACK, NOT ONLY SEEN: its bytes, its mode, its owner and its group, each through
-// the same observation arm, against the one marker row (gunbc.fabric_storage_placement
+// the same observation arm, against the one marker row (gunbc.fabric.fabric_storage_placement
 // fabric_storage_ownership_marker_spec). Only an exact match is the marker; any differing field is a
 // distinct sighting the adjudication refuses, and a field that cannot be read makes the host
 // unobservable rather than reading as either.

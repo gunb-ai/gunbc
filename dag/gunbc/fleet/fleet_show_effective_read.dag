@@ -1,6 +1,6 @@
-module gunbc.fleet_show_effective_read
+module gunbc.fleet.fleet_show_effective_read
 
-import gunbc.runner_unit_live_read { RunnerUnitLiveReadRow }
+import gunbc.runner.runner_unit_live_read { RunnerUnitLiveReadRow }
 import std.disposition { Disposition }
 import std.algebra { trim }
 import std.disposition { Disposition }
@@ -14,7 +14,7 @@ import extdeps.systemd {
   parse_systemd_memory_limit_show,
   systemd_memory_max_property,
 }
-import gunbc.runner_unit_live_read {
+import gunbc.runner.runner_unit_live_read {
   RunnerUnitLiveReadRow,
   RunnerUnitMemoryLiveRead,
   converge_target_live_verdict,
@@ -23,7 +23,7 @@ import gunbc.runner_unit_live_read {
   memory_limit_to_cap_effectiveness,
   runner_unit_live_read_typed,
 }
-import gunbc.host_identity_adopt {
+import gunbc.host.host_identity_adopt {
   srv1_host_identity_ssh_transport,
   srv2_host_identity_ssh_transport,
   srv3_host_identity_ssh_transport,
@@ -37,17 +37,17 @@ import extdeps.systemd {
   systemd_memory_max_property,
 }
 import extdeps.systemd.oomd { parse_managed_oom_pressure_limit_show }
-import gunbc.ci_floor_measurement { CapEffective, RunnerSliceCapEffectiveness }
-import gunbc.fleet_host_identity {
+import gunbc.ci.ci_floor_measurement { CapEffective, RunnerSliceCapEffectiveness }
+import gunbc.fleet.fleet_host_identity {
   operator_host_srv1,
   operator_host_srv2,
   operator_host_srv3,
   operator_host_srv4,
 }
-import gunbc.fleet_intent { srv1_host, srv2_host, srv3_host, srv4_host }
-import gunbc.host_converge { ConvergeTarget, ConvergeVerdict, VerdictConverged }
-import gunbc.host_effect { HostEffectTransport, HostOs, NodeControlPlane }
-import gunbc.runner_unit_live_read {
+import gunbc.fleet.fleet_intent { srv1_host, srv2_host, srv3_host, srv4_host }
+import gunbc.host.host_converge { ConvergeTarget, ConvergeVerdict, VerdictConverged }
+import gunbc.host.host_effect { HostEffectTransport, HostOs, NodeControlPlane }
+import gunbc.runner.runner_unit_live_read {
   RunnerUnitMemoryLiveRead,
   converge_target_live_verdict,
   gunbc_srv1_runner_unit_live_read_fixture,

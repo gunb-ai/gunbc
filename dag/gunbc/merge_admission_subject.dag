@@ -9,7 +9,7 @@ import extdeps.git.object_store {
   git_sha256_object_id,
   git_object_id_wire_hex,
 }
-import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.repo.repo_identity { gunbc_merge_target_ref }
 
 // WalkAttemptId, TestedSubject, and their path/wire identity live here because capture and
 // admission classification both consume them. This is a MOVE from gunbc.merge_admission and

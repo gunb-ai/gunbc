@@ -1,4 +1,4 @@
-module gunbc.gcp_estate_observation
+module gunbc.gcp.gcp_estate_observation
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.optional { Present, Absent }
@@ -10,8 +10,8 @@ import extdeps.cloud.gcp.gcp {
 import gunbc.auth.github_gcp_federation {
   fleet_secrets_project_number,
 }
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.fleet_ssh_access { fleet_automation_sa_email }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_sa_email }
 import gunbc.assimilate.bmc_token_federation { bmc_assimilator_sa_email }
 import extdeps.google.sheets { sheets_serviceusage_api_id }
 

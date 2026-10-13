@@ -8,8 +8,8 @@ import extdeps.exec.command { LocalExec }
 import extdeps.tools.hostname { hostname_read_command }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.command_runner { run_shell_command_capture }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments }
 import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_observations, fabric_lane_for_host }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 

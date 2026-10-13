@@ -1,4 +1,4 @@
-module extdeps.rustup
+module extdeps.rust.rustup
 
 import std.types { NonEmptyStr, String, Bool }
 import extdeps.external_authority { ExternalAuthority }
@@ -43,7 +43,7 @@ fn rustup_component_eq(a: RustupComponent, b: RustupComponent) -> Bool {
 }
 
 // RUSTUP_HOME IS RUSTUP'S FACT, NOT CARGO'S, and the split is the whole reason this sits here
-// rather than beside CARGO_HOME in extdeps.cargo. The two are routinely set together at one call
+// rather than beside CARGO_HOME in extdeps.rust.cargo. The two are routinely set together at one call
 // site, which is what makes the merge tempting -- but they are governed by two independently
 // versioned upstream products (DESIGN section 3, external upstream decomposition), and a single
 // enumeration would mean a rustup release editing cargo's module.

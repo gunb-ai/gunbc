@@ -190,7 +190,7 @@ Run the component-mass, stack-mechanics, stack-feed and exhaust-thermal witness 
 
 ```
 gunbc run --source-root dag --source-root src/v2 \
-  --entry dag/gunbc/product/printed_chassis/stack_mass_review.dag
+  --entry dag/product/printed_chassis/stack_mass_review.dag
 ```
 
 The new mass model is consumed by that report and the placed-load refusal path. SUNLU and fan

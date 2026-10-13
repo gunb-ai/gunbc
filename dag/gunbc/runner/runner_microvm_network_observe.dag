@@ -1,9 +1,9 @@
-module gunbc.runner_microvm_network_observe
+module gunbc.runner.runner_microvm_network_observe
 
 import std.types { String, NonEmptyStr, List }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.runner_microvm_network_receipt_store { read_network_receipt, publish_initial_network_receipt, NetworkReceiptAbsent, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
-import gunbc.runner_microvm_network_apply { MicrovmNetworkApplySubject, microvm_network_local_subject, MicrovmNetworkApplyAdmitted, MicrovmNetworkApplyRefused }
+import gunbc.runner.runner_microvm_network_receipt_store { read_network_receipt, publish_initial_network_receipt, NetworkReceiptAbsent, NetworkReceiptPresent, StoredNetworkReceiptUnreadable }
+import gunbc.runner.runner_microvm_network_apply { MicrovmNetworkApplySubject, microvm_network_local_subject, MicrovmNetworkApplyAdmitted, MicrovmNetworkApplyRefused }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -12,24 +12,24 @@ import extdeps.tools.mkdir { mkdir_parents_command }
 import product.host_identity { HostIdentity }
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture, LocalExec }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
-import gunbc.host_effect { HostEffectTransport, LocalShell, FleetSsh, SshShell, EmitArtifactThenThinRun }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh, SshShell, EmitArtifactThenThinRun }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.runner_host_deploy {
+import gunbc.runner.runner_host_deploy {
   RunnerHostDeploy, runner_host_deploy_for,
   RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
 }
-import gunbc.runner_host_grants { bootstrap_principal_is_not_the_grantee }
-import gunbc.runner_host_file_converge { elevated_argv }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_grantee }
+import gunbc.runner.runner_host_file_converge { elevated_argv }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, ReadNftRuleset, ReadLegacyXtablesRules, ReadUserspaceConntrackHelpers,
   ReadConntrackExpectations, executor_privileged_operation_argv, executor_privileged_operation_elevated_command,
 }
-import gunbc.runner_microvm_network { ConvergeGeneration, runner_microvm_nft_read_operation }
-import gunbc.runner_microvm_network_converge {
+import gunbc.runner.runner_microvm_network { ConvergeGeneration, runner_microvm_nft_read_operation }
+import gunbc.runner.runner_microvm_network_converge {
   MicrovmPrivilegedReadings, ConvergedNetwork, ConvergeRefused,
   read_slot_wet, read_host_wet, converge_outcome, receipt_text,
   bind_requested_host, expected_host_reading, host_binding_refusal_text,
@@ -37,7 +37,7 @@ import gunbc.runner_microvm_network_converge {
   converge_generation_reading, runner_microvm_network_slot_identities_of,
   runner_microvm_network_receipt_path, runner_microvm_network_receipt_dir,
 }
-import gunbc.runner_microvm_network_apply { runner_microvm_administrator_target }
+import gunbc.runner.runner_microvm_network_apply { runner_microvm_administrator_target }
 
 // THE OBSERVE READS AS TWO PRINCIPALS, AND WHICH ONE READS WHAT IS THE POINT.
 //
@@ -48,8 +48,8 @@ import gunbc.runner_microvm_network_apply { runner_microvm_administrator_target 
 // them, and must not be: operator decision 2026-09-22 keeps gunbc-ghrunner.sudoers modeled and
 // uninstalled, because the principal every CI step runs as holding even readbacks is a grant with
 // no need behind it once the administrator can read. So those five are read by the host's
-// ADMINISTRATOR, gunbc.fleet_bootstrap_principal executor_bootstrap_principal, over the fleet SSH
-// edge -- the same principal and the same target gunbc.runner_microvm_network_apply installs through
+// ADMINISTRATOR, gunbc.fleet.fleet_bootstrap_principal executor_bootstrap_principal, over the fleet SSH
+// edge -- the same principal and the same target gunbc.runner.runner_microvm_network_apply installs through
 // -- and everything an unprivileged principal CAN read (procfs, ip, uname) is still read locally.
 //
 // The first observe run after the apply landed (fleet-converge run 35853748081) refused with

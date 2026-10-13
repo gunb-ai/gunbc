@@ -4,7 +4,7 @@
 
 The document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it, or an independent peer, never a restatement. The principles apply to this document too.
 
-It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `tools.docs_projection_gate` `regen`); declared rung drops in [docs/design-rung-drops.md](docs/design-rung-drops.md) (`gunbc.rung_drop`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. Plans live under `docs/plans/`, linked from the section that governs them.
+It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); declared rung drops in [docs/design-rung-drops.md](docs/design-rung-drops.md) (`gunbc.rung_drop`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. Plans live under `docs/plans/`, linked from the section that governs them.
 
 ---
 
@@ -52,6 +52,8 @@ Single authority governs meaning, not only symbols. Nicknaming's dual is a **mea
 
 Two corollaries. The import graph's only structural law is **acyclicity**: the `std`/`extdeps`/`compiler`/`workflow` folders are browsing conventions, not a direction rule. And a fact's home is its *layer*, not its file.
 
+**The name-to-path mapping is a single authority too, and it runs one way.** Module `a.b.c` is stored at `<root(a)>/b/c.dag`, where `root(v2)` is `src/v2` and `root(a)` is `dag/a` for every other top-level namespace: paths follow names, never the reverse. A location that must be read out of a file is a second authority for one fact, and makes finding one module cost reading all of them (§2). Which namespaces exist is declared top-down in `gunbc.source_layout`, and a file outside that layout is not compilable. The rule fixes where a module is stored, not which way imports point: acyclicity stays the import graph's only structural law, and the cross-tree direction stays an import-model fact (`v2.std.cross_tree.import_model` `cross_tree_import_admitted`), enforced through the storage lookup. The argument and the one-PR cutover that brings the corpus under the rule: → [source layout authority](docs/plans/source-layout-authority.md).
+
 The load-bearing consequence: **interface, realization and policy are three facts.** `extdeps/` owns a dependency's *interface shape*; *transport* (shell, REST, SDK) is one of N handlers bound to it; *business policy* (which base ref, which flag) is a workflow fact. Policy has leaked when an argv carries a literal it should receive as a parameter; transport has fused when an operation is forked per transport. **The dispatch that selects a realization is itself realization**, so it sits peripheral.
 
 *e.g.* one vendor concept once forked three ways by rigor — `CpuVendor`/`DramManufacturer` closed enums beside a stringly `GpuFacts.vendor` — dissolved into one generic `Vendor<Domain>` whose cited company entities live one file each in `extdeps/vendor/`. Likewise `dag/std/os.dag` projects per-vendor rows with no `match`, while the rows and the product-to-vendor dispatch live in `extdeps/os/`.
@@ -77,7 +79,7 @@ Two carve-outs:
 
 **Atomic describes the authority transition, not the effort:** X's authority ends in one motion, Y never falls back to, resolves through or derives from X (X may serve as an offline differential oracle), and the minimum Y preserves every required refusal.
 
-Frozen is the wrong state for a production-critical X whose replacement paused indefinitely, which is the v1 seed's situation; v1 is semantics-frozen, maintenance-active, under a PURPOSE test: a change is admitted when it serves the v2 self-host program. The authority is `gunbc.v1_maintenance_standing v1_seed_standing`, which also records that an active-maintenance arm becomes absorbing if every proposal classifies as admissible, and that its vocabulary is enforced by review, not by a gate.
+Frozen is the wrong state for a production-critical X whose replacement paused indefinitely, which is the v1 seed's situation; v1 is semantics-frozen, maintenance-active, under a PURPOSE test: a change is admitted when it serves the v2 self-host program. The authority is `gunbc.v1.v1_maintenance_standing v1_seed_standing`, which also records that an active-maintenance arm becomes absorbing if every proposal classifies as admissible, and that its vocabulary is enforced by review, not by a gate.
 
 The full doctrine (operative loop, consumer-relative root, disposition census, root-first cut search, terminal receipt): → [replacement migration doctrine](docs/plans/replacement-migration-doctrine.md); cut programs → [floor-cut](docs/plans/floor-cut-replacement-plan.md) · [namespace-cut](docs/plans/namespace-cut-replacement-plan.md).
 
@@ -178,7 +180,11 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 
 **Owns.** Selection, allocation, placement and admission of compute resources. product.capacity and product.fabric are the shared authority, consumed by compute cells and by inference serving.
 
-**Boundary.** Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).
+**Boundaries.**
+
+- Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).
+- Whether a choice is attributable to its objective, constraints, candidates and evidence belongs to the decision / selection domain and std.decision; this row only checks that a resource choice reaches that authority with the work's declared objective rather than a local one.
+- Buyer headroom (what a demand will pay minus a supplier's ask) is not margin: product.fabric.contention withdrew that reading, so a matching change may not book it as earned.
 
 **Existing authorities**
 
@@ -186,20 +192,22 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
   - `product.fabric.selection::select_supply`
   - `product.fabric.work::ExecutionRequirements`
   - `gunbc.compute.work_request::WorkOperation`
+  - `product.fabric.contention::select_demand_for_offer`
+  - `gunbc.ci.ci_runner_target::CiRunnerTarget`
 - **Compute cells** — layout, reservation and admission
   - `gunbc.compute.work_provider_local::ComputeLayout`
-  - `gunbc.fabric_control_plane::CellReservation`
-  - `gunbc.fabric_executor_class::CapacityClassAdmission`
+  - `gunbc.fabric.fabric_control_plane::CellReservation`
+  - `gunbc.fabric.fabric_executor_class::CapacityClassAdmission`
 - **Seats and serving** — seat demand, grants and occupancy
   - `product.capacity.lease::LeaseGrant`
   - `product.capacity.pool_events::SeatRequest`
-  - `gunbc.fabric_event_log::fabric_seat_acquire`
+  - `gunbc.fabric.fabric_event_log::fabric_seat_acquire`
   - `gunbc.harness.harness_seat::harness_bind_seat`
   - `gunbc.serving.turn_admission::serving_group_admission`
 
 ### Decision / selection
 
-**Owns.** A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority.
+**Owns.** A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority. Every use case that matches demand with supply or chooses how a demanded result is realized onboards here, through one interface rather than its own scoring: it supplies the required outcome, the owners' objectives and time valuations, the constraints and commitments, and each candidate's consequences as readings on declared axes, then realizes and reads back the selected plan. Fabric allocation, CI runner placement, compute sold beside internal work, standing buy orders matched against a scanned marketplace, and eval realization are named consumers. A rough estimate is an admitted reading with its standing, and improving it does not create a new choosing mechanism.
 
 **Boundaries.**
 
@@ -421,9 +429,9 @@ One file per class under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_f
 
 The CI contract. From a bare clone, start at [docs/onboarding.md](docs/onboarding.md) (`gunbc.contributor_onboarding_path`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document.
 
-- **CI is one required job.** `gunbc.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `witnesses`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no `witnesses` check — unobserved, not excused.
+- **CI is one required job.** `gunbc.witness.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `witnesses`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no `witnesses` check — unobserved, not excused.
 - **A non-required job repairs two generated populations and judges nothing.** `gunbc.heal_workflow` runs on same-repository pull requests that touch the generation inputs, converges the stage0 mirrors to the seed's own fixed point and rewrites the seed-build artifacts, and `gunbc.heal_publisher_workflow` pushes the result as one bot commit, compare-and-set on the head, with a receipt naming each artifact. A fork pull request gets a notice, and a non-converging round pushes nothing. `gunbc.drift_watch_workflow` runs on a schedule, reads the default branch and fails with one typed, located finding per drifted workflow, runner sudoers, githook, `.gitignore`, `.gitattributes` or fci1 context, each naming its remedy (`gunbc.tier_o_artifact_emit` `tier_o_artifacts`); it writes nothing. Neither is a required context and neither refuses a merge; every other generated artifact is left to its author (`gunbc.rung_drop` `v1_required_lanes_withdrawn`); the two added jobs are recorded at (ruling `gunbc.design_ruling regeneration_jobs_added_to_roster`).
-- **The memory envelope is part of the verdict** (ruling `gunbc.design_ruling memory_envelope_is_part_of_the_verdict`). Each subject step refuses a run no cgroup `memory.max` bounds, prints a memory receipt at exit, and refuses on any OOM kill or any swap whatever the producer answered (`gunbc.memory_envelope`; slot shape `gunbc.runner_slot_desired`).
+- **The memory envelope is part of the verdict** (ruling `gunbc.design_ruling memory_envelope_is_part_of_the_verdict`). Each subject step refuses a run no cgroup `memory.max` bounds, prints a memory receipt at exit, and refuses on any OOM kill or any swap whatever the producer answered (`gunbc.host.memory_envelope`; slot shape `gunbc.runner.runner_slot_desired`).
 - **What a green `witnesses` does not say.** Nothing on the required path evaluates a witness, refuses a module outside the two emitted closures, runs clippy or the v1 unit tests, or compares a generated artifact — this document included — with its authority. That loss is one declared drop, `gunbc.rung_drop` `v1_required_lanes_withdrawn`, whose population is re-derived by `gunbc test //gunbc/instruments:required-lane-resolution-census` and whose trigger is the native compiler judging that population. A new verdict joins the gate as a row judged by a binary built from the seed's emission, never as a lane handing the corpus to the v1 interpreter.
 - **The job roster is closed to growth** (ruling `gunbc.design_ruling job_roster_closed_to_growth`): adding a job needs operator sign-off; the reasoning an author owes is stated at `witness_floor_lane_jobs`.
 - **Measurements are `gunbc test <label>`** (ruling `gunbc.design_ruling instrument_is_a_row_not_a_flag`). A label is a row in `gunbc.instrument_targets` bound through `gunbc.target_binding` `TargetProducer`, never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2).

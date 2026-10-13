@@ -21,7 +21,7 @@ import gunbc.gcp_service_enablement {
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.google.sheets { sheets_serviceusage_api_id }
 import extdeps.google.workspace { google_workspace_product }
-import gunbc.gcp_estate_observation {
+import gunbc.gcp.gcp_estate_observation {
   sheets_calling_home,
   SheetsCallingHomeUnresolved,
   SheetsCallingHomeSelected,

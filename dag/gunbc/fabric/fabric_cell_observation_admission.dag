@@ -1,9 +1,9 @@
-module gunbc.fabric_cell_observation_admission
+module gunbc.fabric.fabric_cell_observation_admission
 
 import std.types { String, List, Bool, list_length }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.host_identity { HostIdentity }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.fabric_cell_converge {
   FabricCellMember,
   FabricCellObservedMembers,
   FabricCellObservationRefusal,
@@ -22,15 +22,15 @@ import gunbc.fabric_cell_converge {
   fabric_cell_desired_state_digest,
   fabric_cell_canonical_refusals,
 }
-import gunbc.fabric_cell_observe {
+import gunbc.fabric.fabric_cell_observe {
   FabricCellHostProbe,
   fabric_cell_observe,
   fabric_cell_projection_refusals,
 }
 
 // THE ONE PLACE A PLAN-ADMISSIBLE OBSERVATION IS MINTED, AND IT SITS HERE BECAUSE NEITHER UPSTREAM
-// MODULE CAN HOLD IT. gunbc.fabric_cell_converge owns desired state and the pure classification
-// kernel; gunbc.fabric_cell_observe owns probe interpretation and imports it. The join needs BOTH,
+// MODULE CAN HOLD IT. gunbc.fabric.fabric_cell_converge owns desired state and the pure classification
+// kernel; gunbc.fabric.fabric_cell_observe owns probe interpretation and imports it. The join needs BOTH,
 // so homing it upstream forced the guarantee into a layer that cannot know the proposition it would
 // be guaranteeing -- converge cannot name a projection, so its constructor had to accept a readback
 // and a caller-authored refusal list, two independently writable halves. This module is the first
@@ -112,7 +112,7 @@ fn fabric_cell_observation_outcome(decision: FabricCellObservationDecision) -> F
 // mint's own reasoning, not a second route, not exported". THAT ANNOTATION WAS FALSE AND A PROBE
 // PROVED IT: a scratch module in another namespace imported the name, called it with a hand-built
 // readback and a literal empty discovered list, and the row PASSED. So the recut had deleted the
-// two-writable-halves constructor from gunbc.fabric_cell_converge and I had rebuilt it one module
+// two-writable-halves constructor from gunbc.fabric.fabric_cell_converge and I had rebuilt it one module
 // downstream, inside the very file whose job is to make that shape unreachable.
 //
 // There is no module-private modifier to reach for here, so the construction move is to have no
@@ -189,7 +189,7 @@ fn admit_fabric_cell_probe(probe: FabricCellHostProbe) -> FabricCellObservationD
 // THE EVENTUAL POLICY IS THE STRICTER ONE. Once every managed host is meant to be checked for
 // out-of-band fabric state, the not-applicable arm narrows to the hosts a scoped plan deliberately
 // excludes and the rest become denials. NEXT-RUNG TRIGGER: the wet observer replacing this
-// constructor at the `gunbc.fleet_converge_plan_cli` call sites, at which point the host is genuinely
+// constructor at the `gunbc.fleet.fleet_converge_plan_cli` call sites, at which point the host is genuinely
 // read and no placeholder is minted at all.
 fn fabric_cell_observation_unobserved(host: HostIdentity) -> FabricCellObservationDecision {
   if list_length(items: fabric_cell_expected_slots(host: host)) == 0 {

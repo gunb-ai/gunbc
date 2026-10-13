@@ -9,12 +9,12 @@ import gunbc.principal_projection { principal_ref_label }
 import product.fabric.identity { FabricIdentity, WorkKey, DemandKey, ExecutionAttemptKey, fabric_identity_eq }
 import product.fabric.supply { GrantDuration, EstimatedGrantDuration }
 import product.fabric.budget { MoneyAccount }
-import gunbc.fabric_executor_class { ExecutorSanction }
-import gunbc.fabric_control_plane {
+import gunbc.fabric.fabric_executor_class { ExecutorSanction }
+import gunbc.fabric.fabric_control_plane {
   FabricCellCandidate, CellReservation, CellReserved, broker_reserve_for_requirements,
   fabric_cell_allocation_key,
 }
-import gunbc.fabric_memory_grant_policy { MicroVmMemoryGrantIssue, MemoryGrantIssued }
+import gunbc.fabric.fabric_memory_grant_policy { MicroVmMemoryGrantIssue, MemoryGrantIssued }
 import gunbc.workspace_allocation {
   WorkspaceRequest, WorkspaceReservation, workspace_execution_requirements, workspace_memory_grant, workspace_work,
 }

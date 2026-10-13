@@ -7,8 +7,8 @@ import std.content_hash { ContentHash, serialize_content_hash }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
-import extdeps.ssh { ssh_public_key_line }
-import gunbc.fleet_bootstrap_principal_session {
+import extdeps.ssh.keys { ssh_public_key_line }
+import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   BootstrapCredentialFileHeld,
   BootstrapCredentialNotHeld,
@@ -17,8 +17,8 @@ import gunbc.fleet_bootstrap_principal_session {
 }
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet_known_hosts_anchor {
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   FleetSshAttemptIdentity,
   fleet_ssh_attempt_identity,
@@ -31,9 +31,9 @@ import gunbc.fleet_known_hosts_anchor {
   PortableRemoteWord,
   portable_remote_words,
 }
-import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
-import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet_multi_principal_probe {
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_multi_principal_probe {
   spark_converge_target_selection,
   SparkConvergeTargetRefused, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetSingle,
 }
@@ -170,7 +170,7 @@ fn spark_admin_credential_file_name(attempt: FleetSshAttemptIdentity) -> NonEmpt
 // it is where the password-session shape was first got right -- but it got there by naming
 // shape_fleet_ssh_password_exec itself, and a fact that each call site states for itself is a fact
 // three call sites can disagree about. They did: the grant installer named the KEY shaper for this
-// same principal. gunbc.fleet_bootstrap_principal_session now derives the session from
+// same principal. gunbc.fleet.fleet_bootstrap_principal_session now derives the session from
 // admin_principal, and this lane supplies only WHERE its credential is -- the owner-only file it
 // materialized, rather than the runner's environment, because this is the operator-workstation
 // entry and no job prelude wrote one for it.
@@ -372,8 +372,8 @@ fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String)
 // anything consumes it.
 
 // WAS a local join re-spelling `ssh-ed25519 <material> <comment>` -- a nickname for the line
-// construction extdeps.ssh already owns, which additionally hardcoded the algorithm token that same
-// module serializes (review 51659). gunbc.fleet_host_key_enrollment carried the identical fork.
+// construction extdeps.ssh.keys already owns, which additionally hardcoded the algorithm token that same
+// module serializes (review 51659). gunbc.fleet.fleet_host_key_enrollment carried the identical fork.
 fn fleet_authorized_key_line() -> String {
   ssh_public_key_line(k: fleet_automation_ssh_key)
 }
@@ -508,7 +508,7 @@ fn spark_managed_access_apply_wet(attempt_raw: String, host: String) -> ProcessE
 // THE BOOTSTRAP RUNS FROM A RUNNER, AS THE FLEET'S OWN IDENTITY. spark_managed_access_apply_wet is
 // the operator-workstation shape: it mints a GCP token through gcloud and materializes the fleet
 // key itself. On a self-hosted runner neither exists, and both are already provided by the job:
-// the fleet key sits in the in-run ssh-agent (gunbc.fleet_ssh_locus prepare_fleet_ssh_agent_context)
+// the fleet key sits in the in-run ssh-agent (gunbc.fleet.fleet_ssh_locus prepare_fleet_ssh_agent_context)
 // and the administrator credential for the TARGET host sits in the runner-materialized file the
 // grant-install prelude writes (gunbc.spark.grant_privileged_operation read_bootstrap_credential),
 // selected by SPARK_CONVERGE_TARGET through the per-host roster. So this entry is the same apply

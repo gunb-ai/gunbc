@@ -1,4 +1,4 @@
-module gunbc.host_names_gen_z
+module gunbc.host_names.gen_z
 
 import std.types { List, NonEmptyStr }
 import extdeps.illumination.minions { minion_first_names }

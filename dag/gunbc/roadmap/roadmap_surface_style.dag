@@ -1,6 +1,6 @@
-module gunbc.roadmap_surface_style
+module gunbc.roadmap.roadmap_surface_style
 import gunbc.design.typography { interface_text_decls, InterfaceProse, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
-import gunbc.roadmap_component { roadmap_row_height }
+import gunbc.roadmap.roadmap_component { roadmap_row_height }
 import extdeps.google.issue_tracker { issue_results_columns, IssueResultsColumn, IssueColumnPriority, IssueColumnTitle, IssueColumnAssignee, IssueColumnStatus, IssueColumnLastModified }
 import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, WithinSubject, PseudoElementOfSubject, OnHover, OnFocusVisible, respond_fast, decl }
 import extdeps.languages.css.selectors { RawSelector }

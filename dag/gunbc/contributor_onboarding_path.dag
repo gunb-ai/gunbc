@@ -7,12 +7,12 @@ import std.markdown { MarkdownDocument, MarkdownBlock }
 import gunbc.plans.md_helpers { h1, h2, h3, p, li, ul, ol, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import extdeps.exec.command { argv_words }
-import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
-import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
+import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
+import gunbc.fabric.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
 import gunbc.cli_invoke { gunbc_run_all_claims_invocation_words, invocation_words_bare }
-import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.witness_floor_workflow { witness_floor_required_bins }
-import tools.docs_projection_agreement { docs_projection_regen_command }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.witness.witness_floor_workflow { witness_floor_required_bins }
+import gunbc.instruments.docs_projection_agreement { docs_projection_regen_command }
 
 // THE PATH A NEW ENGINEER WALKS, MODELED SO THE COMMANDS CANNOT ROT AWAY FROM THEIR AUTHORITIES.
 //
@@ -21,7 +21,7 @@ import tools.docs_projection_agreement { docs_projection_regen_command }
 // projection below is NOT the deliverable and must not be read as one -- it is the derived index
 // of a path that was walked, and the walk is what establishes the claim. What this module adds
 // over prose is the one property prose cannot have: EVERY COMMAND IS CONSUMED FROM THE AUTHORITY
-// THAT OWNS IT, so the build line changes when gunbc.repo_self_build changes and the witness line
+// THAT OWNS IT, so the build line changes when gunbc.repo.repo_self_build changes and the witness line
 // changes when the lane partition changes. A hand-typed first-day document is stale on the day
 // the package name moves, and staleness in exactly this document is the bus-factor risk the item
 // exists to remove.
@@ -59,9 +59,9 @@ import tools.docs_projection_agreement { docs_projection_regen_command }
 //
 // Single authority for the ordered path from a bare clone to one landed reviewed change, and for
 // the obstacles that path hits. It is the projection source for docs/onboarding.md. The steps
-// carry DERIVED commands rather than typed ones: the build argv is gunbc.repo_self_build, the
-// witness argv is gunbc.fabric_witness_run, the source roots are gunbc.ci_layer_roots, the regen
-// recipe is tools.docs_projection_agreement. The only literal argv words here are git and rustup
+// carry DERIVED commands rather than typed ones: the build argv is gunbc.repo.repo_self_build, the
+// witness argv is gunbc.fabric.fabric_witness_run, the source roots are gunbc.ci.ci_layer_roots, the regen
+// recipe is gunbc.instruments.docs_projection_agreement. The only literal argv words here are git and rustup
 // words, which this repository does not model and whose upstreams own them. THE OBSTACLE ROSTER IS
 // THE ITEM'S REAL DELIVERABLE and is typed rather than narrated, because each row answers a
 // question a hiring or bus-factor decision needs: can a newcomer clear this alone, does the error
@@ -189,7 +189,7 @@ fn source_root_flags() -> List<String> {
 //
 // gunbc runs an entry and claim_executor runs the lanes, so a newcomer who builds only gunbc
 // cannot run the witnesses -- the most common way the path stops after a successful build. That
-// pair is not this module's fact to hold: `gunbc.witness_floor_workflow` `witness_floor_required_bins`
+// pair is not this module's fact to hold: `gunbc.witness.witness_floor_workflow` `witness_floor_required_bins`
 // already declares it, and the required lane builds from it.
 //
 // AN EARLIER REVISION DECLARED THE PAIR HERE UNDER A COMMENT CLAIMING IT WAS NOT RESTATED FROM
@@ -244,7 +244,7 @@ fn onboarding_witness_command() -> String {
 // The one-witness recipe, path-addressed: the built binary, the witness roots, the entry, and
 // `--claim-run` with no `--function`, which runs every `test fn` the file declares in one process.
 fn onboarding_one_witness_command() -> String {
-  join(concat(["./target/release/gunbc"], invocation_words_bare(words: gunbc_run_all_claims_invocation_words(source_roots: witness_layer_roots, entry: "dag/test/claim/spark/pair_serving_authority_witness_test.dag"))), " ")
+  join(concat(["./target/release/gunbc"], invocation_words_bare(words: gunbc_run_all_claims_invocation_words(source_roots: witness_layer_roots, entry: "dag/test/claim/spark/pair_serving_authority_witness.dag"))), " ")
 }
 
 fn onboarding_build_lane_command() -> String {
@@ -292,7 +292,7 @@ data onboarding_steps: List<OnboardingStep> = [
     id: "run-witnesses" as NonEmptyStr,
     goal: "Run the corpus lane that WAS the merge gate's floor until the v1 withdrawal of 2026-10-09 (gunbc.rung_drop v1_required_lanes_withdrawn): the parse sweep and the witness floor. Nothing on the required path executes a witness now, so this run is the only place the enrolled population is folded, and a red here reaches main unless you act on it. EXPECT TENS OF MINUTES, NOT SECONDS -- this and the emission lane are the two long steps on this page, and a reader who assumes a hang and kills it has thrown away the run rather than the wait." as NonEmptyStr,
     command: Present { value: onboarding_witness_command() as NonEmptyStr },
-    verification: "The run announces one phase line per phase it owns and one routed line per phase it does not, and exits nonzero on any failed phase. QUALIFY THE HOST BEFORE SPENDING THE TIME: this is the longest step by a wide margin and the most memory-hungry, so read your own bound with `cat /sys/fs/cgroup/memory.max` and compare it against the declared per-slot allowance, which is gunbc.runner_slot_desired gunbc_runner_slot_memory_max -- the page names the symbol rather than copying the number, so look it up there and it cannot go stale on you. Confirm yours is at or above it first -- a host under it will run for a long time and then refuse or be killed. When it does refuse, classify the refusal with the three arms the run-witnesses obstacle rows carry before touching the corpus." as NonEmptyStr,
+    verification: "The run announces one phase line per phase it owns and one routed line per phase it does not, and exits nonzero on any failed phase. QUALIFY THE HOST BEFORE SPENDING THE TIME: this is the longest step by a wide margin and the most memory-hungry, so read your own bound with `cat /sys/fs/cgroup/memory.max` and compare it against the declared per-slot allowance, which is gunbc.runner.runner_slot_desired gunbc_runner_slot_memory_max -- the page names the symbol rather than copying the number, so look it up there and it cannot go stale on you. Confirm yours is at or above it first -- a host under it will run for a long time and then refuse or be killed. When it does refuse, classify the refusal with the three arms the run-witnesses obstacle rows carry before touching the corpus." as NonEmptyStr,
     blocker: NeedsMachine { resource: "a host whose cgroup exposes an enforceable memory bound large enough for the floor fold" as NonEmptyStr },
   },
   OnboardingStep {
@@ -366,7 +366,7 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
     step_id: "build" as NonEmptyStr,
     symptom: "There is no obvious package to build. The binary is named gunbc, the crate directory is a stage0 path, and the package name matches neither." as NonEmptyStr,
     cause: "The package is the v1 seed compiler and the bins are its targets; the naming is a fact about the bootstrap layout rather than about the product. A newcomer cannot derive the invocation from the directory tree." as NonEmptyStr,
-    disposition: RemediedByDerivation { how: "The build step above consumes gunbc.repo_self_build, the single point through which this repository builds its own binaries, so the projected command is the same argv the required lane uses and moves when that authority moves." as NonEmptyStr },
+    disposition: RemediedByDerivation { how: "The build step above consumes gunbc.repo.repo_self_build, the single point through which this repository builds its own binaries, so the projected command is the same argv the required lane uses and moves when that authority moves." as NonEmptyStr },
     discoverable_from_symptom: false,
   },
   OnboardingObstacle {
@@ -387,13 +387,13 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
     step_id: "run-witnesses" as NonEmptyStr,
     symptom: "The run refuses before doing any work, reporting that the host memory budget is unreadable." as NonEmptyStr,
     cause: "No cgroup memory.high or memory.max binds the process, so the planning allowance is unknown and the run refuses rather than admitting against the widest cap it could have chosen. The authority is explicit that this is not a state an environment integer can rescue: the planning-request variable may only narrow an observed bound, never supply a missing one, and treating it as a rescue converts a typed refusal into an unbounded resolve on an unbounded host." as NonEmptyStr,
-    disposition: DocumentedRemedy { remedy: "There are two environment variables here and only one of them is an answer. GUNBC_MEMORY_BUDGET_BYTES is a PLANNING REQUEST: gunbc.host_budget_source states that it may only narrow an observed bound and can never supply a missing one, so reaching for it to clear this refusal is the escape hatch the refusal exists to refuse -- and the run it admits is SIGKILLed rather than refused, which is strictly worse than the refusal it replaced. GUNBC_BIND_MEMORY_CGROUP_BYTES is the one that binds: v1_compiler.memory_governor apply_memory_cgroup_bind writes an actual memory.max for the process, announces which of its three continuing states it took, and REFUSES rather than proceeding when the controller is unavailable, the tree is unwritable or the request does not fit the machine. So request a real bound, and read the memory-cgroup-bind line the run prints to confirm which state you got: not requested, already bound, or applying." as NonEmptyStr },
+    disposition: DocumentedRemedy { remedy: "There are two environment variables here and only one of them is an answer. GUNBC_MEMORY_BUDGET_BYTES is a PLANNING REQUEST: gunbc.host.host_budget_source states that it may only narrow an observed bound and can never supply a missing one, so reaching for it to clear this refusal is the escape hatch the refusal exists to refuse -- and the run it admits is SIGKILLed rather than refused, which is strictly worse than the refusal it replaced. GUNBC_BIND_MEMORY_CGROUP_BYTES is the one that binds: v1_compiler.memory_governor apply_memory_cgroup_bind writes an actual memory.max for the process, announces which of its three continuing states it took, and REFUSES rather than proceeding when the controller is unavailable, the tree is unwritable or the request does not fit the machine. So request a real bound, and read the memory-cgroup-bind line the run prints to confirm which state you got: not requested, already bound, or applying." as NonEmptyStr },
     discoverable_from_symptom: true,
   },
   OnboardingObstacle {
     step_id: "run-witnesses" as NonEmptyStr,
     symptom: "The floor fold goes red on a clean checkout, and going red again on a re-run looks like an unstable test suite." as NonEmptyStr,
-    cause: "The required floor runs close under the memory line it is admitted against, so an environmental red is an ordinary outcome of the run rather than a statement about the diff. THE GROUNDING IS AN AUTHORITY RATHER THAN HEARSAY, and a reader can check it: gunbc.runner_slot_allocation declares the per-slot ceiling and the throttle line beneath it, and gunbc_runner_slot_memory_max_ruling_note records that the ceiling was RAISED because the floor's measured peak no longer fit under the previous throttle line. That note also carries the reading that matters when you see a peak equal to the throttle line -- it is a censored lower bound, the workload being held rather than measured -- so a run that looks like it fitted exactly did not." as NonEmptyStr,
+    cause: "The required floor runs close under the memory line it is admitted against, so an environmental red is an ordinary outcome of the run rather than a statement about the diff. THE GROUNDING IS AN AUTHORITY RATHER THAN HEARSAY, and a reader can check it: gunbc.runner.runner_slot_allocation declares the per-slot ceiling and the throttle line beneath it, and gunbc_runner_slot_memory_max_ruling_note records that the ceiling was RAISED because the floor's measured peak no longer fit under the previous throttle line. That note also carries the reading that matters when you see a peak equal to the throttle line -- it is a censored lower bound, the workload being held rather than measured -- so a run that looks like it fitted exactly did not." as NonEmptyStr,
     disposition: DocumentedRemedy { remedy: "Read the refusal and classify it before acting, WITH THREE ARMS RATHER THAN TWO: an environmental refusal names the budget; a MISSING BINARY refusal names a claim but was caused by an artifact that was never built; and only what is left is a corpus failure. The two-arm form of this rule was measured wrong on the cold-start walk -- it routed a never-built binary into the corpus arm and sent the reader hunting the corpus for a build problem. Never re-run a corpus or cost refusal to sample a green: that is sampling until the instrument agrees with you, and it destroys the only signal the deficit produces. A TOOLCHAIN CRASH IS THE ONE EXCEPTION and has its own row below." as NonEmptyStr },
     discoverable_from_symptom: false,
   },
@@ -765,15 +765,15 @@ data onboarding_reference: List<OnboardingReference> = [
   },
   OnboardingReference {
     topic: "Local checks" as NonEmptyStr,
-    fact: "`cargo fmt --all --check` runs in the generated pre-commit hook (`gunbc.githooks_pre_commit_emit`). `cargo clippy --all-targets -- -D warnings` (`gunbc.repo_self_build` `repo_self_clippy_command`, the only command compiling the integration-test and example targets) and `cargo test --release -p v1-compiler --lib` (`repo_self_test_command`) are local only and block nothing." as NonEmptyStr,
+    fact: "`cargo fmt --all --check` runs in the generated pre-commit hook (`gunbc.githooks.githooks_pre_commit_emit`). `cargo clippy --all-targets -- -D warnings` (`gunbc.repo.repo_self_build` `repo_self_clippy_command`, the only command compiling the integration-test and example targets) and `cargo test --release -p v1-compiler --lib` (`repo_self_test_command`) are local only and block nothing." as NonEmptyStr,
   },
   OnboardingReference {
     topic: "Hooks" as NonEmptyStr,
-    fact: "`git config core.hooksPath .githooks`; the generated hooks converge the rest from `gunbc.repo_local_git_config`, including a merge driver that refuses a both-sides change to a generated path and prints the regeneration recipe." as NonEmptyStr,
+    fact: "`git config core.hooksPath .githooks`; the generated hooks converge the rest from `gunbc.repo.repo_local_git_config`, including a merge driver that refuses a both-sides change to a generated path and prints the regeneration recipe." as NonEmptyStr,
   },
   OnboardingReference {
     topic: "Regenerating projections" as NonEmptyStr,
-    fact: "`tools.generated_artifact_gate` `main_wet` rewrites the committed generated artifacts from their authorities, `main` verifies them; `tools.docs_projection_gate` `regen` renders the on-demand ledger views." as NonEmptyStr,
+    fact: "`gunbc.instruments.generated_artifact_gate` `main_wet` rewrites the committed generated artifacts from their authorities, `main` verifies them; `gunbc.instruments.docs_projection_gate` `regen` renders the on-demand ledger views." as NonEmptyStr,
   },
 ]
 
@@ -795,7 +795,7 @@ fn onboarding_reading_blocks() -> List<MarkdownBlock> {
 fn onboarding_checks_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "The other commands worth knowing"),
-    p(text: "Derived from `gunbc.repo_self_build`, which is the single point through which this repository builds and checks itself."),
+    p(text: "Derived from `gunbc.repo.repo_self_build`, which is the single point through which this repository builds and checks itself."),
     ol(items: [
       li(text: join(["Lint over every target, which a merge is blocked on: `", repo_self_clippy_command(), "`"], "")),
       li(text: join(["The package's own unit tests, which are local diligence and are run by no required step: `", repo_self_test_command(), "`"], "")),

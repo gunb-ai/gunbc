@@ -1,4 +1,4 @@
-module gunbc.fabric_floor_dispatch
+module gunbc.fabric.fabric_floor_dispatch
 
 import std.types { Int, List, NonEmptyStr, Timestamp }
 import extdeps.currency.currency { Usd }
@@ -10,14 +10,14 @@ import product.fabric.selection {
   select_supply,
 }
 import product.fabric.supply { StableRosterOrder, PlacementAffinityKey }
-import gunbc.fabric_witness_run {
+import gunbc.fabric.fabric_witness_run {
   floor_grant_duration, floor_buy_terms, floor_admission_terms, floor_satisfaction_requirement,
 }
-import gunbc.floor_demand { floor_execution_requirements }
+import gunbc.floor.floor_demand { floor_execution_requirements }
 
 // THE JOIN, AND IT IS A JOIN RATHER THAN A BROKER.
 //
-// gunbc.fabric_witness_run names its own next-rung trigger twice: "a broker fold that selects a
+// gunbc.fabric.fabric_witness_run names its own next-rung trigger twice: "a broker fold that selects a
 // SupplierOffer for this Demand", and records that eleven of its thirteen functions have no
 // production consumer because that fold does not exist. Measured before writing this module: the
 // fold DOES exist. product.fabric.selection's select_supply is complete -- it ranks, prices,

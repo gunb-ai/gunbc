@@ -44,7 +44,7 @@ fn ipmitool_sel_elist_line(record_id_hex: String, date: String, time: String, se
 }
 
 // `ipmitool raw 0x06 0x52 ...` (Master Write-Read) answering two bytes. NO SMpro exchange with this
-// controller is retained in the corpus (gunbc.machine_intake_mtcollins1_smpro_observation witness
+// controller is retained in the corpus (gunbc.machine_intake.mtcollins1_smpro_observation witness
 // notes), so the spacing is ipmitool's raw-response print as the production decoder's own supplied
 // samples spell it, and is carried with that standing.
 data ipmitool_raw_two_bytes_standing: CitedFigureStanding = TranscribedUncited {
@@ -56,7 +56,7 @@ fn ipmitool_raw_two_bytes(first_hex: String, second_hex: String) -> String {
 }
 
 // `ipmitool mc info` against the Mt. Collins BMC: the two fields the corpus has read from this
-// controller -- Firmware Revision 0.32 and IPMI Version 2.0 (gunbc.machine_intake_mtcollins1_access_observation)
+// controller -- Firmware Revision 0.32 and IPMI Version 2.0 (gunbc.machine_intake.mtcollins1_access_observation)
 // in ipmitool's `<name> : <value>` field layout. No verbatim stdout is retained, so the layout, and
 // the absence of the other fields ipmitool prints, carry this standing. The boot's reachability read
 // consumes only the exit and stderr.

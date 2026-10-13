@@ -158,7 +158,7 @@ fn work_toolchain_observed(
 ) -> WorkToolchainIdentity
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_toolchain_decide"),
-    decl_ref(module_path: "test.claim.compute.work_request_witness_test", decl_name: "tc"),
+    decl_ref(module_path: "test.claim.compute.work_request_witness", decl_name: "tc"),
     decl_ref(module_path: "test.claim.compute.attempt_lifecycle_wet_witness", decl_name: "fixture_toolchain"),
   ]
   = WorkToolchainIdentity {
