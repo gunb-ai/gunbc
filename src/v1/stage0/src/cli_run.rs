@@ -12488,21 +12488,16 @@ pub struct MultiEntryIndex {
     /// per-tree bare census layers (a module's bare-name universe is its own tree).
     source_roots: Vec<String>,
     /// Parse-grade pool snapshot (every indexed module parsed once, with pool-wide
-    /// newline indexes) — the shared input of the qualified fill and the per-tree
-    /// bare layers below. Entry-independent, built once per process.
+    /// newline indexes) — the shared input of the per-tree bare layers below.
+    /// Entry-independent, built once per process.
     pool_parse: RefCell<Option<Rc<PoolParse>>>,
     /// The heads name index over `pool_parse` (`entry_resolve::reference_pool_names_for_index`):
     /// a fact of this index, demanded per out-of-tree bare name, so derived once here.
     reference_pool_names: RefCell<Option<Rc<entry_resolve::ReferencePoolNames>>>,
-    /// Whole-pool QUALIFIED-ONLY census layer (entries keyed by qualified name;
-    /// empty global_bare/services), built once per process and underlaid beneath
-    /// each entry's closure census (namespace-resolution-design.md §7.5: "fill =
-    /// whole tree; policy gates lookup, never fill").
-    pool_qualified_fill: RefCell<Option<Rc<SymbolIndex>>>,
     /// Per-source-root full census (bare + qualified + services) over that root's
     /// pool modules — the SAME-TREE bare layer underlaid beneath a module's closure
-    /// census when it typechecks (bare = own tree; qualified = whole pool; cross-
-    /// tree bare reach stays refused). Keyed by source root, built lazily.
+    /// census when it typechecks (bare = own tree; cross-tree bare reach stays
+    /// refused). Keyed by source root, built lazily.
     tree_bare_census: RefCell<std::collections::HashMap<String, Rc<SymbolIndex>>>,
     /// Previous resolved whole-pool reading, kept only as a differential oracle and
     /// explicit memory-decomposition instrument. Production uses closure_name_censuses.
@@ -12655,16 +12650,6 @@ pub fn both_closure_bare_edge_rows_for_test(index: &MultiEntryIndex) -> usize {
         .unwrap_or(0)
 }
 
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn pool_qualified_fill_initialized_for_test(index: &MultiEntryIndex) -> bool {
-    index.pool_qualified_fill.borrow().is_some()
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
-    *index.pool_qualified_fill.borrow_mut() = None;
-}
-
 // ---------------------------------------------------------------------------
 // Private-footprint decomposition instrumentation (work item
 // node://adhoc-2a689db3-964). Read/force/drop handles on the per-worker index
@@ -12684,11 +12669,6 @@ pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn force_pool_parse_for_test(index: &MultiEntryIndex) -> Result<(), String> {
     pool_parse(index).map(|_| ())
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn force_pool_qualified_fill_for_test(index: &MultiEntryIndex) -> Result<(), String> {
-    pool_qualified_fill(index).map(|_| ())
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
@@ -12800,7 +12780,6 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
         "pool_parse" => *index.pool_parse.borrow_mut() = None,
         "reference_pool_names" => *index.reference_pool_names.borrow_mut() = None,
-        "pool_qualified_fill" => *index.pool_qualified_fill.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
         "closure_name_censuses" => index.closure_name_censuses.borrow_mut().clear(),
@@ -12862,7 +12841,6 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "bare_reference_admission",
         "pool_bare_census",
         "tree_bare_census",
-        "pool_qualified_fill",
         "entry_closure_sources",
         "intern_table",
         "normalize_diag_cache",
@@ -14382,10 +14360,6 @@ pub struct ResolveStageNanos {
     pub assembly_graph: u128,
     /// Closure-scoped symbol-index census construction (per entry with cache misses).
     pub assembly_symbol_index: u128,
-    /// Whole-pool qualified fill lookup/build (per index; later calls are memo hits).
-    pub assembly_pool_fill: u128,
-    /// Merge the closure census with the pool qualified fill (per entry with misses).
-    pub assembly_symbol_index_merge: u128,
     /// Closure variant-owner base construction (per entry with cache misses).
     pub assembly_variant_base: u128,
     /// Compose the closure index with one source tree's bare census (once per root used).
@@ -14474,7 +14448,7 @@ pub struct ResolveStageNanos {
     /// `build_symbol_index_census_nodes`, and nothing else.
     pub edge_index_tree_census_miss_nanos: u128,
     /// `pool_parse` — the WHOLE-CORPUS tokenize+parse behind every pool-derived term
-    /// (the per-root bare census, the qualified fill, the pool bare census). It is
+    /// (the per-root bare census, the pool bare census). It is
     /// memoized on the index and forced LAZILY by whichever consumer reaches it first,
     /// so it has no single owner: charging it to that consumer reports one term's cost
     /// under another term's name. Measured 2026-08-24 on `dag` + `src/v2`: 14.25s of
@@ -14487,10 +14461,7 @@ pub struct ResolveStageNanos {
     /// exclusive peer rather than a child of any of them:
     ///   - `load` -> the bare-reference closure -> the edge index -> the per-root census
     ///     (including the whole-pool heads name reading);
-    ///   - reconcile -> `assembly_pool_fill` (via `pool_qualified_fill`) and
-    ///     `assembly_root_symbol_index` (via the per-root census again).
-    /// `assembly_pool_fill` runs first in the reconcile path, so on that path it is the
-    /// real payer — not a hypothetical one (review 55349).
+    ///   - reconcile -> `assembly_root_symbol_index` (via the per-root census again).
     pub pool_parse: u128,
     /// Cold builds of the pool parse — 1 per index that forces it, 0 if nothing does.
     pub pool_parse_builds: u128,
@@ -14528,8 +14499,6 @@ impl ResolveStageNanos {
         self.assembly_probe += other.assembly_probe;
         self.assembly_graph += other.assembly_graph;
         self.assembly_symbol_index += other.assembly_symbol_index;
-        self.assembly_pool_fill += other.assembly_pool_fill;
-        self.assembly_symbol_index_merge += other.assembly_symbol_index_merge;
         self.assembly_variant_base += other.assembly_variant_base;
         self.assembly_root_symbol_index += other.assembly_root_symbol_index;
         self.assembly_root_variant_base += other.assembly_root_variant_base;
@@ -14589,8 +14558,6 @@ impl ResolveStageNanos {
             + self.assembly_probe
             + self.assembly_graph
             + self.assembly_symbol_index
-            + self.assembly_pool_fill
-            + self.assembly_symbol_index_merge
             + self.assembly_variant_base
             + self.assembly_root_symbol_index
             + self.assembly_root_variant_base
@@ -14613,8 +14580,6 @@ impl ResolveStageNanos {
             + self.assembly_probe
             + self.assembly_graph
             + self.assembly_symbol_index
-            + self.assembly_pool_fill
-            + self.assembly_symbol_index_merge
             + self.assembly_variant_base
             + self.assembly_root_symbol_index
             + self.assembly_root_variant_base
@@ -14643,8 +14608,6 @@ thread_local! {
             assembly_probe: 0,
             assembly_graph: 0,
             assembly_symbol_index: 0,
-            assembly_pool_fill: 0,
-            assembly_symbol_index_merge: 0,
             assembly_variant_base: 0,
             assembly_root_symbol_index: 0,
             assembly_root_variant_base: 0,
@@ -14699,9 +14662,9 @@ thread_local! {
 /// forced inside it.
 ///
 /// The whole-corpus pool parse is a SHARED, lazily-forced term: the per-root bare
-/// census, the qualified fill and the pool bare census all need it, none of them owns
-/// it, and whichever arrives first pays for all of them. A timer started around that
-/// first arrival therefore reports the corpus parse under the arriving consumer's name
+/// census and the pool bare census all need it, none of them owns it, and whichever
+/// arrives first pays for all of them. A timer started around that first arrival
+/// therefore reports the corpus parse under the arriving consumer's name
 /// — the mis-attribution measured 2026-08-24, where two `tree_bare_census_for_root`
 /// misses reported 23.02s of which 14.25s was this parse. Subtracting here (and
 /// reporting the parse once, on `pool_parse`) is what keeps the enclosing rows about
@@ -14985,35 +14948,27 @@ pub fn exclusive_cost_partition_from(
             name: "assembly_symbol_index",
             nanos: st.assembly_symbol_index,
         },
-        CostPartitionRow {
-            name: "assembly_pool_fill",
-            nanos: st.assembly_pool_fill,
-        },
         // The shared whole-corpus parse is an EXCLUSIVE PEER, not a child of any row.
         //
         // It was an inclusive row `contained_in: "load"` when this landed, and review
-        // 55349 was right that the claim is false: `build_symbol_index_for_reconcile`
-        // can force the parse through `pool_qualified_fill` while timing
-        // `assembly_pool_fill`, which is a top-level exclusive peer of `load`, not a
-        // descendant of it. There is no single true parent, because WHICH row forces the
-        // parse depends on the path — which is the whole defect restated one level up,
-        // and naming any one of them would have been the same lie in a smaller font.
+        // 55349 was right that the claim is false: reconcile can force the parse
+        // through `assembly_root_symbol_index`, which is a top-level exclusive peer
+        // of `load`, not a descendant of it. There is no single true parent, because
+        // WHICH row forces the parse depends on the path — which is the whole defect
+        // restated one level up, and naming any one of them would have been the same
+        // lie in a smaller font.
         //
         // Once every window that can contain it is recorded net of it (`load`,
-        // `assembly_pool_fill`, `assembly_root_symbol_index`, and the inclusive rows
-        // beneath `load`), the parse is carved out of all of them and is a disjoint
-        // window inside the parent span — which is exactly what an exclusive row is.
-        // This also keeps `sum_exclusive` invariant across the repair: before it, the
-        // parse was inside whichever row forced it; after it, the parse is its own row
-        // and is counted exactly once, rather than silently migrating into
+        // `assembly_root_symbol_index`, and the inclusive rows beneath `load`), the
+        // parse is carved out of all of them and is a disjoint window inside the
+        // parent span — which is exactly what an exclusive row is. This also keeps
+        // `sum_exclusive` invariant across the repair: before it, the parse was
+        // inside whichever row forced it; after it, the parse is its own row and is
+        // counted exactly once, rather than silently migrating into
         // `remainder_nanos` as the inclusive form would have done.
         CostPartitionRow {
             name: "pool_parse",
             nanos: st.pool_parse,
-        },
-        CostPartitionRow {
-            name: "assembly_symbol_index_merge",
-            nanos: st.assembly_symbol_index_merge,
         },
         CostPartitionRow {
             name: "assembly_variant_base",
@@ -15917,22 +15872,11 @@ fn parse_module_heads_for_pool_census(
     }
 }
 
-// SCAFFOLD (§7 seed-retained HAND-RUST — namespace lane, fill side)
-// LAYERED CENSUS (namespace-resolution-design.md §7.5: "fill is policy-agnostic —
-// fill = whole tree; policy gates lookup, never fill"): the entry's closure census
-// is built exactly as if the pool did not exist (bare-name visibility, variant-alias
-// gating, and services stay closure-scoped — a pool homonym must not shift what a
-// compiled module's bare names mean), and the ENTIRE indexed pool underlays it as a
-// QUALIFIED-ONLY entries layer, so dotted references reach any pool module. The
-// qualified fill is parse-grade (tokenize + parse, never resolve — a pool module's
-// imports belong to its own tree view) and entry-independent, so it is cached once
-// per process on `MultiEntryIndex`; the closure census is per-entry. The prior
-// whole-pool single census let fill homonyms vanish closure bare variant aliases
-// (corpus-count gating) and flip unique item bindings to ambiguous — bare names a
-// compiled module resolved on main went undefined (measured on the whole-tree gate:
-// bare GET/Persistent/JsonValue across 28 witness rows).
-// 🟡 dissolve-on: multi-entry SymbolIndex authority modeled in .dag (census over the
-// indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
+// SCAFFOLD (§7 seed-retained HAND-RUST — namespace lane, pool snapshot)
+// `pool_parse` is the shared tokenize+parse snapshot for pool-derived terms that
+// still exist (per-tree bare census, heads name index). It is not a qualified-name
+// universe for product typecheck: a declaration that affects an entry belongs in
+// that entry's acquired dependency closure.
 fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     if let Some(cached) = index.pool_parse.borrow().clone() {
         return Ok(cached);
@@ -16121,24 +16065,6 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
     out
 }
 
-fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
-    if let Some(cached) = index.pool_qualified_fill.borrow().clone() {
-        return Ok(cached);
-    }
-    let pool = pool_parse(index)?;
-    let nodes: im::Vector<Rc<Node>> = pool
-        .nodes_by_file
-        .iter()
-        .map(|(_, node)| node.clone())
-        .collect();
-    let fill = v1_compiler_infer::build_symbol_index_qualified_fill(
-        Rc::new(nodes),
-        pool.combined_si.clone(),
-    );
-    *index.pool_qualified_fill.borrow_mut() = Some(fill.clone());
-    Ok(fill)
-}
-
 /// The source root (longest prefix match) a workspace-relative file lives under,
 /// or None for files outside every indexed root.
 fn source_tree_root_of(roots: &[String], file: &str) -> Option<String> {
@@ -16299,7 +16225,7 @@ fn tree_bare_census_for_root(
         .borrow_mut()
         .insert(root.to_string(), census.clone());
     // Net of the whole-corpus pool parse this build may have been the first to force:
-    // that parse is shared with the qualified fill and the pool bare census and is
+    // that parse is shared with the pool bare census and is
     // reported once on `pool_parse`. Before this subtraction the row read 23.02s for
     // two misses, 14.25s of which was the parse (measured 2026-08-24).
     let pool_here = resolve_stage_slot_snapshot()
@@ -16336,23 +16262,16 @@ fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> 
 }
 
 fn build_symbol_index_for_reconcile(
-    index: &MultiEntryIndex,
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Result<Rc<SymbolIndex>, String> {
+) -> Rc<SymbolIndex> {
     let symbol_index_started = std::time::Instant::now();
     let symbol_index =
         v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices);
     resolve_stage_slot_add(|s| {
         s.assembly_symbol_index += symbol_index_started.elapsed().as_nanos()
     });
-    let (pool_fill, pool_fill_nanos) = nanos_net_of_pool_parse(|| pool_qualified_fill(index));
-    let pool_fill = pool_fill?;
-    resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_nanos);
-    let merge_started = std::time::Instant::now();
-    let merged = v1_compiler_infer::symbol_index_with_qualified_fill(symbol_index, pool_fill);
-    resolve_stage_slot_add(|s| s.assembly_symbol_index_merge += merge_started.elapsed().as_nanos());
-    Ok(merged)
+    symbol_index
 }
 
 fn reconcile_with_typed_cache(
@@ -16398,21 +16317,20 @@ fn reconcile_with_typed_cache(
     }
     // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
     // built once, order-independent, over the whole graph before any module typechecks — see
-    // global_bare_fallback_invariant in v1_compiler_infer_env. Layering (§7.5 "fill =
-    // whole tree; policy gates lookup, never fill"): the base below is the entry's
-    // closure census plus the whole-pool QUALIFIED underlay; each module that
-    // actually typechecks additionally gets its OWN tree's bare census underlaid
-    // (bare = own tree, qualified = whole pool, cross-tree bare stays refused),
-    // composed lazily per root in `tree_symbol_index_memo`.
+    // global_bare_fallback_invariant in v1_compiler_infer_env. The base below is the
+    // entry's closure census; each module that actually typechecks additionally gets
+    // its OWN tree's bare census underlaid (bare = own tree, cross-tree bare stays
+    // refused), composed lazily per root in `tree_symbol_index_memo`. A declaration
+    // that affects this product belongs in the acquired dependency closure, not in an
+    // ambient whole-pool qualified underlay.
     //
     // Built AFTER the all-cache-hits shortcut (fix axis 2b,
     // floor-memory-pool-parse-regression-diagnosis (plan doc deleted 2026-08-28) §9): the shortcut
     // consumes no symbol index, so an all-hits entry — the warm single-process case,
     // and any cold child whose closure fully hits the typed/cross-process caches —
-    // must not pay the whole-pool census `pool_qualified_fill` performs. Genuine
-    // misses reach the build below exactly as before.
-    let symbol_index =
-        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
+    // must not pay closure census construction. Genuine misses reach the build below
+    // exactly as before.
+    let symbol_index = build_symbol_index_for_reconcile(graph.clone(), source_indices.clone());
     // Whole-closure variant-owner base for merge_global_bare_variant_locals
     // (the merge_global_bare_variant_locals_cost_note annotation in v1.compiler.infer): eligibility
     // depends only on (global_bare, si), so it is computed once per symbol index —
@@ -16546,8 +16464,9 @@ fn reconcile_with_typed_cache(
                                     );
                                 }
                                 // Same-tree bare underlay for the module being typechecked
-                                // (bare = own tree, qualified = whole pool); out-of-root
-                                // modules keep the closure-only bare universe.
+                                // (bare = own tree); out-of-root modules keep the
+                                // closure-only bare universe. Qualified names come from
+                                // the closure census, not a whole-pool fill.
                                 let (module_symbol_index, module_variant_base) =
                                     match source_tree_root_of(&index.source_roots, &decl_file) {
                                         Some(root) => match tree_symbol_index_memo.get(&root) {
@@ -35538,8 +35457,8 @@ mod exclusive_cost_partition_law {
     /// The pool parse is an EXCLUSIVE PEER, with no parent row at all.
     ///
     /// It shipped as an inclusive row `contained_in: "load"`, and review 55349 showed
-    /// that claim false: the reconcile path forces the parse through
-    /// `pool_qualified_fill` while timing `assembly_pool_fill`, which is a top-level
+    /// that claim false: the reconcile path forces the parse through the per-root
+    /// census while timing `assembly_root_symbol_index`, which is a top-level
     /// peer of `load` and not a descendant of it. No single parent is true, because
     /// which row forces the parse depends on the path — so the row has none.
     ///
