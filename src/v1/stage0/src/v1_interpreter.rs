@@ -24049,7 +24049,7 @@ macro_rules! v1_builtin_arms {
             // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
             arm "free_call.observed_peak_resident_bytes" { "observed_peak_resident_bytes" } => match $positional.as_slice() {
                 [] => {
-                    // Routed through the single portable reader. This arm previously carried
+                    // Routed through the single peak reader (VmHWM on Linux, getrusage on macOS; see its docblock). This arm previously carried
                     // its OWN /proc/self/status VmHWM read — a second implementation of one
                     // observation (section 3), and the copy executing for witnesses, so fixing
                     // only cli_run's would have left this Linux-only. Authority for the
@@ -24059,7 +24059,7 @@ macro_rules! v1_builtin_arms {
                     match bytes {
                         Some(b) => Ok(Some(Value::Int(b))),
                         None => Err(InterpError::TypeError {
-                            msg: "observed_peak_resident_bytes: getrusage(RUSAGE_SELF).ru_maxrss unavailable on this host (refusing to fabricate a Measured space fact)"
+                            msg: "observed_peak_resident_bytes: no own-process peak reader for this host (Linux VmHWM or macOS getrusage); refusing to fabricate a Measured space fact"
                                 .to_string(),
                         }),
                     }
