@@ -14,6 +14,7 @@ import v2.compiler.dependency_demand_census {
   DemandCensusRow,
   DemandCensusVerdict,
   UnobservedAliasConflict,
+  UnobservedAliasUnestablished,
   UnreadableAtParse,
   UnreadableAtTokenize,
   demand_census_conserved,
@@ -45,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL (DESIGN section 3). The boundary these claims
 // discriminate is v2.compiler.compile native_demand_census_report over an ingest, so its input --
 // source bytes -- is constructed, and everything above it is the production front end, the real
-// resolver and the D13 reducer. The fixture is a closed four-module closure whose six uses fns are
+// resolver and the D13 reducer. The fixture is a closed ingest whose uses fns are
 // the controlled population the count-conservation claim is grounded in (DESIGN section 5: a literal
 // grounded in a controlled fixture), one fn per verdict the census can reach:
 //   restates      calls an operation declared `requires Network`                 -> equal
@@ -60,6 +61,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //                 the resource declaration, so derived demand names Network     -> equal
 //   member_collision  calls t.http.H.net (requires none) beside H.Network (requires
 //                 Network); spelling substitution would mint a false Equal     -> mismatch
+//   let_shadows   `let net = p; net` — a local binder, not the uses alias      -> unobserved
 //   duplicate_alias  two uses entries share the alias; first-match is refused   -> unobserved
 data ddc_resources_source: String = "module std.resources\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n\nresource Filesystem {\n  kind: Capability\n  mode: ReadWrite\n  capability read {}\n}\n"
 
@@ -75,7 +77,7 @@ data ddc_valued_source: String = "module t.valued\n\nimport std.resources { Netw
 // tokenize, so its uses fn is read by nobody and the census population is incomplete.
 data ddc_broken_source: String = "module t.broken\n\nimport std.resources { Network }\n\nfn lost(p: Bool) -> Bool uses net: Network {\n  \"never terminates\n}\n"
 
-data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n\nfn member_collision(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.net()\n  p\n}\n\nfn duplicate_alias(p: Bool) -> Bool uses net: Network, net: Network {\n  p\n}\n"
+data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n\nfn member_collision(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.net()\n  p\n}\n\nfn let_shadows(p: Bool) -> Bool uses net: Network {\n  let net = p\n  net\n}\n\nfn duplicate_alias(p: Bool) -> Bool uses net: Network, net: Network {\n  p\n}\n"
 
 fn ddc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -130,7 +132,7 @@ test fn every_uses_fn_gets_exactly_one_census_row_holds() -> Bool {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
-      (r.uses_functions == 12) && (length(xs: r.rows) == 12) && demand_census_conserved(r: r)
+      (r.uses_functions == 13) && (length(xs: r.rows) == 13) && demand_census_conserved(r: r)
   }
 }
 
@@ -197,6 +199,20 @@ test fn a_qualified_member_sharing_the_alias_spelling_is_not_substituted_RED() -
         CensusEqual => false
         CensusUndecided { cause: _ } => false
         CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+
+test fn a_let_binder_sharing_the_alias_spelling_is_not_substituted_RED() -> Bool {
+  match ddc_verdict(function: "t.aliasing.let_shadows") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUnobserved { reason: UnobservedAliasUnestablished } => true
+        CensusUnobserved { reason: _ } => false
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUndecided { cause: _ } => false
       }
   }
 }
